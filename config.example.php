@@ -6,3 +6,8 @@ define('ANTHROPIC_API_KEY', 'sk-ant-api03-YOUR_KEY_HERE');
 define('RESEND_API_KEY',    're_YOUR_RESEND_KEY');
 define('B44_API_KEY_VAL',   'your_base44_api_key');
 define('B44_APP_ID_VAL',    'your_base44_app_id');
+
+// WhatsApp Business Cloud API (Meta)
+// Get from: https://developers.facebook.com → your app → WhatsApp → API Setup
+define('WA_PHONE_ID',      'your_whatsapp_phone_number_id');
+define('WA_ACCESS_TOKEN',  'your_whatsapp_access_token');
