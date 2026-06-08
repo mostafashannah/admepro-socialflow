@@ -2423,9 +2423,11 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
     onClose();
   };
 
+  const clientId = post.client_id || project?.client_id;
   const socialIntegration = integrations.find(i=>
     i.status==="active" &&
-    (i.app_key===post.platform || (post.platform==="instagram"&&i.app_key==="instagram") || (post.platform==="facebook"&&i.app_key==="facebook"))
+    (i.app_key===post.platform || (post.platform==="instagram"&&i.app_key==="instagram") || (post.platform==="facebook"&&i.app_key==="facebook")) &&
+    (!i.client_id || i.client_id===clientId)
   );
 
   const handlePublish = async () => {
@@ -2734,7 +2736,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
                   color:publishing?"var(--text3)":"#1877F2",fontSize:13,fontWeight:700,
                   display:"flex",alignItems:"center",justifyContent:"center",gap:8,cursor:publishing?"not-allowed":"pointer",
                 }}>
-                  {publishing?<><Spinner size={14}/> Publishing…</>:<>🚀 Publish Now to {socialIntegration.app_key==="instagram"?"Instagram":"Facebook"}</>}
+                  {publishing?<><Spinner size={14}/> Publishing…</>:<>🚀 Publish to {socialIntegration.app_key==="instagram"?"Instagram":"Facebook"}{socialIntegration.client_name?` (${socialIntegration.client_name})`:""}</>}
                 </button>
               ):(
                 <div style={{padding:"8px 12px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",fontSize:12,color:"var(--text3)",display:"flex",alignItems:"center",gap:6}}>
@@ -10049,7 +10051,7 @@ function VarChips({onInsert}) {
 }
 
 // ── Integration Wizard ──
-function IntegrationWizard({open, onClose, onSave, existingIntegration, currentUser}) {
+function IntegrationWizard({open, onClose, onSave, existingIntegration, currentUser, clients=[]}) {
   const [step, setStep] = useState(1);
   const TOTAL_STEPS = 5;
 
@@ -10061,9 +10063,12 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
     credentials: (() => { try { return JSON.parse(existingIntegration.credentials||"{}"); } catch { return {}; } })(),
     config: (() => { try { return JSON.parse(existingIntegration.config||"{}"); } catch { return {}; } })(),
     webhook_url: existingIntegration.webhook_url||"",
+    client_id: existingIntegration.client_id||"",
+    client_name: existingIntegration.client_name||"",
   } : {
     name:"", app_key:"", trigger:"", action:"",
     credentials:{}, config:{}, webhook_url:"",
+    client_id:"", client_name:"",
   };
 
   const [f, setF] = useState(initState);
@@ -10121,6 +10126,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
       run_count: existingIntegration?.run_count||0,
       error_count: existingIntegration?.error_count||0,
       last_run_status: existingIntegration?.last_run_status||"never",
+      ...(f.client_id ? {client_id: f.client_id, client_name: f.client_name} : {}),
     });
     setSaving(false); onClose();
   };
@@ -10243,6 +10249,18 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                 <div style={{padding:14,background:"#1877F211",border:"1px solid #1877F233",borderRadius:"var(--rs)",fontSize:12,color:"#1877F2"}}>
                   <strong>How to get credentials:</strong> Go to <em>Meta Business Suite → Settings → Page Access Tokens</em>, or use the <em>Graph API Explorer</em> to generate a long-lived Page Access Token. For Instagram, use your Instagram Business account's Page ID.
                 </div>
+                <Field label="Client" required hint="Which client does this Facebook/Instagram page belong to?">
+                  <select value={f.client_id||""} onChange={e=>{
+                    const c = clients.find(cl=>cl.id===e.target.value);
+                    sf("client_id", c?.id||"");
+                    sf("client_name", c?.name||"");
+                  }} style={inputSt}>
+                    <option value="">— Select a client —</option>
+                    {clients.filter(c=>c.status!=="hidden").map(c=>(
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </Field>
                 <Field label="Page ID" required hint="Numeric Facebook Page ID or Instagram Business account ID">
                   <input value={f.credentials?.page_id||""} onChange={e=>scred("page_id",e.target.value)} placeholder="e.g. 123456789012345" style={inputSt}/>
                 </Field>
@@ -10413,7 +10431,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
 }
 
 // ── Integrations Page ──
-function IntegrationsPage({integrations, integrationLogs, currentUser, onAdd, onUpdate, onDelete, onRetry}) {
+function IntegrationsPage({integrations, integrationLogs, currentUser, clients=[], onAdd, onUpdate, onDelete, onRetry}) {
   const [showWizard, setShowWizard] = useState(false);
   const [editIntegration, setEditIntegration] = useState(null);
   const [selLogs, setSelLogs] = useState(null);
@@ -10551,6 +10569,7 @@ function IntegrationsPage({integrations, integrationLogs, currentUser, onAdd, on
           open
           onClose={()=>{setShowWizard(false);setEditIntegration(null);}}
           currentUser={currentUser}
+          clients={clients}
           existingIntegration={editIntegration}
           onSave={async(d)=>{
             if(editIntegration) await onUpdate({...editIntegration,...d});
@@ -11728,7 +11747,7 @@ function SystemLogPanel({activityLogs}) {
 // ════════════════════════════════════════════════════════════════
 // SETTINGS PAGE
 // ════════════════════════════════════════════════════════════════
-function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, integrationLogs, onAddIntegration, onUpdateIntegration, onDeleteIntegration, onRetryIntegration, emailSettings, onSaveEmailSettings, team, posts, timelogs, perfLogs, accentColor, brandingAssets, onSaveBrandingAssets, wallpaper, emailLogs, activityLogs}) {
+function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, integrationLogs, onAddIntegration, onUpdateIntegration, onDeleteIntegration, onRetryIntegration, emailSettings, onSaveEmailSettings, team, posts, clients, timelogs, perfLogs, accentColor, brandingAssets, onSaveBrandingAssets, wallpaper, emailLogs, activityLogs}) {
   const [settingsTab, setSettingsTab] = usePersistentState("sf_tab_settings","branding");
   const [f,setF] = useState({
     app_name: appSettings?.app_name||"SocialFlow",
@@ -11898,6 +11917,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
           integrations={integrations||[]}
           integrationLogs={integrationLogs||[]}
           currentUser={currentUser}
+          clients={clients||[]}
           onAdd={onAddIntegration}
           onUpdate={onUpdateIntegration}
           onDelete={onDeleteIntegration}
@@ -20634,6 +20654,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             onSaveEmailSettings={saveEmailSettings}
             team={data.team}
             posts={data.posts}
+            clients={data.clients||[]}
             timelogs={data.timelogs}
             perfLogs={data.perfLogs||[]}
             accentColor={accentColor}
