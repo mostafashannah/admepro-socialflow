@@ -9990,7 +9990,7 @@ const INTEGRATION_ACTIONS = {
   productivity: [{key:"create_trello_card",label:"Create Trello Card",fields:["board_id","list_id","title_template"]},{key:"create_asana_task",label:"Create Asana Task",fields:["project_id","task_name_template"]},{key:"create_notion_entry",label:"Add Notion Entry",fields:["database_id","title_template"]},{key:"create_clickup_task",label:"Create ClickUp Task",fields:["list_id","task_name_template"]}],
   spreadsheet:  [{key:"add_sheet_row",label:"Add Google Sheets Row",fields:["spreadsheet_id","sheet_name","columns"]},{key:"add_airtable_record",label:"Add Airtable Record",fields:["base_id","table_name"]}],
   automation:   [{key:"send_webhook",label:"Send Webhook (POST)",fields:["webhook_url","payload_template"]},{key:"trigger_zapier",label:"Trigger Zapier Webhook",fields:["webhook_url"]},{key:"trigger_make",label:"Trigger Make Scenario",fields:["webhook_url"]}],
-  social:       [{key:"post_buffer",label:"Add to Buffer Queue",fields:["profile_ids","message_template"]},{key:"post_hootsuite",label:"Post to Hootsuite",fields:["profile_id","message_template"]}],
+  social:       [{key:"publish_post",label:"Publish Post to Page",fields:[]},{key:"post_buffer",label:"Add to Buffer Queue",fields:["profile_ids","message_template"]},{key:"post_hootsuite",label:"Post to Hootsuite",fields:["profile_id","message_template"]}],
 };
 
 const INTEGRATION_TEMPLATES = [
@@ -10084,6 +10084,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
   const selectedTrigger = TRIGGER_MAP[f.trigger];
   const categoryActions = INTEGRATION_ACTIONS[selectedApp?.category||"automation"]||INTEGRATION_ACTIONS.automation;
   const selectedAction = categoryActions.find(a=>a.key===f.action);
+  const isSocialPublish = f.app_key==="facebook"||f.app_key==="instagram";
 
   const applyTemplate = (tpl) => {
     setF(p=>({...p, app_key:tpl.app_key, trigger:tpl.trigger, action:tpl.action, name:tpl.title, config:tpl.config||{}}));
@@ -10199,7 +10200,13 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
               </div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10}}>
                 {INTEGRATION_APPS.filter(a=>categoryFilter==="all"||a.category===categoryFilter).map(app=>(
-                  <AppCard key={app.key} app={app} selected={f.app_key===app.key} onClick={()=>sf("app_key",app.key)}/>
+                  <AppCard key={app.key} app={app} selected={f.app_key===app.key} onClick={()=>{
+                    if(app.key==="facebook"||app.key==="instagram") {
+                      setF(p=>({...p,app_key:app.key,trigger:"task_completed",action:"publish_post"}));
+                    } else {
+                      sf("app_key",app.key);
+                    }
+                  }}/>
                 ))}
               </div>
             </div>
@@ -10367,7 +10374,31 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                 <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:17,fontWeight:800,marginBottom:4}}>Review & Activate</h3>
                 <p style={{fontSize:13,color:"var(--text2)"}}>Confirm your integration details before going live</p>
               </div>
-              {/* Summary card */}
+              {/* Summary card — social publish variant */}
+              {isSocialPublish?(
+                <div style={{padding:18,background:"var(--surface2)",borderRadius:"var(--r)",border:"1px solid var(--border)",display:"flex",flexDirection:"column",gap:12}}>
+                  <div style={{display:"flex",alignItems:"center",gap:14}}>
+                    <div style={{width:48,height:48,borderRadius:12,background:selectedApp.color+"22",border:`1.5px solid ${selectedApp.color}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0}}>{selectedApp.icon}</div>
+                    <div>
+                      <p style={{fontWeight:800,fontSize:15}}>{selectedApp.label} Page Connected</p>
+                      <p style={{fontSize:12,color:"var(--text2)",marginTop:2}}>One-click publishing enabled for this client</p>
+                    </div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    <div style={{padding:"10px 14px",background:"var(--surface)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
+                      <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Client</p>
+                      <p style={{fontWeight:700,fontSize:13}}>{f.client_name||"— not set —"}</p>
+                    </div>
+                    <div style={{padding:"10px 14px",background:"var(--surface)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
+                      <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Page ID</p>
+                      <p style={{fontWeight:700,fontSize:13,fontFamily:"monospace"}}>{f.credentials?.page_id||"— not set —"}</p>
+                    </div>
+                  </div>
+                  <Field label="Integration Name">
+                    <input value={f.name} onChange={e=>sf("name",e.target.value)} placeholder={`${f.client_name||"Client"} — ${selectedApp.label}`} style={inputSt}/>
+                  </Field>
+                </div>
+              ):(
               <div style={{display:"grid",gridTemplateColumns:"1fr 40px 1fr",gap:12,alignItems:"center",padding:18,background:"var(--surface2)",borderRadius:"var(--r)",border:"1px solid var(--border)"}}>
                 <div style={{textAlign:"center",padding:14,background:"var(--surface)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
                   <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>When This Happens</p>
@@ -10385,6 +10416,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                   <p style={{fontSize:11,color:"var(--text3)",marginTop:3}}>via {selectedApp?.label}</p>
                 </div>
               </div>
+              )}
               {/* Config summary */}
               {f.config?.message_template&&(
                 <div style={{padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
@@ -10412,15 +10444,15 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
 
         {/* Navigation footer */}
         <div style={{padding:"14px 24px",borderTop:"1px solid var(--border)",display:"flex",gap:10,alignItems:"center",background:"var(--surface2)"}}>
-          {step>1&&<Btn variant="secondary" onClick={()=>setStep(s=>s-1)} style={{flex:1}}>← Back</Btn>}
+          {step>1&&<Btn variant="secondary" onClick={()=>setStep(s=>(s===5&&isSocialPublish)?2:s-1)} style={{flex:1}}>← Back</Btn>}
           {step<TOTAL_STEPS&&(
-            <Btn onClick={()=>setStep(s=>s+1)} disabled={step===1&&!f.app_key||step===3&&!f.trigger||step===4&&!f.action} style={{flex:2}}>
+            <Btn onClick={()=>setStep(s=>(s===2&&isSocialPublish)?5:s+1)} disabled={step===1&&!f.app_key||(!isSocialPublish&&step===3&&!f.trigger)||(!isSocialPublish&&step===4&&!f.action)} style={{flex:2}}>
               Next →
             </Btn>
           )}
           {step===TOTAL_STEPS&&(<>
             <Btn variant="secondary" onClick={()=>handleSave(false)} disabled={saving} style={{flex:1}}>Save (Inactive)</Btn>
-            <Btn onClick={()=>handleSave(true)} disabled={saving||!f.trigger||!f.action} style={{flex:2}}>
+            <Btn onClick={()=>handleSave(true)} disabled={saving||(!isSocialPublish&&(!f.trigger||!f.action))} style={{flex:2}}>
               {saving?<><Spinner size={14}/> Saving…</>:<><Ico d={Icons.zap2} size={15}/> Save & Enable</>}
             </Btn>
           </>)}
