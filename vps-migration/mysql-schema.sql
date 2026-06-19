@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS team_members (
   id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   name TEXT NOT NULL, email VARCHAR(255) NOT NULL, role VARCHAR(50) DEFAULT 'content_creator',
-  status VARCHAR(50) DEFAULT 'active', avatar_url TEXT, department TEXT,
+  status VARCHAR(50) DEFAULT 'active', avatar_url MEDIUMTEXT, department TEXT,
   permissions TEXT, password TEXT,
   UNIQUE KEY uq_team_members_email (email)
 ) ENGINE=InnoDB;
@@ -290,7 +290,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
   id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   setting_key VARCHAR(100) UNIQUE DEFAULT 'agency_settings',
-  app_name TEXT DEFAULT ('SocialFlow'), app_logo_url TEXT,
+  app_name TEXT DEFAULT ('SocialFlow'), app_logo_url MEDIUMTEXT,
   primary_color TEXT DEFAULT ('#d90b2c'),
   agency_email TEXT, agency_phone TEXT, agency_tagline TEXT, agency_website TEXT,
   default_currency VARCHAR(10) DEFAULT 'USD', default_language VARCHAR(10) DEFAULT 'en',
@@ -340,7 +340,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   user_email VARCHAR(255) UNIQUE NOT NULL,
-  display_name TEXT, mobile TEXT, photo_url TEXT,
+  display_name TEXT, mobile TEXT, photo_url MEDIUMTEXT,
   wallpaper TEXT DEFAULT ('dark'), accent_color TEXT DEFAULT ('#d90b2c'),
   bio TEXT, language VARCHAR(10) DEFAULT 'en',
   notifications_email TINYINT(1) DEFAULT 1,
@@ -503,7 +503,7 @@ CREATE TABLE IF NOT EXISTS client_users (
   client_id VARCHAR(36) NOT NULL, client_name TEXT,
   email TEXT NOT NULL, name TEXT NOT NULL,
   role TEXT DEFAULT ('client_member'), status VARCHAR(50) DEFAULT 'invited',
-  photo_url TEXT, mobile TEXT, last_login TEXT, password TEXT
+  photo_url MEDIUMTEXT, mobile TEXT, last_login TEXT, password TEXT
 ) ENGINE=InnoDB;
 
 -- ----------------------------------------------------------------
