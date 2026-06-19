@@ -64,12 +64,19 @@ DELETE {SB_URL}/posts?id=eq.123
 
 7. **Migrate existing data from Supabase** (optional, if you have real data
    to keep — skip if starting fresh):
-   - Export each table from Supabase: Table Editor → table → Export as CSV,
-     or via SQL Editor: `select * from posts` → download CSV.
-   - Import into MySQL: `LOAD DATA LOCAL INFILE 'posts.csv' INTO TABLE posts
-     FIELDS TERMINATED BY ',' ENCLOSED BY '"' LINES TERMINATED BY '\n'
-     IGNORE 1 ROWS;` (repeat per table — JSON columns need their CSV values
-     to already be valid JSON strings).
+   ```
+   php migrate-from-supabase.php
+   ```
+   This pulls every row from all 38 real tables out of the original Supabase
+   project (via its REST API, using the old anon key already in the script)
+   and inserts it into the local MySQL database, matching columns by name.
+   Safe to re-run — existing rows (same `id`) are skipped via `INSERT IGNORE`,
+   so re-running only picks up anything added to Supabase since the last run.
+   Note: this migrates table rows only, not Supabase Storage files — any
+   `assets`/`client_documents`/`branding_assets` rows that reference a
+   Supabase Storage path will need those files re-uploaded to `STORAGE_ROOT`
+   separately (the row's path will still point at the old Supabase bucket
+   until you do).
 
 8. **Smoke test** before pointing the live domain at it:
    ```
