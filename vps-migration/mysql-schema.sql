@@ -233,7 +233,7 @@ CREATE TABLE IF NOT EXISTS integrations (
   id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   name TEXT NOT NULL, app_key TEXT NOT NULL, app_category TEXT,
-  trigger TEXT, action TEXT, status VARCHAR(50) DEFAULT 'inactive',
+  `trigger` TEXT, action TEXT, status VARCHAR(50) DEFAULT 'inactive',
   credentials TEXT, config TEXT, webhook_url TEXT,
   last_run_at TEXT, last_run_status TEXT DEFAULT ('never'),
   last_run_message TEXT, run_count DECIMAL(14,0) DEFAULT 0, error_count DECIMAL(14,0) DEFAULT 0,
