@@ -459,6 +459,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
+const APP_VERSION = "beta 1.67";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11847,7 +11848,10 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
     <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:"min(900px,100%)"}} className="fade-in">
       {/* Page header */}
       <div>
-        <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:24,fontWeight:800}}>System Settings</h2>
+        <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:24,fontWeight:800,display:"flex",alignItems:"center",gap:10}}>
+          System Settings
+          <span style={{fontSize:11,fontWeight:700,color:"var(--text3)",background:"var(--surface2)",padding:"3px 9px",borderRadius:99}}>{APP_VERSION}</span>
+        </h2>
         <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Manage agency branding, configuration, and integrations</p>
       </div>
 
