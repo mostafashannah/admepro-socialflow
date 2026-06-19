@@ -459,7 +459,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.72";
+const APP_VERSION = "beta 1.73";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17912,25 +17912,35 @@ Rules:
 
     // ── AUTO-LOCK: detect client name in this or previous messages ──
     let activeClient = selectedClient;
+    const clients = data?.clients||[];
+    const sorted = [...clients].sort((a,b)=>(b.name||"").length-(a.name||"").length);
+    // Build match candidates per client: full name, each word ≥3, acronym from initials
+    const candidatesFor = (c)=>{
+      const n=(c.name||"").toLowerCase().trim(); if(!n) return [];
+      const words=n.split(/[\s\-_/&,.]+/).filter(w=>w.length>=3);
+      const acronym=n.split(/[\s\-_/&,.]+/).filter(w=>w.length>0).map(w=>w[0]).join("");
+      const cands=new Set([n,...words]);
+      if(acronym.length>=2) cands.add(acronym);
+      return [...cands];
+    };
+    // word-boundary check
+    const tokenHit=(tok,text)=>{
+      const re=new RegExp(`(^|[^a-z0-9])${tok.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}([^a-z0-9]|$)`,"i");
+      return re.test(text);
+    };
+    // Explicit mention of a DIFFERENT client in the current message always wins,
+    // so saying a new client's name mid-conversation switches Pro's context even
+    // if a client is already locked from earlier in the chat.
+    const curMsgLower = userMsg.toLowerCase();
+    const switchHit = sorted.find(c=>c.id!==activeClient?.id && candidatesFor(c).some(tok=>tokenHit(tok,curMsgLower)));
+    if(switchHit){
+      activeClient = switchHit;
+      setSelectedClient(switchHit);
+      if(activeTempClient) setActiveTempClient(null);
+    }
     if(!activeClient){
-      const clients = data?.clients||[];
       const haystack = (messages.map(m=>m.content||"").join(" ") + " " + userMsg).toLowerCase();
-      const sorted = [...clients].sort((a,b)=>(b.name||"").length-(a.name||"").length);
-      // Build match candidates per client: full name, each word ≥3, acronym from initials
-      const candidatesFor = (c)=>{
-        const n=(c.name||"").toLowerCase().trim(); if(!n) return [];
-        const words=n.split(/[\s\-_/&,.]+/).filter(w=>w.length>=3);
-        const acronym=n.split(/[\s\-_/&,.]+/).filter(w=>w.length>0).map(w=>w[0]).join("");
-        const cands=new Set([n,...words]);
-        if(acronym.length>=2) cands.add(acronym);
-        return [...cands];
-      };
-      // word-boundary check on haystack
-      const tokenHit=(tok)=>{
-        const re=new RegExp(`(^|[^a-z0-9])${tok.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}([^a-z0-9]|$)`,"i");
-        return re.test(haystack);
-      };
-      const hit = sorted.find(c=>candidatesFor(c).some(tokenHit));
+      const hit = sorted.find(c=>candidatesFor(c).some(tok=>tokenHit(tok,haystack)));
       if(hit){ activeClient = hit; setSelectedClient(hit); }
       else if(clients.length===1){ activeClient = clients[0]; setSelectedClient(clients[0]); }
 
@@ -17942,7 +17952,7 @@ Rules:
         const tHit = tSorted.find(n=>{
           const words=n.toLowerCase().split(/[\s\-_/&,.]+/).filter(w=>w.length>=3);
           const cands=new Set([n.toLowerCase(),...words]);
-          return [...cands].some(tokenHit);
+          return [...cands].some(tok=>tokenHit(tok,haystack));
         });
         if(tHit){
           const slug = slugifyName(tHit);
