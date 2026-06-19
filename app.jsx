@@ -459,7 +459,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.71";
+const APP_VERSION = "beta 1.72";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -18237,7 +18237,6 @@ RULES:
       <div style={{flex:1,overflowY:"auto",padding:isMobile?"16px":"24px 20%",display:"flex",flexDirection:"column",justifyContent:isEmpty?"center":"flex-start"}}>
         {isEmpty ? (
           <div style={{textAlign:"center",maxWidth:600,width:"100%",margin:"0 auto"}}>
-            <img src="/favicon.svg" width={40} height={40} style={{borderRadius:10,marginBottom:20}} alt="Pro"/>
             <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:600,fontSize:isMobile?20:26,color:"var(--text)",marginBottom:24}}>
               Hi {name}, what do you want to do today?
             </h2>
