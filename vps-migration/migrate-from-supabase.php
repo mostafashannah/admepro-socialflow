@@ -4,15 +4,16 @@
 // project via its REST API and inserts it into the local MySQL
 // database (same schema, same table/column names — see mysql-schema.sql).
 //
-// Run on the VPS, once, after api.php/storage.php are already live:
-//   php migrate-from-supabase.php
+// Run on the VPS, once, after api.php/storage.php are already live, from
+// the project root:
+//   php vps-migration/migrate-from-supabase.php
 //
 // Safe to re-run: existing rows (matched by primary key `id`) are
 // skipped via INSERT IGNORE, so a re-run only picks up rows added
 // to Supabase since the last run.
 // ================================================================
 
-require_once __DIR__ . '/config.php';
+require_once dirname(__DIR__) . '/config.php';
 
 const OLD_SB_URL = 'https://qkkplekuknuxsqvkynna.supabase.co/rest/v1';
 const OLD_SB_KEY = 'sb_publishable_4tj9trWNbP0X4DkNJii5aQ_gh6RHfGw';
