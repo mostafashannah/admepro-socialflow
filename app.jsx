@@ -17477,7 +17477,7 @@ function sessionTitle(msgs) {
   return t.length>50 ? t.slice(0,50)+"…" : t;
 }
 
-function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUpsertMemory}) {
+function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUpsertMemory, onDeleteMemory}) {
   // ── SHARED session storage with the floating Chatbot ──
   // Same keys: PRO_CHAT_SESSIONS_KEY + PRO_CHAT_ACTIVE_KEY → continues whatever chat is open in floating bubble
   const [chatSessions, setChatSessions] = useState(()=>loadProSessions());
@@ -17539,6 +17539,7 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
   const [typing,    setTyping]    = useState(false);
   const [mode,      setMode]      = useState("action"); // default action on home
   const [selectedClient, setSelectedClient] = useState(null);
+  const [activeTempClient, setActiveTempClient] = useState(null); // {name, slug} — prospective client not yet created
   const [pendingActions, setPendingActions] = useState({});
   const [showHistory, setShowHistory] = useState(false);
   const [longPasteCandidate, setLongPasteCandidate] = useState("");
@@ -17565,6 +17566,20 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
   },[currentUser, activeChatId, chatSessions.length]);
 
   useEffect(()=>{ messagesEndRef.current?.scrollIntoView({behavior:"smooth"}); },[messages,typing]);
+
+  // ── Prospective ("temp") client memory: slug helper + 30-day purge sweep ──
+  const slugifyName = (n) => (n||"").toLowerCase().trim().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"");
+  useEffect(()=>{
+    const THIRTY_DAYS = 30*24*60*60*1000;
+    const now = Date.now();
+    (data?.clientMemory||[]).forEach(m=>{
+      if(m.type==="temp" && (m.client_id||"").startsWith("temp_")){
+        const age = now - new Date(m.updated_at||m.created_at||now).getTime();
+        if(age > THIRTY_DAYS && onDeleteMemory) onDeleteMemory(m.id);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
 
   const startNewChat = () => {
     const fresh = makeChatSession({user_id:currentUser?.email||"", client_id:selectedClient?.id||""});
@@ -17656,7 +17671,17 @@ RULES:
         addBotMsg(`✅ Project **"${projData.name}"** created for ${projData.client_name||"client"}!`,"success",{label:"View Projects →", fn:"nav_projects"});
       } else if(act==="create_client") {
         const clientData={name:payload.name,email:payload.email||"",phone:payload.phone||"",industry:payload.industry||"",platforms:payload.platforms||["instagram"],status:"active"};
-        if(onDirectAction) await onDirectAction("add_client", clientData);
+        let realClient = null;
+        if(onDirectAction) realClient = await onDirectAction("add_client", clientData);
+        // Migrate any temp/prospective memory saved for this client onto the real record
+        const slug = slugifyName(clientData.name);
+        const tempId = `temp_${slug}`;
+        const tempEntries = (data.clientMemory||[]).filter(m=>m.client_id===tempId);
+        if(tempEntries.length && realClient?.id && onUpsertMemory){
+          tempEntries.forEach(m=>{ if(m.key!=="status") onUpsertMemory(realClient.id, realClient.name, m.key, m.value, "ai"); });
+          if(onDeleteMemory) tempEntries.forEach(m=>onDeleteMemory(m.id));
+        }
+        if(activeTempClient?.slug===slug) setActiveTempClient(null);
         addBotMsg(`✅ Client **"${clientData.name}"** added!`,"success",{label:"View Clients →", fn:"nav_clients"});
       } else if(act==="create_lead") {
         const leadData={name:payload.name,email:payload.email||"",company:payload.company||"",source:payload.source||"manual",status:"new",notes:payload.notes||""};
@@ -17755,9 +17780,27 @@ RULES:
 
   const handleConfirmHome = (msgId) => executeAction(msgId);
   const handleRejectHome  = (msgId) => {
+    const payloadOrList = pendingActions[msgId];
+    const list = Array.isArray(payloadOrList) ? payloadOrList : (payloadOrList ? [payloadOrList] : []);
+    const rejectedCreateClient = list.length===1 && list[0]?.action==="create_client" ? list[0] : null;
     setPendingActions(p=>{ const n={...p}; delete n[msgId]; return n; });
     setMessages(m=>m.map(msg=>msg.id===msgId?{...msg,pendingAction:false,confirmData:null}:msg));
-    addBotMsg("No problem! Anything else I can help with?");
+    if(rejectedCreateClient && onUpsertMemory){
+      const slug = slugifyName(rejectedCreateClient.name);
+      const tempId = `temp_${slug}`;
+      const fields = {
+        industry: rejectedCreateClient.industry||"",
+        email: rejectedCreateClient.email||"",
+        phone: rejectedCreateClient.phone||"",
+        platforms: (rejectedCreateClient.platforms||[]).join(", "),
+      };
+      Object.entries(fields).forEach(([k,v])=>{ if(v) onUpsertMemory(tempId, rejectedCreateClient.name, k, v, "temp"); });
+      onUpsertMemory(tempId, rejectedCreateClient.name, "status", "discussed, not created", "temp");
+      setActiveTempClient({name:rejectedCreateClient.name, slug});
+      addBotMsg(`No problem — I'll remember what we discussed about **${rejectedCreateClient.name}** for about a month in case it comes up again. Just say the word if you want to create them later.`);
+    } else {
+      addBotMsg("No problem! Anything else I can help with?");
+    }
   };
 
   const handleActionBtnHome = (btn) => {
@@ -17871,6 +17914,29 @@ Rules:
       const hit = sorted.find(c=>candidatesFor(c).some(tokenHit));
       if(hit){ activeClient = hit; setSelectedClient(hit); }
       else if(clients.length===1){ activeClient = clients[0]; setSelectedClient(clients[0]); }
+
+      // ── Prospective ("temp") client detection & revival (not yet a real client) ──
+      if(!activeClient){
+        const tempEntries = (data?.clientMemory||[]).filter(m=>m.type==="temp" && (m.client_id||"").startsWith("temp_"));
+        const tempNames = [...new Set(tempEntries.map(m=>m.client_name).filter(Boolean))];
+        const tSorted = [...tempNames].sort((a,b)=>b.length-a.length);
+        const tHit = tSorted.find(n=>{
+          const words=n.toLowerCase().split(/[\s\-_/&,.]+/).filter(w=>w.length>=3);
+          const cands=new Set([n.toLowerCase(),...words]);
+          return [...cands].some(tokenHit);
+        });
+        if(tHit){
+          const slug = slugifyName(tHit);
+          setActiveTempClient({name:tHit, slug});
+          // touch one entry to refresh updated_at and extend the 30-day window
+          const entry = tempEntries.find(m=>m.client_name===tHit);
+          if(entry && onUpsertMemory) onUpsertMemory(entry.client_id, entry.client_name, entry.key, entry.value, "temp");
+        } else if(activeTempClient){
+          setActiveTempClient(null);
+        }
+      } else if(activeTempClient){
+        setActiveTempClient(null);
+      }
     }
 
     // Build conversation history (cap each msg + total to keep input under Claude limits)
@@ -17924,6 +17990,21 @@ ${(()=>{ if(!ci) return "  (none saved)"; const norm=(v)=>{ if(v==null||v==="") 
 MEMORY (key = value):
 ${memList.length ? memList.map(m=>`  • [${m.type||"manual"}] ${m.key}: ${m.value}`).join("\n") : "  (none saved)"}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+` + sysPrompt;
+        } else if(activeTempClient){
+          const tempEntries = (data?.clientMemory||[]).filter(m=>m.client_id===`temp_${activeTempClient.slug}`);
+          sysPrompt = `╔══ PROSPECTIVE CLIENT (NOT YET CREATED) ══╗
+The user is discussing "${activeTempClient.name}", a client that does NOT exist in SocialFlow yet. You are remembering this conversation for them temporarily (about 30 days, auto-deleted if it's never mentioned again).
+
+WHAT WE'VE LEARNED SO FAR:
+${tempEntries.length ? tempEntries.map(m=>`  • ${m.key}: ${m.value}`).join("\n") : "  (nothing saved yet — gather details as you talk)"}
+
+RULES:
+1. Talk about "${activeTempClient.name}" naturally using whatever has been learned above — don't ask "which client?".
+2. If the conversation gives you new concrete facts about them (industry, platforms, contact info, goals), keep using them in your replies.
+3. At a natural point, offer to formally create "${activeTempClient.name}" as a real client (use the create_client action). If the user says no, that's fine — just keep chatting normally.
+4. Don't repeatedly nag about creating the client if they've already declined once in this conversation.
 
 ` + sysPrompt;
         }
@@ -18083,9 +18164,15 @@ ${memList.length ? memList.map(m=>`  • [${m.type||"manual"}] ${m.key}: ${m.val
             setSelectedClient(c);
             if(c) addBotMsg(`Context set to **${c.name}**. All answers and actions will use ${c.name}'s memory and data.`,"info");
           }} style={{padding:"5px 8px",borderRadius:8,fontSize:12,fontWeight:500,background:"transparent",border:"none",color:"var(--text2)",cursor:"pointer"}}>
-            <option value="">All Clients</option>
+            <option value="">Auto-detect</option>
             {(data?.clients||[]).filter(c=>!c.hidden).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
+        )}
+        {/* Prospective client indicator (not yet a real client) */}
+        {!selectedClient && activeTempClient && (
+          <span title={`Remembering "${activeTempClient.name}" temporarily — not created yet`} style={{display:"flex",alignItems:"center",gap:4,padding:"4px 8px",borderRadius:8,fontSize:11,fontWeight:600,background:"var(--surface2)",color:"var(--text2)"}}>
+            🕓 {activeTempClient.name}
+          </span>
         )}
         {/* Brain inspector */}
         {selectedClient && (
@@ -20486,6 +20573,7 @@ Return ONLY valid JSON (no markdown, no explanation):
               currentUser={currentUser} data={data}
               setPage={setPage}
               onUpsertMemory={upsertClientMemory}
+              onDeleteMemory={deleteClientMemory}
               onAction={(type,arg)=>{
                 if(type==="add_calendar"){setCalendarPreselectedClient(null);setShowFABCalendar(true);}
                 else if(type==="nav")   setPage(arg);
@@ -20495,7 +20583,7 @@ Return ONLY valid JSON (no markdown, no explanation):
               onDirectAction={async(type,payload)=>{
                 if(type==="add_post")    await addPost(payload);
                 else if(type==="add_project") await addProject(payload);
-                else if(type==="add_client")  await addClient(payload);
+                else if(type==="add_client")  return await addClient(payload);
                 else if(type==="add_lead")    await addLead(payload);
                 else if(type==="add_invoice") await createInvoice(payload);
                 else if(type==="update_stage") {
