@@ -340,7 +340,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   user_email VARCHAR(255) UNIQUE NOT NULL,
-  display_name TEXT, mobile TEXT, photo_url MEDIUMTEXT,
+  display_name TEXT, mobile TEXT, whatsapp_number TEXT, photo_url MEDIUMTEXT,
   wallpaper TEXT DEFAULT ('dark'), accent_color TEXT DEFAULT ('#d90b2c'),
   bio TEXT, language VARCHAR(10) DEFAULT 'en',
   notifications_email TINYINT(1) DEFAULT 1,
