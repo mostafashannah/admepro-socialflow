@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS posts (
   title TEXT NOT NULL, description TEXT, stage VARCHAR(50) DEFAULT 'planning',
   platform TEXT, post_type TEXT, caption TEXT, hashtags TEXT,
   design_urls JSON DEFAULT ('[]'), scheduled_date TEXT, scheduled_time TEXT,
-  assigned_to TEXT, priority TEXT DEFAULT 'medium', rejection_reason TEXT,
+  assigned_to TEXT, priority TEXT DEFAULT ('medium'), rejection_reason TEXT,
   reel_hook TEXT, reel_script TEXT, reel_cta TEXT,
   carousel_cover TEXT, carousel_slides JSON DEFAULT ('[]'),
   music_direction TEXT, tov_used TEXT, content_language TEXT,
@@ -167,7 +167,7 @@ CREATE TABLE IF NOT EXISTS quotes (
   quote_number TEXT, title TEXT, status VARCHAR(50) DEFAULT 'draft',
   client_id VARCHAR(36), client_name TEXT, client_phone TEXT, client_email TEXT,
   date TEXT, due_date TEXT, items TEXT,
-  subtotal DECIMAL(14,2), discount_type TEXT DEFAULT 'percent',
+  subtotal DECIMAL(14,2), discount_type TEXT DEFAULT ('percent'),
   discount_value DECIMAL(14,2) DEFAULT 0, tax_rate DECIMAL(6,2) DEFAULT 0,
   total DECIMAL(14,2), currency VARCHAR(10) DEFAULT 'USD',
   payment_terms TEXT, notes TEXT, created_by TEXT, pdf_url TEXT
@@ -180,7 +180,7 @@ CREATE TABLE IF NOT EXISTS leads (
   id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   name TEXT NOT NULL, company TEXT, phone TEXT, email TEXT,
-  source TEXT DEFAULT 'website', status VARCHAR(50) DEFAULT 'new',
+  source TEXT DEFAULT ('website'), status VARCHAR(50) DEFAULT 'new',
   assigned_to TEXT, followup_date TEXT, value DECIMAL(14,2),
   currency VARCHAR(10) DEFAULT 'USD', platforms JSON DEFAULT ('[]'),
   notes TEXT, converted TINYINT(1) DEFAULT 0,
@@ -195,7 +195,7 @@ CREATE TABLE IF NOT EXISTS lead_activities (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   lead_id VARCHAR(36) NOT NULL, content TEXT NOT NULL,
   author_name TEXT, author_email TEXT,
-  type TEXT DEFAULT 'note', followup_date TEXT
+  type TEXT DEFAULT ('note'), followup_date TEXT
 ) ENGINE=InnoDB;
 
 -- ----------------------------------------------------------------
@@ -208,7 +208,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   client_id VARCHAR(36), client_name TEXT, client_email TEXT, client_phone TEXT,
   title TEXT, issue_date TEXT, due_date TEXT, currency VARCHAR(10) DEFAULT 'USD',
   items TEXT, subtotal DECIMAL(14,2),
-  discount_value DECIMAL(14,2) DEFAULT 0, discount_type TEXT DEFAULT 'percent',
+  discount_value DECIMAL(14,2) DEFAULT 0, discount_type TEXT DEFAULT ('percent'),
   tax_rate DECIMAL(6,2) DEFAULT 0, total DECIMAL(14,2),
   amount_paid DECIMAL(14,2) DEFAULT 0, balance_due DECIMAL(14,2),
   status VARCHAR(50) DEFAULT 'unpaid', payment_terms TEXT,
@@ -222,7 +222,7 @@ CREATE TABLE IF NOT EXISTS payments (
   id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   invoice_id VARCHAR(36) NOT NULL, invoice_number TEXT, amount DECIMAL(14,2),
-  method TEXT DEFAULT 'bank', payment_date TEXT, reference TEXT,
+  method TEXT DEFAULT ('bank'), payment_date TEXT, reference TEXT,
   notes TEXT, confirmed_by TEXT, recorded_by TEXT
 ) ENGINE=InnoDB;
 
@@ -235,7 +235,7 @@ CREATE TABLE IF NOT EXISTS integrations (
   name TEXT NOT NULL, app_key TEXT NOT NULL, app_category TEXT,
   trigger TEXT, action TEXT, status VARCHAR(50) DEFAULT 'inactive',
   credentials TEXT, config TEXT, webhook_url TEXT,
-  last_run_at TEXT, last_run_status TEXT DEFAULT 'never',
+  last_run_at TEXT, last_run_status TEXT DEFAULT ('never'),
   last_run_message TEXT, run_count DECIMAL(14,0) DEFAULT 0, error_count DECIMAL(14,0) DEFAULT 0,
   created_by TEXT, icon_url TEXT, template_id TEXT
 ) ENGINE=InnoDB;
@@ -260,10 +260,10 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   client_id VARCHAR(36), client_name TEXT, client_email TEXT,
   service_name TEXT, description TEXT,
   amount DECIMAL(14,2), currency VARCHAR(10) DEFAULT 'EGP',
-  billing_period TEXT DEFAULT 'monthly',
+  billing_period TEXT DEFAULT ('monthly'),
   start_date TEXT, end_date TEXT,
   next_payment_date TEXT, last_payment_date TEXT,
-  status VARCHAR(50) DEFAULT 'active', payment_method TEXT DEFAULT 'paymob',
+  status VARCHAR(50) DEFAULT 'active', payment_method TEXT DEFAULT ('paymob'),
   paymob_token TEXT, paymob_payment_key TEXT, payment_link TEXT,
   cycle_count DECIMAL(14,0) DEFAULT 0, total_collected DECIMAL(14,2) DEFAULT 0,
   notes TEXT, created_by TEXT,
@@ -290,8 +290,8 @@ CREATE TABLE IF NOT EXISTS app_settings (
   id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   setting_key VARCHAR(100) UNIQUE DEFAULT 'agency_settings',
-  app_name TEXT DEFAULT 'SocialFlow', app_logo_url TEXT,
-  primary_color TEXT DEFAULT '#d90b2c',
+  app_name TEXT DEFAULT ('SocialFlow'), app_logo_url TEXT,
+  primary_color TEXT DEFAULT ('#d90b2c'),
   agency_email TEXT, agency_phone TEXT, agency_tagline TEXT, agency_website TEXT,
   default_currency VARCHAR(10) DEFAULT 'USD', default_language VARCHAR(10) DEFAULT 'en',
   tax_rate_default DECIMAL(6,2) DEFAULT 14
@@ -304,15 +304,15 @@ CREATE TABLE IF NOT EXISTS email_settings (
   id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   setting_key VARCHAR(100) UNIQUE DEFAULT 'daily_performance_email',
-  enabled TINYINT(1) DEFAULT 1, send_time TEXT DEFAULT '18:00',
-  timezone TEXT DEFAULT 'Africa/Cairo',
+  enabled TINYINT(1) DEFAULT 1, send_time TEXT DEFAULT ('18:00'),
+  timezone TEXT DEFAULT ('Africa/Cairo'),
   subject TEXT, sender_name TEXT, sender_email TEXT,
   include_working_hours TINYINT(1) DEFAULT 1,
   include_completed_tasks TINYINT(1) DEFAULT 1,
   include_pending_tasks TINYINT(1) DEFAULT 1,
   include_overdue_tasks TINYINT(1) DEFAULT 1,
   include_metrics TINYINT(1) DEFAULT 1, include_motivation TINYINT(1) DEFAULT 1,
-  attach_pdf TINYINT(1) DEFAULT 0, attach_format TEXT DEFAULT 'pdf',
+  attach_pdf TINYINT(1) DEFAULT 0, attach_format TEXT DEFAULT ('pdf'),
   last_sent_at TEXT, last_sent_count DECIMAL(14,0) DEFAULT 0,
   custom_footer TEXT, updated_by TEXT
 ) ENGINE=InnoDB;
@@ -326,8 +326,8 @@ CREATE TABLE IF NOT EXISTS branding_assets (
   setting_key VARCHAR(100) UNIQUE DEFAULT 'agency_branding',
   primary_logo TEXT, secondary_logo TEXT, icon_logo TEXT,
   dark_logo TEXT, light_logo TEXT, watermark_logo TEXT,
-  primary_color TEXT DEFAULT '#d90b2c', secondary_color TEXT DEFAULT '#111122',
-  app_name TEXT DEFAULT 'SocialFlow', agency_tagline TEXT,
+  primary_color TEXT DEFAULT ('#d90b2c'), secondary_color TEXT DEFAULT ('#111122'),
+  app_name TEXT DEFAULT ('SocialFlow'), agency_tagline TEXT,
   agency_website TEXT, agency_email TEXT, agency_phone TEXT,
   pdf_show_watermark TINYINT(1) DEFAULT 1, pdf_watermark_opacity DECIMAL(4,3) DEFAULT 0.06,
   updated_by TEXT
@@ -341,7 +341,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   user_email VARCHAR(255) UNIQUE NOT NULL,
   display_name TEXT, mobile TEXT, photo_url TEXT,
-  wallpaper TEXT DEFAULT 'dark', accent_color TEXT DEFAULT '#d90b2c',
+  wallpaper TEXT DEFAULT ('dark'), accent_color TEXT DEFAULT ('#d90b2c'),
   bio TEXT, language VARCHAR(10) DEFAULT 'en',
   notifications_email TINYINT(1) DEFAULT 1,
   notifications_browser TINYINT(1) DEFAULT 1
@@ -367,7 +367,7 @@ CREATE TABLE IF NOT EXISTS client_documents (
   id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   client_id VARCHAR(36), client_name TEXT, name TEXT, content TEXT,
-  doc_type TEXT DEFAULT 'notes', analyzed TINYINT(1) DEFAULT 0,
+  doc_type TEXT DEFAULT ('notes'), analyzed TINYINT(1) DEFAULT 0,
   char_count DECIMAL(14,0), extracted_skills TEXT, uploaded_by TEXT
 ) ENGINE=InnoDB;
 
@@ -393,7 +393,7 @@ CREATE TABLE IF NOT EXISTS ai_insights (
   id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   title TEXT, insight TEXT, category TEXT, action TEXT,
-  priority TEXT DEFAULT 'medium', is_read TINYINT(1) DEFAULT 0,
+  priority TEXT DEFAULT ('medium'), is_read TINYINT(1) DEFAULT 0,
   generated_at TEXT, related_user TEXT
 ) ENGINE=InnoDB;
 
@@ -442,12 +442,12 @@ CREATE TABLE IF NOT EXISTS client_intelligence (
   best_posting_days JSON DEFAULT ('[]'),
   avoid_weekends TINYINT(1) DEFAULT 0,
   posting_frequency DECIMAL(6,2) DEFAULT 3,
-  instagram_best_time TEXT DEFAULT '18:00',
-  facebook_best_time TEXT DEFAULT '12:00',
-  tiktok_best_time TEXT DEFAULT '19:00',
-  linkedin_best_time TEXT DEFAULT '09:00',
-  active_hours TEXT DEFAULT 'evening',
-  timezone TEXT DEFAULT 'Africa/Cairo',
+  instagram_best_time TEXT DEFAULT ('18:00'),
+  facebook_best_time TEXT DEFAULT ('12:00'),
+  tiktok_best_time TEXT DEFAULT ('19:00'),
+  linkedin_best_time TEXT DEFAULT ('09:00'),
+  active_hours TEXT DEFAULT ('evening'),
+  timezone TEXT DEFAULT ('Africa/Cairo'),
   peak_engagement_days JSON DEFAULT ('[]'),
   preferred_content_types JSON DEFAULT ('[]'),
   preferred_pillars JSON DEFAULT ('[]'),
@@ -464,7 +464,7 @@ CREATE TABLE IF NOT EXISTS content_pillars (
   id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   project_id VARCHAR(36) NOT NULL, pillar_name TEXT NOT NULL,
-  post_count DECIMAL(6,0) DEFAULT 1, post_type TEXT DEFAULT 'static',
+  post_count DECIMAL(6,0) DEFAULT 1, post_type TEXT DEFAULT ('static'),
   description TEXT, assigned_to TEXT, platform TEXT
 ) ENGINE=InnoDB;
 
@@ -477,7 +477,7 @@ CREATE TABLE IF NOT EXISTS user_invitations (
   email TEXT NOT NULL, name TEXT, role TEXT NOT NULL,
   permissions TEXT, token VARCHAR(255) UNIQUE NOT NULL,
   expires_at TIMESTAMP NOT NULL, status VARCHAR(50) DEFAULT 'pending',
-  invited_by TEXT, user_type TEXT DEFAULT 'internal',
+  invited_by TEXT, user_type TEXT DEFAULT ('internal'),
   client_id VARCHAR(36), client_name TEXT
 ) ENGINE=InnoDB;
 
@@ -489,7 +489,7 @@ CREATE TABLE IF NOT EXISTS access_requests (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   name TEXT NOT NULL, email TEXT NOT NULL, password_hint TEXT,
   requested_role TEXT, status VARCHAR(50) DEFAULT 'pending',
-  user_type TEXT DEFAULT 'internal', company_name TEXT,
+  user_type TEXT DEFAULT ('internal'), company_name TEXT,
   client_id VARCHAR(36), client_name TEXT, message TEXT,
   reviewed_by TEXT, reviewed_at TEXT, rejection_reason TEXT
 ) ENGINE=InnoDB;
@@ -502,7 +502,7 @@ CREATE TABLE IF NOT EXISTS client_users (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   client_id VARCHAR(36) NOT NULL, client_name TEXT,
   email TEXT NOT NULL, name TEXT NOT NULL,
-  role TEXT DEFAULT 'client_member', status VARCHAR(50) DEFAULT 'invited',
+  role TEXT DEFAULT ('client_member'), status VARCHAR(50) DEFAULT 'invited',
   photo_url TEXT, mobile TEXT, last_login TEXT, password TEXT
 ) ENGINE=InnoDB;
 
@@ -514,7 +514,7 @@ CREATE TABLE IF NOT EXISTS client_tasks (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   client_id VARCHAR(36), client_name TEXT,
   title TEXT, description TEXT, task_type TEXT,
-  priority TEXT DEFAULT 'medium', stage TEXT DEFAULT 'new_request',
+  priority TEXT DEFAULT ('medium'), stage TEXT DEFAULT ('new_request'),
   assigned_to TEXT, created_by TEXT, deliverable_note TEXT
 ) ENGINE=InnoDB;
 
@@ -526,7 +526,7 @@ CREATE TABLE IF NOT EXISTS client_memory (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   client_id VARCHAR(36), client_name TEXT,
-  `key` TEXT, value TEXT, type TEXT DEFAULT 'manual'
+  `key` TEXT, value TEXT, type TEXT DEFAULT ('manual')
 ) ENGINE=InnoDB;
 
 -- ----------------------------------------------------------------
