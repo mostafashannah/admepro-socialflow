@@ -1,0 +1,16 @@
+# Add inside your existing server { } block on the VPS (nginx).
+# Maps PostgREST-style URLs the app already calls onto the PHP scripts.
+
+location ~ ^/api/([A-Za-z_]+)$ {
+    rewrite ^/api/([A-Za-z_]+)$ /api.php?table=$1 last;
+}
+
+location ~ ^/storage/object/([A-Za-z0-9_-]+)/(.+)$ {
+    rewrite ^/storage/object/([A-Za-z0-9_-]+)/(.+)$ /storage.php?bucket=$1&path=$2 last;
+}
+
+# Public, direct-served file reads (no PHP, no auth — same as Supabase's public bucket reads)
+location /storage/public/ {
+    alias /var/www/socialflow/uploads/;
+    autoindex off;
+}

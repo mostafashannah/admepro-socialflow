@@ -1,0 +1,11 @@
+# Apache equivalent of nginx-rewrite.conf.example (use if serving from Apache
+# instead of nginx — e.g. shared hosting, or a VPS running Apache + mod_php).
+# Place at the document root, alongside index.html / app.js / api.php.
+
+RewriteEngine On
+
+RewriteRule ^api/([A-Za-z_]+)$ api.php?table=$1 [QSA,L]
+RewriteRule ^storage/object/([A-Za-z0-9_-]+)/(.+)$ storage.php?bucket=$1&path=$2 [QSA,L]
+
+# Public, direct-served file reads — map straight to the uploads folder.
+RewriteRule ^storage/public/(.+)$ uploads/$1 [L]
