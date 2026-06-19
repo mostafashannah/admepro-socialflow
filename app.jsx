@@ -459,7 +459,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.76";
+const APP_VERSION = "beta 1.77";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -15523,7 +15523,7 @@ ${myTasks.slice(0,10).map(p=>`- "${p.title}" | Client: ${p.client_name||"?"} | S
 3. When user asks you to CREATE, UPDATE, or DELETE something — respond naturally AND append one OR MORE action blocks at the very end. For multi-step requests (e.g. "create 3 tasks", "add a client and 2 projects"), append a separate [ACTION:{...}] block for EACH step on its own line — they will be executed in order after one confirmation.
    [ACTION:{"action":"create_task","title":"...","client_name":"...","platform":"instagram","priority":"medium","stage":"planning","assigned_to":"email","scheduled_date":"YYYY-MM-DD"}]
    [ACTION:{"action":"create_project","title":"...","client_name":"...","description":"...","platforms":["instagram"]}]
-   [ACTION:{"action":"create_client","name":"...","email":"...","industry":"...","platforms":["instagram"]}]
+   [ACTION:{"action":"create_client","name":"...","email":"...","industry":"...","platforms":["instagram"],"brief":"any tone/audience/products/goals/preferences the user shared about this client — write it as a short paragraph, omit the field entirely if nothing was shared"}]
    [ACTION:{"action":"create_invoice","client_name":"...","amount":0,"currency":"USD","due_date":"YYYY-MM-DD","description":"..."}]
    [ACTION:{"action":"create_lead","name":"...","email":"...","company":"...","source":"manual","notes":"..."}]
    [ACTION:{"action":"update_task_stage","post_title":"...","new_stage":"..."}]
@@ -16111,7 +16111,7 @@ ${projects||"none"}
 SUPPORTED ACTIONS (return as "action" field):
 - create_task: {title, description, project_id, client_id, client_name, platform, post_type, stage, priority, assigned_to, scheduled_date}
 - create_project: {title, client_id, client_name, description, project_type, platforms, start_date, end_date, status}
-- create_client: {name, email, phone, industry, platforms, status}
+- create_client: {name, email, phone, industry, platforms, status, brief} — brief: any tone/audience/products/goals/preferences shared about the client, omit if none
 - create_lead: {name, email, company, source, status, notes}
 - create_invoice: {client_id, client_name, amount, currency, due_date, description}
 - update_task_stage: {post_id, new_stage, post_title} — stages: planning, content_creation, design, internal_review, client_approval, scheduled, published, rejected
@@ -16196,7 +16196,9 @@ RULES:
 
       else if(act==="create_client") {
         const clientData = {name:payload.name,email:payload.email||"",phone:payload.phone||"",industry:payload.industry||"",platforms:payload.platforms||["instagram"],status:"active"};
-        if(onDirectAction) await onDirectAction("add_client", clientData);
+        let realClient = null;
+        if(onDirectAction) realClient = await onDirectAction("add_client", clientData);
+        if(payload.brief && realClient?.id && onUpsertMemory) onUpsertMemory(realClient.id, realClient.name, "brief", payload.brief, "ai");
         addBotMsg(`✅ Client "${clientData.name}" added successfully!`,"success",{label:"👥 View Clients", fn:"nav_clients"});
       }
 
@@ -17654,7 +17656,7 @@ ACTIVE PROJECTS:\n${projects||"none"}
 SUPPORTED ACTIONS (return as "action" field):
 - create_task: {title, description, project_id, client_id, client_name, platform, post_type, stage, priority, assigned_to, scheduled_date}
 - create_project: {title, client_id, client_name, description, project_type, platforms, start_date, end_date, status}
-- create_client: {name, email, phone, industry, platforms, status}
+- create_client: {name, email, phone, industry, platforms, status, brief} — brief: any tone/audience/products/goals/preferences shared about the client, omit if none
 - create_lead: {name, email, company, source, status, notes}
 - create_invoice: {client_id, client_name, amount, currency, due_date, description}
 - update_task_stage: {post_id, new_stage, post_title}
@@ -17718,6 +17720,7 @@ RULES:
           tempEntries.forEach(m=>{ if(m.key!=="status") onUpsertMemory(realClient.id, realClient.name, m.key, m.value, "ai"); });
           if(onDeleteMemory) tempEntries.forEach(m=>onDeleteMemory(m.id));
         }
+        if(payload.brief && realClient?.id && onUpsertMemory) onUpsertMemory(realClient.id, realClient.name, "brief", payload.brief, "ai");
         if(activeTempClient?.slug===slug) setActiveTempClient(null);
         addBotMsg(`✅ Client **"${clientData.name}"** added!`,"success",{label:"View Clients →", fn:"nav_clients"});
       } else if(act==="create_lead") {
