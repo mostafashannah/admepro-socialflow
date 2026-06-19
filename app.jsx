@@ -419,6 +419,13 @@ const WA_ENDPOINT      = window.location.origin + "/whatsapp.php";
 const PUBLISH_ENDPOINT = window.location.origin + "/social-publish.php";
 const AI_HEADERS = {"Content-Type":"application/json"};
 
+// ── Feature flags ──────────────────────────────────────────────
+// Untested/in-progress features stay off by default until toggled on
+// from Settings → Feature Flags (writes to app_settings.feature_flags).
+// Kept as a module-level object (not React state) so standalone
+// functions like sendWhatsApp() can read current flags without prop drilling.
+const FEATURE_FLAGS = { whatsapp_notifications:false, social_publishing:false };
+
 // ── Email sender ─────────────────────────────────────────────────
 async function sendEmail(to, subject, html, fromName="SocialFlow") {
   const sentAt = new Date().toISOString();
@@ -786,6 +793,7 @@ async function sendNotification(eventType, toEmail, subject, html, userPrefs, wa
 }
 
 async function sendWhatsApp(to, body) {
+  if(!FEATURE_FLAGS.whatsapp_notifications) return false;
   try {
     const r = await fetch(WA_ENDPOINT, {
       method:"POST", headers:{"Content-Type":"application/json"},
@@ -2737,7 +2745,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
             )}
           </div>
           {/* Publish Now — shown when post is scheduled and a matching social integration is active */}
-          {post.stage==="scheduled"&&(
+          {FEATURE_FLAGS.social_publishing&&post.stage==="scheduled"&&(
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {socialIntegration?(
                 <button onClick={handlePublish} disabled={publishing} style={{
@@ -11805,6 +11813,17 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
   });
   const [saving,setSaving]=useState(false);
   const [saved,setSaved]=useState(false);
+  const [flags,setFlags]=useState(()=>{
+    const ff=appSettings?.feature_flags;
+    return typeof ff==="string"?parseJ(ff,{}):(ff||{});
+  });
+  const [flagsSaved,setFlagsSaved]=useState(false);
+  const toggleFlag=async(key)=>{
+    const updated={...flags,[key]:!flags[key]};
+    setFlags(updated);
+    await onSaveSettings({feature_flags:updated});
+    setFlagsSaved(true); setTimeout(()=>setFlagsSaved(false),2000);
+  };
   const [logoPreview,setLogoPreview]=useState(appSettings?.app_logo_url||null);
   const logoRef=useRef(null);
   const sf=(k,v)=>setF(p=>({...p,[k]:v}));
@@ -11834,7 +11853,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 
       {/* Tab nav */}
       <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",flexWrap:"wrap"}}>
-        {[["branding","Branding"],["logos","Identity"],["integrations","Integrations"],["email","Daily Email"],["ai_model","AI & Tokens"],["syslog","System Log"]].map(([k,l])=>(
+        {[["branding","Branding"],["logos","Identity"],["integrations","Integrations"],["email","Daily Email"],["ai_model","AI & Tokens"],["flags","Feature Flags"],["syslog","System Log"]].map(([k,l])=>(
           <button key={k} onClick={()=>setSettingsTab(k)} style={{padding:"9px 20px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${settingsTab===k?"var(--accent)":"transparent"}`,color:settingsTab===k?"var(--accent)":"var(--text2)",transition:"all 0.15s",display:"flex",alignItems:"center",gap:6,position:"relative"}}>
             {l}
             {k==="syslog"&&(activityLogs||[]).filter(a=>a.status==="error").length>0&&(
@@ -11988,6 +12007,34 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
       {/* ── AI & TOKENS TAB ── */}
       {settingsTab==="ai_model"&&(
         <AITokensPanel/>
+      )}
+
+      {/* ── FEATURE FLAGS TAB ── */}
+      {settingsTab==="flags"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:16,maxWidth:"min(700px,100%)"}}>
+          <p style={{fontSize:13,color:"var(--text2)"}}>
+            Keep new or untested features hidden from everyone until you're ready to launch them.
+            Toggling here takes effect immediately for all users — no code deploy needed.
+          </p>
+          {[
+            {key:"whatsapp_notifications",label:"WhatsApp Notifications",desc:"Deliver task/approval notifications via WhatsApp (Meta Cloud API) in addition to email."},
+            {key:"social_publishing",label:"Social Publishing (Facebook/Instagram)",desc:"Show the \"Publish Now\" button on scheduled posts to publish directly to a connected Page."},
+          ].map(({key,label,desc})=>(
+            <div key={key} style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:16,padding:16,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
+              <div>
+                <div style={{fontSize:14,fontWeight:700}}>{label}</div>
+                <div style={{fontSize:12,color:"var(--text3)",marginTop:2}}>{desc}</div>
+              </div>
+              <button onClick={()=>toggleFlag(key)} style={{
+                flexShrink:0,width:44,height:26,borderRadius:99,position:"relative",
+                background:flags[key]?"var(--accent)":"var(--border2)",transition:"background 0.15s",
+              }}>
+                <span style={{position:"absolute",top:2,left:flags[key]?20:2,width:22,height:22,borderRadius:"50%",background:"#fff",transition:"left 0.15s"}}/>
+              </button>
+            </div>
+          ))}
+          {flagsSaved&&<p style={{fontSize:12,color:"#10b981",fontWeight:600}}>✓ Saved</p>}
+        </div>
       )}
     </div>
   );
@@ -18844,6 +18891,10 @@ function App() {
     emailLogs: [], activityLogs: [], notifPrefs: [],
   });
   const [appSettings, setAppSettings] = useState(SEED.appSettings);
+  useEffect(()=>{
+    const f = appSettings?.feature_flags;
+    Object.assign(FEATURE_FLAGS, typeof f === "string" ? parseJ(f,{}) : (f||{}));
+  },[appSettings?.feature_flags]);
   const [accentColor, setAccentColor] = useState("#d90b2c");
   const [emailSettings, setEmailSettings] = useState(SEED.emailSettings);
   const [brandingAssets, setBrandingAssets] = useState(SEED.brandingAssets);
