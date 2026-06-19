@@ -26,3 +26,7 @@ define('API_KEY', 'CHANGE_ME_TO_A_LONG_RANDOM_STRING');
 // Where uploaded files are written / served from.
 define('STORAGE_ROOT', __DIR__ . '/uploads');
 define('STORAGE_PUBLIC_URL', 'https://yourdomain.com/storage/public');
+
+// GitHub webhook auto-deploy (webhook.php) — secret shared with the GitHub
+// repo's webhook settings. Generate with: openssl rand -hex 32
+define('GITHUB_WEBHOOK_SECRET', 'CHANGE_ME_TO_A_LONG_RANDOM_STRING');
