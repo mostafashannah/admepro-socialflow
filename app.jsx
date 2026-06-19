@@ -18002,6 +18002,71 @@ ${memList.length ? memList.map(m=>`  • [${m.type||"manual"}] ${m.key}: ${m.val
 
   const isEmpty = messages.length<=1;
 
+  // Composer — shared between the centered empty state and the bottom-pinned bar
+  const Composer = (
+    <>
+      {longPasteCandidate && (
+        <div role="alert" style={{margin:"0 0 8px",padding:"10px 14px",borderRadius:12,background:"var(--accentbg)",border:"1px solid var(--accent)44",fontSize:13,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <span style={{flex:1,minWidth:200}}>
+            📋 Long conversation detected ({longPasteCandidate.length.toLocaleString()} chars).
+            {selectedClient
+              ? <> Auto-learn it into <strong>{selectedClient.name}</strong>'s memory?</>
+              : <> Pick a client and analyze?</>}
+          </span>
+          <button onClick={()=>{
+            setPasteLearnText(longPasteCandidate);
+            setPasteLearnAuto(!!selectedClient);
+            setPasteLearnOpen(true);
+            setInput("");
+            setLongPasteCandidate("");
+          }} style={{padding:"6px 14px",borderRadius:8,background:"var(--accent)",color:"#fff",border:"none",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+            ✨ Auto-learn
+          </button>
+          <button onClick={()=>setLongPasteCandidate("")} style={{padding:"6px 12px",borderRadius:8,background:"transparent",color:"var(--text2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+            Just send
+          </button>
+        </div>
+      )}
+      {!longPasteCandidate && (input||"").length>=300 && (
+        <div style={{margin:"0 0 6px",display:"flex",justifyContent:"flex-end"}}>
+          <button onClick={()=>setLongPasteCandidate(input)} style={{padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:"var(--accentbg)",color:"var(--accent)",border:"1px solid var(--accent)44",cursor:"pointer"}}>
+            📋 Learn from this ({input.length.toLocaleString()})
+          </button>
+        </div>
+      )}
+
+      <div style={{display:"flex",alignItems:"flex-end",gap:10,background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:20,padding:"10px 10px 10px 16px",transition:"border-color 0.2s"}}
+        onFocusCapture={e=>e.currentTarget.style.borderColor="var(--accent)"}
+        onBlurCapture={e=>e.currentTarget.style.borderColor="var(--border2)"}>
+        <textarea ref={inputRef} value={input}
+          onChange={e=>{
+            const v = e.target.value;
+            const grew = v.length - (input?.length||0);
+            setInput(v);
+            if((grew>=300 || v.length>=300) && !longPasteCandidate){ setLongPasteCandidate(v); }
+          }}
+          onKeyDown={handleKeyDown}
+          onPaste={e=>{
+            let pasted = "";
+            try { pasted = (e.clipboardData||e.nativeEvent?.clipboardData||window.clipboardData)?.getData("text")||""; } catch(err){}
+            if(pasted && pasted.length>=300){ setLongPasteCandidate(pasted); }
+          }}
+          placeholder="Ask anything or tell Pro what to do… (English or Arabic)"
+          rows={1}
+          style={{flex:1,fontSize:14,color:"var(--text)",lineHeight:1.5,minHeight:24,maxHeight:120,background:"none",resize:"none",border:"none",outline:"none"}}
+        />
+        <button onClick={()=>sendMessage()} disabled={!input.trim()||typing} style={{
+          width:38,height:38,borderRadius:12,flexShrink:0,
+          background:input.trim()&&!typing?"var(--accent)":"var(--border)",
+          color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",
+          transition:"all 0.15s",border:"none",cursor:input.trim()&&!typing?"pointer":"default",
+        }}>
+          {typing?<Spinner size={14}/>:<Ico d={Icons.send} size={15} stroke="#fff"/>}
+        </button>
+      </div>
+    </>
+  );
+
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100%",background:"var(--bg)",minHeight:0}}>
 
@@ -18063,15 +18128,18 @@ ${memList.length ? memList.map(m=>`  • [${m.type||"manual"}] ${m.key}: ${m.val
       )}
 
       {/* ── Messages area ── */}
-      <div style={{flex:1,overflowY:"auto",padding:isMobile?"16px":"24px 20%",display:"flex",flexDirection:"column",gap:0}}>
-        {isEmpty && (
-          <div style={{textAlign:"center",paddingTop:isMobile?60:100,paddingBottom:20}}>
+      <div style={{flex:1,overflowY:"auto",padding:isMobile?"16px":"24px 20%",display:"flex",flexDirection:"column",justifyContent:isEmpty?"center":"flex-start"}}>
+        {isEmpty ? (
+          <div style={{textAlign:"center",maxWidth:600,width:"100%",margin:"0 auto"}}>
             <img src="/favicon.svg" width={40} height={40} style={{borderRadius:10,marginBottom:20}} alt="Pro"/>
-            <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:600,fontSize:isMobile?20:26,color:"var(--text)",marginBottom:32}}>
+            <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:600,fontSize:isMobile?20:26,color:"var(--text)",marginBottom:24}}>
               Hi {name}, what do you want to do today?
             </h2>
-            {/* Suggestions — plain text chips, single row */}
-            <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",maxWidth:560,margin:"0 auto"}}>
+
+            {Composer}
+
+            {/* Suggestions — plain text chips, directly under the input */}
+            <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginTop:16}}>
               {QUICK_TILES.map(t=>(
                 <button key={t.label} onClick={t.action} style={{
                   padding:"8px 16px",borderRadius:99,
@@ -18085,83 +18153,28 @@ ${memList.length ? memList.map(m=>`  • [${m.type||"manual"}] ${m.key}: ${m.val
                 </button>
               ))}
             </div>
+            <p style={{fontSize:11,color:"var(--text3)",marginTop:16,textAlign:"center"}}>Pro can make mistakes. Double-check important info.</p>
           </div>
+        ) : (
+          <>
+            {messages.map(msg=>(
+              <ChatMessage key={msg.id} msg={msg}
+                onConfirm={handleConfirmHome} onReject={handleRejectHome}
+                onExecuteAction={handleActionBtnHome}/>
+            ))}
+            {typing&&<ChatMessage isTyping/>}
+            <div ref={messagesEndRef}/>
+          </>
         )}
-
-        {/* Messages */}
-        {messages.map(msg=>(
-          <ChatMessage key={msg.id} msg={msg}
-            onConfirm={handleConfirmHome} onReject={handleRejectHome}
-            onExecuteAction={handleActionBtnHome}/>
-        ))}
-        {typing&&<ChatMessage isTyping/>}
-        <div ref={messagesEndRef}/>
       </div>
 
-      {/* ── Input area ── */}
-      <div style={{padding:isMobile?"12px 16px":"16px 20%",borderTop:"1px solid var(--border)",background:"var(--surface)",flexShrink:0}}>
-        {/* Long-paste auto-learn banner */}
-        {longPasteCandidate && (
-          <div role="alert" style={{margin:"0 0 8px",padding:"10px 14px",borderRadius:12,background:"var(--accentbg)",border:"1px solid var(--accent)44",fontSize:13,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-            <span style={{flex:1,minWidth:200}}>
-              📋 Long conversation detected ({longPasteCandidate.length.toLocaleString()} chars).
-              {selectedClient
-                ? <> Auto-learn it into <strong>{selectedClient.name}</strong>'s memory?</>
-                : <> Pick a client and analyze?</>}
-            </span>
-            <button onClick={()=>{
-              setPasteLearnText(longPasteCandidate);
-              setPasteLearnAuto(!!selectedClient);
-              setPasteLearnOpen(true);
-              setInput("");
-              setLongPasteCandidate("");
-            }} style={{padding:"6px 14px",borderRadius:8,background:"var(--accent)",color:"#fff",border:"none",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-              ✨ Auto-learn
-            </button>
-            <button onClick={()=>setLongPasteCandidate("")} style={{padding:"6px 12px",borderRadius:8,background:"transparent",color:"var(--text2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>
-              Just send
-            </button>
-          </div>
-        )}
-        {!longPasteCandidate && (input||"").length>=300 && (
-          <div style={{margin:"0 0 6px",display:"flex",justifyContent:"flex-end"}}>
-            <button onClick={()=>setLongPasteCandidate(input)} style={{padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:"var(--accentbg)",color:"var(--accent)",border:"1px solid var(--accent)44",cursor:"pointer"}}>
-              📋 Learn from this ({input.length.toLocaleString()})
-            </button>
-          </div>
-        )}
-
-        <div style={{display:"flex",alignItems:"flex-end",gap:10,background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:20,padding:"10px 10px 10px 16px",transition:"border-color 0.2s"}}
-          onFocusCapture={e=>e.currentTarget.style.borderColor="var(--accent)"}
-          onBlurCapture={e=>e.currentTarget.style.borderColor="var(--border2)"}>
-          <textarea ref={inputRef} value={input}
-            onChange={e=>{
-              const v = e.target.value;
-              const grew = v.length - (input?.length||0);
-              setInput(v);
-              if((grew>=300 || v.length>=300) && !longPasteCandidate){ setLongPasteCandidate(v); }
-            }}
-            onKeyDown={handleKeyDown}
-            onPaste={e=>{
-              let pasted = "";
-              try { pasted = (e.clipboardData||e.nativeEvent?.clipboardData||window.clipboardData)?.getData("text")||""; } catch(err){}
-              if(pasted && pasted.length>=300){ setLongPasteCandidate(pasted); }
-            }}
-            placeholder="Ask anything or tell Pro what to do… (English or Arabic)"
-            rows={1}
-            style={{flex:1,fontSize:14,color:"var(--text)",lineHeight:1.5,minHeight:24,maxHeight:120,background:"none",resize:"none",border:"none",outline:"none"}}
-          />
-          <button onClick={()=>sendMessage()} disabled={!input.trim()||typing} style={{
-            width:38,height:38,borderRadius:12,flexShrink:0,
-            background:input.trim()&&!typing?"var(--accent)":"var(--border)",
-            color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",
-            transition:"all 0.15s",border:"none",cursor:input.trim()&&!typing?"pointer":"default",
-          }}>
-            {typing?<Spinner size={14}/>:<Ico d={Icons.send} size={15} stroke="#fff"/>}
-          </button>
+      {/* ── Input area (pinned bottom, once the conversation has started) ── */}
+      {!isEmpty && (
+        <div style={{padding:isMobile?"12px 16px":"16px 20%",borderTop:"1px solid var(--border)",background:"var(--surface)",flexShrink:0}}>
+          {Composer}
+          <p style={{fontSize:11,color:"var(--text3)",marginTop:8,textAlign:"center"}}>Pro can make mistakes. Double-check important info.</p>
         </div>
-        <p style={{fontSize:11,color:"var(--text3)",marginTop:8,textAlign:"center"}}>Pro can make mistakes. Double-check important info.</p>
-      </div>
+      )}
 
       {/* Brain inspector */}
       {brainOpen && selectedClient && (()=>{
