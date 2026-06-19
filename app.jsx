@@ -459,7 +459,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.75";
+const APP_VERSION = "beta 1.76";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1499,6 +1499,7 @@ const Icons = {
   trendUp:  ["M22 7l-9.5 9.5-5-5L1 17","M15 7h7v7"],
   briefcase:["M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z","M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"],
   brain:   ["M9.5 2a2.5 2.5 0 0 0-2.5 2.5v.5A2.5 2.5 0 0 0 4.5 7.5 2.5 2.5 0 0 0 3 12a2.5 2.5 0 0 0 1.5 4.5 2.5 2.5 0 0 0 2.5 2.5 2.5 2.5 0 0 0 2.5 2.5h0V4.5A2.5 2.5 0 0 0 9.5 2z","M14.5 2a2.5 2.5 0 0 1 2.5 2.5v.5a2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-1.5 4.5 2.5 2.5 0 0 1-2.5 4.5 2.5 2.5 0 0 1-2.5 2.5h0V4.5A2.5 2.5 0 0 1 14.5 2z","M9.5 9.5h5","M9.5 14.5h5"],
+  paperclip:["M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"],
 };
 
 const Spinner = ({size=24}) => (
@@ -15394,7 +15395,10 @@ const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId) => {
   // ── Per-client blocks ───────────────────────────────────────────
   const clientsToShow = focusClientId
     ? allClients.filter(c=>c.id===focusClientId)
-    : allClients.slice(0,12); // limit to 12 clients max to save tokens
+    : allClients.slice(0,12); // limit to 12 detailed blocks max to save tokens
+  // Lightweight roster of EVERY client name — always included so Pro knows who
+  // exists even when there are more than 12 (detailed blocks are capped above).
+  const allClientNames = allClients.map(c=>c.name).filter(Boolean).join(", ");
 
   const isFocused = !!focusClientId;
   const clientBlocks = clientsToShow.map(c=>{
@@ -15491,6 +15495,9 @@ User: ${user?.name||"User"} | Role: ${user?.role||"user"} | Email: ${user?.email
 Today: ${new Date().toISOString().slice(0,10)}
 My assigned tasks: ${myTasks.length} active | Overdue posts: ${overdue.length} | Pending client approval: ${pendAppr.length}
 Active projects: ${activeProj.length} | Total clients: ${allClients.length}
+
+ALL CLIENT NAMES IN THE SYSTEM (you know every one of these — never say you don't recognize a name on this list):
+${allClientNames||"No clients yet."}
 
 TEAM MEMBERS:
 ${teamList||"No team yet."}
@@ -15653,6 +15660,15 @@ function ChatMessage({msg, isTyping, onConfirm, onReject, onExecuteAction}) {
     <div style={{display:"flex",alignItems:"flex-end",gap:8,marginBottom:10,flexDirection:isBot?"row":"row-reverse"}} className="fade-in">
       {isBot&&<img src="/favicon.svg" width={28} height={28} style={{borderRadius:"50%",flexShrink:0}} alt="logo"/>}
       <div style={{maxWidth:"82%",display:"flex",flexDirection:"column",gap:6,alignItems:isBot?"flex-start":"flex-end"}}>
+        {(msg.attachments||[]).length>0 && (
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:isBot?"flex-start":"flex-end"}}>
+            {msg.attachments.map(a=>a.kind==="image"
+              ? <img key={a.id} src={a.previewUrl} alt={a.name} style={{width:72,height:72,borderRadius:10,objectFit:"cover",border:"1px solid var(--border)"}}/>
+              : <span key={a.id} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 10px",borderRadius:9,background:"var(--surface2)",border:"1px solid var(--border)",fontSize:11,color:"var(--text2)"}}>
+                  <Ico d={a.kind==="pdf"?Icons.briefcase:Icons.note2} size={12}/>{a.name}
+                </span>)}
+          </div>
+        )}
         <div style={{
           padding:"10px 14px",fontSize:13,lineHeight:1.6,
           borderRadius:isBot?"16px 16px 16px 4px":"16px 16px 4px 16px",
@@ -17560,8 +17576,10 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
   const [pasteLearnText, setPasteLearnText] = useState("");
   const [pasteLearnAuto, setPasteLearnAuto] = useState(false);
   const [brainOpen, setBrainOpen] = useState(false);
+  const [attachments, setAttachments] = useState([]);
   const messagesEndRef = useRef(null);
   const inputRef       = useRef(null);
+  const fileInputRef   = useRef(null);
   useEffect(()=>{
     const el = inputRef.current;
     if(!el) return;
@@ -17902,11 +17920,57 @@ Rules:
     }catch(e){ /* silent */ }
   };
 
+  // ── File attachments: images (vision), PDFs (document), text files (inlined) ──
+  const ATTACH_MAX_MB = {image:5, pdf:15, text:2};
+  const readFileAsDataURL = (file) => new Promise((resolve,reject)=>{
+    const r = new FileReader();
+    r.onload = ()=>resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+  const readFileAsText = (file) => new Promise((resolve,reject)=>{
+    const r = new FileReader();
+    r.onload = ()=>resolve(r.result);
+    r.onerror = reject;
+    r.readAsText(file);
+  });
+  const handleFilesSelected = async (fileList) => {
+    const files = Array.from(fileList||[]);
+    if(!files.length) return;
+    const next = [];
+    for(const file of files){
+      const isImage = /^image\/(png|jpeg|jpg|webp|gif)$/i.test(file.type);
+      const isPdf = file.type==="application/pdf";
+      const isText = /^text\//.test(file.type) || /\.(txt|csv|md|json)$/i.test(file.name);
+      try {
+        if(isImage){
+          if(file.size > ATTACH_MAX_MB.image*1024*1024){ addBotMsg(`⚠️ "${file.name}" is over ${ATTACH_MAX_MB.image}MB — use a smaller image.`,"error"); continue; }
+          const dataUrl = await readFileAsDataURL(file);
+          next.push({id:uid(), name:file.name, kind:"image", mediaType:file.type, base64:dataUrl.split(",")[1], previewUrl:dataUrl});
+        } else if(isPdf){
+          if(file.size > ATTACH_MAX_MB.pdf*1024*1024){ addBotMsg(`⚠️ "${file.name}" is over ${ATTACH_MAX_MB.pdf}MB — use a smaller PDF.`,"error"); continue; }
+          const dataUrl = await readFileAsDataURL(file);
+          next.push({id:uid(), name:file.name, kind:"pdf", mediaType:"application/pdf", base64:dataUrl.split(",")[1]});
+        } else if(isText){
+          if(file.size > ATTACH_MAX_MB.text*1024*1024){ addBotMsg(`⚠️ "${file.name}" is over ${ATTACH_MAX_MB.text}MB — use a smaller file.`,"error"); continue; }
+          const text = await readFileAsText(file);
+          next.push({id:uid(), name:file.name, kind:"text", text:text.slice(0,20000)});
+        } else {
+          addBotMsg(`⚠️ "${file.name}" isn't a supported file type yet — try an image, PDF, or text/CSV file.`,"error");
+        }
+      } catch(e){ addBotMsg(`⚠️ Couldn't read "${file.name}".`,"error"); }
+    }
+    if(next.length) setAttachments(a=>[...a, ...next]);
+  };
+  const removeAttachment = (id) => setAttachments(a=>a.filter(x=>x.id!==id));
+
   const sendMessage = async (text) => {
     const userMsg = text || input.trim();
-    if(!userMsg) return;
+    const pendingAttachments = attachments;
+    if(!userMsg && pendingAttachments.length===0) return;
     setInput("");
-    const userMsgObj = {role:"user",content:userMsg,id:uid()};
+    setAttachments([]);
+    const userMsgObj = {role:"user",content:userMsg||"📎 Sent file(s)",id:uid(),attachments:pendingAttachments};
     setMessages(m=>[...m,userMsgObj]);
     setTyping(true);
 
@@ -17973,14 +18037,31 @@ Rules:
       if(!s || s.length <= 4000) return s;
       return s.slice(0,2200) + "\n\n…[truncated for length]…\n\n" + s.slice(-1500);
     };
+    // Attachments are only sent to Claude on the turn they're uploaded — images/PDFs go
+    // as vision/document blocks, text files are inlined as quoted text in the prompt.
+    const visionBlocks = pendingAttachments
+      .filter(a=>a.kind==="image"||a.kind==="pdf")
+      .map(a=>a.kind==="image"
+        ? {type:"image", source:{type:"base64", media_type:a.mediaType, data:a.base64}}
+        : {type:"document", source:{type:"base64", media_type:"application/pdf", data:a.base64}});
+    const textAttachmentsInline = pendingAttachments
+      .filter(a=>a.kind==="text")
+      .map(a=>`\n\n[Attached file: ${a.name}]\n${a.text}`).join("");
+
     const allMsgs = [...messages, userMsgObj].slice(-10);
     const history = allMsgs
-      .filter(m=>m.content && typeof m.content==="string" && !m.pendingAction)
-      .map(m=>({
-        role: m.role==="bot" ? "assistant" : "user",
-        content: truncMsg(stripActionBlocks(m.content)),
-      }))
-      .filter(m=>m.content.length>0)
+      .filter(m=>(m.content && typeof m.content==="string") || (m.attachments||[]).length)
+      .filter(m=>!m.pendingAction)
+      .map(m=>{
+        const isCurrent = m===userMsgObj;
+        let textContent = truncMsg(stripActionBlocks(m.content||""));
+        if(isCurrent && textAttachmentsInline) textContent = (textContent||"") + textAttachmentsInline;
+        if(isCurrent && visionBlocks.length){
+          return {role:"user", content:[{type:"text", text:textContent||"See attached file(s)."}, ...visionBlocks]};
+        }
+        return {role: m.role==="bot" ? "assistant" : "user", content:textContent};
+      })
+      .filter(m=>Array.isArray(m.content) ? m.content.length>0 : m.content.length>0)
       .slice(-8);
     const firstIdx = history.findIndex(m=>m.role==="user");
     const apiHistory = firstIdx>0 ? history.slice(firstIdx) : history;
@@ -18145,9 +18226,34 @@ RULES:
         </div>
       )}
 
+      {attachments.length>0 && (
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",margin:"0 0 8px"}}>
+          {attachments.map(a=>(
+            <div key={a.id} style={{display:"flex",alignItems:"center",gap:6,padding:a.kind==="image"?4:"6px 10px",borderRadius:10,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12}}>
+              {a.kind==="image"
+                ? <img src={a.previewUrl} alt={a.name} style={{width:32,height:32,borderRadius:7,objectFit:"cover"}}/>
+                : <Ico d={a.kind==="pdf"?Icons.briefcase:Icons.note2||Icons.templates} size={14} stroke="var(--text2)"/>}
+              <span style={{maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:"var(--text2)"}}>{a.name}</span>
+              <button onClick={()=>removeAttachment(a.id)} aria-label={`Remove ${a.name}`} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",padding:2,display:"flex"}}>
+                <Ico d={Icons.x||"M18 6L6 18M6 6l12 12"} size={12}/>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div style={{display:"flex",alignItems:"flex-end",gap:10,background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:20,padding:"10px 10px 10px 16px",transition:"border-color 0.2s"}}
         onFocusCapture={e=>e.currentTarget.style.borderColor="var(--accent)"}
         onBlurCapture={e=>e.currentTarget.style.borderColor="var(--border2)"}>
+        <input ref={fileInputRef} type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,text/plain,text/csv,text/markdown,application/json,.txt,.csv,.md,.json"
+          style={{display:"none"}}
+          onChange={e=>{ handleFilesSelected(e.target.files); e.target.value=""; }}/>
+        <button onClick={()=>fileInputRef.current?.click()} title="Attach a file or image" style={{
+          width:32,height:32,borderRadius:10,flexShrink:0,background:"transparent",border:"none",
+          color:"var(--text3)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",
+        }}>
+          <Ico d={Icons.paperclip} size={17}/>
+        </button>
         <textarea ref={inputRef} value={input} className="composer-textarea"
           onChange={e=>{
             const v = e.target.value;
@@ -18165,11 +18271,11 @@ RULES:
           rows={1}
           style={{flex:1,fontSize:14,color:"var(--text)",lineHeight:1.5,minHeight:24,maxHeight:120,background:"none",resize:"none",border:"none",outline:"none"}}
         />
-        <button onClick={()=>sendMessage()} disabled={!input.trim()||typing} style={{
+        <button onClick={()=>sendMessage()} disabled={(!input.trim()&&attachments.length===0)||typing} style={{
           width:38,height:38,borderRadius:12,flexShrink:0,
-          background:input.trim()&&!typing?"var(--accent)":"var(--border)",
+          background:(input.trim()||attachments.length)&&!typing?"var(--accent)":"var(--border)",
           color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",
-          transition:"all 0.15s",border:"none",cursor:input.trim()&&!typing?"pointer":"default",
+          transition:"all 0.15s",border:"none",cursor:(input.trim()||attachments.length)&&!typing?"pointer":"default",
         }}>
           {typing?<Spinner size={14}/>:<Ico d={Icons.send} size={15} stroke="#fff"/>}
         </button>
