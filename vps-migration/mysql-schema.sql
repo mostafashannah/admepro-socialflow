@@ -294,7 +294,8 @@ CREATE TABLE IF NOT EXISTS app_settings (
   primary_color TEXT DEFAULT ('#d90b2c'),
   agency_email TEXT, agency_phone TEXT, agency_tagline TEXT, agency_website TEXT,
   default_currency VARCHAR(10) DEFAULT 'USD', default_language VARCHAR(10) DEFAULT 'en',
-  tax_rate_default DECIMAL(6,2) DEFAULT 14
+  tax_rate_default DECIMAL(6,2) DEFAULT 14,
+  feature_flags JSON DEFAULT ('{}')
 ) ENGINE=InnoDB;
 
 -- ----------------------------------------------------------------
