@@ -4,9 +4,9 @@ const { useState, useEffect, useRef } = React;
 // CONSTANTS & CONFIG
 // ════════════════════════════════════════════════════════════════
 const APP_ID = "69cc4945e6be3be66e2b5136"; // Base44 (legacy, unused)
-const SB_URL = "https://socialflow.admepro.com/api";
+const SB_URL = window.location.origin + "/api";
 const SB_KEY = "f5b3d0e0023471b5376d2da87edbccc03bb27e00c3916f2f93c72f3926f32954";
-const SB_STORAGE_URL = "https://socialflow.admepro.com/storage";
+const SB_STORAGE_URL = window.location.origin + "/storage";
 const SB_BUCKET = "socialflow-media";
 
 // Upload a file to self-hosted storage (vps-migration/storage.php) — returns public URL
