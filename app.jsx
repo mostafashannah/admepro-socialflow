@@ -459,7 +459,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.70";
+const APP_VERSION = "beta 1.71";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1498,6 +1498,7 @@ const Icons = {
   trophy:  ["M6 9H3l3 6h12l3-6h-3","M6 9V4h12v5","M12 15v4","M8 19h8","M10 4a2 2 0 0 0 4 0"],
   trendUp:  ["M22 7l-9.5 9.5-5-5L1 17","M15 7h7v7"],
   briefcase:["M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z","M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"],
+  brain:   ["M9.5 2a2.5 2.5 0 0 0-2.5 2.5v.5A2.5 2.5 0 0 0 4.5 7.5 2.5 2.5 0 0 0 3 12a2.5 2.5 0 0 0 1.5 4.5 2.5 2.5 0 0 0 2.5 2.5 2.5 2.5 0 0 0 2.5 2.5h0V4.5A2.5 2.5 0 0 0 9.5 2z","M14.5 2a2.5 2.5 0 0 1 2.5 2.5v.5a2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-1.5 4.5 2.5 2.5 0 0 1-2.5 4.5 2.5 2.5 0 0 1-2.5 2.5h0V4.5A2.5 2.5 0 0 1 14.5 2z","M9.5 9.5h5","M9.5 14.5h5"],
 };
 
 const Spinner = ({size=24}) => (
@@ -5282,9 +5283,16 @@ function BrandTrainingChat({client, clientKnowledge, clientIntelligence, clientM
   const [importing, setImporting]   = useState(false);
   const [importResult, setImportResult] = useState(null); // {insights:[...], saved:bool}
   const endRef                  = useRef(null);
+  const inputRef                = useRef(null);
 
   useEffect(()=>{ try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(messages.slice(-50))); }catch(e){} },[messages]);
   useEffect(()=>{ endRef.current?.scrollIntoView({behavior:"smooth"}); },[messages,typing]);
+  useEffect(()=>{
+    const el = inputRef.current;
+    if(!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 100) + "px";
+  },[input]);
 
   // Welcome message on first open
   useEffect(()=>{
@@ -5741,9 +5749,10 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
 
         {/* Input */}
         <div style={{borderTop:"1px solid var(--border)",padding:"10px 14px",display:"flex",gap:8,alignItems:"flex-end",background:"var(--surface)"}}>
-          <textarea value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKey}
+          <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKey}
+            className="composer-textarea"
             placeholder={`Tell Pro about ${client.name}'s content style, audience, tone, examples…`}
-            rows={2} style={{flex:1,fontSize:13,resize:"none",border:"1px solid var(--border2)",borderRadius:8,padding:"8px 10px",background:"var(--surface2)",color:"var(--text)",outline:"none",lineHeight:1.5,maxHeight:100}}/>
+            rows={1} style={{flex:1,fontSize:13,resize:"none",border:"1px solid var(--border2)",borderRadius:8,padding:"8px 10px",background:"var(--surface2)",color:"var(--text)",lineHeight:1.5,maxHeight:100,minHeight:36}}/>
           <button onClick={sendMessage} disabled={!input.trim()||typing} style={{
             padding:"8px 16px",borderRadius:8,fontSize:13,fontWeight:700,
             background:input.trim()&&!typing?"var(--accent)":"var(--border)",
@@ -17553,6 +17562,12 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
   const [brainOpen, setBrainOpen] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef       = useRef(null);
+  useEffect(()=>{
+    const el = inputRef.current;
+    if(!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 120) + "px";
+  },[input]);
   const role           = currentUser?.role || "admin";
   const name           = currentUser?.name?.split(" ")[0] || "there";
   const {isMobile}     = useResponsive();
