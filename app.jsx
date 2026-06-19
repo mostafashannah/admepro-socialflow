@@ -459,7 +459,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.73";
+const APP_VERSION = "beta 1.74";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -18180,8 +18180,8 @@ RULES:
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100%",background:"var(--bg)",minHeight:0}}>
 
-      {/* ── Top bar: client selector + mode toggle ── */}
-      <div style={{padding:"10px 18px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:8,flexShrink:0,background:"var(--surface)",position:"relative"}}>
+      {/* ── Top bar: client selector + mode toggle (pinned, never scrolls with the chat) ── */}
+      <div style={{padding:"10px 18px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:8,flexShrink:0,background:"var(--surface)",position:"sticky",top:0,zIndex:5}}>
         <div style={{display:"flex",alignItems:"center",gap:7,flex:1}}>
           <img src="/favicon.svg" width={20} height={20} style={{borderRadius:6,flexShrink:0}} alt="Pro"/>
           <span style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:14,color:"var(--text)"}}>Pro</span>
