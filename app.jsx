@@ -19548,20 +19548,71 @@ function App() {
         logAgentRun(agent.agent_id, cfg.leads_per_day||10, 90);
         logAgent(agent.agent_id, "lead_generation_complete", `Generated ${cfg.leads_per_day||10} leads`, "success");
       } else if(agent.type==="follow_up") {
-        const overduePosts=(data.posts||[]).filter(p=>p.scheduled_date&&new Date(p.scheduled_date)<new Date()&&p.stage!=="published");
-        setToast(`🔔 Follow-up: ${overduePosts.length} overdue posts flagged`);
-        logAgent(agent.agent_id,"follow_up_scan",`Scanned ${overduePosts.length} overdue posts`,"success");
+        const overduePosts=(data.posts||[]).filter(p=>p.scheduled_date&&new Date(p.scheduled_date)<new Date()&&p.stage!=="published"&&p.stage!=="rejected");
+        let notified=0;
+        for(const p of overduePosts){
+          const assignee=(data.team||[]).find(m=>m.email===p.assigned_to);
+          if(!assignee) continue;
+          const proj=data.projects.find(pr=>pr.id===p.project_id);
+          const prefs=getNotifPrefs(assignee.email);
+          await sendNotification("task_overdue", assignee.email,
+            `[SocialFlow] Overdue: ${p.title}`,
+            EMAIL_TEMPLATES.taskOverdue(assignee.name, p.title, p.scheduled_date, proj?.title||"", p.client_name||""),
+            prefs
+          ).catch(()=>{});
+          notified++;
+        }
+        setToast(`🔔 Follow-up: notified ${notified} assignee${notified===1?"":"s"} of ${overduePosts.length} overdue post${overduePosts.length===1?"":"s"}`);
+        logAgent(agent.agent_id,"follow_up_scan",`Scanned ${overduePosts.length} overdue posts, notified ${notified} assignees`,"success");
         logAgentRun(agent.agent_id, overduePosts.length, 100);
       } else if(agent.type==="scheduling") {
-        const unscheduled=(data.posts||[]).filter(p=>!p.scheduled_date&&p.stage==="planning").length;
-        setToast(`📅 Scheduling agent: ${unscheduled} posts need scheduling`);
-        logAgent(agent.agent_id,"scheduling_scan",`Found ${unscheduled} unscheduled posts`,"success");
-        logAgentRun(agent.agent_id, unscheduled, 95);
+        const unscheduled=(data.posts||[]).filter(p=>!p.scheduled_date&&p.stage==="planning");
+        let rescheduled=0;
+        for(const p of unscheduled){
+          const proj=data.projects.find(pr=>pr.id===p.project_id);
+          const clientId=proj?.client_id||p.client_id;
+          const bestTime=(data.clientMemory||[]).find(m=>m.client_id===clientId&&m.key==="best_posting_time")?.value;
+          const next=new Date(); next.setDate(next.getDate()+2);
+          if(bestTime){ const [h,m]=bestTime.split(":").map(Number); if(!isNaN(h)) next.setHours(h, m||0, 0, 0); }
+          const scheduled_date=next.toISOString().slice(0,10);
+          const scheduled_time=bestTime||next.toISOString().slice(11,16);
+          setData(d=>({...d,posts:d.posts.map(x=>x.id===p.id?{...x,scheduled_date,scheduled_time}:x)}));
+          ue("Post", p.id, {scheduled_date, scheduled_time}).catch(()=>{});
+          rescheduled++;
+        }
+        setToast(`📅 Scheduling agent: auto-scheduled ${rescheduled} post${rescheduled===1?"":"s"}`);
+        logAgent(agent.agent_id,"scheduling_scan",`Auto-scheduled ${rescheduled} of ${unscheduled.length} unscheduled posts`,"success");
+        logAgentRun(agent.agent_id, rescheduled, 95);
       } else if(agent.type==="content_generation") {
-        const planningPosts=(data.posts||[]).filter(p=>p.stage==="planning"&&!p.caption).length;
-        setToast(`✍️ Content agent: ${planningPosts} posts need content`);
-        logAgent(agent.agent_id,"content_scan",`${planningPosts} posts ready for content generation`,"success");
-        logAgentRun(agent.agent_id, planningPosts, 88);
+        const planningPosts=(data.posts||[]).filter(p=>p.stage==="planning"&&!p.caption).slice(0,5);
+        let drafted=0;
+        for(const p of planningPosts){
+          const proj=data.projects.find(pr=>pr.id===p.project_id);
+          const clientId=proj?.client_id||p.client_id;
+          const client=data.clients.find(c=>c.id===clientId);
+          const mem=formatClientMemory(clientId, data.clientMemory||[]);
+          const ck=(data.clientKnowledge||[]).find(k=>k.client_id===clientId);
+          const system=`You are a social media copywriter for "${client?.name||"this client"}".
+Brand voice: ${ck?.tone||"professional, friendly"}
+Target audience: ${ck?.target_audience||"general"}
+Known preferences:\n${mem||"None yet."}
+Write ONE caption for a ${p.platform||"social"} ${p.post_type||"post"} titled "${p.title}". Keep it on-brand, include relevant hashtags if appropriate. Reply with ONLY the caption text, no preamble.`;
+          try {
+            const res=await fetch(AI_ENDPOINT,{method:"POST",headers:AI_HEADERS,body:JSON.stringify({
+              model:"claude-haiku-4-5-20251001",max_tokens:400,system,messages:[{role:"user",content:"Write the caption."}],
+            })});
+            const d2=await res.json();
+            const caption=(d2.content?.map(b=>b.text||"").join("")||"").trim();
+            if(caption){
+              setData(d=>({...d,posts:d.posts.map(x=>x.id===p.id?{...x,caption}:x)}));
+              ue("Post", p.id, {caption}).catch(()=>{});
+              drafted++;
+            }
+          } catch(e){}
+        }
+        setToast(`✍️ Content agent: drafted ${drafted} caption${drafted===1?"":"s"}`);
+        logAgent(agent.agent_id,"content_scan",`Drafted ${drafted} of ${planningPosts.length} captions needing content`,"success");
+        logAgentRun(agent.agent_id, drafted, 90);
       }
       await upsertAgentConfig(agent.agent_id, {last_run:new Date().toISOString()});
     } catch(err) {
@@ -19733,6 +19784,8 @@ Return ONLY the JSON array, no markdown.`;
     ce("Client",[clientPayload]).then(res=>{
       const real=res.entities?.[0]; if(real?.id) setData(d=>({...d,clients:d.clients.map(c=>c.id===localClient.id?{...c,...real}:c)}));
     }).catch(()=>{});
+    autoLearn(localClient.id, localClient.name, "conversion_source", `Converted from lead "${lead.name||lead.company}" (source: ${lead.source||"manual"}) on ${new Date().toLocaleDateString()}`);
+    if(lead.notes) autoLearn(localClient.id, localClient.name, "lead_notes", lead.notes);
     logActivity("Lead Converted to Client","leads",`${localClient.name} converted from lead`,"success","",currentUser?.email||"admin");
     setToast(`✅ ${localClient.name} added as a client!`);
     setPage("clients");
@@ -20271,8 +20324,30 @@ Return ONLY valid JSON (no markdown, no explanation):
   const handleClientAction = async (post,action,reason) => {
     const newStage = action==="rejected"?"rejected":"scheduled";
     setData(d=>({...d,posts:d.posts.map(p=>p.id===post.id?{...p,stage:newStage,rejection_reason:reason||undefined}:p)}));
-    const comment = {id:uid(),post_id:post.id,author_name:currentUser?.name||"Client",type:action,content:reason||`Post ${action}`,created_date:new Date().toISOString()};
-    setData(d=>({...d,comments:[...d.comments,comment]}));
+    ue("Post", post.id, {stage:newStage, rejection_reason:reason||null}).catch(()=>{});
+
+    const commentPayload = {post_id:post.id,author_name:currentUser?.name||"Client",author_email:currentUser?.email,type:action,content:reason||`Post ${action}`};
+    const localComment = {...commentPayload,id:uid(),created_date:new Date().toISOString()};
+    setData(d=>({...d,comments:[...d.comments,localComment]}));
+    ce("Comment",[commentPayload]).then(res=>{
+      const real=res.entities?.[0]; if(real?.id) setData(d=>({...d,comments:d.comments.map(c=>c.id===localComment.id?{...c,...real}:c)}));
+    }).catch(()=>{});
+
+    // Feed client decisions into long-term memory, mirroring handleStageChange
+    const proj = data.projects.find(p=>p.id===post.project_id);
+    const clientId = proj?.client_id||post.client_id;
+    const clientName = proj?.client_name||post.client_name||"";
+    if(clientId) {
+      if(action==="rejected") {
+        appendToContextFile(clientId, `❌ Client rejected: "${post.title}" — Reason: ${reason||"no reason given"}`);
+        aiLearn(clientId, clientName, `rejection_pattern_${Date.now()}`, reason||`Rejected "${post.title}"`);
+      } else {
+        appendToContextFile(clientId, `✅ Client approved & scheduled: "${post.title}" (${post.platform||""})`);
+        autoLearn(clientId, clientName, "client_approval_speed", `Approved within client portal on ${new Date().toLocaleDateString()}`);
+        if(post.tov_used) autoLearn(clientId, clientName, "approved_tov", post.tov_used);
+      }
+    }
+    logActivity(action==="rejected"?"Client Rejected Post":"Client Approved Post","tasks",`"${post.title}" ${action} by ${currentUser?.name||"client"}`,action==="rejected"?"warning":"success","",currentUser?.email||"client");
   };
 
   // Client portal
