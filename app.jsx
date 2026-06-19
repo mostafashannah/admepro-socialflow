@@ -4,12 +4,12 @@ const { useState, useEffect, useRef } = React;
 // CONSTANTS & CONFIG
 // ════════════════════════════════════════════════════════════════
 const APP_ID = "69cc4945e6be3be66e2b5136"; // Base44 (legacy, unused)
-const SB_URL = "https://qkkplekuknuxsqvkynna.supabase.co/rest/v1";
-const SB_KEY = "sb_publishable_4tj9trWNbP0X4DkNJii5aQ_gh6RHfGw";
-const SB_STORAGE_URL = "https://qkkplekuknuxsqvkynna.supabase.co/storage/v1";
+const SB_URL = "https://socialflow.admepro.com/api";
+const SB_KEY = "f5b3d0e0023471b5376d2da87edbccc03bb27e00c3916f2f93c72f3926f32954";
+const SB_STORAGE_URL = "https://socialflow.admepro.com/storage";
 const SB_BUCKET = "socialflow-media";
 
-// Upload a file to Supabase Storage — returns public URL
+// Upload a file to self-hosted storage (vps-migration/storage.php) — returns public URL
 const uploadToStorage = async (file, folder="uploads") => {
   const ext = file.name.split(".").pop();
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
@@ -25,7 +25,7 @@ const uploadToStorage = async (file, folder="uploads") => {
     body: file,
   });
   if(!res.ok) throw new Error("Upload failed: " + await res.text());
-  return `${SB_STORAGE_URL}/object/public/${SB_BUCKET}/${path}`;
+  return `${SB_STORAGE_URL}/public/${SB_BUCKET}/${path}`;
 };
 
 const ROLES = {
