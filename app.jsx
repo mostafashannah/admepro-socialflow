@@ -17987,17 +17987,16 @@ ${memList.length ? memList.map(m=>`  • [${m.type||"manual"}] ${m.key}: ${m.val
 
   const handleKeyDown = (e) => { if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMessage();} };
 
-  // Quick action tiles
+  // Quick action suggestions — one flat list, no duplicate tiles/pills elsewhere
   const QUICK_TILES = [
-    {icon:"📋", label:"Create Task",     action:()=>sendMessage("Create a new task")},
-    {icon:"📅", label:"Plan Calendar",   action:()=>onAction("add_calendar")},
-    {icon:"👥", label:"Add Client",      action:()=>sendMessage("Add a new client")},
-    {icon:"💰", label:"Create Invoice",  action:()=>sendMessage("Create an invoice")},
-    {icon:"📊", label:"My Tasks",        action:()=>setPage("my_tasks")},
-    {icon:"📈", label:"Dashboard",       action:()=>setPage("dashboard")},
+    {label:"Create a task",      action:()=>sendMessage("Create a new task")},
+    {label:"Plan my calendar",   action:()=>onAction("add_calendar")},
+    {label:"Add a new client",   action:()=>sendMessage("Add a new client")},
+    {label:"Create an invoice",  action:()=>sendMessage("Create an invoice")},
+    {label:"What's overdue?",    action:()=>sendMessage("What tasks are overdue?")},
   ].filter(t=>{
-    if(t.label==="Create Invoice"&&!["admin","accountant"].includes(role)) return false;
-    if(t.label==="Add Client"&&!["admin","account_manager"].includes(role)) return false;
+    if(t.label==="Create an invoice"&&!["admin","accountant"].includes(role)) return false;
+    if(t.label==="Add a new client"&&!["admin","account_manager"].includes(role)) return false;
     return true;
   });
 
@@ -18007,12 +18006,10 @@ ${memList.length ? memList.map(m=>`  • [${m.type||"manual"}] ${m.key}: ${m.val
     <div style={{display:"flex",flexDirection:"column",height:"100%",background:"var(--bg)",minHeight:0}}>
 
       {/* ── Top bar: client selector + mode toggle ── */}
-      <div style={{padding:"10px 20px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:10,flexShrink:0,background:"var(--surface)",position:"relative"}}>
+      <div style={{padding:"10px 18px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:8,flexShrink:0,background:"var(--surface)",position:"relative"}}>
         <div style={{display:"flex",alignItems:"center",gap:7,flex:1}}>
-          <img src="/favicon.svg" width={22} height={22} style={{borderRadius:6,flexShrink:0}} alt="Pro"/>
-          <span style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:14,color:"var(--accent)"}}>Pro</span>
-          <span style={{fontSize:11,color:"var(--text3)",fontWeight:500}}>AI Workspace</span>
-          <div style={{width:6,height:6,borderRadius:"50%",background:"#10b981",marginLeft:4}}/>
+          <img src="/favicon.svg" width={20} height={20} style={{borderRadius:6,flexShrink:0}} alt="Pro"/>
+          <span style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:14,color:"var(--text)"}}>Pro</span>
         </div>
         {/* Client selector */}
         {["admin","account_manager"].includes(role)&&(
@@ -18020,35 +18017,25 @@ ${memList.length ? memList.map(m=>`  • [${m.type||"manual"}] ${m.key}: ${m.val
             const c=(data?.clients||[]).find(cl=>cl.id===e.target.value)||null;
             setSelectedClient(c);
             if(c) addBotMsg(`Context set to **${c.name}**. All answers and actions will use ${c.name}'s memory and data.`,"info");
-          }} style={{padding:"5px 10px",borderRadius:8,fontSize:12,fontWeight:600,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer"}}>
+          }} style={{padding:"5px 8px",borderRadius:8,fontSize:12,fontWeight:500,background:"transparent",border:"none",color:"var(--text2)",cursor:"pointer"}}>
             <option value="">All Clients</option>
             {(data?.clients||[]).filter(c=>!c.hidden).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         )}
         {/* Brain inspector */}
-        {selectedClient && (()=>{
-          const memN = (data?.clientMemory||[]).filter(m=>m.client_id===selectedClient.id).length;
-          const ck = (data?.clientKnowledge||[]).find(k=>k.client_id===selectedClient.id);
-          const ckN = ck?Object.entries(ck).filter(([k,v])=>!["id","client_id","client_name","created_date","updated_at"].includes(k) && v!=null && v!=="" && !(Array.isArray(v)&&v.length===0)).length:0;
-          return (
-            <button onClick={()=>setBrainOpen(true)} title="See everything Pro knows about this client" style={{display:"flex",alignItems:"center",gap:5,padding:"4px 10px",borderRadius:8,background:"var(--surface2)",border:"1px solid var(--border2)",cursor:"pointer",fontSize:11,fontWeight:700,color:"var(--text2)"}}>
-              🧠 Brain ({memN+ckN})
-            </button>
-          );
-        })()}
-        {/* Smart badge */}
-        <div style={{display:"flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:8,background:"var(--accentbg)",border:"1px solid var(--accent)33"}}>
-          <div style={{width:5,height:5,borderRadius:"50%",background:"var(--accent)"}}/>
-          <span style={{fontSize:10,fontWeight:700,color:"var(--accent)"}}>⚡ Smart Mode</span>
-        </div>
+        {selectedClient && (
+          <button onClick={()=>setBrainOpen(true)} title="See everything Pro knows about this client" style={{display:"flex",alignItems:"center",padding:6,borderRadius:8,background:"transparent",border:"none",cursor:"pointer",fontSize:14,color:"var(--text2)"}}>
+            🧠
+          </button>
+        )}
         {/* History toggle */}
-        <button onClick={()=>setShowHistory(h=>!h)} title="Chat history" style={{color:showHistory?"var(--accent)":"var(--text3)",padding:4,borderRadius:6,display:"flex",position:"relative"}}>
-          <Ico d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" size={15}/>
-          {chatSessions.length>0&&<span style={{position:"absolute",top:-2,right:-2,width:7,height:7,borderRadius:"50%",background:"var(--accent)"}}/>}
+        <button onClick={()=>setShowHistory(h=>!h)} title="Chat history" style={{color:showHistory?"var(--accent)":"var(--text3)",padding:6,borderRadius:8,display:"flex",position:"relative",background:"transparent",border:"none",cursor:"pointer"}}>
+          <Ico d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" size={16}/>
+          {chatSessions.length>0&&<span style={{position:"absolute",top:3,right:3,width:6,height:6,borderRadius:"50%",background:"var(--accent)"}}/>}
         </button>
         {/* New chat */}
-        <button onClick={startNewChat} title="New chat" style={{padding:"4px 10px",borderRadius:6,fontSize:11,fontWeight:700,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
-          <Ico d={Icons.plus} size={12}/> New
+        <button onClick={startNewChat} title="New chat" style={{padding:6,borderRadius:8,background:"transparent",border:"none",color:"var(--text2)",cursor:"pointer",display:"flex",alignItems:"center"}}>
+          <Ico d={Icons.plus} size={16}/>
         </button>
       </div>
 
@@ -18078,49 +18065,23 @@ ${memList.length ? memList.map(m=>`  • [${m.type||"manual"}] ${m.key}: ${m.val
       {/* ── Messages area ── */}
       <div style={{flex:1,overflowY:"auto",padding:isMobile?"16px":"24px 20%",display:"flex",flexDirection:"column",gap:0}}>
         {isEmpty && (
-          <div style={{textAlign:"center",paddingTop:40,paddingBottom:20}}>
-            <div style={{width:64,height:64,borderRadius:20,background:"var(--accentbg)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px"}}>
-              <img src="/favicon.svg" width={36} height={36} style={{borderRadius:10}} alt="Pro"/>
-            </div>
-            <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:isMobile?22:28,color:"var(--text)",marginBottom:8}}>
+          <div style={{textAlign:"center",paddingTop:isMobile?60:100,paddingBottom:20}}>
+            <img src="/favicon.svg" width={40} height={40} style={{borderRadius:10,marginBottom:20}} alt="Pro"/>
+            <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:600,fontSize:isMobile?20:26,color:"var(--text)",marginBottom:32}}>
               Hi {name}, what do you want to do today?
             </h2>
-            <p style={{fontSize:14,color:"var(--text3)",marginBottom:32}}>
-              I'm Pro — your AI assistant. Type anything or pick a quick action below.
-            </p>
-            {/* Quick action tiles */}
-            <div style={{display:"flex",flexWrap:"wrap",gap:10,justifyContent:"center",maxWidth:520,margin:"0 auto 32px"}}>
+            {/* Suggestions — plain text chips, single row */}
+            <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",maxWidth:560,margin:"0 auto"}}>
               {QUICK_TILES.map(t=>(
                 <button key={t.label} onClick={t.action} style={{
-                  display:"flex",alignItems:"center",gap:8,
-                  padding:"10px 18px",borderRadius:12,
-                  background:"var(--surface)",border:"1px solid var(--border2)",
-                  fontSize:13,fontWeight:600,color:"var(--text)",cursor:"pointer",
-                  transition:"all 0.15s",
-                }}
-                onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--accent)";e.currentTarget.style.background="var(--accentbg)";}}
-                onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border2)";e.currentTarget.style.background="var(--surface)";}}>
-                  <span style={{fontSize:18}}>{t.icon}</span>{t.label}
-                </button>
-              ))}
-            </div>
-            {/* Suggestion prompts */}
-            <p style={{fontSize:12,color:"var(--text3)",marginBottom:10}}>Or try saying…</p>
-            <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center"}}>
-              {[
-                "Create a reel task for Nova Digital",
-                "What tasks are overdue?",
-                "Add TechStart as a new client",
-                "Generate a calendar for next month",
-              ].map(s=>(
-                <button key={s} onClick={()=>sendMessage(s)} style={{
-                  padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:500,
-                  background:"var(--surface2)",border:"1px solid var(--border)",
-                  color:"var(--text2)",cursor:"pointer",transition:"all 0.12s",
+                  padding:"8px 16px",borderRadius:99,
+                  background:"transparent",border:"1px solid var(--border2)",
+                  fontSize:13,fontWeight:500,color:"var(--text2)",cursor:"pointer",
+                  transition:"border-color 0.15s",
                 }}
                 onMouseEnter={e=>e.currentTarget.style.borderColor="var(--accent)"}
-                onMouseLeave={e=>e.currentTarget.style.borderColor="var(--border)"}>
-                  {s}
+                onMouseLeave={e=>e.currentTarget.style.borderColor="var(--border2)"}>
+                  {t.label}
                 </button>
               ))}
             </div>
@@ -18139,19 +18100,6 @@ ${memList.length ? memList.map(m=>`  • [${m.type||"manual"}] ${m.key}: ${m.val
 
       {/* ── Input area ── */}
       <div style={{padding:isMobile?"12px 16px":"16px 20%",borderTop:"1px solid var(--border)",background:"var(--surface)",flexShrink:0}}>
-        {/* Quick action row */}
-        {messages.length<=1&&(
-          <div style={{display:"flex",gap:6,marginBottom:10,flexWrap:"wrap"}}>
-            {["📋 Create Task","📅 Plan Calendar","👥 Add Client","💰 Create Invoice"].slice(0,["admin","account_manager"].includes(role)?4:2).map(q=>(
-              <button key={q} onClick={()=>sendMessage(q.replace(/^[^\s]+ /,""))} style={{
-                padding:"5px 12px",borderRadius:99,fontSize:11,fontWeight:600,
-                background:"var(--accentbg)",border:"1px solid var(--accent)",
-                color:"var(--accent)",cursor:"pointer",whiteSpace:"nowrap",transition:"all 0.12s",
-              }}>{q}</button>
-            ))}
-          </div>
-        )}
-
         {/* Long-paste auto-learn banner */}
         {longPasteCandidate && (
           <div role="alert" style={{margin:"0 0 8px",padding:"10px 14px",borderRadius:12,background:"var(--accentbg)",border:"1px solid var(--accent)44",fontSize:13,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
@@ -18183,7 +18131,7 @@ ${memList.length ? memList.map(m=>`  • [${m.type||"manual"}] ${m.key}: ${m.val
           </div>
         )}
 
-        <div style={{display:"flex",alignItems:"flex-end",gap:10,background:"var(--surface2)",border:"2px solid var(--border2)",borderRadius:16,padding:"10px 14px",transition:"border-color 0.2s"}}
+        <div style={{display:"flex",alignItems:"flex-end",gap:10,background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:20,padding:"10px 10px 10px 16px",transition:"border-color 0.2s"}}
           onFocusCapture={e=>e.currentTarget.style.borderColor="var(--accent)"}
           onBlurCapture={e=>e.currentTarget.style.borderColor="var(--border2)"}>
           <textarea ref={inputRef} value={input}
@@ -18212,7 +18160,7 @@ ${memList.length ? memList.map(m=>`  • [${m.type||"manual"}] ${m.key}: ${m.val
             {typing?<Spinner size={14}/>:<Ico d={Icons.send} size={15} stroke="#fff"/>}
           </button>
         </div>
-        <p style={{fontSize:10,color:"var(--text3)",marginTop:6,textAlign:"center"}}>Pro · Powered by Claude AI · admepro · ⚡ Smart Mode</p>
+        <p style={{fontSize:11,color:"var(--text3)",marginTop:8,textAlign:"center"}}>Pro can make mistakes. Double-check important info.</p>
       </div>
 
       {/* Brain inspector */}
@@ -19548,20 +19496,71 @@ function App() {
         logAgentRun(agent.agent_id, cfg.leads_per_day||10, 90);
         logAgent(agent.agent_id, "lead_generation_complete", `Generated ${cfg.leads_per_day||10} leads`, "success");
       } else if(agent.type==="follow_up") {
-        const overduePosts=(data.posts||[]).filter(p=>p.scheduled_date&&new Date(p.scheduled_date)<new Date()&&p.stage!=="published");
-        setToast(`🔔 Follow-up: ${overduePosts.length} overdue posts flagged`);
-        logAgent(agent.agent_id,"follow_up_scan",`Scanned ${overduePosts.length} overdue posts`,"success");
+        const overduePosts=(data.posts||[]).filter(p=>p.scheduled_date&&new Date(p.scheduled_date)<new Date()&&p.stage!=="published"&&p.stage!=="rejected");
+        let notified=0;
+        for(const p of overduePosts){
+          const assignee=(data.team||[]).find(m=>m.email===p.assigned_to);
+          if(!assignee) continue;
+          const proj=data.projects.find(pr=>pr.id===p.project_id);
+          const prefs=getNotifPrefs(assignee.email);
+          await sendNotification("task_overdue", assignee.email,
+            `[SocialFlow] Overdue: ${p.title}`,
+            EMAIL_TEMPLATES.taskOverdue(assignee.name, p.title, p.scheduled_date, proj?.title||"", p.client_name||""),
+            prefs
+          ).catch(()=>{});
+          notified++;
+        }
+        setToast(`🔔 Follow-up: notified ${notified} assignee${notified===1?"":"s"} of ${overduePosts.length} overdue post${overduePosts.length===1?"":"s"}`);
+        logAgent(agent.agent_id,"follow_up_scan",`Scanned ${overduePosts.length} overdue posts, notified ${notified} assignees`,"success");
         logAgentRun(agent.agent_id, overduePosts.length, 100);
       } else if(agent.type==="scheduling") {
-        const unscheduled=(data.posts||[]).filter(p=>!p.scheduled_date&&p.stage==="planning").length;
-        setToast(`📅 Scheduling agent: ${unscheduled} posts need scheduling`);
-        logAgent(agent.agent_id,"scheduling_scan",`Found ${unscheduled} unscheduled posts`,"success");
-        logAgentRun(agent.agent_id, unscheduled, 95);
+        const unscheduled=(data.posts||[]).filter(p=>!p.scheduled_date&&p.stage==="planning");
+        let rescheduled=0;
+        for(const p of unscheduled){
+          const proj=data.projects.find(pr=>pr.id===p.project_id);
+          const clientId=proj?.client_id||p.client_id;
+          const bestTime=(data.clientMemory||[]).find(m=>m.client_id===clientId&&m.key==="best_posting_time")?.value;
+          const next=new Date(); next.setDate(next.getDate()+2);
+          if(bestTime){ const [h,m]=bestTime.split(":").map(Number); if(!isNaN(h)) next.setHours(h, m||0, 0, 0); }
+          const scheduled_date=next.toISOString().slice(0,10);
+          const scheduled_time=bestTime||next.toISOString().slice(11,16);
+          setData(d=>({...d,posts:d.posts.map(x=>x.id===p.id?{...x,scheduled_date,scheduled_time}:x)}));
+          ue("Post", p.id, {scheduled_date, scheduled_time}).catch(()=>{});
+          rescheduled++;
+        }
+        setToast(`📅 Scheduling agent: auto-scheduled ${rescheduled} post${rescheduled===1?"":"s"}`);
+        logAgent(agent.agent_id,"scheduling_scan",`Auto-scheduled ${rescheduled} of ${unscheduled.length} unscheduled posts`,"success");
+        logAgentRun(agent.agent_id, rescheduled, 95);
       } else if(agent.type==="content_generation") {
-        const planningPosts=(data.posts||[]).filter(p=>p.stage==="planning"&&!p.caption).length;
-        setToast(`✍️ Content agent: ${planningPosts} posts need content`);
-        logAgent(agent.agent_id,"content_scan",`${planningPosts} posts ready for content generation`,"success");
-        logAgentRun(agent.agent_id, planningPosts, 88);
+        const planningPosts=(data.posts||[]).filter(p=>p.stage==="planning"&&!p.caption).slice(0,5);
+        let drafted=0;
+        for(const p of planningPosts){
+          const proj=data.projects.find(pr=>pr.id===p.project_id);
+          const clientId=proj?.client_id||p.client_id;
+          const client=data.clients.find(c=>c.id===clientId);
+          const mem=formatClientMemory(clientId, data.clientMemory||[]);
+          const ck=(data.clientKnowledge||[]).find(k=>k.client_id===clientId);
+          const system=`You are a social media copywriter for "${client?.name||"this client"}".
+Brand voice: ${ck?.tone||"professional, friendly"}
+Target audience: ${ck?.target_audience||"general"}
+Known preferences:\n${mem||"None yet."}
+Write ONE caption for a ${p.platform||"social"} ${p.post_type||"post"} titled "${p.title}". Keep it on-brand, include relevant hashtags if appropriate. Reply with ONLY the caption text, no preamble.`;
+          try {
+            const res=await fetch(AI_ENDPOINT,{method:"POST",headers:AI_HEADERS,body:JSON.stringify({
+              model:"claude-haiku-4-5-20251001",max_tokens:400,system,messages:[{role:"user",content:"Write the caption."}],
+            })});
+            const d2=await res.json();
+            const caption=(d2.content?.map(b=>b.text||"").join("")||"").trim();
+            if(caption){
+              setData(d=>({...d,posts:d.posts.map(x=>x.id===p.id?{...x,caption}:x)}));
+              ue("Post", p.id, {caption}).catch(()=>{});
+              drafted++;
+            }
+          } catch(e){}
+        }
+        setToast(`✍️ Content agent: drafted ${drafted} caption${drafted===1?"":"s"}`);
+        logAgent(agent.agent_id,"content_scan",`Drafted ${drafted} of ${planningPosts.length} captions needing content`,"success");
+        logAgentRun(agent.agent_id, drafted, 90);
       }
       await upsertAgentConfig(agent.agent_id, {last_run:new Date().toISOString()});
     } catch(err) {
@@ -19733,6 +19732,8 @@ Return ONLY the JSON array, no markdown.`;
     ce("Client",[clientPayload]).then(res=>{
       const real=res.entities?.[0]; if(real?.id) setData(d=>({...d,clients:d.clients.map(c=>c.id===localClient.id?{...c,...real}:c)}));
     }).catch(()=>{});
+    autoLearn(localClient.id, localClient.name, "conversion_source", `Converted from lead "${lead.name||lead.company}" (source: ${lead.source||"manual"}) on ${new Date().toLocaleDateString()}`);
+    if(lead.notes) autoLearn(localClient.id, localClient.name, "lead_notes", lead.notes);
     logActivity("Lead Converted to Client","leads",`${localClient.name} converted from lead`,"success","",currentUser?.email||"admin");
     setToast(`✅ ${localClient.name} added as a client!`);
     setPage("clients");
@@ -20271,8 +20272,30 @@ Return ONLY valid JSON (no markdown, no explanation):
   const handleClientAction = async (post,action,reason) => {
     const newStage = action==="rejected"?"rejected":"scheduled";
     setData(d=>({...d,posts:d.posts.map(p=>p.id===post.id?{...p,stage:newStage,rejection_reason:reason||undefined}:p)}));
-    const comment = {id:uid(),post_id:post.id,author_name:currentUser?.name||"Client",type:action,content:reason||`Post ${action}`,created_date:new Date().toISOString()};
-    setData(d=>({...d,comments:[...d.comments,comment]}));
+    ue("Post", post.id, {stage:newStage, rejection_reason:reason||null}).catch(()=>{});
+
+    const commentPayload = {post_id:post.id,author_name:currentUser?.name||"Client",author_email:currentUser?.email,type:action,content:reason||`Post ${action}`};
+    const localComment = {...commentPayload,id:uid(),created_date:new Date().toISOString()};
+    setData(d=>({...d,comments:[...d.comments,localComment]}));
+    ce("Comment",[commentPayload]).then(res=>{
+      const real=res.entities?.[0]; if(real?.id) setData(d=>({...d,comments:d.comments.map(c=>c.id===localComment.id?{...c,...real}:c)}));
+    }).catch(()=>{});
+
+    // Feed client decisions into long-term memory, mirroring handleStageChange
+    const proj = data.projects.find(p=>p.id===post.project_id);
+    const clientId = proj?.client_id||post.client_id;
+    const clientName = proj?.client_name||post.client_name||"";
+    if(clientId) {
+      if(action==="rejected") {
+        appendToContextFile(clientId, `❌ Client rejected: "${post.title}" — Reason: ${reason||"no reason given"}`);
+        aiLearn(clientId, clientName, `rejection_pattern_${Date.now()}`, reason||`Rejected "${post.title}"`);
+      } else {
+        appendToContextFile(clientId, `✅ Client approved & scheduled: "${post.title}" (${post.platform||""})`);
+        autoLearn(clientId, clientName, "client_approval_speed", `Approved within client portal on ${new Date().toLocaleDateString()}`);
+        if(post.tov_used) autoLearn(clientId, clientName, "approved_tov", post.tov_used);
+      }
+    }
+    logActivity(action==="rejected"?"Client Rejected Post":"Client Approved Post","tasks",`"${post.title}" ${action} by ${currentUser?.name||"client"}`,action==="rejected"?"warning":"success","",currentUser?.email||"client");
   };
 
   // Client portal
