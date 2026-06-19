@@ -459,7 +459,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.74";
+const APP_VERSION = "beta 1.75";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -20500,7 +20500,7 @@ Return ONLY valid JSON (no markdown, no explanation):
 
   return (
     <><GStyle wallpaper={wallpaper} accentColor={accentColor}/>
-    <div style={{display:"flex",minHeight:"100vh",position:"relative"}}>
+    <div style={{display:"flex",height:"100vh",position:"relative",overflow:"hidden"}}>
 
       {/* Sidebar — hidden on mobile (uses drawer instead) */}
       {!isMobile&&(
