@@ -28,6 +28,17 @@ const uploadToStorage = async (file, folder="uploads") => {
   return `${SB_STORAGE_URL}/public/${SB_BUCKET}/${path}`;
 };
 
+// Photos/logos stored inline as base64 data URLs (not uploaded to storage) must
+// stay small enough to fit in a single API request body.
+const MAX_INLINE_IMAGE_MB = 2;
+const checkInlineImageSize = (file) => {
+  if(file.size > MAX_INLINE_IMAGE_MB * 1024 * 1024) {
+    alert(`Image is too large (max ${MAX_INLINE_IMAGE_MB}MB). Please choose a smaller file.`);
+    return false;
+  }
+  return true;
+};
+
 const ROLES = {
   admin:           { label: "Admin",           color: "#d90b2c" },
   account_manager: { label: "Account Manager", color: "#3b82f6" },
@@ -8486,7 +8497,7 @@ function AcceptInvitationPage({token, onAccepted}) {
 
   const handlePhoto = e => {
     const file = e.target.files[0];
-    if(!file) return;
+    if(!file || !checkInlineImageSize(file)) return;
     const reader = new FileReader();
     reader.onload = ev => setForm(f=>({...f, photo_url: ev.target.result}));
     reader.readAsDataURL(file);
@@ -11142,7 +11153,7 @@ function LogoUploader({logoKey, label, desc, size, value, onChange, required}) {
   const fileRef = useRef(null);
   const handleFile = (e) => {
     const file = e.target.files?.[0];
-    if(!file) return;
+    if(!file || !checkInlineImageSize(file)) return;
     const reader = new FileReader();
     reader.onload = (ev) => onChange(logoKey, ev.target.result);
     reader.readAsDataURL(file);
@@ -11799,7 +11810,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
   const sf=(k,v)=>setF(p=>({...p,[k]:v}));
 
   const handleLogoUpload=(e)=>{
-    const file=e.target.files?.[0]; if(!file)return;
+    const file=e.target.files?.[0]; if(!file||!checkInlineImageSize(file))return;
     const reader=new FileReader();
     reader.onload=(ev)=>{setLogoPreview(ev.target.result);sf("app_logo_url",ev.target.result);};
     reader.readAsDataURL(file);
@@ -12192,7 +12203,7 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
 
   const handlePhotoUpload = (e) => {
     const file = e.target.files?.[0];
-    if(!file) return;
+    if(!file || !checkInlineImageSize(file)) return;
     const reader = new FileReader();
     reader.onload = (ev) => setPhoto(ev.target.result);
     reader.readAsDataURL(file);
