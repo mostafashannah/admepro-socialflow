@@ -4,12 +4,12 @@ const { useState, useEffect, useRef } = React;
 // CONSTANTS & CONFIG
 // ════════════════════════════════════════════════════════════════
 const APP_ID = "69cc4945e6be3be66e2b5136"; // Base44 (legacy, unused)
-const SB_URL = "https://qkkplekuknuxsqvkynna.supabase.co/rest/v1";
-const SB_KEY = "sb_publishable_4tj9trWNbP0X4DkNJii5aQ_gh6RHfGw";
-const SB_STORAGE_URL = "https://qkkplekuknuxsqvkynna.supabase.co/storage/v1";
+const SB_URL = window.location.origin + "/api";
+const SB_KEY = "f5b3d0e0023471b5376d2da87edbccc03bb27e00c3916f2f93c72f3926f32954";
+const SB_STORAGE_URL = window.location.origin + "/storage";
 const SB_BUCKET = "socialflow-media";
 
-// Upload a file to Supabase Storage — returns public URL
+// Upload a file to self-hosted storage (vps-migration/storage.php) — returns public URL
 const uploadToStorage = async (file, folder="uploads") => {
   const ext = file.name.split(".").pop();
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
@@ -25,7 +25,18 @@ const uploadToStorage = async (file, folder="uploads") => {
     body: file,
   });
   if(!res.ok) throw new Error("Upload failed: " + await res.text());
-  return `${SB_STORAGE_URL}/object/public/${SB_BUCKET}/${path}`;
+  return `${SB_STORAGE_URL}/public/${SB_BUCKET}/${path}`;
+};
+
+// Photos/logos stored inline as base64 data URLs (not uploaded to storage) must
+// stay small enough to fit in a single API request body.
+const MAX_INLINE_IMAGE_MB = 2;
+const checkInlineImageSize = (file) => {
+  if(file.size > MAX_INLINE_IMAGE_MB * 1024 * 1024) {
+    alert(`Image is too large (max ${MAX_INLINE_IMAGE_MB}MB). Please choose a smaller file.`);
+    return false;
+  }
+  return true;
 };
 
 const ROLES = {
@@ -402,8 +413,10 @@ async function de(entityName, id) {
   } catch(e) { return false; }
 }
 // ── AI endpoint — always use proxy on server ──
-const AI_ENDPOINT   = window.location.origin + "/ai-proxy.php";
-const MAIL_ENDPOINT = window.location.origin + "/mail.php";
+const AI_ENDPOINT      = window.location.origin + "/ai-proxy.php";
+const MAIL_ENDPOINT    = window.location.origin + "/mail.php";
+const WA_ENDPOINT      = window.location.origin + "/whatsapp.php";
+const PUBLISH_ENDPOINT = window.location.origin + "/social-publish.php";
 const AI_HEADERS = {"Content-Type":"application/json"};
 
 // ── Email sender ─────────────────────────────────────────────────
@@ -759,12 +772,46 @@ const DEFAULT_NOTIF_PREFS = {
 
 // ── Smart notification dispatcher ─────────────────────────────────
 // Checks user prefs before sending. Pass userPrefs = notifPrefs object for that user.
-async function sendNotification(eventType, toEmail, subject, html, userPrefs) {
+// Pass waNumber to also deliver the notification via WhatsApp.
+async function sendNotification(eventType, toEmail, subject, html, userPrefs, waNumber=null) {
   const prefs = {...DEFAULT_NOTIF_PREFS, ...(userPrefs||{})};
   if(prefs.all_disabled) return false;
   if(prefs.mentions_only && eventType !== "task_mention") return false;
   if(prefs[eventType] === false) return false;
-  return sendEmail(toEmail, subject, html);
+  const emailOk = sendEmail(toEmail, subject, html);
+  if(waNumber) {
+    sendWhatsApp(waNumber, `${subject}\n\nView: ${window.location.origin}`).catch(()=>{});
+  }
+  return emailOk;
+}
+
+async function sendWhatsApp(to, body) {
+  try {
+    const r = await fetch(WA_ENDPOINT, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({to, body}),
+    });
+    const d = await r.json();
+    if(!r.ok) console.warn("[whatsapp] failed:", d);
+    return r.ok;
+  } catch(e) { return false; }
+}
+
+async function publishPost(post, integration) {
+  const creds = parseJ(integration.credentials||"{}");
+  const r = await fetch(PUBLISH_ENDPOINT, {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({
+      platform:     integration.app_key,
+      page_id:      creds.page_id||"",
+      access_token: creds.access_token||"",
+      message:      [post.caption, post.hashtags].filter(Boolean).join("\n\n"),
+      image_url:    (parseJ(post.design_urls||"[]"))[0]||"",
+    }),
+  });
+  const d = await r.json();
+  if(!r.ok) throw new Error(d.error||"Publish failed");
+  return d;
 }
 
 const ai = async (prompt, maxTokens=1000) => {
@@ -2345,13 +2392,15 @@ No markdown, no explanation. Return the JSON array only.`;
 
 // POST DETAIL MODAL
 // ════════════════════════════════════════════════════════════════
-function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn}) {
+function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[]}) {
   const [comment,setComment] = useState("");
   const [sending,setSending] = useState(false);
   const isManager = ["admin","account_manager"].includes(currentUser?.role);
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [publishResult, setPublishResult] = useState(null);
   if(!post) return null;
   const stage = STAGE_MAP[post.stage]||STAGES[0];
   const ci = STAGES.findIndex(s=>s.key===post.stage);
@@ -2383,6 +2432,27 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
   const handleHold = () => {
     onStageChange(post, post.stage==="on_hold" ? "planning" : "on_hold");
     onClose();
+  };
+
+  const clientId = post.client_id || project?.client_id;
+  const socialIntegration = integrations.find(i=>
+    i.status==="active" &&
+    (i.app_key===post.platform || (post.platform==="instagram"&&i.app_key==="instagram") || (post.platform==="facebook"&&i.app_key==="facebook")) &&
+    (!i.client_id || i.client_id===clientId)
+  );
+
+  const handlePublish = async () => {
+    if(!socialIntegration) return;
+    setPublishing(true); setPublishResult(null);
+    try {
+      const res = await publishPost(post, socialIntegration);
+      const postId = res.id || res.post_id || res.creation_id;
+      setPublishResult({ok:true, msg:`Published! Post ID: ${postId||"success"}`});
+      onStageChange(post, "published");
+    } catch(e) {
+      setPublishResult({ok:false, msg: e.message||"Publish failed"});
+    }
+    setPublishing(false);
   };
 
   const sendComment = async () => {
@@ -2666,6 +2736,32 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
               }}>Reject</button>
             )}
           </div>
+          {/* Publish Now — shown when post is scheduled and a matching social integration is active */}
+          {post.stage==="scheduled"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {socialIntegration?(
+                <button onClick={handlePublish} disabled={publishing} style={{
+                  padding:"10px 16px",borderRadius:"var(--rs)",
+                  background:publishing?"var(--surface2)":"#1877F222",
+                  border:`1px solid ${publishing?"var(--border)":"#1877F255"}`,
+                  color:publishing?"var(--text3)":"#1877F2",fontSize:13,fontWeight:700,
+                  display:"flex",alignItems:"center",justifyContent:"center",gap:8,cursor:publishing?"not-allowed":"pointer",
+                }}>
+                  {publishing?<><Spinner size={14}/> Publishing…</>:<>🚀 Publish to {socialIntegration.app_key==="instagram"?"Instagram":"Facebook"}{socialIntegration.client_name?` (${socialIntegration.client_name})`:""}</>}
+                </button>
+              ):(
+                <div style={{padding:"8px 12px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",fontSize:12,color:"var(--text3)",display:"flex",alignItems:"center",gap:6}}>
+                  <span>💡</span>
+                  <span>Connect a Facebook or Instagram integration in <strong>Settings → Integrations</strong> to enable one-click publishing.</span>
+                </div>
+              )}
+              {publishResult&&(
+                <div className="fade-in" style={{padding:"8px 12px",background:publishResult.ok?"#10b98111":"#ef444411",border:`1px solid ${publishResult.ok?"#10b98133":"#ef444433"}`,borderRadius:"var(--rs)",fontSize:12,color:publishResult.ok?"#10b981":"#ef4444",fontWeight:600}}>
+                  {publishResult.ok?"✅":"❌"} {publishResult.msg}
+                </div>
+              )}
+            </div>
+          )}
           </div>
         )}
 
@@ -8401,7 +8497,7 @@ function AcceptInvitationPage({token, onAccepted}) {
 
   const handlePhoto = e => {
     const file = e.target.files[0];
-    if(!file) return;
+    if(!file || !checkInlineImageSize(file)) return;
     const reader = new FileReader();
     reader.onload = ev => setForm(f=>({...f, photo_url: ev.target.result}));
     reader.readAsDataURL(file);
@@ -9879,6 +9975,8 @@ const INTEGRATION_APPS = [
   {key:"make",        label:"Make (Integromat)",category:"automation", color:"#6D00CC", icon:"🔄", description:"Trigger Make.com scenarios"},
   {key:"webhook",     label:"Custom Webhook", category:"automation",   color:"#374151", icon:"🔗", description:"Call any webhook endpoint"},
   // Social
+  {key:"facebook",    label:"Facebook",       category:"social",       color:"#1877F2", icon:"👥", description:"Publish posts directly to Facebook Pages"},
+  {key:"instagram",   label:"Instagram",      category:"social",       color:"#E1306C", icon:"📸", description:"Publish posts to Instagram Business accounts"},
   {key:"buffer",      label:"Buffer",         category:"social",       color:"#168EEA", icon:"📲", description:"Schedule social media posts"},
   {key:"hootsuite",   label:"Hootsuite",      category:"social",       color:"#1F3044", icon:"🦉", description:"Publish to Hootsuite streams"},
 ];
@@ -9903,7 +10001,7 @@ const INTEGRATION_ACTIONS = {
   productivity: [{key:"create_trello_card",label:"Create Trello Card",fields:["board_id","list_id","title_template"]},{key:"create_asana_task",label:"Create Asana Task",fields:["project_id","task_name_template"]},{key:"create_notion_entry",label:"Add Notion Entry",fields:["database_id","title_template"]},{key:"create_clickup_task",label:"Create ClickUp Task",fields:["list_id","task_name_template"]}],
   spreadsheet:  [{key:"add_sheet_row",label:"Add Google Sheets Row",fields:["spreadsheet_id","sheet_name","columns"]},{key:"add_airtable_record",label:"Add Airtable Record",fields:["base_id","table_name"]}],
   automation:   [{key:"send_webhook",label:"Send Webhook (POST)",fields:["webhook_url","payload_template"]},{key:"trigger_zapier",label:"Trigger Zapier Webhook",fields:["webhook_url"]},{key:"trigger_make",label:"Trigger Make Scenario",fields:["webhook_url"]}],
-  social:       [{key:"post_buffer",label:"Add to Buffer Queue",fields:["profile_ids","message_template"]},{key:"post_hootsuite",label:"Post to Hootsuite",fields:["profile_id","message_template"]}],
+  social:       [{key:"publish_post",label:"Publish Post to Page",fields:[]},{key:"post_buffer",label:"Add to Buffer Queue",fields:["profile_ids","message_template"]},{key:"post_hootsuite",label:"Post to Hootsuite",fields:["profile_id","message_template"]}],
 };
 
 const INTEGRATION_TEMPLATES = [
@@ -9964,7 +10062,7 @@ function VarChips({onInsert}) {
 }
 
 // ── Integration Wizard ──
-function IntegrationWizard({open, onClose, onSave, existingIntegration, currentUser}) {
+function IntegrationWizard({open, onClose, onSave, existingIntegration, currentUser, clients=[]}) {
   const [step, setStep] = useState(1);
   const TOTAL_STEPS = 5;
 
@@ -9976,9 +10074,12 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
     credentials: (() => { try { return JSON.parse(existingIntegration.credentials||"{}"); } catch { return {}; } })(),
     config: (() => { try { return JSON.parse(existingIntegration.config||"{}"); } catch { return {}; } })(),
     webhook_url: existingIntegration.webhook_url||"",
+    client_id: existingIntegration.client_id||"",
+    client_name: existingIntegration.client_name||"",
   } : {
     name:"", app_key:"", trigger:"", action:"",
     credentials:{}, config:{}, webhook_url:"",
+    client_id:"", client_name:"",
   };
 
   const [f, setF] = useState(initState);
@@ -9994,6 +10095,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
   const selectedTrigger = TRIGGER_MAP[f.trigger];
   const categoryActions = INTEGRATION_ACTIONS[selectedApp?.category||"automation"]||INTEGRATION_ACTIONS.automation;
   const selectedAction = categoryActions.find(a=>a.key===f.action);
+  const isSocialPublish = f.app_key==="facebook"||f.app_key==="instagram";
 
   const applyTemplate = (tpl) => {
     setF(p=>({...p, app_key:tpl.app_key, trigger:tpl.trigger, action:tpl.action, name:tpl.title, config:tpl.config||{}}));
@@ -10036,6 +10138,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
       run_count: existingIntegration?.run_count||0,
       error_count: existingIntegration?.error_count||0,
       last_run_status: existingIntegration?.last_run_status||"never",
+      ...(f.client_id ? {client_id: f.client_id, client_name: f.client_name} : {}),
     });
     setSaving(false); onClose();
   };
@@ -10108,7 +10211,13 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
               </div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10}}>
                 {INTEGRATION_APPS.filter(a=>categoryFilter==="all"||a.category===categoryFilter).map(app=>(
-                  <AppCard key={app.key} app={app} selected={f.app_key===app.key} onClick={()=>sf("app_key",app.key)}/>
+                  <AppCard key={app.key} app={app} selected={f.app_key===app.key} onClick={()=>{
+                    if(app.key==="facebook"||app.key==="instagram") {
+                      setF(p=>({...p,app_key:app.key,trigger:"task_completed",action:"publish_post"}));
+                    } else {
+                      sf("app_key",app.key);
+                    }
+                  }}/>
                 ))}
               </div>
             </div>
@@ -10154,6 +10263,29 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
               {(f.app_key==="buffer"||f.app_key==="hootsuite")&&(
                 <Field label="Access Token" required><input value={f.credentials?.access_token||""} onChange={e=>scred("access_token",e.target.value)} placeholder="Access token from OAuth" style={inputSt} type="password"/></Field>
               )}
+              {(f.app_key==="facebook"||f.app_key==="instagram")&&(<>
+                <div style={{padding:14,background:"#1877F211",border:"1px solid #1877F233",borderRadius:"var(--rs)",fontSize:12,color:"#1877F2"}}>
+                  <strong>How to get credentials:</strong> Go to <em>Meta Business Suite → Settings → Page Access Tokens</em>, or use the <em>Graph API Explorer</em> to generate a long-lived Page Access Token. For Instagram, use your Instagram Business account's Page ID.
+                </div>
+                <Field label="Client" required hint="Which client does this Facebook/Instagram page belong to?">
+                  <select value={f.client_id||""} onChange={e=>{
+                    const c = clients.find(cl=>cl.id===e.target.value);
+                    sf("client_id", c?.id||"");
+                    sf("client_name", c?.name||"");
+                  }} style={inputSt}>
+                    <option value="">— Select a client —</option>
+                    {clients.filter(c=>c.status!=="hidden").map(c=>(
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Page ID" required hint="Numeric Facebook Page ID or Instagram Business account ID">
+                  <input value={f.credentials?.page_id||""} onChange={e=>scred("page_id",e.target.value)} placeholder="e.g. 123456789012345" style={inputSt}/>
+                </Field>
+                <Field label="Page Access Token" required>
+                  <input value={f.credentials?.access_token||""} onChange={e=>scred("access_token",e.target.value)} placeholder="Long-lived Page Access Token" style={inputSt} type="password"/>
+                </Field>
+              </>)}
             </div>
           )}
 
@@ -10253,7 +10385,31 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                 <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:17,fontWeight:800,marginBottom:4}}>Review & Activate</h3>
                 <p style={{fontSize:13,color:"var(--text2)"}}>Confirm your integration details before going live</p>
               </div>
-              {/* Summary card */}
+              {/* Summary card — social publish variant */}
+              {isSocialPublish?(
+                <div style={{padding:18,background:"var(--surface2)",borderRadius:"var(--r)",border:"1px solid var(--border)",display:"flex",flexDirection:"column",gap:12}}>
+                  <div style={{display:"flex",alignItems:"center",gap:14}}>
+                    <div style={{width:48,height:48,borderRadius:12,background:selectedApp.color+"22",border:`1.5px solid ${selectedApp.color}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0}}>{selectedApp.icon}</div>
+                    <div>
+                      <p style={{fontWeight:800,fontSize:15}}>{selectedApp.label} Page Connected</p>
+                      <p style={{fontSize:12,color:"var(--text2)",marginTop:2}}>One-click publishing enabled for this client</p>
+                    </div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    <div style={{padding:"10px 14px",background:"var(--surface)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
+                      <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Client</p>
+                      <p style={{fontWeight:700,fontSize:13}}>{f.client_name||"— not set —"}</p>
+                    </div>
+                    <div style={{padding:"10px 14px",background:"var(--surface)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
+                      <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Page ID</p>
+                      <p style={{fontWeight:700,fontSize:13,fontFamily:"monospace"}}>{f.credentials?.page_id||"— not set —"}</p>
+                    </div>
+                  </div>
+                  <Field label="Integration Name">
+                    <input value={f.name} onChange={e=>sf("name",e.target.value)} placeholder={`${f.client_name||"Client"} — ${selectedApp.label}`} style={inputSt}/>
+                  </Field>
+                </div>
+              ):(
               <div style={{display:"grid",gridTemplateColumns:"1fr 40px 1fr",gap:12,alignItems:"center",padding:18,background:"var(--surface2)",borderRadius:"var(--r)",border:"1px solid var(--border)"}}>
                 <div style={{textAlign:"center",padding:14,background:"var(--surface)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
                   <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>When This Happens</p>
@@ -10271,6 +10427,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                   <p style={{fontSize:11,color:"var(--text3)",marginTop:3}}>via {selectedApp?.label}</p>
                 </div>
               </div>
+              )}
               {/* Config summary */}
               {f.config?.message_template&&(
                 <div style={{padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
@@ -10298,15 +10455,15 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
 
         {/* Navigation footer */}
         <div style={{padding:"14px 24px",borderTop:"1px solid var(--border)",display:"flex",gap:10,alignItems:"center",background:"var(--surface2)"}}>
-          {step>1&&<Btn variant="secondary" onClick={()=>setStep(s=>s-1)} style={{flex:1}}>← Back</Btn>}
+          {step>1&&<Btn variant="secondary" onClick={()=>setStep(s=>(s===5&&isSocialPublish)?2:s-1)} style={{flex:1}}>← Back</Btn>}
           {step<TOTAL_STEPS&&(
-            <Btn onClick={()=>setStep(s=>s+1)} disabled={step===1&&!f.app_key||step===3&&!f.trigger||step===4&&!f.action} style={{flex:2}}>
+            <Btn onClick={()=>setStep(s=>(s===2&&isSocialPublish)?5:s+1)} disabled={step===1&&!f.app_key||(!isSocialPublish&&step===3&&!f.trigger)||(!isSocialPublish&&step===4&&!f.action)} style={{flex:2}}>
               Next →
             </Btn>
           )}
           {step===TOTAL_STEPS&&(<>
             <Btn variant="secondary" onClick={()=>handleSave(false)} disabled={saving} style={{flex:1}}>Save (Inactive)</Btn>
-            <Btn onClick={()=>handleSave(true)} disabled={saving||!f.trigger||!f.action} style={{flex:2}}>
+            <Btn onClick={()=>handleSave(true)} disabled={saving||(!isSocialPublish&&(!f.trigger||!f.action))} style={{flex:2}}>
               {saving?<><Spinner size={14}/> Saving…</>:<><Ico d={Icons.zap2} size={15}/> Save & Enable</>}
             </Btn>
           </>)}
@@ -10317,7 +10474,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
 }
 
 // ── Integrations Page ──
-function IntegrationsPage({integrations, integrationLogs, currentUser, onAdd, onUpdate, onDelete, onRetry}) {
+function IntegrationsPage({integrations, integrationLogs, currentUser, clients=[], onAdd, onUpdate, onDelete, onRetry}) {
   const [showWizard, setShowWizard] = useState(false);
   const [editIntegration, setEditIntegration] = useState(null);
   const [selLogs, setSelLogs] = useState(null);
@@ -10455,6 +10612,7 @@ function IntegrationsPage({integrations, integrationLogs, currentUser, onAdd, on
           open
           onClose={()=>{setShowWizard(false);setEditIntegration(null);}}
           currentUser={currentUser}
+          clients={clients}
           existingIntegration={editIntegration}
           onSave={async(d)=>{
             if(editIntegration) await onUpdate({...editIntegration,...d});
@@ -10995,7 +11153,7 @@ function LogoUploader({logoKey, label, desc, size, value, onChange, required}) {
   const fileRef = useRef(null);
   const handleFile = (e) => {
     const file = e.target.files?.[0];
-    if(!file) return;
+    if(!file || !checkInlineImageSize(file)) return;
     const reader = new FileReader();
     reader.onload = (ev) => onChange(logoKey, ev.target.result);
     reader.readAsDataURL(file);
@@ -11632,7 +11790,7 @@ function SystemLogPanel({activityLogs}) {
 // ════════════════════════════════════════════════════════════════
 // SETTINGS PAGE
 // ════════════════════════════════════════════════════════════════
-function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, integrationLogs, onAddIntegration, onUpdateIntegration, onDeleteIntegration, onRetryIntegration, emailSettings, onSaveEmailSettings, team, posts, timelogs, perfLogs, accentColor, brandingAssets, onSaveBrandingAssets, wallpaper, emailLogs, activityLogs}) {
+function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, integrationLogs, onAddIntegration, onUpdateIntegration, onDeleteIntegration, onRetryIntegration, emailSettings, onSaveEmailSettings, team, posts, clients, timelogs, perfLogs, accentColor, brandingAssets, onSaveBrandingAssets, wallpaper, emailLogs, activityLogs}) {
   const [settingsTab, setSettingsTab] = usePersistentState("sf_tab_settings","branding");
   const [f,setF] = useState({
     app_name: appSettings?.app_name||"SocialFlow",
@@ -11652,7 +11810,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
   const sf=(k,v)=>setF(p=>({...p,[k]:v}));
 
   const handleLogoUpload=(e)=>{
-    const file=e.target.files?.[0]; if(!file)return;
+    const file=e.target.files?.[0]; if(!file||!checkInlineImageSize(file))return;
     const reader=new FileReader();
     reader.onload=(ev)=>{setLogoPreview(ev.target.result);sf("app_logo_url",ev.target.result);};
     reader.readAsDataURL(file);
@@ -11802,6 +11960,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
           integrations={integrations||[]}
           integrationLogs={integrationLogs||[]}
           currentUser={currentUser}
+          clients={clients||[]}
           onAdd={onAddIntegration}
           onUpdate={onUpdateIntegration}
           onDelete={onDeleteIntegration}
@@ -12028,10 +12187,11 @@ function ProfilePhoto({photoUrl, name, role, size=56, onClick}) {
 function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange, wallpaper, notifPrefs, onSaveNotifPrefs}) {
   const [tab, setTab] = usePersistentState("sf_tab_account","profile");
   const [form, setForm] = useState({
-    display_name: userProfile?.display_name || currentUser?.name || "",
-    mobile:       userProfile?.mobile || "",
-    bio:          userProfile?.bio || "",
-    language:     userProfile?.language || "en",
+    display_name:     userProfile?.display_name || currentUser?.name || "",
+    mobile:           userProfile?.mobile || "",
+    whatsapp_number:  userProfile?.whatsapp_number || "",
+    bio:              userProfile?.bio || "",
+    language:         userProfile?.language || "en",
   });
   const [photo, setPhoto]   = useState(userProfile?.photo_url || null);
   const [saving, setSaving] = useState(false);
@@ -12043,7 +12203,7 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
 
   const handlePhotoUpload = (e) => {
     const file = e.target.files?.[0];
-    if(!file) return;
+    if(!file || !checkInlineImageSize(file)) return;
     const reader = new FileReader();
     reader.onload = (ev) => setPhoto(ev.target.result);
     reader.readAsDataURL(file);
@@ -12142,6 +12302,12 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
                 <div style={{position:"relative"}}>
                   <div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"var(--text3)"}}><Ico d={Icons.phone} size={14}/></div>
                   <input value={form.mobile} onChange={e=>sf("mobile",e.target.value)} placeholder="+20 100 000 0000" style={{...inputSt,paddingLeft:34}}/>
+                </div>
+              </Field>
+              <Field label="WhatsApp Number" hint="Receive task notifications via WhatsApp">
+                <div style={{position:"relative"}}>
+                  <div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:14,lineHeight:1}}>💬</div>
+                  <input value={form.whatsapp_number} onChange={e=>sf("whatsapp_number",e.target.value)} placeholder="+20 100 000 0000" style={{...inputSt,paddingLeft:34}}/>
                 </div>
               </Field>
               <Field label="Language">
@@ -13176,14 +13342,35 @@ function generateInvoicePDF(inv, payments, branding) {
   </div></body></html>`;
 }
 
-function downloadInvoicePDF(inv, payments, branding) {
-  const html=generateInvoicePDF(inv,payments,branding);
-  const blob=new Blob([html],{type:"text/html"});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement("a");
-  a.href=url; a.download=`${inv.invoice_number}.html`;
-  document.body.appendChild(a); a.click();
-  document.body.removeChild(a); URL.revokeObjectURL(url);
+async function downloadInvoicePDF(inv, payments, branding) {
+  const html = generateInvoicePDF(inv, payments, branding);
+  const parsed = (new DOMParser()).parseFromString(html, "text/html");
+  const pageEl  = parsed.querySelector(".page");
+  const styleText = parsed.querySelector("style")?.textContent || "";
+
+  const styleEl = document.createElement("style");
+  styleEl.id = "__inv_pdf_style";
+  styleEl.textContent = styleText;
+  document.head.appendChild(styleEl);
+
+  const wrapper = document.createElement("div");
+  wrapper.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:794px;background:#fff;";
+  if (pageEl) wrapper.appendChild(pageEl);
+  document.body.appendChild(wrapper);
+
+  try {
+    await window.html2pdf().set({
+      margin: 0,
+      filename: `${inv.invoice_number}.pdf`,
+      image: { type: "jpeg", quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, logging: false },
+      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+    }).from(wrapper).save();
+  } finally {
+    document.body.removeChild(wrapper);
+    const s = document.getElementById("__inv_pdf_style");
+    if (s) document.head.removeChild(s);
+  }
 }
 
 // ── Confirm Payment Modal ──
@@ -13253,6 +13440,7 @@ function ConfirmPaymentModal({open,onClose,invoice,onConfirm,currentUser}) {
 function InvoiceDetailPanel({invoice,payments,appSettings,brandingAssets,currentUser,onClose,onConfirmPayment,onStatusChange,onSendEmail}) {
   const [showPayModal,setShowPayModal]=useState(false);
   const [sending,setSending]=useState(false);
+  const [generatingPDF,setGeneratingPDF]=useState(false);
   const invPayments=payments.filter(p=>p.invoice_id===invoice.id);
   const totalPaid=invPayments.reduce((a,p)=>a+(p.amount||0),0);
   const balance=Math.max(0,invoice.total-totalPaid);
@@ -13372,8 +13560,8 @@ function InvoiceDetailPanel({invoice,payments,appSettings,brandingAssets,current
 
           {/* Actions */}
           <div style={{display:"flex",gap:8,paddingTop:6,borderTop:"1px solid var(--border)",flexWrap:"wrap"}}>
-            <Btn variant="secondary" onClick={()=>downloadInvoicePDF(invoice,invPayments,brandingAssets)} style={{flex:1}}>
-              <Ico d={Icons.download} size={14}/> Download PDF
+            <Btn variant="secondary" disabled={generatingPDF} onClick={async()=>{setGeneratingPDF(true);await downloadInvoicePDF(invoice,invPayments,brandingAssets);setGeneratingPDF(false);}} style={{flex:1}}>
+              {generatingPDF?<><Spinner size={14}/> Generating…</>:<><Ico d={Icons.download} size={14}/> Download PDF</>}
             </Btn>
             {invoice.client_email&&canPay&&(
               <Btn variant="secondary" disabled={sending} onClick={async()=>{
@@ -18815,7 +19003,7 @@ function App() {
         sendNotification("task_assigned", assignee.email,
           `[SocialFlow] You've been assigned: ${postData.title}`,
           EMAIL_TEMPLATES.taskAssigned(assignee.name, postData.title, project?.title||postData.project_name, postData.client_name, postData.scheduled_date, currentUser?.name),
-          prefs
+          prefs, assignee.whatsapp_number||null
         ).catch(()=>{});
         // Also notify project managers
         if(project?.team_members) {
@@ -19836,7 +20024,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       sendNotification("task_assigned", assignee.email,
         `[SocialFlow] Task assigned to you: ${post.title}`,
         EMAIL_TEMPLATES.taskAssigned(assignee.name, post.title, project?.title||post.project_name, post.client_name, post.scheduled_date, currentUser?.name),
-        prefs
+        prefs, assignee.whatsapp_number||null
       ).catch(()=>{});
     }
     // Notify previous assignee of stage change
@@ -19848,7 +20036,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         sendNotification("task_stage_changed", prevAssignee.email,
           `[SocialFlow] Task moved: ${post.title}`,
           EMAIL_TEMPLATES.taskStageChanged(prevAssignee.name, post.title, fromLabel, stageLabel, project?.title||"", post.client_name),
-          prefs
+          prefs, prevAssignee.whatsapp_number||null
         ).catch(()=>{});
       }
     }
@@ -19870,7 +20058,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         sendNotification("post_approved", originalAssignee.email,
           `[SocialFlow] Post approved: ${post.title}`,
           EMAIL_TEMPLATES.postApproved(originalAssignee.name, post.title, post.client_name||"Client"),
-          prefs
+          prefs, originalAssignee.whatsapp_number||null
         ).catch(()=>{});
       }
     }
@@ -20509,6 +20697,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             onSaveEmailSettings={saveEmailSettings}
             team={data.team}
             posts={data.posts}
+            clients={data.clients||[]}
             timelogs={data.timelogs}
             perfLogs={data.perfLogs||[]}
             accentColor={accentColor}
@@ -20581,6 +20770,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         clientKnowledge={_clientKnowledge}
         clientIntelligence={_clientIntelligence}
         client={_client}
+        integrations={data.integrations||[]}
         allClientPosts={(()=>{
           const clientPosts = data.posts.filter(p=>
             p.client_id===_client?.id ||
