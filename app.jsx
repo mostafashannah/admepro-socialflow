@@ -501,7 +501,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.95";
+const APP_VERSION = "beta 1.96";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1431,12 +1431,12 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       .bottom-nav{
         display:flex;position:fixed;bottom:0;left:0;right:0;
         background:var(--surface);border-top:1px solid var(--border);
-        z-index:9000;padding:6px 0 max(6px,env(safe-area-inset-bottom));
+        z-index:9000;padding:26px 0 max(6px,env(safe-area-inset-bottom));
         justify-content:space-around;align-items:center;
       }
       .main-content{
         padding:14px!important;
-        padding-bottom:84px!important;
+        padding-bottom:104px!important;
         overflow-x:hidden!important;
       }
       .card-mobile{border-radius:var(--rs)!important;padding:14px!important}
@@ -15449,7 +15449,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
   // ── Logo block ────────────────────────────────────────────────
   const LogoBlock = ({compact=false, showClose=false}) => (
     <div style={{
-      padding: compact ? "14px 0" : "16px 14px 12px",
+      padding: compact ? "14px 0" : "max(16px,env(safe-area-inset-top)) 14px 12px",
       borderBottom:"1px solid var(--border)",
       display:"flex", alignItems:"center",
       justifyContent: compact ? "center" : "space-between",
@@ -15475,7 +15475,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
         <div className="slide-in-left" style={{position:"fixed",top:0,left:0,bottom:0,width:284,background:"var(--surface)",borderRight:"1px solid var(--border)",zIndex:300,display:"flex",flexDirection:"column",overflowY:"auto"}}>
           <LogoBlock showClose={true}/>
           <SidebarContent compact={false}/>
-          <div style={{padding:"8px",borderTop:"1px solid var(--border)",flexShrink:0}}>
+          <div style={{padding:"8px 8px max(8px,env(safe-area-inset-bottom))",borderTop:"1px solid var(--border)",flexShrink:0}}>
             <UserMenu currentUser={currentUser} userProfile={userProfile} dark={dark} setDark={setDark} onNavigate={handleNav} onLogout={onLogout} wallpaper={wallpaper} onWallpaperChange={onWallpaperChange}/>
           </div>
         </div>
@@ -21011,7 +21011,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         {/* Page content */}
         <main id="main-content" className="main-content" ref={mainScrollRef}
           onTouchStart={onMainTouchStart} onTouchMove={onMainTouchMove} onTouchEnd={onMainTouchEnd}
-          style={{flex:1,padding:page==="home"?0:isMobile?"16px":"28px 32px",overflowY:page==="home"?"hidden":"auto",paddingBottom:page==="home"?0:isMobile?84:28,display:"flex",flexDirection:"column",minHeight:0}}>
+          style={{flex:1,padding:page==="home"?0:isMobile?"16px":"28px 32px",overflowY:page==="home"?"hidden":"auto",paddingBottom:page==="home"?0:isMobile?104:28,display:"flex",flexDirection:"column",minHeight:0}}>
           {isMobile&&page!=="home"&&(pullDistance>0||refreshing)&&(
             <div style={{display:"flex",justifyContent:"center",alignItems:"center",height:refreshing?40:pullDistance,overflow:"hidden",transition:refreshing||pullDistance===0?"height 0.18s":"none",flexShrink:0,marginBottom:refreshing?8:0}}>
               <Spinner size={20}/>
