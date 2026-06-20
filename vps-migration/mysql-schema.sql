@@ -32,7 +32,9 @@ CREATE TABLE IF NOT EXISTS posts (
   reel_hook TEXT, reel_script TEXT, reel_cta TEXT,
   carousel_cover TEXT, carousel_slides JSON DEFAULT ('[]'),
   music_direction TEXT, tov_used TEXT, content_language TEXT,
-  design_assets JSON DEFAULT ('[]'), brief TEXT, notes TEXT
+  design_assets JSON DEFAULT ('[]'), brief TEXT, notes TEXT,
+  published_at TIMESTAMP NULL, external_post_id TEXT, publish_error TEXT,
+  publish_attempts DECIMAL(4,0) DEFAULT 0
 ) ENGINE=InnoDB;
 
 -- ----------------------------------------------------------------
@@ -237,7 +239,8 @@ CREATE TABLE IF NOT EXISTS integrations (
   credentials TEXT, config TEXT, webhook_url TEXT,
   last_run_at TEXT, last_run_status TEXT DEFAULT ('never'),
   last_run_message TEXT, run_count DECIMAL(14,0) DEFAULT 0, error_count DECIMAL(14,0) DEFAULT 0,
-  created_by TEXT, icon_url TEXT, template_id TEXT
+  created_by TEXT, icon_url TEXT, template_id TEXT,
+  client_id VARCHAR(36), client_name TEXT
 ) ENGINE=InnoDB;
 
 -- ----------------------------------------------------------------
@@ -613,6 +616,19 @@ CREATE TABLE IF NOT EXISTS monthly_briefs (
   id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   data JSON DEFAULT ('{}')
+) ENGINE=InnoDB;
+
+-- ----------------------------------------------------------------
+-- META INSIGHTS SNAPSHOTS — daily Page/IG/Ads metrics per integration,
+-- populated by meta-insights-cron.php, so the AI analysis has a real
+-- trend to learn from instead of just a single day's numbers.
+-- ----------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS meta_insights_snapshots (
+  id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  integration_id VARCHAR(36) NOT NULL, client_id VARCHAR(36), client_name TEXT,
+  platform TEXT, snapshot_date DATE NOT NULL,
+  metrics JSON DEFAULT ('{}')
 ) ENGINE=InnoDB;
 
 -- ----------------------------------------------------------------

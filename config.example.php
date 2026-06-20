@@ -12,6 +12,15 @@ define('B44_APP_ID_VAL',    'your_base44_app_id');
 define('WA_PHONE_ID',      'your_whatsapp_phone_number_id');
 define('WA_ACCESS_TOKEN',  'your_whatsapp_access_token');
 
+// Facebook/Instagram auto-publish (auto-publish.php cron) — kill switch.
+// Leave false until you've connected at least one active Facebook/Instagram
+// integration in Settings → Integrations with a real Page Access Token.
+define('AUTO_PUBLISH_ENABLED', false);
+
+// Timezone used when comparing posts' scheduled_date/scheduled_time against
+// "now" in auto-publish.php. Use a PHP timezone identifier, e.g. 'Africa/Cairo'.
+define('APP_TIMEZONE', 'UTC');
+
 // --- Self-hosted MySQL backend (vps-migration/api.php + storage.php) ---
 // Only needed once you've moved off Supabase onto your own VPS database.
 define('DB_HOST', '127.0.0.1');

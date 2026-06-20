@@ -418,6 +418,7 @@ const AI_ENDPOINT = window.location.origin + "/ai-proxy.php";
 const MAIL_ENDPOINT = window.location.origin + "/mail.php";
 const WA_ENDPOINT = window.location.origin + "/whatsapp.php";
 const PUBLISH_ENDPOINT = window.location.origin + "/social-publish.php";
+const META_INSIGHTS_ENDPOINT = window.location.origin + "/meta-insights.php";
 const PUSH_ENDPOINT = window.location.origin + "/push-send.php";
 // Public VAPID key — safe to ship client-side (it's the public half of the keypair)
 const VAPID_PUBLIC_KEY = "BGFP5W8qioz7-199m_66qK9dm1dXRK2RxXF8HC3nNCcQqP6IoxUC17kOFAzwwBoZ9MpWURXprtMx9SEF2yCPepc";
@@ -428,7 +429,7 @@ const AI_HEADERS = {"Content-Type":"application/json"};
 // from Settings → Feature Flags (writes to app_settings.feature_flags).
 // Kept as a module-level object (not React state) so standalone
 // functions like sendWhatsApp() can read current flags without prop drilling.
-const FEATURE_FLAGS = { whatsapp_notifications:false, social_publishing:false };
+const FEATURE_FLAGS = { whatsapp_notifications:true, social_publishing:true };
 
 // ── Email sender ─────────────────────────────────────────────────
 async function sendEmail(to, subject, html, fromName="SocialFlow") {
@@ -501,7 +502,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.05";
+const APP_VERSION = "beta 2.07";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5886,7 +5887,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
   );
 }
 
-function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief}) {
+function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,integrations=[]}) {
   const [tab,setTab] = usePersistentState(`sf_tab_client_${client?.id}`,"overview");
   const [showEdit,setShowEdit] = useState(false);
   const [confirmDelete,setConfirmDelete] = useState(false);
@@ -5906,7 +5907,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
     ["calendar","Calendar"],
     ["assets","Assets"],
     ["reports","Reports"],
-    ...(isPriv?[["intelligence","Intelligence"],["client_intel"," Smart Intel"],["memory"," Memory"],["brand_training"," Brand Training"],["briefs",` Briefs${pendingBriefCount?` (${pendingBriefCount} pending)`:""}`]]:[]),
+    ...(isPriv?[["intelligence","Intelligence"],["client_intel"," Smart Intel"],["meta_insights"," Meta Insights"],["memory"," Memory"],["brand_training"," Brand Training"],["briefs",` Briefs${pendingBriefCount?` (${pendingBriefCount} pending)`:""}`]]:[]),
     ...(currentUser?.role==="admin"?[["context_file"," Context File"]]:[]),
   ];
   return (
@@ -6058,6 +6059,9 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
           intelligence={clientIntelligence}
           onSave={onSaveIntelligence}
         />
+      )}
+      {tab==="meta_insights"&&(
+        <MetaInsightsTab client={client} integrations={integrations}/>
       )}
       {tab==="context_file"&&(
         <ClientContextFile
@@ -7089,6 +7093,144 @@ Rules: Max 60 words per section. Specific and actionable — no generic advice. 
             </div>
           )}
           {knowledge?.last_analyzed&&<p style={{fontSize:11,color:"var(--text3)",textAlign:"right"}}>Last updated: {new Date(knowledge.last_analyzed).toLocaleString()}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MetaInsightsTab({client, integrations}) {
+  const matches = integrations.filter(i=>
+    ["facebook","instagram"].includes(i.app_key) && i.status==="active" &&
+    (!i.client_id || i.client_id===client.id)
+  );
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState({}); // {integrationId: payload}
+  const [error, setError] = useState("");
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysis, setAnalysis] = useState(null);
+
+  const fetchAll = async () => {
+    setLoading(true); setError("");
+    try {
+      const results = {};
+      for (const integ of matches) {
+        const creds = parseJ(integ.credentials||"{}");
+        if (!creds.page_id || !creds.access_token) continue;
+        const r = await fetch(META_INSIGHTS_ENDPOINT, {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({
+            platform: integ.app_key, page_id: creds.page_id,
+            access_token: creds.access_token, ad_account_id: creds.ad_account_id||"",
+          }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error||`Failed to fetch ${integ.app_key} insights`);
+        results[integ.id] = d;
+      }
+      setData(results);
+    } catch(e) { setError(e.message||"Failed to fetch insights"); }
+    setLoading(false);
+  };
+
+  const generateAnalysis = async () => {
+    setAnalyzing(true);
+    try {
+      const summary = matches.map(integ=>{
+        const d = data[integ.id];
+        if (!d) return null;
+        return `Platform: ${integ.app_key}\nPage insights: ${JSON.stringify(d.page_insights||d.ig_insights||[])}\nAds insights: ${JSON.stringify(d.ads_insights||[])}`;
+      }).filter(Boolean).join("\n\n");
+
+      const prompt = `You are a paid social + organic social media analyst for an agency. Here is the last 30 days of live Meta (Facebook/Instagram/Ads) data for client "${client.name}":
+
+${summary}
+
+Based on this real data, return ONLY a JSON array of 4-6 objects, each a concrete "do this" or "don't do this" recommendation:
+[{"title":"...","insight":"1-2 sentence read of what the data shows","action":"1 sentence recommendation, specific and actionable","category":"content|timing|ad_spend|audience|creative","verdict":"do|dont"}]
+No markdown, no explanation, just the JSON array.`;
+
+      const raw = await ai(prompt, 1000);
+      const cleaned = raw.replace(/```json|```/g,"").trim();
+      setAnalysis(JSON.parse(cleaned));
+    } catch(e) {
+      setAnalysis([{title:"Error", insight:"Could not generate analysis. Check AI connection and that insights data was fetched.", action:"", category:"general", verdict:"dont"}]);
+    }
+    setAnalyzing(false);
+  };
+
+  const VERDICT_COLOR = {do:"#10b981", dont:"#ef4444"};
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+        <div>
+          <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:18,fontWeight:800}}>Meta Insights</h3>
+          <p style={{fontSize:13,color:"var(--text2)",marginTop:3}}>Live Facebook/Instagram/Ads performance for {client.name}, with AI-generated do's and don'ts</p>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <Btn variant="secondary" onClick={fetchAll} disabled={loading||!matches.length}>
+            {loading?<><Spinner size={14}/> Fetching…</>:<><Ico d={Icons.refresh||Icons.sync||Icons.clock} size={15}/> Refresh Data</>}
+          </Btn>
+          <Btn onClick={generateAnalysis} disabled={analyzing||!Object.keys(data).length}>
+            {analyzing?<><Spinner size={14}/> Analyzing…</>:<><Ico d={Icons.sparkle} size={15}/> Generate Smart Analysis</>}
+          </Btn>
+        </div>
+      </div>
+
+      {!matches.length&&(
+        <div style={{padding:14,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",fontSize:13,color:"var(--text2)"}}>
+          No active Facebook/Instagram integration is connected for {client.name} yet. Connect one in <strong>Settings → Integrations</strong> (include the Ad Account ID to also pull ads performance).
+        </div>
+      )}
+
+      {error&&(
+        <div style={{padding:14,background:"#ef444411",border:"1px solid #ef444444",borderRadius:"var(--rs)",fontSize:13,color:"#ef4444"}}>{error}</div>
+      )}
+
+      {matches.map(integ=>{
+        const d = data[integ.id];
+        if (!d) return null;
+        const rows = [...(d.page_insights||[]), ...(d.ig_insights||[])];
+        const ads = d.ads_insights||[];
+        return (
+          <div key={integ.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:18}}>
+            <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:14}}>{integ.app_key==="instagram"?"Instagram":"Facebook"} — last 30 days</p>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(180px,100%),1fr))",gap:12,marginBottom:ads.length?14:0}}>
+              {rows.length?rows.map((m,i)=>(
+                <div key={i} style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
+                  <p style={{fontSize:9,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{(m.title||m.name||"").replace(/_/g," ")}</p>
+                  <p style={{fontSize:20,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif"}}>{m.values?.[m.values.length-1]?.value ?? "—"}</p>
+                </div>
+              )):<p style={{fontSize:12,color:"var(--text3)"}}>No page metrics returned.</p>}
+            </div>
+            {ads.length>0&&(
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(140px,100%),1fr))",gap:12}}>
+                {["spend","impressions","clicks","ctr","cpc","cpm","reach"].map(k=>(
+                  <div key={k} style={{padding:"10px 12px",background:"#1877F211",borderRadius:"var(--rs)",border:"1px solid #1877F233"}}>
+                    <p style={{fontSize:9,fontWeight:700,color:"#1877F2",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{k}</p>
+                    <p style={{fontSize:18,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif"}}>{ads[0]?.[k] ?? "—"}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {analysis&&(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>AI Recommendations</p>
+          {analysis.map((ins,i)=>(
+            <div key={i} style={{background:"var(--surface)",border:`1px solid ${VERDICT_COLOR[ins.verdict]||"var(--border)"}44`,borderRadius:"var(--r)",padding:16,display:"flex",gap:12}}>
+              <Badge label={ins.verdict==="do"?"DO":"DON'T"} color={VERDICT_COLOR[ins.verdict]||"#6b7280"}/>
+              <div style={{flex:1}}>
+                <p style={{fontSize:14,fontWeight:700,marginBottom:4}}>{ins.title}</p>
+                <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.5,marginBottom:6}}>{ins.insight}</p>
+                {ins.action&&<p style={{fontSize:13,fontWeight:600,color:VERDICT_COLOR[ins.verdict]||"var(--text1)"}}> {ins.action}</p>}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -10252,6 +10394,8 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
       credentials: JSON.stringify(f.credentials),
       config: JSON.stringify({...f.config, trigger_event:f.trigger, action_event:f.action}),
       webhook_url: f.credentials?.webhook_url||f.config?.webhook_url||"",
+      client_id: f.client_id||"",
+      client_name: f.client_name||"",
       status: active ? "active" : "inactive",
       created_by: currentUser?.email,
       run_count: existingIntegration?.run_count||0,
@@ -10403,6 +10547,9 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                 </Field>
                 <Field label="Page Access Token" required>
                   <input value={f.credentials?.access_token||""} onChange={e=>scred("access_token",e.target.value)} placeholder="Long-lived Page Access Token" style={inputSt} type="password"/>
+                </Field>
+                <Field label="Ad Account ID" hint="Optional — numeric Meta Ads account ID (without the act_ prefix), enables the Meta Insights tab to pull ad spend/CTR/CPC on the client page">
+                  <input value={f.credentials?.ad_account_id||""} onChange={e=>scred("ad_account_id",e.target.value)} placeholder="e.g. 123456789012345" style={inputSt}/>
                 </Field>
               </>)}
             </div>
@@ -20638,13 +20785,15 @@ Return ONLY valid JSON (no markdown, no explanation):
         ).catch(()=>{});
       }
     }
-    // If moving to client_review, notify client
-    if(newStage === "client_review") {
+    // If moving to client_approval, notify client
+    if(newStage === "client_approval") {
       const client = data.clients.find(c=>c.id===post.client_id||c.name===post.client_name);
       if(client?.email) {
-        sendEmail(client.email,
+        const prefs = getNotifPrefs(client.email);
+        sendNotification("client_approval_required", client.email,
           `[Action Required] Review needed: ${post.title}`,
-          EMAIL_TEMPLATES.clientApprovalRequired(client.name, post.title, project?.title||"", post.scheduled_date, APP_URL)
+          EMAIL_TEMPLATES.clientApprovalRequired(client.name, post.title, project?.title||"", post.scheduled_date, APP_URL),
+          prefs, client.phone||null
         ).catch(()=>{});
       }
     }
@@ -21110,6 +21259,7 @@ Return ONLY valid JSON (no markdown, no explanation):
           );
           return (
             <ClientDetailPage client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets}
+              integrations={data.integrations||[]}
               onBack={()=>setSelectedClientId(null)} onPostClick={setSelectedPost}
               onAddProject={()=>setShowAddProject(true)}
               onAddPost={()=>{setAddPostForClient(selectedClient);setShowAddPost(true);}}
