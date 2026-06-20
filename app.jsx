@@ -497,7 +497,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.83";
+const APP_VERSION = "beta 1.84";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11516,13 +11516,24 @@ async function captureSessionInfo(user) {
 // ════════════════════════════════════════════════════════════════
 // SYSTEM LOG PAGE — Full admin audit center
 // ════════════════════════════════════════════════════════════════
-function SystemLogPage({activityLogs, systemSessions, currentUser}) {
+function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh}) {
   const [tab, setTab] = useState("sessions");
   const [logFilter, setLogFilter] = useState("all");
   const [logSearch, setLogSearch] = useState("");
   const [sessionSearch, setSessionSearch] = useState("");
   const [expandedLog, setExpandedLog] = useState(null);
   const [expandedSession, setExpandedSession] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const doRefresh = async () => {
+    if(!onRefresh || refreshing) return;
+    setRefreshing(true);
+    try { await onRefresh(); } finally { setRefreshing(false); }
+  };
+  useEffect(()=>{
+    doRefresh();
+    const id = setInterval(doRefresh, 20000);
+    return () => clearInterval(id);
+  },[]);
 
   const CATEGORIES = ["all","clients","finance","tasks","users","leads","system"];
   const STATUS_COLORS = {success:"#10b981",warning:"#f59e0b",error:"#ef4444",info:"#3b82f6"};
@@ -11553,9 +11564,15 @@ function SystemLogPage({activityLogs, systemSessions, currentUser}) {
           <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:22,fontWeight:800}}>System Log</h2>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Full audit trail — login sessions, device info, IP geolocation, and all actions</p>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",background:"#ef444411",border:"1px solid #ef444433",borderRadius:8}}>
-          <div style={{width:7,height:7,borderRadius:"50%",background:"#ef4444"}}/>
-          <span style={{fontSize:12,color:"#ef4444",fontWeight:700}}>Admin Only</span>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <button onClick={doRefresh} disabled={refreshing} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:"var(--rs)",border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:12,fontWeight:700,cursor:refreshing?"default":"pointer",opacity:refreshing?0.6:1}}>
+            <Ico d={Icons.refresh} size={14} stroke="currentColor"/>
+            {refreshing?"Refreshing…":"Refresh"}
+          </button>
+          <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",background:"#ef444411",border:"1px solid #ef444433",borderRadius:8}}>
+            <div style={{width:7,height:7,borderRadius:"50%",background:"#ef4444"}}/>
+            <span style={{fontSize:12,color:"#ef4444",fontWeight:700}}>Admin Only</span>
+          </div>
         </div>
       </div>
 
@@ -11761,9 +11778,10 @@ function SystemLogPage({activityLogs, systemSessions, currentUser}) {
   );
 }
 
-function SystemLogPanel({activityLogs}) {
+function SystemLogPanel({activityLogs, onRefresh}) {
   const [logFilter, setLogFilter] = useState("all");
   const [logSearch, setLogSearch] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
   const CATEGORIES = ["all","clients","finance","tasks","users","leads","system"];
   const STATUS_COLORS = {success:"#10b981",warning:"#f59e0b",error:"#ef4444",info:"#3b82f6"};
   const CAT_COLORS = {clients:"#6366f1",finance:"#10b981",tasks:"#f59e0b",users:"#3b82f6",leads:"#8b5cf6",system:"#6b7280"};
@@ -11772,11 +11790,29 @@ function SystemLogPanel({activityLogs}) {
     if(logSearch && !`${a.action} ${a.details} ${a.performed_by}`.toLowerCase().includes(logSearch.toLowerCase())) return false;
     return true;
   });
+  const doRefresh = async () => {
+    if(!onRefresh || refreshing) return;
+    setRefreshing(true);
+    try { await onRefresh(); } finally { setRefreshing(false); }
+  };
+  // Pull fresh rows from Supabase whenever this tab is opened, and poll
+  // periodically — covers actions logged in other tabs/sessions.
+  useEffect(()=>{
+    doRefresh();
+    const id = setInterval(doRefresh, 20000);
+    return () => clearInterval(id);
+  },[]);
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
-      <div>
-        <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:18,fontWeight:800}}>System Activity Log</h3>
-        <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Full audit trail of all actions performed in SocialFlow — errors are highlighted for easy debugging</p>
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+        <div>
+          <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:18,fontWeight:800}}>System Activity Log</h3>
+          <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Full audit trail of all actions performed in SocialFlow — errors are highlighted for easy debugging</p>
+        </div>
+        <button onClick={doRefresh} disabled={refreshing} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:"var(--rs)",border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:12,fontWeight:700,cursor:refreshing?"default":"pointer",opacity:refreshing?0.6:1}}>
+          <Ico d={Icons.refresh||Icons.activity} size={14} stroke="currentColor"/>
+          {refreshing?"Refreshing…":"Refresh"}
+        </button>
       </div>
       {/* Summary cards */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:10}}>
@@ -11861,7 +11897,7 @@ function SystemLogPanel({activityLogs}) {
 // ════════════════════════════════════════════════════════════════
 // SETTINGS PAGE
 // ════════════════════════════════════════════════════════════════
-function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, integrationLogs, onAddIntegration, onUpdateIntegration, onDeleteIntegration, onRetryIntegration, emailSettings, onSaveEmailSettings, team, posts, clients, timelogs, perfLogs, accentColor, brandingAssets, onSaveBrandingAssets, wallpaper, emailLogs, activityLogs}) {
+function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, integrationLogs, onAddIntegration, onUpdateIntegration, onDeleteIntegration, onRetryIntegration, emailSettings, onSaveEmailSettings, team, posts, clients, timelogs, perfLogs, accentColor, brandingAssets, onSaveBrandingAssets, wallpaper, emailLogs, activityLogs, onRefreshLogs}) {
   const [settingsTab, setSettingsTab] = usePersistentState("sf_tab_settings","branding");
   const [f,setF] = useState({
     app_name: appSettings?.app_name||"SocialFlow",
@@ -12068,7 +12104,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
       )}
 
       {/* ── SYSTEM LOG TAB ── */}
-      {settingsTab==="syslog"&&<SystemLogPanel activityLogs={activityLogs}/>}
+      {settingsTab==="syslog"&&<SystemLogPanel activityLogs={activityLogs} onRefresh={onRefreshLogs}/>}
 
       {/* ── AI & TOKENS TAB ── */}
       {settingsTab==="ai_model"&&(
@@ -19213,6 +19249,17 @@ function App() {
     return () => window.removeEventListener("sf:activitylog", onLog);
   },[]);
 
+  // Pull the latest rows straight from Supabase — catches actions logged in other
+  // tabs/sessions (or before this tab's window listener was attached).
+  const refreshActivityLogs = async () => {
+    const res = await qe("ActivityLog",{},"-performed_at",500).catch(()=>({entities:[]}));
+    setData(d=>({...d, activityLogs: res?.entities||d.activityLogs||[]}));
+  };
+  const refreshSystemSessions = async () => {
+    const res = await qe("SystemSession",{},"-login_at",500).catch(()=>({entities:[]}));
+    setData(d=>({...d, systemSessions: res?.entities||d.systemSessions||[]}));
+  };
+
   // ── Load from Supabase — 2-wave for fast startup ──────────────
   useEffect(()=>{
     async function load() {
@@ -21087,6 +21134,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             activityLogs={data.activityLogs||[]}
             systemSessions={data.systemSessions||[]}
             currentUser={currentUser}
+            onRefresh={()=>{ refreshActivityLogs(); refreshSystemSessions(); }}
           />
         )}
         {page==="agents"&&currentUser?.role==="admin"&&(
@@ -21185,6 +21233,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             wallpaper={wallpaper}
             emailLogs={data.emailLogs||[]}
             activityLogs={data.activityLogs||[]}
+            onRefreshLogs={refreshActivityLogs}
           />
         )}
         {page==="notifications"&&(
