@@ -459,7 +459,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.78";
+const APP_VERSION = "beta 1.79";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -15524,6 +15524,7 @@ ${myTasks.slice(0,10).map(p=>`- "${p.title}" | Client: ${p.client_name||"?"} | S
    [ACTION:{"action":"create_task","title":"...","client_name":"...","platform":"instagram","priority":"medium","stage":"planning","assigned_to":"email","scheduled_date":"YYYY-MM-DD"}]
    [ACTION:{"action":"create_project","title":"...","client_name":"...","description":"...","platforms":["instagram"]}]
    [ACTION:{"action":"create_client","name":"...","email":"...","industry":"...","platforms":["instagram"],"brief":"any tone/audience/products/goals/preferences the user shared about this client — write it as a short paragraph, omit the field entirely if nothing was shared"}]
+   [ACTION:{"action":"update_client","client_name":"...","add_platforms":["tiktok"],"industry":"...","email":"...","phone":"..."}]
    [ACTION:{"action":"create_invoice","client_name":"...","amount":0,"currency":"USD","due_date":"YYYY-MM-DD","description":"..."}]
    [ACTION:{"action":"create_lead","name":"...","email":"...","company":"...","source":"manual","notes":"..."}]
    [ACTION:{"action":"update_task_stage","post_title":"...","new_stage":"..."}]
@@ -15542,6 +15543,7 @@ ${myTasks.slice(0,10).map(p=>`- "${p.title}" | Client: ${p.client_name||"?"} | S
 6. If info is missing for an action, ask for it conversationally — don't guess randomly.
 7. Be conversational, warm, professional. Use bullet points or bold for clarity when listing data.
 8. Response length: match the question. Short question = short answer. "List all overdue" = full list.
+8b. To add platforms, change industry, or update contact info on an EXISTING client, use the update_client action — never claim something was changed without emitting it. add_platforms is ADDED to the client's current platform list, not a replacement.
 9. You have a web_search tool. ONLY use it when the user EXPLICITLY asks you to search/look up/check online/google something (e.g. "search the internet for...", "look up...", "what's trending on..."). NEVER use it on your own initiative for ordinary questions you can already answer from the data above — searching costs real money per use, so it must be user-requested every time.
 ${user?.role==="client" ? `
 CLIENT MODE: You are speaking with a client. NEVER reveal: internal stage names, team member names, workflow steps.
@@ -15600,6 +15602,7 @@ const CHATBOT_ACTION_ROLES = {
   create_task:       ["admin","account_manager","content_creator","graphic_designer"],
   create_project:    ["admin","account_manager"],
   create_client:     ["admin","account_manager"],
+  update_client:     ["admin","account_manager"],
   create_lead:       ["admin","account_manager"],
   create_invoice:    ["admin","accountant"],
   update_task_stage: ["admin","account_manager","content_creator","graphic_designer"],
@@ -16201,6 +16204,19 @@ RULES:
         if(onDirectAction) realClient = await onDirectAction("add_client", clientData);
         if(payload.brief && realClient?.id && onUpsertMemory) onUpsertMemory(realClient.id, realClient.name, "brief", payload.brief, "ai");
         addBotMsg(`✅ Client "${clientData.name}" added successfully!`,"success",{label:"👥 View Clients", fn:"nav_clients"});
+      }
+
+      else if(act==="update_client") {
+        const cl = resolveEntity(payload.client_name, data.clients);
+        if(!cl){ addBotMsg(`⚠️ Couldn't find client "${payload.client_name}".`,"error"); return; }
+        const updates = {};
+        if(payload.add_platforms?.length) updates.platforms = Array.from(new Set([...(cl.platforms||[]), ...payload.add_platforms]));
+        if(payload.industry) updates.industry = payload.industry;
+        if(payload.email) updates.email = payload.email;
+        if(payload.phone) updates.phone = payload.phone;
+        if(Object.keys(updates).length===0){ addBotMsg(`⚠️ Nothing to update for "${cl.name}".`,"error"); return; }
+        if(onDirectAction) await onDirectAction("update_client", {clientId:cl.id, updates});
+        addBotMsg(`✅ Updated **${cl.name}**${updates.platforms?` — platforms: ${updates.platforms.join(", ")}`:""}`,"success",{label:"👥 View Clients", fn:"nav_clients"});
       }
 
       else if(act==="create_lead") {
@@ -17725,6 +17741,17 @@ RULES:
         if(payload.brief && realClient?.id && onUpsertMemory) onUpsertMemory(realClient.id, realClient.name, "brief", payload.brief, "ai");
         if(activeTempClient?.slug===slug) setActiveTempClient(null);
         addBotMsg(`✅ Client **"${clientData.name}"** added!`,"success",{label:"View Clients →", fn:"nav_clients"});
+      } else if(act==="update_client") {
+        const cl = resolveEntity(payload.client_name, data.clients);
+        if(!cl){ addBotMsg(`⚠️ Couldn't find client "${payload.client_name}".`,"error"); return; }
+        const updates = {};
+        if(payload.add_platforms?.length) updates.platforms = Array.from(new Set([...(cl.platforms||[]), ...payload.add_platforms]));
+        if(payload.industry) updates.industry = payload.industry;
+        if(payload.email) updates.email = payload.email;
+        if(payload.phone) updates.phone = payload.phone;
+        if(Object.keys(updates).length===0){ addBotMsg(`⚠️ Nothing to update for "${cl.name}".`,"error"); return; }
+        if(onDirectAction) await onDirectAction("update_client", {clientId:cl.id, updates});
+        addBotMsg(`✅ Updated **${cl.name}**${updates.platforms?` — platforms: ${updates.platforms.join(", ")}`:""}`,"success",{label:"View Clients →", fn:"nav_clients"});
       } else if(act==="create_lead") {
         const leadData={name:payload.name,email:payload.email||"",company:payload.company||"",source:payload.source||"manual",status:"new",notes:payload.notes||""};
         if(onDirectAction) await onDirectAction("add_lead", leadData);
@@ -20723,6 +20750,7 @@ Return ONLY valid JSON (no markdown, no explanation):
                 if(type==="add_post")    await addPost(payload);
                 else if(type==="add_project") await addProject(payload);
                 else if(type==="add_client")  return await addClient(payload);
+                else if(type==="update_client") await updateClient(payload.clientId, payload.updates);
                 else if(type==="add_lead")    await addLead(payload);
                 else if(type==="add_invoice") await createInvoice(payload);
                 else if(type==="update_stage") {
@@ -21168,6 +21196,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       onDirectAction={async (actionType, payload) => {
         if(actionType==="add_post")    { await addPost(payload); }
         if(actionType==="add_client")  { await addClient(payload); }
+        if(actionType==="update_client") { await updateClient(payload.clientId, payload.updates); }
         if(actionType==="add_lead")    { addLead && addLead(payload); }
         if(actionType==="add_invoice") { await createInvoice(payload); }
         if(actionType==="add_project") {
