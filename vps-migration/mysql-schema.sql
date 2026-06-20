@@ -542,6 +542,17 @@ CREATE TABLE IF NOT EXISTS email_logs (
 ) ENGINE=InnoDB;
 
 -- ----------------------------------------------------------------
+-- PUSH SUBSCRIPTIONS (Web Push — task-assignment alerts, works closed)
+-- ----------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  user_email VARCHAR(255) NOT NULL,
+  endpoint VARCHAR(512) NOT NULL, p256dh TEXT NOT NULL, auth TEXT NOT NULL,
+  UNIQUE KEY uq_push_subscriptions_endpoint (endpoint)
+) ENGINE=InnoDB;
+
+-- ----------------------------------------------------------------
 -- ACTIVITY LOGS
 -- ----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS activity_logs (
@@ -629,3 +640,4 @@ CREATE INDEX idx_notifications_recipient ON notifications(recipient_email(191));
 CREATE INDEX idx_integration_logs_integration_id ON integration_logs(integration_id);
 CREATE INDEX idx_performance_logs_user_email ON performance_logs(user_email(191));
 CREATE INDEX idx_time_entries_user_email ON time_entries(user_email(191));
+CREATE INDEX idx_push_subscriptions_user_email ON push_subscriptions(user_email);

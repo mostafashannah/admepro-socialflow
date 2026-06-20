@@ -305,6 +305,7 @@ const SB_TABLE = {
   AgentRun:"agent_runs",
   SystemSession:"system_sessions",
   MonthlyBrief:"monthly_briefs",
+  PushSubscription:"push_subscriptions",
 };
 
 function sbTable(entityName) {
@@ -417,6 +418,9 @@ const AI_ENDPOINT      = window.location.origin + "/ai-proxy.php";
 const MAIL_ENDPOINT    = window.location.origin + "/mail.php";
 const WA_ENDPOINT      = window.location.origin + "/whatsapp.php";
 const PUBLISH_ENDPOINT = window.location.origin + "/social-publish.php";
+const PUSH_ENDPOINT    = window.location.origin + "/push-send.php";
+// Public VAPID key — safe to ship client-side (it's the public half of the keypair)
+const VAPID_PUBLIC_KEY = "BP4u689xtgg7Q_E3YcjEwe_V_Rsujj5kGHse4j3mADjIzHwdrrq5GSMxO6yIWhOam6ArtHTQCMTqSPKIsFkVNas";
 const AI_HEADERS = {"Content-Type":"application/json"};
 
 // ── Feature flags ──────────────────────────────────────────────
@@ -497,7 +501,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.87";
+const APP_VERSION = "beta 1.88";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -842,6 +846,56 @@ async function sendWhatsApp(to, body) {
     if(!r.ok) console.warn("[whatsapp] failed:", d);
     return r.ok;
   } catch(e) { return false; }
+}
+
+// ── Web Push: send a push notification to a user's stored subscription(s) ──
+async function sendPushNotification(toEmail, title, body, url) {
+  try {
+    const r = await fetch(PUSH_ENDPOINT, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ to_email: toEmail, title, body, url: url||window.location.origin }),
+    });
+    return r.ok;
+  } catch(e) { return false; }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for(let i=0; i<rawData.length; i++) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+
+// ── Web Push: register service worker + subscribe this device, save to backend ──
+async function setupPushSubscription(userEmail) {
+  if(!userEmail || !("serviceWorker" in navigator) || !("PushManager" in window)) return false;
+  try {
+    const reg = await navigator.serviceWorker.register("/service-worker.js");
+    let permission = Notification.permission;
+    if(permission === "default") permission = await Notification.requestPermission();
+    if(permission !== "granted") return false;
+    let sub = await reg.pushManager.getSubscription();
+    if(!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    }
+    const key = sub.toJSON();
+    // Avoid duplicate rows — only save if this exact endpoint isn't already stored
+    const already = await qe("PushSubscription", {endpoint: key.endpoint});
+    if(!already.entities?.length) {
+      await ce("PushSubscription", [{
+        user_email: userEmail,
+        endpoint: key.endpoint,
+        p256dh: key.keys?.p256dh||"",
+        auth: key.keys?.auth||"",
+      }]);
+    }
+    return true;
+  } catch(e) { console.warn("[push] setup failed:", e); return false; }
 }
 
 async function publishPost(post, integration) {
@@ -19128,6 +19182,16 @@ function App() {
     try{ localStorage.removeItem("sf_selected_project"); }catch(e){}
   },[]);
 
+  // Web Push: subscribe this device once logged in, and re-subscribe whenever
+  // the app gets installed to the home screen (task-assignment alerts need this).
+  React.useEffect(()=>{
+    if(!currentUser?.email) return;
+    setupPushSubscription(currentUser.email);
+    const onInstalled = () => setupPushSubscription(currentUser.email);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => window.removeEventListener("appinstalled", onInstalled);
+  },[currentUser?.email]);
+
   const setPage = (p) => {
     setPage_(p);
     try{ localStorage.setItem("sf_page",p); }catch(e){}
@@ -19429,6 +19493,12 @@ function App() {
           EMAIL_TEMPLATES.taskAssigned(assignee.name, postData.title, project?.title||postData.project_name, postData.client_name, postData.scheduled_date, currentUser?.name),
           prefs, assignee.whatsapp_number||null
         ).catch(()=>{});
+        if(!prefs.all_disabled && prefs.task_assigned !== false) {
+          sendPushNotification(assignee.email, "New task assigned",
+            `${postData.title}${postData.client_name?` — ${postData.client_name}`:""}`,
+            window.location.origin+"/#tasks"
+          ).catch(()=>{});
+        }
         // Also notify project managers
         if(project?.team_members) {
           project.team_members.filter(e=>e!==assignee.email&&e!==currentUser?.email).forEach(email=>{

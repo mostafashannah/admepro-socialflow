@@ -30,3 +30,11 @@ define('STORAGE_PUBLIC_URL', 'https://yourdomain.com/storage/public');
 // GitHub webhook auto-deploy (webhook.php) — secret shared with the GitHub
 // repo's webhook settings. Generate with: openssl rand -hex 32
 define('GITHUB_WEBHOOK_SECRET', 'CHANGE_ME_TO_A_LONG_RANDOM_STRING');
+
+// Web Push (push-send.php) — VAPID keypair, identifies this server to push
+// services (FCM/Mozilla autopush) so it can send notifications even when the
+// app is fully closed. Generate with: npx web-push generate-vapid-keys
+// The public key must also be copied into VAPID_PUBLIC_KEY in app.jsx.
+define('VAPID_PUBLIC_KEY',  'YOUR_VAPID_PUBLIC_KEY');
+define('VAPID_PRIVATE_KEY', 'YOUR_VAPID_PRIVATE_KEY');
+define('VAPID_SUBJECT',     'mailto:admin@admepro.com');
