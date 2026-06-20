@@ -501,7 +501,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.92";
+const APP_VERSION = "beta 1.93";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19365,13 +19365,17 @@ function App() {
       if(settR.entities.length)  { const s=settR.entities[0]; setAppSettings(s); if(s.primary_color) setAccentColor(s.primary_color); }
       if(brandR.entities.length) { const b=brandR.entities[0]; setBrandingAssets(b); if(b.primary_color) setAccentColor(b.primary_color); }
 
-      const pick = (r,fb) => r.entities.length ? r.entities : fb;
+      // A fetch that *succeeded* with zero rows is real data (e.g. everything
+      // was deleted) and must be trusted — only a *rejected* fetch should fall
+      // back to the previous/seed state. Operate on the raw settled result so
+      // "fulfilled but empty" and "rejected" aren't conflated.
+      const pick = (item,fb) => item.status==="fulfilled" ? (item.value?.entities||[]) : fb;
       setData(d=>({...d,
-        team:          pick(teamR,   d.team),
-        posts:         pick(postR,   d.posts),
-        projects:      pick(projR,   d.projects),
-        clients:       pick(clientR, d.clients),
-        notifications: pick(notifR,  d.notifications),
+        team:          pick(wave1[0], d.team),
+        posts:         pick(wave1[1], d.posts),
+        projects:      pick(wave1[2], d.projects),
+        clients:       pick(wave1[3], d.clients),
+        notifications: pick(wave1[6], d.notifications),
       }));
       if(!silent) setLoading(false); // show app now — wave 2 loads silently in background
 
@@ -19416,48 +19420,46 @@ function App() {
         qe("SystemSession",{},"-login_at",200),     // 36
         qe("MonthlyBrief",{},"-created_at",200),   // 37
       ]);
-      const g2 = i => wave2[i].status==="fulfilled" ? wave2[i].value : {entities:[]};
-
-      if(g2(13).entities.length) setEmailSettings(g2(13).entities[0]);
+      if(wave2[13].status==="fulfilled" && wave2[13].value?.entities?.length) setEmailSettings(wave2[13].value.entities[0]);
 
       setData(d=>({...d,
-        comments:              pick(g2(0),  d.comments),
-        assets:                pick(g2(1),  d.assets),
-        timelogs:              pick(g2(2),  d.timelogs),
-        templates:             pick(g2(3),  d.templates),
-        quotes:                pick(g2(4),  d.quotes),
-        leads:                 pick(g2(5),  d.leads),
-        leadActivities:        pick(g2(6),  d.leadActivities),
-        invoices:              pick(g2(7),  d.invoices),
-        payments:              pick(g2(8),  d.payments),
-        integrations:          pick(g2(9),  d.integrations),
-        integrationLogs:       pick(g2(10), d.integrationLogs),
-        subscriptions:         pick(g2(11), d.subscriptions),
-        subscriptionPayments:  pick(g2(12), d.subscriptionPayments),
-        clientKnowledge:       pick(g2(14), d.clientKnowledge),
-        clientDocuments:       pick(g2(15), d.clientDocuments),
-        perfLogs:              pick(g2(16), d.perfLogs),
-        aiInsights:            pick(g2(17), d.aiInsights),
-        timeEntries:           pick(g2(18), d.timeEntries),
-        scheduleOverrides:     pick(g2(19), d.scheduleOverrides),
-        clientContracts:       pick(g2(20), d.clientContracts||[]),
-        invitations:           pick(g2(21), d.invitations||[]),
-        accessRequests:        pick(g2(22), d.accessRequests||[]),
-        clientUsers:           pick(g2(23), d.clientUsers||[]),
-        clientIntelligence:    pick(g2(24), d.clientIntelligence||[]),
-        contentPillars:        pick(g2(25), d.contentPillars||[]),
-        emailLogs:             pick(g2(26), d.emailLogs||[]),
-        activityLogs:          pick(g2(27), d.activityLogs||[]),
-        notifPrefs:            pick(g2(28), d.notifPrefs||[]),
-        tasks:                 pick(g2(29), d.tasks||[]),
-        clientMemory:          pick(g2(30), d.clientMemory||[]),
-        generatedLeads:        pick(g2(31), d.generatedLeads||[]),
-        leadAgentConfig:       pick(g2(32), d.leadAgentConfig||[]),
-        agentConfigs:          pick(g2(33), d.agentConfigs||[]),
-        agentLogs:             pick(g2(34), d.agentLogs||[]),
-        agentRuns:             pick(g2(35), d.agentRuns||[]),
-        systemSessions:        pick(g2(36), d.systemSessions||[]),
-        monthlyBriefs:         pick(g2(37), d.monthlyBriefs||[]),
+        comments:              pick(wave2[0],  d.comments),
+        assets:                pick(wave2[1],  d.assets),
+        timelogs:              pick(wave2[2],  d.timelogs),
+        templates:             pick(wave2[3],  d.templates),
+        quotes:                pick(wave2[4],  d.quotes),
+        leads:                 pick(wave2[5],  d.leads),
+        leadActivities:        pick(wave2[6],  d.leadActivities),
+        invoices:              pick(wave2[7],  d.invoices),
+        payments:              pick(wave2[8],  d.payments),
+        integrations:          pick(wave2[9],  d.integrations),
+        integrationLogs:       pick(wave2[10], d.integrationLogs),
+        subscriptions:         pick(wave2[11], d.subscriptions),
+        subscriptionPayments:  pick(wave2[12], d.subscriptionPayments),
+        clientKnowledge:       pick(wave2[14], d.clientKnowledge),
+        clientDocuments:       pick(wave2[15], d.clientDocuments),
+        perfLogs:              pick(wave2[16], d.perfLogs),
+        aiInsights:            pick(wave2[17], d.aiInsights),
+        timeEntries:           pick(wave2[18], d.timeEntries),
+        scheduleOverrides:     pick(wave2[19], d.scheduleOverrides),
+        clientContracts:       pick(wave2[20], d.clientContracts||[]),
+        invitations:           pick(wave2[21], d.invitations||[]),
+        accessRequests:        pick(wave2[22], d.accessRequests||[]),
+        clientUsers:           pick(wave2[23], d.clientUsers||[]),
+        clientIntelligence:    pick(wave2[24], d.clientIntelligence||[]),
+        contentPillars:        pick(wave2[25], d.contentPillars||[]),
+        emailLogs:             pick(wave2[26], d.emailLogs||[]),
+        activityLogs:          pick(wave2[27], d.activityLogs||[]),
+        notifPrefs:            pick(wave2[28], d.notifPrefs||[]),
+        tasks:                 pick(wave2[29], d.tasks||[]),
+        clientMemory:          pick(wave2[30], d.clientMemory||[]),
+        generatedLeads:        pick(wave2[31], d.generatedLeads||[]),
+        leadAgentConfig:       pick(wave2[32], d.leadAgentConfig||[]),
+        agentConfigs:          pick(wave2[33], d.agentConfigs||[]),
+        agentLogs:             pick(wave2[34], d.agentLogs||[]),
+        agentRuns:             pick(wave2[35], d.agentRuns||[]),
+        systemSessions:        pick(wave2[36], d.systemSessions||[]),
+        monthlyBriefs:         pick(wave2[37], d.monthlyBriefs||[]),
       }));
     }
     loadAllDataRef.current = load;
