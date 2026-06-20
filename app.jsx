@@ -497,7 +497,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.84";
+const APP_VERSION = "beta 1.85";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16424,10 +16424,10 @@ RULES:
         addBotMsg(`🗑️ Task **"${post.title}"** deleted.`,"success");
       }
       else if(act==="delete_project") {
-        const proj=(data.projects||[]).find(p=>p.id===payload.project_id||(p.name||"").toLowerCase().includes((payload.project_name||"").toLowerCase()));
+        const proj=(data.projects||[]).find(p=>p.id===payload.project_id||(p.title||"").toLowerCase().includes((payload.project_name||"").toLowerCase()));
         if(!proj){addBotMsg(`⚠️ Couldn't find project "${payload.project_name||payload.project_id}".`,"error");return;}
         if(onDirectAction) await onDirectAction("delete_project",{projectId:proj.id});
-        addBotMsg(`🗑️ Project **"${proj.name}"** and its tasks deleted.`,"success");
+        addBotMsg(`🗑️ Project **"${proj.title}"** and its tasks deleted.`,"success");
       }
       else if(act==="delete_client") {
         const cl=(data.clients||[]).find(c=>c.id===payload.client_id||(c.name||"").toLowerCase().includes((payload.client_name||"").toLowerCase()));
@@ -17937,10 +17937,10 @@ RULES:
         if(onDirectAction) await onDirectAction("delete_post",{postId:post.id});
         addBotMsg(`🗑️ Task **"${post.title}"** deleted.`,"success");
       } else if(act==="delete_project") {
-        const proj=(data.projects||[]).find(p=>p.id===payload.project_id||(p.name||"").toLowerCase().includes((payload.project_name||"").toLowerCase()));
+        const proj=(data.projects||[]).find(p=>p.id===payload.project_id||(p.title||"").toLowerCase().includes((payload.project_name||"").toLowerCase()));
         if(!proj){addBotMsg(`⚠️ Couldn't find project "${payload.project_name||payload.project_id}".`,"error");return;}
         if(onDirectAction) await onDirectAction("delete_project",{projectId:proj.id});
-        addBotMsg(`🗑️ Project **"${proj.name}"** and its tasks deleted.`,"success");
+        addBotMsg(`🗑️ Project **"${proj.title}"** and its tasks deleted.`,"success");
       } else if(act==="delete_client") {
         const cl=(data.clients||[]).find(c=>c.id===payload.client_id||(c.name||"").toLowerCase().includes((payload.client_name||"").toLowerCase()));
         if(!cl){addBotMsg(`⚠️ Couldn't find client "${payload.client_name||payload.client_id}".`,"error");return;}
