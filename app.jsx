@@ -497,7 +497,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.85";
+const APP_VERSION = "beta 1.86";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -15524,7 +15524,10 @@ const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId) => {
   const isFocused = !!focusClientId;
   const clientBlocks = clientsToShow.map(c=>{
     const cProj = allProj.filter(p=>p.client_id===c.id||p.client_name===c.name);
-    const cPost = allPosts.filter(p=>cProj.some(pr=>pr.id===p.project_id));
+    // Match posts by their own client_id/client_name first — posts can be linked
+    // straight to a client without a project_id, so relying on project linkage
+    // alone silently hides them from Pro.
+    const cPost = allPosts.filter(p=>p.client_id===c.id||p.client_name===c.name||cProj.some(pr=>pr.id===p.project_id));
     const ck    = (data?.clientKnowledge||[]).find(k=>k.client_id===c.id);
     const ci    = (data?.clientIntelligence||[]).find(i=>i.client_id===c.id);
     const mem   = formatClientMemory(c.id, data?.clientMemory||[]);
@@ -15637,6 +15640,9 @@ ${pendAppr.slice(0,10).map(p=>`- "${p.title}" | Client: ${p.client_name||"?"} | 
 
 ═══ MY TASKS (${myTasks.length}) ═══
 ${myTasks.slice(0,10).map(p=>`- "${p.title}" | Client: ${p.client_name||"?"} | Stage: ${p.stage} | Due: ${p.scheduled_date||"no date"}`).join("\n")||"None"}
+
+═══ ALL POSTS & TASKS IN THE SYSTEM (${allPosts.length}) — you know every one of these, including ones with no client/project linked. Never claim a post doesn't exist if it's on this list. ═══
+${allPosts.slice(0,50).map(p=>`- "${p.title}" | Client: ${p.client_name||"(none — not linked to a client)"} | Platform: ${p.platform||"?"} | Stage: ${p.stage} | Assigned: ${p.assigned_to||"unassigned"}`).join("\n")||"No posts/tasks yet."}
 
 ═══ RULES ═══
 1. ANSWER EVERYTHING directly. If asked "what tasks are overdue?" — list them. If asked "how many clients?" — tell them. Use the live data above.

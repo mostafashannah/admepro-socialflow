@@ -54,7 +54,7 @@ function speedTokens(speed,base){if(speed==="low")return Math.max(300,Math.round
 function logActivity(action,category,details="",status="success",errorMsg="",user="system"){const entry={action,category,details,status,error_message:errorMsg,performed_by:user,performed_at:new Date().toISOString()};ce("ActivityLog",[entry]).then(({entities})=>{const saved=entities===null||entities===void 0?void 0:entities[0];// Push the freshly-saved row (with real id) into the live UI immediately,
 // otherwise System Log only reflects what was loaded at page load.
 if(saved&&!saved._saveError)window.dispatchEvent(new CustomEvent("sf:activitylog",{detail:saved}));}).catch(()=>{});}// ── Email HTML templates ─────────────────────────────────────────
-const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 1.85";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 1.86";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
 <tr><td align="center">
@@ -1490,7 +1490,10 @@ const allPosts=(data===null||data===void 0?void 0:data.posts)||[];const allProj=
 const clientsToShow=focusClientId?allClients.filter(c=>c.id===focusClientId):allClients.slice(0,12);// limit to 12 detailed blocks max to save tokens
 // Lightweight roster of EVERY client name — always included so Pro knows who
 // exists even when there are more than 12 (detailed blocks are capped above).
-const allClientNames=allClients.map(c=>c.name).filter(Boolean).join(", ");const isFocused=!!focusClientId;const clientBlocks=clientsToShow.map(c=>{const cProj=allProj.filter(p=>p.client_id===c.id||p.client_name===c.name);const cPost=allPosts.filter(p=>cProj.some(pr=>pr.id===p.project_id));const ck=((data===null||data===void 0?void 0:data.clientKnowledge)||[]).find(k=>k.client_id===c.id);const ci=((data===null||data===void 0?void 0:data.clientIntelligence)||[]).find(i=>i.client_id===c.id);const mem=formatClientMemory(c.id,(data===null||data===void 0?void 0:data.clientMemory)||[]);// When a client is focused, dump deep memory; otherwise keep brief
+const allClientNames=allClients.map(c=>c.name).filter(Boolean).join(", ");const isFocused=!!focusClientId;const clientBlocks=clientsToShow.map(c=>{const cProj=allProj.filter(p=>p.client_id===c.id||p.client_name===c.name);// Match posts by their own client_id/client_name first — posts can be linked
+// straight to a client without a project_id, so relying on project linkage
+// alone silently hides them from Pro.
+const cPost=allPosts.filter(p=>p.client_id===c.id||p.client_name===c.name||cProj.some(pr=>pr.id===p.project_id));const ck=((data===null||data===void 0?void 0:data.clientKnowledge)||[]).find(k=>k.client_id===c.id);const ci=((data===null||data===void 0?void 0:data.clientIntelligence)||[]).find(i=>i.client_id===c.id);const mem=formatClientMemory(c.id,(data===null||data===void 0?void 0:data.clientMemory)||[]);// When a client is focused, dump deep memory; otherwise keep brief
 const memCap=isFocused?3000:400;const stageCounts=["planning","content_creation","design","internal_review","client_approval","scheduled","published","rejected"].map(s=>`${s.replace(/_/g," ")}:${cPost.filter(p=>p.stage===s).length}`).filter(s=>!s.endsWith(":0")).join(", ");const recentPosts=cPost.slice(0,8).map(p=>`  - "${p.title}" [${p.platform||"?"}/${p.post_type||"?"}] stage:${p.stage}${p.caption?` caption:"${(p.caption||"").slice(0,100)}"`:""}`).join("\n");// Parse fields that may be JSON-strings or newline-separated strings
 const parseList=v=>{if(!v)return[];if(Array.isArray(v))return v;if(typeof v==="string"){const s=v.trim();if(s.startsWith("[")){try{const p=JSON.parse(s);return Array.isArray(p)?p:[];}catch{}}return s.split(/\n+|\s*\|\s*/).map(x=>x.trim()).filter(Boolean);}return[];};const ckKW=parseList(ck===null||ck===void 0?void 0:ck.keywords);const ckPri=parseList(ck===null||ck===void 0?void 0:ck.priorities);const ckSk=parseList(ck===null||ck===void 0?void 0:ck.skills).map(s=>typeof s==="object"?s.name||"":s).filter(Boolean);const ckDos=parseList(ck===null||ck===void 0?void 0:ck.dos);const ckDon=parseList(ck===null||ck===void 0?void 0:ck.donts);const ckProd=parseList(ck===null||ck===void 0?void 0:ck.products);const ckKM=parseList(ck===null||ck===void 0?void 0:ck.key_messages);const ckHT=parseList(ck===null||ck===void 0?void 0:ck.hashtags);const ciDos=parseList(ci===null||ci===void 0?void 0:ci.dos);const ciDon=parseList(ci===null||ci===void 0?void 0:ci.donts);const ciComp=parseList(ci===null||ci===void 0?void 0:ci.competitors);const knowledgeBlock=ck?`▼ KNOWLEDGE PROFILE (treat as the brand brief — write content that lives up to this):
   • Summary: ${ck.summary||"-"}
@@ -1554,6 +1557,9 @@ ${pendAppr.slice(0,10).map(p=>`- "${p.title}" | Client: ${p.client_name||"?"} | 
 
 ═══ MY TASKS (${myTasks.length}) ═══
 ${myTasks.slice(0,10).map(p=>`- "${p.title}" | Client: ${p.client_name||"?"} | Stage: ${p.stage} | Due: ${p.scheduled_date||"no date"}`).join("\n")||"None"}
+
+═══ ALL POSTS & TASKS IN THE SYSTEM (${allPosts.length}) — you know every one of these, including ones with no client/project linked. Never claim a post doesn't exist if it's on this list. ═══
+${allPosts.slice(0,50).map(p=>`- "${p.title}" | Client: ${p.client_name||"(none — not linked to a client)"} | Platform: ${p.platform||"?"} | Stage: ${p.stage} | Assigned: ${p.assigned_to||"unassigned"}`).join("\n")||"No posts/tasks yet."}
 
 ═══ RULES ═══
 1. ANSWER EVERYTHING directly. If asked "what tasks are overdue?" — list them. If asked "how many clients?" — tell them. Use the live data above.
