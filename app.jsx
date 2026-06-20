@@ -459,7 +459,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.77";
+const APP_VERSION = "beta 1.78";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -15542,6 +15542,7 @@ ${myTasks.slice(0,10).map(p=>`- "${p.title}" | Client: ${p.client_name||"?"} | S
 6. If info is missing for an action, ask for it conversationally — don't guess randomly.
 7. Be conversational, warm, professional. Use bullet points or bold for clarity when listing data.
 8. Response length: match the question. Short question = short answer. "List all overdue" = full list.
+9. You have a web_search tool. ONLY use it when the user EXPLICITLY asks you to search/look up/check online/google something (e.g. "search the internet for...", "look up...", "what's trending on..."). NEVER use it on your own initiative for ordinary questions you can already answer from the data above — searching costs real money per use, so it must be user-requested every time.
 ${user?.role==="client" ? `
 CLIENT MODE: You are speaking with a client. NEVER reveal: internal stage names, team member names, workflow steps.
 For post status say: "In progress", "Ready for your review", "Approved — being finalized", "Revision in progress".
@@ -16422,6 +16423,7 @@ RULES:
           max_tokens: 6000,
           system: sysPrompt,
           messages: apiHistory,
+          tools: [{type:"web_search_20250305", name:"web_search", max_uses:3}],
         }),
       });
       const d = await res.json();
@@ -18125,7 +18127,7 @@ RULES:
 
       const res = await fetch(AI_ENDPOINT,{
         method:"POST", headers:AI_HEADERS,
-        body: JSON.stringify({model:"claude-haiku-4-5-20251001", max_tokens:16000, system:sysPrompt, messages:apiHistory}),
+        body: JSON.stringify({model:"claude-haiku-4-5-20251001", max_tokens:16000, system:sysPrompt, messages:apiHistory, tools:[{type:"web_search_20250305", name:"web_search", max_uses:3}]}),
       });
       const d = await res.json();
       if(d.error) throw new Error(d.error.message||"API error");
