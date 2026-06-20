@@ -40,45 +40,45 @@ const checkInlineImageSize = (file) => {
 };
 
 const ROLES = {
-  admin:           { label: "Admin",           color: "#d90b2c" },
+  admin: { label: "Admin", color: "#d90b2c" },
   account_manager: { label: "Account Manager", color: "#3b82f6" },
   content_creator: { label: "Content Creator", color: "#8b5cf6" },
   graphic_designer:{ label: "Graphic Designer",color: "#f59e0b" },
-  accountant:      { label: "Accountant",      color: "#8b5cf6" },
-  client_admin:    { label: "Client Admin",    color: "#0ea5e9" },
-  client_member:   { label: "Client Member",   color: "#64748b" },
-  client:          { label: "Client",          color: "#10b981" },
+  accountant: { label: "Accountant", color: "#8b5cf6" },
+  client_admin: { label: "Client Admin", color: "#0ea5e9" },
+  client_member: { label: "Client Member", color: "#64748b" },
+  client: { label: "Client", color: "#10b981" },
 };
 
 const CLIENT_ROLES = ["client_admin","client_member"];
 const INTERNAL_ROLES = ["admin","account_manager","content_creator","graphic_designer","accountant"];
 
 const PROJECT_TYPES = [
-  { id:"social_calendar", label:"Social Media Calendar", icon:"📅", color:"#6366f1", hasPlatforms:true, hasPostingDates:true },
-  { id:"event",           label:"Event",                 icon:"🎪", color:"#f59e0b", hasPlatforms:false, hasPostingDates:false },
-  { id:"branding",        label:"Branding",              icon:"✨", color:"#8b5cf6", hasPlatforms:false, hasPostingDates:false },
-  { id:"video_editing",   label:"Video Editing",         icon:"✂️", color:"#ef4444", hasPlatforms:false, hasPostingDates:false },
-  { id:"video_production",label:"Video Production",      icon:"🎬", color:"#ec4899", hasPlatforms:false, hasPostingDates:false },
-  { id:"creative_concept",label:"Creative Concept",      icon:"💡", color:"#14b8a6", hasPlatforms:false, hasPostingDates:false },
-  { id:"campaign",        label:"Campaign",              icon:"🚀", color:"#f97316", hasPlatforms:true,  hasPostingDates:true },
+  { id:"social_calendar", label:"Social Media Calendar", icon:"", color:"#6366f1", hasPlatforms:true, hasPostingDates:true },
+  { id:"event", label:"Event", icon:"", color:"#f59e0b", hasPlatforms:false, hasPostingDates:false },
+  { id:"branding", label:"Branding", icon:"", color:"#8b5cf6", hasPlatforms:false, hasPostingDates:false },
+  { id:"video_editing", label:"Video Editing", icon:"", color:"#ef4444", hasPlatforms:false, hasPostingDates:false },
+  { id:"video_production",label:"Video Production", icon:"", color:"#ec4899", hasPlatforms:false, hasPostingDates:false },
+  { id:"creative_concept",label:"Creative Concept", icon:"", color:"#14b8a6", hasPlatforms:false, hasPostingDates:false },
+  { id:"campaign", label:"Campaign", icon:"", color:"#f97316", hasPlatforms:true, hasPostingDates:true },
 ];
 
-const PLATFORM_ICONS = {instagram:"📸",facebook:"👥",tiktok:"🎵",linkedin:"💼",twitter:"🐦"};
+const PLATFORM_ICONS = {instagram:"",facebook:"",tiktok:"",linkedin:"",twitter:""};
 const WORKFLOW_STAGES = ["content","design","review","approval","done"];
 
 // Smart scheduler: distributes posts across date range using client intelligence
 function smartSchedule(posts, startDate, endDate, intelligence) {
   if(!startDate||!endDate||!posts.length) return posts;
   const start = new Date(startDate);
-  const end   = new Date(endDate);
+  const end = new Date(endDate);
   const avoidWeekends = intelligence?.avoid_weekends||false;
   const bestDays = intelligence?.best_posting_days||[];
   const freq = intelligence?.posting_frequency||3;
   const platformTimes = {
     instagram: intelligence?.instagram_best_time||"18:00",
-    facebook:  intelligence?.facebook_best_time||"12:00",
-    tiktok:    intelligence?.tiktok_best_time||"19:00",
-    linkedin:  intelligence?.linkedin_best_time||"09:00",
+    facebook: intelligence?.facebook_best_time||"12:00",
+    tiktok: intelligence?.tiktok_best_time||"19:00",
+    linkedin: intelligence?.linkedin_best_time||"09:00",
   };
   // Build list of valid posting days
   const validDays = [];
@@ -107,15 +107,15 @@ function smartSchedule(posts, startDate, endDate, intelligence) {
 }
 
 const STAGES = [
-  { key: "planning",         label: "Brief",           color: "#6366f1", icon: "◆" },
-  { key: "content_creation", label: "Content",         color: "#3b82f6", icon: "✏" },
-  { key: "design",           label: "Design",          color: "#8b5cf6", icon: "🎨" },
-  { key: "internal_review",  label: "Review",          color: "#f59e0b", icon: "👁" },
-  { key: "client_approval",  label: "Client Approval", color: "#ec4899", icon: "✓" },
-  { key: "scheduled",        label: "Scheduled",       color: "#06b6d4", icon: "📅" },
-  { key: "published",        label: "Published",       color: "#10b981", icon: "✅" },
-  { key: "on_hold",          label: "On Hold",         color: "#f97316", icon: "⏸" },
-  { key: "rejected",         label: "Rejected",        color: "#ef4444", icon: "✕" },
+  { key: "planning", label: "Brief", color: "#6366f1", icon: "◆" },
+  { key: "content_creation", label: "Content", color: "#3b82f6", icon: "" },
+  { key: "design", label: "Design", color: "#8b5cf6", icon: "" },
+  { key: "internal_review", label: "Review", color: "#f59e0b", icon: "" },
+  { key: "client_approval", label: "Client Approval", color: "#ec4899", icon: "✓" },
+  { key: "scheduled", label: "Scheduled", color: "#06b6d4", icon: "" },
+  { key: "published", label: "Published", color: "#10b981", icon: "" },
+  { key: "on_hold", label: "On Hold", color: "#f97316", icon: "" },
+  { key: "rejected", label: "Rejected", color: "#ef4444", icon: "✕" },
 ];
 
 const PLATFORMS = ["instagram","facebook","linkedin","tiktok","twitter"];
@@ -123,7 +123,7 @@ const POST_TYPES = ["image","video","carousel","story","reel"];
 const PRIORITIES = ["low","medium","high","urgent"];
 
 const PLT_COLOR = { instagram:"#e1306c", facebook:"#1877f2", linkedin:"#0a66c2", tiktok:"#69c9d0", twitter:"#1da1f2" };
-const PLT_ICON  = { instagram:"IG", facebook:"FB", linkedin:"IN", tiktok:"TK", twitter:"X" };
+const PLT_ICON = { instagram:"IG", facebook:"FB", linkedin:"IN", tiktok:"TK", twitter:"X" };
 const PRI_COLOR = { low:"#6b7280", medium:"#3b82f6", high:"#f59e0b", urgent:"#ef4444" };
 const STAGE_MAP = Object.fromEntries(STAGES.map(s=>[s.key,s]));
 
@@ -132,8 +132,8 @@ const POST_TYPE_DURATIONS = {
   social_post: 60, story_reel: 120, caption_copy: 45, graphic_design: 180,
   campaign: 240, ad_creative: 120, blog: 240,
 };
-const WORKING_START = 9;  // 9am
-const WORKING_END = 18;   // 6pm
+const WORKING_START = 9; // 9am
+const WORKING_END = 18; // 6pm
 const WORKING_MINS = (WORKING_END - WORKING_START) * 60; // 540 mins
 
 // ── Smart Schedule Engine ──────────────────────────────────────
@@ -189,10 +189,10 @@ function renderCommentText(text) {
 // WORKFLOW ASSIGNMENT SYSTEM
 // ════════════════════════════════════════════════════════════════
 const WORKFLOW_ASSIGNMENTS = {
-  planning: { role: "account_manager", label: "Account Manager", icon: "👤" },
-  content_creation: { role: "content_creator", label: "Content Creator", icon: "✍️" },
-  design: { role: "graphic_designer", label: "Graphic Designer", icon: "🎨" },
-  internal_review: { role: "admin", label: "Admin / Manager", icon: "👁" },
+  planning: { role: "account_manager", label: "Account Manager", icon: "" },
+  content_creation: { role: "content_creator", label: "Content Creator", icon: "" },
+  design: { role: "graphic_designer", label: "Graphic Designer", icon: "" },
+  internal_review: { role: "admin", label: "Admin / Manager", icon: "" },
   client_approval: { role: "account_manager", label: "Account Manager", icon: "✓" },
 };
 
@@ -206,30 +206,30 @@ const getAssigneeForStage = (stage, teamMembers) => {
 // TASK TYPES & WORKFLOW
 // ════════════════════════════════════════════════════════════════
 const TASK_TYPES = [
-  { id:"social_post",       label:"Social Media Post",    category:"Content",  icon:"📱", description:"Single post for any platform" },
-  { id:"story_reel",        label:"Story / Reel",          category:"Content",  icon:"🎬", description:"Short-form vertical video content" },
-  { id:"carousel",          label:"Carousel Post",         category:"Content",  icon:"🖼",  description:"Multi-image carousel post" },
-  { id:"caption_copy",      label:"Caption / Copywriting", category:"Content",  icon:"✍️",  description:"Written captions and copy" },
-  { id:"graphic_design",    label:"Graphic Design",        category:"Design",   icon:"🎨", description:"Custom branded visual" },
-  { id:"video_production",  label:"Video Production",      category:"Video",    icon:"🎥", description:"Full video production" },
-  { id:"ad_creative",       label:"Ad Creative",           category:"Ads",      icon:"📢", description:"Paid advertising creative" },
-  { id:"content_calendar",  label:"Content Calendar",      category:"Strategy", icon:"📅", description:"Monthly content planning" },
-  { id:"brand_kit",         label:"Brand Kit Update",      category:"Design",   icon:"🎯", description:"Brand assets and guidelines" },
-  { id:"monthly_report",    label:"Monthly Report",        category:"Strategy", icon:"📊", description:"Performance analytics report" },
+  { id:"social_post", label:"Social Media Post", category:"Content", icon:"", description:"Single post for any platform" },
+  { id:"story_reel", label:"Story / Reel", category:"Content", icon:"", description:"Short-form vertical video content" },
+  { id:"carousel", label:"Carousel Post", category:"Content", icon:"", description:"Multi-image carousel post" },
+  { id:"caption_copy", label:"Caption / Copywriting", category:"Content", icon:"", description:"Written captions and copy" },
+  { id:"graphic_design", label:"Graphic Design", category:"Design", icon:"", description:"Custom branded visual" },
+  { id:"video_production", label:"Video Production", category:"Video", icon:"", description:"Full video production" },
+  { id:"ad_creative", label:"Ad Creative", category:"Ads", icon:"", description:"Paid advertising creative" },
+  { id:"content_calendar", label:"Content Calendar", category:"Strategy", icon:"", description:"Monthly content planning" },
+  { id:"brand_kit", label:"Brand Kit Update", category:"Design", icon:"", description:"Brand assets and guidelines" },
+  { id:"monthly_report", label:"Monthly Report", category:"Strategy", icon:"", description:"Performance analytics report" },
 ];
 const TASK_TYPE_MAP = Object.fromEntries(TASK_TYPES.map(t=>[t.id,t]));
 
 const TASK_WORKFLOW = [
-  { key:"new_request",               label:"New Request",           clientLabel:"Submitted",            color:"#6366f1" },
-  { key:"under_review",              label:"Under Review",          clientLabel:"In Progress",          color:"#f59e0b" },
-  { key:"in_progress",               label:"In Progress",           clientLabel:"In Progress",          color:"#3b82f6" },
-  { key:"content_creation",          label:"Content Creation",      clientLabel:"In Progress",          color:"#8b5cf6" },
-  { key:"design",                    label:"Design",                clientLabel:"In Progress",          color:"#ec4899" },
-  { key:"internal_review",           label:"Internal Review",       clientLabel:"In Progress",          color:"#06b6d4" },
-  { key:"ready_for_client_approval", label:"Ready for Approval",    clientLabel:"Waiting for Approval", color:"#f97316" },
-  { key:"approved",                  label:"Approved",              clientLabel:"Approved",             color:"#10b981" },
-  { key:"changes_requested",         label:"Changes Requested",     clientLabel:"Changes Requested",    color:"#ef4444" },
-  { key:"completed",                 label:"Completed",             clientLabel:"Completed",            color:"#10b981" },
+  { key:"new_request", label:"New Request", clientLabel:"Submitted", color:"#6366f1" },
+  { key:"under_review", label:"Under Review", clientLabel:"In Progress", color:"#f59e0b" },
+  { key:"in_progress", label:"In Progress", clientLabel:"In Progress", color:"#3b82f6" },
+  { key:"content_creation", label:"Content Creation", clientLabel:"In Progress", color:"#8b5cf6" },
+  { key:"design", label:"Design", clientLabel:"In Progress", color:"#ec4899" },
+  { key:"internal_review", label:"Internal Review", clientLabel:"In Progress", color:"#06b6d4" },
+  { key:"ready_for_client_approval", label:"Ready for Approval", clientLabel:"Waiting for Approval", color:"#f97316" },
+  { key:"approved", label:"Approved", clientLabel:"Approved", color:"#10b981" },
+  { key:"changes_requested", label:"Changes Requested", clientLabel:"Changes Requested", color:"#ef4444" },
+  { key:"completed", label:"Completed", clientLabel:"Completed", color:"#10b981" },
 ];
 const TASK_WORKFLOW_MAP = Object.fromEntries(TASK_WORKFLOW.map(s=>[s.key,s]));
 
@@ -414,11 +414,11 @@ async function de(entityName, id) {
   } catch(e) { return false; }
 }
 // ── AI endpoint — always use proxy on server ──
-const AI_ENDPOINT      = window.location.origin + "/ai-proxy.php";
-const MAIL_ENDPOINT    = window.location.origin + "/mail.php";
-const WA_ENDPOINT      = window.location.origin + "/whatsapp.php";
+const AI_ENDPOINT = window.location.origin + "/ai-proxy.php";
+const MAIL_ENDPOINT = window.location.origin + "/mail.php";
+const WA_ENDPOINT = window.location.origin + "/whatsapp.php";
 const PUBLISH_ENDPOINT = window.location.origin + "/social-publish.php";
-const PUSH_ENDPOINT    = window.location.origin + "/push-send.php";
+const PUSH_ENDPOINT = window.location.origin + "/push-send.php";
 // Public VAPID key — safe to ship client-side (it's the public half of the keypair)
 const VAPID_PUBLIC_KEY = "BGFP5W8qioz7-199m_66qK9dm1dXRK2RxXF8HC3nNCcQqP6IoxUC17kOFAzwwBoZ9MpWURXprtMx9SEF2yCPepc";
 const AI_HEADERS = {"Content-Type":"application/json"};
@@ -463,7 +463,7 @@ function getAIPrefs() {
 // Speed scales how much Pro is allowed to "think"/write — Low favors fast,
 // short replies; High favors slower, more thorough ones. Same model either way.
 function speedTokens(speed, base) {
-  if(speed==="low")  return Math.max(300, Math.round(base*0.5));
+  if(speed==="low") return Math.max(300, Math.round(base*0.5));
   if(speed==="high") return Math.round(base*1.5);
   return base;
 }
@@ -501,7 +501,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.93";
+const APP_VERSION = "beta 1.94";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -515,7 +515,7 @@ function emailBase(content) {
   </td></tr>
   <tr><td style="padding:36px">${content}</td></tr>
   <tr><td style="padding:20px 36px;border-top:1px solid #f3f4f6;text-align:center">
-    <p style="margin:0;font-size:12px;color:#9ca3af">© 2026 SocialFlow · <a href="${APP_URL}" style="color:#d90b2c;text-decoration:none">socialflow.admepro.com</a></p>
+    <p style="margin:0;font-size:12px;color:#9ca3af"> 2026 SocialFlow · <a href="${APP_URL}" style="color:#d90b2c;text-decoration:none">socialflow.admepro.com</a></p>
   </td></tr>
 </table>
 </td></tr></table>
@@ -789,35 +789,35 @@ const EMAIL_TEMPLATES = {
 // ── Default notification preferences ──────────────────────────────
 const DEFAULT_NOTIF_PREFS = {
   // Instant emails
-  task_assigned:          true,
-  task_stage_changed:     true,
-  task_due_soon:          true,
-  task_overdue:           true,
-  task_mention:           true,
-  task_comment:           false,   // off by default (can be noisy)
+  task_assigned: true,
+  task_stage_changed: true,
+  task_due_soon: true,
+  task_overdue: true,
+  task_mention: true,
+  task_comment: false, // off by default (can be noisy)
   // Project events
-  project_created:        true,
-  project_task_added:     false,
+  project_created: true,
+  project_task_added: false,
   project_deadline_updated: true,
   // Client events
   client_approval_required: true,
-  post_approved:          true,
-  post_rejected:          true,
+  post_approved: true,
+  post_rejected: true,
   // Finance events
-  invoice_created:        true,
-  payment_received:       true,
-  subscription_renewal:   true,
+  invoice_created: true,
+  payment_received: true,
+  subscription_renewal: true,
   // User events
-  user_invited:           true,
-  access_approved:        true,
-  access_rejected:        true,
-  permissions_updated:    true,
+  user_invited: true,
+  access_approved: true,
+  access_rejected: true,
+  permissions_updated: true,
   // Digest
-  daily_digest:           true,
-  digest_time:            "08:00",
+  daily_digest: true,
+  digest_time: "08:00",
   // Mode
-  mentions_only:          false,   // if true, only mention emails are sent
-  all_disabled:           false,   // master kill switch
+  mentions_only: false, // if true, only mention emails are sent
+  all_disabled: false, // master kill switch
 };
 
 // ── Smart notification dispatcher ─────────────────────────────────
@@ -903,11 +903,11 @@ async function publishPost(post, integration) {
   const r = await fetch(PUBLISH_ENDPOINT, {
     method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({
-      platform:     integration.app_key,
-      page_id:      creds.page_id||"",
+      platform: integration.app_key,
+      page_id: creds.page_id||"",
       access_token: creds.access_token||"",
-      message:      [post.caption, post.hashtags].filter(Boolean).join("\n\n"),
-      image_url:    (parseJ(post.design_urls||"[]"))[0]||"",
+      message: [post.caption, post.hashtags].filter(Boolean).join("\n\n"),
+      image_url: (parseJ(post.design_urls||"[]"))[0]||"",
     }),
   });
   const d = await r.json();
@@ -953,13 +953,13 @@ const SEED = {
     {id:"p3",title:"Spring Product Launch",client_name:"GreenLeaf Organics",client_id:"c3",description:"Social media campaign for new product line",status:"active",platforms:["instagram","tiktok","facebook"],start_date:"2026-04-01",end_date:"2026-04-30",team_members:["sarah@agency.com","alex@agency.com"]},
   ],
   posts: [
-    {id:"post1",project_id:"p1",title:"Brand Story Monday",platform:"instagram",post_type:"carousel",stage:"published",priority:"high",caption:"Every great journey starts with a single step 🚀",hashtags:"#brandstory #startup",assigned_to:"mike@agency.com",scheduled_date:"2026-03-03",scheduled_time:"10:00"},
+    {id:"post1",project_id:"p1",title:"Brand Story Monday",platform:"instagram",post_type:"carousel",stage:"published",priority:"high",caption:"Every great journey starts with a single step ",hashtags:"#brandstory #startup",assigned_to:"mike@agency.com",scheduled_date:"2026-03-03",scheduled_time:"10:00"},
     {id:"post2",project_id:"p1",title:"Tech Tip Tuesday - AI Automation",platform:"linkedin",post_type:"image",stage:"client_approval",priority:"medium",caption:"5 AI tools that will transform your workflow in 2026",hashtags:"#AI #productivity",assigned_to:"mike@agency.com",scheduled_date:"2026-03-04",scheduled_time:"09:00"},
     {id:"post3",project_id:"p1",title:"Product Feature Spotlight",platform:"instagram",post_type:"reel",stage:"client_approval",priority:"high",description:"Highlight key product features",assigned_to:"lisa@agency.com",scheduled_date:"2026-03-06",scheduled_time:"14:00"},
     {id:"post4",project_id:"p1",title:"Weekend Motivation Post",platform:"facebook",post_type:"image",stage:"internal_review",priority:"low",description:"Inspirational quote with branded design",assigned_to:"mike@agency.com",scheduled_date:"2026-03-08",scheduled_time:"08:00"},
     {id:"post5",project_id:"p1",title:"Customer Success Story",platform:"linkedin",post_type:"carousel",stage:"internal_review",priority:"medium",description:"Interview-style post featuring happy customer",assigned_to:"lisa@agency.com",scheduled_date:"2026-03-10",scheduled_time:"11:00"},
     {id:"post6",project_id:"p1",title:"Industry Trend Analysis",platform:"twitter",post_type:"image",stage:"client_approval",priority:"medium",description:"Infographic about 2026 social media trends",assigned_to:"mike@agency.com",scheduled_date:"2026-03-12",scheduled_time:"12:00"},
-    {id:"post7",project_id:"p1",title:"Team Spotlight - Meet Sarah",platform:"instagram",post_type:"story",stage:"scheduled",priority:"low",caption:"Meet Sarah, our creative director! 🎨",hashtags:"#teamspotlight",assigned_to:"mike@agency.com",scheduled_date:"2026-03-15",scheduled_time:"16:00"},
+    {id:"post7",project_id:"p1",title:"Team Spotlight - Meet Sarah",platform:"instagram",post_type:"story",stage:"scheduled",priority:"low",caption:"Meet Sarah, our creative director! ",hashtags:"#teamspotlight",assigned_to:"mike@agency.com",scheduled_date:"2026-03-15",scheduled_time:"16:00"},
     {id:"post8",project_id:"p1",title:"Flash Sale Announcement",platform:"facebook",post_type:"image",stage:"rejected",priority:"urgent",description:"Announce limited-time discount",assigned_to:"alex@agency.com",scheduled_date:"2026-03-17",scheduled_time:"09:00",rejection_reason:"Client wants different color scheme"},
     {id:"post9",project_id:"p2",title:"New Look Reveal",platform:"instagram",post_type:"carousel",stage:"design",priority:"urgent",description:"First post with refreshed brand identity",assigned_to:"lisa@agency.com",scheduled_date:"2026-03-20",scheduled_time:"10:00"},
     {id:"post10",project_id:"p2",title:"Fitness Challenge Launch",platform:"tiktok",post_type:"video",stage:"content_creation",priority:"high",description:"30-day fitness challenge kickoff",assigned_to:"mike@agency.com",scheduled_date:"2026-03-22",scheduled_time:"18:00"},
@@ -993,10 +993,10 @@ const SEED = {
     {id:"n8",recipient_email:"mostafashannah@gmail.com",title:"Team Report Available",message:"This week's team performance report is ready. Avg team score: 83/100.",type:"performance",is_read:false,link_type:"page",link_id:"performance"},
   ],
   templates: [
-    {id:"tp1",name:"Product Announcement",platform:"instagram",post_type:"carousel",category:"Announcement",caption_template:"Exciting news! [ANNOUNCEMENT]\n\n✅ [BENEFIT 1]\n✅ [BENEFIT 2]\n✅ [BENEFIT 3]\n\nLink in bio!",hashtags:"#news #announcement #update"},
-    {id:"tp2",name:"Monday Motivation",platform:"all",post_type:"image",category:"Engagement",caption_template:"Monday motivation 💪\n\n[INSPIRING QUOTE]\n\nWhat's your goal this week? 👇",hashtags:"#MondayMotivation #inspiration #goals"},
-    {id:"tp3",name:"Team Spotlight",platform:"instagram",post_type:"story",category:"Team",caption_template:"Meet [NAME], our [ROLE]! 🌟\n\nFun facts:\n🎯 [FACT 1]\n💡 [FACT 2]\n❤️ [FACT 3]",hashtags:"#teamspotlight #behindthescenes"},
-    {id:"tp4",name:"Educational Fact",platform:"linkedin",post_type:"image",category:"Educational",caption_template:"Did you know? 🤔\n\n[INTERESTING FACT]\n\nSave this post for later! 💾",hashtags:"#didyouknow #facts #education"},
+    {id:"tp1",name:"Product Announcement",platform:"instagram",post_type:"carousel",category:"Announcement",caption_template:"Exciting news! [ANNOUNCEMENT]\n\n [BENEFIT 1]\n [BENEFIT 2]\n [BENEFIT 3]\n\nLink in bio!",hashtags:"#news #announcement #update"},
+    {id:"tp2",name:"Monday Motivation",platform:"all",post_type:"image",category:"Engagement",caption_template:"Monday motivation \n\n[INSPIRING QUOTE]\n\nWhat's your goal this week? ",hashtags:"#MondayMotivation #inspiration #goals"},
+    {id:"tp3",name:"Team Spotlight",platform:"instagram",post_type:"story",category:"Team",caption_template:"Meet [NAME], our [ROLE]! \n\nFun facts:\n [FACT 1]\n [FACT 2]\n [FACT 3]",hashtags:"#teamspotlight #behindthescenes"},
+    {id:"tp4",name:"Educational Fact",platform:"linkedin",post_type:"image",category:"Educational",caption_template:"Did you know? \n\n[INTERESTING FACT]\n\nSave this post for later! ",hashtags:"#didyouknow #facts #education"},
   ],
   quotes: [
     {id:"q1",quote_number:"QT-2026-001",client_id:"c1",client_name:"TechStart Co.",client_phone:"+20 100 123 4567",title:"Social Media Management Package",date:"2026-03-01",due_date:"2026-03-15",status:"approved",currency:"USD",items:'[{"id":"i1","name":"Monthly Content Calendar","description":"30 posts across Instagram, Facebook, LinkedIn, Twitter","qty":1,"unit_price":1500},{"id":"i2","name":"Graphic Design","description":"Custom branded visuals for all posts","qty":30,"unit_price":25},{"id":"i3","name":"Account Management","description":"Dedicated account manager, reporting & strategy","qty":1,"unit_price":500}]',subtotal:2750,discount_value:0,discount_type:"percent",tax_rate:14,total:3135,payment_terms:"50% upfront upon signing\n50% upon delivery at end of month",notes:"Includes 2 revision rounds per post.",created_by:"mostafashannah@gmail.com"},
@@ -1081,7 +1081,7 @@ const SEED = {
   ],
   integrations: [
     {id:"ig1",name:"Invoice Paid → Zapier",app_key:"zapier",app_category:"automation",trigger:"invoice_paid",action:"send_webhook",status:"active",webhook_url:"https://hooks.zapier.com/hooks/catch/xxxxx/yyyyy",credentials:'{"webhook_url":"https://hooks.zapier.com/hooks/catch/xxxxx/yyyyy"}',config:'{"trigger_event":"invoice_paid","action_event":"send_webhook","message_template":"Invoice {invoice_number} for {client_name} has been paid. Amount: {total}"}',run_count:3,last_run_status:"success",last_run_at:"2026-04-08T10:32:00Z",last_run_message:"Successfully triggered Zapier webhook for INV-2026-001",error_count:0,created_by:"mostafashannah@gmail.com"},
-    {id:"ig2",name:"Task Done → Slack",app_key:"slack",app_category:"messaging",trigger:"task_completed",action:"send_slack_message",status:"active",credentials:'{"bot_token":"xoxb-xxxx-xxxx-xxxx"}',config:'{"trigger_event":"task_completed","action_event":"send_slack_message","channel":"#team-updates","message_template":"✅ Task completed: {task_title} by {user_name}"}',run_count:12,last_run_status:"success",last_run_at:"2026-04-09T09:15:00Z",last_run_message:"Message sent to #team-updates",error_count:0,created_by:"mostafashannah@gmail.com"},
+    {id:"ig2",name:"Task Done → Slack",app_key:"slack",app_category:"messaging",trigger:"task_completed",action:"send_slack_message",status:"active",credentials:'{"bot_token":"xoxb-xxxx-xxxx-xxxx"}',config:'{"trigger_event":"task_completed","action_event":"send_slack_message","channel":"#team-updates","message_template":" Task completed: {task_title} by {user_name}"}',run_count:12,last_run_status:"success",last_run_at:"2026-04-09T09:15:00Z",last_run_message:"Message sent to #team-updates",error_count:0,created_by:"mostafashannah@gmail.com"},
     {id:"ig3",name:"New Client → Google Sheets",app_key:"google_sheets",app_category:"spreadsheet",trigger:"new_client",action:"add_sheet_row",status:"error",credentials:'{"api_key":"AIza••••••••••••••••"}',config:'{"trigger_event":"new_client","action_event":"add_sheet_row","spreadsheet_id":"1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms","sheet_name":"Clients"}',run_count:5,last_run_status:"failed",last_run_at:"2026-04-07T14:22:00Z",last_run_message:"Failed: Invalid spreadsheet ID or permissions",error_count:2,created_by:"mostafashannah@gmail.com"},
     {id:"ig4",name:"Weekly Report → Gmail",app_key:"gmail",app_category:"messaging",trigger:"performance_report",action:"send_email",status:"inactive",credentials:'{"client_id":"xxxx.apps.googleusercontent.com","refresh_token":"1//xxxx"}',config:'{"trigger_event":"performance_report","action_event":"send_email","to":"management@admepro.com","subject":"Weekly Performance Report"}',run_count:0,last_run_status:"never",last_run_at:null,last_run_message:null,error_count:0,created_by:"mostafashannah@gmail.com"},
   ],
@@ -1259,7 +1259,7 @@ const getWallpaperBg = (key) => {
 
 
 // ════════════════════════════════════════════════════════════════
-// GLOBAL STYLES  (wallpaper-aware)
+// GLOBAL STYLES (wallpaper-aware)
 // ════════════════════════════════════════════════════════════════
 const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
   const wp = getWallpaperVars(wallpaper);
@@ -1431,12 +1431,12 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       .bottom-nav{
         display:flex;position:fixed;bottom:0;left:0;right:0;
         background:var(--surface);border-top:1px solid var(--border);
-        z-index:200;padding:26px 0 max(10px,env(safe-area-inset-bottom));
+        z-index:9000;padding:6px 0 max(6px,env(safe-area-inset-bottom));
         justify-content:space-around;align-items:center;
       }
       .main-content{
         padding:14px!important;
-        padding-bottom:100px!important;
+        padding-bottom:84px!important;
         overflow-x:hidden!important;
       }
       .card-mobile{border-radius:var(--rs)!important;padding:14px!important}
@@ -1510,87 +1510,87 @@ const Ico = ({d,size=18,sw=1.6,fill="none",stroke="currentColor"}) => (
 );
 
 const Icons = {
-  home:    ["M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z","M9 22V12h6v10"],
+  home: ["M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z","M9 22V12h6v10"],
   clients: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75",
   projects:"M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z",
-  tasks:   ["M9 11l3 3L22 4","M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"],
+  tasks: ["M9 11l3 3L22 4","M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"],
   calendar:["M8 2v4M16 2v4M3 10h18","M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"],
-  assets:  ["M21 19H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h18a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2z","M8.5 13.5l2.5-3 3.5 4 2.5-2 3 3","M8 10a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"],
-  users:   ["M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2","M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z","M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"],
+  assets: ["M21 19H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h18a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2z","M8.5 13.5l2.5-3 3.5 4 2.5-2 3 3","M8 10a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"],
+  users: ["M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2","M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z","M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"],
   templates:["M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z","M14 2v6h6","M16 13H8M16 17H8M10 9H8"],
-  plus:    ["M12 5v14","M5 12h14"],
-  x:       ["M18 6L6 18","M6 6l12 12"],
-  check:   "M20 6L9 17l-5-5",
-  search:  ["M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z","M21 21l-4.35-4.35"],
-  bell:    ["M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9","M13.73 21a2 2 0 0 1-3.46 0"],
-  sun:     ["M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42","M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z"],
-  moon:    "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z",
-  arrow:   ["M5 12h14","M12 5l7 7-7 7"],
-  chevL:   "M15 18l-6-6 6-6",
-  chevD:   "M6 9l6 6 6-6",
-  send:    "M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z",
+  plus: ["M12 5v14","M5 12h14"],
+  x: ["M18 6L6 18","M6 6l12 12"],
+  check: "M20 6L9 17l-5-5",
+  search: ["M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16z","M21 21l-4.35-4.35"],
+  bell: ["M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9","M13.73 21a2 2 0 0 1-3.46 0"],
+  sun: ["M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42","M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10z"],
+  moon: "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z",
+  arrow: ["M5 12h14","M12 5l7 7-7 7"],
+  chevL: "M15 18l-6-6 6-6",
+  chevD: "M6 9l6 6 6-6",
+  send: "M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z",
   sparkle: ["M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z","M19 3l.8 2.2L22 6l-2.2.8L19 9l-.8-2.2L16 6l2.2-.8z"],
-  eye:     ["M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z","M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"],
-  edit:    ["M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7","M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"],
-  trash:   ["M3 6h18","M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"],
-  clock:   ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z","M12 6v6l4 2"],
-  alert:   ["M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z","M12 9v4M12 17h.01"],
-  upload:  ["M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4","M17 8l-5-5-5 5","M12 3v12"],
-  play:    "M5 3l14 9-14 9V3z",
-  pause:   ["M6 4h4v16H6z","M14 4h4v16h-4z"],
-  logout:  ["M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4","M16 17l5-5-5-5","M21 12H9"],
-  grid:    "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",
-  list:    ["M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"],
-  stat:    ["M18 20V10","M12 20V4","M6 20v-6"],
-  wand:    ["M15 4V2","M15 16v-2","M8 9h2","M20 9h2","M17.8 11.8L19 13","M15 9h.01","M17.8 6.2L19 5","M3 21l9-9","M12.2 6.2L11 5"],
+  eye: ["M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z","M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"],
+  edit: ["M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7","M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"],
+  trash: ["M3 6h18","M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"],
+  clock: ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z","M12 6v6l4 2"],
+  alert: ["M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z","M12 9v4M12 17h.01"],
+  upload: ["M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4","M17 8l-5-5-5 5","M12 3v12"],
+  play: "M5 3l14 9-14 9V3z",
+  pause: ["M6 4h4v16H6z","M14 4h4v16h-4z"],
+  logout: ["M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4","M16 17l5-5-5-5","M21 12H9"],
+  grid: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",
+  list: ["M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"],
+  stat: ["M18 20V10","M12 20V4","M6 20v-6"],
+  wand: ["M15 4V2","M15 16v-2","M8 9h2","M20 9h2","M17.8 11.8L19 13","M15 9h.01","M17.8 6.2L19 5","M3 21l9-9","M12.2 6.2L11 5"],
   folder2: ["M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z","M12 11v6","M9 14h6"],
   calPlus: ["M8 2v4M16 2v4M3 10h18","M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z","M12 14v4","M10 16h4"],
   taskAdd: ["M9 11l3 3L22 4","M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11","M15 5h6","M18 2v6"],
   success: ["M22 11.08V12a10 10 0 1 1-5.93-9.14","M22 4L12 14.01l-3-3"],
-  quote:   ["M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z","M14 2v6h6","M16 13H8","M16 17H8","M10 9H8"],
-  pdf:     ["M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z","M14 2v6h6","M9 15h6","M9 18h3"],
-  copy2:   ["M20 9H11a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2z","M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"],
+  quote: ["M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z","M14 2v6h6","M16 13H8","M16 17H8","M10 9H8"],
+  pdf: ["M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z","M14 2v6h6","M9 15h6","M9 18h3"],
+  copy2: ["M20 9H11a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2z","M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"],
   download:["M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4","M7 10l5 5 5-5","M12 15V3"],
   receipt: ["M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2","M13 3H9a2 2 0 0 0-2 2v0a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v0a2 2 0 0 0-2-2z","M9 12h6","M9 16h4"],
-  person:  ["M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2","M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"],
+  person: ["M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2","M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"],
   settings:["M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z","M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"],
   palette: ["M12 2a10 10 0 0 0 0 20c1.1 0 2-.9 2-2v-.5c0-.28.22-.5.5-.5H17a3 3 0 0 0 0-6h-1.5c-1.1 0-2-.9-2-2V9c0-1.1.9-2 2-2h2c1.1 0 2-.9 2-2 0-1.66-1.34-3-3-3H12z","M8 15a1 1 0 1 0 0-2 1 1 0 0 0 0 2z","M8 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2z"],
-  camera:  ["M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z","M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"],
-  phone:   "M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.18 2 2 0 0 1 3.6 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 6 6l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16z",
-  shield:  ["M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"],
-  bell2:   ["M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9","M13.73 21a2 2 0 0 1-3.46 0"],
-  globe:   ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z","M2 12h20","M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"],
-  chevR:   "M9 18l6-6-6-6",
-  leads:   ["M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2","M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z","M22 21v-2a4 4 0 0 0-3-3.87","M19 3a4 4 0 0 1 0 7.75","M19 8v6","M22 11h-6"],
-  funnel:  ["M22 3H2l8 9.46V19l4 2V12.46L22 3z"],
-  target:  ["M22 12A10 10 0 1 1 12 2","M22 12a10 10 0 0 1-10 10","M12 12m-3 0a3 3 0 1 0 6 0 3 3 0 0 0-6 0","M22 12h-4","M6 12H2","M12 6V2","M12 22v-4"],
-  phone2:  "M6.62 10.79c1.44 2.83 3.76 5.15 6.59 6.59l2.2-2.2c.28-.28.67-.36 1.02-.25 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z",
+  camera: ["M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z","M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"],
+  phone: "M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.18 2 2 0 0 1 3.6 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 6 6l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16z",
+  shield: ["M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"],
+  bell2: ["M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9","M13.73 21a2 2 0 0 1-3.46 0"],
+  globe: ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z","M2 12h20","M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"],
+  chevR: "M9 18l6-6-6-6",
+  leads: ["M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2","M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z","M22 21v-2a4 4 0 0 0-3-3.87","M19 3a4 4 0 0 1 0 7.75","M19 8v6","M22 11h-6"],
+  funnel: ["M22 3H2l8 9.46V19l4 2V12.46L22 3z"],
+  target: ["M22 12A10 10 0 1 1 12 2","M22 12a10 10 0 0 1-10 10","M12 12m-3 0a3 3 0 1 0 6 0 3 3 0 0 0-6 0","M22 12h-4","M6 12H2","M12 6V2","M12 22v-4"],
+  phone2: "M6.62 10.79c1.44 2.83 3.76 5.15 6.59 6.59l2.2-2.2c.28-.28.67-.36 1.02-.25 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z",
   convert: ["M16 3h5v5","M21 3l-7 7","M4 21l7-7","M9 21H4v-5"],
-  note2:   ["M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7","M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"],
-  tag:     ["M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z","M7 7h.01"],
+  note2: ["M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7","M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"],
+  tag: ["M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z","M7 7h.01"],
   invoice: ["M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z","M14 2v6h6","M16 13H8","M16 17H8","M10 9H8"],
-  money:   ["M12 1v22","M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"],
-  wallet:  ["M21 12V7H5a2 2 0 0 1 0-4h14v4","M3 5v14a2 2 0 0 0 2 2h16v-5","M18 12a2 2 0 0 0 0 4h4v-4z"],
-  bank:    ["M3 21h18","M3 10h18","M5 6l7-3 7 3","M4 10v11","M20 10v11","M8 14v3","M12 14v3","M16 14v3"],
-  coinUp:  ["M12 2v20","M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6","M17 19l3-3-3-3"],
-  plug:    ["M12 22v-5","M9 7V2","M15 7V2","M6 13V8a6 6 0 0 1 12 0v5a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2z"],
-  link2:   ["M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71","M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"],
-  zap2:    ["M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"],
+  money: ["M12 1v22","M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"],
+  wallet: ["M21 12V7H5a2 2 0 0 1 0-4h14v4","M3 5v14a2 2 0 0 0 2 2h16v-5","M18 12a2 2 0 0 0 0 4h4v-4z"],
+  bank: ["M3 21h18","M3 10h18","M5 6l7-3 7 3","M4 10v11","M20 10v11","M8 14v3","M12 14v3","M16 14v3"],
+  coinUp: ["M12 2v20","M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6","M17 19l3-3-3-3"],
+  plug: ["M12 22v-5","M9 7V2","M15 7V2","M6 13V8a6 6 0 0 1 12 0v5a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2z"],
+  link2: ["M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71","M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"],
+  zap2: ["M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"],
   refresh: ["M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8","M21 3v5h-5","M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16","M8 16H3v5"],
   activity:["M22 12h-4l-3 9L9 3l-3 9H2"],
-  key2:    ["M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"],
-  flow:    ["M5 3a2 2 0 0 0-2 2","M19 3a2 2 0 0 1 2 2","M21 19a2 2 0 0 1-2 2","M3 19a2 2 0 0 0 2 2","M3 9h18","M3 15h18"],
-  repeat:  ["M17 1l4 4-4 4","M3 11V9a4 4 0 0 1 4-4h14","M7 23l-4-4 4-4","M21 13v2a4 4 0 0 1-4 4H3"],
+  key2: ["M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"],
+  flow: ["M5 3a2 2 0 0 0-2 2","M19 3a2 2 0 0 1 2 2","M21 19a2 2 0 0 1-2 2","M3 19a2 2 0 0 0 2 2","M3 9h18","M3 15h18"],
+  repeat: ["M17 1l4 4-4 4","M3 11V9a4 4 0 0 1 4-4h14","M7 23l-4-4 4-4","M21 13v2a4 4 0 0 1-4 4H3"],
   cardPay: ["M2 10h20","M4 6h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z","M6 14h2","M10 14h4"],
   subIcon: ["M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"],
-  paymob:  ["M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z","M9 22V12h6v10"],
-  chart2:  ["M3 3v18h18","M18 17V9","M13 17V5","M8 17v-3"],
-  award:   ["M12 15a7 7 0 1 0 0-14 7 7 0 0 0 0 14z","M8.21 13.89L7 23l5-3 5 3-1.21-9.12"],
-  gauge:   ["M12 2a10 10 0 0 1 7.39 16.83","M12 2a10 10 0 0 0-7.39 16.83","M12 6v6l4 2"],
-  trophy:  ["M6 9H3l3 6h12l3-6h-3","M6 9V4h12v5","M12 15v4","M8 19h8","M10 4a2 2 0 0 0 4 0"],
-  trendUp:  ["M22 7l-9.5 9.5-5-5L1 17","M15 7h7v7"],
+  paymob: ["M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z","M9 22V12h6v10"],
+  chart2: ["M3 3v18h18","M18 17V9","M13 17V5","M8 17v-3"],
+  award: ["M12 15a7 7 0 1 0 0-14 7 7 0 0 0 0 14z","M8.21 13.89L7 23l5-3 5 3-1.21-9.12"],
+  gauge: ["M12 2a10 10 0 0 1 7.39 16.83","M12 2a10 10 0 0 0-7.39 16.83","M12 6v6l4 2"],
+  trophy: ["M6 9H3l3 6h12l3-6h-3","M6 9V4h12v5","M12 15v4","M8 19h8","M10 4a2 2 0 0 0 4 0"],
+  trendUp: ["M22 7l-9.5 9.5-5-5L1 17","M15 7h7v7"],
   briefcase:["M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z","M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"],
-  brain:   ["M9.5 2a2.5 2.5 0 0 0-2.5 2.5v.5A2.5 2.5 0 0 0 4.5 7.5 2.5 2.5 0 0 0 3 12a2.5 2.5 0 0 0 1.5 4.5 2.5 2.5 0 0 0 2.5 2.5 2.5 2.5 0 0 0 2.5 2.5h0V4.5A2.5 2.5 0 0 0 9.5 2z","M14.5 2a2.5 2.5 0 0 1 2.5 2.5v.5a2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-1.5 4.5 2.5 2.5 0 0 1-2.5 4.5 2.5 2.5 0 0 1-2.5 2.5h0V4.5A2.5 2.5 0 0 1 14.5 2z","M9.5 9.5h5","M9.5 14.5h5"],
+  brain: ["M9.5 2a2.5 2.5 0 0 0-2.5 2.5v.5A2.5 2.5 0 0 0 4.5 7.5 2.5 2.5 0 0 0 3 12a2.5 2.5 0 0 0 1.5 4.5 2.5 2.5 0 0 0 2.5 2.5 2.5 2.5 0 0 0 2.5 2.5h0V4.5A2.5 2.5 0 0 0 9.5 2z","M14.5 2a2.5 2.5 0 0 1 2.5 2.5v.5a2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-1.5 4.5 2.5 2.5 0 0 1-2.5 4.5 2.5 2.5 0 0 1-2.5 2.5h0V4.5A2.5 2.5 0 0 1 14.5 2z","M9.5 9.5h5","M9.5 14.5h5"],
   paperclip:["M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"],
 };
 
@@ -1661,11 +1661,11 @@ function Btn({children,onClick,variant="primary",size="md",disabled,style:sx}) {
     ? {padding:"6px 14px",fontSize:12,minHeight:36}
     : {padding:"10px 18px",minHeight:44};
   const vars = {
-    primary:  {background:"var(--accent)",color:"#fff",boxShadow:"0 4px 12px rgba(217,11,44,0.25)",transition:"all 0.2s"},
+    primary: {background:"var(--accent)",color:"#fff",boxShadow:"0 4px 12px rgba(217,11,44,0.25)",transition:"all 0.2s"},
     secondary:{background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)",transition:"all 0.2s"},
-    ghost:    {background:"transparent",color:"var(--text2)",transition:"all 0.2s"},
-    danger:   {background:"#ef444422",color:"#ef4444",border:"1px solid #ef444444",transition:"all 0.2s"},
-    success:  {background:"#10b98122",color:"#10b981",border:"1px solid #10b98144",transition:"all 0.2s"},
+    ghost: {background:"transparent",color:"var(--text2)",transition:"all 0.2s"},
+    danger: {background:"#ef444422",color:"#ef4444",border:"1px solid #ef444444",transition:"all 0.2s"},
+    success: {background:"#10b98122",color:"#10b981",border:"1px solid #10b98144",transition:"all 0.2s"},
   };
   const hoverStates = variant === "primary"
     ? {":hover": {boxShadow: "0 6px 20px rgba(217,11,44,0.35)", transform: "translateY(-1px)"}}
@@ -1828,7 +1828,7 @@ function PostCard({post,project,team,onClick}) {
 function KanbanView({posts,project,team,onPostClick}) {
   const [showEmpty,setShowEmpty] = useState(false);
   const populated = STAGES.filter(s=>posts.some(p=>p.stage===s.key));
-  const empty     = STAGES.filter(s=>!posts.some(p=>p.stage===s.key));
+  const empty = STAGES.filter(s=>!posts.some(p=>p.stage===s.key));
   const visibleStages = showEmpty ? STAGES : populated;
   const hasEmpty = empty.length > 0;
 
@@ -1933,7 +1933,7 @@ function ListView({posts,projects,team,onPostClick}) {
 function CalendarView({posts,onPostClick}) {
   const [mo, setMo] = useState(()=>{const d=new Date();return{y:d.getFullYear(),m:d.getMonth()};});
   const first = new Date(mo.y, mo.m, 1).getDay();
-  const days  = new Date(mo.y, mo.m+1, 0).getDate();
+  const days = new Date(mo.y, mo.m+1, 0).getDate();
   const cells = Array.from({length:42},(_,i)=>{const d=i-first+1;return d>=1&&d<=days?d:null;});
   const mn = new Date(mo.y,mo.m).toLocaleDateString("en-US",{month:"long",year:"numeric"});
   const postsDay = d => posts.filter(p=>{
@@ -2023,17 +2023,17 @@ function TimeTracker({postId, userEmail, timeEntries, onStart, onPause, onResume
       </div>
       {!isRunning && !isPaused && (
         <button onClick={()=>onStart&&onStart(postId)} style={{padding:"4px 10px",borderRadius:"var(--rs)",background:"#10b98122",border:"1px solid #10b98155",color:"#10b981",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
-          ▶ Start
+           Start
         </button>
       )}
       {isRunning && (
         <button onClick={()=>onPause&&onPause(postId)} style={{padding:"4px 10px",borderRadius:"var(--rs)",background:"#f59e0b22",border:"1px solid #f59e0b55",color:"#f59e0b",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
-          ⏸ Pause
+           Pause
         </button>
       )}
       {isPaused && !isRunning && (
         <button onClick={()=>onResume&&onResume(postId)} style={{padding:"4px 10px",borderRadius:"var(--rs)",background:"#3b82f622",border:"1px solid #3b82f655",color:"#3b82f6",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
-          ▶ Resume
+           Resume
         </button>
       )}
       <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{isRunning?"Running…":isPaused?"Paused":"Not started"}</span>
@@ -2113,16 +2113,16 @@ function MentionInput({value, onChange, team, placeholder, rows}) {
 // CONTENT PHASE GENERATOR
 // ════════════════════════════════════════════════════════════════
 const CONTENT_LANGUAGES = [
-  {key:"english",   label:"🇬🇧 English",        instruction:"Write in clear, fluent English."},
-  {key:"eg_arabic", label:"🇪🇬 Egyptian Arabic", instruction:"اكتب باللغة العربية العامية المصرية بشكل طبيعي ومحكي كما يتكلم المصريون في وسائل التواصل الاجتماعي."},
-  {key:"gcc_arabic",label:"🇸🇦 GCC Arabic",      instruction:"اكتب باللغة العربية الفصحى الحديثة بأسلوب خليجي رسمي يناسب وسائل التواصل الاجتماعي."},
+  {key:"english", label:" English", instruction:"Write in clear, fluent English."},
+  {key:"eg_arabic", label:" Egyptian Arabic", instruction:"اكتب باللغة العربية العامية المصرية بشكل طبيعي ومحكي كما يتكلم المصريون في وسائل التواصل الاجتماعي."},
+  {key:"gcc_arabic",label:" GCC Arabic", instruction:"اكتب باللغة العربية الفصحى الحديثة بأسلوب خليجي رسمي يناسب وسائل التواصل الاجتماعي."},
 ];
 const CONTENT_TOVS = [
-  {key:"professional", label:"Professional",  desc:"Formal, authoritative, trustworthy"},
-  {key:"casual",       label:"Casual",        desc:"Friendly, relaxed, conversational"},
+  {key:"professional", label:"Professional", desc:"Formal, authoritative, trustworthy"},
+  {key:"casual", label:"Casual", desc:"Friendly, relaxed, conversational"},
   {key:"inspirational",label:"Inspirational", desc:"Motivating, uplifting, emotional"},
-  {key:"humorous",     label:"Humorous",      desc:"Witty, playful, light-hearted"},
-  {key:"educational",  label:"Educational",   desc:"Informative, clear, value-driven"},
+  {key:"humorous", label:"Humorous", desc:"Witty, playful, light-hearted"},
+  {key:"educational", label:"Educational", desc:"Informative, clear, value-driven"},
 ];
 
 function ContentPhaseGenerator({post, project, clientKnowledge, clientIntelligence, client, allClientPosts, onChoose, onStageChange, onClose, onCaptionChosen, onMemoryLearn}) {
@@ -2130,7 +2130,7 @@ function ContentPhaseGenerator({post, project, clientKnowledge, clientIntelligen
   const loadSaved = () => { try { return lsKey ? JSON.parse(localStorage.getItem(lsKey)||"null") : null; } catch(e){ return null; } };
 
   const [lang, setLang] = usePersistentState(`sf_lang_${post?.id}`,"english");
-  const [tov,  setTov]  = usePersistentState(`sf_tov_${post?.id}`, "professional");
+  const [tov, setTov] = usePersistentState(`sf_tov_${post?.id}`, "professional");
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState(()=>loadSaved());
   const [chosenIdx, setChosenIdx] = useState(null);
@@ -2143,8 +2143,8 @@ function ContentPhaseGenerator({post, project, clientKnowledge, clientIntelligen
   const isReel = ["reel","video"].includes(postType);
   const isCarousel = postType === "carousel";
 
-  const langObj  = CONTENT_LANGUAGES.find(l=>l.key===lang) || CONTENT_LANGUAGES[0];
-  const tovObj   = CONTENT_TOVS.find(t=>t.key===tov) || CONTENT_TOVS[0];
+  const langObj = CONTENT_LANGUAGES.find(l=>l.key===lang) || CONTENT_LANGUAGES[0];
+  const tovObj = CONTENT_TOVS.find(t=>t.key===tov) || CONTENT_TOVS[0];
 
   const clientCtx = ()=>{
     const ck = clientKnowledge; const ci = clientIntelligence;
@@ -2188,7 +2188,7 @@ ${rejectedBlock}`.trim();
 
   const buildPrompt = () => {
     const langInstr = langObj.instruction;
-    const tovInstr  = `Tone of Voice: ${tovObj.label} — ${tovObj.desc}`;
+    const tovInstr = `Tone of Voice: ${tovObj.label} — ${tovObj.desc}`;
     const ctx = clientCtx();
     const hasPastCaptions = (allClientPosts||[]).some(p=>["published","scheduled"].includes(p.stage)&&p.caption);
     const learningNote = hasPastCaptions
@@ -2401,11 +2401,11 @@ No markdown, no explanation. Return the JSON array only.`;
             {isReel&&(
               <div style={{padding:14,display:"flex",flexDirection:"column",gap:12}}>
                 {[
-                  {field:"hook",       label:"🎣 Hook (First 3 sec)",     rows:2},
-                  {field:"script",     label:"📝 Full Script",            rows:8},
-                  {field:"cta",        label:"🎯 Call to Action",         rows:2},
-                  {field:"caption",    label:"📱 Caption",                rows:3},
-                  {field:"music_direction",label:"🎵 Music Direction",    rows:1},
+                  {field:"hook", label:" Hook (First 3 sec)", rows:2},
+                  {field:"script", label:" Full Script", rows:8},
+                  {field:"cta", label:" Call to Action", rows:2},
+                  {field:"caption", label:" Caption", rows:3},
+                  {field:"music_direction",label:" Music Direction", rows:1},
                 ].map(({field,label,rows})=>(
                   <div key={field}>
                     <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>{label}</p>
@@ -2422,7 +2422,7 @@ No markdown, no explanation. Return the JSON array only.`;
             {isCarousel&&(
               <div style={{padding:14,display:"flex",flexDirection:"column",gap:12}}>
                 <div>
-                  <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>📌 Cover Slide</p>
+                  <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}> Cover Slide</p>
                   {editingIdx===idx
                     ? <input value={opt.cover||""} onChange={e=>updateField(idx,"cover",e.target.value)} style={{width:"100%",fontSize:13,padding:"8px 10px",borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontFamily:"inherit"}}/>
                     : <p style={{fontSize:15,fontWeight:700,lineHeight:1.5}}>{opt.cover||"—"}</p>
@@ -2445,14 +2445,14 @@ No markdown, no explanation. Return the JSON array only.`;
                   </div>
                 ))}
                 <div>
-                  <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>🎯 CTA Slide</p>
+                  <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}> CTA Slide</p>
                   {editingIdx===idx
                     ? <input value={opt.cta_slide||""} onChange={e=>updateField(idx,"cta_slide",e.target.value)} style={{width:"100%",fontSize:13,padding:"8px 10px",borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontFamily:"inherit"}}/>
                     : <p style={{fontSize:13,fontWeight:600,color:"var(--accent)"}}>{opt.cta_slide||"—"}</p>
                   }
                 </div>
                 <div>
-                  <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>📱 Caption</p>
+                  <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}> Caption</p>
                   {editingIdx===idx
                     ? <textarea value={opt.caption||""} onChange={e=>updateField(idx,"caption",e.target.value)} rows={3} style={{width:"100%",fontSize:13,lineHeight:1.7,color:"var(--text)",background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:6,padding:"8px 10px",resize:"vertical",fontFamily:"inherit"}}/>
                     : <p style={{fontSize:13,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{opt.caption||"—"}</p>
@@ -2598,7 +2598,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
               </div>
             )}
           </div>
-          {project&&<p style={{fontSize:12,color:"var(--text2)"}}>📁 {project.title} · {project.client_name}</p>}
+          {project&&<p style={{fontSize:12,color:"var(--text2)"}}> {project.title} · {project.client_name}</p>}
         </div>
 
         {/* Delete confirm */}
@@ -2673,7 +2673,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
 
         {/* Workflow Assignment - Show who handles each stage */}
         <div style={{padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
-          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:8,textTransform:"uppercase",letterSpacing:"0.06em"}}>🔄 Workflow Path</p>
+          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:8,textTransform:"uppercase",letterSpacing:"0.06em"}}> Workflow Path</p>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             {STAGES.map((s,idx)=>{
               const isActive = STAGES.findIndex(st=>st.key===post.stage) >= idx;
@@ -2750,7 +2750,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
         {post.stage==="design"&&(
           <div style={{display:"flex",flexDirection:"column",gap:12,padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid #8b5cf6aa"}}>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <span style={{fontSize:16}}>🖼️</span>
+              <span style={{fontSize:16}}></span>
               <h4 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,fontSize:14}}>Design Assets</h4>
               {assignee&&<span style={{fontSize:11,color:"var(--text3)",marginLeft:"auto"}}>Assigned to {assignee.name}</span>}
             </div>
@@ -2763,7 +2763,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
                     {(asset.url||asset.data||"").match(/\.(jpg|jpeg|png|gif|webp|svg)/i)||(asset.type||"").startsWith("image")?
                       <img src={asset.url||asset.data} style={{width:"100%",height:"100%",objectFit:"cover"}} alt={asset.name}/>
                     :<div style={{textAlign:"center",padding:8}}>
-                      <div style={{fontSize:24,marginBottom:4}}>🎬</div>
+                      <div style={{fontSize:24,marginBottom:4}}></div>
                       <p style={{fontSize:9,color:"var(--text3)",wordBreak:"break-all"}}>{(asset.name||"").substring(0,14)}…</p>
                       {asset.url&&<a href={asset.url} target="_blank" rel="noreferrer" style={{fontSize:9,color:"var(--accent)"}}>View</a>}
                     </div>}
@@ -2809,7 +2809,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
               );
             })()}
 
-            <p style={{fontSize:11,color:"var(--text3)"}}>💡 Files are stored permanently in Supabase Storage. Upload multiple at once.</p>
+            <p style={{fontSize:11,color:"var(--text3)"}}> Files are stored permanently in Supabase Storage. Upload multiple at once.</p>
           </div>
         )}
 
@@ -2818,7 +2818,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {!post.assigned_to&&["content_creation","design","internal_review","client_approval"].includes(next.key)&&(
             <div style={{padding:"8px 12px",background:"#f59e0b22",border:"1px solid #f59e0b55",borderRadius:"var(--rs)",display:"flex",alignItems:"center",gap:8}}>
-              <span style={{fontSize:13}}>⚠️</span>
+              <span style={{fontSize:13}}></span>
               <span style={{fontSize:12,color:"#f59e0b",fontWeight:600}}>Assign a team member first before moving to {next.label}</span>
             </div>
           )}
@@ -2850,17 +2850,17 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
                   color:publishing?"var(--text3)":"#1877F2",fontSize:13,fontWeight:700,
                   display:"flex",alignItems:"center",justifyContent:"center",gap:8,cursor:publishing?"not-allowed":"pointer",
                 }}>
-                  {publishing?<><Spinner size={14}/> Publishing…</>:<>🚀 Publish to {socialIntegration.app_key==="instagram"?"Instagram":"Facebook"}{socialIntegration.client_name?` (${socialIntegration.client_name})`:""}</>}
+                  {publishing?<><Spinner size={14}/> Publishing…</>:<> Publish to {socialIntegration.app_key==="instagram"?"Instagram":"Facebook"}{socialIntegration.client_name?` (${socialIntegration.client_name})`:""}</>}
                 </button>
               ):(
                 <div style={{padding:"8px 12px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",fontSize:12,color:"var(--text3)",display:"flex",alignItems:"center",gap:6}}>
-                  <span>💡</span>
+                  <span></span>
                   <span>Connect a Facebook or Instagram integration in <strong>Settings → Integrations</strong> to enable one-click publishing.</span>
                 </div>
               )}
               {publishResult&&(
                 <div className="fade-in" style={{padding:"8px 12px",background:publishResult.ok?"#10b98111":"#ef444411",border:`1px solid ${publishResult.ok?"#10b98133":"#ef444433"}`,borderRadius:"var(--rs)",fontSize:12,color:publishResult.ok?"#10b981":"#ef4444",fontWeight:600}}>
-                  {publishResult.ok?"✅":"❌"} {publishResult.msg}
+                  {publishResult.ok?"":""} {publishResult.msg}
                 </div>
               )}
             </div>
@@ -3215,7 +3215,7 @@ function StatCard({label,value,color,sub}) {
 function Toast({message,onDone,type="success"}) {
   useEffect(()=>{const t=setTimeout(onDone,3200);return()=>clearTimeout(t);},[]);
   const isErr = type==="error";
-  const bg  = isErr?"#ef4444":"#10b981";
+  const bg = isErr?"#ef4444":"#10b981";
   const ico = isErr?Icons.alert:Icons.success;
   return (
     <div role={isErr?"alert":"status"} aria-live={isErr?"assertive":"polite"} aria-atomic="true" style={{
@@ -3344,7 +3344,7 @@ function AddClientWorkflowModal({open,onClose,onAdd,onGoToCalendar}) {
       {step==="form"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           <div style={{padding:12,background:"var(--accentbg)",border:"1px solid var(--accent)33",borderRadius:"var(--rs)"}}>
-            <p style={{fontSize:12,color:"var(--accent)",fontWeight:600}}>🚀 A dedicated folder will be auto-created with Projects, Tasks, Calendar & Assets</p>
+            <p style={{fontSize:12,color:"var(--accent)",fontWeight:600}}> A dedicated folder will be auto-created with Projects, Tasks, Calendar & Assets</p>
           </div>
           <Field label="Client Name" required>
             <input value={f.name} onChange={e=>s("name",e.target.value)} placeholder="e.g. Acme Corporation" style={inputSt} autoFocus/>
@@ -3397,7 +3397,7 @@ function AddClientWorkflowModal({open,onClose,onAdd,onGoToCalendar}) {
           </div>
           <div style={{width:"100%",padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",textAlign:"left"}}>
             <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:10}}>Auto-created folders</p>
-            {["📁 Projects","📋 Tasks","📅 Calendar","🖼️ Assets Library"].map(f=>(
+            {[" Projects"," Tasks"," Calendar"," Assets Library"].map(f=>(
               <div key={f} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0"}}>
                 <Ico d={Icons.check} size={13} stroke="#10b981"/>
                 <span style={{fontSize:13}}>{f}</span>
@@ -3741,7 +3741,7 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd}) {
           </Field>
           {/* Section: Where */}
           <div className="form-section">
-            <div className="form-section-title">📍 Where</div>
+            <div className="form-section-title"> Where</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
               <Field label="Client">
                 <select value={f.client_id} onChange={e=>{ s("client_id",e.target.value); s("project_id",""); const c=clients.find(x=>x.id===e.target.value); if(c?.platforms?.length) s("platform",c.platforms[0]); }} style={inputSt}>
@@ -3769,7 +3769,7 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd}) {
           </div>
           {/* Section: Who & When */}
           <div className="form-section">
-            <div className="form-section-title">👥 Who & When</div>
+            <div className="form-section-title"> Who & When</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
               <Field label="Assign To">
                 <select value={f.assigned_to} onChange={e=>s("assigned_to",e.target.value)} style={inputSt}>
@@ -3886,24 +3886,24 @@ function computePerformance(team, posts, timelogs, perfLogs) {
   return team.map(member => {
     const assigned = posts.filter(p=>p.assigned_to===member.email);
     const completed = assigned.filter(p=>["published","scheduled","client_approval"].includes(p.stage));
-    const rejected  = assigned.filter(p=>p.stage==="rejected");
+    const rejected = assigned.filter(p=>p.stage==="rejected");
     const inProgress= assigned.filter(p=>!["published","scheduled","rejected"].includes(p.stage));
-    const myLogs    = perfLogs.filter(l=>l.user_email===member.email);
-    const myTime    = timelogs.filter(t=>t.logged_by===member.email);
-    const totalHrs  = myTime.reduce((a,t)=>a+(t.duration_minutes||0)/60,0) +
+    const myLogs = perfLogs.filter(l=>l.user_email===member.email);
+    const myTime = timelogs.filter(t=>t.logged_by===member.email);
+    const totalHrs = myTime.reduce((a,t)=>a+(t.duration_minutes||0)/60,0) +
                       myLogs.reduce((a,l)=>a+(l.duration_hours||0),0);
     const avgQuality= myLogs.length ? myLogs.reduce((a,l)=>a+(l.quality_score||0),0)/myLogs.length : 0;
     const revisions = myLogs.reduce((a,l)=>a+(l.revision_count||0),0);
-    const onTime    = myLogs.filter(l=>l.on_time).length;
-    const compRate  = assigned.length ? Math.round(completed.length/assigned.length*100) : 0;
+    const onTime = myLogs.filter(l=>l.on_time).length;
+    const compRate = assigned.length ? Math.round(completed.length/assigned.length*100) : 0;
     const approvals = myLogs.filter(l=>l.client_approved).length;
     const approvalRate= myLogs.length ? Math.round(approvals/myLogs.length*100) : 0;
     // Performance score
-    const speedScore    = Math.max(0,100-revisions*8);
-    const prodScore     = Math.min(100,completed.length*20);
-    const consistScore  = myLogs.length ? Math.round(onTime/myLogs.length*100) : 50;
-    const qualityScore  = Math.round(avgQuality);
-    const perfScore     = Math.round((speedScore*0.25)+(prodScore*0.3)+(consistScore*0.2)+(qualityScore*0.25));
+    const speedScore = Math.max(0,100-revisions*8);
+    const prodScore = Math.min(100,completed.length*20);
+    const consistScore = myLogs.length ? Math.round(onTime/myLogs.length*100) : 50;
+    const qualityScore = Math.round(avgQuality);
+    const perfScore = Math.round((speedScore*0.25)+(prodScore*0.3)+(consistScore*0.2)+(qualityScore*0.25));
     return {
       ...member,
       assigned:assigned.length, completed:completed.length, rejected:rejected.length,
@@ -3917,14 +3917,14 @@ function computePerformance(team, posts, timelogs, perfLogs) {
 
 function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAddTask,onCreateInvoice,onAddProject}) {
   const {posts,projects,clients,team,timelogs,notifications} = data;
-  const perfLogs   = data.perfLogs||[];
+  const perfLogs = data.perfLogs||[];
   const aiInsights = data.aiInsights||[];
-  const invoices   = data.invoices||[];
-  const payments   = data.payments||[];
+  const invoices = data.invoices||[];
+  const payments = data.payments||[];
   const subscriptions = data.subscriptions||[];
-  const isAdmin    = currentUser?.role==="admin";
+  const isAdmin = currentUser?.role==="admin";
 
-  const [tab,setTab]         = usePersistentState("sf_tab_dashboard","overview");
+  const [tab,setTab] = usePersistentState("sf_tab_dashboard","overview");
   const [dateRange,setDateRange] = useState("all");
   const [filterUser,setFilterUser] = useState("all");
   const [filterClient,setFilterClient] = useState("all");
@@ -3932,7 +3932,7 @@ function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAdd
   const [liveInsights,setLiveInsights] = useState([]);
 
   const myNotifs = notifications.filter(n=>n.recipient_email===currentUser.email&&!n.is_read);
-  const myTasks  = posts.filter(p=>p.assigned_to===currentUser.email);
+  const myTasks = posts.filter(p=>p.assigned_to===currentUser.email);
   const pendingApproval = posts.filter(p=>p.stage==="client_approval").length;
 
   // Filter posts by date range
@@ -4023,7 +4023,7 @@ No markdown, no explanation.`;
 
   const insights=[...liveInsights,...aiInsights];
   const INSIGHT_COLORS={bottleneck:"#ef4444",performance:"#10b981",workload:"#f59e0b",timing:"#3b82f6",quality:"#8b5cf6",general:"#6b7280"};
-  const INSIGHT_ICONS={bottleneck:"⚠️",performance:"🏆",workload:"⚡",timing:"🕐",quality:"✨",general:"💡"};
+  const INSIGHT_ICONS={bottleneck:"",performance:"",workload:"",timing:"",quality:"",general:""};
 
   const dashTabs=[
     {k:"overview",l:"Overview"},
@@ -4040,7 +4040,7 @@ No markdown, no explanation.`;
         <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
           <div style={{minWidth:0}}>
             <h1 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:"clamp(20px,5vw,28px)",fontWeight:800,lineHeight:1.2}}>
-              {isAdmin?"Analytics Dashboard":"Dashboard"} 👋
+              {isAdmin?"Analytics Dashboard":"Dashboard"} 
             </h1>
             <p style={{color:"var(--text2)",marginTop:4,fontSize:14}}>Welcome back, {currentUser.name.split(" ")[0]}</p>
           </div>
@@ -4109,7 +4109,7 @@ No markdown, no explanation.`;
                 <span style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginLeft:8,marginRight:4}}>Finance:</span>
                 <span style={{fontSize:13,fontWeight:800,color:"#f59e0b",marginRight:16}}>EGP {Math.round(outstanding).toLocaleString()} outstanding</span>
                 <span style={{fontSize:13,fontWeight:800,color:"var(--accent)",marginRight:16}}>EGP {Math.round(mrr).toLocaleString()} MRR</span>
-                {hasAlerts&&<span style={{fontSize:12,fontWeight:700,color:"#ef4444",marginRight:16}}>⚠ {overdueCount+overdueSubCount} overdue</span>}
+                {hasAlerts&&<span style={{fontSize:12,fontWeight:700,color:"#ef4444",marginRight:16}}> {overdueCount+overdueSubCount} overdue</span>}
                 <button onClick={()=>setPage("invoices")} style={{marginLeft:"auto",fontSize:12,fontWeight:700,color:"var(--accent)",display:"flex",alignItems:"center",gap:4,padding:"4px 0",flexShrink:0}}>
                   View Finance <Ico d={Icons.chevR} size={13} stroke="var(--accent)"/>
                 </button>
@@ -4214,7 +4214,7 @@ No markdown, no explanation.`;
                 return (
                   <div key={i} style={{padding:"12px 16px",background:"var(--surface)",border:`1px solid ${c}33`,borderRadius:"var(--r)",borderLeft:`3px solid ${c}`}}>
                     <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
-                      <span style={{fontSize:14}}>{INSIGHT_ICONS[ins.category]||"💡"}</span>
+                      <span style={{fontSize:14}}>{INSIGHT_ICONS[ins.category]||""}</span>
                       <span style={{fontSize:12,fontWeight:700,color:c}}>{ins.title}</span>
                     </div>
                     <p style={{fontSize:11,color:"var(--text2)",lineHeight:1.5}}>{ins.insight.slice(0,90)}…</p>
@@ -4234,7 +4234,7 @@ No markdown, no explanation.`;
             <div style={{padding:20,background:`linear-gradient(135deg,var(--surface),#10b98111)`,border:"1px solid #10b98133",borderRadius:"var(--r)",display:"flex",alignItems:"center",gap:20}}>
               <div style={{position:"relative"}}>
                 <Avatar name={topPerformer.name} role={topPerformer.role} size={56}/>
-                <div style={{position:"absolute",top:-4,right:-4,fontSize:16}}>🏆</div>
+                <div style={{position:"absolute",top:-4,right:-4,fontSize:16}}></div>
               </div>
               <div style={{flex:1}}>
                 <p style={{fontSize:11,fontWeight:700,color:"#10b981",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:3}}>Top Performer This Period</p>
@@ -4268,7 +4268,7 @@ No markdown, no explanation.`;
                         onMouseLeave={e=>e.currentTarget.style.background=""}>
                         <td style={{padding:"12px 14px"}}>
                           <div style={{display:"flex",alignItems:"center",gap:10}}>
-                            <span style={{fontSize:12,fontWeight:800,color:"var(--text3)",minWidth:18}}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":i+1}</span>
+                            <span style={{fontSize:12,fontWeight:800,color:"var(--text3)",minWidth:18}}>{i===0?"":i===1?"":i===2?"":i+1}</span>
                             <Avatar name={member.name} role={member.role} size={30}/>
                             <div>
                               <p style={{fontWeight:700,fontSize:13}}>{member.name}</p>
@@ -4344,7 +4344,7 @@ No markdown, no explanation.`;
             {/* Productivity by hour */}
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:18}}>
               <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:4}}>Peak Productivity Hours</p>
-              <p style={{fontSize:12,color:"var(--text2)",marginBottom:14}}>🕐 Peak hour: <strong>{peakHour.h}:00</strong> ({peakHour.cnt} tasks completed)</p>
+              <p style={{fontSize:12,color:"var(--text2)",marginBottom:14}}> Peak hour: <strong>{peakHour.h}:00</strong> ({peakHour.cnt} tasks completed)</p>
               <div style={{display:"flex",gap:2,alignItems:"flex-end",height:80}}>
                 {[6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21].map(h=>{
                   const cnt=hourData.find(x=>x.h===h)?.cnt||0;
@@ -4374,7 +4374,7 @@ No markdown, no explanation.`;
             {/* Day of week */}
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:18}}>
               <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:4}}>Tasks by Day of Week</p>
-              <p style={{fontSize:12,color:"var(--text2)",marginBottom:14}}>📅 Best day: <strong>{dayNames[dayData.indexOf(Math.max(...dayData))]}</strong></p>
+              <p style={{fontSize:12,color:"var(--text2)",marginBottom:14}}> Best day: <strong>{dayNames[dayData.indexOf(Math.max(...dayData))]}</strong></p>
               <div style={{display:"flex",gap:6,alignItems:"flex-end",height:80}}>
                 {dayNames.map((day,i)=>{
                   const cnt=dayData[i];
@@ -4488,7 +4488,7 @@ No markdown, no explanation.`;
           <div className="insight-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(300px,100%),1fr))",gap:12}}>
             {insights.map((ins,i)=>{
               const c=INSIGHT_COLORS[ins.category]||"#6b7280";
-              const ico=INSIGHT_ICONS[ins.category]||"💡";
+              const ico=INSIGHT_ICONS[ins.category]||"";
               const priColor={high:"#ef4444",medium:"#f59e0b",low:"#10b981"}[ins.priority]||"#6b7280";
               return (
                 <div key={i} className="fade-in" style={{background:"var(--surface)",border:`1px solid ${c}33`,borderRadius:"var(--r)",overflow:"hidden",borderLeft:`3px solid ${c}`}}>
@@ -4626,12 +4626,12 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
 const parseJ = (s,fb=[]) => { try{return JSON.parse(s||"[]");}catch{return fb;} };
 
 const SKILL_CATS = {
-  Content:      {color:"#3b82f6"},
+  Content: {color:"#3b82f6"},
   Communication:{color:"#8b5cf6"},
-  Platform:     {color:"#ec4899"},
-  Strategy:     {color:"#f59e0b"},
-  Design:       {color:"#10b981"},
-  Industry:     {color:"#06b6d4"},
+  Platform: {color:"#ec4899"},
+  Strategy: {color:"#f59e0b"},
+  Design: {color:"#10b981"},
+  Industry: {color:"#06b6d4"},
 };
 
 function ConfidenceBar({value,color}) {
@@ -4775,16 +4775,16 @@ Return ONLY valid JSON (no markdown):
 
   const noKnowledgeBanner = !knowledge && (
     <div style={{padding:"10px 14px",background:"#f59e0b15",border:"1px solid #f59e0b44",borderRadius:"var(--rs)",fontSize:12,color:"#b45309",fontWeight:600,marginBottom:4}}>
-      ⚠️ No client knowledge profile yet — upload documents first for best results. Tools will still work with basic client info.
+       No client knowledge profile yet — upload documents first for best results. Tools will still work with basic client info.
     </div>
   );
 
   const scoreColor = (s) => s>=80?"#10b981":s>=60?"#f59e0b":"#ef4444";
 
   const TOOLS = [
-    {key:"voice", label:"🎙️ Brand Voice"},
-    {key:"ideas", label:"💡 Content Ideas"},
-    {key:"review", label:"🔍 Caption Review"},
+    {key:"voice", label:" Brand Voice"},
+    {key:"ideas", label:" Content Ideas"},
+    {key:"review", label:" Caption Review"},
   ];
 
   return (
@@ -4805,7 +4805,7 @@ Return ONLY valid JSON (no markdown):
       {tool==="voice"&&(
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:4}}>
-            <p style={{fontSize:13,fontWeight:800}}>🎙️ Brand Voice Rewriter</p>
+            <p style={{fontSize:13,fontWeight:800}}> Brand Voice Rewriter</p>
             <p style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>Paste any text — a draft caption, email, or idea — and AI rewrites it in <strong>{client.name}</strong>'s exact brand voice and tone.</p>
           </div>
           <Field label="Text to rewrite">
@@ -4837,7 +4837,7 @@ Return ONLY valid JSON (no markdown):
       {tool==="ideas"&&(
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:4}}>
-            <p style={{fontSize:13,fontWeight:800}}>💡 Content Ideas Generator</p>
+            <p style={{fontSize:13,fontWeight:800}}> Content Ideas Generator</p>
             <p style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>Generate post ideas based on <strong>{client.name}</strong>'s brand, audience, and content preferences — no task needed.</p>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
@@ -4869,7 +4869,7 @@ Return ONLY valid JSON (no markdown):
                   </div>
                   <div style={{padding:"12px 16px",display:"flex",flexDirection:"column",gap:6}}>
                     <p style={{fontSize:13,lineHeight:1.6,fontStyle:"italic",color:"var(--text)"}}>"<strong>{idea.hook}</strong>"</p>
-                    {idea.platform_tip&&<p style={{fontSize:12,color:"var(--text3)"}}>💡 {idea.platform_tip}</p>}
+                    {idea.platform_tip&&<p style={{fontSize:12,color:"var(--text3)"}}> {idea.platform_tip}</p>}
                   </div>
                 </div>
               ))}
@@ -4882,7 +4882,7 @@ Return ONLY valid JSON (no markdown):
       {tool==="review"&&(
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:4}}>
-            <p style={{fontSize:13,fontWeight:800}}>🔍 Caption Review & Scorer</p>
+            <p style={{fontSize:13,fontWeight:800}}> Caption Review & Scorer</p>
             <p style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>Paste any caption and AI scores it against <strong>{client.name}</strong>'s brand rules, highlights issues, and gives you a better version.</p>
           </div>
           <Field label="Caption to review">
@@ -4909,12 +4909,12 @@ Return ONLY valid JSON (no markdown):
               {/* Strengths & Issues */}
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                 <div style={{background:"#10b98110",border:"1px solid #10b98133",borderRadius:"var(--rs)",padding:14}}>
-                  <p style={{fontSize:12,fontWeight:800,color:"#10b981",marginBottom:8}}>✅ What Works</p>
+                  <p style={{fontSize:12,fontWeight:800,color:"#10b981",marginBottom:8}}> What Works</p>
                   {(reviewResult.strengths||[]).map((s,i)=><p key={i} style={{fontSize:12,color:"var(--text2)",marginBottom:4,lineHeight:1.5}}>• {s}</p>)}
                   {!(reviewResult.strengths||[]).length&&<p style={{fontSize:12,color:"var(--text3)"}}>None identified</p>}
                 </div>
                 <div style={{background:"#ef444410",border:"1px solid #ef444433",borderRadius:"var(--rs)",padding:14}}>
-                  <p style={{fontSize:12,fontWeight:800,color:"#ef4444",marginBottom:8}}>⚠️ Issues</p>
+                  <p style={{fontSize:12,fontWeight:800,color:"#ef4444",marginBottom:8}}> Issues</p>
                   {(reviewResult.issues||[]).map((s,i)=><p key={i} style={{fontSize:12,color:"var(--text2)",marginBottom:4,lineHeight:1.5}}>• {s}</p>)}
                   {!(reviewResult.issues||[]).length&&<p style={{fontSize:12,color:"var(--text3)"}}>No issues found</p>}
                 </div>
@@ -4967,8 +4967,8 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
   const fileRef = useRef(null);
   const isPriv = ["admin","account_manager"].includes(currentUser?.role);
 
-  const skills    = parseJ(knowledge?.skills);
-  const keywords  = parseJ(knowledge?.keywords);
+  const skills = parseJ(knowledge?.skills);
+  const keywords = parseJ(knowledge?.keywords);
   const priorities= parseJ(knowledge?.priorities);
   const clientPosts = allPosts||[];
 
@@ -5012,7 +5012,7 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
     <div style={{display:"flex",flexDirection:"column",gap:18}}>
       {/* Sub-nav */}
       <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)",alignSelf:"flex-start"}}>
-        {[["profile","🧠 Profile"],["upload","📤 Upload"],["caption","✨ AI Content"]].map(([k,l])=>(
+        {[["profile"," Profile"],["upload"," Upload"],["caption"," AI Content"]].map(([k,l])=>(
           <button key={k} onClick={()=>setSub(k)} style={{padding:"6px 14px",borderRadius:"var(--rxs)",fontSize:12,fontWeight:700,background:sub===k?"var(--accent)":"none",color:sub===k?"#fff":"var(--text2)",transition:"all 0.15s"}}>{l}</button>
         ))}
       </div>
@@ -5114,11 +5114,11 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
           {/* Quick import shortcuts */}
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             {[
-              {label:"💬 ChatGPT Chat",type:"chatgpt",name:`ChatGPT — ${new Date().toLocaleDateString("en-GB",{month:"short",year:"numeric"})}`},
-              {label:"📋 Meeting Notes",type:"notes",name:`Meeting Notes — ${new Date().toLocaleDateString("en-GB",{month:"short",year:"numeric"})}`},
-              {label:"📨 Client Email",type:"email",name:`Client Email — ${new Date().toLocaleDateString("en-GB",{month:"short",year:"numeric"})}`},
-              {label:"📞 Call Transcript",type:"transcript",name:`Call Transcript — ${new Date().toLocaleDateString("en-GB",{month:"short",year:"numeric"})}`},
-              {label:"📄 Brief / Doc",type:"brief",name:`Brief — ${new Date().toLocaleDateString("en-GB",{month:"short",year:"numeric"})}`},
+              {label:" ChatGPT Chat",type:"chatgpt",name:`ChatGPT — ${new Date().toLocaleDateString("en-GB",{month:"short",year:"numeric"})}`},
+              {label:" Meeting Notes",type:"notes",name:`Meeting Notes — ${new Date().toLocaleDateString("en-GB",{month:"short",year:"numeric"})}`},
+              {label:" Client Email",type:"email",name:`Client Email — ${new Date().toLocaleDateString("en-GB",{month:"short",year:"numeric"})}`},
+              {label:" Call Transcript",type:"transcript",name:`Call Transcript — ${new Date().toLocaleDateString("en-GB",{month:"short",year:"numeric"})}`},
+              {label:" Brief / Doc",type:"brief",name:`Brief — ${new Date().toLocaleDateString("en-GB",{month:"short",year:"numeric"})}`},
             ].map(({label,type,name})=>(
               <button key={type} onClick={()=>{setDocType(type);setDocName(name);setDocText("");setTimeout(()=>document.getElementById("paste-area")?.focus(),50);}}
                 style={{padding:"6px 14px",borderRadius:20,fontSize:12,fontWeight:600,background:docType===type?"var(--accent)":"var(--surface2)",color:docType===type?"#fff":"var(--text2)",border:`1px solid ${docType===type?"var(--accent)":"var(--border2)"}`,cursor:"pointer",transition:"all 0.15s"}}>
@@ -5137,7 +5137,7 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
             <Field label="Document Name"><input value={docName} onChange={e=>setDocName(e.target.value)} placeholder="e.g. ChatGPT — Brand Strategy" style={inputSt}/></Field>
             <Field label="Type">
               <select value={docType} onChange={e=>setDocType(e.target.value)} style={inputSt}>
-                {[["chatgpt","💬 ChatGPT / AI Chat"],["notes","Meeting Notes"],["brief","Brief / Strategy Doc"],["email","Client Email"],["transcript","Call Transcript"],["chat","Other Chat"],["other","Other"]].map(([k,l])=><option key={k} value={k}>{l}</option>)}
+                {[["chatgpt"," ChatGPT / AI Chat"],["notes","Meeting Notes"],["brief","Brief / Strategy Doc"],["email","Client Email"],["transcript","Call Transcript"],["chat","Other Chat"],["other","Other"]].map(([k,l])=><option key={k} value={k}>{l}</option>)}
               </select>
             </Field>
           </div>
@@ -5185,18 +5185,18 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
 // CLIENT MEMORY TAB
 // ════════════════════════════════════════════════════════════════
 const MEMORY_KEYS = [
-  {key:"brand_tone",         label:"Brand Tone",          hint:"e.g. Professional yet warm, friendly"},
-  {key:"content_dos",        label:"Content Do's",        hint:"e.g. Always include a CTA, use emojis"},
-  {key:"content_donts",      label:"Content Don'ts",      hint:"e.g. Never mention competitors"},
-  {key:"target_audience",    label:"Target Audience",     hint:"e.g. Women 25-35, Cairo, interested in fitness"},
-  {key:"preferred_language", label:"Preferred Language",  hint:"e.g. Egyptian Arabic, English"},
+  {key:"brand_tone", label:"Brand Tone", hint:"e.g. Professional yet warm, friendly"},
+  {key:"content_dos", label:"Content Do's", hint:"e.g. Always include a CTA, use emojis"},
+  {key:"content_donts", label:"Content Don'ts", hint:"e.g. Never mention competitors"},
+  {key:"target_audience", label:"Target Audience", hint:"e.g. Women 25-35, Cairo, interested in fitness"},
+  {key:"preferred_language", label:"Preferred Language", hint:"e.g. Egyptian Arabic, English"},
   {key:"preferred_platforms",label:"Preferred Platforms", hint:"e.g. Instagram, TikTok"},
-  {key:"posting_times",      label:"Best Posting Times",  hint:"e.g. 9am-11am, evenings on weekends"},
-  {key:"hashtag_style",      label:"Hashtag Style",       hint:"e.g. 5-8 tags, mix Arabic/English"},
-  {key:"competitor_avoid",   label:"Competitors to Avoid",hint:"e.g. BrandX, CompanyY"},
-  {key:"visual_style",       label:"Visual Style",        hint:"e.g. Minimalist, bright colors, always logo bottom-right"},
-  {key:"caption_length",     label:"Caption Length",      hint:"e.g. Short punchy (under 100 chars)"},
-  {key:"custom",             label:"Custom Note",         hint:"Any other important detail"},
+  {key:"posting_times", label:"Best Posting Times", hint:"e.g. 9am-11am, evenings on weekends"},
+  {key:"hashtag_style", label:"Hashtag Style", hint:"e.g. 5-8 tags, mix Arabic/English"},
+  {key:"competitor_avoid", label:"Competitors to Avoid",hint:"e.g. BrandX, CompanyY"},
+  {key:"visual_style", label:"Visual Style", hint:"e.g. Minimalist, bright colors, always logo bottom-right"},
+  {key:"caption_length", label:"Caption Length", hint:"e.g. Short punchy (under 100 chars)"},
+  {key:"custom", label:"Custom Note", hint:"Any other important detail"},
 ];
 
 function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUser}) {
@@ -5206,7 +5206,7 @@ function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUs
 
   const myMem = clientMemory.filter(m=>m.client_id===client?.id);
   const manual = myMem.filter(m=>m.type==="manual");
-  const aiMem  = myMem.filter(m=>m.type==="ai");
+  const aiMem = myMem.filter(m=>m.type==="ai");
   const autoMem= myMem.filter(m=>m.type==="auto");
 
   const typeColors = {manual:"#3b82f6", ai:"#8b5cf6", auto:"#10b981"};
@@ -5301,14 +5301,14 @@ function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUs
 
       {/* Priority notice */}
       <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#1e40af",display:"flex",gap:6,alignItems:"center"}}>
-        <span>⚡</span>
+        <span></span>
         <span><strong>Priority order:</strong> Manual &gt; AI Learned &gt; Auto — manual entries always override AI or auto patterns in content generation.</span>
       </div>
 
       {/* Sections */}
-      <Section title="Brand Guidelines" icon="📋" color="#3b82f6" items={manual} emptyMsg="No manual guidelines yet. Add brand tone, do's & don'ts, and audience info."/>
-      <Section title="AI Learned Preferences" icon="🧠" color="#8b5cf6" items={aiMem} emptyMsg="No AI-learned data yet. Pro learns from post rejections and conversations automatically."/>
-      <Section title="Behavioral Patterns" icon="📊" color="#10b981" items={autoMem} emptyMsg="No patterns detected yet. Auto-learning activates when posts are published and captions are chosen."/>
+      <Section title="Brand Guidelines" icon="" color="#3b82f6" items={manual} emptyMsg="No manual guidelines yet. Add brand tone, do's & don'ts, and audience info."/>
+      <Section title="AI Learned Preferences" icon="" color="#8b5cf6" items={aiMem} emptyMsg="No AI-learned data yet. Pro learns from post rejections and conversations automatically."/>
+      <Section title="Behavioral Patterns" icon="" color="#10b981" items={autoMem} emptyMsg="No patterns detected yet. Auto-learning activates when posts are published and captions are chosen."/>
     </div>
   );
 }
@@ -5368,15 +5368,15 @@ function BrandTrainingChat({client, clientKnowledge, clientIntelligence, clientM
   const STORAGE_KEY = `sf_brand_chat_${client?.id}`;
   const loadMsgs = () => { try{ return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]"); }catch(e){ return []; } };
   const [messages, setMessages] = useState(()=>loadMsgs());
-  const [input, setInput]       = useState("");
-  const [typing, setTyping]     = useState(false);
-  const [saving, setSaving]     = useState(false);
+  const [input, setInput] = useState("");
+  const [typing, setTyping] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
-  const [importing, setImporting]   = useState(false);
+  const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null); // {insights:[...], saved:bool}
-  const endRef                  = useRef(null);
-  const inputRef                = useRef(null);
+  const endRef = useRef(null);
+  const inputRef = useRef(null);
 
   useEffect(()=>{ try{ localStorage.setItem(STORAGE_KEY,JSON.stringify(messages.slice(-50))); }catch(e){} },[messages]);
   useEffect(()=>{ endRef.current?.scrollIntoView({behavior:"smooth"}); },[messages,typing]);
@@ -5390,7 +5390,7 @@ function BrandTrainingChat({client, clientKnowledge, clientIntelligence, clientM
   // Welcome message on first open
   useEffect(()=>{
     if(messages.length===0){
-      setMessages([{role:"bot",id:uid(),content:`Hi! I'm Pro — let's set up **${client.name}'s** content profile so I can generate on-brand content for them every time. 🎯
+      setMessages([{role:"bot",id:uid(),content:`Hi! I'm Pro — let's set up **${client.name}'s** content profile so I can generate on-brand content for them every time. 
 
 Tell me anything about their brand and content style:
 • What's their tone? (fun, professional, luxury, casual…)
@@ -5502,11 +5502,11 @@ ${rejectedBlock}`;
       }
 
       setTyping(false);
-      const savedNote = saves.length>0 ? `\n\n✅ Saved ${saves.length} insight${saves.length>1?"s":""} to ${client.name}'s memory.` : "";
+      const savedNote = saves.length>0 ? `\n\n Saved ${saves.length} insight${saves.length>1?"s":""} to ${client.name}'s memory.` : "";
       setMessages(m=>[...m,{role:"bot",id:uid(),content:displayText+savedNote}]);
     } catch(e){
       setTyping(false);
-      setMessages(m=>[...m,{role:"bot",id:uid(),content:"⚠️ Couldn't reach the AI. Please try again.",type:"error"}]);
+      setMessages(m=>[...m,{role:"bot",id:uid(),content:" Couldn't reach the AI. Please try again.",type:"error"}]);
     }
   };
 
@@ -5584,7 +5584,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
     setImportResult(r=>({...r, saved:true, savedCount:saved}));
     // Add summary message to training chat
     const summary = insights.slice(0,5).map(i=>`• **${i.category||i.key}**: ${String(i.value).slice(0,80)}`).join("\n");
-    setMessages(m=>[...m, {role:"bot",id:uid(),content:`✅ I analyzed the imported conversation and saved **${saved} insights** to ${client.name}'s memory:\n\n${summary}${insights.length>5?`\n• …and ${insights.length-5} more`:""}.\n\nAll future content generation for ${client.name} will use these learnings automatically.`}]);
+    setMessages(m=>[...m, {role:"bot",id:uid(),content:` I analyzed the imported conversation and saved **${saved} insights** to ${client.name}'s memory:\n\n${summary}${insights.length>5?`\n• …and ${insights.length-5} more`:""}.\n\nAll future content generation for ${client.name} will use these learnings automatically.`}]);
     setShowImport(false);
     setImportText("");
     setImportResult(null);
@@ -5592,7 +5592,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
 
   // Content analysis summary
   const publishedPosts = (allClientPosts||[]).filter(p=>["published","scheduled"].includes(p.stage)&&p.caption);
-  const rejectedPosts  = (allClientPosts||[]).filter(p=>p.stage==="rejected"&&p.caption);
+  const rejectedPosts = (allClientPosts||[]).filter(p=>p.stage==="rejected"&&p.caption);
   const platformBreakdown = {};
   publishedPosts.forEach(p=>{ platformBreakdown[p.platform]=(platformBreakdown[p.platform]||0)+1; });
 
@@ -5601,7 +5601,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
       {/* Header */}
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
         <div>
-          <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:18,fontWeight:800}}>🎯 Brand Training Chat</h3>
+          <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:18,fontWeight:800}}> Brand Training Chat</h3>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Teach Pro about {client.name}'s content style. Everything you share gets saved to their memory and used in all future content generation.</p>
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -5631,7 +5631,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
             <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
               <div>
                 <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:20,fontWeight:800,marginBottom:4}}>
-                  📥 Import External Chat
+                   Import External Chat
                 </h3>
                 <p style={{fontSize:13,color:"var(--text2)"}}>Paste any conversation from <strong>ChatGPT, Claude, WhatsApp, email, notes</strong> — Pro will analyze it and extract all brand insights for <strong>{client.name}</strong>.</p>
               </div>
@@ -5643,10 +5643,10 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
               <p style={{fontSize:12,fontWeight:700,color:"var(--text)",marginBottom:8}}>How to get your ChatGPT conversation:</p>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                 {[
-                  {icon:"🔗",title:"Copy & Paste",desc:"Open the ChatGPT/Claude conversation → Select All text → Paste below"},
-                  {icon:"📤",title:"ChatGPT Export",desc:"ChatGPT Settings → Data Controls → Export Data → Download → open conversations.json"},
-                  {icon:"📋",title:"Any Text",desc:"WhatsApp export, email thread, meeting notes, client briefs — anything works"},
-                  {icon:"🤖",title:"Claude/Gemini",desc:"Copy the full conversation text from any AI chat and paste it below"},
+                  {icon:"",title:"Copy & Paste",desc:"Open the ChatGPT/Claude conversation → Select All text → Paste below"},
+                  {icon:"",title:"ChatGPT Export",desc:"ChatGPT Settings → Data Controls → Export Data → Download → open conversations.json"},
+                  {icon:"",title:"Any Text",desc:"WhatsApp export, email thread, meeting notes, client briefs — anything works"},
+                  {icon:"",title:"Claude/Gemini",desc:"Copy the full conversation text from any AI chat and paste it below"},
                 ].map(h=>(
                   <div key={h.title} style={{display:"flex",gap:8,alignItems:"flex-start"}}>
                     <span style={{fontSize:16,flexShrink:0}}>{h.icon}</span>
@@ -5693,7 +5693,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
                     {importing?(
                       <><Spinner size={14}/> Analyzing with AI…</>
                     ):(
-                      <>🔍 Analyze & Extract Insights</>
+                      <> Analyze & Extract Insights</>
                     )}
                   </button>
                   <button onClick={()=>{setShowImport(false);setImportText("");}} style={{padding:"12px 20px",borderRadius:10,fontSize:13,fontWeight:600,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer"}}>
@@ -5714,7 +5714,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
                 ):(
                   <>
                     <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",background:"#dcfce7",borderRadius:10,border:"1px solid #bbf7d0"}}>
-                      <span style={{fontSize:20}}>✅</span>
+                      <span style={{fontSize:20}}></span>
                       <div>
                         <p style={{fontWeight:700,color:"#166534",fontSize:14}}>Found {importResult.insights.length} insights!</p>
                         <p style={{fontSize:12,color:"#15803d",marginTop:2}}>Review them below and click Save to add them to {client.name}'s memory.</p>
@@ -5730,12 +5730,12 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
                         grouped[cat].push(ins);
                       });
                       const catLabels = {
-                        brand_voice:"🎙️ Brand Voice",target_audience:"👥 Target Audience",
-                        content_themes:"📌 Content Themes",content_style:"✍️ Content Style",
-                        approved_patterns:"✅ What Works",rejected_patterns:"❌ What to Avoid",
-                        platform_strategy:"📱 Platform Strategy",keywords:"🔑 Keywords & Phrases",
-                        donts:"🚫 Don'ts",product_info:"📦 Product Info",
-                        campaign_idea:"💡 Campaign Ideas",other:"💬 Other Insights",
+                        brand_voice:" Brand Voice",target_audience:" Target Audience",
+                        content_themes:" Content Themes",content_style:" Content Style",
+                        approved_patterns:" What Works",rejected_patterns:" What to Avoid",
+                        platform_strategy:" Platform Strategy",keywords:" Keywords & Phrases",
+                        donts:" Don'ts",product_info:" Product Info",
+                        campaign_idea:" Campaign Ideas",other:" Other Insights",
                       };
                       return Object.entries(grouped).map(([cat,items])=>(
                         <div key={cat}>
@@ -5762,7 +5762,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
                             background:saving?"var(--border)":"var(--accent)",color:"#fff",
                             display:"flex",alignItems:"center",justifyContent:"center",gap:8,
                           }}>
-                          {saving?<><Spinner size={14}/> Saving to memory…</>:`💾 Save All ${importResult.insights.length} Insights to ${client.name}'s Memory`}
+                          {saving?<><Spinner size={14}/> Saving to memory…</>:` Save All ${importResult.insights.length} Insights to ${client.name}'s Memory`}
                         </button>
                         <button onClick={()=>setImportResult(null)} style={{padding:"12px 16px",borderRadius:10,fontSize:13,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer",fontWeight:600}}>
                           Re-paste
@@ -5770,7 +5770,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
                       </div>
                     ):(
                       <div style={{padding:"14px 16px",background:"#dcfce7",borderRadius:10,border:"1px solid #bbf7d0",textAlign:"center"}}>
-                        <p style={{fontWeight:800,color:"#166534",fontSize:15}}>✅ {importResult.savedCount} insights saved to {client.name}'s memory!</p>
+                        <p style={{fontWeight:800,color:"#166534",fontSize:15}}> {importResult.savedCount} insights saved to {client.name}'s memory!</p>
                         <p style={{fontSize:12,color:"#15803d",marginTop:4}}>All future content generation for {client.name} will use these learnings.</p>
                         <button onClick={()=>{setShowImport(false);setImportText("");setImportResult(null);}} style={{marginTop:12,padding:"8px 20px",borderRadius:8,fontSize:13,fontWeight:700,background:"#166534",color:"#fff",border:"none",cursor:"pointer"}}>
                           Done
@@ -5803,7 +5803,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
       {/* Info banner when no published captions */}
       {publishedPosts.length===0&&(
         <div style={{padding:"12px 16px",background:"#fef3c711",border:"1px solid #fde68a",borderRadius:8,display:"flex",gap:10,alignItems:"flex-start"}}>
-          <span style={{fontSize:16}}>💡</span>
+          <span style={{fontSize:16}}></span>
           <div>
             <p style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>No published captions yet</p>
             <p style={{fontSize:12,color:"var(--text2)",marginTop:2}}>Once you publish posts for {client.name}, Pro will automatically learn from those captions. Use this chat to manually teach Pro about the brand in the meantime.</p>
@@ -5836,7 +5836,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
               </div>
             </div>
           )}
-          {saving&&<p style={{fontSize:11,color:"#10b981",textAlign:"center",fontWeight:600}}>💾 Saving insights to memory…</p>}
+          {saving&&<p style={{fontSize:11,color:"#10b981",textAlign:"center",fontWeight:600}}> Saving insights to memory…</p>}
           <div ref={endRef}/>
         </div>
 
@@ -5898,8 +5898,8 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
     ["calendar","Calendar"],
     ["assets","Assets"],
     ["reports","Reports"],
-    ...(isPriv?[["intelligence","Intelligence"],["client_intel","🧠 Smart Intel"],["memory","🧩 Memory"],["brand_training","🎯 Brand Training"],["briefs",`📋 Briefs${pendingBriefCount?` (${pendingBriefCount} pending)`:""}`]]:[]),
-    ...(currentUser?.role==="admin"?[["context_file","📋 Context File"]]:[]),
+    ...(isPriv?[["intelligence","Intelligence"],["client_intel"," Smart Intel"],["memory"," Memory"],["brand_training"," Brand Training"],["briefs",` Briefs${pendingBriefCount?` (${pendingBriefCount} pending)`:""}`]]:[]),
+    ...(currentUser?.role==="admin"?[["context_file"," Context File"]]:[]),
   ];
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
@@ -6093,7 +6093,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
                     <p style={{fontWeight:700,fontSize:15}}>{ml}</p>
                     <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Sent {b.created_at?new Date(b.created_at).toLocaleDateString("en-GB",{day:"numeric",month:"short"}):""} · Reminders: {b.reminder_count||0}</p>
                   </div>
-                  <span style={{fontSize:12,padding:"4px 10px",borderRadius:99,fontWeight:700,background:b.status==="submitted"?"#10b98122":"#f59e0b22",color:b.status==="submitted"?"#10b981":"#f59e0b"}}>{b.status==="submitted"?"✅ Submitted":"⏳ Pending"}</span>
+                  <span style={{fontSize:12,padding:"4px 10px",borderRadius:99,fontWeight:700,background:b.status==="submitted"?"#10b98122":"#f59e0b22",color:b.status==="submitted"?"#10b981":"#f59e0b"}}>{b.status==="submitted"?" Submitted":" Pending"}</span>
                 </div>
                 {b.status==="submitted"&&BRIEF_QUESTIONS.map(q=>b[q.key]?(
                   <div key={q.key} style={{marginBottom:10,paddingTop:10,borderTop:"1px solid var(--border)"}}>
@@ -6233,7 +6233,7 @@ function ProjectsPage({projects, posts, clients, team, assets, clientIntelligenc
                   <div style={{display:"flex",gap:8}}>
                     {(proj.platforms||[]).slice(0,4).map(pl=><span key={pl}>{PLATFORM_ICONS[pl]||pl}</span>)}
                   </div>
-                  {proj.deadline&&<span>📅 {proj.deadline}</span>}
+                  {proj.deadline&&<span> {proj.deadline}</span>}
                 </div>
               </div>
             </div>
@@ -6292,7 +6292,7 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
           <div onClick={()=>setTaskSection(s=>s==="expanded"?"collapsed":"expanded")} style={{padding:"14px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",borderBottom:taskSection==="expanded"?"1px solid var(--border)":"none"}}>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <span style={{fontSize:18}}>📋</span>
+              <span style={{fontSize:18}}></span>
               <div>
                 <p style={{fontWeight:700,fontSize:14}}>Client Requests</p>
                 <p style={{fontSize:12,color:"var(--text3)"}}>{clientTasks.length} total · {newClientTasks.length} new</p>
@@ -6305,7 +6305,7 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
             <div style={{display:"flex",flexDirection:"column",gap:0}}>
               {clientTasks.map((t,i)=>(
                 <div key={t.id} style={{padding:"12px 18px",borderBottom:i<clientTasks.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-                  <span style={{fontSize:20,flexShrink:0}}>{TASK_TYPE_MAP[t.task_type]?.icon||"📋"}</span>
+                  <span style={{fontSize:20,flexShrink:0}}>{TASK_TYPE_MAP[t.task_type]?.icon||""}</span>
                   <div style={{flex:1,minWidth:160}}>
                     <p style={{fontWeight:600,fontSize:13}}>{t.title}</p>
                     <p style={{fontSize:11,color:"var(--text3)",marginTop:1}}>{t.client_name} · {TASK_TYPE_MAP[t.task_type]?.label}</p>
@@ -6474,7 +6474,7 @@ function AssetsPage({assets,projects,onAddAsset}) {
       {/* Upload form */}
       {showUpload&&pendingFile&&(
         <div style={{background:"var(--surface)",border:"1px solid var(--accent)44",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:14}} className="fade-in">
-          <p style={{fontSize:13,fontWeight:700}}>📎 {pendingFile.name} <span style={{fontSize:11,color:"var(--text3)",fontWeight:400}}>({(pendingFile.size/1024/1024).toFixed(2)} MB)</span></p>
+          <p style={{fontSize:13,fontWeight:700}}> {pendingFile.name} <span style={{fontSize:11,color:"var(--text3)",fontWeight:400}}>({(pendingFile.size/1024/1024).toFixed(2)} MB)</span></p>
           {preview&&<img src={preview} style={{width:"100%",maxHeight:180,objectFit:"contain",borderRadius:"var(--rs)",background:"var(--surface2)"}} alt="preview"/>}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
             <Field label="Asset Name"><input value={uploadForm.name} onChange={e=>setUploadForm(f=>({...f,name:e.target.value}))} style={inputSt}/></Field>
@@ -6531,14 +6531,14 @@ function AssetsPage({assets,projects,onAddAsset}) {
                 {a.file_url&&a.file_url!="#"&&(
                   <a href={a.file_url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
                     style={{position:"absolute",bottom:6,right:6,padding:"3px 8px",borderRadius:6,background:"#000000aa",color:"#fff",fontSize:10,fontWeight:600,textDecoration:"none"}}>
-                    Open ↗
+                    Open 
                   </a>
                 )}
               </div>
               <div style={{padding:"12px 14px"}}>
                 <p style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</p>
                 <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{a.category}</p>
-                {proj&&<p style={{fontSize:10,color:"var(--text3)",marginTop:4}}>📁 {proj.client_name}</p>}
+                {proj&&<p style={{fontSize:10,color:"var(--text3)",marginTop:4}}> {proj.client_name}</p>}
                 {a.tags&&<div style={{display:"flex",gap:3,marginTop:6,flexWrap:"wrap"}}>{(Array.isArray(a.tags)?a.tags:a.tags.split(",")).slice(0,3).map(t=><span key={t} style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:"var(--surface2)",color:"var(--text3)",border:"1px solid var(--border)"}}>{t}</span>)}</div>}
               </div>
             </div>
@@ -6674,7 +6674,7 @@ function ProjectWizard({onClose, onSubmit, clients, team, clientIntelligence}) {
               {/* Social calendar / campaign extra fields */}
               {projType.hasPlatforms&&(
                 <div style={{padding:16,background:"var(--surface2)",borderRadius:12,border:"1px solid var(--border)"}}>
-                  <div style={{fontWeight:700,fontSize:13,color:"var(--text1)",marginBottom:12}}>📅 Posting Schedule</div>
+                  <div style={{fontWeight:700,fontSize:13,color:"var(--text1)",marginBottom:12}}> Posting Schedule</div>
                   <div style={{marginBottom:12}}>
                     <label style={lblSt}>Platforms</label>
                     <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
@@ -6701,7 +6701,7 @@ function ProjectWizard({onClose, onSubmit, clients, team, clientIntelligence}) {
                     </div>
                   </div>
                   {intel&&<div style={{marginTop:10,padding:"8px 12px",background:"#6366f122",borderRadius:8,fontSize:12,color:"#818cf8"}}>
-                    ✨ Client intelligence found — will apply {intel.avoid_weekends?"(weekends avoided) ":""}{intel.posting_frequency} posts/week rule
+                     Client intelligence found — will apply {intel.avoid_weekends?"(weekends avoided) ":""}{intel.posting_frequency} posts/week rule
                   </div>}
                 </div>
               )}
@@ -6783,7 +6783,7 @@ function ProjectWizard({onClose, onSubmit, clients, team, clientIntelligence}) {
                   {pillars.filter(p=>p.pillar_name).map(p=>
                     Array.from({length:parseInt(p.post_count)||0},(_,i)=>(
                       <div key={`${p.id}-${i}`} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"var(--surface2)",borderRadius:8}}>
-                        <span style={{fontSize:18}}>📝</span>
+                        <span style={{fontSize:18}}></span>
                         <div style={{flex:1}}>
                           <div style={{fontWeight:600,fontSize:13,color:"var(--text1)"}}>{p.pillar_name} — Post {i+1}</div>
                           <div style={{color:"var(--text3)",fontSize:11}}>{p.post_type} · {p.assigned_to||"Unassigned"}</div>
@@ -6801,7 +6801,7 @@ function ProjectWizard({onClose, onSubmit, clients, team, clientIntelligence}) {
 
               {intel&&(
                 <div style={{padding:14,background:"#10b98115",borderRadius:10,border:"1px solid #10b98133",fontSize:13}}>
-                  <div style={{fontWeight:700,color:"#10b981",marginBottom:6}}>✨ Client Intelligence Applied</div>
+                  <div style={{fontWeight:700,color:"#10b981",marginBottom:6}}> Client Intelligence Applied</div>
                   <div style={{color:"var(--text2)"}}>Posts will be scheduled using {form.client_name}'s intelligence: {intel.avoid_weekends?"no weekends, ":""}{intel.posting_frequency} posts/week, best times per platform.</div>
                 </div>
               )}
@@ -6822,7 +6822,7 @@ function ProjectWizard({onClose, onSubmit, clients, team, clientIntelligence}) {
               </Btn>
             ):(
               <Btn onClick={handleSubmit} disabled={submitting}>
-                {submitting?<><Spinner size={14}/> Creating…</>:"🚀 Create Project"}
+                {submitting?<><Spinner size={14}/> Creating…</>:" Create Project"}
               </Btn>
             )}
           </div>
@@ -7091,24 +7091,24 @@ function ClientIntelligenceTab({client, intelligence, onSave}) {
   const existing = intelligence?.find(i=>i.client_id===client.id)||{};
   const [form, setForm] = useState({
     preferred_platforms: existing.preferred_platforms||[],
-    best_posting_days:   existing.best_posting_days||[],
-    avoid_weekends:      existing.avoid_weekends||false,
-    posting_frequency:   existing.posting_frequency||3,
+    best_posting_days: existing.best_posting_days||[],
+    avoid_weekends: existing.avoid_weekends||false,
+    posting_frequency: existing.posting_frequency||3,
     instagram_best_time: existing.instagram_best_time||"18:00",
-    facebook_best_time:  existing.facebook_best_time||"12:00",
-    tiktok_best_time:    existing.tiktok_best_time||"19:00",
-    linkedin_best_time:  existing.linkedin_best_time||"09:00",
-    active_hours:        existing.active_hours||"evening",
-    timezone:            existing.timezone||"Africa/Cairo",
+    facebook_best_time: existing.facebook_best_time||"12:00",
+    tiktok_best_time: existing.tiktok_best_time||"19:00",
+    linkedin_best_time: existing.linkedin_best_time||"09:00",
+    active_hours: existing.active_hours||"evening",
+    timezone: existing.timezone||"Africa/Cairo",
     peak_engagement_days:existing.peak_engagement_days||[],
     preferred_content_types: existing.preferred_content_types||[],
-    preferred_pillars:   existing.preferred_pillars||"",
+    preferred_pillars: existing.preferred_pillars||"",
     best_performing_type:existing.best_performing_type||"",
     best_performing_day: existing.best_performing_day||"",
     avg_engagement_rate: existing.avg_engagement_rate||"",
   });
   const [saving, setSaving] = useState(false);
-  const [saved,  setSaved]  = useState(false);
+  const [saved, setSaved] = useState(false);
   const sf = (k,v) => { setForm(p=>({...p,[k]:v})); setSaved(false); };
   const toggleArr = (k,v) => sf(k, form[k].includes(v)?form[k].filter(x=>x!==v):[...form[k],v]);
 
@@ -7148,7 +7148,7 @@ function ClientIntelligenceTab({client, intelligence, onSave}) {
     <div style={{maxWidth:700}}>
       {existing.updated_at&&<div style={{color:"var(--text3)",fontSize:12,marginBottom:16}}>Last updated: {new Date(existing.updated_at).toLocaleString()}</div>}
 
-      <Section title="📡 Posting Strategy">
+      <Section title=" Posting Strategy">
         <ChipGroup label="Preferred Platforms" options={PLATFORMS} field="preferred_platforms" icons={PLATFORM_ICONS}/>
         <ChipGroup label="Best Posting Days" options={days} field="best_posting_days"/>
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
@@ -7163,9 +7163,9 @@ function ClientIntelligenceTab({client, intelligence, onSave}) {
         </div>
       </Section>
 
-      <Section title="⏰ Best Posting Times">
+      <Section title=" Best Posting Times">
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          {[["instagram","📸 Instagram"],["facebook","👥 Facebook"],["tiktok","🎵 TikTok"],["linkedin","💼 LinkedIn"]].map(([pl,label])=>(
+          {[["instagram"," Instagram"],["facebook"," Facebook"],["tiktok"," TikTok"],["linkedin"," LinkedIn"]].map(([pl,label])=>(
             <div key={pl}>
               <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>{label}</label>
               <input type="time" value={form[`${pl}_best_time`]} onChange={e=>sf(`${pl}_best_time`,e.target.value)} style={inSt}/>
@@ -7174,7 +7174,7 @@ function ClientIntelligenceTab({client, intelligence, onSave}) {
         </div>
       </Section>
 
-      <Section title="👥 Audience Behavior">
+      <Section title=" Audience Behavior">
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
           <div>
             <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Active Hours</label>
@@ -7195,7 +7195,7 @@ function ClientIntelligenceTab({client, intelligence, onSave}) {
         <ChipGroup label="Peak Engagement Days" options={days} field="peak_engagement_days"/>
       </Section>
 
-      <Section title="🎨 Content Preferences">
+      <Section title=" Content Preferences">
         <ChipGroup label="Preferred Content Types" options={["reel","carousel","static","story","video"]} field="preferred_content_types"/>
         <div>
           <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Preferred Content Pillars</label>
@@ -7203,7 +7203,7 @@ function ClientIntelligenceTab({client, intelligence, onSave}) {
         </div>
       </Section>
 
-      <Section title="📊 Performance Data">
+      <Section title=" Performance Data">
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
           <div>
             <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Best Performing Type</label>
@@ -7248,11 +7248,11 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
   const stageCounts = stageOrder.reduce((a,s)=>({...a,[s]:projectPosts.filter(p=>p.stage===s).length}),{});
 
   const TABS = [
-    {id:"overview",  label:"Overview",  icon:"📋"},
-    {id:"tasks",     label:"Tasks",     icon:"✅", count:projectPosts.length},
-    {id:"calendar",  label:"Calendar",  icon:"📅"},
-    {id:"assets",    label:"Assets",    icon:"🖼️"},
-    {id:"reports",   label:"Reports",   icon:"📊"},
+    {id:"overview", label:"Overview", icon:""},
+    {id:"tasks", label:"Tasks", icon:"", count:projectPosts.length},
+    {id:"calendar", label:"Calendar", icon:""},
+    {id:"assets", label:"Assets", icon:""},
+    {id:"reports", label:"Reports", icon:""},
   ];
 
   // Calendar view for this project
@@ -7264,7 +7264,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
   // Get date range for project calendar
   const calDates = Object.keys(calendarByDate).sort();
   const calStart = project.posting_start||project.start_date||calDates[0];
-  const calEnd   = project.posting_end||project.deadline||calDates[calDates.length-1];
+  const calEnd = project.posting_end||project.deadline||calDates[calDates.length-1];
 
   // Build calendar weeks
   const buildCalendarWeeks = () => {
@@ -7386,8 +7386,8 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
             {project.posting_start&&(
               <div style={{background:"var(--surface1)",borderRadius:14,padding:16,border:"1px solid var(--border)"}}>
                 <div style={{fontWeight:700,fontSize:13,color:"var(--text1)",marginBottom:8}}>Posting Schedule</div>
-                <div style={{fontSize:13,color:"var(--text2)"}}>📅 {project.posting_start} → {project.posting_end}</div>
-                <div style={{fontSize:13,color:"var(--text2)",marginTop:4}}>📊 {calendarPosts.length}/{projectPosts.length} posts scheduled</div>
+                <div style={{fontSize:13,color:"var(--text2)"}}> {project.posting_start} → {project.posting_end}</div>
+                <div style={{fontSize:13,color:"var(--text2)",marginTop:4}}> {calendarPosts.length}/{projectPosts.length} posts scheduled</div>
               </div>
             )}
           </div>
@@ -7408,7 +7408,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                     <div style={{fontWeight:600,fontSize:13,color:"var(--text1)"}}>{post.title}</div>
                     <div style={{color:"var(--text3)",fontSize:12,marginTop:2}}>
                       {post.post_type&&<span style={{marginRight:8,textTransform:"capitalize"}}>{post.post_type}</span>}
-                      {post.scheduled_date&&<span>📅 {post.scheduled_date} {post.scheduled_time}</span>}
+                      {post.scheduled_date&&<span> {post.scheduled_date} {post.scheduled_time}</span>}
                     </div>
                   </div>
                   {assignee&&<div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -7480,7 +7480,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
             {assets.filter(a=>a.project_id===project.id).map(a=>(
               <div key={a.id} style={{background:"var(--surface1)",borderRadius:10,border:"1px solid var(--border)",overflow:"hidden"}}>
                 {a.file_type==="image"?<img src={a.file_url} style={{width:"100%",height:100,objectFit:"cover"}} alt={a.name}/>
-                :<div style={{height:100,background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:32}}>🎬</div>}
+                :<div style={{height:100,background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:32}}></div>}
                 <div style={{padding:"8px 10px"}}>
                   <div style={{fontSize:12,fontWeight:600,color:"var(--text1)",overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{a.name}</div>
                 </div>
@@ -7494,10 +7494,10 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
       {tab==="reports"&&(
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
           {[
-            {label:"Total Posts",value:projectPosts.length,icon:"📝",color:"#6366f1"},
-            {label:"Published",value:projectPosts.filter(p=>p.stage==="published").length,icon:"✅",color:"#10b981"},
-            {label:"Scheduled",value:projectPosts.filter(p=>p.stage==="scheduled").length,icon:"📅",color:"#0ea5e9"},
-            {label:"In Review",value:projectPosts.filter(p=>["review","approval"].includes(p.stage)).length,icon:"👁️",color:"#f59e0b"},
+            {label:"Total Posts",value:projectPosts.length,icon:"",color:"#6366f1"},
+            {label:"Published",value:projectPosts.filter(p=>p.stage==="published").length,icon:"",color:"#10b981"},
+            {label:"Scheduled",value:projectPosts.filter(p=>p.stage==="scheduled").length,icon:"",color:"#0ea5e9"},
+            {label:"In Review",value:projectPosts.filter(p=>["review","approval"].includes(p.stage)).length,icon:"",color:"#f59e0b"},
           ].map(kpi=>(
             <div key={kpi.label} style={{background:"var(--surface1)",borderRadius:14,padding:20,border:"1px solid var(--border)",display:"flex",alignItems:"center",gap:16}}>
               <div style={{width:52,height:52,borderRadius:12,background:kpi.color+"22",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>{kpi.icon}</div>
@@ -7551,10 +7551,10 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   const pendingRequests = (accessRequests||[]).filter(r=>r.status==="pending");
 
   const tabs = [
-    {id:"team",     label:"Team Members",   count: team?.length||0},
-    {id:"invites",  label:"Invitations",     count: (invitations||[]).filter(i=>i.status==="pending").length},
+    {id:"team", label:"Team Members", count: team?.length||0},
+    {id:"invites", label:"Invitations", count: (invitations||[]).filter(i=>i.status==="pending").length},
     {id:"requests", label:"Access Requests", count: pendingRequests.length, badge:true},
-    {id:"clients",  label:"Client Users",    count: clientUsers?.length||0},
+    {id:"clients", label:"Client Users", count: clientUsers?.length||0},
   ];
 
   return (
@@ -8004,10 +8004,10 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
 
   const pendingBrief = (monthlyBriefs||[]).find(b=>b.client_id===client?.id&&b.status==="pending");
   const navItems = [
-    {key:"tasks",   label:"Requests", mLabel:"Requests"},
-    {key:"posts",   label:"Content",  mLabel:"Content"},
+    {key:"tasks", label:"Requests", mLabel:"Requests"},
+    {key:"posts", label:"Content", mLabel:"Content"},
     {key:"calendar",label:"Calendar", mLabel:"Calendar"},
-    {key:"brief",   label:pendingBrief?"📋 Brief ●":"📋 Brief", mLabel:pendingBrief?"Brief●":"Brief"},
+    {key:"brief", label:pendingBrief?" Brief ●":" Brief", mLabel:pendingBrief?"Brief●":"Brief"},
     ...(clientSubs.length>0?[{key:"subscriptions",label:"Subscriptions",mLabel:"Billing"}]:[]),
     {key:"settings",label:"Settings", mLabel:"Settings"},
   ];
@@ -8043,7 +8043,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
               ))}
               {/* Theme toggle */}
               <button onClick={()=>{const idx=WALLPAPERS.findIndex(w=>w.key===wallpaper);if(onWallpaperChange)onWallpaperChange(WALLPAPERS[(idx+1)%WALLPAPERS.length].key);}} style={{display:"flex",alignItems:"center",justifyContent:"center",width:32,height:32,borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer",transition:"all 0.2s"}} title={WALLPAPERS.find(w=>w.key===wallpaper)?.label}>
-                {wallpaper==="dark"?"🌙":wallpaper==="light"?"☀️":"🌀"}
+                {wallpaper==="dark"?"":wallpaper==="light"?"":""}
               </button>
               <button onClick={onLogout} style={{display:"flex",alignItems:"center",gap:6,fontSize:13,color:"var(--text2)",background:"none",border:"none",cursor:"pointer"}}>
                 <Ico d={Icons.logout} size={15}/> Logout
@@ -8054,7 +8054,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
           {isMobile&&(
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <button onClick={()=>{const idx=WALLPAPERS.findIndex(w=>w.key===wallpaper);if(onWallpaperChange)onWallpaperChange(WALLPAPERS[(idx+1)%WALLPAPERS.length].key);}} style={{display:"flex",alignItems:"center",justifyContent:"center",width:32,height:32,borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer",fontSize:14}} title={WALLPAPERS.find(w=>w.key===wallpaper)?.label}>
-                {wallpaper==="dark"?"🌙":wallpaper==="light"?"☀️":"🌀"}
+                {wallpaper==="dark"?"":wallpaper==="light"?"":""}
               </button>
               <button onClick={onLogout} style={{padding:"6px 12px",borderRadius:"var(--rs)",fontSize:12,fontWeight:600,color:"var(--text2)",background:"var(--surface2)",border:"1px solid var(--border)",cursor:"pointer"}}>Logout</button>
             </div>
@@ -8081,7 +8081,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
             <div style={{padding:`${isMobile?16:20}px ${isMobile?16:24}px`,borderBottom:"1px solid var(--border)",display:"flex",alignItems:"flex-start",gap:12,justifyContent:"space-between"}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-                  <span style={{fontSize:18}}>{TASK_TYPE_MAP[selTask.task_type]?.icon||"📋"}</span>
+                  <span style={{fontSize:18}}>{TASK_TYPE_MAP[selTask.task_type]?.icon||""}</span>
                   <span style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>{TASK_TYPE_MAP[selTask.task_type]?.label||selTask.task_type}</span>
                 </div>
                 <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,fontSize:isMobile?15:17,lineHeight:1.3}}>{selTask.title}</h3>
@@ -8105,7 +8105,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
               {selTask.stage==="ready_for_client_approval"&&(
                 <div style={{borderTop:"1px solid var(--border)",paddingTop:14,display:"flex",flexDirection:"column",gap:12}}>
                   <div style={{padding:12,background:"#f9731622",border:"1px solid #f9731644",borderRadius:"var(--rs)"}}>
-                    <p style={{fontSize:13,fontWeight:700,color:"#f97316"}}>🎉 Your deliverable is ready for review!</p>
+                    <p style={{fontSize:13,fontWeight:700,color:"#f97316"}}> Your deliverable is ready for review!</p>
                     {selTask.deliverable_note&&<p style={{fontSize:13,color:"var(--text2)",marginTop:6,lineHeight:1.6}}>{selTask.deliverable_note}</p>}
                   </div>
                   <p style={{fontSize:13,fontWeight:700}}>Your Feedback</p>
@@ -8122,12 +8122,12 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
               )}
               {selTask.stage==="approved"&&(
                 <div style={{padding:12,background:"#10b98122",border:"1px solid #10b98166",borderRadius:"var(--rs)"}}>
-                  <p style={{fontSize:13,fontWeight:700,color:"#10b981"}}>✅ You approved this task. Our team is finalizing delivery.</p>
+                  <p style={{fontSize:13,fontWeight:700,color:"#10b981"}}> You approved this task. Our team is finalizing delivery.</p>
                 </div>
               )}
               {selTask.stage==="changes_requested"&&(
                 <div style={{padding:12,background:"#ef444422",border:"1px solid #ef444466",borderRadius:"var(--rs)"}}>
-                  <p style={{fontSize:13,fontWeight:700,color:"#ef4444"}}>🔄 Changes requested. Our team is working on revisions.</p>
+                  <p style={{fontSize:13,fontWeight:700,color:"#ef4444"}}> Changes requested. Our team is working on revisions.</p>
                   {selTask.client_rejection_reason&&<p style={{fontSize:12,color:"var(--text2)",marginTop:4}}>Your note: "{selTask.client_rejection_reason}"</p>}
                 </div>
               )}
@@ -8204,14 +8204,14 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
             {/* Awaiting approval highlight */}
             {tasks.filter(t=>t.stage==="ready_for_client_approval").length>0&&(
               <div style={{padding:14,background:"#f9731622",border:"1px solid #f9731644",borderRadius:"var(--r)"}}>
-                <p style={{fontSize:13,fontWeight:700,color:"#f97316",marginBottom:10}}>⏳ Waiting for Your Approval ({tasks.filter(t=>t.stage==="ready_for_client_approval").length})</p>
+                <p style={{fontSize:13,fontWeight:700,color:"#f97316",marginBottom:10}}> Waiting for Your Approval ({tasks.filter(t=>t.stage==="ready_for_client_approval").length})</p>
                 <div style={{display:"flex",flexDirection:"column",gap:8}}>
                   {tasks.filter(t=>t.stage==="ready_for_client_approval").map(t=>(
                     <div key={t.id} onClick={()=>setSelTask(t)} style={{background:"var(--surface)",borderRadius:"var(--rs)",padding:"12px 14px",cursor:"pointer",border:"1px solid #f9731644",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}
                     onMouseEnter={e=>e.currentTarget.style.borderColor="#f97316"}
                     onMouseLeave={e=>e.currentTarget.style.borderColor="#f9731644"}>
                       <div style={{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0}}>
-                        <span style={{fontSize:20,flexShrink:0}}>{TASK_TYPE_MAP[t.task_type]?.icon||"📋"}</span>
+                        <span style={{fontSize:20,flexShrink:0}}>{TASK_TYPE_MAP[t.task_type]?.icon||""}</span>
                         <div style={{minWidth:0}}>
                           <p style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</p>
                           <p style={{fontSize:11,color:"var(--text3)"}}>{TASK_TYPE_MAP[t.task_type]?.label}</p>
@@ -8249,7 +8249,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {tasks.length===0?(
                 <div style={{textAlign:"center",padding:"48px 20px",color:"var(--text3)",background:"var(--surface)",borderRadius:"var(--r)",border:"1px solid var(--border)"}}>
-                  <p style={{fontSize:36,marginBottom:10}}>📋</p>
+                  <p style={{fontSize:36,marginBottom:10}}></p>
                   <p style={{fontSize:15,fontWeight:700,color:"var(--text2)"}}>No requests yet</p>
                   <p style={{fontSize:13,marginTop:4}}>Tap "New Request" to get started</p>
                 </div>
@@ -8258,7 +8258,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                   <div key={t.id} onClick={()=>setSelTask(t)} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"12px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:12,minHeight:56,transition:"background 0.15s,border-color 0.15s"}}
                   onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--border2)";e.currentTarget.style.background="var(--surface2)";}}
                   onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border)";e.currentTarget.style.background="var(--surface)";}}>
-                    <span style={{fontSize:22,flexShrink:0}}>{TASK_TYPE_MAP[t.task_type]?.icon||"📋"}</span>
+                    <span style={{fontSize:22,flexShrink:0}}>{TASK_TYPE_MAP[t.task_type]?.icon||""}</span>
                     <div style={{flex:1,minWidth:0}}>
                       <p style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</p>
                       <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{TASK_TYPE_MAP[t.task_type]?.label} · {fmtDate(t.created_date?.split("T")[0]||"")}</p>
@@ -8292,7 +8292,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
             </div>
             {cPosts.filter(p=>p.stage==="client_approval").length>0&&(
               <div style={{padding:14,background:"#ec489922",border:"1px solid #ec489966",borderRadius:"var(--r)"}}>
-                <p style={{fontSize:13,fontWeight:700,color:"#ec4899",marginBottom:10}}>🕐 Awaiting Your Approval ({cPosts.filter(p=>p.stage==="client_approval").length})</p>
+                <p style={{fontSize:13,fontWeight:700,color:"#ec4899",marginBottom:10}}> Awaiting Your Approval ({cPosts.filter(p=>p.stage==="client_approval").length})</p>
                 <div style={{display:"flex",flexDirection:"column",gap:8}}>
                   {cPosts.filter(p=>p.stage==="client_approval").map(p=>(
                     <div key={p.id} onClick={()=>setSel(p)} style={{background:"var(--surface)",borderRadius:"var(--rs)",padding:"12px 14px",cursor:"pointer",border:"1px solid #ec489944",display:"flex",alignItems:"center",gap:10}}
@@ -8335,7 +8335,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
             </div>
             {cPosts.length===0&&(
               <div style={{textAlign:"center",padding:isMobile?"48px 20px":"80px",color:"var(--text3)"}}>
-                <p style={{fontSize:32,marginBottom:8}}>📭</p>
+                <p style={{fontSize:32,marginBottom:8}}></p>
                 <p style={{fontSize:16,fontWeight:600}}>No content yet</p>
                 <p style={{fontSize:13,marginTop:4}}>Your agency is working on it!</p>
               </div>
@@ -8426,7 +8426,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
             {/* Account Info */}
             <div style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:isMobile?14:18}}>
               <p style={{fontSize:12,color:"var(--text3)",lineHeight:1.6}}>
-                💡 For additional account management options or to reset your portal password, please contact your account manager.
+                 For additional account management options or to reset your portal password, please contact your account manager.
               </p>
             </div>
           </div>
@@ -8566,7 +8566,7 @@ function ClientAddTaskModal({allowedTypes,limitsEnabled,taskLimits,client,onClos
 
           {err&&<div style={{padding:"8px 12px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:"var(--rxs)",fontSize:12,color:"#ef4444"}}>{err}</div>}
           {blocked&&<div style={{padding:"10px 14px",background:"#f9731622",border:"1px solid #f9731644",borderRadius:"var(--rs)",fontSize:13,color:"#f97316",fontWeight:600}}>
-            ⚠️ You've reached the limit for {selectedType?.label}. Please contact your account manager to request additional services.
+             You've reached the limit for {selectedType?.label}. Please contact your account manager to request additional services.
           </div>}
 
           <div style={{display:"flex",gap:10,paddingTop:4}}>
@@ -8642,14 +8642,14 @@ function AcceptInvitationPage({token, onAccepted}) {
   if(loading) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",color:"var(--text2)"}}>Loading invitation...</div>;
   if(error) return (
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",flexDirection:"column",gap:16}}>
-      <div style={{fontSize:48}}>⚠️</div>
+      <div style={{fontSize:48}}></div>
       <div style={{fontWeight:700,fontSize:18,color:"var(--text)"}}>{error}</div>
       <button onClick={()=>onAccepted&&onAccepted()} style={{background:"var(--accent)",color:"#fff",border:"none",borderRadius:8,padding:"10px 24px",cursor:"pointer",fontWeight:600}}>Go to Login</button>
     </div>
   );
   if(done) return (
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",flexDirection:"column",gap:16}}>
-      <div style={{fontSize:48}}>✅</div>
+      <div style={{fontSize:48}}></div>
       <div style={{fontWeight:700,fontSize:20,color:"var(--text)"}}>Account set up!</div>
       <div style={{color:"var(--text2)",fontSize:14}}>You can now log in with your email and password.</div>
       <button onClick={()=>onAccepted&&onAccepted()} style={{background:"var(--accent)",color:"#fff",border:"none",borderRadius:8,padding:"10px 24px",cursor:"pointer",fontWeight:600}}>Go to Login</button>
@@ -8660,14 +8660,14 @@ function AcceptInvitationPage({token, onAccepted}) {
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:"var(--bg)"}}>
       <div style={{background:"var(--surface)",borderRadius:20,padding:40,width:420,border:"1px solid var(--border)"}}>
         <div style={{textAlign:"center",marginBottom:28}}>
-          <div style={{fontSize:36,marginBottom:8}}>🎉</div>
+          <div style={{fontSize:36,marginBottom:8}}></div>
           <h2 style={{fontWeight:800,fontSize:22,color:"var(--text)"}}>You're invited!</h2>
           <p style={{color:"var(--text2)",fontSize:13,marginTop:6}}>Set up your account to join as <strong>{ROLES[invitation.role]?.label||invitation.role}</strong></p>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           <div style={{textAlign:"center"}}>
             <div onClick={()=>fileRef.current?.click()} style={{width:80,height:80,borderRadius:"50%",background:"var(--surface2)",margin:"0 auto",cursor:"pointer",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",border:"2px dashed var(--border)"}}>
-              {form.photo_url?<img src={form.photo_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:<span style={{color:"var(--text2)",fontSize:24}}>📷</span>}
+              {form.photo_url?<img src={form.photo_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:<span style={{color:"var(--text2)",fontSize:24}}></span>}
             </div>
             <div style={{fontSize:11,color:"var(--text2)",marginTop:6}}>Click to add profile photo</div>
             <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handlePhoto}/>
@@ -9019,8 +9019,8 @@ function LoginScreen({onLogin,clients}) {
 
 const CURRENCIES = ["USD","EGP","EUR","GBP","SAR","AED"];
 const STATUS_QUOTE = {
-  draft:    {label:"Draft",    color:"#6b7280"},
-  sent:     {label:"Sent",     color:"#3b82f6"},
+  draft: {label:"Draft", color:"#6b7280"},
+  sent: {label:"Sent", color:"#3b82f6"},
   approved: {label:"Approved", color:"#10b981"},
   rejected: {label:"Rejected", color:"#ef4444"},
 };
@@ -9155,8 +9155,8 @@ function generateQuotePDF(quote, items, branding) {
       <div>
         <div class="box-label">Bill To</div>
         <div class="box-val">${quote.client_name||""}</div>
-        ${quote.client_phone?`<div class="box-sub">📞 ${quote.client_phone}</div>`:""}
-        ${quote.client_email?`<div class="box-sub">✉ ${quote.client_email}</div>`:""}
+        ${quote.client_phone?`<div class="box-sub"> ${quote.client_phone}</div>`:""}
+        ${quote.client_email?`<div class="box-sub"> ${quote.client_email}</div>`:""}
       </div>
       <div style="text-align:right">
         <div class="box-label">Subject</div>
@@ -9456,7 +9456,7 @@ function QuotesPage({quotes,clients,currentUser,onAdd,onEdit,onDuplicate,onDelet
         {canEdit&&<Btn onClick={()=>{setEditQuote(null);setShowForm(true);}}>
           <Ico d={Icons.plus} size={15}/> Create Quote
         </Btn>}
-        {isAccountant&&<div style={{padding:"8px 14px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",fontSize:12,color:"var(--text3)"}}>📋 View Only</div>}
+        {isAccountant&&<div style={{padding:"8px 14px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",fontSize:12,color:"var(--text3)"}}> View Only</div>}
       </div>
 
       {/* Stats */}
@@ -9586,26 +9586,26 @@ function QuotesPage({quotes,clients,currentUser,onAdd,onEdit,onDuplicate,onDelet
 // LEADS CRM MODULE
 // ════════════════════════════════════════════════════════════════
 const LEAD_STATUSES = [
-  {key:"new",         label:"New",          color:"#6b7280", emoji:"✨"},
-  {key:"contacted",   label:"Contacted",    color:"#3b82f6", emoji:"📞"},
-  {key:"follow_up",   label:"Follow-up",    color:"#f59e0b", emoji:"🔔"},
-  {key:"negotiation", label:"Negotiation",  color:"#8b5cf6", emoji:"🤝"},
-  {key:"closed_won",  label:"Closed Won",   color:"#10b981", emoji:"✅"},
-  {key:"closed_lost", label:"Closed Lost",  color:"#ef4444", emoji:"❌"},
+  {key:"new", label:"New", color:"#6b7280", emoji:""},
+  {key:"contacted", label:"Contacted", color:"#3b82f6", emoji:""},
+  {key:"follow_up", label:"Follow-up", color:"#f59e0b", emoji:""},
+  {key:"negotiation", label:"Negotiation", color:"#8b5cf6", emoji:""},
+  {key:"closed_won", label:"Closed Won", color:"#10b981", emoji:""},
+  {key:"closed_lost", label:"Closed Lost", color:"#ef4444", emoji:""},
 ];
 const LEAD_STATUS_MAP = Object.fromEntries(LEAD_STATUSES.map(s=>[s.key,s]));
 
 const LEAD_SOURCES = [
-  {key:"instagram",label:"Instagram"},  {key:"facebook",label:"Facebook"},
-  {key:"linkedin",label:"LinkedIn"},    {key:"tiktok",label:"TikTok"},
-  {key:"referral",label:"Referral"},   {key:"website",label:"Website"},
+  {key:"instagram",label:"Instagram"}, {key:"facebook",label:"Facebook"},
+  {key:"linkedin",label:"LinkedIn"}, {key:"tiktok",label:"TikTok"},
+  {key:"referral",label:"Referral"}, {key:"website",label:"Website"},
   {key:"cold_call",label:"Cold Call"}, {key:"exhibition",label:"Exhibition"},
   {key:"other",label:"Other"},
 ];
 
 const ACTIVITY_ICONS = {
-  note:"✏️", call:"📞", email:"✉️", meeting:"🤝",
-  followup:"🔔", status_change:"🔄", converted:"🎉",
+  note:"", call:"", email:"", meeting:"",
+  followup:"", status_change:"", converted:"",
 };
 
 const isOverdue = (date) => date && new Date(date) < new Date() && new Date(date).toDateString() !== new Date().toDateString();
@@ -9720,7 +9720,7 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
               </button>
             )}
             {lead.converted&&<div style={{padding:10,background:"#10b98111",border:"1px solid #10b98133",borderRadius:"var(--rs)",textAlign:"center",color:"#10b981",fontSize:12,fontWeight:700}}>
-              ✅ Converted to Client
+               Converted to Client
             </div>}
 
             {/* Follow-up indicator */}
@@ -9729,7 +9729,7 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
                 <Ico d={Icons.clock} size={14} stroke={isOverdue(lead.followup_date)?"#ef4444":"#f59e0b"}/>
                 <div>
                   <p style={{fontSize:12,fontWeight:700,color:isOverdue(lead.followup_date)?"#ef4444":isDueToday(lead.followup_date)?"#f59e0b":"var(--text)"}}>
-                    {isOverdue(lead.followup_date)?"⚠️ Overdue":isDueToday(lead.followup_date)?"📅 Due Today":"Next Follow-up"}
+                    {isOverdue(lead.followup_date)?" Overdue":isDueToday(lead.followup_date)?" Due Today":"Next Follow-up"}
                   </p>
                   <p style={{fontSize:11,color:"var(--text2)"}}>{fmtDate(lead.followup_date)}</p>
                 </div>
@@ -9742,7 +9742,7 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
             <div style={{display:"flex",flexDirection:"column",gap:10,maxHeight:300,overflowY:"auto"}}>
               {leadActs.map(a=>(
                 <div key={a.id} style={{display:"flex",gap:10,padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
-                  <span style={{fontSize:18,flexShrink:0}}>{ACTIVITY_ICONS[a.type]||"📝"}</span>
+                  <span style={{fontSize:18,flexShrink:0}}>{ACTIVITY_ICONS[a.type]||""}</span>
                   <div style={{flex:1}}>
                     <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
                       <span style={{fontSize:12,fontWeight:700}}>{a.author_name}</span>
@@ -9750,7 +9750,7 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
                       <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(a.created_date)}</span>
                     </div>
                     <p style={{fontSize:13,lineHeight:1.5}}>{a.content}</p>
-                    {a.followup_date&&<p style={{fontSize:11,color:"#f59e0b",marginTop:3}}>📅 Follow-up: {fmtDate(a.followup_date)}</p>}
+                    {a.followup_date&&<p style={{fontSize:11,color:"#f59e0b",marginTop:3}}> Follow-up: {fmtDate(a.followup_date)}</p>}
                   </div>
                 </div>
               ))}
@@ -9804,7 +9804,7 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
               {activities.filter(a=>a.lead_id===lead.id&&a.type==="followup").map(a=>(
                 <div key={a.id} style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
                   <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-                    <span style={{fontSize:11,fontWeight:700,color:"#f59e0b"}}>📅 {fmtDate(a.followup_date||a.created_date)}</span>
+                    <span style={{fontSize:11,fontWeight:700,color:"#f59e0b"}}> {fmtDate(a.followup_date||a.created_date)}</span>
                     <span style={{fontSize:10,color:"var(--text3)"}}>{fmtDate(a.created_date)}</span>
                   </div>
                   <p style={{fontSize:12,color:"var(--text2)"}}>{a.content}</p>
@@ -9846,7 +9846,7 @@ function LeadCard({lead, onClick}) {
       {lead.followup_date&&(
         <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,color:overdue?"#ef4444":dueToday?"#f59e0b":"var(--text3)"}}>
           <Ico d={Icons.clock} size={11} stroke={overdue?"#ef4444":dueToday?"#f59e0b":"var(--text3)"}/>
-          {overdue?"⚠️ Overdue":dueToday?"Due Today":fmtDate(lead.followup_date)}
+          {overdue?" Overdue":dueToday?"Due Today":fmtDate(lead.followup_date)}
         </div>
       )}
     </div>
@@ -9975,7 +9975,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
                 </div>
                 <Badge label={status.label} color={status.color} xs/>
                 <span style={{fontSize:12,color:"var(--text2)",textTransform:"capitalize"}}>{lead.source||"—"}</span>
-                <span style={{fontSize:12,color:overdue?"#ef4444":"var(--text2)"}}>{lead.followup_date?`${overdue?"⚠️ ":""}${fmtDate(lead.followup_date)}`:"—"}</span>
+                <span style={{fontSize:12,color:overdue?"#ef4444":"var(--text2)"}}>{lead.followup_date?`${overdue?" ":""}${fmtDate(lead.followup_date)}`:"—"}</span>
                 <span style={{fontWeight:700,fontSize:13,color:"#10b981"}}>{lead.value?`$${lead.value.toLocaleString()}`:"—"}</span>
                 <span style={{fontSize:11,color:"var(--text2)"}}>{assignee?.name?.split(" ")[0]||"—"}</span>
                 <Btn size="sm" variant="ghost" onClick={e=>{e.stopPropagation();setSelectedLead(lead);}}>View</Btn>
@@ -10069,67 +10069,67 @@ function AddLeadModal({open,onClose,team,onAdd}) {
 
 const INTEGRATION_APPS = [
   // Messaging
-  {key:"slack",       label:"Slack",          category:"messaging",    color:"#4A154B", icon:"💬", description:"Send messages to Slack channels"},
-  {key:"gmail",       label:"Gmail",          category:"messaging",    color:"#EA4335", icon:"✉️", description:"Send emails via Gmail"},
-  {key:"teams",       label:"Microsoft Teams",category:"messaging",    color:"#6264A7", icon:"📱", description:"Post messages to Teams channels"},
-  {key:"telegram",    label:"Telegram",       category:"messaging",    color:"#2CA5E0", icon:"📨", description:"Send Telegram bot messages"},
+  {key:"slack", label:"Slack", category:"messaging", color:"#4A154B", icon:"", description:"Send messages to Slack channels"},
+  {key:"gmail", label:"Gmail", category:"messaging", color:"#EA4335", icon:"", description:"Send emails via Gmail"},
+  {key:"teams", label:"Microsoft Teams",category:"messaging", color:"#6264A7", icon:"", description:"Post messages to Teams channels"},
+  {key:"telegram", label:"Telegram", category:"messaging", color:"#2CA5E0", icon:"", description:"Send Telegram bot messages"},
   // Productivity
-  {key:"trello",      label:"Trello",         category:"productivity", color:"#0052CC", icon:"📋", description:"Create cards in Trello boards"},
-  {key:"asana",       label:"Asana",          category:"productivity", color:"#F06A6A", icon:"🎯", description:"Create tasks in Asana projects"},
-  {key:"notion",      label:"Notion",         category:"productivity", color:"#000000", icon:"📝", description:"Add entries to Notion databases"},
-  {key:"clickup",     label:"ClickUp",        category:"productivity", color:"#7B68EE", icon:"✅", description:"Create tasks in ClickUp"},
+  {key:"trello", label:"Trello", category:"productivity", color:"#0052CC", icon:"", description:"Create cards in Trello boards"},
+  {key:"asana", label:"Asana", category:"productivity", color:"#F06A6A", icon:"", description:"Create tasks in Asana projects"},
+  {key:"notion", label:"Notion", category:"productivity", color:"#000000", icon:"", description:"Add entries to Notion databases"},
+  {key:"clickup", label:"ClickUp", category:"productivity", color:"#7B68EE", icon:"", description:"Create tasks in ClickUp"},
   // Spreadsheet / Data
-  {key:"google_sheets",label:"Google Sheets", category:"spreadsheet",  color:"#0F9D58", icon:"📊", description:"Add rows to Google Sheets"},
-  {key:"airtable",    label:"Airtable",       category:"spreadsheet",  color:"#FCB400", icon:"🗃️", description:"Add records to Airtable bases"},
+  {key:"google_sheets",label:"Google Sheets", category:"spreadsheet", color:"#0F9D58", icon:"", description:"Add rows to Google Sheets"},
+  {key:"airtable", label:"Airtable", category:"spreadsheet", color:"#FCB400", icon:"", description:"Add records to Airtable bases"},
   // Automation
-  {key:"zapier",      label:"Zapier",         category:"automation",   color:"#FF4A00", icon:"⚡", description:"Trigger any Zapier workflow"},
-  {key:"make",        label:"Make (Integromat)",category:"automation", color:"#6D00CC", icon:"🔄", description:"Trigger Make.com scenarios"},
-  {key:"webhook",     label:"Custom Webhook", category:"automation",   color:"#374151", icon:"🔗", description:"Call any webhook endpoint"},
+  {key:"zapier", label:"Zapier", category:"automation", color:"#FF4A00", icon:"", description:"Trigger any Zapier workflow"},
+  {key:"make", label:"Make (Integromat)",category:"automation", color:"#6D00CC", icon:"", description:"Trigger Make.com scenarios"},
+  {key:"webhook", label:"Custom Webhook", category:"automation", color:"#374151", icon:"", description:"Call any webhook endpoint"},
   // Social
-  {key:"facebook",    label:"Facebook",       category:"social",       color:"#1877F2", icon:"👥", description:"Publish posts directly to Facebook Pages"},
-  {key:"instagram",   label:"Instagram",      category:"social",       color:"#E1306C", icon:"📸", description:"Publish posts to Instagram Business accounts"},
-  {key:"buffer",      label:"Buffer",         category:"social",       color:"#168EEA", icon:"📲", description:"Schedule social media posts"},
-  {key:"hootsuite",   label:"Hootsuite",      category:"social",       color:"#1F3044", icon:"🦉", description:"Publish to Hootsuite streams"},
+  {key:"facebook", label:"Facebook", category:"social", color:"#1877F2", icon:"", description:"Publish posts directly to Facebook Pages"},
+  {key:"instagram", label:"Instagram", category:"social", color:"#E1306C", icon:"", description:"Publish posts to Instagram Business accounts"},
+  {key:"buffer", label:"Buffer", category:"social", color:"#168EEA", icon:"", description:"Schedule social media posts"},
+  {key:"hootsuite", label:"Hootsuite", category:"social", color:"#1F3044", icon:"", description:"Publish to Hootsuite streams"},
 ];
 const APP_MAP = Object.fromEntries(INTEGRATION_APPS.map(a=>[a.key,a]));
 
 const INTEGRATION_TRIGGERS = [
-  {key:"new_client",      label:"New Client Added",          icon:"👤", desc:"Fires when a new client folder is created"},
-  {key:"new_lead",        label:"New Lead Created",          icon:"🎯", desc:"Fires when a new lead is added to CRM"},
-  {key:"lead_converted",  label:"Lead Converted to Client",  icon:"🏆", desc:"Fires when a lead is marked as Closed Won"},
-  {key:"task_created",    label:"Task / Post Created",       icon:"📝", desc:"Fires when a new post or task is created"},
-  {key:"task_completed",  label:"Task Completed",            icon:"✅", desc:"Fires when a task reaches Published or Scheduled"},
-  {key:"client_approval", label:"Client Approved Post",      icon:"👍", desc:"Fires when a client approves a post"},
-  {key:"post_rejected",   label:"Post Rejected by Client",   icon:"❌", desc:"Fires when a client rejects a post"},
-  {key:"invoice_created", label:"Invoice Generated",         icon:"🧾", desc:"Fires when a new invoice is created"},
-  {key:"invoice_paid",    label:"Payment Received",          icon:"💰", desc:"Fires when an invoice is fully or partially paid"},
-  {key:"performance_report",label:"Performance Report Ready",icon:"📊", desc:"Fires on weekly performance summary generation"},
+  {key:"new_client", label:"New Client Added", icon:"", desc:"Fires when a new client folder is created"},
+  {key:"new_lead", label:"New Lead Created", icon:"", desc:"Fires when a new lead is added to CRM"},
+  {key:"lead_converted", label:"Lead Converted to Client", icon:"", desc:"Fires when a lead is marked as Closed Won"},
+  {key:"task_created", label:"Task / Post Created", icon:"", desc:"Fires when a new post or task is created"},
+  {key:"task_completed", label:"Task Completed", icon:"", desc:"Fires when a task reaches Published or Scheduled"},
+  {key:"client_approval", label:"Client Approved Post", icon:"", desc:"Fires when a client approves a post"},
+  {key:"post_rejected", label:"Post Rejected by Client", icon:"", desc:"Fires when a client rejects a post"},
+  {key:"invoice_created", label:"Invoice Generated", icon:"", desc:"Fires when a new invoice is created"},
+  {key:"invoice_paid", label:"Payment Received", icon:"", desc:"Fires when an invoice is fully or partially paid"},
+  {key:"performance_report",label:"Performance Report Ready",icon:"", desc:"Fires on weekly performance summary generation"},
 ];
 const TRIGGER_MAP = Object.fromEntries(INTEGRATION_TRIGGERS.map(t=>[t.key,t]));
 
 const INTEGRATION_ACTIONS = {
-  messaging:    [{key:"send_slack_message",label:"Send Slack Message",fields:["channel","message_template"]},{key:"send_email",label:"Send Email",fields:["to","subject","message_template"]},{key:"send_teams_message",label:"Post to Teams Channel",fields:["channel","message_template"]},{key:"send_telegram",label:"Send Telegram Message",fields:["chat_id","message_template"]}],
+  messaging: [{key:"send_slack_message",label:"Send Slack Message",fields:["channel","message_template"]},{key:"send_email",label:"Send Email",fields:["to","subject","message_template"]},{key:"send_teams_message",label:"Post to Teams Channel",fields:["channel","message_template"]},{key:"send_telegram",label:"Send Telegram Message",fields:["chat_id","message_template"]}],
   productivity: [{key:"create_trello_card",label:"Create Trello Card",fields:["board_id","list_id","title_template"]},{key:"create_asana_task",label:"Create Asana Task",fields:["project_id","task_name_template"]},{key:"create_notion_entry",label:"Add Notion Entry",fields:["database_id","title_template"]},{key:"create_clickup_task",label:"Create ClickUp Task",fields:["list_id","task_name_template"]}],
-  spreadsheet:  [{key:"add_sheet_row",label:"Add Google Sheets Row",fields:["spreadsheet_id","sheet_name","columns"]},{key:"add_airtable_record",label:"Add Airtable Record",fields:["base_id","table_name"]}],
-  automation:   [{key:"send_webhook",label:"Send Webhook (POST)",fields:["webhook_url","payload_template"]},{key:"trigger_zapier",label:"Trigger Zapier Webhook",fields:["webhook_url"]},{key:"trigger_make",label:"Trigger Make Scenario",fields:["webhook_url"]}],
-  social:       [{key:"publish_post",label:"Publish Post to Page",fields:[]},{key:"post_buffer",label:"Add to Buffer Queue",fields:["profile_ids","message_template"]},{key:"post_hootsuite",label:"Post to Hootsuite",fields:["profile_id","message_template"]}],
+  spreadsheet: [{key:"add_sheet_row",label:"Add Google Sheets Row",fields:["spreadsheet_id","sheet_name","columns"]},{key:"add_airtable_record",label:"Add Airtable Record",fields:["base_id","table_name"]}],
+  automation: [{key:"send_webhook",label:"Send Webhook (POST)",fields:["webhook_url","payload_template"]},{key:"trigger_zapier",label:"Trigger Zapier Webhook",fields:["webhook_url"]},{key:"trigger_make",label:"Trigger Make Scenario",fields:["webhook_url"]}],
+  social: [{key:"publish_post",label:"Publish Post to Page",fields:[]},{key:"post_buffer",label:"Add to Buffer Queue",fields:["profile_ids","message_template"]},{key:"post_hootsuite",label:"Post to Hootsuite",fields:["profile_id","message_template"]}],
 };
 
 const INTEGRATION_TEMPLATES = [
-  {id:"tpl1",title:"Invoice Paid → Notify Slack",app_key:"slack",trigger:"invoice_paid",action:"send_slack_message",config:{channel:"#finance",message_template:"💰 Invoice {invoice_number} paid by {client_name} — {total}"},desc:"Get a Slack message every time a payment is received"},
+  {id:"tpl1",title:"Invoice Paid → Notify Slack",app_key:"slack",trigger:"invoice_paid",action:"send_slack_message",config:{channel:"#finance",message_template:" Invoice {invoice_number} paid by {client_name} — {total}"},desc:"Get a Slack message every time a payment is received"},
   {id:"tpl2",title:"New Client → Google Sheet",app_key:"google_sheets",trigger:"new_client",action:"add_sheet_row",config:{spreadsheet_id:"",sheet_name:"Clients",columns:["name","email","phone","created_date"]},desc:"Log every new client to a Google Sheet automatically"},
   {id:"tpl3",title:"Task Done → Zapier",app_key:"zapier",trigger:"task_completed",action:"send_webhook",config:{message_template:"Task completed: {task_title} by {user_name}"},desc:"Trigger any Zapier workflow when a task is published"},
-  {id:"tpl4",title:"Client Approval → Email",app_key:"gmail",trigger:"client_approval",action:"send_email",config:{to:"",subject:"✅ Client Approved: {task_title}",message_template:"Good news! {client_name} approved the post '{task_title}'."},desc:"Email your team when a client approves content"},
+  {id:"tpl4",title:"Client Approval → Email",app_key:"gmail",trigger:"client_approval",action:"send_email",config:{to:"",subject:" Client Approved: {task_title}",message_template:"Good news! {client_name} approved the post '{task_title}'."},desc:"Email your team when a client approves content"},
   {id:"tpl5",title:"New Lead → Trello Card",app_key:"trello",trigger:"new_lead",action:"create_trello_card",config:{board_id:"",list_id:"",title_template:"New Lead: {lead_name} — {company}"},desc:"Create a Trello card for every new CRM lead"},
-  {id:"tpl6",title:"Performance Report → Teams",app_key:"teams",trigger:"performance_report",action:"send_teams_message",config:{channel:"#management",message_template:"📊 Weekly report: {completed_tasks} tasks done, top: {top_performer}"},desc:"Post weekly performance digest to Microsoft Teams"},
+  {id:"tpl6",title:"Performance Report → Teams",app_key:"teams",trigger:"performance_report",action:"send_teams_message",config:{channel:"#management",message_template:" Weekly report: {completed_tasks} tasks done, top: {top_performer}"},desc:"Post weekly performance digest to Microsoft Teams"},
 ];
 
 const STATUS_CONFIG = {
-  active:   {color:"#10b981",bg:"#10b98122",label:"Active"},
+  active: {color:"#10b981",bg:"#10b98122",label:"Active"},
   inactive: {color:"#6b7280",bg:"#6b728022",label:"Inactive"},
-  error:    {color:"#ef4444",bg:"#ef444422",label:"Error"},
-  testing:  {color:"#f59e0b",bg:"#f59e0b22",label:"Testing"},
-  never:    {color:"#6b7280",bg:"#6b728022",label:"Never Run"},
+  error: {color:"#ef4444",bg:"#ef444422",label:"Error"},
+  testing: {color:"#f59e0b",bg:"#f59e0b22",label:"Testing"},
+  never: {color:"#6b7280",bg:"#6b728022",label:"Never Run"},
 };
 
 const VARIABLE_CHIPS = ["client_name","invoice_number","total","task_title","user_name","lead_name","company","top_performer","completed_tasks","created_date"];
@@ -10294,7 +10294,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
               </div>
               {/* Quick templates */}
               <div style={{background:"var(--surface2)",borderRadius:"var(--r)",padding:14,border:"1px solid var(--border)"}}>
-                <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:10}}>⚡ Quick Templates</p>
+                <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:10}}> Quick Templates</p>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(200px,100%),1fr))",gap:8}}>
                   {INTEGRATION_TEMPLATES.map(tpl=>{
                     const app=APP_MAP[tpl.app_key];
@@ -10524,7 +10524,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
               <div style={{display:"grid",gridTemplateColumns:"1fr 40px 1fr",gap:12,alignItems:"center",padding:18,background:"var(--surface2)",borderRadius:"var(--r)",border:"1px solid var(--border)"}}>
                 <div style={{textAlign:"center",padding:14,background:"var(--surface)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
                   <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>When This Happens</p>
-                  <div style={{fontSize:24,marginBottom:6}}>{selectedTrigger?.icon||"⚡"}</div>
+                  <div style={{fontSize:24,marginBottom:6}}>{selectedTrigger?.icon||""}</div>
                   <p style={{fontWeight:700,fontSize:13}}>{selectedTrigger?.label||f.trigger}</p>
                   <p style={{fontSize:11,color:"var(--text3)",marginTop:3}}>in SocialFlow</p>
                 </div>
@@ -10533,7 +10533,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                 </div>
                 <div style={{textAlign:"center",padding:14,background:"var(--surface)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
                   <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Do This</p>
-                  <div style={{fontSize:24,marginBottom:6}}>{selectedApp?.icon||"🔗"}</div>
+                  <div style={{fontSize:24,marginBottom:6}}>{selectedApp?.icon||""}</div>
                   <p style={{fontWeight:700,fontSize:13}}>{categoryActions.find(a=>a.key===f.action)?.label||f.action}</p>
                   <p style={{fontSize:11,color:"var(--text3)",marginTop:3}}>via {selectedApp?.label}</p>
                 </div>
@@ -10556,7 +10556,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
               </button>
               {testResult&&(
                 <div className="fade-in" style={{padding:12,background:testResult.ok?"#10b98122":"#ef444422",border:`1px solid ${testResult.ok?"#10b98155":"#ef444455"}`,borderRadius:"var(--rs)",display:"flex",gap:8,alignItems:"flex-start"}}>
-                  <span style={{fontSize:16}}>{testResult.ok?"✅":"❌"}</span>
+                  <span style={{fontSize:16}}>{testResult.ok?"":""}</span>
                   <p style={{fontSize:13,color:testResult.ok?"#10b981":"#ef4444",fontWeight:600}}>{testResult.msg}</p>
                 </div>
               )}
@@ -10635,8 +10635,8 @@ function IntegrationsPage({integrations, integrationLogs, currentUser, clients=[
 
       <div style={{display:"flex",flexDirection:"column",gap:12}}>
         {integrations.map(integ=>{
-          const app = APP_MAP[integ.app_key]||{icon:"🔗",label:integ.app_key,color:"#6b7280"};
-          const trigger = TRIGGER_MAP[integ.trigger]||{icon:"⚡",label:integ.trigger};
+          const app = APP_MAP[integ.app_key]||{icon:"",label:integ.app_key,color:"#6b7280"};
+          const trigger = TRIGGER_MAP[integ.trigger]||{icon:"",label:integ.trigger};
           const st = STATUS_CONFIG[integ.status]||STATUS_CONFIG.inactive;
           const logs = integrationLogs.filter(l=>l.integration_id===integ.id);
 
@@ -10759,25 +10759,25 @@ const TIMEZONES = [
 ];
 
 const MOTIVATIONAL_MESSAGES = [
-  "Every completed task brings you closer to excellence. Keep going! 💪",
-  "Your dedication today builds the success of tomorrow. Well done! 🌟",
-  "Great work this week! Consistency is the key to extraordinary results. 🚀",
-  "Small progress every day adds up to big results. You're doing amazing! ✨",
-  "The team is proud of your efforts. Keep up the fantastic work! 🏆",
+  "Every completed task brings you closer to excellence. Keep going! ",
+  "Your dedication today builds the success of tomorrow. Well done! ",
+  "Great work this week! Consistency is the key to extraordinary results. ",
+  "Small progress every day adds up to big results. You're doing amazing! ",
+  "The team is proud of your efforts. Keep up the fantastic work! ",
 ];
 
 function generateEmailHTML(es, member, perf, posts, timelogs, appSettings, accentColor) {
   const memberPerf = perf.find(p=>p.email===member.email)||{};
   const assignedPosts = posts.filter(p=>p.assigned_to===member.email);
   const completed = assignedPosts.filter(p=>["published","scheduled"].includes(p.stage));
-  const pending   = assignedPosts.filter(p=>!["published","scheduled","rejected"].includes(p.stage));
-  const overdue   = assignedPosts.filter(p=>p.scheduled_date&&new Date(p.scheduled_date)<new Date()&&!["published","rejected"].includes(p.stage));
-  const myLogs    = timelogs.filter(t=>t.logged_by===member.email);
-  const totalHrs  = myLogs.reduce((a,t)=>a+(t.duration_minutes||0)/60,0);
-  const today     = new Date().toLocaleDateString("en-US",{weekday:"long",year:"numeric",month:"long",day:"numeric"});
-  const acc       = accentColor||"#d90b2c";
-  const appName   = appSettings?.app_name||"SocialFlow";
-  const motiv     = MOTIVATIONAL_MESSAGES[Math.floor(Math.random()*MOTIVATIONAL_MESSAGES.length)];
+  const pending = assignedPosts.filter(p=>!["published","scheduled","rejected"].includes(p.stage));
+  const overdue = assignedPosts.filter(p=>p.scheduled_date&&new Date(p.scheduled_date)<new Date()&&!["published","rejected"].includes(p.stage));
+  const myLogs = timelogs.filter(t=>t.logged_by===member.email);
+  const totalHrs = myLogs.reduce((a,t)=>a+(t.duration_minutes||0)/60,0);
+  const today = new Date().toLocaleDateString("en-US",{weekday:"long",year:"numeric",month:"long",day:"numeric"});
+  const acc = accentColor||"#d90b2c";
+  const appName = appSettings?.app_name||"SocialFlow";
+  const motiv = MOTIVATIONAL_MESSAGES[Math.floor(Math.random()*MOTIVATIONAL_MESSAGES.length)];
 
   const sectionHeader = (title,icon) => `
     <tr><td style="padding:24px 32px 8px">
@@ -10831,25 +10831,25 @@ function generateEmailHTML(es, member, perf, posts, timelogs, appSettings, accen
 
     <!-- GREETING -->
     <tr><td style="padding:28px 32px 16px">
-      <div style="font-size:22px;font-weight:800;color:#1a1a1a;font-family:Arial,sans-serif">Hi ${member.name.split(" ")[0]}! 👋</div>
+      <div style="font-size:22px;font-weight:800;color:#1a1a1a;font-family:Arial,sans-serif">Hi ${member.name.split(" ")[0]}! </div>
       <div style="font-size:14px;color:#666;margin-top:6px;line-height:1.6;font-family:Arial,sans-serif">Here's your daily performance summary. Let's see how your day went.</div>
     </td></tr>
 
     ${es.include_metrics?`
     <!-- METRICS -->
-    ${sectionHeader("Summary Metrics","📊")}
+    ${sectionHeader("Summary Metrics","")}
     <tr><td style="padding:12px 26px">
       <table width="100%" cellpadding="0" cellspacing="0"><tr>
-        ${metricCard("Completed",completed.length,"#10b981","✅")}
-        ${metricCard("Pending",pending.length,"#f59e0b","⏳")}
-        ${metricCard("Overdue",overdue.length,overdue.length>0?"#ef4444":"#6b7280","⚠️")}
-        ${metricCard("Score",`${memberPerf.perfScore||0}`,acc,"🏆")}
+        ${metricCard("Completed",completed.length,"#10b981","")}
+        ${metricCard("Pending",pending.length,"#f59e0b","")}
+        ${metricCard("Overdue",overdue.length,overdue.length>0?"#ef4444":"#6b7280","")}
+        ${metricCard("Score",`${memberPerf.perfScore||0}`,acc,"")}
       </tr></table>
     </td></tr>`:""}
 
     ${es.include_working_hours?`
     <!-- WORKING HOURS -->
-    ${sectionHeader("Working Hours","⏱️")}
+    ${sectionHeader("Working Hours","")}
     <tr><td style="padding:12px 32px">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:${acc}11;border-radius:10px;border:1px solid ${acc}33">
         <tr>
@@ -10871,27 +10871,27 @@ function generateEmailHTML(es, member, perf, posts, timelogs, appSettings, accen
 
     ${es.include_completed_tasks&&completed.length>0?`
     <!-- COMPLETED TASKS -->
-    ${sectionHeader("Completed Tasks","✅")}
-    ${completed.slice(0,5).map(t=>taskRow(t,"✅","#10b981")).join("")}
+    ${sectionHeader("Completed Tasks","")}
+    ${completed.slice(0,5).map(t=>taskRow(t,"","#10b981")).join("")}
     ${completed.length>5?`<tr><td style="padding:4px 32px 8px"><span style="font-size:12px;color:#888;font-family:Arial,sans-serif">+${completed.length-5} more completed tasks</span></td></tr>`:""}`:""}
 
     ${es.include_pending_tasks&&pending.length>0?`
     <!-- PENDING TASKS -->
-    ${sectionHeader("Pending Tasks","⏳")}
-    ${pending.slice(0,5).map(t=>taskRow(t,"⏳","#f59e0b")).join("")}
+    ${sectionHeader("Pending Tasks","")}
+    ${pending.slice(0,5).map(t=>taskRow(t,"","#f59e0b")).join("")}
     ${pending.length>5?`<tr><td style="padding:4px 32px 8px"><span style="font-size:12px;color:#888;font-family:Arial,sans-serif">+${pending.length-5} more pending</span></td></tr>`:""}`:""}
 
     ${es.include_overdue_tasks&&overdue.length>0?`
     <!-- OVERDUE TASKS -->
-    ${sectionHeader("Overdue Tasks","⚠️")}
-    ${overdue.slice(0,5).map(t=>taskRow(t,"⚠️","#ef4444")).join("")}`:""}
+    ${sectionHeader("Overdue Tasks","")}
+    ${overdue.slice(0,5).map(t=>taskRow(t,"","#ef4444")).join("")}`:""}
 
     ${es.include_motivation?`
     <!-- MOTIVATION -->
     <tr><td style="padding:24px 32px">
       <table width="100%" cellpadding="0" cellspacing="0" style="background:linear-gradient(135deg,${acc}22,${acc}08);border-radius:12px;border:1px solid ${acc}33">
         <tr><td style="padding:20px 24px;text-align:center">
-          <div style="font-size:24px;margin-bottom:8px">💪</div>
+          <div style="font-size:24px;margin-bottom:8px"></div>
           <div style="font-size:14px;color:#333;line-height:1.7;font-family:Arial,sans-serif;font-style:italic">"${motiv}"</div>
         </td></tr>
       </table>
@@ -10983,12 +10983,12 @@ function DailyEmailSettings({emailSettings, onSave, team, posts, timelogs, perfL
   const previewHTML = selMember ? generateEmailHTML(es, selMember, perf, posts, timelogs, appSettings, accentColor) : "";
 
   const SECTIONS = [
-    {key:"include_working_hours",   label:"Working Hours",     icon:"⏱️", desc:"Total hours logged and avg per task"},
-    {key:"include_completed_tasks", label:"Completed Tasks",   icon:"✅", desc:"List of tasks finished today"},
-    {key:"include_pending_tasks",   label:"Pending Tasks",     icon:"⏳", desc:"Tasks still in progress"},
-    {key:"include_overdue_tasks",   label:"Overdue Tasks",     icon:"⚠️", desc:"Tasks past their scheduled date"},
-    {key:"include_metrics",         label:"Summary Metrics",   icon:"📊", desc:"Score, completion rate, and KPIs"},
-    {key:"include_motivation",      label:"Motivational Message",icon:"💪",desc:"Rotating inspirational quote"},
+    {key:"include_working_hours", label:"Working Hours", icon:"", desc:"Total hours logged and avg per task"},
+    {key:"include_completed_tasks", label:"Completed Tasks", icon:"", desc:"List of tasks finished today"},
+    {key:"include_pending_tasks", label:"Pending Tasks", icon:"", desc:"Tasks still in progress"},
+    {key:"include_overdue_tasks", label:"Overdue Tasks", icon:"", desc:"Tasks past their scheduled date"},
+    {key:"include_metrics", label:"Summary Metrics", icon:"", desc:"Score, completion rate, and KPIs"},
+    {key:"include_motivation", label:"Motivational Message",icon:"",desc:"Rotating inspirational quote"},
   ];
 
   return (
@@ -11046,7 +11046,7 @@ function DailyEmailSettings({emailSettings, onSave, team, posts, timelogs, perfL
 
           {/* Scheduling */}
           <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:14}}>
-            <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>📅 Scheduling</p>
+            <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}> Scheduling</p>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(260px,100%),1fr))",gap:12}}>
               <Field label="Send Time" hint="Daily email dispatch time">
                 <div style={{position:"relative"}}>
@@ -11067,7 +11067,7 @@ function DailyEmailSettings({emailSettings, onSave, team, posts, timelogs, perfL
 
           {/* Email Identity */}
           <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:14}}>
-            <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>✉️ Email Identity</p>
+            <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}> Email Identity</p>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(260px,100%),1fr))",gap:12}}>
               <Field label="Sender Name"><input value={es.sender_name} onChange={e=>upd("sender_name",e.target.value)} placeholder="Admepro HR" style={inputSt}/></Field>
               <Field label="Sender Email"><input type="email" value={es.sender_email} onChange={e=>upd("sender_email",e.target.value)} placeholder="no-reply@admepro.com" style={inputSt}/></Field>
@@ -11088,7 +11088,7 @@ function DailyEmailSettings({emailSettings, onSave, team, posts, timelogs, perfL
 
           {/* Attachment */}
           <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:14}}>
-            <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>📎 Attachments</p>
+            <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}> Attachments</p>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
               <div>
                 <p style={{fontWeight:600,fontSize:13}}>Attach PDF Summary</p>
@@ -11103,7 +11103,7 @@ function DailyEmailSettings({emailSettings, onSave, team, posts, timelogs, perfL
                 <div style={{display:"flex",gap:8}}>
                   {["pdf","csv"].map(fmt=>(
                     <button key={fmt} onClick={()=>upd("attach_format",fmt)} style={{flex:1,padding:"9px",borderRadius:"var(--rs)",fontWeight:700,fontSize:13,textTransform:"uppercase",background:es.attach_format===fmt?"var(--accent)":"var(--surface2)",color:es.attach_format===fmt?"#fff":"var(--text2)",border:`1.5px solid ${es.attach_format===fmt?"var(--accent)":"var(--border2)"}`,transition:"all 0.15s"}}>
-                      {fmt==="pdf"?"📄 PDF":"📊 CSV"}
+                      {fmt==="pdf"?" PDF":" CSV"}
                     </button>
                   ))}
                 </div>
@@ -11163,7 +11163,7 @@ function DailyEmailSettings({emailSettings, onSave, team, posts, timelogs, perfL
 
           {sendResult&&(
             <div className="fade-in" style={{padding:12,background:sendResult.ok?"#10b98122":"#ef444422",border:`1px solid ${sendResult.ok?"#10b98155":"#ef444455"}`,borderRadius:"var(--rs)",display:"flex",gap:8,alignItems:"center"}}>
-              <span style={{fontSize:16}}>{sendResult.ok?"✅":"❌"}</span>
+              <span style={{fontSize:16}}>{sendResult.ok?"":""}</span>
               <p style={{fontSize:13,color:sendResult.ok?"#10b981":"#ef4444",fontWeight:600}}>
                 {sendResult.all?`Sent to ${sendResult.count}/${sendResult.total||sendResult.count} team members`:`Test email ${sendResult.ok?"sent to":"failed for"} ${sendResult.member} (${sendResult.email})`}
               </p>
@@ -11266,12 +11266,12 @@ function DailyEmailSettings({emailSettings, onSave, team, posts, timelogs, perfL
 // ════════════════════════════════════════════════════════════════
 
 const LOGO_SLOTS = [
-  {key:"primary_logo",    label:"Primary Logo",    desc:"Main logo used everywhere by default",   required:true,  size:"Recommended: 400×120px"},
-  {key:"secondary_logo",  label:"Secondary Logo",  desc:"Alternative layout or horizontal version",required:false, size:"Recommended: 300×80px"},
-  {key:"dark_logo",       label:"Dark Mode Logo",  desc:"Used when dark/midnight theme is active", required:false, size:"White or light colored"},
-  {key:"light_logo",      label:"Light Mode Logo", desc:"Used when light/soft theme is active",    required:false, size:"Dark colored version"},
-  {key:"icon_logo",       label:"Icon / Favicon",  desc:"Small square icon for browser and app",   required:false, size:"Recommended: 64×64px"},
-  {key:"watermark_logo",  label:"Watermark Logo",  desc:"Semi-transparent background for PDFs",    required:false, size:"High contrast, simple"},
+  {key:"primary_logo", label:"Primary Logo", desc:"Main logo used everywhere by default", required:true, size:"Recommended: 400×120px"},
+  {key:"secondary_logo", label:"Secondary Logo", desc:"Alternative layout or horizontal version",required:false, size:"Recommended: 300×80px"},
+  {key:"dark_logo", label:"Dark Mode Logo", desc:"Used when dark/midnight theme is active", required:false, size:"White or light colored"},
+  {key:"light_logo", label:"Light Mode Logo", desc:"Used when light/soft theme is active", required:false, size:"Dark colored version"},
+  {key:"icon_logo", label:"Icon / Favicon", desc:"Small square icon for browser and app", required:false, size:"Recommended: 64×64px"},
+  {key:"watermark_logo", label:"Watermark Logo", desc:"Semi-transparent background for PDFs", required:false, size:"High contrast, simple"},
 ];
 
 function LogoUploader({logoKey, label, desc, size, value, onChange, required}) {
@@ -11336,7 +11336,7 @@ function BrandingSettingsTab({brandingAssets, onSave, wallpaper, accentColor}) {
     <div style={{display:"flex",flexDirection:"column",gap:20}}>
       {/* Identity */}
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:22,display:"flex",flexDirection:"column",gap:14}}>
-        <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>🏢 Agency Identity</p>
+        <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}> Agency Identity</p>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(260px,100%),1fr))",gap:12}}>
           <Field label="App / Agency Name"><input value={b.app_name||""} onChange={e=>upd("app_name",e.target.value)} placeholder="SocialFlow" style={inputSt}/></Field>
           <Field label="Tagline"><input value={b.agency_tagline||""} onChange={e=>upd("agency_tagline",e.target.value)} placeholder="Social Media Agency" style={inputSt}/></Field>
@@ -11348,7 +11348,7 @@ function BrandingSettingsTab({brandingAssets, onSave, wallpaper, accentColor}) {
 
       {/* Colors */}
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:22,display:"flex",flexDirection:"column",gap:14}}>
-        <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>🎨 Brand Colors</p>
+        <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}> Brand Colors</p>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(260px,100%),1fr))",gap:16}}>
           <Field label="Primary Brand Color">
             <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
@@ -11373,7 +11373,7 @@ function BrandingSettingsTab({brandingAssets, onSave, wallpaper, accentColor}) {
       {/* Logo slots grid */}
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:22,display:"flex",flexDirection:"column",gap:18}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>🖼️ Logo Versions</p>
+          <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}> Logo Versions</p>
           <div style={{fontSize:11,color:"var(--text3)",display:"flex",alignItems:"center",gap:6}}>
             <Ico d={Icons.shield} size={13} stroke="var(--text3)"/>
             Stored securely as base64 · Admin only
@@ -11393,7 +11393,7 @@ function BrandingSettingsTab({brandingAssets, onSave, wallpaper, accentColor}) {
 
       {/* PDF settings */}
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:22,display:"flex",flexDirection:"column",gap:14}}>
-        <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>📄 PDF Settings</p>
+        <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}> PDF Settings</p>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
           <div>
             <p style={{fontWeight:600,fontSize:13}}>Show Watermark in PDFs</p>
@@ -11413,7 +11413,7 @@ function BrandingSettingsTab({brandingAssets, onSave, wallpaper, accentColor}) {
       {/* Live preview */}
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:22}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-          <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>👁️ Live Preview</p>
+          <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}> Live Preview</p>
           <div style={{display:"flex",gap:4}}>
             {[["sidebar","Sidebar"],["pdf","PDF Header"],["login","Login"]].map(([k,l])=>(
               <button key={k} onClick={()=>setPreviewTab(k)} style={{padding:"5px 12px",borderRadius:"var(--rxs)",fontSize:11,fontWeight:700,background:previewTab===k?"var(--accent)":"var(--surface2)",color:previewTab===k?"#fff":"var(--text2)",border:`1px solid ${previewTab===k?"var(--accent)":"var(--border2)"}`}}>{l}</button>
@@ -11606,7 +11606,7 @@ function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh}) {
   });
 
   const FLAG = (cc) => {
-    if(!cc||cc.length!==2) return "🌐";
+    if(!cc||cc.length!==2) return "";
     const codePoints = cc.toUpperCase().split("").map(c=>127397+c.charCodeAt(0));
     return String.fromCodePoint(...codePoints);
   };
@@ -11648,7 +11648,7 @@ function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh}) {
 
       {/* Tabs */}
       <div style={{display:"flex",gap:4,borderBottom:"1px solid var(--border)",paddingBottom:0}}>
-        {[["sessions","🔐 Login Sessions"],["activity","📋 Activity Log"]].map(([k,l])=>(
+        {[["sessions"," Login Sessions"],["activity"," Activity Log"]].map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)} style={{
             padding:"8px 16px",fontSize:13,fontWeight:700,border:"none",background:"transparent",cursor:"pointer",
             color:tab===k?"var(--accent)":"var(--text3)",
@@ -11709,7 +11709,7 @@ function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh}) {
                       {/* Device */}
                       <div style={{display:"flex",alignItems:"center",gap:5}}>
                         <span style={{fontSize:11,padding:"2px 7px",borderRadius:99,background:s.device_type==="Mobile"?"#6366f122":"#10b98122",color:s.device_type==="Mobile"?"#6366f1":"#10b981",fontWeight:700}}>
-                          {s.device_type==="Mobile"?"📱":s.device_type==="Tablet"?"⬛":s.device_type==="Desktop"?"🖥️":"?"} {s.device_type||"?"}
+                          {s.device_type==="Mobile"?"":s.device_type==="Tablet"?"":s.device_type==="Desktop"?"":"?"} {s.device_type||"?"}
                         </span>
                       </div>
                       {/* Browser/OS */}
@@ -11746,7 +11746,7 @@ function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh}) {
                         {s.latitude&&s.longitude&&(
                           <div style={{gridColumn:"1/-1"}}>
                             <a href={`https://www.google.com/maps?q=${s.latitude},${s.longitude}`} target="_blank" rel="noreferrer"
-                              style={{fontSize:12,color:"var(--accent)",fontWeight:700,textDecoration:"none"}}>📍 View on Google Maps →</a>
+                              style={{fontSize:12,color:"var(--accent)",fontWeight:700,textDecoration:"none"}}> View on Google Maps →</a>
                           </div>
                         )}
                       </div>
@@ -12207,9 +12207,9 @@ function AITokensPanel() {
   const [testing, setTesting] = useState(false);
 
   const SPEEDS = [
-    {id:"low",    label:"Low",    desc:"Shorter, faster replies — best for quick questions"},
+    {id:"low", label:"Low", desc:"Shorter, faster replies — best for quick questions"},
     {id:"medium", label:"Medium", desc:"Balanced — the default for most conversations"},
-    {id:"high",   label:"High",   desc:"Longer, more thorough replies — best for complex tasks"},
+    {id:"high", label:"High", desc:"Longer, more thorough replies — best for complex tasks"},
   ];
 
   // Read token usage from localStorage (accumulated by the app), and keep it live
@@ -12224,10 +12224,10 @@ function AITokensPanel() {
   }, []);
 
   const MODELS = [
-    {id:"claude-haiku-4-5-20251001",  name:"Claude Haiku 4.5",    tier:"Fast & cheap",   input:1.00,  output:5.00,  ctx:"200K"},
-    {id:"claude-sonnet-4-6",           name:"Claude Sonnet 4.6",   tier:"Balanced",       input:3.00,  output:15.00, ctx:"1M"},
-    {id:"claude-opus-4-8",             name:"Claude Opus 4.8",     tier:"Most capable",   input:5.00,  output:25.00, ctx:"1M"},
-    {id:"claude-fable-5",              name:"Claude Fable 5",      tier:"Frontier",       input:10.00, output:50.00, ctx:"1M"},
+    {id:"claude-haiku-4-5-20251001", name:"Claude Haiku 4.5", tier:"Fast & cheap", input:1.00, output:5.00, ctx:"200K"},
+    {id:"claude-sonnet-4-6", name:"Claude Sonnet 4.6", tier:"Balanced", input:3.00, output:15.00, ctx:"1M"},
+    {id:"claude-opus-4-8", name:"Claude Opus 4.8", tier:"Most capable", input:5.00, output:25.00, ctx:"1M"},
+    {id:"claude-fable-5", name:"Claude Fable 5", tier:"Frontier", input:10.00, output:50.00, ctx:"1M"},
   ];
 
   const selectedModel = MODELS.find(m=>m.id===model) || MODELS[0];
@@ -12251,7 +12251,7 @@ function AITokensPanel() {
       const ms = Date.now() - start;
       const reply = d.content?.map(b=>b.text||"").join("").trim();
       if(reply) {
-        setTestResult({ok:true, msg:`✅ Connected! Reply: "${reply}" (${ms}ms)`});
+        setTestResult({ok:true, msg:` Connected! Reply: "${reply}" (${ms}ms)`});
         // Track tokens used
         if(d.usage) {
           try {
@@ -12268,10 +12268,10 @@ function AITokensPanel() {
           } catch(e){}
         }
       } else {
-        setTestResult({ok:false, msg:`⚠️ Got response but no content. Status: ${r.status}`});
+        setTestResult({ok:false, msg:` Got response but no content. Status: ${r.status}`});
       }
     } catch(err) {
-      setTestResult({ok:false, msg:`❌ Connection failed: ${err.message}`});
+      setTestResult({ok:false, msg:` Connection failed: ${err.message}`});
     }
     setTesting(false);
   };
@@ -12288,7 +12288,7 @@ function AITokensPanel() {
 
       {/* AI Model Selector */}
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:22}}>
-        <p style={{fontWeight:800,fontSize:14,marginBottom:4}}>🤖 AI Model</p>
+        <p style={{fontWeight:800,fontSize:14,marginBottom:4}}> AI Model</p>
         <p style={{fontSize:12,color:"var(--text3)",marginBottom:16}}>Select which Claude model Pro uses across the application.</p>
         <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
           {MODELS.map(m=>(
@@ -12311,10 +12311,10 @@ function AITokensPanel() {
         </div>
         <div style={{display:"flex",gap:8}}>
           <button onClick={saveModel} style={{flex:1,padding:"9px",borderRadius:10,background:"var(--accent)",color:"#fff",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-            {saved?"✅ Saved!":"Save Model Preference"}
+            {saved?" Saved!":"Save Model Preference"}
           </button>
           <button onClick={testConnection} disabled={testing} style={{flex:1,padding:"9px",borderRadius:10,background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
-            {testing?<><Spinner size={13}/> Testing…</>:"🔌 Test Connection"}
+            {testing?<><Spinner size={13}/> Testing…</>:" Test Connection"}
           </button>
         </div>
         {testResult&&(
@@ -12326,7 +12326,7 @@ function AITokensPanel() {
 
       {/* Speed Selector */}
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:22}}>
-        <p style={{fontWeight:800,fontSize:14,marginBottom:4}}>⚡ Response Speed</p>
+        <p style={{fontWeight:800,fontSize:14,marginBottom:4}}> Response Speed</p>
         <p style={{fontSize:12,color:"var(--text3)",marginBottom:16}}>Tune how fast vs. thorough Pro's replies are, independent of the model above. Click "Save Model Preference" to apply.</p>
         <div style={{display:"flex",gap:10}}>
           {SPEEDS.map(s=>(
@@ -12346,7 +12346,7 @@ function AITokensPanel() {
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:22}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
           <div>
-            <p style={{fontWeight:800,fontSize:14,marginBottom:2}}>📊 Token Usage</p>
+            <p style={{fontWeight:800,fontSize:14,marginBottom:2}}> Token Usage</p>
             <p style={{fontSize:12,color:"var(--text3)"}}>Tracked since last reset</p>
           </div>
           <button onClick={resetUsage} style={{padding:"5px 12px",borderRadius:8,fontSize:11,fontWeight:600,background:"#ef444411",color:"#ef4444",border:"1px solid #ef444433",cursor:"pointer"}}>Reset</button>
@@ -12356,10 +12356,10 @@ function AITokensPanel() {
         ):(
           <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12}}>
             {[
-              {label:"Input Tokens",  value:(usage.input_tokens||0).toLocaleString(),  color:"#6366f1"},
+              {label:"Input Tokens", value:(usage.input_tokens||0).toLocaleString(), color:"#6366f1"},
               {label:"Output Tokens", value:(usage.output_tokens||0).toLocaleString(), color:"#10b981"},
-              {label:"Total Calls",   value:(usage.total_calls||0).toLocaleString(),   color:"#f59e0b"},
-              {label:"Est. Cost",     value:`$${totalCost}`,                           color:"#ef4444"},
+              {label:"Total Calls", value:(usage.total_calls||0).toLocaleString(), color:"#f59e0b"},
+              {label:"Est. Cost", value:`$${totalCost}`, color:"#ef4444"},
             ].map(s=>(
               <div key={s.label} style={{padding:"14px 16px",background:"var(--surface2)",borderRadius:12,border:"1px solid var(--border)"}}>
                 <p style={{fontSize:11,color:"var(--text3)",marginBottom:4}}>{s.label}</p>
@@ -12375,14 +12375,14 @@ function AITokensPanel() {
 
       {/* API Status */}
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:22}}>
-        <p style={{fontWeight:800,fontSize:14,marginBottom:4}}>🔗 API Configuration</p>
+        <p style={{fontWeight:800,fontSize:14,marginBottom:4}}> API Configuration</p>
         <p style={{fontSize:12,color:"var(--text3)",marginBottom:14}}>The AI proxy routes all requests through the server. Your Anthropic API key is stored in <code style={{background:"var(--surface2)",padding:"1px 5px",borderRadius:4}}>ai-proxy.php</code> on the server.</p>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {[
-            {label:"Proxy Endpoint",   value: window.location.origin + "/ai-proxy.php", ok:true},
-            {label:"Current Model",    value: selectedModel.name, ok:true},
-            {label:"Context Window",   value: selectedModel.ctx, ok:true},
-            {label:"Max Output",       value: "4,096 tokens (configurable per call)", ok:true},
+            {label:"Proxy Endpoint", value: window.location.origin + "/ai-proxy.php", ok:true},
+            {label:"Current Model", value: selectedModel.name, ok:true},
+            {label:"Context Window", value: selectedModel.ctx, ok:true},
+            {label:"Max Output", value: "4,096 tokens (configurable per call)", ok:true},
           ].map(r=>(
             <div key={r.label} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"var(--surface2)",borderRadius:8}}>
               <div style={{width:7,height:7,borderRadius:"50%",background:r.ok?"#10b981":"#ef4444",flexShrink:0}}/>
@@ -12419,15 +12419,15 @@ function ProfilePhoto({photoUrl, name, role, size=56, onClick}) {
 function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange, wallpaper, notifPrefs, onSaveNotifPrefs}) {
   const [tab, setTab] = usePersistentState("sf_tab_account","profile");
   const [form, setForm] = useState({
-    display_name:     userProfile?.display_name || currentUser?.name || "",
-    mobile:           userProfile?.mobile || "",
-    whatsapp_number:  userProfile?.whatsapp_number || "",
-    bio:              userProfile?.bio || "",
-    language:         userProfile?.language || "en",
+    display_name: userProfile?.display_name || currentUser?.name || "",
+    mobile: userProfile?.mobile || "",
+    whatsapp_number: userProfile?.whatsapp_number || "",
+    bio: userProfile?.bio || "",
+    language: userProfile?.language || "en",
   });
-  const [photo, setPhoto]   = useState(userProfile?.photo_url || null);
+  const [photo, setPhoto] = useState(userProfile?.photo_url || null);
   const [saving, setSaving] = useState(false);
-  const [saved,  setSaved]  = useState(false);
+  const [saved, setSaved] = useState(false);
   const [notifEmail, setNotifEmail] = useState(userProfile?.notifications_email ?? true);
   const [notifBrowser, setNotifBrowser] = useState(userProfile?.notifications_browser ?? true);
   const fileRef = useRef(null);
@@ -12538,7 +12538,7 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
               </Field>
               <Field label="WhatsApp Number" hint="Receive task notifications via WhatsApp">
                 <div style={{position:"relative"}}>
-                  <div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:14,lineHeight:1}}>💬</div>
+                  <div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:14,lineHeight:1}}></div>
                   <input value={form.whatsapp_number} onChange={e=>sf("whatsapp_number",e.target.value)} placeholder="+20 100 000 0000" style={{...inputSt,paddingLeft:34}}/>
                 </div>
               </Field>
@@ -12701,12 +12701,12 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:0}}>
               <SectionHead title="Task Notifications"/>
               {[
-                {k:"task_assigned",        label:"Task assigned to me",         desc:"Email when a task is assigned to you"},
-                {k:"task_stage_changed",   label:"Task moved to new stage",      desc:"Email when a task you own changes stage"},
-                {k:"task_due_soon",        label:"Due date reminder",            desc:"Reminder 24h before a task is due"},
-                {k:"task_overdue",         label:"Task overdue",                 desc:"Alert when a task passes its due date"},
-                {k:"task_mention",         label:"Mentioned in a comment",       desc:"Email when someone @mentions you"},
-                {k:"task_comment",         label:"New comment on my tasks",      desc:"Email for every new comment (can be frequent)"},
+                {k:"task_assigned", label:"Task assigned to me", desc:"Email when a task is assigned to you"},
+                {k:"task_stage_changed", label:"Task moved to new stage", desc:"Email when a task you own changes stage"},
+                {k:"task_due_soon", label:"Due date reminder", desc:"Reminder 24h before a task is due"},
+                {k:"task_overdue", label:"Task overdue", desc:"Alert when a task passes its due date"},
+                {k:"task_mention", label:"Mentioned in a comment", desc:"Email when someone @mentions you"},
+                {k:"task_comment", label:"New comment on my tasks", desc:"Email for every new comment (can be frequent)"},
               ].map(r=><Row key={r.k} {...r} disabled={prefs.all_disabled||(prefs.mentions_only&&r.k!=="task_mention")}/>)}
             </div>
 
@@ -12714,9 +12714,9 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:0}}>
               <SectionHead title="Project Notifications" color="#6366f1"/>
               {[
-                {k:"project_created",          label:"Added to a new project",      desc:"Email when you're added to a project"},
-                {k:"project_task_added",        label:"New task added to project",   desc:"Email when any task is added to your project"},
-                {k:"project_deadline_updated",  label:"Project deadline changed",    desc:"Alert when the project deadline is updated"},
+                {k:"project_created", label:"Added to a new project", desc:"Email when you're added to a project"},
+                {k:"project_task_added", label:"New task added to project", desc:"Email when any task is added to your project"},
+                {k:"project_deadline_updated", label:"Project deadline changed", desc:"Alert when the project deadline is updated"},
               ].map(r=><Row key={r.k} {...r} disabled={prefs.all_disabled||prefs.mentions_only}/>)}
             </div>
 
@@ -12724,8 +12724,8 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:0}}>
               <SectionHead title="Client & Approval Notifications" color="#f59e0b"/>
               {[
-                {k:"post_approved",            label:"Post approved by client",     desc:"Email when a client approves your work"},
-                {k:"post_rejected",            label:"Post needs revision",         desc:"Email when a client requests changes"},
+                {k:"post_approved", label:"Post approved by client", desc:"Email when a client approves your work"},
+                {k:"post_rejected", label:"Post needs revision", desc:"Email when a client requests changes"},
               ].map(r=><Row key={r.k} {...r} disabled={prefs.all_disabled||prefs.mentions_only}/>)}
             </div>
 
@@ -12733,9 +12733,9 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:0}}>
               <SectionHead title="Finance Notifications" color="#10b981"/>
               {[
-                {k:"invoice_created",    label:"New invoice created",     desc:"Alert when a new invoice is generated"},
-                {k:"payment_received",   label:"Payment received",         desc:"Alert when a payment is recorded"},
-                {k:"subscription_renewal",label:"Subscription renewal",   desc:"Reminder 7 days before a subscription renews"},
+                {k:"invoice_created", label:"New invoice created", desc:"Alert when a new invoice is generated"},
+                {k:"payment_received", label:"Payment received", desc:"Alert when a payment is recorded"},
+                {k:"subscription_renewal",label:"Subscription renewal", desc:"Reminder 7 days before a subscription renews"},
               ].map(r=><Row key={r.k} {...r} disabled={prefs.all_disabled||prefs.mentions_only}/>)}
             </div>
 
@@ -12755,7 +12755,7 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
 }
 
 // ════════════════════════════════════════════════════════════════
-// USER MENU DROPDOWN  (bottom of sidebar)
+// USER MENU DROPDOWN (bottom of sidebar)
 // ════════════════════════════════════════════════════════════════
 function UserMenu({currentUser, userProfile, dark, setDark, onNavigate, onLogout, wallpaper, onWallpaperChange}) {
   const [open, setOpen] = useState(false);
@@ -12784,10 +12784,10 @@ function UserMenu({currentUser, userProfile, dark, setDark, onNavigate, onLogout
   };
 
   const menuItems = [
-    {label:"My Account",  ico:Icons.person,   action:()=>{ setOpen(false); onNavigate("account"); }},
+    {label:"My Account", ico:Icons.person, action:()=>{ setOpen(false); onNavigate("account"); }},
     ...(isAdmin?[{label:"Settings", ico:Icons.settings, action:()=>{ setOpen(false); onNavigate("settings"); }}]:[]),
     {divider:true},
-    {label:isDarkMode?"☀️ Light Mode":"🌙 Dark Mode", ico:isDarkMode?Icons.sun:Icons.moon, action:handleToggleDark},
+    {label:isDarkMode?" Light Mode":" Dark Mode", ico:isDarkMode?Icons.sun:Icons.moon, action:handleToggleDark},
     {divider:true},
     {label:"Logout", ico:Icons.logout, color:"#ef4444", action:()=>{ setOpen(false); onLogout(); }},
   ];
@@ -12851,22 +12851,22 @@ function UserMenu({currentUser, userProfile, dark, setDark, onNavigate, onLogout
 // ════════════════════════════════════════════════════════════════
 
 const SUB_STATUS = {
-  active:    {label:"Active",    color:"#10b981"},
-  overdue:   {label:"Overdue",   color:"#ef4444"},
-  paused:    {label:"Paused",    color:"#f59e0b"},
+  active: {label:"Active", color:"#10b981"},
+  overdue: {label:"Overdue", color:"#ef4444"},
+  paused: {label:"Paused", color:"#f59e0b"},
   cancelled: {label:"Cancelled", color:"#6b7280"},
-  pending:   {label:"Pending",   color:"#3b82f6"},
+  pending: {label:"Pending", color:"#3b82f6"},
 };
 const BILLING_PERIODS = {
-  monthly:   {label:"Monthly",   months:1},
+  monthly: {label:"Monthly", months:1},
   quarterly: {label:"Quarterly", months:3},
-  yearly:    {label:"Yearly",    months:12},
+  yearly: {label:"Yearly", months:12},
 };
 const PAY_METHODS_SUB = [
-  {k:"paymob", l:"💳 Paymob (Online)", icon:"💳"},
-  {k:"bank",   l:"🏦 Bank Transfer",   icon:"🏦"},
-  {k:"card",   l:"💳 Card",            icon:"💳"},
-  {k:"manual", l:"📋 Manual / Cash",   icon:"📋"},
+  {k:"paymob", l:" Paymob (Online)", icon:""},
+  {k:"bank", l:" Bank Transfer", icon:""},
+  {k:"card", l:" Card", icon:""},
+  {k:"manual", l:" Manual / Cash", icon:""},
 ];
 const CURRENCIES_SUB = ["EGP","USD","SAR","AED","EUR","GBP"];
 
@@ -12888,7 +12888,7 @@ const daysUntil = (dateStr) => {
 // Paymob payment link generator (using their hosted iframe)
 const generatePaymobLink = async (sub, paymobKey) => {
   // Real Paymob integration flow:
-  // 1. Auth token  2. Create order  3. Payment key  4. Return iframe URL
+  // 1. Auth token 2. Create order 3. Payment key 4. Return iframe URL
   // Demo mode: return a structured link with demo token
   if(!paymobKey || paymobKey.includes("demo")) {
     return `https://accept.paymob.com/api/acceptance/iframes/12345?payment_token=demo_${sub.client_id}_${Date.now()}`;
@@ -12975,7 +12975,7 @@ function SubDetailPanel({sub, payments, clients, currentUser, appSettings, onClo
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
             <div style={{flex:1}}>
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
-                <div style={{width:40,height:40,borderRadius:"50%",background:st.color+"22",border:`2px solid ${st.color}55`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>🔄</div>
+                <div style={{width:40,height:40,borderRadius:"50%",background:st.color+"22",border:`2px solid ${st.color}55`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}></div>
                 <div>
                   <p style={{fontWeight:800,fontSize:16,fontFamily:"'Bricolage Grotesque',sans-serif"}}>{sub.service_name}</p>
                   <p style={{fontSize:13,color:"var(--text2)"}}>{sub.client_name}</p>
@@ -13043,7 +13043,7 @@ function SubDetailPanel({sub, payments, clients, currentUser, appSettings, onClo
           {/* Status controls */}
           {canManage&&(
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              {[["active","▶️ Activate"],["paused","⏸ Pause"],["cancelled","🚫 Cancel"]].map(([s,l])=>(
+              {[["active"," Activate"],["paused"," Pause"],["cancelled"," Cancel"]].map(([s,l])=>(
                 sub.status!==s&&<button key={s} onClick={()=>onUpdateStatus(sub.id,s)} style={{padding:"6px 12px",borderRadius:"var(--rxs)",fontSize:12,fontWeight:700,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text2)"}}>{l}</button>
               ))}
             </div>
@@ -13080,7 +13080,7 @@ function SubDetailPanel({sub, payments, clients, currentUser, appSettings, onClo
               {subPayments.map((p,i)=>(
                 <div key={p.id||i} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",background:"#10b98111",border:"1px solid #10b98133",borderRadius:"var(--rxs)"}}>
                   <div style={{width:30,height:30,borderRadius:"50%",background:"#10b98122",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                    <span style={{fontSize:13}}>✅</span>
+                    <span style={{fontSize:13}}></span>
                   </div>
                   <div style={{flex:1}}>
                     <div style={{display:"flex",justifyContent:"space-between"}}>
@@ -13208,7 +13208,7 @@ function CreateSubModal({open,onClose,clients,existingSubs,onSave,currentUser,ap
           <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"var(--accentbg)",border:"1px solid var(--accent)33",borderRadius:"var(--rxs)"}}>
             <input type="checkbox" id="genlink" checked={f.generate_link} onChange={e=>sf("generate_link",e.target.checked)} style={{width:16,height:16,accentColor:"var(--accent)"}}/>
             <label htmlFor="genlink" style={{fontSize:13,fontWeight:600,cursor:"pointer"}}>
-              🔗 Auto-generate Paymob payment link on save
+               Auto-generate Paymob payment link on save
             </label>
           </div>
         )}
@@ -13363,7 +13363,7 @@ function SubscriptionsPage({subscriptions, subscriptionPayments, clients, curren
               <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-                    <div style={{width:32,height:32,borderRadius:8,background:st.color+"22",border:`1.5px solid ${st.color}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>🔄</div>
+                    <div style={{width:32,height:32,borderRadius:8,background:st.color+"22",border:`1.5px solid ${st.color}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}></div>
                     <div>
                       <p style={{fontWeight:700,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sub.service_name}</p>
                       <p style={{fontSize:12,color:"var(--text2)"}}>{sub.client_name}</p>
@@ -13452,15 +13452,15 @@ function SubscriptionsPage({subscriptions, subscriptionPayments, clients, curren
 // ════════════════════════════════════════════════════════════════
 
 const INV_STATUS = {
-  unpaid:         {label:"Unpaid",         color:"#ef4444"},
+  unpaid: {label:"Unpaid", color:"#ef4444"},
   partially_paid: {label:"Partially Paid", color:"#f59e0b"},
-  paid:           {label:"Paid",           color:"#10b981"},
-  overdue:        {label:"Overdue",        color:"#dc2626"},
+  paid: {label:"Paid", color:"#10b981"},
+  overdue: {label:"Overdue", color:"#dc2626"},
 };
 const PAY_METHODS = [
-  {k:"cash",l:"💵 Cash"},{k:"bank",l:"🏦 Bank Transfer"},
-  {k:"card",l:"💳 Card"},{k:"check",l:"🧾 Check"},
-  {k:"online",l:"🌐 Online"},{k:"other",l:"📋 Other"},
+  {k:"cash",l:" Cash"},{k:"bank",l:" Bank Transfer"},
+  {k:"card",l:" Card"},{k:"check",l:" Check"},
+  {k:"online",l:" Online"},{k:"other",l:" Other"},
 ];
 
 const autoInvoiceNum = (existing=[]) => {
@@ -13536,8 +13536,8 @@ function generateInvoicePDF(inv, payments, branding) {
     <div class="section">
       <div><div class="label">Bill To</div>
         <div style="font-size:16px;font-weight:700">${inv.client_name}</div>
-        ${inv.client_phone?`<div style="font-size:12px;color:#666;margin-top:4px">📞 ${inv.client_phone}</div>`:""}
-        ${inv.client_email?`<div style="font-size:12px;color:#666;margin-top:2px">✉ ${inv.client_email}</div>`:""}
+        ${inv.client_phone?`<div style="font-size:12px;color:#666;margin-top:4px"> ${inv.client_phone}</div>`:""}
+        ${inv.client_email?`<div style="font-size:12px;color:#666;margin-top:2px"> ${inv.client_email}</div>`:""}
       </div>
       <div style="text-align:right">
         <div class="label">Invoice Details</div>
@@ -13559,8 +13559,8 @@ function generateInvoicePDF(inv, payments, branding) {
         ${calc.discAmt>0?`<div class="totals-row"><span>Discount</span><span style="color:#10b981">− ${fmtMoney(calc.discAmt,cur)}</span></div>`:""}
         ${calc.taxAmt>0?`<div class="totals-row"><span>VAT (${inv.tax_rate}%)</span><span>${fmtMoney(calc.taxAmt,cur)}</span></div>`:""}
         <div class="totals-row grand"><span>TOTAL</span><span>${fmtMoney(inv.total,cur)}</span></div>
-        ${paidAmt>0?`<div class="totals-row paid-row"><span>✅ Amount Paid</span><span>${fmtMoney(paidAmt,cur)}</span></div>`:""}
-        ${balance>0?`<div class="totals-row balance-row"><span>⚠️ Balance Due</span><span>${fmtMoney(balance,cur)}</span></div>`:""}
+        ${paidAmt>0?`<div class="totals-row paid-row"><span> Amount Paid</span><span>${fmtMoney(paidAmt,cur)}</span></div>`:""}
+        ${balance>0?`<div class="totals-row balance-row"><span> Balance Due</span><span>${fmtMoney(balance,cur)}</span></div>`:""}
       </div>
     </div>
     ${payRows?`<div style="margin-top:28px"><div class="title-bar" style="margin-bottom:0">Payment History</div>
@@ -13577,7 +13577,7 @@ function generateInvoicePDF(inv, payments, branding) {
 async function downloadInvoicePDF(inv, payments, branding) {
   const html = generateInvoicePDF(inv, payments, branding);
   const parsed = (new DOMParser()).parseFromString(html, "text/html");
-  const pageEl  = parsed.querySelector(".page");
+  const pageEl = parsed.querySelector(".page");
   const styleText = parsed.querySelector("style")?.textContent || "";
 
   const styleEl = document.createElement("style");
@@ -14170,7 +14170,7 @@ function QualitySparkline({logs}) {
 }
 
 // ════════════════════════════════════════════════════════════════
-// REPORTS PAGE  (personal — account managers: daily, creative: weekly)
+// REPORTS PAGE (personal — account managers: daily, creative: weekly)
 // ════════════════════════════════════════════════════════════════
 function ReportsPage({currentUser, perfLogs, aiInsights, team}) {
   const myLogs = (perfLogs||[]).filter(l=>l.user_email===currentUser?.email);
@@ -14298,7 +14298,7 @@ Give 3 specific, actionable recommendations to improve their performance. Be con
 }
 
 // ════════════════════════════════════════════════════════════════
-// TEAM PERFORMANCE PAGE  (admin / director only)
+// TEAM PERFORMANCE PAGE (admin / director only)
 // ════════════════════════════════════════════════════════════════
 function TeamPerformancePage({currentUser, perfLogs, aiInsights, team}) {
   const ranked = calcAllPerf(team, perfLogs);
@@ -14327,7 +14327,7 @@ function TeamPerformancePage({currentUser, perfLogs, aiInsights, team}) {
       {/* Best / Worst highlight */}
       {best&&worst&&best.email!==worst.email&&(
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
-          {[{m:best,label:"Top Performer",col:"#10b981",ico:"🏆"},{m:worst,label:"Needs Support",col:"#ef4444",ico:"💡"}].map(({m,label,col,ico})=>(
+          {[{m:best,label:"Top Performer",col:"#10b981",ico:""},{m:worst,label:"Needs Support",col:"#ef4444",ico:""}].map(({m,label,col,ico})=>(
             <div key={m.id} style={{background:"var(--surface)",border:`1px solid ${col}33`,borderRadius:14,padding:"16px 18px",display:"flex",gap:14,alignItems:"center"}}>
               <div style={{fontSize:28}}>{ico}</div>
               <div style={{flex:1,minWidth:0}}>
@@ -14420,7 +14420,7 @@ function TeamPerformancePage({currentUser, perfLogs, aiInsights, team}) {
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {unreadInsights.map(ins=>(
               <div key={ins.id} style={{padding:"12px 14px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:10,display:"flex",gap:12}}>
-                <div style={{fontSize:20,flexShrink:0}}>{ins.category==="bottleneck"?"🔴":ins.category==="performance"?"🏆":ins.category==="quality"?"⭐":"💡"}</div>
+                <div style={{fontSize:20,flexShrink:0}}>{ins.category==="bottleneck"?"":ins.category==="performance"?"":ins.category==="quality"?"":""}</div>
                 <div>
                   <p style={{fontSize:13,fontWeight:700,margin:"0 0 3px"}}>{ins.title}</p>
                   <p style={{fontSize:12,color:"var(--text2)",margin:"0 0 4px"}}>{ins.insight}</p>
@@ -14491,7 +14491,7 @@ function MyTasksPage({posts,team,projects,currentUser,onStageChange,onPostClick}
       {/* Tasks List */}
       {filteredPosts.length === 0 ? (
         <div style={{textAlign:"center",padding:"60px 20px",color:"var(--text3)"}}>
-          <p style={{fontSize:32,marginBottom:10}}>📭</p>
+          <p style={{fontSize:32,marginBottom:10}}></p>
           <p style={{fontSize:15,fontWeight:700,color:"var(--text2)"}}>No tasks</p>
           <p style={{fontSize:13,marginTop:4}}>{filterStage ? `No tasks in ${STAGE_MAP[filterStage].label}` : "You have no assigned tasks"}</p>
         </div>
@@ -14515,9 +14515,9 @@ function MyTasksPage({posts,team,projects,currentUser,onStageChange,onPostClick}
                     <Badge label={post.priority} color={PRI_COLOR[post.priority]} xs/>
                   </div>
                   <h4 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,fontSize:14,marginBottom:4}}>{post.title}</h4>
-                  {project && <p style={{fontSize:11,color:"var(--text3)",marginBottom:4}}>📁 {project.title}</p>}
+                  {project && <p style={{fontSize:11,color:"var(--text3)",marginBottom:4}}> {project.title}</p>}
                   {post.scheduled_date && (
-                    <p style={{fontSize:12,color:"var(--text2)"}}>📅 {fmtDate(post.scheduled_date)}{post.scheduled_time && ` at ${post.scheduled_time}`}</p>
+                    <p style={{fontSize:12,color:"var(--text2)"}}> {fmtDate(post.scheduled_date)}{post.scheduled_time && ` at ${post.scheduled_time}`}</p>
                   )}
                 </div>
 
@@ -14641,7 +14641,7 @@ function MyCalendarPage({posts,currentUser,team}) {
 
         {/* Upcoming Posts Sidebar */}
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:14}}>
-          <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,fontSize:16}}>📋 Upcoming Posts</h3>
+          <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,fontSize:16}}> Upcoming Posts</h3>
           {myPosts.length === 0 ? (
             <p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:20}}>No scheduled posts</p>
           ) : (
@@ -14649,7 +14649,7 @@ function MyCalendarPage({posts,currentUser,team}) {
               {myPosts.sort((a,b)=>new Date(a.scheduled_date)-new Date(b.scheduled_date)).map(post=>(
                 <div key={post.id} style={{padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:`1px solid ${STAGE_MAP[post.stage]?.color}44`,display:"flex",flexDirection:"column",gap:6}}>
                   <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
-                    <div style={{fontSize:16,flexShrink:0}}>📌</div>
+                    <div style={{fontSize:16,flexShrink:0}}></div>
                     <div style={{flex:1,minWidth:0}}>
                       <p style={{fontWeight:700,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{post.title}</p>
                       <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{fmtDate(post.scheduled_date)}{post.scheduled_time && ` at ${post.scheduled_time}`}</p>
@@ -14823,7 +14823,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                       onMouseEnter={e=>{e.currentTarget.style.background=stage.color+"33";}}
                       onMouseLeave={e=>{e.currentTarget.style.background=stage.color+"22";}}>
                         <div style={{display:"flex",alignItems:"center",gap:8}}>
-                          <span style={{fontSize:12,flexShrink:0}}>{PLT_ICON[post.platform]||"📱"}</span>
+                          <span style={{fontSize:12,flexShrink:0}}>{PLT_ICON[post.platform]||""}</span>
                           <span style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{post.title}</span>
                           {isActive && <span style={{fontSize:11,fontFamily:"monospace",color:"#10b981",fontWeight:800,background:"#10b98122",padding:"1px 5px",borderRadius:4}}>{fmtSecs(trackedSecs)}</span>}
                         </div>
@@ -14833,7 +14833,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                           <span style={{fontSize:10,color:"var(--text3)"}}>{durLabel}</span>
                           <Badge label={stage.label} color={stage.color} xs/>
                           {isActive && <span style={{fontSize:9,color:"#10b981",fontWeight:700,textTransform:"uppercase"}}>● Recording</span>}
-                          {isAM && <button onClick={e=>{e.stopPropagation();setOverrideTarget({slot,post});setOverrideTime(slot.start_time);}} style={{marginLeft:"auto",padding:"1px 7px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface2)",color:"var(--text3)",fontSize:9,fontWeight:700,cursor:"pointer"}}>✏ Override</button>}
+                          {isAM && <button onClick={e=>{e.stopPropagation();setOverrideTarget({slot,post});setOverrideTime(slot.start_time);}} style={{marginLeft:"auto",padding:"1px 7px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface2)",color:"var(--text3)",fontSize:9,fontWeight:700,cursor:"pointer"}}> Override</button>}
                         </div>
                       </div>
                     );
@@ -14863,7 +14863,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                       <span style={{width:6,height:6,borderRadius:"50%",background:"#10b981",display:"inline-block",animation:"pulse 1s infinite"}}></span>
                       <span style={{fontSize:14,fontFamily:"monospace",fontWeight:700,color:"#10b981"}}>{fmtSecs(secs)}</span>
                     </div>
-                    <button onClick={()=>onPauseTimer&&onPauseTimer(timer.post_id)} style={{padding:"3px 8px",borderRadius:"var(--rs)",border:"1px solid #f59e0b55",background:"#f59e0b22",color:"#f59e0b",fontSize:10,fontWeight:700,cursor:"pointer",alignSelf:"flex-start"}}>⏸ Pause</button>
+                    <button onClick={()=>onPauseTimer&&onPauseTimer(timer.post_id)} style={{padding:"3px 8px",borderRadius:"var(--rs)",border:"1px solid #f59e0b55",background:"#f59e0b22",color:"#f59e0b",fontSize:10,fontWeight:700,cursor:"pointer",alignSelf:"flex-start"}}> Pause</button>
                   </div>
                 );
               })}
@@ -15166,7 +15166,7 @@ function TeamMembersPage({team,posts,perfLogs,onMemberSelect}) {
                 {/* Quality Score */}
                 {avgQuality > 0 && (
                   <div style={{padding:10,background:"#f9731622",borderRadius:"var(--rs)",border:"1px solid #f9731644",display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:16}}>⭐</span>
+                    <span style={{fontSize:16}}></span>
                     <div>
                       <p style={{fontSize:11,fontWeight:700,color:"#f97316"}}>Quality Score</p>
                       <p style={{fontSize:13,fontWeight:700}}>{avgQuality}/100</p>
@@ -15204,7 +15204,7 @@ function TeamMembersPage({team,posts,perfLogs,onMemberSelect}) {
           <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:20}}>
             {/* Assigned Tasks */}
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:14}}>
-              <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:18}}>📋 My Tasks</h3>
+              <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:18}}> My Tasks</h3>
               {getTeamMemberTasks(selectedMember.email).length === 0 ? (
                 <p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:20}}>No tasks assigned</p>
               ) : (
@@ -15215,7 +15215,7 @@ function TeamMembersPage({team,posts,perfLogs,onMemberSelect}) {
                       <div style={{flex:1,minWidth:0}}>
                         <p style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{post.title}</p>
                         <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>Stage: {STAGE_MAP[post.stage]?.label||post.stage}</p>
-                        {post.scheduled_date && <p style={{fontSize:11,color:"var(--text2)",marginTop:1}}>📅 {fmtDate(post.scheduled_date)}</p>}
+                        {post.scheduled_date && <p style={{fontSize:11,color:"var(--text2)",marginTop:1}}> {fmtDate(post.scheduled_date)}</p>}
                       </div>
                       <Badge label={post.priority} color={PRI_COLOR[post.priority]} xs/>
                     </div>
@@ -15226,7 +15226,7 @@ function TeamMembersPage({team,posts,perfLogs,onMemberSelect}) {
 
             {/* Calendar View */}
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:14}}>
-              <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:18}}>📅 Scheduled</h3>
+              <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:18}}> Scheduled</h3>
               {getTeamMemberTasks(selectedMember.email).filter(p=>p.scheduled_date).length === 0 ? (
                 <p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:20}}>No scheduled items</p>
               ) : (
@@ -15237,13 +15237,13 @@ function TeamMembersPage({team,posts,perfLogs,onMemberSelect}) {
                     .map(post=>(
                       <div key={post.id} style={{padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:`1px solid ${STAGE_MAP[post.stage]?.color}44`}}>
                         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                          <span style={{fontSize:16}}>📌</span>
+                          <span style={{fontSize:16}}></span>
                           <p style={{fontWeight:700,fontSize:13,flex:1}}>{post.title}</p>
                           <Badge label={STAGE_MAP[post.stage]?.label} color={STAGE_MAP[post.stage]?.color} xs/>
                         </div>
                         <div style={{display:"flex",gap:12,fontSize:12,color:"var(--text2)"}}>
-                          <span>📅 {fmtDate(post.scheduled_date)}</span>
-                          {post.scheduled_time && <span>⏰ {post.scheduled_time}</span>}
+                          <span> {fmtDate(post.scheduled_date)}</span>
+                          {post.scheduled_time && <span> {post.scheduled_time}</span>}
                         </div>
                       </div>
                     ))}
@@ -15275,53 +15275,53 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     { group: null, icon: null, items: [{key:"home", label:"Pro (Home)", ico:Icons.sparkle}] },
     { group: "PORTAL", icon: Icons.globe, items: [
       {key:"dashboard", label:"Dashboard", ico:Icons.home},
-      {key:"tasks",    label:"My Content",  ico:Icons.tasks},
-      {key:"calendar", label:"Calendar",    ico:Icons.calendar},
+      {key:"tasks", label:"My Content", ico:Icons.tasks},
+      {key:"calendar", label:"Calendar", ico:Icons.calendar},
       {key:"subscriptions", label:"My Plans", ico:Icons.repeat},
     ]},
     { group: "ACCOUNT", icon: Icons.person, items: [{key:"account", label:"My Account", ico:Icons.person}] },
   ] : [
     { group: null, icon: null, items: [{key:"home", label:"Pro (Home)", ico:Icons.sparkle}] },
     { group: "WORKSPACE", icon: Icons.home, items: [
-      {key:"dashboard", label:"Dashboard",  ico:Icons.home},
+      {key:"dashboard", label:"Dashboard", ico:Icons.home},
     ]},
     { group: "MY WORK", icon: Icons.briefcase, items: [
-      {key:"my_tasks",       label:"My Tasks",       ico:Icons.tasks},
-      {key:"my_calendar",    label:"My Calendar",    ico:Icons.calendar},
-      {key:"my_timeline",    label:"My Timeline",    ico:Icons.clock},
+      {key:"my_tasks", label:"My Tasks", ico:Icons.tasks},
+      {key:"my_calendar", label:"My Calendar", ico:Icons.calendar},
+      {key:"my_timeline", label:"My Timeline", ico:Icons.clock},
       {key:"my_performance", label:"My Performance", ico:Icons.trendUp},
     ]},
     ...(canAgency ? [{ group: "CLIENTS", icon: Icons.clients, items: [
-      {key:"clients",   label:"Clients",          ico:Icons.clients},
-      {key:"projects",  label:"Projects",         ico:Icons.projects},
-      {key:"tasks",     label:"All Posts & Tasks", ico:Icons.tasks},
-      {key:"calendar",  label:"Clients Calendar", ico:Icons.calendar},
+      {key:"clients", label:"Clients", ico:Icons.clients},
+      {key:"projects", label:"Projects", ico:Icons.projects},
+      {key:"tasks", label:"All Posts & Tasks", ico:Icons.tasks},
+      {key:"calendar", label:"Clients Calendar", ico:Icons.calendar},
     ]}] : []),
     ...((isAdmin||currentUser?.role==="account_manager") ? [{ group: "CRM", icon: Icons.leads, items: [
-      {key:"leads",   label:"Leads",            ico:Icons.leads},
+      {key:"leads", label:"Leads", ico:Icons.leads},
       {key:"lead_gen", label:"Lead Generation", ico:Icons.zap2},
     ]}] : []),
     ...((canFinance||(isAdmin||currentUser?.role==="account_manager")) ? [{ group: "FINANCE", icon: Icons.wallet, items: [
       ...((isAdmin||currentUser?.role==="account_manager"||canFinance)?[{key:"quotes", label:"Quotes", ico:Icons.receipt}]:[]),
       ...(canFinance?[
-        {key:"invoices",      label:"Invoices",      ico:Icons.invoice},
+        {key:"invoices", label:"Invoices", ico:Icons.invoice},
         {key:"subscriptions", label:"Subscriptions", ico:Icons.repeat},
       ]:[]),
     ]}] : []),
     ...(isAdmin ? [{ group: "TEAM", icon: Icons.users, items: [
-      {key:"team_members", label:"Team Members",  ico:Icons.users},
-      {key:"users",        label:"User Management", ico:Icons.users},
-      {key:"performance",  label:"Performance",   ico:Icons.award},
-      {key:"system_log",   label:"System Log",    ico:"M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z"},
+      {key:"team_members", label:"Team Members", ico:Icons.users},
+      {key:"users", label:"User Management", ico:Icons.users},
+      {key:"performance", label:"Performance", ico:Icons.award},
+      {key:"system_log", label:"System Log", ico:"M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z"},
     ]}] : []),
     ...((canAgency||isAdmin) ? [{ group: "TOOLS", icon: Icons.wand, items: [
       ...(canAgency?[
-        {key:"assets",    label:"Assets",    ico:Icons.assets},
+        {key:"assets", label:"Assets", ico:Icons.assets},
         {key:"templates", label:"Templates", ico:Icons.templates},
-        {key:"reports",   label:"My Report", ico:Icons.chart2},
+        {key:"reports", label:"My Report", ico:Icons.chart2},
       ]:[]),
       ...(isAdmin?[
-        {key:"agents",   label:"Agents",   ico:Icons.activity},
+        {key:"agents", label:"Agents", ico:Icons.activity},
         {key:"settings", label:"Settings", ico:Icons.settings},
       ]:[]),
     ]}] : []),
@@ -15517,13 +15517,13 @@ const formatClientMemory = (clientId, clientMemory=[]) => {
   const priority = {manual:0, ai:1, auto:2};
   const sorted = [...mem].sort((a,b)=>priority[a.type]-priority[b.type]);
   const manual = sorted.filter(m=>m.type==="manual");
-  const ai     = sorted.filter(m=>m.type==="ai");
-  const auto   = sorted.filter(m=>m.type==="auto");
-  const fmt = (arr) => arr.map(m=>`  • ${m.key.replace(/_/g," ")}: ${m.value}`).join("\n");
+  const ai = sorted.filter(m=>m.type==="ai");
+  const auto = sorted.filter(m=>m.type==="auto");
+  const fmt = (arr) => arr.map(m=>` • ${m.key.replace(/_/g," ")}: ${m.value}`).join("\n");
   return [
     manual.length ? `[BRAND GUIDELINES]\n${fmt(manual)}` : "",
-    ai.length     ? `[AI LEARNED]\n${fmt(ai)}`           : "",
-    auto.length   ? `[BEHAVIORAL PATTERNS]\n${fmt(auto)}` : "",
+    ai.length ? `[AI LEARNED]\n${fmt(ai)}` : "",
+    auto.length ? `[BEHAVIORAL PATTERNS]\n${fmt(auto)}` : "",
   ].filter(Boolean).join("\n");
 };
 
@@ -15557,14 +15557,14 @@ const stripActionBlocks = (text) => {
 
 const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId) => {
   // ── Live data summaries ─────────────────────────────────────────
-  const allPosts  = data?.posts||[];
-  const allProj   = data?.projects||[];
+  const allPosts = data?.posts||[];
+  const allProj = data?.projects||[];
   const allClients= data?.clients||[];
-  const allTeam   = data?.team||[];
+  const allTeam = data?.team||[];
 
-  const overdue   = allPosts.filter(p=>p.scheduled_date&&new Date(p.scheduled_date)<new Date()&&!["published","rejected"].includes(p.stage));
-  const pendAppr  = allPosts.filter(p=>p.stage==="client_approval");
-  const myTasks   = allPosts.filter(p=>p.assigned_to===user?.email&&!["published","rejected"].includes(p.stage));
+  const overdue = allPosts.filter(p=>p.scheduled_date&&new Date(p.scheduled_date)<new Date()&&!["published","rejected"].includes(p.stage));
+  const pendAppr = allPosts.filter(p=>p.stage==="client_approval");
+  const myTasks = allPosts.filter(p=>p.assigned_to===user?.email&&!["published","rejected"].includes(p.stage));
   const activeProj= allProj.filter(p=>p.status==="active");
 
   // ── Per-client blocks ───────────────────────────────────────────
@@ -15582,15 +15582,15 @@ const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId) => {
     // straight to a client without a project_id, so relying on project linkage
     // alone silently hides them from Pro.
     const cPost = allPosts.filter(p=>p.client_id===c.id||p.client_name===c.name||cProj.some(pr=>pr.id===p.project_id));
-    const ck    = (data?.clientKnowledge||[]).find(k=>k.client_id===c.id);
-    const ci    = (data?.clientIntelligence||[]).find(i=>i.client_id===c.id);
-    const mem   = formatClientMemory(c.id, data?.clientMemory||[]);
+    const ck = (data?.clientKnowledge||[]).find(k=>k.client_id===c.id);
+    const ci = (data?.clientIntelligence||[]).find(i=>i.client_id===c.id);
+    const mem = formatClientMemory(c.id, data?.clientMemory||[]);
     // When a client is focused, dump deep memory; otherwise keep brief
     const memCap = isFocused ? 3000 : 400;
     const stageCounts = ["planning","content_creation","design","internal_review","client_approval","scheduled","published","rejected"]
       .map(s=>`${s.replace(/_/g," ")}:${cPost.filter(p=>p.stage===s).length}`)
       .filter(s=>!s.endsWith(":0")).join(", ");
-    const recentPosts = cPost.slice(0,8).map(p=>`  - "${p.title}" [${p.platform||"?"}/${p.post_type||"?"}] stage:${p.stage}${p.caption?` caption:"${(p.caption||"").slice(0,100)}"`:""}`).join("\n");
+    const recentPosts = cPost.slice(0,8).map(p=>` - "${p.title}" [${p.platform||"?"}/${p.post_type||"?"}] stage:${p.stage}${p.caption?` caption:"${(p.caption||"").slice(0,100)}"`:""}`).join("\n");
     // Parse fields that may be JSON-strings or newline-separated strings
     const parseList = (v) => {
       if(!v) return [];
@@ -15602,16 +15602,16 @@ const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId) => {
       }
       return [];
     };
-    const ckKW   = parseList(ck?.keywords);
-    const ckPri  = parseList(ck?.priorities);
-    const ckSk   = parseList(ck?.skills).map(s=>typeof s==="object"?(s.name||""):s).filter(Boolean);
-    const ckDos  = parseList(ck?.dos);
-    const ckDon  = parseList(ck?.donts);
+    const ckKW = parseList(ck?.keywords);
+    const ckPri = parseList(ck?.priorities);
+    const ckSk = parseList(ck?.skills).map(s=>typeof s==="object"?(s.name||""):s).filter(Boolean);
+    const ckDos = parseList(ck?.dos);
+    const ckDon = parseList(ck?.donts);
     const ckProd = parseList(ck?.products);
-    const ckKM   = parseList(ck?.key_messages);
-    const ckHT   = parseList(ck?.hashtags);
-    const ciDos  = parseList(ci?.dos);
-    const ciDon  = parseList(ci?.donts);
+    const ckKM = parseList(ck?.key_messages);
+    const ckHT = parseList(ck?.hashtags);
+    const ciDos = parseList(ci?.dos);
+    const ciDon = parseList(ci?.donts);
     const ciComp = parseList(ci?.competitors);
     const knowledgeBlock = ck ? `▼ KNOWLEDGE PROFILE (treat as the brand brief — write content that lives up to this):
   • Summary: ${ck.summary||"-"}
@@ -15639,13 +15639,13 @@ const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId) => {
   • Appreciation/recognition posts: ${latestBrief.q5_appreciation||"—"}` : "";
 
     // ── New v58 blocks: voice card, exemplars, edit-diff learnings ──
-    const memRows  = (data?.clientMemory||[]).filter(m=>m.client_id===c.id);
+    const memRows = (data?.clientMemory||[]).filter(m=>m.client_id===c.id);
     const voiceRow = memRows.find(m=>m.type==="voice_card" || m.key==="brand_voice_paragraph");
     const exemplars= memRows.filter(m=>m.type==="exemplar").slice(0,3);
     const captionEdits = memRows.filter(m=>m.type==="caption_edit").slice(0,5);
-    const voiceBlock = voiceRow ? `▼ BRAND VOICE (write in this voice — single source of truth):\n  ${voiceRow.value}` : "";
-    const exemplarBlock = exemplars.length ? `▼ EXEMPLAR CAPTIONS — match this style verbatim (cadence, vocabulary, structure, emoji density):\n${exemplars.map((e,i)=>`  [${i+1}] ${(e.value||"").slice(0,500)}`).join("\n")}` : "";
-    const editBlock = captionEdits.length ? `▼ RECENT USER EDITS — preempt these patterns (the user keeps rewriting Pro's drafts this way):\n${captionEdits.map((e,i)=>`  [${i+1}] ${(e.value||"").slice(0,400)}`).join("\n")}` : "";
+    const voiceBlock = voiceRow ? `▼ BRAND VOICE (write in this voice — single source of truth):\n ${voiceRow.value}` : "";
+    const exemplarBlock = exemplars.length ? `▼ EXEMPLAR CAPTIONS — match this style verbatim (cadence, vocabulary, structure, emoji density):\n${exemplars.map((e,i)=>` [${i+1}] ${(e.value||"").slice(0,500)}`).join("\n")}` : "";
+    const editBlock = captionEdits.length ? `▼ RECENT USER EDITS — preempt these patterns (the user keeps rewriting Pro's drafts this way):\n${captionEdits.map((e,i)=>` [${i+1}] ${(e.value||"").slice(0,400)}`).join("\n")}` : "";
 
     const intelBlock = ci ? `▼ INTELLIGENCE: brand_voice=${ci.brand_voice||"-"} | audience=${ci.target_audience||"-"} | goals=${(ci.business_goals||"").slice(0,240)} | do=${ciDos.join(" | ")||"-"} | dont=${ciDon.join(" | ")||"-"} | competitors=${ciComp.join(" | ")||"-"} | preferred_platforms=${(parseList(ci.preferred_platforms)).join(", ")||"-"} | content_types=${(parseList(ci.preferred_content_types)).join(", ")||"-"} | best_days=${(parseList(ci.best_posting_days)).join(", ")||"-"} | freq=${ci.posting_frequency||"-"}/wk` : "";
     return `CLIENT: ${c.name} | Industry: ${c.industry||"?"} | Platforms: ${(c.platforms||[]).join(",")||"none"}
@@ -15660,8 +15660,8 @@ ${mem?`MEMORY (key=value):\n${mem.slice(0,memCap)}`:"MEMORY: (empty — say so h
 ${isFocused && recentPosts?`RECENT POSTS:\n${recentPosts}`:""}`.trim();
   }).join("\n\n");
 
-  const teamList  = allTeam.slice(0,20).map(m=>`- ${m.name} <${m.email}> [${m.role}]`).join("\n");
-  const projList  = activeProj.slice(0,20).map(p=>`- ${p.title||p.name} (id:${p.id}, client:${p.client_name})`).join("\n");
+  const teamList = allTeam.slice(0,20).map(m=>`- ${m.name} <${m.email}> [${m.role}]`).join("\n");
+  const projList = activeProj.slice(0,20).map(p=>`- ${p.title||p.name} (id:${p.id}, client:${p.client_name})`).join("\n");
 
   return `You are Pro — a powerful AI assistant built into SocialFlow by admepro. You work like ChatGPT or Claude: you answer EVERYTHING directly in the chat. You NEVER say "go to a page" or "navigate to X" or "visit the panel". You handle every question and every action right here in the conversation.
 
@@ -15771,31 +15771,31 @@ const QUICK_REPLIES = {
 };
 
 const WELCOME_MESSAGES = {
-  admin: "Hi 👋 I'm Pro — your AI assistant inside SocialFlow. I can create tasks, projects, clients, calendar plans, and more. Just tell me what to do.",
-  account_manager: "Hi 👋 I'm Pro. I can help you manage clients, generate calendar plans, assign tasks, and run your campaigns. What do you need?",
-  content_creator: "Hey 👋 I'm Pro. I can find your tasks, help draft captions, and guide you through the workflow. What's on your mind?",
-  graphic_designer: "Hi 👋 I'm Pro. I can help you track design tasks, upload files, and move posts through the workflow. What do you need?",
-  client: "Welcome 👋 I'm Pro — here to help you review content, navigate your calendar, and send feedback to the team. What would you like to know?",
+  admin: "Hi I'm Pro — your AI assistant inside SocialFlow. I can create tasks, projects, clients, calendar plans, and more. Just tell me what to do.",
+  account_manager: "Hi I'm Pro. I can help you manage clients, generate calendar plans, assign tasks, and run your campaigns. What do you need?",
+  content_creator: "Hey I'm Pro. I can find your tasks, help draft captions, and guide you through the workflow. What's on your mind?",
+  graphic_designer: "Hi I'm Pro. I can help you track design tasks, upload files, and move posts through the workflow. What do you need?",
+  client: "Welcome I'm Pro — here to help you review content, navigate your calendar, and send feedback to the team. What would you like to know?",
 };
 
 // ── Pro — permission check for actions ──
 const CHATBOT_ACTION_ROLES = {
-  create_task:       ["admin","account_manager","content_creator","graphic_designer"],
-  create_project:    ["admin","account_manager"],
-  create_client:     ["admin","account_manager"],
-  update_client:     ["admin","account_manager"],
-  create_lead:       ["admin","account_manager"],
-  create_invoice:    ["admin","accountant"],
+  create_task: ["admin","account_manager","content_creator","graphic_designer"],
+  create_project: ["admin","account_manager"],
+  create_client: ["admin","account_manager"],
+  update_client: ["admin","account_manager"],
+  create_lead: ["admin","account_manager"],
+  create_invoice: ["admin","accountant"],
   update_task_stage: ["admin","account_manager","content_creator","graphic_designer"],
-  assign_task:       ["admin","account_manager"],
-  add_comment:       ["admin","account_manager","content_creator","graphic_designer"],
-  send_approval:     ["admin","account_manager"],
-  create_calendar:   ["admin","account_manager"],
-  delete_task:       ["admin","account_manager"],
-  delete_project:    ["admin","account_manager"],
-  delete_client:     ["admin"],
-  save_exemplar:     ["admin","account_manager","content_creator"],
-  save_voice_card:   ["admin","account_manager"],
+  assign_task: ["admin","account_manager"],
+  add_comment: ["admin","account_manager","content_creator","graphic_designer"],
+  send_approval: ["admin","account_manager"],
+  create_calendar: ["admin","account_manager"],
+  delete_task: ["admin","account_manager"],
+  delete_project: ["admin","account_manager"],
+  delete_client: ["admin"],
+  save_exemplar: ["admin","account_manager","content_creator"],
+  save_voice_card: ["admin","account_manager"],
 };
 
 // Simple inline markdown renderer for chat messages
@@ -16026,11 +16026,11 @@ Rules:
         <div style={{display:"flex",gap:10,marginTop:8,fontSize:11,alignItems:"center",flexWrap:"wrap"}}>
           <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer"}}>
             <input type="checkbox" checked={it.is_private} onChange={e=>update(it.id,{is_private:e.target.checked})}/>
-            🔒 Private (only me)
+             Private (only me)
           </label>
           {it.conflict && (
             <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 8px",background:"#fef3c7",border:"1px solid #fbbf24",borderRadius:6}}>
-              <span style={{fontWeight:700,color:"#92400e"}}>⚠ Conflict — existing: "{(it.conflict.existingValue||"").slice(0,40)}{(it.conflict.existingValue||"").length>40?"…":""}"</span>
+              <span style={{fontWeight:700,color:"#92400e"}}> Conflict — existing: "{(it.conflict.existingValue||"").slice(0,40)}{(it.conflict.existingValue||"").length>40?"…":""}"</span>
               <select value={it.conflict.resolution} onChange={e=>update(it.id,{conflict:{...it.conflict,resolution:e.target.value}})}
                 style={{padding:"2px 6px",borderRadius:4,border:"1px solid #d97706",fontSize:10,fontWeight:700}}>
                 <option value="replace">Replace</option>
@@ -16047,7 +16047,7 @@ Rules:
     <div role="dialog" aria-modal="true" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:isMobile?8:24}}>
       <div style={{background:"var(--surface)",borderRadius:16,width:isMobile?"100%":620,maxHeight:"92vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 24px 80px rgba(0,0,0,0.4)"}}>
         <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:10}}>
-          <div style={{width:32,height:32,borderRadius:8,background:"var(--accentbg)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>📋</div>
+          <div style={{width:32,height:32,borderRadius:8,background:"var(--accentbg)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}></div>
           <div style={{flex:1}}>
             <p style={{fontWeight:800,fontSize:15,fontFamily:"'Bricolage Grotesque',sans-serif"}}>Paste &amp; Learn</p>
             <p style={{fontSize:11,color:"var(--text3)"}}>Paste a chat, email, or note — Pro extracts memory for the client</p>
@@ -16100,13 +16100,13 @@ Rules:
           {phase==="input" && (
             <button onClick={analyze} disabled={!text.trim()||!clientId}
               style={{padding:"9px 18px",borderRadius:8,background: (!text.trim()||!clientId)?"var(--border2)":"var(--accent)",color:"#fff",border:"none",fontSize:13,fontWeight:700,cursor:(!text.trim()||!clientId)?"not-allowed":"pointer"}}>
-              ✨ Analyze
+               Analyze
             </button>
           )}
           {phase==="review" && (
             <button onClick={saveAll} disabled={insights.filter(x=>x.checked).length===0}
               style={{padding:"9px 18px",borderRadius:8,background:"var(--accent)",color:"#fff",border:"none",fontSize:13,fontWeight:700}}>
-              💾 Save {insights.filter(x=>x.checked).length} to memory
+               Save {insights.filter(x=>x.checked).length} to memory
             </button>
           )}
         </div>
@@ -16116,9 +16116,9 @@ Rules:
 }
 
 const PRO_CHAT_SESSIONS_KEY = "sf_pro_chat_sessions_v2";
-const PRO_CHAT_ACTIVE_KEY   = "sf_pro_chat_active_v2";
-const PRO_CHAT_OPEN_KEY     = "sf_pro_floating_open";
-const PRO_CHAT_SUGG_KEY     = "sf_pro_floating_suggested";
+const PRO_CHAT_ACTIVE_KEY = "sf_pro_chat_active_v2";
+const PRO_CHAT_OPEN_KEY = "sf_pro_floating_open";
+const PRO_CHAT_SUGG_KEY = "sf_pro_floating_suggested";
 
 function loadProSessions(){ try{ return JSON.parse(localStorage.getItem(PRO_CHAT_SESSIONS_KEY)||"[]"); }catch(e){ return []; } }
 function saveProSessions(s){ try{ localStorage.setItem(PRO_CHAT_SESSIONS_KEY, JSON.stringify((s||[]).slice(-50))); }catch(e){} }
@@ -16149,7 +16149,7 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
   const [pasteLearnAuto, setPasteLearnAuto] = useState(false);
   const [longPasteCandidate, setLongPasteCandidate] = useState(""); // text awaiting user choice
   const [showHistory, setShowHistory] = useState(false);
-  const [open,setOpen]     = useState(()=>{ try{ return localStorage.getItem(PRO_CHAT_OPEN_KEY)==="1"; }catch(e){ return false; } });
+  const [open,setOpen] = useState(()=>{ try{ return localStorage.getItem(PRO_CHAT_OPEN_KEY)==="1"; }catch(e){ return false; } });
 
   // ── Session-based persistent chat storage ──
   const [sessions, setSessions] = useState(()=>loadProSessions());
@@ -16220,9 +16220,9 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
     if(id===activeChatId) setActiveChatId("");
   };
 
-  const [input,setInput]   = useState("");
+  const [input,setInput] = useState("");
   const [typing,setTyping] = useState(false);
-  const [mode,setMode]     = useState("guide"); // "guide" | "action"
+  const [mode,setMode] = useState("guide"); // "guide" | "action"
   const {isMobile} = useResponsive();
   const [unread,setUnread] = useState(0);
   const [hasOpened,setHasOpened] = useState(false);
@@ -16265,8 +16265,8 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
     const pending = (data.posts||[]).filter(p=>p.stage==="client_approval");
     if(overdue.length>0 || pending.length>0) {
       const suggestions = [];
-      if(overdue.length>0) suggestions.push(`⚠️ ${overdue.length} task${overdue.length>1?"s are":" is"} overdue`);
-      if(pending.length>0) suggestions.push(`🕐 ${pending.length} post${pending.length>1?"s":""}  waiting for client approval`);
+      if(overdue.length>0) suggestions.push(` ${overdue.length} task${overdue.length>1?"s are":" is"} overdue`);
+      if(pending.length>0) suggestions.push(` ${pending.length} post${pending.length>1?"s":""} waiting for client approval`);
       if(messages.length<=1) {
         setMessages(m=>[...m,{role:"bot",content:suggestions.join("\n")+" — want me to handle any of these?",id:uid(),type:"info"}]);
         try{ sessionStorage.setItem(PRO_CHAT_SUGG_KEY,"1"); }catch(e){}
@@ -16277,7 +16277,7 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
   // ── Action system prompt ──
   const ACTION_SYSTEM = () => {
     const clients = (data?.clients||[]).map(c=>`- ${c.name} (id:${c.id})`).join("\n");
-    const team    = (data?.team||[]).map(m=>`- ${m.name} <${m.email}> [${m.role}]`).join("\n");
+    const team = (data?.team||[]).map(m=>`- ${m.name} <${m.email}> [${m.role}]`).join("\n");
     const projects= (data?.projects||[]).filter(p=>p.status==="active").map(p=>`- ${p.title} (id:${p.id}, client:${p.client_name})`).join("\n");
     return `You are SocialFlow Action Engine. Extract structured data from the user's request and return ONLY a JSON object.
 
@@ -16359,10 +16359,10 @@ RULES:
           client_name: client?.name||payload.client_name||"",
           project_id: project?.id||"",
         };
-        if(!taskData.project_id){ addBotMsg(`⚠️ Couldn't create "${taskData.title}" — ${taskData.client_name||"this client"} has no project yet. Every task needs a project; create one first.`,"error"); return; }
+        if(!taskData.project_id){ addBotMsg(` Couldn't create "${taskData.title}" — ${taskData.client_name||"this client"} has no project yet. Every task needs a project; create one first.`,"error"); return; }
         const ok = onDirectAction ? await onDirectAction("add_post", taskData) : true;
-        if(!ok){ addBotMsg(`⚠️ Couldn't create "${taskData.title}" — save failed.`,"error"); return; }
-        addBotMsg(`✅ Task "${taskData.title}" created successfully${taskData.client_name?` for ${taskData.client_name}`:""}!`,"success",{label:"📋 View Tasks", fn:"nav_tasks"});
+        if(!ok){ addBotMsg(` Couldn't create "${taskData.title}" — save failed.`,"error"); return; }
+        addBotMsg(` Task "${taskData.title}" created successfully${taskData.client_name?` for ${taskData.client_name}`:""}!`,"success",{label:" View Tasks", fn:"nav_tasks"});
       }
 
       else if(act==="create_project") {
@@ -16377,10 +16377,10 @@ RULES:
           start_date: payload.start_date||new Date().toISOString().slice(0,10),
           deadline: payload.end_date||"",
         };
-        if(!projData.client_id){ addBotMsg(`⚠️ Couldn't create project "${projData.name}" — I couldn't match a client called "${payload.client_name||""}". Every project needs a client; create or name one first.`,"error"); return; }
+        if(!projData.client_id){ addBotMsg(` Couldn't create project "${projData.name}" — I couldn't match a client called "${payload.client_name||""}". Every project needs a client; create or name one first.`,"error"); return; }
         const ok = onDirectAction ? await onDirectAction("add_project", projData) : true;
-        if(!ok){ addBotMsg(`⚠️ Couldn't create project "${projData.name}" — save failed.`,"error"); return; }
-        addBotMsg(`✅ Project "${projData.name}" created for ${projData.client_name||"client"}!`,"success",{label:"📁 View Projects", fn:"nav_projects"});
+        if(!ok){ addBotMsg(` Couldn't create project "${projData.name}" — save failed.`,"error"); return; }
+        addBotMsg(` Project "${projData.name}" created for ${projData.client_name||"client"}!`,"success",{label:" View Projects", fn:"nav_projects"});
       }
 
       else if(act==="create_client") {
@@ -16388,116 +16388,116 @@ RULES:
         let realClient = null;
         if(onDirectAction) realClient = await onDirectAction("add_client", clientData);
         if(payload.brief && realClient?.id && onUpsertMemory) onUpsertMemory(realClient.id, realClient.name, "brief", payload.brief, "ai");
-        addBotMsg(`✅ Client "${clientData.name}" added successfully!`,"success",{label:"👥 View Clients", fn:"nav_clients"});
+        addBotMsg(` Client "${clientData.name}" added successfully!`,"success",{label:" View Clients", fn:"nav_clients"});
       }
 
       else if(act==="update_client") {
         const cl = resolveEntity(payload.client_name, data.clients);
-        if(!cl){ addBotMsg(`⚠️ Couldn't find client "${payload.client_name}".`,"error"); return; }
+        if(!cl){ addBotMsg(` Couldn't find client "${payload.client_name}".`,"error"); return; }
         const updates = {};
         if(payload.add_platforms?.length) updates.platforms = Array.from(new Set([...(cl.platforms||[]), ...payload.add_platforms]));
         if(payload.industry) updates.industry = payload.industry;
         if(payload.email) updates.email = payload.email;
         if(payload.phone) updates.phone = payload.phone;
-        if(Object.keys(updates).length===0){ addBotMsg(`⚠️ Nothing to update for "${cl.name}".`,"error"); return; }
+        if(Object.keys(updates).length===0){ addBotMsg(` Nothing to update for "${cl.name}".`,"error"); return; }
         if(onDirectAction) await onDirectAction("update_client", {clientId:cl.id, updates});
-        addBotMsg(`✅ Updated **${cl.name}**${updates.platforms?` — platforms: ${updates.platforms.join(", ")}`:""}`,"success",{label:"👥 View Clients", fn:"nav_clients"});
+        addBotMsg(` Updated **${cl.name}**${updates.platforms?` — platforms: ${updates.platforms.join(", ")}`:""}`,"success",{label:" View Clients", fn:"nav_clients"});
       }
 
       else if(act==="create_lead") {
         const leadData = {name:payload.name,email:payload.email||"",company:payload.company||"",source:payload.source||"manual",status:"new",notes:payload.notes||""};
         if(onDirectAction) await onDirectAction("add_lead", leadData);
-        addBotMsg(`✅ Lead "${leadData.name}" added!`,"success",{label:"🎯 View Leads", fn:"nav_leads"});
+        addBotMsg(` Lead "${leadData.name}" added!`,"success",{label:" View Leads", fn:"nav_leads"});
       }
 
       else if(act==="create_invoice") {
         const client = resolveEntity(payload.client_name,data.clients);
         const invData = {client_id:client?.id||"",client_name:client?.name||payload.client_name||"",amount:payload.amount||0,currency:payload.currency||"USD",due_date:payload.due_date||"",description:payload.description||"",status:"draft"};
         if(onDirectAction) await onDirectAction("add_invoice", invData);
-        addBotMsg(`✅ Invoice for ${invData.client_name} (${invData.currency} ${invData.amount}) created!`,"success",{label:"💰 View Invoices", fn:"nav_finance"});
+        addBotMsg(` Invoice for ${invData.client_name} (${invData.currency} ${invData.amount}) created!`,"success",{label:" View Invoices", fn:"nav_finance"});
       }
 
       else if(act==="update_task_stage") {
         const post = (data.posts||[]).find(p=>p.id===payload.post_id||(p.title||"").toLowerCase().includes((payload.post_title||"").toLowerCase()));
-        if(!post) { addBotMsg("⚠️ Couldn't find that task. Please check the task name and try again.","error"); return; }
+        if(!post) { addBotMsg(" Couldn't find that task. Please check the task name and try again.","error"); return; }
         if(onDirectAction) await onDirectAction("update_stage", {postId:post.id, newStage:payload.new_stage});
-        addBotMsg(`✅ "${post.title}" moved to ${payload.new_stage.replace(/_/g," ")}!`,"success",{label:"📋 View Tasks", fn:"nav_tasks"});
+        addBotMsg(` "${post.title}" moved to ${payload.new_stage.replace(/_/g," ")}!`,"success",{label:" View Tasks", fn:"nav_tasks"});
       }
 
       else if(act==="assign_task") {
         const post = (data.posts||[]).find(p=>p.id===payload.post_id||(p.title||"").toLowerCase().includes((payload.post_title||"").toLowerCase()));
         const member = resolveEntity(payload.assigned_to_name||payload.assigned_to_email,data.team,"name") || (data.team||[]).find(m=>m.email===payload.assigned_to_email);
-        if(!post) { addBotMsg("⚠️ Couldn't find that task.","error"); return; }
-        if(!member) { addBotMsg("⚠️ Couldn't find that team member.","error"); return; }
+        if(!post) { addBotMsg(" Couldn't find that task.","error"); return; }
+        if(!member) { addBotMsg(" Couldn't find that team member.","error"); return; }
         if(onDirectAction) await onDirectAction("update_stage", {postId:post.id, updates:{assigned_to:member.email}});
-        addBotMsg(`✅ "${post.title}" assigned to ${member.name}!`,"success",{label:"📋 View Tasks", fn:"nav_tasks"});
+        addBotMsg(` "${post.title}" assigned to ${member.name}!`,"success",{label:" View Tasks", fn:"nav_tasks"});
       }
 
       else if(act==="add_comment") {
         const post = (data.posts||[]).find(p=>p.id===payload.post_id||(p.title||"").toLowerCase().includes((payload.post_title||"").toLowerCase()));
-        if(!post) { addBotMsg("⚠️ Couldn't find that task.","error"); return; }
+        if(!post) { addBotMsg(" Couldn't find that task.","error"); return; }
         const commentData = {post_id:post.id,author:currentUser?.name,author_email:currentUser?.email,content:payload.comment_text,is_internal:true,created_date:new Date().toISOString()};
         if(onDirectAction) await onDirectAction("add_comment", commentData);
-        addBotMsg(`✅ Comment added to "${post.title}"!`,"success");
+        addBotMsg(` Comment added to "${post.title}"!`,"success");
       }
 
       else if(act==="send_approval") {
         const post = (data.posts||[]).find(p=>p.id===payload.post_id||(p.title||"").toLowerCase().includes((payload.post_title||"").toLowerCase()));
-        if(!post) { addBotMsg("⚠️ Couldn't find that task.","error"); return; }
+        if(!post) { addBotMsg(" Couldn't find that task.","error"); return; }
         if(onDirectAction) await onDirectAction("update_stage", {postId:post.id, newStage:"client_approval"});
-        addBotMsg(`✅ "${post.title}" sent for client approval!`,"success",{label:"📋 View Tasks", fn:"nav_tasks"});
+        addBotMsg(` "${post.title}" sent for client approval!`,"success",{label:" View Tasks", fn:"nav_tasks"});
       }
 
       else if(act==="create_calendar") {
         onAction("add_calendar");
-        addBotMsg("✅ Opening Calendar Plan…","success");
+        addBotMsg(" Opening Calendar Plan…","success");
       }
 
       else if(act==="control_agent") {
-        const agId  = payload.agent_id;
+        const agId = payload.agent_id;
         const agAct = payload.agent_action || payload.action2 || "run_now";
         const agDef = DEFAULT_AGENTS.find(a=>a.agent_id===agId||a.name.toLowerCase().includes((agId||"").toLowerCase()));
         const agName= agDef?.name || agId || "Agent";
         if(onDirectAction) {
           await onDirectAction("control_agent", {agent_id:agId, action:agAct, count:payload.count||10, agentDef:agDef});
         }
-        const resultMsg = agAct==="run_now"?`✅ ${agName} is running now!`:agAct==="pause"?`⏸ ${agName} paused.`:agAct==="stop"?`⏹ ${agName} stopped.`:`✅ ${agName} — ${agAct}`;
+        const resultMsg = agAct==="run_now"?` ${agName} is running now!`:agAct==="pause"?` ${agName} paused.`:agAct==="stop"?` ${agName} stopped.`:` ${agName} — ${agAct}`;
         addBotMsg(resultMsg,"success",{label:"View Agents →", fn:"nav_agents"});
       }
 
       else if(act==="save_exemplar") {
         const cl=(data.clients||[]).find(c=>c.id===payload.client_id||(c.name||"").toLowerCase().includes((payload.client_name||"").toLowerCase()));
-        if(!cl){addBotMsg(`⚠️ Couldn't find client "${payload.client_name}".`,"error");return;}
+        if(!cl){addBotMsg(` Couldn't find client "${payload.client_name}".`,"error");return;}
         const cap=(payload.caption||"").trim();
-        if(!cap){addBotMsg("⚠️ No caption text provided.","error");return;}
+        if(!cap){addBotMsg(" No caption text provided.","error");return;}
         if(onUpsertMemory) await onUpsertMemory(cl.id, cl.name, `exemplar_${Date.now()}`, cap, "exemplar");
-        addBotMsg(`⭐ Saved as exemplar for **${cl.name}**.`,"success");
+        addBotMsg(` Saved as exemplar for **${cl.name}**.`,"success");
       }
       else if(act==="save_voice_card") {
         const cl=(data.clients||[]).find(c=>c.id===payload.client_id||(c.name||"").toLowerCase().includes((payload.client_name||"").toLowerCase()));
-        if(!cl){addBotMsg(`⚠️ Couldn't find client "${payload.client_name}".`,"error");return;}
+        if(!cl){addBotMsg(` Couldn't find client "${payload.client_name}".`,"error");return;}
         const vp=(payload.voice_paragraph||"").trim();
-        if(!vp){addBotMsg("⚠️ No voice paragraph provided.","error");return;}
+        if(!vp){addBotMsg(" No voice paragraph provided.","error");return;}
         if(onUpsertMemory) await onUpsertMemory(cl.id, cl.name, "brand_voice_paragraph", vp, "voice_card");
-        addBotMsg(`🎙️ Brand voice saved for **${cl.name}**.`,"success");
+        addBotMsg(` Brand voice saved for **${cl.name}**.`,"success");
       }
       else if(act==="delete_task") {
         const post=(data.posts||[]).find(p=>p.id===payload.post_id||(p.title||"").toLowerCase().includes((payload.post_title||"").toLowerCase()));
-        if(!post){addBotMsg(`⚠️ Couldn't find task "${payload.post_title||payload.post_id}".`,"error");return;}
+        if(!post){addBotMsg(` Couldn't find task "${payload.post_title||payload.post_id}".`,"error");return;}
         if(onDirectAction) await onDirectAction("delete_post",{postId:post.id});
-        addBotMsg(`🗑️ Task **"${post.title}"** deleted.`,"success");
+        addBotMsg(` Task **"${post.title}"** deleted.`,"success");
       }
       else if(act==="delete_project") {
         const proj=(data.projects||[]).find(p=>p.id===payload.project_id||(p.title||"").toLowerCase().includes((payload.project_name||"").toLowerCase()));
-        if(!proj){addBotMsg(`⚠️ Couldn't find project "${payload.project_name||payload.project_id}".`,"error");return;}
+        if(!proj){addBotMsg(` Couldn't find project "${payload.project_name||payload.project_id}".`,"error");return;}
         if(onDirectAction) await onDirectAction("delete_project",{projectId:proj.id});
-        addBotMsg(`🗑️ Project **"${proj.title}"** and its tasks deleted.`,"success");
+        addBotMsg(` Project **"${proj.title}"** and its tasks deleted.`,"success");
       }
       else if(act==="delete_client") {
         const cl=(data.clients||[]).find(c=>c.id===payload.client_id||(c.name||"").toLowerCase().includes((payload.client_name||"").toLowerCase()));
-        if(!cl){addBotMsg(`⚠️ Couldn't find client "${payload.client_name||payload.client_id}".`,"error");return;}
+        if(!cl){addBotMsg(` Couldn't find client "${payload.client_name||payload.client_id}".`,"error");return;}
         if(onDirectAction) await onDirectAction("delete_client",{clientId:cl.id});
-        addBotMsg(`🗑️ Client **"${cl.name}"** removed.`,"success");
+        addBotMsg(` Client **"${cl.name}"** removed.`,"success");
       }
       else if(act==="nav") {
         onAction("nav", payload.page);
@@ -16505,7 +16505,7 @@ RULES:
       }
 
     } catch(err) {
-      setMessages(m=>[...m,{role:"bot",content:`⚠️ Action failed: ${err.message}`,id:uid(),type:"error"}]);
+      setMessages(m=>[...m,{role:"bot",content:` Action failed: ${err.message}`,id:uid(),type:"error"}]);
     }
   };
 
@@ -16515,17 +16515,17 @@ RULES:
     const list = Array.isArray(payloadOrList) ? payloadOrList : [payloadOrList];
     setPendingActions(p=>{ const n={...p}; delete n[msgId]; return n; });
     setMessages(m=>m.map(msg=>msg.id===msgId?{...msg,pendingAction:false,confirmData:null}:msg));
-    if(list.length>1) addBotMsgFloat(`▶️ Running ${list.length} steps in sequence…`);
+    if(list.length>1) addBotMsgFloat(` Running ${list.length} steps in sequence…`);
     for(let i=0;i<list.length;i++){
       if(list.length>1) addBotMsgFloat(`Step ${i+1}/${list.length}: ${list[i].action.replace(/_/g," ")}…`);
       // eslint-disable-next-line no-await-in-loop
       await runOneFloat(list[i]);
     }
-    if(list.length>1) addBotMsgFloat(`🎉 All ${list.length} steps complete!`,"success");
+    if(list.length>1) addBotMsgFloat(` All ${list.length} steps complete!`,"success");
   };
 
   const handleConfirm = (msgId) => executeConfirmedAction(msgId);
-  const handleReject  = (msgId) => {
+  const handleReject = (msgId) => {
     setPendingActions(p=>{ const n={...p}; delete n[msgId]; return n; });
     setMessages(m=>m.map(msg=>msg.id===msgId?{...msg,pendingAction:false,confirmData:null}:msg));
     setMessages(m=>[...m,{role:"bot",content:"Cancelled. Let me know if you need anything else!",id:uid()}]);
@@ -16569,18 +16569,18 @@ RULES:
 
   const buildConfirmData = (parsed) => {
     const cd = {};
-    if(parsed.title||parsed.name)          cd.name        = parsed.title||parsed.name;
-    if(parsed.client_name)                  cd.client      = parsed.client_name;
-    if(parsed.platform)                     cd.platform    = parsed.platform;
-    if(parsed.post_type)                    cd.type        = parsed.post_type;
-    if(parsed.priority)                     cd.priority    = parsed.priority;
-    if(parsed.scheduled_date)              cd.date        = parsed.scheduled_date;
+    if(parsed.title||parsed.name) cd.name = parsed.title||parsed.name;
+    if(parsed.client_name) cd.client = parsed.client_name;
+    if(parsed.platform) cd.platform = parsed.platform;
+    if(parsed.post_type) cd.type = parsed.post_type;
+    if(parsed.priority) cd.priority = parsed.priority;
+    if(parsed.scheduled_date) cd.date = parsed.scheduled_date;
     if(parsed.assigned_to||parsed.assigned_to_name) cd.assign_to = parsed.assigned_to_name||parsed.assigned_to;
-    if(parsed.amount)                       cd.amount      = `${parsed.currency||"USD"} ${parsed.amount}`;
-    if(parsed.new_stage)                    cd.stage       = parsed.new_stage.replace(/_/g," ");
-    if(parsed.post_title)                   cd.task        = parsed.post_title;
-    if(parsed.comment_text)                 cd.comment     = (parsed.comment_text||"").slice(0,60);
-    if(parsed.description)                  cd.description = (parsed.description||"").slice(0,80);
+    if(parsed.amount) cd.amount = `${parsed.currency||"USD"} ${parsed.amount}`;
+    if(parsed.new_stage) cd.stage = parsed.new_stage.replace(/_/g," ");
+    if(parsed.post_title) cd.task = parsed.post_title;
+    if(parsed.comment_text) cd.comment = (parsed.comment_text||"").slice(0,60);
+    if(parsed.description) cd.description = (parsed.description||"").slice(0,80);
     return cd;
   };
 
@@ -16644,7 +16644,7 @@ RULES:
         setMessages(m=>[...m,{role:"bot",content:displayText,id:uid()}]);
       } else if(actions.length === 1 && actions[0].action === "create_calendar"){
         onAction("add_calendar");
-        setMessages(m=>[...m,{role:"bot",content:displayText||"Opening Calendar Plan for you! ✅",id:uid(),type:"success"}]);
+        setMessages(m=>[...m,{role:"bot",content:displayText||"Opening Calendar Plan for you! ",id:uid(),type:"success"}]);
       } else if(actions.length === 1){
         const confirmData = buildConfirmData(actions[0]);
         const msgId = uid();
@@ -16667,14 +16667,18 @@ RULES:
       console.error("[Pro]",e);
       setTyping(false);
       const reason = (e&&e.message)?String(e.message).slice(0,300):"unknown error";
-      setMessages(m=>[...m,{role:"bot",content:`⚠️ AI error: ${reason}`,id:uid(),type:"error"}]);
+      setMessages(m=>[...m,{role:"bot",content:` AI error: ${reason}`,id:uid(),type:"error"}]);
     }
   };
 
   const handleKeyDown = (e) => { if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); sendMessage(); } };
   const pageLabels = {dashboard:"Dashboard",clients:"Clients",projects:"Projects",tasks:"Posts & Tasks",calendar:"Calendar",assets:"Assets",templates:"Templates",users:"Team"};
 
-  return (
+  // Portaled to <body> — escapes the app shell's overflow:hidden/100vh wrapper,
+  // which on some mobile browsers traps "fixed" descendants instead of pinning
+  // them to the real viewport (causing the button to render in the wrong spot
+  // and silently eat taps).
+  return ReactDOM.createPortal(
     <>
       {/* Floating Button */}
       <div style={{position:"fixed",bottom:isMobile?92:28,right:isMobile?16:28,zIndex:800}}>
@@ -16718,7 +16722,7 @@ RULES:
             </div>
             <div style={{display:"flex",alignItems:"center",gap:5,padding:"3px 8px",borderRadius:8,background:"var(--accentbg)",border:"1px solid var(--accent)33"}}>
               <div style={{width:5,height:5,borderRadius:"50%",background:"var(--accent)"}}/>
-              <span style={{fontSize:10,fontWeight:700,color:"var(--accent)"}}>⚡ Smart Mode</span>
+              <span style={{fontSize:10,fontWeight:700,color:"var(--accent)"}}> Smart Mode</span>
             </div>
             <button onClick={()=>setShowHistory(s=>!s)} title="Chat history" style={{color:showHistory?"var(--accent)":"var(--text3)",padding:4,borderRadius:6,display:"flex"}}>
               <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -16727,7 +16731,7 @@ RULES:
               + New
             </button>
             <button onClick={()=>setPasteLearnOpen(true)} title="Paste & Learn — extract memory from chats/emails" style={{color:"var(--accent)",padding:4,borderRadius:6,display:"flex"}}>
-              📋
+              
             </button>
           </div>
 
@@ -16797,7 +16801,7 @@ RULES:
           {!longPasteCandidate && (input||"").length>=300 && (
             <div style={{margin:"0 10px 4px",display:"flex",justifyContent:"flex-end"}}>
               <button onClick={()=>setLongPasteCandidate(input)} style={{padding:"4px 10px",borderRadius:99,fontSize:11,fontWeight:700,background:"var(--accentbg)",color:"var(--accent)",border:"1px solid var(--accent)44"}}>
-                📋 Learn from this ({input.length.toLocaleString()})
+                 Learn from this ({input.length.toLocaleString()})
               </button>
             </div>
           )}
@@ -16808,7 +16812,7 @@ RULES:
             return (
               <div role="alert" style={{margin:"0 10px 8px",padding:"10px 12px",borderRadius:10,background:"var(--accentbg)",border:"1px solid var(--accent)44",fontSize:12,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                 <span style={{flex:1,minWidth:160}}>
-                  📋 That looks like a long conversation ({longPasteCandidate.length.toLocaleString()} chars).
+                   That looks like a long conversation ({longPasteCandidate.length.toLocaleString()} chars).
                   {focused
                     ? <> Auto-learn it into <strong>{focused.name}</strong>'s memory?</>
                     : <> Pick a client and analyze?</>}
@@ -16820,7 +16824,7 @@ RULES:
                   setInput("");
                   setLongPasteCandidate("");
                 }} style={{padding:"5px 12px",borderRadius:6,background:"var(--accent)",color:"#fff",border:"none",fontSize:11,fontWeight:700}}>
-                  ✨ Auto-learn
+                   Auto-learn
                 </button>
                 <button onClick={()=>setLongPasteCandidate("")} style={{padding:"5px 10px",borderRadius:6,background:"transparent",color:"var(--text2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600}}>
                   Just send
@@ -16877,7 +16881,8 @@ RULES:
         currentUser={currentUser}
         onSave={onUpsertMemory}
       />
-    </>
+    </>,
+    document.body
   );
 }
 
@@ -16889,28 +16894,28 @@ RULES:
 const DEFAULT_AGENTS = [
   {
     agent_id:"lead-gen-agent", name:"Lead Generation Agent", type:"lead_generation",
-    status:"stopped", icon:"🎯", color:"#6366f1",
+    status:"stopped", icon:"", color:"#6366f1",
     description:"Automatically discovers and enriches B2B leads daily based on targeting criteria.",
     schedule:"daily", settings:{job_titles:["Marketing Manager","CEO","Founder"],countries:["UAE","Egypt","Saudi Arabia"],leads_per_day:20,sources:["ai_generated"]},
     tasks_total:0, tasks_today:0, success_rate:0, errors_today:0, last_run:null,
   },
   {
     agent_id:"content-gen-agent", name:"Content Generation Agent", type:"content_generation",
-    status:"stopped", icon:"✍️", color:"#10b981",
+    status:"stopped", icon:"", color:"#10b981",
     description:"Generates captions, hooks, and content ideas for posts in planning stage.",
     schedule:"on_demand", settings:{auto_generate:false,languages:["ar","en"],quality_threshold:70,post_types:["reel","carousel","static"]},
     tasks_total:0, tasks_today:0, success_rate:0, errors_today:0, last_run:null,
   },
   {
     agent_id:"scheduling-agent", name:"Scheduling Agent", type:"scheduling",
-    status:"stopped", icon:"📅", color:"#f59e0b",
+    status:"stopped", icon:"", color:"#f59e0b",
     description:"Optimizes post scheduling based on platform best posting times and audience data.",
     schedule:"daily", settings:{optimize_timing:true,platforms:["instagram","tiktok","facebook"],lookahead_days:30,posts_per_day:3},
     tasks_total:0, tasks_today:0, success_rate:0, errors_today:0, last_run:null,
   },
   {
     agent_id:"followup-agent", name:"Follow-up Agent", type:"follow_up",
-    status:"stopped", icon:"🔔", color:"#ef4444",
+    status:"stopped", icon:"", color:"#ef4444",
     description:"Monitors leads and client interactions, triggers follow-up reminders automatically.",
     schedule:"daily", settings:{followup_after_days:3,max_followups:3,auto_email:false,channels:["internal"]},
     tasks_total:0, tasks_today:0, success_rate:0, errors_today:0, last_run:null,
@@ -17022,11 +17027,11 @@ function AgentSettingsModal({open, agent, onClose, onSave}) {
 }
 
 function AgentsPage({agentConfigs, agentLogs, agentRuns, data, currentUser, onStart, onPause, onStop, onRunNow, onSaveSettings, onToast}) {
-  const [tab, setTab]         = useState("overview");
+  const [tab, setTab] = useState("overview");
   const [settingsAgent, setSettingsAgent] = useState(null);
-  const [logFilter, setLogFilter]         = useState("all");
-  const [ruleForm, setRuleForm]           = useState({metric:"leads_pending",operator:"<",value:"10",action:"run_lead-gen-agent"});
-  const [rules, setRules]                 = useState(()=>{try{return JSON.parse(localStorage.getItem("sf_agent_rules")||"[]");}catch(e){return [];}});
+  const [logFilter, setLogFilter] = useState("all");
+  const [ruleForm, setRuleForm] = useState({metric:"leads_pending",operator:"<",value:"10",action:"run_lead-gen-agent"});
+  const [rules, setRules] = useState(()=>{try{return JSON.parse(localStorage.getItem("sf_agent_rules")||"[]");}catch(e){return [];}});
   const {isMobile} = useResponsive();
 
   // Merge DB configs with defaults (defaults fill in any missing agents)
@@ -17045,7 +17050,7 @@ function AgentsPage({agentConfigs, agentLogs, agentRuns, data, currentUser, onSt
     const newRules = [...rules, {...ruleForm, id:uid(), created_at:new Date().toISOString()}];
     setRules(newRules);
     try{localStorage.setItem("sf_agent_rules",JSON.stringify(newRules));}catch(e){}
-    onToast("✅ Automation rule saved");
+    onToast(" Automation rule saved");
   };
 
   const deleteRule = (id) => {
@@ -17055,11 +17060,11 @@ function AgentsPage({agentConfigs, agentLogs, agentRuns, data, currentUser, onSt
   };
 
   // Aggregate stats
-  const totalRuns      = (agentRuns||[]).length;
-  const todayRuns      = (agentRuns||[]).filter(r=>r.started_at&&new Date(r.started_at).toDateString()===new Date().toDateString()).length;
-  const avgSuccess     = (agentRuns||[]).length ? Math.round((agentRuns||[]).reduce((a,r)=>a+(r.success_rate||0),0)/(agentRuns||[]).length) : 0;
-  const totalErrors    = (agentLogs||[]).filter(l=>l.status==="error").length;
-  const activeCount    = agents.filter(a=>a.status==="active").length;
+  const totalRuns = (agentRuns||[]).length;
+  const todayRuns = (agentRuns||[]).filter(r=>r.started_at&&new Date(r.started_at).toDateString()===new Date().toDateString()).length;
+  const avgSuccess = (agentRuns||[]).length ? Math.round((agentRuns||[]).reduce((a,r)=>a+(r.success_rate||0),0)/(agentRuns||[]).length) : 0;
+  const totalErrors = (agentLogs||[]).filter(l=>l.status==="error").length;
+  const activeCount = agents.filter(a=>a.status==="active").length;
 
   const AgentCard = ({agent}) => {
     const st = STATUS_STYLE[agent.status] || STATUS_STYLE.stopped;
@@ -17094,9 +17099,9 @@ function AgentsPage({agentConfigs, agentLogs, agentRuns, data, currentUser, onSt
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,marginBottom:14}}>
             {[
               {label:"Tasks Today",value:tasksToday,color:agent.color},
-              {label:"Success",    value:`${successRate}%`,color:"#10b981"},
-              {label:"Errors",     value:errorsToday,color:errorsToday>0?"#ef4444":"var(--text3)"},
-              {label:"Schedule",   value:agent.schedule==="daily"?"Daily":agent.schedule==="on_demand"?"On Demand":"Custom",color:"var(--text3)"},
+              {label:"Success", value:`${successRate}%`,color:"#10b981"},
+              {label:"Errors", value:errorsToday,color:errorsToday>0?"#ef4444":"var(--text3)"},
+              {label:"Schedule", value:agent.schedule==="daily"?"Daily":agent.schedule==="on_demand"?"On Demand":"Custom",color:"var(--text3)"},
             ].map(s=>(
               <div key={s.label} style={{textAlign:"center",padding:"8px 4px",background:"var(--surface2)",borderRadius:8}}>
                 <p style={{fontSize:14,fontWeight:800,color:s.color}}>{s.value}</p>
@@ -17123,15 +17128,15 @@ function AgentsPage({agentConfigs, agentLogs, agentRuns, data, currentUser, onSt
         {/* Footer actions */}
         <div style={{padding:"12px 18px",borderTop:`1px solid ${agent.color}22`,display:"flex",gap:6,alignItems:"center"}}>
           {agent.status!=="active"&&(
-            <button onClick={()=>onStart(agent)} style={{flex:1,padding:"6px 0",borderRadius:8,fontSize:11,fontWeight:700,background:"#10b98122",color:"#10b981",border:"1px solid #10b98144",cursor:"pointer"}}>▶ Start</button>
+            <button onClick={()=>onStart(agent)} style={{flex:1,padding:"6px 0",borderRadius:8,fontSize:11,fontWeight:700,background:"#10b98122",color:"#10b981",border:"1px solid #10b98144",cursor:"pointer"}}> Start</button>
           )}
           {agent.status==="active"&&(
-            <button onClick={()=>onPause(agent)} style={{flex:1,padding:"6px 0",borderRadius:8,fontSize:11,fontWeight:700,background:"#f59e0b22",color:"#f59e0b",border:"1px solid #f59e0b44",cursor:"pointer"}}>⏸ Pause</button>
+            <button onClick={()=>onPause(agent)} style={{flex:1,padding:"6px 0",borderRadius:8,fontSize:11,fontWeight:700,background:"#f59e0b22",color:"#f59e0b",border:"1px solid #f59e0b44",cursor:"pointer"}}> Pause</button>
           )}
           {agent.status!=="stopped"&&(
-            <button onClick={()=>onStop(agent)} style={{flex:1,padding:"6px 0",borderRadius:8,fontSize:11,fontWeight:700,background:"#ef444422",color:"#ef4444",border:"1px solid #ef444444",cursor:"pointer"}}>⏹ Stop</button>
+            <button onClick={()=>onStop(agent)} style={{flex:1,padding:"6px 0",borderRadius:8,fontSize:11,fontWeight:700,background:"#ef444422",color:"#ef4444",border:"1px solid #ef444444",cursor:"pointer"}}> Stop</button>
           )}
-          <button onClick={()=>onRunNow(agent)} style={{flex:1,padding:"6px 0",borderRadius:8,fontSize:11,fontWeight:700,background:agent.color+"22",color:agent.color,border:`1px solid ${agent.color}44`,cursor:"pointer"}}>⚡ Run Now</button>
+          <button onClick={()=>onRunNow(agent)} style={{flex:1,padding:"6px 0",borderRadius:8,fontSize:11,fontWeight:700,background:agent.color+"22",color:agent.color,border:`1px solid ${agent.color}44`,cursor:"pointer"}}> Run Now</button>
           <button onClick={()=>setSettingsAgent(agent)} style={{width:30,height:30,borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",background:"var(--surface2)",border:"1px solid var(--border)",color:"var(--text3)",cursor:"pointer"}}>
             <Ico d={Icons.settings} size={13}/>
           </button>
@@ -17141,8 +17146,8 @@ function AgentsPage({agentConfigs, agentLogs, agentRuns, data, currentUser, onSt
   };
 
   const TABS = [
-    {key:"overview",   label:"Overview"},
-    {key:"logs",       label:`Logs${(agentLogs||[]).length>0?` (${(agentLogs||[]).length})`:""}`},
+    {key:"overview", label:"Overview"},
+    {key:"logs", label:`Logs${(agentLogs||[]).length>0?` (${(agentLogs||[]).length})`:""}`},
     {key:"automation", label:"Automation Rules"},
     {key:"performance",label:"Performance"},
   ];
@@ -17153,7 +17158,7 @@ function AgentsPage({agentConfigs, agentLogs, agentRuns, data, currentUser, onSt
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24,flexWrap:"wrap",gap:12}}>
         <div>
           <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:22,fontWeight:800,color:"var(--text)",display:"flex",alignItems:"center",gap:10}}>
-            <span style={{fontSize:24}}>🤖</span> Agents Control Center
+            <span style={{fontSize:24}}></span> Agents Control Center
           </h2>
           <p style={{fontSize:13,color:"var(--text3)",marginTop:2}}>Monitor and control all AI agents in your workspace</p>
         </div>
@@ -17167,11 +17172,11 @@ function AgentsPage({agentConfigs, agentLogs, agentRuns, data, currentUser, onSt
       {/* Global stats */}
       <div style={{display:"grid",gridTemplateColumns:`repeat(${isMobile?2:5},1fr)`,gap:12,marginBottom:24}}>
         {[
-          {label:"Total Agents",  value:agents.length,         color:"#6366f1"},
-          {label:"Active Now",    value:activeCount,            color:"#10b981"},
-          {label:"Runs Today",    value:todayRuns,              color:"#f59e0b"},
-          {label:"Avg Success",   value:`${avgSuccess}%`,      color:"#3b82f6"},
-          {label:"Total Errors",  value:totalErrors,            color:totalErrors>0?"#ef4444":"var(--text3)"},
+          {label:"Total Agents", value:agents.length, color:"#6366f1"},
+          {label:"Active Now", value:activeCount, color:"#10b981"},
+          {label:"Runs Today", value:todayRuns, color:"#f59e0b"},
+          {label:"Avg Success", value:`${avgSuccess}%`, color:"#3b82f6"},
+          {label:"Total Errors", value:totalErrors, color:totalErrors>0?"#ef4444":"var(--text3)"},
         ].map(s=>(
           <div key={s.label} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"14px 16px"}}>
             <p style={{fontSize:11,color:"var(--text3)",marginBottom:4}}>{s.label}</p>
@@ -17212,7 +17217,7 @@ function AgentsPage({agentConfigs, agentLogs, agentRuns, data, currentUser, onSt
           </div>
           {(agentLogs||[]).filter(l=>logFilter==="all"||l.agent_id===logFilter).length===0?(
             <div style={{textAlign:"center",padding:60,color:"var(--text3)"}}>
-              <p style={{fontSize:32,marginBottom:8}}>📋</p>
+              <p style={{fontSize:32,marginBottom:8}}></p>
               <p style={{fontWeight:700,fontSize:15,color:"var(--text2)"}}>No logs yet</p>
               <p style={{fontSize:13}}>Logs appear here when agents run</p>
             </div>
@@ -17235,7 +17240,7 @@ function AgentsPage({agentConfigs, agentLogs, agentRuns, data, currentUser, onSt
                         <td style={{padding:"8px 12px",color:"var(--text3)",whiteSpace:"nowrap"}}>{log.timestamp?new Date(log.timestamp).toLocaleString():"-"}</td>
                         <td style={{padding:"8px 12px"}}>
                           <span style={{display:"inline-flex",alignItems:"center",gap:5}}>
-                            <span>{ag?.icon||"🤖"}</span>
+                            <span>{ag?.icon||""}</span>
                             <span style={{fontWeight:600,color:"var(--text)"}}>{ag?.name||log.agent_id}</span>
                           </span>
                         </td>
@@ -17261,7 +17266,7 @@ function AgentsPage({agentConfigs, agentLogs, agentRuns, data, currentUser, onSt
         <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:20}}>
           {/* Add rule */}
           <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:20}}>
-            <p style={{fontWeight:800,fontSize:14,marginBottom:16}}>➕ New Automation Rule</p>
+            <p style={{fontWeight:800,fontSize:14,marginBottom:16}}> New Automation Rule</p>
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                 <span style={{fontSize:13,fontWeight:700,color:"var(--text3)"}}>IF</span>
@@ -17295,7 +17300,7 @@ function AgentsPage({agentConfigs, agentLogs, agentRuns, data, currentUser, onSt
 
           {/* Rules list */}
           <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:20}}>
-            <p style={{fontWeight:800,fontSize:14,marginBottom:16}}>📋 Active Rules ({rules.length})</p>
+            <p style={{fontWeight:800,fontSize:14,marginBottom:16}}> Active Rules ({rules.length})</p>
             {rules.length===0?(
               <p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:20}}>No rules yet. Create your first automation rule.</p>
             ):(
@@ -17343,9 +17348,9 @@ function AgentsPage({agentConfigs, agentLogs, agentRuns, data, currentUser, onSt
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:10}}>
                   {[
-                    {label:"Tasks Completed", value:totalTasks, max:500,  color:agent.color, display:totalTasks},
-                    {label:"Success Rate",    value:avgSR,      max:100,  color:"#10b981", display:`${avgSR}%`},
-                    {label:"Errors",          value:totalErr,   max:50,   color:"#ef4444", display:totalErr},
+                    {label:"Tasks Completed", value:totalTasks, max:500, color:agent.color, display:totalTasks},
+                    {label:"Success Rate", value:avgSR, max:100, color:"#10b981", display:`${avgSR}%`},
+                    {label:"Errors", value:totalErr, max:50, color:"#ef4444", display:totalErr},
                   ].map(m=>(
                     <div key={m.label} style={{display:"flex",alignItems:"center",gap:10}}>
                       <span style={{fontSize:11,color:"var(--text3)",width:130,flexShrink:0}}>{m.label}</span>
@@ -17382,21 +17387,21 @@ function LeadGenerationPage({generatedLeads,leadAgentConfig,existingLeads,curren
     const cfg = leadAgentConfig?.[0] || {};
     return {
       job_titles: cfg.job_titles || ["Marketing Manager","CEO","Founder","Brand Manager","Digital Marketing Manager"],
-      countries:  cfg.countries  || ["United Arab Emirates","Egypt","Saudi Arabia","Jordan"],
+      countries: cfg.countries || ["United Arab Emirates","Egypt","Saudi Arabia","Jordan"],
       industries: cfg.industries || ["Retail","F&B","Real Estate","Fashion","Technology"],
       company_sizes: cfg.company_sizes || ["1-10","11-50","51-200"],
       leads_per_day: cfg.leads_per_day || 20,
-      enabled:    cfg.enabled ?? false,
-      api_keys:   cfg.api_keys || {apollo:"",hunter:"",clearbit:"",snov:""},
+      enabled: cfg.enabled ?? false,
+      api_keys: cfg.api_keys || {apollo:"",hunter:"",clearbit:"",snov:""},
     };
   });
-  const [newJobTitle,setNewJobTitle]   = useState("");
-  const [newCountry,setNewCountry]     = useState("");
-  const [newIndustry,setNewIndustry]   = useState("");
+  const [newJobTitle,setNewJobTitle] = useState("");
+  const [newCountry,setNewCountry] = useState("");
+  const [newIndustry,setNewIndustry] = useState("");
   const [savingConfig,setSavingConfig] = useState(false);
   const {isMobile} = useResponsive();
 
-  const pending  = (generatedLeads||[]).filter(l=>l.status==="pending");
+  const pending = (generatedLeads||[]).filter(l=>l.status==="pending");
   const approved = (generatedLeads||[]).filter(l=>l.status==="approved");
   const rejected = (generatedLeads||[]).filter(l=>l.status==="rejected");
 
@@ -17451,8 +17456,8 @@ function LeadGenerationPage({generatedLeads,leadAgentConfig,existingLeads,curren
 
       {/* Contact info */}
       <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-        {lead.email&&<Tag color="#10b981">✉ {lead.email}</Tag>}
-        {lead.phone&&<Tag color="#3b82f6">📞 {lead.phone}</Tag>}
+        {lead.email&&<Tag color="#10b981"> {lead.email}</Tag>}
+        {lead.phone&&<Tag color="#3b82f6"> {lead.phone}</Tag>}
         {lead.linkedin_url&&<a href={lead.linkedin_url} target="_blank" rel="noopener noreferrer" style={{display:"inline-flex",alignItems:"center",gap:4,padding:"3px 10px",borderRadius:99,fontSize:11,fontWeight:600,background:"#0077b522",color:"#0077b5",border:"1px solid #0077b544",textDecoration:"none"}}>in LinkedIn</a>}
       </div>
 
@@ -17473,10 +17478,10 @@ function LeadGenerationPage({generatedLeads,leadAgentConfig,existingLeads,curren
   );
 
   const TABS = [
-    {key:"pending",  label:`Pending Approval`, count:pending.length,  color:"#f59e0b"},
-    {key:"approved", label:`Approved (CRM)`,   count:approved.length, color:"#10b981"},
-    {key:"rejected", label:`Rejected`,         count:rejected.length, color:"#ef4444"},
-    {key:"settings", label:`Agent Settings`,   count:null,            color:"#8b5cf6"},
+    {key:"pending", label:`Pending Approval`, count:pending.length, color:"#f59e0b"},
+    {key:"approved", label:`Approved (CRM)`, count:approved.length, color:"#10b981"},
+    {key:"rejected", label:`Rejected`, count:rejected.length, color:"#ef4444"},
+    {key:"settings", label:`Agent Settings`, count:null, color:"#8b5cf6"},
   ];
 
   const leadsForTab = tab==="pending"?pending:tab==="approved"?approved:rejected;
@@ -17505,9 +17510,9 @@ function LeadGenerationPage({generatedLeads,leadAgentConfig,existingLeads,curren
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:24}}>
         {[
           {label:"Total Generated", value:(generatedLeads||[]).length, color:"#6366f1"},
-          {label:"Pending Review",  value:pending.length,  color:"#f59e0b"},
-          {label:"Approved / CRM",  value:approved.length, color:"#10b981"},
-          {label:"Avg Score",       value:(generatedLeads||[]).length?Math.round((generatedLeads||[]).reduce((a,l)=>a+(l.score||0),0)/(generatedLeads||[]).length):0, color:"#8b5cf6", suffix:"/100"},
+          {label:"Pending Review", value:pending.length, color:"#f59e0b"},
+          {label:"Approved / CRM", value:approved.length, color:"#10b981"},
+          {label:"Avg Score", value:(generatedLeads||[]).length?Math.round((generatedLeads||[]).reduce((a,l)=>a+(l.score||0),0)/(generatedLeads||[]).length):0, color:"#8b5cf6", suffix:"/100"},
         ].map(s=>(
           <div key={s.label} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"14px 16px"}}>
             <p style={{fontSize:11,color:"var(--text3)",marginBottom:4}}>{s.label}</p>
@@ -17538,7 +17543,7 @@ function LeadGenerationPage({generatedLeads,leadAgentConfig,existingLeads,curren
           {leadsForTab.length===0?(
             <div style={{textAlign:"center",padding:60,color:"var(--text3)"}}>
               <div style={{fontSize:40,marginBottom:12}}>
-                {tab==="pending"?"🎯":tab==="approved"?"✅":"❌"}
+                {tab==="pending"?"":tab==="approved"?"":""}
               </div>
               <p style={{fontWeight:700,fontSize:16,color:"var(--text2)",marginBottom:6}}>
                 {tab==="pending"?"No leads pending review":tab==="approved"?"No approved leads yet":"No rejected leads"}
@@ -17584,7 +17589,7 @@ function LeadGenerationPage({generatedLeads,leadAgentConfig,existingLeads,curren
 
             {/* Job Titles */}
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:20}}>
-              <p style={{fontWeight:700,fontSize:13,marginBottom:12}}>🎯 Job Titles</p>
+              <p style={{fontWeight:700,fontSize:13,marginBottom:12}}> Job Titles</p>
               <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
                 {config.job_titles.map(t=>(
                   <Tag key={t} color="#6366f1" onRemove={()=>setConfig(c=>({...c,job_titles:c.job_titles.filter(x=>x!==t)}))}>
@@ -17602,7 +17607,7 @@ function LeadGenerationPage({generatedLeads,leadAgentConfig,existingLeads,curren
 
             {/* Countries */}
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:20}}>
-              <p style={{fontWeight:700,fontSize:13,marginBottom:12}}>🌍 Countries</p>
+              <p style={{fontWeight:700,fontSize:13,marginBottom:12}}> Countries</p>
               <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
                 {config.countries.map(c=>(
                   <Tag key={c} color="#3b82f6" onRemove={()=>setConfig(cfg=>({...cfg,countries:cfg.countries.filter(x=>x!==c)}))}>
@@ -17620,7 +17625,7 @@ function LeadGenerationPage({generatedLeads,leadAgentConfig,existingLeads,curren
 
             {/* Industries */}
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:20}}>
-              <p style={{fontWeight:700,fontSize:13,marginBottom:12}}>🏭 Industries</p>
+              <p style={{fontWeight:700,fontSize:13,marginBottom:12}}> Industries</p>
               <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
                 {config.industries.map(i=>(
                   <Tag key={i} color="#10b981" onRemove={()=>setConfig(c=>({...c,industries:c.industries.filter(x=>x!==i)}))}>
@@ -17641,13 +17646,13 @@ function LeadGenerationPage({generatedLeads,leadAgentConfig,existingLeads,curren
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
             {/* API Keys */}
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:20}}>
-              <p style={{fontWeight:700,fontSize:13,marginBottom:4}}>🔑 API Keys</p>
+              <p style={{fontWeight:700,fontSize:13,marginBottom:4}}> API Keys</p>
               <p style={{fontSize:11,color:"var(--text3)",marginBottom:14}}>Connect external data sources for richer lead data. If none configured, Pro generates leads using AI.</p>
               {[
-                {key:"apollo",    label:"Apollo.io",   placeholder:"api-key-...", color:"#6366f1"},
-                {key:"hunter",    label:"Hunter.io",   placeholder:"hunter_api_...", color:"#f59e0b"},
-                {key:"clearbit",  label:"Clearbit",    placeholder:"sk_...", color:"#10b981"},
-                {key:"snov",      label:"Snov.io",     placeholder:"user_id:secret", color:"#3b82f6"},
+                {key:"apollo", label:"Apollo.io", placeholder:"api-key-...", color:"#6366f1"},
+                {key:"hunter", label:"Hunter.io", placeholder:"hunter_api_...", color:"#f59e0b"},
+                {key:"clearbit", label:"Clearbit", placeholder:"sk_...", color:"#10b981"},
+                {key:"snov", label:"Snov.io", placeholder:"user_id:secret", color:"#3b82f6"},
               ].map(({key,label,placeholder,color})=>(
                 <div key={key} style={{marginBottom:12}}>
                   <label style={{fontSize:11,fontWeight:700,color,display:"block",marginBottom:4}}>{label}</label>
@@ -17663,14 +17668,14 @@ function LeadGenerationPage({generatedLeads,leadAgentConfig,existingLeads,curren
 
             {/* How it works */}
             <div style={{background:"var(--accentbg)",border:"1px solid var(--accent)",borderRadius:14,padding:20}}>
-              <p style={{fontWeight:700,fontSize:13,marginBottom:10,color:"var(--accent)"}}>⚡ How it works</p>
+              <p style={{fontWeight:700,fontSize:13,marginBottom:10,color:"var(--accent)"}}> How it works</p>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {[
-                  {icon:"🤖", text:"AI generates leads based on your targeting criteria"},
-                  {icon:"🔑", text:"If API keys configured, enriches with real contact data"},
-                  {icon:"📊", text:"Each lead is scored 0–100 based on data completeness"},
-                  {icon:"✅", text:"Review and approve leads before they enter your CRM"},
-                  {icon:"🔄", text:"Duplicate detection prevents re-adding existing leads"},
+                  {icon:"", text:"AI generates leads based on your targeting criteria"},
+                  {icon:"", text:"If API keys configured, enriches with real contact data"},
+                  {icon:"", text:"Each lead is scored 0–100 based on data completeness"},
+                  {icon:"", text:"Review and approve leads before they enter your CRM"},
+                  {icon:"", text:"Duplicate detection prevents re-adding existing leads"},
                 ].map((s,i)=>(
                   <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
                     <span style={{fontSize:16,flexShrink:0}}>{s.icon}</span>
@@ -17771,9 +17776,9 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
     return ()=>clearInterval(t);
   },[chatSessions, activeChatId]);
 
-  const [input,     setInput]     = useState("");
-  const [typing,    setTyping]    = useState(false);
-  const [mode,      setMode]      = useState("action"); // default action on home
+  const [input, setInput] = useState("");
+  const [typing, setTyping] = useState(false);
+  const [mode, setMode] = useState("action"); // default action on home
   const [selectedClient, setSelectedClient] = useState(null);
   const [activeTempClient, setActiveTempClient] = useState(null); // {name, slug} — prospective client not yet created
   const [pendingActions, setPendingActions] = useState({});
@@ -17785,23 +17790,23 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
   const [brainOpen, setBrainOpen] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const messagesEndRef = useRef(null);
-  const inputRef       = useRef(null);
-  const fileInputRef   = useRef(null);
+  const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
   useEffect(()=>{
     const el = inputRef.current;
     if(!el) return;
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 120) + "px";
   },[input]);
-  const role           = currentUser?.role || "admin";
-  const name           = currentUser?.name?.split(" ")[0] || "there";
-  const {isMobile}     = useResponsive();
+  const role = currentUser?.role || "admin";
+  const name = currentUser?.name?.split(" ")[0] || "there";
+  const {isMobile} = useResponsive();
 
   // Initialise welcome message — only when there's truly no active session
   useEffect(()=>{
     if(currentUser && !activeChatId && chatSessions.length===0){
       const fresh = makeChatSession({user_id:currentUser.email||""});
-      fresh.messages = [{role:"bot", content:`Hi ${name} 👋 I'm **Pro** — your AI workspace inside SocialFlow. Tell me what you want to do and I'll handle it.\n\nYou can say things like:\n• "Create a task for Nova Digital"\n• "Add a new client"\n• "Show me all overdue posts"\n• "Generate a calendar plan for TechStart"`, id:uid(), type:"welcome", chat_id:fresh.id, sender:"pro", created_at:new Date().toISOString()}];
+      fresh.messages = [{role:"bot", content:`Hi ${name} I'm **Pro** — your AI workspace inside SocialFlow. Tell me what you want to do and I'll handle it.\n\nYou can say things like:\n• "Create a task for Nova Digital"\n• "Add a new client"\n• "Show me all overdue posts"\n• "Generate a calendar plan for TechStart"`, id:uid(), type:"welcome", chat_id:fresh.id, sender:"pro", created_at:new Date().toISOString()}];
       setChatSessions([fresh]);
       setActiveChatId(fresh.id);
     } else if(currentUser && !activeChatId && chatSessions.length>0){
@@ -17827,7 +17832,7 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
 
   const startNewChat = () => {
     const fresh = makeChatSession({user_id:currentUser?.email||"", client_id:selectedClient?.id||""});
-    fresh.messages = [{role:"bot", content:`Hi ${name} 👋 I'm **Pro** — your AI workspace inside SocialFlow. Tell me what you want to do and I'll handle it.`, id:uid(), type:"welcome", chat_id:fresh.id, sender:"pro", created_at:new Date().toISOString()}];
+    fresh.messages = [{role:"bot", content:`Hi ${name} I'm **Pro** — your AI workspace inside SocialFlow. Tell me what you want to do and I'll handle it.`, id:uid(), type:"welcome", chat_id:fresh.id, sender:"pro", created_at:new Date().toISOString()}];
     setChatSessions(prev=>[fresh, ...prev]);
     setActiveChatId(fresh.id);
     setInput("");
@@ -17848,8 +17853,8 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
 
   // Reuse the same ACTION_SYSTEM + sendMessage logic ─────────────
   const ACTION_SYSTEM_HOME = () => {
-    const clients  = (data?.clients||[]).map(c=>`- ${c.name} (id:${c.id})`).join("\n");
-    const team     = (data?.team||[]).map(m=>`- ${m.name} <${m.email}> [${m.role}]`).join("\n");
+    const clients = (data?.clients||[]).map(c=>`- ${c.name} (id:${c.id})`).join("\n");
+    const team = (data?.team||[]).map(m=>`- ${m.name} <${m.email}> [${m.role}]`).join("\n");
     const projects = (data?.projects||[]).filter(p=>p.status==="active").map(p=>`- ${p.title} (id:${p.id}, client:${p.client_name})`).join("\n");
     const clientCtx = selectedClient ? `\nSELECTED CLIENT: ${selectedClient.name} (id:${selectedClient.id})` : "";
     return `You are SocialFlow Action Engine. Extract structured data from the user's request and return ONLY a JSON object.
@@ -17890,7 +17895,7 @@ RULES:
     try {
       const act = payload.action;
       if(act==="create_task") {
-        const client  = resolveEntity(payload.client_name, data.clients);
+        const client = resolveEntity(payload.client_name, data.clients);
         const project = resolveEntity(payload.client_name, data.projects, "client_name");
         const taskData = {
           title: payload.title||"New Task",
@@ -17906,17 +17911,17 @@ RULES:
           client_name: client?.name||payload.client_name||"",
           project_id: project?.id||"",
         };
-        if(!taskData.project_id){ addBotMsg(`⚠️ Couldn't create "${taskData.title}" — ${taskData.client_name||"this client"} has no project yet. Every task needs a project; create one first.`,"error"); return; }
+        if(!taskData.project_id){ addBotMsg(` Couldn't create "${taskData.title}" — ${taskData.client_name||"this client"} has no project yet. Every task needs a project; create one first.`,"error"); return; }
         const ok = onDirectAction ? await onDirectAction("add_post", taskData) : true;
-        if(!ok){ addBotMsg(`⚠️ Couldn't create "${taskData.title}" — save failed.`,"error"); return; }
-        addBotMsg(`✅ Done. Task **"${taskData.title}"** created${taskData.client_name?` for ${taskData.client_name}`:""}!`,"success",{label:"View Tasks →", fn:"nav_tasks"});
+        if(!ok){ addBotMsg(` Couldn't create "${taskData.title}" — save failed.`,"error"); return; }
+        addBotMsg(` Done. Task **"${taskData.title}"** created${taskData.client_name?` for ${taskData.client_name}`:""}!`,"success",{label:"View Tasks →", fn:"nav_tasks"});
       } else if(act==="create_project") {
         const client = resolveEntity(payload.client_name, data.clients);
         const projData = {name:payload.title,client_id:client?.id||"",client_name:client?.name||payload.client_name||"",description:payload.description||"",project_type:payload.project_type||"social_media",platforms:payload.platforms||["instagram"],start_date:payload.start_date||new Date().toISOString().slice(0,10),deadline:payload.end_date||""};
-        if(!projData.client_id){ addBotMsg(`⚠️ Couldn't create project "${projData.name}" — I couldn't match a client called "${payload.client_name||""}". Every project needs a client; create or name one first.`,"error"); return; }
+        if(!projData.client_id){ addBotMsg(` Couldn't create project "${projData.name}" — I couldn't match a client called "${payload.client_name||""}". Every project needs a client; create or name one first.`,"error"); return; }
         const ok = onDirectAction ? await onDirectAction("add_project", projData) : true;
-        if(!ok){ addBotMsg(`⚠️ Couldn't create project "${projData.name}" — save failed.`,"error"); return; }
-        addBotMsg(`✅ Project **"${projData.name}"** created for ${projData.client_name||"client"}!`,"success",{label:"View Projects →", fn:"nav_projects"});
+        if(!ok){ addBotMsg(` Couldn't create project "${projData.name}" — save failed.`,"error"); return; }
+        addBotMsg(` Project **"${projData.name}"** created for ${projData.client_name||"client"}!`,"success",{label:"View Projects →", fn:"nav_projects"});
       } else if(act==="create_client") {
         const clientData={name:payload.name,email:payload.email||"",phone:payload.phone||"",industry:payload.industry||"",platforms:payload.platforms||["instagram"],status:"active"};
         let realClient = null;
@@ -17931,95 +17936,95 @@ RULES:
         }
         if(payload.brief && realClient?.id && onUpsertMemory) onUpsertMemory(realClient.id, realClient.name, "brief", payload.brief, "ai");
         if(activeTempClient?.slug===slug) setActiveTempClient(null);
-        addBotMsg(`✅ Client **"${clientData.name}"** added!`,"success",{label:"View Clients →", fn:"nav_clients"});
+        addBotMsg(` Client **"${clientData.name}"** added!`,"success",{label:"View Clients →", fn:"nav_clients"});
       } else if(act==="update_client") {
         const cl = resolveEntity(payload.client_name, data.clients);
-        if(!cl){ addBotMsg(`⚠️ Couldn't find client "${payload.client_name}".`,"error"); return; }
+        if(!cl){ addBotMsg(` Couldn't find client "${payload.client_name}".`,"error"); return; }
         const updates = {};
         if(payload.add_platforms?.length) updates.platforms = Array.from(new Set([...(cl.platforms||[]), ...payload.add_platforms]));
         if(payload.industry) updates.industry = payload.industry;
         if(payload.email) updates.email = payload.email;
         if(payload.phone) updates.phone = payload.phone;
-        if(Object.keys(updates).length===0){ addBotMsg(`⚠️ Nothing to update for "${cl.name}".`,"error"); return; }
+        if(Object.keys(updates).length===0){ addBotMsg(` Nothing to update for "${cl.name}".`,"error"); return; }
         if(onDirectAction) await onDirectAction("update_client", {clientId:cl.id, updates});
-        addBotMsg(`✅ Updated **${cl.name}**${updates.platforms?` — platforms: ${updates.platforms.join(", ")}`:""}`,"success",{label:"View Clients →", fn:"nav_clients"});
+        addBotMsg(` Updated **${cl.name}**${updates.platforms?` — platforms: ${updates.platforms.join(", ")}`:""}`,"success",{label:"View Clients →", fn:"nav_clients"});
       } else if(act==="create_lead") {
         const leadData={name:payload.name,email:payload.email||"",company:payload.company||"",source:payload.source||"manual",status:"new",notes:payload.notes||""};
         if(onDirectAction) await onDirectAction("add_lead", leadData);
-        addBotMsg(`✅ Lead **"${leadData.name}"** added!`,"success",{label:"View Leads →", fn:"nav_leads"});
+        addBotMsg(` Lead **"${leadData.name}"** added!`,"success",{label:"View Leads →", fn:"nav_leads"});
       } else if(act==="create_invoice") {
         const client=resolveEntity(payload.client_name,data.clients);
         const invData={client_id:client?.id||"",client_name:client?.name||payload.client_name||"",amount:payload.amount||0,currency:payload.currency||"USD",due_date:payload.due_date||"",description:payload.description||"",status:"draft"};
         if(onDirectAction) await onDirectAction("add_invoice", invData);
-        addBotMsg(`✅ Invoice for ${invData.client_name} (${invData.currency} ${invData.amount}) created!`,"success",{label:"View Invoices →", fn:"nav_finance"});
+        addBotMsg(` Invoice for ${invData.client_name} (${invData.currency} ${invData.amount}) created!`,"success",{label:"View Invoices →", fn:"nav_finance"});
       } else if(act==="update_task_stage") {
         const post=(data.posts||[]).find(p=>p.id===payload.post_id||(p.title||"").toLowerCase().includes((payload.post_title||"").toLowerCase()));
-        if(!post){addBotMsg("⚠️ Couldn't find that task.","error");return;}
+        if(!post){addBotMsg(" Couldn't find that task.","error");return;}
         if(onDirectAction) await onDirectAction("update_stage",{postId:post.id,newStage:payload.new_stage});
-        addBotMsg(`✅ **"${post.title}"** moved to ${payload.new_stage.replace(/_/g," ")}!`,"success");
+        addBotMsg(` **"${post.title}"** moved to ${payload.new_stage.replace(/_/g," ")}!`,"success");
       } else if(act==="assign_task") {
         const post=(data.posts||[]).find(p=>(p.title||"").toLowerCase().includes((payload.post_title||"").toLowerCase()));
         const member=resolveEntity(payload.assigned_to_name||payload.assigned_to_email,data.team,"name")||(data.team||[]).find(m=>m.email===payload.assigned_to_email);
-        if(!post||!member){addBotMsg("⚠️ Couldn't find that task or team member.","error");return;}
+        if(!post||!member){addBotMsg(" Couldn't find that task or team member.","error");return;}
         if(onDirectAction) await onDirectAction("update_stage",{postId:post.id,updates:{assigned_to:member.email}});
-        addBotMsg(`✅ **"${post.title}"** assigned to ${member.name}!`,"success");
+        addBotMsg(` **"${post.title}"** assigned to ${member.name}!`,"success");
       } else if(act==="add_comment") {
         const post=(data.posts||[]).find(p=>(p.title||"").toLowerCase().includes((payload.post_title||"").toLowerCase()));
-        if(!post){addBotMsg("⚠️ Couldn't find that task.","error");return;}
+        if(!post){addBotMsg(" Couldn't find that task.","error");return;}
         const commentData={post_id:post.id,author:currentUser?.name,author_email:currentUser?.email,content:payload.comment_text,is_internal:true,created_date:new Date().toISOString()};
         if(onDirectAction) await onDirectAction("add_comment",commentData);
-        addBotMsg(`✅ Comment added to **"${post.title}"**!`,"success");
+        addBotMsg(` Comment added to **"${post.title}"**!`,"success");
       } else if(act==="send_approval") {
         const post=(data.posts||[]).find(p=>(p.title||"").toLowerCase().includes((payload.post_title||"").toLowerCase()));
-        if(!post){addBotMsg("⚠️ Couldn't find that task.","error");return;}
+        if(!post){addBotMsg(" Couldn't find that task.","error");return;}
         if(onDirectAction) await onDirectAction("update_stage",{postId:post.id,newStage:"client_approval"});
-        addBotMsg(`✅ **"${post.title}"** sent for client approval!`,"success");
+        addBotMsg(` **"${post.title}"** sent for client approval!`,"success");
       } else if(act==="create_calendar") {
         onAction("add_calendar");
-        addBotMsg("✅ Opening Calendar Plan…","success");
+        addBotMsg(" Opening Calendar Plan…","success");
       } else if(act==="control_agent") {
-        const agId  = payload.agent_id;
+        const agId = payload.agent_id;
         const agAct = payload.agent_action || "run_now";
         const agDef = DEFAULT_AGENTS.find(a=>a.agent_id===agId||a.name.toLowerCase().includes((agId||"").toLowerCase()));
         const agName= agDef?.name || agId || "Agent";
         if(onDirectAction) await onDirectAction("control_agent",{agent_id:agId,action:agAct,count:payload.count||10,agentDef:agDef});
-        addBotMsg(agAct==="run_now"?`✅ ${agName} is running!`:agAct==="pause"?`⏸ ${agName} paused.`:agAct==="stop"?`⏹ ${agName} stopped.`:`✅ ${agName} — ${agAct}`,"success",{label:"View Agents →",fn:"nav_agents"});
+        addBotMsg(agAct==="run_now"?` ${agName} is running!`:agAct==="pause"?` ${agName} paused.`:agAct==="stop"?` ${agName} stopped.`:` ${agName} — ${agAct}`,"success",{label:"View Agents →",fn:"nav_agents"});
       } else if(act==="save_exemplar") {
         const cl=(data.clients||[]).find(c=>c.id===payload.client_id||(c.name||"").toLowerCase().includes((payload.client_name||"").toLowerCase()));
-        if(!cl){addBotMsg(`⚠️ Couldn't find client "${payload.client_name}".`,"error");return;}
+        if(!cl){addBotMsg(` Couldn't find client "${payload.client_name}".`,"error");return;}
         const cap=(payload.caption||"").trim();
-        if(!cap){addBotMsg("⚠️ No caption text provided to save as exemplar.","error");return;}
+        if(!cap){addBotMsg(" No caption text provided to save as exemplar.","error");return;}
         const key=`exemplar_${Date.now()}`;
         if(onUpsertMemory) await onUpsertMemory(cl.id, cl.name, key, cap, "exemplar");
-        addBotMsg(`⭐ Saved as exemplar for **${cl.name}**. Pro will match this style on future captions.`,"success");
+        addBotMsg(` Saved as exemplar for **${cl.name}**. Pro will match this style on future captions.`,"success");
       } else if(act==="save_voice_card") {
         const cl=(data.clients||[]).find(c=>c.id===payload.client_id||(c.name||"").toLowerCase().includes((payload.client_name||"").toLowerCase()));
-        if(!cl){addBotMsg(`⚠️ Couldn't find client "${payload.client_name}".`,"error");return;}
+        if(!cl){addBotMsg(` Couldn't find client "${payload.client_name}".`,"error");return;}
         const vp=(payload.voice_paragraph||"").trim();
-        if(!vp){addBotMsg("⚠️ No voice paragraph provided.","error");return;}
+        if(!vp){addBotMsg(" No voice paragraph provided.","error");return;}
         if(onUpsertMemory) await onUpsertMemory(cl.id, cl.name, "brand_voice_paragraph", vp, "voice_card");
-        addBotMsg(`🎙️ Brand voice saved for **${cl.name}**.`,"success");
+        addBotMsg(` Brand voice saved for **${cl.name}**.`,"success");
       } else if(act==="delete_task") {
         const post=(data.posts||[]).find(p=>p.id===payload.post_id||(p.title||"").toLowerCase().includes((payload.post_title||"").toLowerCase()));
-        if(!post){addBotMsg(`⚠️ Couldn't find task "${payload.post_title||payload.post_id}".`,"error");return;}
+        if(!post){addBotMsg(` Couldn't find task "${payload.post_title||payload.post_id}".`,"error");return;}
         if(onDirectAction) await onDirectAction("delete_post",{postId:post.id});
-        addBotMsg(`🗑️ Task **"${post.title}"** deleted.`,"success");
+        addBotMsg(` Task **"${post.title}"** deleted.`,"success");
       } else if(act==="delete_project") {
         const proj=(data.projects||[]).find(p=>p.id===payload.project_id||(p.title||"").toLowerCase().includes((payload.project_name||"").toLowerCase()));
-        if(!proj){addBotMsg(`⚠️ Couldn't find project "${payload.project_name||payload.project_id}".`,"error");return;}
+        if(!proj){addBotMsg(` Couldn't find project "${payload.project_name||payload.project_id}".`,"error");return;}
         if(onDirectAction) await onDirectAction("delete_project",{projectId:proj.id});
-        addBotMsg(`🗑️ Project **"${proj.title}"** and its tasks deleted.`,"success");
+        addBotMsg(` Project **"${proj.title}"** and its tasks deleted.`,"success");
       } else if(act==="delete_client") {
         const cl=(data.clients||[]).find(c=>c.id===payload.client_id||(c.name||"").toLowerCase().includes((payload.client_name||"").toLowerCase()));
-        if(!cl){addBotMsg(`⚠️ Couldn't find client "${payload.client_name||payload.client_id}".`,"error");return;}
+        if(!cl){addBotMsg(` Couldn't find client "${payload.client_name||payload.client_id}".`,"error");return;}
         if(onDirectAction) await onDirectAction("delete_client",{clientId:cl.id});
-        addBotMsg(`🗑️ Client **"${cl.name}"** removed (with all projects & tasks).`,"success");
+        addBotMsg(` Client **"${cl.name}"** removed (with all projects & tasks).`,"success");
       } else if(act==="nav") {
         setPage(payload.page);
         addBotMsg(`Navigating to ${payload.page}…`);
       }
     } catch(err) {
-      addBotMsg(`⚠️ Action failed: ${err.message}`,"error");
+      addBotMsg(` Action failed: ${err.message}`,"error");
     }
   };
 
@@ -18029,17 +18034,17 @@ RULES:
     const list = Array.isArray(payloadOrList) ? payloadOrList : [payloadOrList];
     setPendingActions(p=>{ const n={...p}; delete n[msgId]; return n; });
     setMessages(m=>m.map(msg=>msg.id===msgId?{...msg,pendingAction:false,confirmData:null}:msg));
-    if(list.length>1) addBotMsg(`▶️ Running ${list.length} steps in sequence…`);
+    if(list.length>1) addBotMsg(` Running ${list.length} steps in sequence…`);
     for(let i=0;i<list.length;i++){
       if(list.length>1) addBotMsg(`Step ${i+1}/${list.length}: ${list[i].action.replace(/_/g," ")}…`);
       // eslint-disable-next-line no-await-in-loop
       await runOneAction(list[i]);
     }
-    if(list.length>1) addBotMsg(`🎉 All ${list.length} steps complete!`,"success");
+    if(list.length>1) addBotMsg(` All ${list.length} steps complete!`,"success");
   };
 
   const handleConfirmHome = (msgId) => executeAction(msgId);
-  const handleRejectHome  = (msgId) => {
+  const handleRejectHome = (msgId) => {
     const payloadOrList = pendingActions[msgId];
     const list = Array.isArray(payloadOrList) ? payloadOrList : (payloadOrList ? [payloadOrList] : []);
     const rejectedCreateClient = list.length===1 && list[0]?.action==="create_client" ? list[0] : null;
@@ -18097,18 +18102,18 @@ RULES:
 
   const buildConfirmDataHome = (parsed) => {
     const cd = {};
-    if(parsed.title||parsed.name)   cd.name        = parsed.title||parsed.name;
-    if(parsed.client_name)           cd.client      = parsed.client_name;
-    if(parsed.platform)              cd.platform    = parsed.platform;
-    if(parsed.post_type)             cd.type        = parsed.post_type;
-    if(parsed.priority)              cd.priority    = parsed.priority;
-    if(parsed.scheduled_date)        cd.date        = parsed.scheduled_date;
-    if(parsed.assigned_to)           cd.assign_to   = parsed.assigned_to;
-    if(parsed.amount)                cd.amount      = `${parsed.currency||"USD"} ${parsed.amount}`;
-    if(parsed.new_stage)             cd.stage       = parsed.new_stage.replace(/_/g," ");
-    if(parsed.post_title)            cd.task        = parsed.post_title;
-    if(parsed.comment_text)          cd.comment     = (parsed.comment_text||"").slice(0,60);
-    if(parsed.description)           cd.description = (parsed.description||"").slice(0,80);
+    if(parsed.title||parsed.name) cd.name = parsed.title||parsed.name;
+    if(parsed.client_name) cd.client = parsed.client_name;
+    if(parsed.platform) cd.platform = parsed.platform;
+    if(parsed.post_type) cd.type = parsed.post_type;
+    if(parsed.priority) cd.priority = parsed.priority;
+    if(parsed.scheduled_date) cd.date = parsed.scheduled_date;
+    if(parsed.assigned_to) cd.assign_to = parsed.assigned_to;
+    if(parsed.amount) cd.amount = `${parsed.currency||"USD"} ${parsed.amount}`;
+    if(parsed.new_stage) cd.stage = parsed.new_stage.replace(/_/g," ");
+    if(parsed.post_title) cd.task = parsed.post_title;
+    if(parsed.comment_text) cd.comment = (parsed.comment_text||"").slice(0,60);
+    if(parsed.description) cd.description = (parsed.description||"").slice(0,80);
     return cd;
   };
 
@@ -18167,21 +18172,21 @@ Rules:
       const isText = /^text\//.test(file.type) || /\.(txt|csv|md|json)$/i.test(file.name);
       try {
         if(isImage){
-          if(file.size > ATTACH_MAX_MB.image*1024*1024){ addBotMsg(`⚠️ "${file.name}" is over ${ATTACH_MAX_MB.image}MB — use a smaller image.`,"error"); continue; }
+          if(file.size > ATTACH_MAX_MB.image*1024*1024){ addBotMsg(` "${file.name}" is over ${ATTACH_MAX_MB.image}MB — use a smaller image.`,"error"); continue; }
           const dataUrl = await readFileAsDataURL(file);
           next.push({id:uid(), name:file.name, kind:"image", mediaType:file.type, base64:dataUrl.split(",")[1], previewUrl:dataUrl});
         } else if(isPdf){
-          if(file.size > ATTACH_MAX_MB.pdf*1024*1024){ addBotMsg(`⚠️ "${file.name}" is over ${ATTACH_MAX_MB.pdf}MB — use a smaller PDF.`,"error"); continue; }
+          if(file.size > ATTACH_MAX_MB.pdf*1024*1024){ addBotMsg(` "${file.name}" is over ${ATTACH_MAX_MB.pdf}MB — use a smaller PDF.`,"error"); continue; }
           const dataUrl = await readFileAsDataURL(file);
           next.push({id:uid(), name:file.name, kind:"pdf", mediaType:"application/pdf", base64:dataUrl.split(",")[1]});
         } else if(isText){
-          if(file.size > ATTACH_MAX_MB.text*1024*1024){ addBotMsg(`⚠️ "${file.name}" is over ${ATTACH_MAX_MB.text}MB — use a smaller file.`,"error"); continue; }
+          if(file.size > ATTACH_MAX_MB.text*1024*1024){ addBotMsg(` "${file.name}" is over ${ATTACH_MAX_MB.text}MB — use a smaller file.`,"error"); continue; }
           const text = await readFileAsText(file);
           next.push({id:uid(), name:file.name, kind:"text", text:text.slice(0,20000)});
         } else {
-          addBotMsg(`⚠️ "${file.name}" isn't a supported file type yet — try an image, PDF, or text/CSV file.`,"error");
+          addBotMsg(` "${file.name}" isn't a supported file type yet — try an image, PDF, or text/CSV file.`,"error");
         }
-      } catch(e){ addBotMsg(`⚠️ Couldn't read "${file.name}".`,"error"); }
+      } catch(e){ addBotMsg(` Couldn't read "${file.name}".`,"error"); }
     }
     if(next.length) setAttachments(a=>[...a, ...next]);
   };
@@ -18193,7 +18198,7 @@ Rules:
     if(!userMsg && pendingAttachments.length===0) return;
     setInput("");
     setAttachments([]);
-    const userMsgObj = {role:"user",content:userMsg||"📎 Sent file(s)",id:uid(),attachments:pendingAttachments};
+    const userMsgObj = {role:"user",content:userMsg||" Sent file(s)",id:uid(),attachments:pendingAttachments};
     setMessages(m=>[...m,userMsgObj]);
     setTyping(true);
 
@@ -18315,13 +18320,13 @@ Industry: ${activeClient.industry||"(not set)"}
 Platforms: ${(activeClient.platforms||[]).join(", ")||"(not set)"}
 
 KNOWLEDGE PROFILE:
-${(()=>{ if(!ck) return "  (none saved)"; const norm=(v)=>{ if(v==null||v==="") return null; if(Array.isArray(v)) return v.map(x=>typeof x==="object"?(x.name||JSON.stringify(x)):x).filter(Boolean).join(" | "); if(typeof v==="string"){ const s=v.trim(); if(s.startsWith("[")){ try{ const p=JSON.parse(s); if(Array.isArray(p)) return p.map(x=>typeof x==="object"?(x.name||JSON.stringify(x)):x).filter(Boolean).join(" | "); }catch{} } return s; } if(typeof v==="object") return JSON.stringify(v); return String(v); }; return Object.entries(ck).filter(([k,v])=>!["id","client_id","client_name","created_date","updated_at","version","analyzed_by","last_analyzed","sources_count"].includes(k)).map(([k,v])=>[k,norm(v)]).filter(([k,v])=>v!=null&&v!=="").map(([k,v])=>`  • ${k}: ${v}`).join("\n")||"  (none saved)"; })()}
+${(()=>{ if(!ck) return " (none saved)"; const norm=(v)=>{ if(v==null||v==="") return null; if(Array.isArray(v)) return v.map(x=>typeof x==="object"?(x.name||JSON.stringify(x)):x).filter(Boolean).join(" | "); if(typeof v==="string"){ const s=v.trim(); if(s.startsWith("[")){ try{ const p=JSON.parse(s); if(Array.isArray(p)) return p.map(x=>typeof x==="object"?(x.name||JSON.stringify(x)):x).filter(Boolean).join(" | "); }catch{} } return s; } if(typeof v==="object") return JSON.stringify(v); return String(v); }; return Object.entries(ck).filter(([k,v])=>!["id","client_id","client_name","created_date","updated_at","version","analyzed_by","last_analyzed","sources_count"].includes(k)).map(([k,v])=>[k,norm(v)]).filter(([k,v])=>v!=null&&v!=="").map(([k,v])=>` • ${k}: ${v}`).join("\n")||" (none saved)"; })()}
 
 INTELLIGENCE:
-${(()=>{ if(!ci) return "  (none saved)"; const norm=(v)=>{ if(v==null||v==="") return null; if(Array.isArray(v)) return v.length?v.join(" | "):null; if(typeof v==="string"){ const s=v.trim(); if(!s) return null; if(s.startsWith("[")){ try{ const p=JSON.parse(s); if(Array.isArray(p)) return p.length?p.join(" | "):null; }catch{} } return s; } if(typeof v==="boolean") return v?"yes":"no"; return String(v); }; return Object.entries(ci).filter(([k,v])=>!["id","client_id","client_name","created_date","updated_at"].includes(k)).map(([k,v])=>[k,norm(v)]).filter(([k,v])=>v!=null&&v!=="").map(([k,v])=>`  • ${k}: ${v}`).join("\n")||"  (none saved)"; })()}
+${(()=>{ if(!ci) return " (none saved)"; const norm=(v)=>{ if(v==null||v==="") return null; if(Array.isArray(v)) return v.length?v.join(" | "):null; if(typeof v==="string"){ const s=v.trim(); if(!s) return null; if(s.startsWith("[")){ try{ const p=JSON.parse(s); if(Array.isArray(p)) return p.length?p.join(" | "):null; }catch{} } return s; } if(typeof v==="boolean") return v?"yes":"no"; return String(v); }; return Object.entries(ci).filter(([k,v])=>!["id","client_id","client_name","created_date","updated_at"].includes(k)).map(([k,v])=>[k,norm(v)]).filter(([k,v])=>v!=null&&v!=="").map(([k,v])=>` • ${k}: ${v}`).join("\n")||" (none saved)"; })()}
 
 MEMORY (key = value):
-${memList.length ? memList.map(m=>`  • [${m.type||"manual"}] ${m.key}: ${m.value}`).join("\n") : "  (none saved)"}
+${memList.length ? memList.map(m=>` • [${m.type||"manual"}] ${m.key}: ${m.value}`).join("\n") : " (none saved)"}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 ` + sysPrompt;
@@ -18331,7 +18336,7 @@ ${memList.length ? memList.map(m=>`  • [${m.type||"manual"}] ${m.key}: ${m.val
 The user is discussing "${activeTempClient.name}", a client that does NOT exist in SocialFlow yet. You are remembering this conversation for them temporarily (about 30 days, auto-deleted if it's never mentioned again).
 
 WHAT WE'VE LEARNED SO FAR:
-${tempEntries.length ? tempEntries.map(m=>`  • ${m.key}: ${m.value}`).join("\n") : "  (nothing saved yet — gather details as you talk)"}
+${tempEntries.length ? tempEntries.map(m=>` • ${m.key}: ${m.value}`).join("\n") : " (nothing saved yet — gather details as you talk)"}
 
 RULES:
 1. Talk about "${activeTempClient.name}" naturally using whatever has been learned above — don't ask "which client?".
@@ -18362,7 +18367,7 @@ RULES:
         addBotMsg(displayText);
       } else if(actions.length === 1 && actions[0].action === "create_calendar"){
         onAction("add_calendar");
-        addBotMsg(displayText||"Opening Calendar Plan! ✅","success");
+        addBotMsg(displayText||"Opening Calendar Plan! ","success");
       } else if(actions.length === 1){
         const confirmData = buildConfirmDataHome(actions[0]);
         const msgId = uid();
@@ -18397,7 +18402,7 @@ RULES:
         : /401|403|auth/i.test(reason)
         ? " — auth error. Check API key in ai-config.php."
         : "";
-      addBotMsg(`⚠️ AI error: ${reason}${hint}`,"error");
+      addBotMsg(` AI error: ${reason}${hint}`,"error");
     }
   };
 
@@ -18405,11 +18410,11 @@ RULES:
 
   // Quick action suggestions — one flat list, no duplicate tiles/pills elsewhere
   const QUICK_TILES = [
-    {label:"Create a task",      action:()=>sendMessage("Create a new task")},
-    {label:"Plan my calendar",   action:()=>onAction("add_calendar")},
-    {label:"Add a new client",   action:()=>sendMessage("Add a new client")},
-    {label:"Create an invoice",  action:()=>sendMessage("Create an invoice")},
-    {label:"What's overdue?",    action:()=>sendMessage("What tasks are overdue?")},
+    {label:"Create a task", action:()=>sendMessage("Create a new task")},
+    {label:"Plan my calendar", action:()=>onAction("add_calendar")},
+    {label:"Add a new client", action:()=>sendMessage("Add a new client")},
+    {label:"Create an invoice", action:()=>sendMessage("Create an invoice")},
+    {label:"What's overdue?", action:()=>sendMessage("What tasks are overdue?")},
   ].filter(t=>{
     if(t.label==="Create an invoice"&&!["admin","accountant"].includes(role)) return false;
     if(t.label==="Add a new client"&&!["admin","account_manager"].includes(role)) return false;
@@ -18424,7 +18429,7 @@ RULES:
       {longPasteCandidate && (
         <div role="alert" style={{margin:"0 0 8px",padding:"10px 14px",borderRadius:12,background:"var(--accentbg)",border:"1px solid var(--accent)44",fontSize:13,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
           <span style={{flex:1,minWidth:200}}>
-            📋 Long conversation detected ({longPasteCandidate.length.toLocaleString()} chars).
+             Long conversation detected ({longPasteCandidate.length.toLocaleString()} chars).
             {selectedClient
               ? <> Auto-learn it into <strong>{selectedClient.name}</strong>'s memory?</>
               : <> Pick a client and analyze?</>}
@@ -18436,7 +18441,7 @@ RULES:
             setInput("");
             setLongPasteCandidate("");
           }} style={{padding:"6px 14px",borderRadius:8,background:"var(--accent)",color:"#fff",border:"none",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-            ✨ Auto-learn
+             Auto-learn
           </button>
           <button onClick={()=>setLongPasteCandidate("")} style={{padding:"6px 12px",borderRadius:8,background:"transparent",color:"var(--text2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>
             Just send
@@ -18446,7 +18451,7 @@ RULES:
       {!longPasteCandidate && (input||"").length>=300 && (
         <div style={{margin:"0 0 6px",display:"flex",justifyContent:"flex-end"}}>
           <button onClick={()=>setLongPasteCandidate(input)} style={{padding:"5px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:"var(--accentbg)",color:"var(--accent)",border:"1px solid var(--accent)44",cursor:"pointer"}}>
-            📋 Learn from this ({input.length.toLocaleString()})
+             Learn from this ({input.length.toLocaleString()})
           </button>
         </div>
       )}
@@ -18531,13 +18536,13 @@ RULES:
         {/* Prospective client indicator (not yet a real client) */}
         {!selectedClient && activeTempClient && (
           <span title={`Remembering "${activeTempClient.name}" temporarily — not created yet`} style={{display:"flex",alignItems:"center",gap:4,padding:"4px 8px",borderRadius:8,fontSize:11,fontWeight:600,background:"var(--surface2)",color:"var(--text2)"}}>
-            🕓 {activeTempClient.name}
+             {activeTempClient.name}
           </span>
         )}
         {/* Brain inspector */}
         {selectedClient && (
           <button onClick={()=>setBrainOpen(true)} title="See everything Pro knows about this client" style={{display:"flex",alignItems:"center",padding:6,borderRadius:8,background:"transparent",border:"none",cursor:"pointer",fontSize:14,color:"var(--text2)"}}>
-            🧠
+            
           </button>
         )}
         {/* History toggle */}
@@ -18645,7 +18650,7 @@ RULES:
           <div role="dialog" aria-modal="true" onClick={()=>setBrainOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
             <div onClick={e=>e.stopPropagation()} style={{background:"var(--surface)",borderRadius:16,width:720,maxWidth:"95vw",maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 24px 80px rgba(0,0,0,0.4)"}}>
               <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:10}}>
-                <div style={{width:32,height:32,borderRadius:8,background:"var(--accentbg)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>🧠</div>
+                <div style={{width:32,height:32,borderRadius:8,background:"var(--accentbg)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}></div>
                 <div style={{flex:1}}>
                   <p style={{fontWeight:800,fontSize:15,fontFamily:"'Bricolage Grotesque',sans-serif"}}>Pro's Brain — {selectedClient.name}</p>
                   <p style={{fontSize:11,color:"var(--text3)"}}>Everything Pro can see. {mem.length} memory · {ckEntries.length} profile · {ciEntries.length} intelligence.</p>
@@ -18654,14 +18659,14 @@ RULES:
               </div>
               <div style={{flex:1,overflowY:"auto",padding:18,display:"flex",flexDirection:"column",gap:14}}>
                 <div>
-                  <p style={{fontSize:11,fontWeight:800,color:"var(--text2)",marginBottom:6,letterSpacing:0.5}}>📋 BASIC</p>
+                  <p style={{fontSize:11,fontWeight:800,color:"var(--text2)",marginBottom:6,letterSpacing:0.5}}> BASIC</p>
                   <div style={{padding:12,background:"var(--surface2)",borderRadius:8,fontSize:13}}>
                     <div>• Industry: <strong>{selectedClient.industry||<em style={{color:"var(--text3)"}}>not set</em>}</strong></div>
                     <div>• Platforms: <strong>{(selectedClient.platforms||[]).join(", ")||<em style={{color:"var(--text3)"}}>not set</em>}</strong></div>
                   </div>
                 </div>
                 <div>
-                  <p style={{fontSize:11,fontWeight:800,color:"var(--text2)",marginBottom:6,letterSpacing:0.5}}>🎓 KNOWLEDGE PROFILE ({ckEntries.length})</p>
+                  <p style={{fontSize:11,fontWeight:800,color:"var(--text2)",marginBottom:6,letterSpacing:0.5}}> KNOWLEDGE PROFILE ({ckEntries.length})</p>
                   {ckEntries.length===0 ? (
                     <div style={{padding:12,background:"var(--surface2)",borderRadius:8,fontSize:12,color:"var(--text3)",fontStyle:"italic"}}>Nothing saved. Run Brand Training from the client page.</div>
                   ) : (
@@ -18671,7 +18676,7 @@ RULES:
                   )}
                 </div>
                 <div>
-                  <p style={{fontSize:11,fontWeight:800,color:"var(--text2)",marginBottom:6,letterSpacing:0.5}}>🎯 INTELLIGENCE ({ciEntries.length})</p>
+                  <p style={{fontSize:11,fontWeight:800,color:"var(--text2)",marginBottom:6,letterSpacing:0.5}}> INTELLIGENCE ({ciEntries.length})</p>
                   {ciEntries.length===0 ? (
                     <div style={{padding:12,background:"var(--surface2)",borderRadius:8,fontSize:12,color:"var(--text3)",fontStyle:"italic"}}>Nothing saved.</div>
                   ) : (
@@ -18681,7 +18686,7 @@ RULES:
                   )}
                 </div>
                 <div>
-                  <p style={{fontSize:11,fontWeight:800,color:"var(--text2)",marginBottom:6,letterSpacing:0.5}}>💾 MEMORY ({mem.length})</p>
+                  <p style={{fontSize:11,fontWeight:800,color:"var(--text2)",marginBottom:6,letterSpacing:0.5}}> MEMORY ({mem.length})</p>
                   {mem.length===0 ? (
                     <div style={{padding:12,background:"var(--surface2)",borderRadius:8,fontSize:12,color:"var(--text3)",fontStyle:"italic"}}>Empty. Just chat with Pro about {selectedClient.name} — durable facts will auto-save here.</div>
                   ) : (
@@ -18729,10 +18734,10 @@ RULES:
 // ════════════════════════════════════════════════════════════════
 // ── Monthly Brief constants ────────────────────────────────────────────────
 const BRIEF_QUESTIONS = [
-  {key:"q1_products",     ar:"١. ما المنتجات التي ترغبون بالتركيز عليها هذا الشهر؟",     en:"Which products would you like to focus on this month?"},
-  {key:"q2_sectors",      ar:"٢. ما القطاعات أو الأسواق المستهدفة لهذا الشهر؟",            en:"What sectors or markets are you targeting this month?"},
-  {key:"q3_projects",     ar:"٣. هل توجد مشاريع أو شراكات ترغبون بإبرازها؟",              en:"Are there any projects or partnerships you would like to highlight?"},
-  {key:"q4_events",       ar:"٤. هل يوجد فعاليات خاصة خلال هذا الشهر؟",                    en:"Are there any special events taking place?"},
+  {key:"q1_products", ar:"١. ما المنتجات التي ترغبون بالتركيز عليها هذا الشهر؟", en:"Which products would you like to focus on this month?"},
+  {key:"q2_sectors", ar:"٢. ما القطاعات أو الأسواق المستهدفة لهذا الشهر؟", en:"What sectors or markets are you targeting this month?"},
+  {key:"q3_projects", ar:"٣. هل توجد مشاريع أو شراكات ترغبون بإبرازها؟", en:"Are there any projects or partnerships you would like to highlight?"},
+  {key:"q4_events", ar:"٤. هل يوجد فعاليات خاصة خلال هذا الشهر؟", en:"Are there any special events taking place?"},
   {key:"q5_appreciation", ar:"٥. هل ترغبون بنشر منشورات تقدير أو تكريم خلال هذا الشهر؟", en:"Would you like to publish any appreciation or recognition posts this month?"},
 ];
 
@@ -18745,7 +18750,7 @@ function MonthlyBriefTab({client, monthlyBriefs, onSubmit, onSelfCreate}) {
 
   const allBriefs = (monthlyBriefs||[]).filter(b=>b.client_id===client?.id)
     .sort((a,b)=>new Date(b.month_year+"-01")-new Date(a.month_year+"-01"));
-  const pending  = allBriefs.find(b=>b.status==="pending");
+  const pending = allBriefs.find(b=>b.status==="pending");
   const submitted = allBriefs.filter(b=>b.status==="submitted");
 
   // Form state for filling pending brief
@@ -18791,7 +18796,7 @@ function MonthlyBriefTab({client, monthlyBriefs, onSubmit, onSelfCreate}) {
       {/* Header */}
       <div style={{padding:"24px 0 18px",borderBottom:"1px solid var(--border)",marginBottom:24,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:26}}>📋</span>
+          <span style={{fontSize:26}}></span>
           <div>
             <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:isMobile?17:21}}>Monthly Content Briefs</h2>
             <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>ملخصات المحتوى الشهرية</p>
@@ -18808,7 +18813,7 @@ function MonthlyBriefTab({client, monthlyBriefs, onSubmit, onSelfCreate}) {
           <div style={{flex:1}}>
             <p style={{fontWeight:700,fontSize:13,marginBottom:6}}>Which month would you like to submit a brief for?</p>
             <input type="month" value={selfMonth} onChange={e=>setSelfMonth(e.target.value)} min={nextMonthKey} style={{padding:"8px 12px",borderRadius:"var(--rs)",border:"1px solid var(--border2)",background:"var(--bg)",color:"var(--text)",fontSize:13,fontFamily:"inherit"}}/>
-            {coveredMonths.includes(selfMonth)&&<p style={{fontSize:12,color:"#f59e0b",marginTop:6}}>⚠️ A brief for {monthLabel(selfMonth)} already exists.</p>}
+            {coveredMonths.includes(selfMonth)&&<p style={{fontSize:12,color:"#f59e0b",marginTop:6}}> A brief for {monthLabel(selfMonth)} already exists.</p>}
           </div>
           <div style={{display:"flex",gap:8}}>
             <button onClick={()=>setShowSelfCreate(false)} style={{padding:"9px 16px",borderRadius:"var(--rs)",border:"1px solid var(--border2)",background:"none",color:"var(--text2)",fontSize:13,fontWeight:600,cursor:"pointer"}}>Cancel</button>
@@ -18823,7 +18828,7 @@ function MonthlyBriefTab({client, monthlyBriefs, onSubmit, onSelfCreate}) {
       {pending && justSubmitted !== pending.id && (
         <div style={{marginBottom:28}}>
           <div style={{padding:"10px 14px",background:"#f59e0b22",border:"1px solid #f59e0b44",borderRadius:"var(--rs)",display:"flex",alignItems:"center",gap:8,marginBottom:18}}>
-            <span style={{fontSize:16}}>⏳</span>
+            <span style={{fontSize:16}}></span>
             <div>
               <p style={{fontSize:13,color:"#f59e0b",fontWeight:700}}>{monthLabel(pending.month_year)} Brief — Action Required</p>
               <p style={{fontSize:12,color:"#f59e0b99",marginTop:2}}>يرجى تعبئة هذا الاستبيان لتخطيط محتواكم</p>
@@ -18848,7 +18853,7 @@ function MonthlyBriefTab({client, monthlyBriefs, onSubmit, onSelfCreate}) {
               disabled={!allFilled||saving}
               style={{padding:"14px 28px",borderRadius:"var(--r)",background:allFilled?"var(--accent)":"var(--border2)",color:allFilled?"#fff":"var(--text3)",border:"none",fontSize:15,fontWeight:700,cursor:allFilled?"pointer":"not-allowed",transition:"all 0.2s"}}
             >
-              {saving?"Submitting…":"✅ Submit Brief · إرسال الملخص"}
+              {saving?"Submitting…":" Submit Brief · إرسال الملخص"}
             </button>
           </div>
         </div>
@@ -18857,7 +18862,7 @@ function MonthlyBriefTab({client, monthlyBriefs, onSubmit, onSelfCreate}) {
       {/* Just-submitted success banner */}
       {justSubmitted&&(
         <div style={{padding:"14px 18px",background:"#10b98122",border:"1px solid #10b98155",borderRadius:"var(--r)",display:"flex",alignItems:"center",gap:10,marginBottom:20}}>
-          <span style={{fontSize:22}}>🎉</span>
+          <span style={{fontSize:22}}></span>
           <div>
             <p style={{fontWeight:700,fontSize:14,color:"#10b981"}}>Brief submitted — شكراً!</p>
             <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Our team will use your answers to plan next month's content. We'll be in touch soon.</p>
@@ -18881,7 +18886,7 @@ function MonthlyBriefTab({client, monthlyBriefs, onSubmit, onSelfCreate}) {
                   >
                     <div style={{display:"flex",alignItems:"center",gap:12,flex:1,minWidth:0}}>
                       <div style={{width:40,height:40,borderRadius:10,background:"#10b98122",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                        <span style={{fontSize:18}}>✅</span>
+                        <span style={{fontSize:18}}></span>
                       </div>
                       <div style={{minWidth:0}}>
                         <p style={{fontWeight:700,fontSize:15,color:"var(--text)"}}>{monthLabel(b.month_year)}</p>
@@ -18924,7 +18929,7 @@ function MonthlyBriefTab({client, monthlyBriefs, onSubmit, onSelfCreate}) {
       {/* Empty state */}
       {allBriefs.length===0&&!showSelfCreate&&(
         <div style={{padding:"60px 24px",textAlign:"center",color:"var(--text3)"}}>
-          <p style={{fontSize:40,marginBottom:12}}>📋</p>
+          <p style={{fontSize:40,marginBottom:12}}></p>
           <p style={{fontSize:15,fontWeight:700,marginBottom:6}}>No briefs yet</p>
           <p style={{fontSize:13,lineHeight:1.7}}>Your account manager will send you a monthly brief to fill in, or you can create one yourself using the button above.</p>
         </div>
@@ -18957,7 +18962,7 @@ function CreateBriefModal({open, onClose, clients, onCreate}) {
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
       <div style={{background:"var(--surface)",borderRadius:"var(--r)",padding:28,maxWidth:480,width:"100%",border:"1px solid var(--border2)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-          <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:18}}>📋 Send Monthly Brief</h3>
+          <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:18}}> Send Monthly Brief</h3>
           <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text3)"}}><Ico d={Icons.x} size={18}/></button>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -18973,12 +18978,12 @@ function CreateBriefModal({open, onClose, clients, onCreate}) {
             <input type="month" value={monthYear} onChange={e=>setMonthYear(e.target.value)} style={inputSt}/>
           </div>
           {cl&&<div style={{padding:"10px 14px",background:"var(--surface2)",borderRadius:"var(--rs)",fontSize:13,color:"var(--text2)"}}>
-            📧 Will send brief email to <strong>{cl.email||"(no email saved)"}</strong> for {monthLabel}
+             Will send brief email to <strong>{cl.email||"(no email saved)"}</strong> for {monthLabel}
           </div>}
           <div style={{display:"flex",gap:10,marginTop:6}}>
             <button onClick={onClose} style={{flex:1,padding:"10px 0",borderRadius:"var(--rs)",border:"1px solid var(--border2)",background:"none",color:"var(--text2)",fontSize:13,fontWeight:600,cursor:"pointer"}}>Cancel</button>
             <button onClick={handleCreate} disabled={!clientId||saving} style={{flex:2,padding:"10px 0",borderRadius:"var(--rs)",border:"none",background:"var(--accent)",color:"#fff",fontSize:13,fontWeight:700,cursor:clientId?"pointer":"not-allowed"}}>
-              {saving?"Sending…":"📤 Send Brief + Email"}
+              {saving?"Sending…":" Send Brief + Email"}
             </button>
           </div>
         </div>
@@ -19071,86 +19076,20 @@ function NotificationsPage({notifications, currentUser, onMarkRead, onNavigate, 
   );
 }
 
-function NotifBell({notifications,currentUser,onNavigate,onMarkRead}) {
-  const [open,setOpen] = useState(false);
-  const ref = useRef(null);
+function NotifBell({notifications,currentUser,onNavigate}) {
   const myNotifs = notifications.filter(n=>n.recipient_email===currentUser?.email);
   const unread = myNotifs.filter(n=>!n.is_read).length;
-  const recent = myNotifs.slice(0,6);
-
-  useEffect(()=>{
-    const fn = e=>{ if(ref.current&&!ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener("mousedown",fn);
-    return ()=>document.removeEventListener("mousedown",fn);
-  },[]);
-
-  const relTime = ts => {
-    if(!ts) return "";
-    const diff = Date.now()-new Date(ts).getTime();
-    const m = Math.floor(diff/60000);
-    if(m<1) return "just now";
-    if(m<60) return `${m}m ago`;
-    const h=Math.floor(m/60);
-    if(h<24) return `${h}h ago`;
-    return `${Math.floor(h/24)}d ago`;
-  };
 
   return (
-    <div ref={ref} style={{position:"relative"}}>
-      <button onClick={()=>setOpen(o=>!o)} aria-label={`Notifications${unread>0?`, ${unread} unread`:""}`}
-        style={{position:"relative",padding:8,borderRadius:8,color:open?"var(--accent)":"var(--text3)",minHeight:44,minWidth:44,display:"flex",alignItems:"center",justifyContent:"center",background:open?"var(--accentbg)":"none",transition:"all 0.15s"}}>
-        <Ico d={Icons.bell} size={17}/>
-        {unread>0&&(
-          <span style={{position:"absolute",top:6,right:6,width:16,height:16,borderRadius:"50%",background:"var(--accent)",color:"#fff",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>
-            {unread>9?"9+":unread}
-          </span>
-        )}
-      </button>
-      {open&&(
-        <div className="fade-in" style={{
-          position:"absolute",top:"calc(100% + 8px)",right:0,width:320,
-          background:"var(--surface)",border:"1px solid var(--border2)",
-          borderRadius:"var(--r)",boxShadow:"0 16px 48px rgba(0,0,0,0.25)",
-          zIndex:500,overflow:"hidden",
-        }}>
-          {/* Header */}
-          <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <p style={{fontWeight:700,fontSize:14}}>Notifications</p>
-            {unread>0&&<span style={{fontSize:11,background:"var(--accent)",color:"#fff",padding:"1px 8px",borderRadius:99,fontWeight:700}}>{unread} new</span>}
-          </div>
-          {/* Notif list */}
-          <div style={{maxHeight:340,overflowY:"auto"}}>
-            {recent.length===0&&(
-              <div style={{padding:"28px",textAlign:"center",color:"var(--text3)"}}>
-                <Ico d={Icons.bell} size={28} stroke="var(--border2)"/>
-                <p style={{marginTop:8,fontSize:13}}>All caught up!</p>
-              </div>
-            )}
-            {recent.map((n,i)=>(
-              <div key={n.id||i} onClick={()=>{if(!n.is_read&&onMarkRead)onMarkRead(n.id);}} style={{
-                padding:"12px 16px",borderBottom:i<recent.length-1?"1px solid var(--border)":"none",
-                display:"flex",gap:10,opacity:n.is_read?0.55:1,
-                background:n.is_read?"none":"var(--accentbg)",cursor:"pointer",
-              }}>
-                <div style={{flexShrink:0,marginTop:2}}>
-                  <div style={{width:8,height:8,borderRadius:"50%",background:n.is_read?"var(--border2)":"var(--accent)",marginTop:4}}/>
-                </div>
-                <div style={{flex:1,minWidth:0}}>
-                  <p style={{fontSize:13,fontWeight:n.is_read?400:600,lineHeight:1.4,overflow:"hidden",textOverflow:"ellipsis",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{n.message}</p>
-                  {n.created_at&&<p style={{fontSize:11,color:"var(--text3)",marginTop:3}}>{relTime(n.created_at)}</p>}
-                </div>
-              </div>
-            ))}
-          </div>
-          {/* Footer */}
-          <div style={{padding:"10px 16px",borderTop:"1px solid var(--border)"}}>
-            <button onClick={()=>{setOpen(false);onNavigate("notifications");}} style={{width:"100%",fontSize:13,fontWeight:600,color:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",gap:4,padding:"6px 0"}}>
-              See all notifications <Ico d={Icons.chevR} size={13} stroke="var(--accent)"/>
-            </button>
-          </div>
-        </div>
+    <button onClick={()=>onNavigate("notifications")} aria-label={`Notifications${unread>0?`, ${unread} unread`:""}`}
+      style={{position:"relative",padding:8,borderRadius:8,color:"var(--text3)",minHeight:44,minWidth:44,display:"flex",alignItems:"center",justifyContent:"center",background:"none",transition:"all 0.15s"}}>
+      <Ico d={Icons.bell} size={17}/>
+      {unread>0&&(
+        <span style={{position:"absolute",top:6,right:6,width:16,height:16,borderRadius:"50%",background:"var(--accent)",color:"#fff",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>
+          {unread>9?"9+":unread}
+        </span>
       )}
-    </div>
+    </button>
   );
 }
 
@@ -19266,10 +19205,10 @@ function App() {
   const {isMobile, isTablet} = useResponsive();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const mobileNavItems = [
-    {key:"home",     label:"Pro",      ico:Icons.sparkle},
+    {key:"home", label:"Pro", ico:Icons.sparkle},
     {key:"dashboard",label:"Dashboard",ico:Icons.home},
-    {key:"tasks",    label:"Tasks",    ico:Icons.tasks},
-    {key:"clients",  label:"Clients",  ico:Icons.clients},
+    {key:"tasks", label:"Tasks", ico:Icons.tasks},
+    {key:"clients", label:"Clients", ico:Icons.clients},
     {key:"calendar", label:"Calendar", ico:Icons.calendar},
   ];
   const [selectedPost,setSelectedPost] = useState(null);
@@ -19350,19 +19289,19 @@ function App() {
       if(!silent) setLoading(true);
       // ── Wave 1: critical data needed to show any page (all parallel) ──
       const wave1 = await Promise.allSettled([
-        qe("TeamMember"),                           // 0
-        qe("Post",{},"-created_at"),                // 1
-        qe("Project"),                              // 2
-        qe("Client"),                               // 3
-        qe("AppSettings"),                          // 4
-        qe("BrandingAssets"),                       // 5
-        qe("Notification",{},"-created_at"),        // 6
+        qe("TeamMember"), // 0
+        qe("Post",{},"-created_at"), // 1
+        qe("Project"), // 2
+        qe("Client"), // 3
+        qe("AppSettings"), // 4
+        qe("BrandingAssets"), // 5
+        qe("Notification",{},"-created_at"), // 6
       ]);
       const g = i => wave1[i].status==="fulfilled" ? wave1[i].value : {entities:[]};
       const [teamR,postR,projR,clientR,settR,brandR,notifR] = wave1.map((_,i)=>g(i));
 
       // Apply settings first (affects colours/branding)
-      if(settR.entities.length)  { const s=settR.entities[0]; setAppSettings(s); if(s.primary_color) setAccentColor(s.primary_color); }
+      if(settR.entities.length) { const s=settR.entities[0]; setAppSettings(s); if(s.primary_color) setAccentColor(s.primary_color); }
       if(brandR.entities.length) { const b=brandR.entities[0]; setBrandingAssets(b); if(b.primary_color) setAccentColor(b.primary_color); }
 
       // A fetch that *succeeded* with zero rows is real data (e.g. everything
@@ -19371,95 +19310,95 @@ function App() {
       // "fulfilled but empty" and "rejected" aren't conflated.
       const pick = (item,fb) => item.status==="fulfilled" ? (item.value?.entities||[]) : fb;
       setData(d=>({...d,
-        team:          pick(wave1[0], d.team),
-        posts:         pick(wave1[1], d.posts),
-        projects:      pick(wave1[2], d.projects),
-        clients:       pick(wave1[3], d.clients),
+        team: pick(wave1[0], d.team),
+        posts: pick(wave1[1], d.posts),
+        projects: pick(wave1[2], d.projects),
+        clients: pick(wave1[3], d.clients),
         notifications: pick(wave1[6], d.notifications),
       }));
       if(!silent) setLoading(false); // show app now — wave 2 loads silently in background
 
       // ── Wave 2: secondary data (background, all parallel) ──
       const wave2 = await Promise.allSettled([
-        qe("Comment",{},"created_at"),              // 0
-        qe("Asset"),                                // 1
-        qe("TimeLog"),                              // 2
-        qe("Template"),                             // 3
-        qe("Quote",{},"-created_at"),               // 4
-        qe("Lead",{},"-created_at"),                // 5
-        qe("LeadActivity",{},"created_at"),         // 6
-        qe("Invoice",{},"-created_at"),             // 7
-        qe("Payment",{},"payment_date"),            // 8
-        qe("Integration",{},"-created_at"),         // 9
-        qe("IntegrationLog",{},"-created_at"),      // 10
-        qe("Subscription",{},"-created_at"),        // 11
+        qe("Comment",{},"created_at"), // 0
+        qe("Asset"), // 1
+        qe("TimeLog"), // 2
+        qe("Template"), // 3
+        qe("Quote",{},"-created_at"), // 4
+        qe("Lead",{},"-created_at"), // 5
+        qe("LeadActivity",{},"created_at"), // 6
+        qe("Invoice",{},"-created_at"), // 7
+        qe("Payment",{},"payment_date"), // 8
+        qe("Integration",{},"-created_at"), // 9
+        qe("IntegrationLog",{},"-created_at"), // 10
+        qe("Subscription",{},"-created_at"), // 11
         qe("SubscriptionPayment",{},"-payment_date"),// 12
-        qe("EmailSettings"),                        // 13
-        qe("ClientKnowledge",{},"-last_analyzed"),  // 14
-        qe("ClientDocument",{},"-created_at"),      // 15
-        qe("PerformanceLog",{},"-completed_at"),    // 16
-        qe("AIInsight",{},"-generated_at"),         // 17
-        qe("TimeEntry",{},"-created_at"),           // 18
-        qe("ScheduleOverride",{},"-created_at"),    // 19
-        qe("ClientContract"),                       // 20
-        qe("UserInvitation",{},"-created_at"),      // 21
-        qe("AccessRequest",{},"-created_at"),       // 22
-        qe("ClientUser",{},"-created_at"),          // 23
-        qe("ClientIntelligence",{},"-updated_at"),  // 24
-        qe("ContentPillar",{},"-created_at"),       // 25
-        qe("EmailLog",{},"-sent_at",200),           // 26
-        qe("ActivityLog",{},"-performed_at",500),   // 27
-        qe("NotificationPrefs"),                    // 28
-        qe("ClientTask",{},"-created_at"),          // 29
-        qe("ClientMemory",{},"-updated_at"),        // 30
-        qe("GeneratedLead",{},"-created_at"),       // 31
-        qe("LeadAgentConfig"),                      // 32
-        qe("AgentConfig",{},"-created_at"),         // 33
-        qe("AgentLog",{},"-timestamp",200),         // 34
-        qe("AgentRun",{},"-started_at",100),        // 35
-        qe("SystemSession",{},"-login_at",200),     // 36
-        qe("MonthlyBrief",{},"-created_at",200),   // 37
+        qe("EmailSettings"), // 13
+        qe("ClientKnowledge",{},"-last_analyzed"), // 14
+        qe("ClientDocument",{},"-created_at"), // 15
+        qe("PerformanceLog",{},"-completed_at"), // 16
+        qe("AIInsight",{},"-generated_at"), // 17
+        qe("TimeEntry",{},"-created_at"), // 18
+        qe("ScheduleOverride",{},"-created_at"), // 19
+        qe("ClientContract"), // 20
+        qe("UserInvitation",{},"-created_at"), // 21
+        qe("AccessRequest",{},"-created_at"), // 22
+        qe("ClientUser",{},"-created_at"), // 23
+        qe("ClientIntelligence",{},"-updated_at"), // 24
+        qe("ContentPillar",{},"-created_at"), // 25
+        qe("EmailLog",{},"-sent_at",200), // 26
+        qe("ActivityLog",{},"-performed_at",500), // 27
+        qe("NotificationPrefs"), // 28
+        qe("ClientTask",{},"-created_at"), // 29
+        qe("ClientMemory",{},"-updated_at"), // 30
+        qe("GeneratedLead",{},"-created_at"), // 31
+        qe("LeadAgentConfig"), // 32
+        qe("AgentConfig",{},"-created_at"), // 33
+        qe("AgentLog",{},"-timestamp",200), // 34
+        qe("AgentRun",{},"-started_at",100), // 35
+        qe("SystemSession",{},"-login_at",200), // 36
+        qe("MonthlyBrief",{},"-created_at",200), // 37
       ]);
       if(wave2[13].status==="fulfilled" && wave2[13].value?.entities?.length) setEmailSettings(wave2[13].value.entities[0]);
 
       setData(d=>({...d,
-        comments:              pick(wave2[0],  d.comments),
-        assets:                pick(wave2[1],  d.assets),
-        timelogs:              pick(wave2[2],  d.timelogs),
-        templates:             pick(wave2[3],  d.templates),
-        quotes:                pick(wave2[4],  d.quotes),
-        leads:                 pick(wave2[5],  d.leads),
-        leadActivities:        pick(wave2[6],  d.leadActivities),
-        invoices:              pick(wave2[7],  d.invoices),
-        payments:              pick(wave2[8],  d.payments),
-        integrations:          pick(wave2[9],  d.integrations),
-        integrationLogs:       pick(wave2[10], d.integrationLogs),
-        subscriptions:         pick(wave2[11], d.subscriptions),
-        subscriptionPayments:  pick(wave2[12], d.subscriptionPayments),
-        clientKnowledge:       pick(wave2[14], d.clientKnowledge),
-        clientDocuments:       pick(wave2[15], d.clientDocuments),
-        perfLogs:              pick(wave2[16], d.perfLogs),
-        aiInsights:            pick(wave2[17], d.aiInsights),
-        timeEntries:           pick(wave2[18], d.timeEntries),
-        scheduleOverrides:     pick(wave2[19], d.scheduleOverrides),
-        clientContracts:       pick(wave2[20], d.clientContracts||[]),
-        invitations:           pick(wave2[21], d.invitations||[]),
-        accessRequests:        pick(wave2[22], d.accessRequests||[]),
-        clientUsers:           pick(wave2[23], d.clientUsers||[]),
-        clientIntelligence:    pick(wave2[24], d.clientIntelligence||[]),
-        contentPillars:        pick(wave2[25], d.contentPillars||[]),
-        emailLogs:             pick(wave2[26], d.emailLogs||[]),
-        activityLogs:          pick(wave2[27], d.activityLogs||[]),
-        notifPrefs:            pick(wave2[28], d.notifPrefs||[]),
-        tasks:                 pick(wave2[29], d.tasks||[]),
-        clientMemory:          pick(wave2[30], d.clientMemory||[]),
-        generatedLeads:        pick(wave2[31], d.generatedLeads||[]),
-        leadAgentConfig:       pick(wave2[32], d.leadAgentConfig||[]),
-        agentConfigs:          pick(wave2[33], d.agentConfigs||[]),
-        agentLogs:             pick(wave2[34], d.agentLogs||[]),
-        agentRuns:             pick(wave2[35], d.agentRuns||[]),
-        systemSessions:        pick(wave2[36], d.systemSessions||[]),
-        monthlyBriefs:         pick(wave2[37], d.monthlyBriefs||[]),
+        comments: pick(wave2[0], d.comments),
+        assets: pick(wave2[1], d.assets),
+        timelogs: pick(wave2[2], d.timelogs),
+        templates: pick(wave2[3], d.templates),
+        quotes: pick(wave2[4], d.quotes),
+        leads: pick(wave2[5], d.leads),
+        leadActivities: pick(wave2[6], d.leadActivities),
+        invoices: pick(wave2[7], d.invoices),
+        payments: pick(wave2[8], d.payments),
+        integrations: pick(wave2[9], d.integrations),
+        integrationLogs: pick(wave2[10], d.integrationLogs),
+        subscriptions: pick(wave2[11], d.subscriptions),
+        subscriptionPayments: pick(wave2[12], d.subscriptionPayments),
+        clientKnowledge: pick(wave2[14], d.clientKnowledge),
+        clientDocuments: pick(wave2[15], d.clientDocuments),
+        perfLogs: pick(wave2[16], d.perfLogs),
+        aiInsights: pick(wave2[17], d.aiInsights),
+        timeEntries: pick(wave2[18], d.timeEntries),
+        scheduleOverrides: pick(wave2[19], d.scheduleOverrides),
+        clientContracts: pick(wave2[20], d.clientContracts||[]),
+        invitations: pick(wave2[21], d.invitations||[]),
+        accessRequests: pick(wave2[22], d.accessRequests||[]),
+        clientUsers: pick(wave2[23], d.clientUsers||[]),
+        clientIntelligence: pick(wave2[24], d.clientIntelligence||[]),
+        contentPillars: pick(wave2[25], d.contentPillars||[]),
+        emailLogs: pick(wave2[26], d.emailLogs||[]),
+        activityLogs: pick(wave2[27], d.activityLogs||[]),
+        notifPrefs: pick(wave2[28], d.notifPrefs||[]),
+        tasks: pick(wave2[29], d.tasks||[]),
+        clientMemory: pick(wave2[30], d.clientMemory||[]),
+        generatedLeads: pick(wave2[31], d.generatedLeads||[]),
+        leadAgentConfig: pick(wave2[32], d.leadAgentConfig||[]),
+        agentConfigs: pick(wave2[33], d.agentConfigs||[]),
+        agentLogs: pick(wave2[34], d.agentLogs||[]),
+        agentRuns: pick(wave2[35], d.agentRuns||[]),
+        systemSessions: pick(wave2[36], d.systemSessions||[]),
+        monthlyBriefs: pick(wave2[37], d.monthlyBriefs||[]),
       }));
     }
     loadAllDataRef.current = load;
@@ -19506,20 +19445,20 @@ function App() {
       const real = res.entities?.[0];
       if(real?._saveError) {
         console.error(`[Save] ${entity} failed (${real._status}):`, real._detail);
-        setToast(`⚠️ Save failed (${entity} ${real._status}). Check console for details.`);
+        setToast(` Save failed (${entity} ${real._status}). Check console for details.`);
         return localRecord;
       }
       if(real?.id) {
         setData(d => ({...d, [stateKey]: d[stateKey].map(r => r.id===tempId ? {...r,...real} : r)}));
         return real;
       }
-    } catch(e){ setToast(`⚠️ Network error saving ${entity}: ${e.message}`); }
+    } catch(e){ setToast(` Network error saving ${entity}: ${e.message}`); }
     return localRecord;
   };
 
   // Handlers
   const addPost = async (postData) => {
-    if(!postData.project_id) { setToast("⚠️ Pick a project before creating a post/task — every post must belong to a project."); return false; }
+    if(!postData.project_id) { setToast(" Pick a project before creating a post/task — every post must belong to a project."); return false; }
     const local = {...postData, id:uid(), created_date:new Date().toISOString()};
     // Notify assignee
     if(postData.assigned_to && postData.assigned_to !== currentUser?.email) {
@@ -19581,20 +19520,20 @@ function App() {
   };
 
   const addProject = async (formData, pillars, intelligence) => {
-    if(!formData.client_id) { setToast("⚠️ Pick a client before creating a project — every project must belong to one."); return false; }
+    if(!formData.client_id) { setToast(" Pick a client before creating a project — every project must belong to one."); return false; }
     // 1. Create project
     const projPayload = {
-      title:        formData.name,
-      client_id:    formData.client_id,
-      client_name:  formData.client_name,
-      description:  formData.description,
+      title: formData.name,
+      client_id: formData.client_id,
+      client_name: formData.client_name,
+      description: formData.description,
       project_type: formData.project_type,
-      status:       "active",
-      platforms:    formData.platforms||[],
-      start_date:   formData.start_date,
-      end_date:     formData.deadline,  // DB column is end_date
+      status: "active",
+      platforms: formData.platforms||[],
+      start_date: formData.start_date,
+      end_date: formData.deadline, // DB column is end_date
       posting_start:formData.posting_start||null,
-      posting_end:  formData.posting_end||null,
+      posting_end: formData.posting_end||null,
     };
     const localProj = {...projPayload, id:uid(), created_at:new Date().toISOString()};
     setData(d=>({...d, projects:[localProj,...d.projects]}));
@@ -19602,12 +19541,12 @@ function App() {
     try {
       const res = await ce("Project",[projPayload]);
       const real = res.entities?.[0];
-      if(real?._saveError) { setToast(`⚠️ Project save failed (${real._status}). Changes may not persist after refresh.`); }
+      if(real?._saveError) { setToast(` Project save failed (${real._status}). Changes may not persist after refresh.`); }
       else if(real?.id) {
         projectId = real.id;
         setData(d=>({...d,projects:d.projects.map(p=>p.id===localProj.id?{...p,...real}:p)}));
       }
-    } catch(e){ setToast(`⚠️ Network error saving project: ${e.message}`); }
+    } catch(e){ setToast(` Network error saving project: ${e.message}`); }
 
     // 2. Generate posts from content pillars
     const allPosts = [];
@@ -19616,16 +19555,16 @@ function App() {
       const count = parseInt(pillar.post_count)||1;
       for(let i=1;i<=count;i++) {
         allPosts.push({
-          project_id:   projectId,
-          client_id:    formData.client_id,
-          client_name:  formData.client_name,
-          title:        `${pillar.pillar_name} — Post ${i}`,
-          description:  pillar.description||"",
-          stage:        "content_creation",
-          platform:     (formData.platforms||[])[0]||pillar.platform||"instagram",
-          post_type:    pillar.post_type||"static",
-          assigned_to:  pillar.assigned_to||"",
-          priority:     "medium",
+          project_id: projectId,
+          client_id: formData.client_id,
+          client_name: formData.client_name,
+          title: `${pillar.pillar_name} — Post ${i}`,
+          description: pillar.description||"",
+          stage: "content_creation",
+          platform: (formData.platforms||[])[0]||pillar.platform||"instagram",
+          post_type: pillar.post_type||"static",
+          assigned_to: pillar.assigned_to||"",
+          priority: "medium",
         });
       }
     });
@@ -19666,7 +19605,7 @@ function App() {
       }
     });
     logActivity("Project Created","clients",`New project: ${formData.name} for ${formData.client_name} (${scheduledPosts.length} posts)`,"success","",currentUser?.email||"admin");
-    setToast(`✅ "${formData.name}" created with ${scheduledPosts.length} posts${formData.posting_start?" — smart scheduled":""}!`);
+    setToast(` "${formData.name}" created with ${scheduledPosts.length} posts${formData.posting_start?" — smart scheduled":""}!`);
     return true;
   };
 
@@ -19681,7 +19620,7 @@ function App() {
     setData(d=>({...d, clients:d.clients.map(c=>c.id===id?{...c,...updates}:c)}));
     await ue("Client", id, updates).catch(()=>{});
     logActivity("Client Updated","clients",`${cl?.name||id} — ${Object.keys(updates).join(", ")}`,"success","",currentUser?.email||"admin");
-    setToast("✅ Client updated");
+    setToast(" Client updated");
   };
 
   const deleteClient = async (id) => {
@@ -19821,7 +19760,7 @@ function App() {
       const portalUrl = window.location.origin;
       const html = `
         <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
-          <h2 style="color:#d90b2c">📋 Monthly Content Brief — ${monthLabel}</h2>
+          <h2 style="color:#d90b2c"> Monthly Content Brief — ${monthLabel}</h2>
           <p>Dear ${cl.name},</p>
           <p>To help us plan the best content for you in <strong>${monthLabel}</strong>, please take a few minutes to fill in your monthly brief questionnaire.</p>
           <div style="background:#f8fafc;border-radius:8px;padding:16px;margin:20px 0">
@@ -19831,10 +19770,10 @@ function App() {
           <a href="${portalUrl}" style="display:inline-block;padding:12px 24px;background:#d90b2c;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;margin:12px 0">Open Client Portal →</a>
           <p style="color:#9ca3af;font-size:12px;margin-top:24px">You will receive daily reminders until the brief is submitted.</p>
         </div>`;
-      sendEmail(cl.email, `📋 ${monthLabel} Content Brief — Action Required`, html).catch(()=>{});
+      sendEmail(cl.email, ` ${monthLabel} Content Brief — Action Required`, html).catch(()=>{});
     }
     logActivity("Monthly Brief Created","clients",cl?.name||briefData.client_id,"success","",currentUser?.email||"admin");
-    setToast("✅ Brief created & email sent to client");
+    setToast(" Brief created & email sent to client");
   };
 
   // ── Client Memory handlers ──────────────────────────────────────
@@ -20008,7 +19947,7 @@ function App() {
 
   const getOrSeedAgent = (agentId) => {
     const saved = (data.agentConfigs||[]).find(c=>c.agent_id===agentId);
-    const def   = DEFAULT_AGENTS.find(d=>d.agent_id===agentId);
+    const def = DEFAULT_AGENTS.find(d=>d.agent_id===agentId);
     return saved ? {...def,...saved} : def;
   };
 
@@ -20018,10 +19957,10 @@ function App() {
       setData(d=>({...d, agentConfigs:d.agentConfigs.map(c=>c.agent_id===agentId?{...c,...updates}:c)}));
       await ue("AgentConfig", existing.id, updates).catch(()=>{});
     } else {
-      const def  = DEFAULT_AGENTS.find(d=>d.agent_id===agentId)||{};
+      const def = DEFAULT_AGENTS.find(d=>d.agent_id===agentId)||{};
       const local= {...def, ...updates, agent_id:agentId, id:uid(), created_at:new Date().toISOString()};
       setData(d=>({...d, agentConfigs:[...(d.agentConfigs||[]), local]}));
-      const res  = await ce("AgentConfig",[{...def,...updates,agent_id:agentId}]).catch(()=>null);
+      const res = await ce("AgentConfig",[{...def,...updates,agent_id:agentId}]).catch(()=>null);
       if(res?.entities?.[0]) setData(d=>({...d, agentConfigs:d.agentConfigs.map(c=>c.id===local.id?{...c,...res.entities[0]}:c)}));
     }
   };
@@ -20029,23 +19968,23 @@ function App() {
   const startAgent = async (agent) => {
     await upsertAgentConfig(agent.agent_id, {status:"active", last_run:new Date().toISOString()});
     logAgent(agent.agent_id, "start", `${agent.name} started`, "success");
-    setToast(`▶ ${agent.name} started`);
+    setToast(` ${agent.name} started`);
   };
 
   const pauseAgent = async (agent) => {
     await upsertAgentConfig(agent.agent_id, {status:"paused"});
     logAgent(agent.agent_id, "pause", `${agent.name} paused`, "warning");
-    setToast(`⏸ ${agent.name} paused`);
+    setToast(` ${agent.name} paused`);
   };
 
   const stopAgent = async (agent) => {
     await upsertAgentConfig(agent.agent_id, {status:"stopped"});
     logAgent(agent.agent_id, "stop", `${agent.name} stopped`, "warning");
-    setToast(`⏹ ${agent.name} stopped`);
+    setToast(` ${agent.name} stopped`);
   };
 
   const runAgentNow = async (agent) => {
-    setToast(`⚡ Running ${agent.name}…`);
+    setToast(` Running ${agent.name}…`);
     logAgent(agent.agent_id, "manual_run", `Manual run triggered`, "info");
     try {
       if(agent.type==="lead_generation") {
@@ -20068,7 +20007,7 @@ function App() {
           ).catch(()=>{});
           notified++;
         }
-        setToast(`🔔 Follow-up: notified ${notified} assignee${notified===1?"":"s"} of ${overduePosts.length} overdue post${overduePosts.length===1?"":"s"}`);
+        setToast(` Follow-up: notified ${notified} assignee${notified===1?"":"s"} of ${overduePosts.length} overdue post${overduePosts.length===1?"":"s"}`);
         logAgent(agent.agent_id,"follow_up_scan",`Scanned ${overduePosts.length} overdue posts, notified ${notified} assignees`,"success");
         logAgentRun(agent.agent_id, overduePosts.length, 100);
       } else if(agent.type==="scheduling") {
@@ -20086,7 +20025,7 @@ function App() {
           ue("Post", p.id, {scheduled_date, scheduled_time}).catch(()=>{});
           rescheduled++;
         }
-        setToast(`📅 Scheduling agent: auto-scheduled ${rescheduled} post${rescheduled===1?"":"s"}`);
+        setToast(` Scheduling agent: auto-scheduled ${rescheduled} post${rescheduled===1?"":"s"}`);
         logAgent(agent.agent_id,"scheduling_scan",`Auto-scheduled ${rescheduled} of ${unscheduled.length} unscheduled posts`,"success");
         logAgentRun(agent.agent_id, rescheduled, 95);
       } else if(agent.type==="content_generation") {
@@ -20116,31 +20055,31 @@ Write ONE caption for a ${p.platform||"social"} ${p.post_type||"post"} titled "$
             }
           } catch(e){}
         }
-        setToast(`✍️ Content agent: drafted ${drafted} caption${drafted===1?"":"s"}`);
+        setToast(` Content agent: drafted ${drafted} caption${drafted===1?"":"s"}`);
         logAgent(agent.agent_id,"content_scan",`Drafted ${drafted} of ${planningPosts.length} captions needing content`,"success");
         logAgentRun(agent.agent_id, drafted, 90);
       }
       await upsertAgentConfig(agent.agent_id, {last_run:new Date().toISOString()});
     } catch(err) {
       logAgent(agent.agent_id, "error", err.message, "error", err.stack);
-      setToast("⚠️ Agent run failed: "+err.message);
+      setToast(" Agent run failed: "+err.message);
     }
   };
 
   const saveAgentSettings = async (agentId, settings) => {
     await upsertAgentConfig(agentId, {settings});
     logAgent(agentId, "settings_updated", "Agent settings updated", "info");
-    setToast("✅ Agent settings saved");
+    setToast(" Agent settings saved");
   };
 
   const scoreGeneratedLead = (lead) => {
     let s = 0;
-    if(lead.email)    s+=30;
-    if(lead.phone)    s+=20;
+    if(lead.email) s+=30;
+    if(lead.phone) s+=20;
     if(lead.linkedin_url) s+=15;
-    if(lead.company)  s+=15;
+    if(lead.company) s+=15;
     if(lead.job_title) s+=10;
-    if(lead.country)  s+=10;
+    if(lead.country) s+=10;
     return Math.min(s, 100);
   };
 
@@ -20148,7 +20087,7 @@ Write ONE caption for a ${p.platform||"social"} ${p.post_type||"post"} titled "$
     setData(d=>({...d, generatedLeads:d.generatedLeads.map(l=>l.id===genLead.id?{...l,status:"approved"}:l)}));
     await ue("GeneratedLead", genLead.id, {status:"approved", reviewed_at:new Date().toISOString()}).catch(()=>{});
     logActivity("Generated Lead Approved","leads",genLead.full_name||genLead.company||genLead.id,"success","",currentUser?.email||"admin");
-    setToast("✅ Lead approved and moved to CRM");
+    setToast(" Lead approved and moved to CRM");
   };
 
   const rejectGeneratedLead = async (id) => {
@@ -20186,15 +20125,15 @@ Write ONE caption for a ${p.platform||"social"} ${p.post_type||"post"} titled "$
       const res = await ce("LeadAgentConfig",[config]).catch(()=>null);
       if(res?.entities?.[0]) setData(d=>({...d, leadAgentConfig:[{...local,...res.entities[0]}]}));
     }
-    setToast("✅ Lead agent settings saved");
+    setToast(" Lead agent settings saved");
   };
 
   const runLeadGeneration = async (config, count=10) => {
-    setToast("🤖 Lead agent running…");
+    setToast(" Lead agent running…");
     try {
       // Build AI prompt to generate leads
       const existingEmails = new Set((data.generatedLeads||[]).map(l=>l.email).filter(Boolean));
-      const existingKeys   = new Set((data.generatedLeads||[]).map(l=>`${(l.company||"").toLowerCase()}|${(l.full_name||"").toLowerCase()}`));
+      const existingKeys = new Set((data.generatedLeads||[]).map(l=>`${(l.company||"").toLowerCase()}|${(l.full_name||"").toLowerCase()}`));
 
       const jobTitles = (config.job_titles||[]).join(", ") || "Marketing Manager, CEO, Founder";
       const countries = (config.countries||[]).join(", ") || "United Arab Emirates, Egypt, Saudi Arabia";
@@ -20223,7 +20162,7 @@ Return ONLY the JSON array, no markdown.`;
       const d = await res.json();
       const raw = (d.content?.map(b=>b.text||"").join("")||"").replace(/```json|```/g,"").trim();
       let leads = [];
-      try { leads = JSON.parse(raw); } catch(e){ setToast("⚠️ Lead generation parse error"); return; }
+      try { leads = JSON.parse(raw); } catch(e){ setToast(" Lead generation parse error"); return; }
 
       // Deduplicate + score
       const newLeads = leads
@@ -20255,9 +20194,9 @@ Return ONLY the JSON array, no markdown.`;
         setData(d=>({...d, generatedLeads:d.generatedLeads.map((l,i)=>saved.entities[i]?.id?{...l,...saved.entities[i]}:l)}));
       }
 
-      setToast(`✅ ${newLeads.length} leads generated!`);
+      setToast(` ${newLeads.length} leads generated!`);
     } catch(err) {
-      setToast("⚠️ Lead generation failed: "+err.message);
+      setToast(" Lead generation failed: "+err.message);
     }
   };
 
@@ -20297,7 +20236,7 @@ Return ONLY the JSON array, no markdown.`;
     autoLearn(localClient.id, localClient.name, "conversion_source", `Converted from lead "${lead.name||lead.company}" (source: ${lead.source||"manual"}) on ${new Date().toLocaleDateString()}`);
     if(lead.notes) autoLearn(localClient.id, localClient.name, "lead_notes", lead.notes);
     logActivity("Lead Converted to Client","leads",`${localClient.name} converted from lead`,"success","",currentUser?.email||"admin");
-    setToast(`✅ ${localClient.name} added as a client!`);
+    setToast(` ${localClient.name} added as a client!`);
     setPage("clients");
   };
 
@@ -20399,7 +20338,7 @@ Return ONLY the JSON array, no markdown.`;
         prefs
       ).catch(()=>{});
     });
-    if(newStatus==="paid") setToast(`✅ Invoice ${invoice.invoice_number} fully paid!`);
+    if(newStatus==="paid") setToast(` Invoice ${invoice.invoice_number} fully paid!`);
     else setToast(`Payment of ${fmtMoney(payData.amount,invoice.currency||"USD")} recorded`);
   };
 
@@ -20452,8 +20391,8 @@ Return ONLY the JSON array, no markdown.`;
       error_count:success?0:(integ.error_count||0)+1,
     };
     setData(d=>({...d, integrations:d.integrations.map(i=>i.id===integ.id?updated:i)}));
-    logActivity("Integration Retry",  "integrations", integ.name, success?"success":"error", success?"":"Retry failed — check credentials", currentUser?.email||"admin");
-    setToast(success?`✅ "${integ.name}" reconnected`:`❌ "${integ.name}" still failing`);
+    logActivity("Integration Retry", "integrations", integ.name, success?"success":"error", success?"":"Retry failed — check credentials", currentUser?.email||"admin");
+    setToast(success?` "${integ.name}" reconnected`:` "${integ.name}" still failing`);
   };
 
   // ── SUBSCRIPTION HANDLERS ──
@@ -20489,7 +20428,7 @@ Return ONLY the JSON array, no markdown.`;
     setData(d=>({...d, subscriptions:d.subscriptions.map(s=>s.id===sub.id?updatedSub:s)}));
     ue("Subscription", sub.id, {total_collected:newTotal, cycle_count:updatedSub.cycle_count, last_payment_date:payData.payment_date, next_payment_date:newNext, status:"active"}).catch(()=>{});
     logActivity("Subscription Payment Recorded","finance",`${sub.currency} ${payData.amount} for ${sub.client_name}`,"success","",currentUser?.email||"admin");
-    setToast(`✅ Payment of ${sub.currency} ${payData.amount?.toLocaleString()} recorded for ${sub.client_name}`);
+    setToast(` Payment of ${sub.currency} ${payData.amount?.toLocaleString()} recorded for ${sub.client_name}`);
   };
 
   const updateSubStatus = async (subId, status) => {
@@ -20558,7 +20497,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       try {
         const existingKnowledge = data.clientKnowledge.find(k=>k.client_id===docData.client_id);
         const oldCtx = existingKnowledge?.context_file||"";
-        const srcLabel = isChatGPT ? "💬 ChatGPT Import" : `📄 ${docData.name}`;
+        const srcLabel = isChatGPT ? " ChatGPT Import" : ` ${docData.name}`;
         const newSummary = `## ${srcLabel}\n${parsed.summary||""}\n\n**Tone:** ${parsed.tone||""}\n**Keywords:** ${(parsed.keywords||[]).slice(0,6).join(", ")}\n**Priorities:** ${(parsed.priorities||[]).slice(0,3).join(", ")}${parsed.dos?`\n**Do's:** ${parsed.dos.slice(0,2).join(", ")}`:""}${parsed.donts?`\n**Don'ts:** ${parsed.donts.slice(0,2).join(", ")}`:""}\n**Audience:** ${parsed.target_audience||""}`;
         const mergedCtx = oldCtx ? oldCtx + "\n\n---\n\n" + newSummary : newSummary;
         const ctxPayload = {...kPayload, context_file: mergedCtx.slice(0, 6000)};
@@ -20569,7 +20508,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   };
 
   const generateCalendarPlan = async (planForm, tasks) => {
-    if(!planForm.client_id) { setToast("⚠️ Pick a client before generating a calendar plan."); return; }
+    if(!planForm.client_id) { setToast(" Pick a client before generating a calendar plan."); return; }
     // Find or create project for this campaign
     const existingProj = data.projects.find(p=>p.client_id===planForm.client_id&&p.title===planForm.campaign);
     let projectId = existingProj?.id;
@@ -20601,14 +20540,14 @@ Return ONLY valid JSON (no markdown, no explanation):
         return {...d,posts};
       });
     }).catch(()=>{});
-    setToast(`✅ ${tasks.length} posts created for ${planForm.campaign}`);
+    setToast(` ${tasks.length} posts created for ${planForm.campaign}`);
   };
 
   const handleStageChange = async (post,newStage) => {
     // Block transition if no assignee for stages that require one
     if(["content_creation","design","internal_review","client_approval"].includes(newStage) && !post.assigned_to) {
       const stageLabel = STAGE_MAP[newStage]?.label || newStage;
-      setToast(`⚠️ Assign a team member before moving to ${stageLabel}. Open the post and set 'Assign To'.`);
+      setToast(` Assign a team member before moving to ${stageLabel}. Open the post and set 'Assign To'.`);
       return;
     }
     // Auto-assign to the right team member for this stage
@@ -20621,7 +20560,7 @@ Return ONLY valid JSON (no markdown, no explanation):
 
     const stageLabel = STAGE_MAP[newStage]?.label || newStage;
     const assignmentText = assignee ? ` → Assigned to ${assigneeName}` : "";
-    const comment = {id:uid(),post_id:post.id,author_name:"System",type:"stage_change",content:`📍 Moved to ${stageLabel}${assignmentText}`,created_date:new Date().toISOString()};
+    const comment = {id:uid(),post_id:post.id,author_name:"System",type:"stage_change",content:` Moved to ${stageLabel}${assignmentText}`,created_date:new Date().toISOString()};
     setData(d=>({...d,comments:[...d.comments,comment]}));
     setSelectedPost(prev=>prev?.id===post.id?updatedPost:prev);
     logActivity("Post Stage Changed","tasks",`"${post.title}" → ${stageLabel}${assignmentText}`,"success","",currentUser?.email||"admin");
@@ -20632,18 +20571,18 @@ Return ONLY valid JSON (no markdown, no explanation):
     if(_clientId2) {
       const _clientName2 = _proj2?.client_name||post.client_name||"";
       if(newStage==="published") {
-        appendToContextFile(_clientId2, `✅ Published: "${post.title}" (${post.platform||""}) — ${post.post_type||"post"}`);
+        appendToContextFile(_clientId2, ` Published: "${post.title}" (${post.platform||""}) — ${post.post_type||"post"}`);
         // Auto-learn: track published platforms and post types
         if(post.platform) autoLearn(_clientId2, _clientName2, `preferred_platform_${post.platform}`, `Published ${(data.posts||[]).filter(p=>p.client_id===_clientId2&&p.platform===post.platform&&p.stage==="published").length+1} posts on ${post.platform}`);
         if(post.scheduled_time) autoLearn(_clientId2, _clientName2, "best_posting_time", post.scheduled_time);
         if(post.tov_used) autoLearn(_clientId2, _clientName2, "approved_tov", post.tov_used);
       }
       if(newStage==="rejected" && post.rejection_reason) {
-        appendToContextFile(_clientId2, `❌ Rejected: "${post.title}" — Reason: ${post.rejection_reason}`);
+        appendToContextFile(_clientId2, ` Rejected: "${post.title}" — Reason: ${post.rejection_reason}`);
         // AI-learn: store rejection reason as a pattern
         aiLearn(_clientId2, _clientName2, `rejection_pattern_${Date.now()}`, post.rejection_reason);
       }
-      if(newStage==="scheduled") appendToContextFile(_clientId2, `📅 Approved & Scheduled: "${post.title}" (${post.platform||""}) on ${post.scheduled_date||""}`);
+      if(newStage==="scheduled") appendToContextFile(_clientId2, ` Approved & Scheduled: "${post.title}" (${post.platform||""}) on ${post.scheduled_date||""}`);
     }
 
     // Email notifications for stage changes
@@ -20713,7 +20652,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       scheduled_time: updatedPost.scheduled_time||null,
     }).catch(()=>{});
     logActivity("Task Edited","tasks",`"${updatedPost.title}" edited by ${currentUser?.name}`,"success","",currentUser?.email);
-    setToast("✅ Task updated");
+    setToast(" Task updated");
   };
 
   const handleDeletePost = (postId) => {
@@ -20722,7 +20661,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     setSelectedPost(null);
     de("Post", postId).catch(()=>{});
     logActivity("Task Deleted","tasks",`"${post?.title||postId}" deleted by ${currentUser?.name}`,"success","",currentUser?.email);
-    setToast("🗑️ Task deleted");
+    setToast(" Task deleted");
   };
 
   const handleAddComment = async (postId,content,user) => {
@@ -20791,7 +20730,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       const post = data.posts.find(p=>p.id===postId);
       await ce("TimeEntry",[{post_id:postId, post_title:post?.title||"", user_email:currentUser?.email, user_name:currentUser?.name, started_at:startedAt, date:dateStr, status:'active', total_seconds:0, project_id:post?.project_id||""}]);
     } catch(e){}
-    setToast("⏱ Timer started");
+    setToast(" Timer started");
   };
 
   const pauseTimer = async (postId) => {
@@ -20805,7 +20744,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       }
       return t;
     })}));
-    setToast("⏸ Timer paused");
+    setToast(" Timer paused");
   };
 
   const resumeTimer = async (postId) => {
@@ -20826,7 +20765,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         return t;
       })
     }));
-    setToast("▶ Timer resumed");
+    setToast(" Timer resumed");
   };
 
   const overrideSchedule = async (postId, userEmail, date, newStartMins) => {
@@ -20844,7 +20783,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     try {
       await ce("ScheduleOverride",[{post_id:postId, post_title:post?.title||"", user_email:userEmail, date, start_mins:newStartMins, overridden_by:currentUser?.email}]);
     } catch(e){}
-    setToast("📅 Schedule updated");
+    setToast(" Schedule updated");
   };
 
   const handleClientAction = async (post,action,reason) => {
@@ -20865,10 +20804,10 @@ Return ONLY valid JSON (no markdown, no explanation):
     const clientName = proj?.client_name||post.client_name||"";
     if(clientId) {
       if(action==="rejected") {
-        appendToContextFile(clientId, `❌ Client rejected: "${post.title}" — Reason: ${reason||"no reason given"}`);
+        appendToContextFile(clientId, ` Client rejected: "${post.title}" — Reason: ${reason||"no reason given"}`);
         aiLearn(clientId, clientName, `rejection_pattern_${Date.now()}`, reason||`Rejected "${post.title}"`);
       } else {
-        appendToContextFile(clientId, `✅ Client approved & scheduled: "${post.title}" (${post.platform||""})`);
+        appendToContextFile(clientId, ` Client approved & scheduled: "${post.title}" (${post.platform||""})`);
         autoLearn(clientId, clientName, "client_approval_speed", `Approved within client portal on ${new Date().toLocaleDateString()}`);
         if(post.tov_used) autoLearn(clientId, clientName, "approved_tov", post.tov_used);
       }
@@ -20879,7 +20818,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   // Client portal
   if(currentUser?.isClient) {
     const clientRecord = data.clients.find(c=>c.email===currentUser.email)||currentUser;
-    return (<><GStyle wallpaper={wallpaper} accentColor={accentColor}/><ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",`📋 Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief}/></>);
+    return (<><GStyle wallpaper={wallpaper} accentColor={accentColor}/><ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief}/></>);
   }
 
   // Accept invitation flow (URL has ?invite=TOKEN)
@@ -21042,7 +20981,7 @@ Return ONLY valid JSON (no markdown, no explanation):
                 </button>
 
                 {/* Notifications dropdown */}
-                <NotifBell notifications={data.notifications} currentUser={currentUser} onNavigate={setPage} onMarkRead={markNotifRead}/>
+                <NotifBell notifications={data.notifications} currentUser={currentUser} onNavigate={setPage}/>
               </div>
             </div>
           );
@@ -21051,7 +20990,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         {/* Page content */}
         <main id="main-content" className="main-content" ref={mainScrollRef}
           onTouchStart={onMainTouchStart} onTouchMove={onMainTouchMove} onTouchEnd={onMainTouchEnd}
-          style={{flex:1,padding:page==="home"?0:isMobile?"16px":"28px 32px",overflowY:page==="home"?"hidden":"auto",paddingBottom:page==="home"?0:isMobile?100:28,display:"flex",flexDirection:"column",minHeight:0}}>
+          style={{flex:1,padding:page==="home"?0:isMobile?"16px":"28px 32px",overflowY:page==="home"?"hidden":"auto",paddingBottom:page==="home"?0:isMobile?84:28,display:"flex",flexDirection:"column",minHeight:0}}>
           {isMobile&&page!=="home"&&(pullDistance>0||refreshing)&&(
             <div style={{display:"flex",justifyContent:"center",alignItems:"center",height:refreshing?40:pullDistance,overflow:"hidden",transition:refreshing||pullDistance===0?"height 0.18s":"none",flexShrink:0,marginBottom:refreshing?8:0}}>
               <Spinner size={20}/>
@@ -21064,21 +21003,21 @@ Return ONLY valid JSON (no markdown, no explanation):
               onDeleteMemory={deleteClientMemory}
               onAction={(type,arg)=>{
                 if(type==="add_calendar"){setCalendarPreselectedClient(null);setShowFABCalendar(true);}
-                else if(type==="nav")   setPage(arg);
+                else if(type==="nav") setPage(arg);
                 else if(type==="add_task") setShowFABTask(true);
                 else if(type==="add_client") setShowFABClient(true);
               }}
               onDirectAction={async(type,payload)=>{
-                if(type==="add_post")    return await addPost(payload);
+                if(type==="add_post") return await addPost(payload);
                 else if(type==="add_project") return await addProject(payload);
-                else if(type==="add_client")  return await addClient(payload);
+                else if(type==="add_client") return await addClient(payload);
                 else if(type==="update_client") await updateClient(payload.clientId, payload.updates);
-                else if(type==="add_lead")    await addLead(payload);
+                else if(type==="add_lead") await addLead(payload);
                 else if(type==="add_invoice") await createInvoice(payload);
                 else if(type==="update_stage") {
                   const {postId,newStage,updates} = payload;
                   if(newStage) await handleStageChange(postId,newStage);
-                  if(updates)  await ue("Post",postId,updates).then(()=>setData(d=>({...d,posts:d.posts.map(p=>p.id===postId?{...p,...updates}:p)})));
+                  if(updates) await ue("Post",postId,updates).then(()=>setData(d=>({...d,posts:d.posts.map(p=>p.id===postId?{...p,...updates}:p)})));
                 }
                 else if(type==="add_comment") {
                   const {id:cId,...rest}=payload;
@@ -21093,7 +21032,7 @@ Return ONLY valid JSON (no markdown, no explanation):
                     if(agAct==="run_now") await runAgentNow(agentObj);
                     else if(agAct==="start") await startAgent(agentObj);
                     else if(agAct==="pause") await pauseAgent(agentObj);
-                    else if(agAct==="stop")  await stopAgent(agentObj);
+                    else if(agAct==="stop") await stopAgent(agentObj);
                   }
                 }
                 else if(type==="delete_post") {
@@ -21390,15 +21329,15 @@ Return ONLY valid JSON (no markdown, no explanation):
         )}
       </main>
 
-      {/* Mobile bottom navigation bar */}
-      {isMobile&&(
+      {/* Mobile bottom navigation bar — portaled to <body>, see Chatbot for why */}
+      {isMobile&&ReactDOM.createPortal(
         <nav className="bottom-nav">
           {mobileNavItems.map(({key,label,ico})=>{
             const active=page===key;
             return (
               <button key={key} onClick={()=>{setPage(key);setSelectedClientId(null);}} style={{
-                display:"flex",flexDirection:"column",alignItems:"center",gap:3,
-                padding:"6px 0",flex:1,color:active?"var(--accent)":"var(--text3)",
+                display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,
+                padding:"8px 0",flex:1,color:active?"var(--accent)":"var(--text3)",
                 fontSize:10,fontWeight:active?700:500,minHeight:44,
               }}>
                 <Ico d={ico} size={20} stroke={active?"var(--accent)":"var(--text3)"}/>
@@ -21406,7 +21345,8 @@ Return ONLY valid JSON (no markdown, no explanation):
               </button>
             );
           })}
-        </nav>
+        </nav>,
+        document.body
       )}
       </div>{/* end flex content area */}
     </div>
@@ -21447,7 +21387,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         })()}
         onCaptionChosen={(post, captionText)=>{
           const cid = _proj?.client_id||post.client_id;
-          if(cid) appendToContextFile(cid, `✍️ Caption chosen for "${post.title}" (${post.platform||""}): "${captionText.slice(0,120)}${captionText.length>120?"…":""}"`);
+          if(cid) appendToContextFile(cid, ` Caption chosen for "${post.title}" (${post.platform||""}): "${captionText.slice(0,120)}${captionText.length>120?"…":""}"`);
         }}
         onMemoryLearn={upsertClientMemory}
       />;
@@ -21512,16 +21452,16 @@ Return ONLY valid JSON (no markdown, no explanation):
       selectedClientId={selectedClientId}
       onUpsertMemory={upsertClientMemory}
       onAction={(type, payload) => {
-        if(type==="add_client")   { setShowFABClient(true); }
+        if(type==="add_client") { setShowFABClient(true); }
         if(type==="add_calendar") { setCalendarPreselectedClient(null); setShowFABCalendar(true); }
-        if(type==="add_task")     { setShowFABTask(true); }
-        if(type==="nav")          { setPage(payload); setSelectedClientId(null); }
+        if(type==="add_task") { setShowFABTask(true); }
+        if(type==="nav") { setPage(payload); setSelectedClientId(null); }
       }}
       onDirectAction={async (actionType, payload) => {
-        if(actionType==="add_post")    { return await addPost(payload); }
-        if(actionType==="add_client")  { await addClient(payload); }
+        if(actionType==="add_post") { return await addPost(payload); }
+        if(actionType==="add_client") { await addClient(payload); }
         if(actionType==="update_client") { await updateClient(payload.clientId, payload.updates); }
-        if(actionType==="add_lead")    { addLead && addLead(payload); }
+        if(actionType==="add_lead") { addLead && addLead(payload); }
         if(actionType==="add_invoice") { await createInvoice(payload); }
         if(actionType==="add_project") {
           const pillars = [];
@@ -21566,7 +21506,7 @@ Return ONLY valid JSON (no markdown, no explanation):
           }));
           de("Client", clientId).catch(()=>{});
           for(const cp of childProjs){ de("Project", cp.id).catch(()=>{}); }
-          for(const cp of childPosts){ de("Post",  cp.id).catch(()=>{}); }
+          for(const cp of childPosts){ de("Post", cp.id).catch(()=>{}); }
         }
         if(actionType==="control_agent") {
           const {agent_id, action:agAct, count, agentDef} = payload;
@@ -21575,7 +21515,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             if(agAct==="run_now") await runAgentNow(agentObj);
             else if(agAct==="start") await startAgent(agentObj);
             else if(agAct==="pause") await pauseAgent(agentObj);
-            else if(agAct==="stop")  await stopAgent(agentObj);
+            else if(agAct==="stop") await stopAgent(agentObj);
           }
         }
       }}
@@ -21603,7 +21543,7 @@ class ErrorBoundary extends React.Component {
   render(){
     if(!this.state.hasError) return this.props.children;
     return React.createElement("div",{style:{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16,background:"#f8fafc",padding:24}},
-      React.createElement("div",{style:{width:56,height:56,borderRadius:16,background:"#fee2e2",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28}},"⚠️"),
+      React.createElement("div",{style:{width:56,height:56,borderRadius:16,background:"#fee2e2",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28}},""),
       React.createElement("h2",{style:{fontWeight:800,fontSize:20,color:"#1a1a2e",fontFamily:"sans-serif"}},"Something went wrong"),
       React.createElement("p",{style:{fontSize:14,color:"#6b7280",maxWidth:360,textAlign:"center",lineHeight:1.6}},
         "The app encountered an error. Click below to reset and return to the home screen."
