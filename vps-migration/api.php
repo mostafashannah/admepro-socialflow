@@ -123,6 +123,22 @@ function wantsRepresentation() {
     return stripos($prefer, 'return=representation') !== false;
 }
 
+// Normalize a value for binding: JSON-encode arrays, and convert ISO-8601
+// datetime strings (e.g. "2026-06-20T13:55:00.000Z", as sent by JS Date#toISOString)
+// to MySQL's "Y-m-d H:i:s" format — MySQL TIMESTAMP/DATETIME columns reject the
+// 'T'/'Z' ISO format outright (SQLSTATE 22007).
+function normalizeDbValue($v) {
+    if (is_array($v)) return json_encode($v);
+    if (is_string($v) && preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/', $v)) {
+        try {
+            $dt = new DateTime($v);
+            $dt->setTimezone(new DateTimeZone('UTC'));
+            return $dt->format('Y-m-d H:i:s');
+        } catch (Exception $e) { return $v; }
+    }
+    return $v;
+}
+
 // Encode JSON-typed values, decode booleans stored as TINYINT, etc.
 function castRow($row) {
     foreach ($row as $k => $v) {
@@ -165,7 +181,7 @@ try {
             $stmt = $pdo->prepare($sql);
             $bind = [];
             foreach ($record as $k => $v) {
-                $bind[':' . $k] = is_array($v) ? json_encode($v) : $v;
+                $bind[':' . $k] = normalizeDbValue($v);
             }
             $stmt->execute($bind);
             $created[] = $record['id'];
@@ -206,7 +222,7 @@ try {
         $bind = [':id' => $id];
         foreach ($body as $k => $v) {
             $sets[] = ident($k) . ' = :s_' . $k;
-            $bind[':s_' . $k] = is_array($v) ? json_encode($v) : $v;
+            $bind[':s_' . $k] = normalizeDbValue($v);
         }
         $sql = "UPDATE " . ident($table) . " SET " . implode(',', $sets) . " WHERE id = :id";
         $stmt = $pdo->prepare($sql);
