@@ -501,7 +501,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.91";
+const APP_VERSION = "beta 1.92";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1431,12 +1431,12 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       .bottom-nav{
         display:flex;position:fixed;bottom:0;left:0;right:0;
         background:var(--surface);border-top:1px solid var(--border);
-        z-index:200;padding:6px 0 max(10px,env(safe-area-inset-bottom));
+        z-index:200;padding:26px 0 max(10px,env(safe-area-inset-bottom));
         justify-content:space-around;align-items:center;
       }
       .main-content{
         padding:14px!important;
-        padding-bottom:80px!important;
+        padding-bottom:100px!important;
         overflow-x:hidden!important;
       }
       .card-mobile{border-radius:var(--rs)!important;padding:14px!important}
@@ -21049,7 +21049,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         {/* Page content */}
         <main id="main-content" className="main-content" ref={mainScrollRef}
           onTouchStart={onMainTouchStart} onTouchMove={onMainTouchMove} onTouchEnd={onMainTouchEnd}
-          style={{flex:1,padding:page==="home"?0:isMobile?"16px":"28px 32px",overflowY:page==="home"?"hidden":"auto",paddingBottom:page==="home"?0:isMobile?80:28,display:"flex",flexDirection:"column",minHeight:0}}>
+          style={{flex:1,padding:page==="home"?0:isMobile?"16px":"28px 32px",overflowY:page==="home"?"hidden":"auto",paddingBottom:page==="home"?0:isMobile?100:28,display:"flex",flexDirection:"column",minHeight:0}}>
           {isMobile&&page!=="home"&&(pullDistance>0||refreshing)&&(
             <div style={{display:"flex",justifyContent:"center",alignItems:"center",height:refreshing?40:pullDistance,overflow:"hidden",transition:refreshing||pullDistance===0?"height 0.18s":"none",flexShrink:0,marginBottom:refreshing?8:0}}>
               <Spinner size={20}/>
