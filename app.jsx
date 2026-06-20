@@ -420,7 +420,7 @@ const WA_ENDPOINT      = window.location.origin + "/whatsapp.php";
 const PUBLISH_ENDPOINT = window.location.origin + "/social-publish.php";
 const PUSH_ENDPOINT    = window.location.origin + "/push-send.php";
 // Public VAPID key — safe to ship client-side (it's the public half of the keypair)
-const VAPID_PUBLIC_KEY = "BP4u689xtgg7Q_E3YcjEwe_V_Rsujj5kGHse4j3mADjIzHwdrrq5GSMxO6yIWhOam6ArtHTQCMTqSPKIsFkVNas";
+const VAPID_PUBLIC_KEY = "BGFP5W8qioz7-199m_66qK9dm1dXRK2RxXF8HC3nNCcQqP6IoxUC17kOFAzwwBoZ9MpWURXprtMx9SEF2yCPepc";
 const AI_HEADERS = {"Content-Type":"application/json"};
 
 // ── Feature flags ──────────────────────────────────────────────
@@ -501,7 +501,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.90";
+const APP_VERSION = "beta 1.91";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>

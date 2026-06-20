@@ -41,7 +41,7 @@ payload=sbSanitize(tbl,payload);const r=await fetch(`${SB_URL}/${tbl}`,{method:"
 async function ue(entityName,id,updates){if(!id)return null;try{const tbl=sbTable(entityName);let payload={...updates};delete payload.id;delete payload.created_at;delete payload.created_date;payload=sbSanitize(tbl,payload);const r=await fetch(`${SB_URL}/${tbl}?id=eq.${id}`,{method:"PATCH",headers:{...SB_HEADERS,"Prefer":"return=representation"},body:JSON.stringify(payload)});if(!r.ok)return null;const d=await r.json();return Array.isArray(d)?d[0]:d;}catch(e){return null;}}// Delete a record by ID
 async function de(entityName,id){if(!id)return false;try{const tbl=sbTable(entityName);const r=await fetch(`${SB_URL}/${tbl}?id=eq.${id}`,{method:"DELETE",headers:SB_HEADERS});return r.ok;}catch(e){return false;}}// ── AI endpoint — always use proxy on server ──
 const AI_ENDPOINT=window.location.origin+"/ai-proxy.php";const MAIL_ENDPOINT=window.location.origin+"/mail.php";const WA_ENDPOINT=window.location.origin+"/whatsapp.php";const PUBLISH_ENDPOINT=window.location.origin+"/social-publish.php";const PUSH_ENDPOINT=window.location.origin+"/push-send.php";// Public VAPID key — safe to ship client-side (it's the public half of the keypair)
-const VAPID_PUBLIC_KEY="BP4u689xtgg7Q_E3YcjEwe_V_Rsujj5kGHse4j3mADjIzHwdrrq5GSMxO6yIWhOam6ArtHTQCMTqSPKIsFkVNas";const AI_HEADERS={"Content-Type":"application/json"};// ── Feature flags ──────────────────────────────────────────────
+const VAPID_PUBLIC_KEY="BGFP5W8qioz7-199m_66qK9dm1dXRK2RxXF8HC3nNCcQqP6IoxUC17kOFAzwwBoZ9MpWURXprtMx9SEF2yCPepc";const AI_HEADERS={"Content-Type":"application/json"};// ── Feature flags ──────────────────────────────────────────────
 // Untested/in-progress features stay off by default until toggled on
 // from Settings → Feature Flags (writes to app_settings.feature_flags).
 // Kept as a module-level object (not React state) so standalone
@@ -55,7 +55,7 @@ function speedTokens(speed,base){if(speed==="low")return Math.max(300,Math.round
 function logActivity(action,category,details="",status="success",errorMsg="",user="system"){const entry={action,category,details,status,error_message:errorMsg,performed_by:user,performed_at:new Date().toISOString()};ce("ActivityLog",[entry]).then(({entities})=>{const saved=entities===null||entities===void 0?void 0:entities[0];// Push the freshly-saved row (with real id) into the live UI immediately,
 // otherwise System Log only reflects what was loaded at page load.
 if(saved&&!saved._saveError)window.dispatchEvent(new CustomEvent("sf:activitylog",{detail:saved}));}).catch(()=>{});}// ── Email HTML templates ─────────────────────────────────────────
-const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 1.90";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 1.91";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
 <tr><td align="center">
