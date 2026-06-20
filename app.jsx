@@ -501,7 +501,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.02";
+const APP_VERSION = "beta 2.03";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19212,6 +19212,27 @@ function App() {
 
   const {isMobile, isTablet} = useResponsive();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [vpDebug, setVpDebug] = useState(null);
+  useEffect(()=>{
+    if(!isMobile) return;
+    const update = () => {
+      const vv = window.visualViewport;
+      setVpDebug({
+        innerH: window.innerHeight,
+        clientH: document.documentElement.clientHeight,
+        bodyH: Math.round(document.body.getBoundingClientRect().height),
+        vvH: vv ? Math.round(vv.height) : "n/a",
+        vvOffTop: vv ? Math.round(vv.offsetTop) : "n/a",
+        standalone: window.navigator.standalone === true,
+        displayModeStandalone: window.matchMedia("(display-mode: standalone)").matches,
+        dpr: window.devicePixelRatio,
+      });
+    };
+    update();
+    window.addEventListener("resize", update);
+    window.visualViewport?.addEventListener("resize", update);
+    return () => { window.removeEventListener("resize", update); window.visualViewport?.removeEventListener("resize", update); };
+  },[isMobile]);
   const mobileNavItems = [
     {key:"home", label:"Pro", ico:Icons.sparkle},
     {key:"dashboard",label:"Dashboard",ico:Icons.home},
@@ -21357,6 +21378,16 @@ Return ONLY valid JSON (no markdown, no explanation):
           />
         )}
       </main>
+
+      {/* TEMP DIAGNOSTIC — remove once the bottom-nav viewport bug is found */}
+      {isMobile&&vpDebug&&ReactDOM.createPortal(
+        <div style={{position:"fixed",top:0,left:0,right:0,zIndex:99999,background:"#000",color:"#0f0",fontSize:11,fontFamily:"monospace",padding:"6px 8px",lineHeight:1.5,whiteSpace:"pre-wrap"}}>
+          {`innerH:${vpDebug.innerH} clientH:${vpDebug.clientH} bodyH:${vpDebug.bodyH}
+vvH:${vpDebug.vvH} vvOffTop:${vpDebug.vvOffTop} dpr:${vpDebug.dpr}
+nav.standalone:${String(vpDebug.standalone)} display-mode:standalone:${String(vpDebug.displayModeStandalone)}`}
+        </div>,
+        document.body
+      )}
 
       {/* Mobile bottom navigation bar — portaled to <body>, see Chatbot for why.
           Hidden while the sidebar drawer is open so it doesn't render on top of
