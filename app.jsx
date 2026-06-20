@@ -449,17 +449,23 @@ async function sendEmail(to, subject, html, fromName="SocialFlow") {
 
 // ── Activity logger ───────────────────────────────────────────────
 function logActivity(action, category, details="", status="success", errorMsg="", user="system") {
-  ce("ActivityLog",[{
+  const entry = {
     action, category, details, status,
     error_message: errorMsg,
     performed_by: user,
     performed_at: new Date().toISOString(),
-  }]).catch(()=>{});
+  };
+  ce("ActivityLog",[entry]).then(({entities})=>{
+    const saved = entities?.[0];
+    // Push the freshly-saved row (with real id) into the live UI immediately,
+    // otherwise System Log only reflects what was loaded at page load.
+    if(saved && !saved._saveError) window.dispatchEvent(new CustomEvent("sf:activitylog", {detail: saved}));
+  }).catch(()=>{});
 }
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.79";
+const APP_VERSION = "beta 1.80";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10570,6 +10576,20 @@ function IntegrationsPage({integrations, integrationLogs, currentUser, clients=[
                     <span style={{color:"var(--text3)"}}>{integ.run_count||0} runs</span>
                     {integ.last_run_at&&<span style={{color:"var(--text3)"}}>· Last: {fmtDate(integ.last_run_at)}</span>}
                   </div>
+                  {(integ.credentials?.page_id||integ.client_name)&&(
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginTop:6,flexWrap:"wrap"}}>
+                      {integ.credentials?.page_id&&(
+                        <span style={{fontSize:10,fontWeight:700,color:"var(--text3)",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:6,padding:"2px 7px",fontFamily:"monospace"}}>
+                          Account ID: {integ.credentials.page_id}
+                        </span>
+                      )}
+                      {integ.client_name&&(
+                        <span style={{fontSize:10,fontWeight:700,color:"var(--text3)",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:6,padding:"2px 7px"}}>
+                          {integ.client_name}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   {integ.last_run_message&&(
                     <p style={{fontSize:11,marginTop:4,color:integ.last_run_status==="failed"?"#ef4444":"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{integ.last_run_message}</p>
                   )}
@@ -12072,9 +12092,10 @@ function AITokensPanel() {
   }, []);
 
   const MODELS = [
-    {id:"claude-haiku-4-5-20251001",  name:"Claude Haiku 4.5",    tier:"Fast & cheap",   input:0.80,  output:4.00,  ctx:"200K"},
-    {id:"claude-sonnet-4-6",           name:"Claude Sonnet 4.6",   tier:"Balanced",       input:3.00,  output:15.00, ctx:"200K"},
-    {id:"claude-opus-4-5",             name:"Claude Opus 4.5",     tier:"Most capable",   input:15.00, output:75.00, ctx:"200K"},
+    {id:"claude-haiku-4-5-20251001",  name:"Claude Haiku 4.5",    tier:"Fast & cheap",   input:1.00,  output:5.00,  ctx:"200K"},
+    {id:"claude-sonnet-4-6",           name:"Claude Sonnet 4.6",   tier:"Balanced",       input:3.00,  output:15.00, ctx:"1M"},
+    {id:"claude-opus-4-8",             name:"Claude Opus 4.8",     tier:"Most capable",   input:5.00,  output:25.00, ctx:"1M"},
+    {id:"claude-fable-5",              name:"Claude Fable 5",      tier:"Frontier",       input:10.00, output:50.00, ctx:"1M"},
   ];
 
   const selectedModel = MODELS.find(m=>m.id===model) || MODELS[0];
@@ -19115,6 +19136,14 @@ function App() {
 
   // Expose clientMemory globally so ContentPhaseGenerator (outside App) can read it
   useEffect(()=>{ window.__sfClientMemory = data.clientMemory||[]; },[data.clientMemory]);
+
+  // Keep System Log live — logActivity() saves to Supabase from outside React state,
+  // so without this listener new entries (and their dates) only appear after a reload.
+  useEffect(()=>{
+    const onLog = (e) => setData(d=>({...d, activityLogs:[e.detail, ...(d.activityLogs||[])]}));
+    window.addEventListener("sf:activitylog", onLog);
+    return () => window.removeEventListener("sf:activitylog", onLog);
+  },[]);
 
   // ── Load from Supabase — 2-wave for fast startup ──────────────
   useEffect(()=>{
