@@ -501,7 +501,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.99";
+const APP_VERSION = "beta 2.00";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1273,6 +1273,7 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Bricolage+Grotesque:wght@600;700;800&display=swap');
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     :root{
+      --vv-bottom-gap:0px;
       ${cssVars};
       --accent:${accentColor};
       --accent2:${accentColor}dd;
@@ -1429,7 +1430,7 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       img{max-width:100%}
 
       .bottom-nav{
-        display:flex;position:fixed;bottom:0;left:0;right:0;
+        display:flex;position:fixed;bottom:var(--vv-bottom-gap,0px);left:0;right:0;
         background:var(--surface);border-top:1px solid var(--border);
         z-index:9000;padding:8px 0 max(6px,env(safe-area-inset-bottom));
         justify-content:space-around;align-items:center;
@@ -1725,6 +1726,26 @@ function useResponsive() {
     isDesktop: w > 1024,
     width: w,
   };
+}
+
+// `position:fixed;bottom:0` anchors to the layout viewport, which on some
+// mobile browsers (notably when the address/tab bar is showing) is taller
+// than what's actually visible — leaving a dead gap between fixed elements
+// and the real bottom edge of the screen. Track window.visualViewport and
+// expose the gap as a CSS var so fixed mobile chrome can compensate.
+function useVisualViewportBottomGap() {
+  useEffect(()=>{
+    const vv = window.visualViewport;
+    if(!vv) return;
+    const update = () => {
+      const gap = window.innerHeight - vv.height - vv.offsetTop;
+      document.documentElement.style.setProperty("--vv-bottom-gap", Math.max(0, gap) + "px");
+    };
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => { vv.removeEventListener("resize", update); vv.removeEventListener("scroll", update); };
+  },[]);
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -16681,7 +16702,7 @@ RULES:
   return ReactDOM.createPortal(
     <>
       {/* Floating Button */}
-      <div style={{position:"fixed",bottom:isMobile?92:28,right:isMobile?16:28,zIndex:800}}>
+      <div style={{position:"fixed",bottom:isMobile?"calc(92px + var(--vv-bottom-gap,0px))":28,right:isMobile?16:28,zIndex:800}}>
         {unread>0&&!open&&(
           <div style={{position:"absolute",top:-4,right:-4,width:18,height:18,borderRadius:"50%",background:"var(--accent)",color:"#fff",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",zIndex:1}}>{unread}</div>
         )}
@@ -19203,6 +19224,7 @@ function App() {
   },[oauthEmail, currentUser, loading]);
 
   const {isMobile, isTablet} = useResponsive();
+  useVisualViewportBottomGap();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const mobileNavItems = [
     {key:"home", label:"Pro", ico:Icons.sparkle},
