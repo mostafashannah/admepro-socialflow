@@ -447,6 +447,38 @@ async function sendEmail(to, subject, html, fromName="SocialFlow") {
   }
 }
 
+// ── Pro AI preferences (model + speed), set from Settings → AI & Tokens ──
+function getAIPrefs() {
+  let model = "claude-haiku-4-5-20251001", speed = "medium";
+  try {
+    model = localStorage.getItem("sf_ai_model") || model;
+    speed = localStorage.getItem("sf_ai_speed") || speed;
+  } catch(e) {}
+  return {model, speed};
+}
+// Speed scales how much Pro is allowed to "think"/write — Low favors fast,
+// short replies; High favors slower, more thorough ones. Same model either way.
+function speedTokens(speed, base) {
+  if(speed==="low")  return Math.max(300, Math.round(base*0.5));
+  if(speed==="high") return Math.round(base*1.5);
+  return base;
+}
+function trackAIUsage(usage, model) {
+  if(!usage) return;
+  try {
+    const prev = JSON.parse(localStorage.getItem("sf_token_usage")||"{}");
+    const updated = {
+      input_tokens: (prev.input_tokens||0) + (usage.input_tokens||0),
+      output_tokens: (prev.output_tokens||0) + (usage.output_tokens||0),
+      total_calls: (prev.total_calls||0) + 1,
+      last_call: new Date().toISOString(),
+      model,
+    };
+    localStorage.setItem("sf_token_usage", JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent("sf:tokenusage", {detail: updated}));
+  } catch(e) {}
+}
+
 // ── Activity logger ───────────────────────────────────────────────
 function logActivity(action, category, details="", status="success", errorMsg="", user="system") {
   const entry = {
@@ -465,7 +497,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.80";
+const APP_VERSION = "beta 1.81";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12079,16 +12111,26 @@ function AITokensPanel() {
   const [usage, setUsage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [model, setModel] = useState(() => { try{ return localStorage.getItem("sf_ai_model")||"claude-haiku-4-5-20251001"; }catch(e){return "claude-haiku-4-5-20251001";} });
+  const [speed, setSpeed] = useState(() => { try{ return localStorage.getItem("sf_ai_speed")||"medium"; }catch(e){return "medium";} });
   const [saved, setSaved] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [testing, setTesting] = useState(false);
 
-  // Read token usage from localStorage (accumulated by the app)
+  const SPEEDS = [
+    {id:"low",    label:"Low",    desc:"Shorter, faster replies — best for quick questions"},
+    {id:"medium", label:"Medium", desc:"Balanced — the default for most conversations"},
+    {id:"high",   label:"High",   desc:"Longer, more thorough replies — best for complex tasks"},
+  ];
+
+  // Read token usage from localStorage (accumulated by the app), and keep it live
   useEffect(() => {
     try {
       const raw = localStorage.getItem("sf_token_usage");
       if(raw) setUsage(JSON.parse(raw));
     } catch(e) {}
+    const onUsage = (e) => setUsage(e.detail);
+    window.addEventListener("sf:tokenusage", onUsage);
+    return () => window.removeEventListener("sf:tokenusage", onUsage);
   }, []);
 
   const MODELS = [
@@ -12101,7 +12143,7 @@ function AITokensPanel() {
   const selectedModel = MODELS.find(m=>m.id===model) || MODELS[0];
 
   const saveModel = () => {
-    try { localStorage.setItem("sf_ai_model", model); } catch(e) {}
+    try { localStorage.setItem("sf_ai_model", model); localStorage.setItem("sf_ai_speed", speed); } catch(e) {}
     setSaved(true);
     setTimeout(()=>setSaved(false), 2500);
   };
@@ -12190,6 +12232,24 @@ function AITokensPanel() {
             {testResult.msg}
           </div>
         )}
+      </div>
+
+      {/* Speed Selector */}
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:22}}>
+        <p style={{fontWeight:800,fontSize:14,marginBottom:4}}>⚡ Response Speed</p>
+        <p style={{fontSize:12,color:"var(--text3)",marginBottom:16}}>Tune how fast vs. thorough Pro's replies are, independent of the model above. Click "Save Model Preference" to apply.</p>
+        <div style={{display:"flex",gap:10}}>
+          {SPEEDS.map(s=>(
+            <div key={s.id} onClick={()=>setSpeed(s.id)} style={{
+              flex:1,padding:"12px 14px",borderRadius:12,border:`2px solid ${speed===s.id?"var(--accent)":"var(--border)"}`,
+              background:speed===s.id?"var(--accentbg)":"var(--surface2)",cursor:"pointer",
+              textAlign:"center",transition:"all 0.15s",
+            }}>
+              <p style={{fontWeight:700,fontSize:13,color:speed===s.id?"var(--accent)":"var(--text)"}}>{s.label}</p>
+              <p style={{fontSize:10,color:"var(--text3)",marginTop:4,lineHeight:1.4}}>{s.desc}</p>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Token Usage */}
@@ -15146,9 +15206,10 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
       {key:"tasks",     label:"All Posts & Tasks", ico:Icons.tasks},
       {key:"calendar",  label:"Team Calendar",    ico:Icons.calendar},
       {key:"projects",  label:"Projects",         ico:Icons.projects},
-      ...((isAdmin||currentUser?.role==="account_manager")?[{key:"leads", label:"Leads", ico:Icons.leads}]:[]),
-      ...((isAdmin||currentUser?.role==="account_manager")?[{key:"lead_gen", label:"Lead Generation", ico:Icons.zap2}]:[]),
-      ...(isAdmin?[{key:"agents", label:"Agents", ico:Icons.activity}]:[]),
+    ]}] : []),
+    ...((isAdmin||currentUser?.role==="account_manager") ? [{ group: "CRM", icon: Icons.leads, items: [
+      {key:"leads",   label:"Leads",            ico:Icons.leads},
+      {key:"lead_gen", label:"Lead Generation", ico:Icons.zap2},
     ]}] : []),
     ...((canFinance||(isAdmin||currentUser?.role==="account_manager")) ? [{ group: "FINANCE", icon: Icons.wallet, items: [
       ...((isAdmin||currentUser?.role==="account_manager"||canFinance)?[{key:"quotes", label:"Quotes", ico:Icons.receipt}]:[]),
@@ -15169,7 +15230,10 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
         {key:"templates", label:"Templates", ico:Icons.templates},
         {key:"reports",   label:"My Report", ico:Icons.chart2},
       ]:[]),
-      ...(isAdmin?[{key:"settings", label:"Settings", ico:Icons.settings}]:[]),
+      ...(isAdmin?[
+        {key:"agents",   label:"Agents",   ico:Icons.activity},
+        {key:"settings", label:"Settings", ico:Icons.settings},
+      ]:[]),
     ]}] : []),
   ];
 
@@ -16453,11 +16517,12 @@ RULES:
       }
       catch(e){ sysPrompt = "You are Pro, the AI assistant inside SocialFlow. Answer everything directly in the chat."; }
 
+      const aiPrefs = getAIPrefs();
       const res = await fetch(AI_ENDPOINT, {
         method:"POST", headers:AI_HEADERS,
         body: JSON.stringify({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 6000,
+          model: aiPrefs.model,
+          max_tokens: speedTokens(aiPrefs.speed, 6000),
           system: sysPrompt,
           messages: apiHistory,
           tools: [{type:"web_search_20250305", name:"web_search", max_uses:3}],
@@ -16465,6 +16530,7 @@ RULES:
       });
       const d = await res.json();
       if(d.error) throw new Error(d.error.message||"API error");
+      trackAIUsage(d.usage, aiPrefs.model);
       const botText = (d.content?.map(b=>b.text||"").join("")||"Sorry, I couldn't process that.").trim();
 
       // Strip action block from display text
@@ -18173,12 +18239,14 @@ RULES:
         }
       } catch(e){ sysPrompt="You are Pro, the AI assistant inside SocialFlow. Answer everything directly."; }
 
+      const aiPrefs = getAIPrefs();
       const res = await fetch(AI_ENDPOINT,{
         method:"POST", headers:AI_HEADERS,
-        body: JSON.stringify({model:"claude-haiku-4-5-20251001", max_tokens:16000, system:sysPrompt, messages:apiHistory, tools:[{type:"web_search_20250305", name:"web_search", max_uses:3}]}),
+        body: JSON.stringify({model:aiPrefs.model, max_tokens:speedTokens(aiPrefs.speed,16000), system:sysPrompt, messages:apiHistory, tools:[{type:"web_search_20250305", name:"web_search", max_uses:3}]}),
       });
       const d = await res.json();
       if(d.error) throw new Error(d.error.message||"API error");
+      trackAIUsage(d.usage, aiPrefs.model);
       const botText = (d.content?.map(b=>b.text||"").join("")||"").trim() || "I'm not sure — could you rephrase?";
 
       // Strip action block from display
