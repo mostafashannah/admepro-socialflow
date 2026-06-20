@@ -497,7 +497,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.81";
+const APP_VERSION = "beta 1.82";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -15203,9 +15203,9 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     ]},
     ...(canAgency ? [{ group: "CLIENTS", icon: Icons.clients, items: [
       {key:"clients",   label:"Clients",          ico:Icons.clients},
-      {key:"tasks",     label:"All Posts & Tasks", ico:Icons.tasks},
-      {key:"calendar",  label:"Team Calendar",    ico:Icons.calendar},
       {key:"projects",  label:"Projects",         ico:Icons.projects},
+      {key:"tasks",     label:"All Posts & Tasks", ico:Icons.tasks},
+      {key:"calendar",  label:"Clients Calendar", ico:Icons.calendar},
     ]}] : []),
     ...((isAdmin||currentUser?.role==="account_manager") ? [{ group: "CRM", icon: Icons.leads, items: [
       {key:"leads",   label:"Leads",            ico:Icons.leads},
