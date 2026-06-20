@@ -497,7 +497,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.82";
+const APP_VERSION = "beta 1.83";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19492,6 +19492,7 @@ function App() {
         ).catch(()=>{});
       }
     });
+    logActivity("Project Created","clients",`New project: ${formData.name} for ${formData.client_name} (${scheduledPosts.length} posts)`,"success","",currentUser?.email||"admin");
     setToast(`✅ "${formData.name}" created with ${scheduledPosts.length} posts${formData.posting_start?" — smart scheduled":""}!`);
   };
 
@@ -19502,28 +19503,35 @@ function App() {
   };
 
   const updateClient = async (id, updates) => {
+    const cl = data.clients.find(c=>c.id===id);
     setData(d=>({...d, clients:d.clients.map(c=>c.id===id?{...c,...updates}:c)}));
     await ue("Client", id, updates).catch(()=>{});
+    logActivity("Client Updated","clients",`${cl?.name||id} — ${Object.keys(updates).join(", ")}`,"success","",currentUser?.email||"admin");
     setToast("✅ Client updated");
   };
 
   const deleteClient = async (id) => {
+    const cl = data.clients.find(c=>c.id===id);
     setData(d=>({...d, clients:d.clients.filter(c=>c.id!==id)}));
     setSelectedClientId(null);
     await de("Client", id).catch(()=>{});
+    logActivity("Client Deleted","clients",`${cl?.name||id} deleted`,"warning","",currentUser?.email||"admin");
     setToast("Client deleted");
   };
 
   const toggleHideClient = async (id, currentStatus) => {
+    const cl = data.clients.find(c=>c.id===id);
     const newStatus = currentStatus==="hidden" ? "active" : "hidden";
     setData(d=>({...d, clients:d.clients.map(c=>c.id===id?{...c,status:newStatus}:c)}));
     await ue("Client", id, {status:newStatus}).catch(()=>{});
+    logActivity(newStatus==="hidden"?"Client Hidden":"Client Restored","clients",cl?.name||id,"success","",currentUser?.email||"admin");
     setToast(newStatus==="hidden" ? "Client hidden" : "Client restored");
   };
 
   const addTeamMember = async (memberData) => {
     const local = {...memberData, id:uid(), created_date:new Date().toISOString()};
     setData(d=>({...d, team:[...d.team, local]}));
+    logActivity("Team Member Added","users",`${memberData.name||memberData.email} added as ${ROLES[memberData.role]?.label||memberData.role}`,"success","",currentUser?.email||"admin");
     try {
       const res = await ce("TeamMember",[memberData]);
       const real = res.entities?.[0];
@@ -19532,13 +19540,17 @@ function App() {
   };
 
   const updateTeamMember = async (id, updates) => {
+    const m = data.team.find(t=>t.id===id);
     setData(d=>({...d, team:d.team.map(m=>m.id===id?{...m,...updates}:m)}));
     ue("TeamMember", id, updates).catch(()=>{});
+    logActivity("Team Member Updated","users",`${m?.name||id} — ${Object.keys(updates).join(", ")}`,"success","",currentUser?.email||"admin");
   };
 
   const removeTeamMember = async (id) => {
+    const m = data.team.find(t=>t.id===id);
     setData(d=>({...d, team:d.team.filter(m=>m.id!==id)}));
     de("TeamMember", id).catch(()=>{});
+    logActivity("Team Member Removed","users",m?.name||id,"warning","",currentUser?.email||"admin");
   };
 
   // ── User Management Handlers ──────────────────────────────────
@@ -19562,8 +19574,10 @@ function App() {
   };
 
   const cancelInvitation = async (invId) => {
+    const inv = (data.invitations||[]).find(i=>i.id===invId);
     setData(d=>({...d, invitations:d.invitations.map(i=>i.id===invId?{...i,status:"cancelled"}:i)}));
     ue("UserInvitation",invId,{status:"cancelled"}).catch(()=>{});
+    logActivity("Invitation Cancelled","users",inv?.email||invId,"warning","",currentUser?.email||"admin");
     setToast("Invitation cancelled");
   };
 
@@ -19599,12 +19613,15 @@ function App() {
     ce("ClientUser",[cuData]).then(res=>{
       const real=res.entities?.[0]; if(real?.id) setData(d=>({...d,clientUsers:d.clientUsers.map(u=>u.id===local.id?{...u,...real}:u)}));
     }).catch(()=>{});
+    logActivity("Client User Added","clients",cuData.email||"","success","",currentUser?.email||"admin");
     setToast(`Client user ${cuData.email} added`);
   };
 
   const deleteClientUser = async (cuId) => {
+    const cu = (data.clientUsers||[]).find(u=>u.id===cuId);
     setData(d=>({...d, clientUsers:(d.clientUsers||[]).filter(u=>u.id!==cuId)}));
     de("ClientUser",cuId).catch(()=>{});
+    logActivity("Client User Removed","clients",cu?.email||cuId,"warning","",currentUser?.email||"admin");
     setToast("Client user removed");
   };
 
@@ -19642,6 +19659,7 @@ function App() {
         </div>`;
       sendEmail(cl.email, `📋 ${monthLabel} Content Brief — Action Required`, html).catch(()=>{});
     }
+    logActivity("Monthly Brief Created","clients",cl?.name||briefData.client_id,"success","",currentUser?.email||"admin");
     setToast("✅ Brief created & email sent to client");
   };
 
@@ -19695,6 +19713,7 @@ function App() {
     const a = {...assetData, id:uid(), created_date:new Date().toISOString()};
     setData(d=>({...d, assets:[...d.assets, a]}));
     try { await ce("Asset",[{...a, id:undefined}]); } catch(e){}
+    logActivity("Asset Uploaded","clients",assetData.name||"","success","",currentUser?.email||"admin");
   };
 
   const updateClientTask = (id, updates) => {
@@ -19739,6 +19758,7 @@ function App() {
         if(real?.id) setUserProfile(prev=>({...prev,...real}));
       }
     } catch(e){}
+    logActivity("Profile Updated","users",currentUser?.email||"","success","",currentUser?.email||"admin");
     setToast("Profile saved successfully");
   };
 
@@ -19795,6 +19815,7 @@ function App() {
     ce("Quote",[payload]).then(res=>{
       const real=res.entities?.[0]; if(real?.id) setData(d=>({...d,quotes:d.quotes.map(q=>q.id===local.id?{...q,...real}:q)}));
     }).catch(()=>{});
+    logActivity("Quote Duplicated","finance",newNum,"success","",currentUser?.email||"admin");
     setToast(`Duplicated as ${newNum}`);
   };
 
@@ -19952,12 +19973,15 @@ Write ONE caption for a ${p.platform||"social"} ${p.post_type||"post"} titled "$
   const approveGeneratedLead = async (genLead) => {
     setData(d=>({...d, generatedLeads:d.generatedLeads.map(l=>l.id===genLead.id?{...l,status:"approved"}:l)}));
     await ue("GeneratedLead", genLead.id, {status:"approved", reviewed_at:new Date().toISOString()}).catch(()=>{});
+    logActivity("Generated Lead Approved","leads",genLead.full_name||genLead.company||genLead.id,"success","",currentUser?.email||"admin");
     setToast("✅ Lead approved and moved to CRM");
   };
 
   const rejectGeneratedLead = async (id) => {
+    const gl = (data.generatedLeads||[]).find(l=>l.id===id);
     setData(d=>({...d, generatedLeads:d.generatedLeads.map(l=>l.id===id?{...l,status:"rejected"}:l)}));
     await ue("GeneratedLead", id, {status:"rejected", reviewed_at:new Date().toISOString()}).catch(()=>{});
+    logActivity("Generated Lead Rejected","leads",gl?.full_name||gl?.company||id,"warning","",currentUser?.email||"admin");
     setToast("Lead rejected");
   };
 
@@ -20076,6 +20100,7 @@ Return ONLY the JSON array, no markdown.`;
   const updateLead = async (leadData) => {
     setData(d=>({...d,leads:d.leads.map(l=>l.id===leadData.id?{...l,...leadData}:l)}));
     ue("Lead", leadData.id, leadData).catch(()=>{});
+    logActivity("Lead Updated","leads",leadData.name||leadData.company||leadData.id,"success","",currentUser?.email||"admin");
   };
 
   const addLeadActivity = async (actData) => {
@@ -20110,6 +20135,7 @@ Return ONLY the JSON array, no markdown.`;
       if(appSettings.id) await ue("AppSettings",appSettings.id,updated);
       else { const res=await ce("AppSettings",[updated]); const real=res.entities?.[0]; if(real?.id) setAppSettings(s=>({...s,id:real.id})); }
     } catch(e){}
+    logActivity("App Settings Updated","settings","Agency settings changed","success","",currentUser?.email||"admin");
     setToast("Settings saved successfully");
   };
 
@@ -20120,6 +20146,7 @@ Return ONLY the JSON array, no markdown.`;
       if(emailSettings.id) await ue("EmailSettings",emailSettings.id,updated);
       else { const res=await ce("EmailSettings",[updated]); const real=res.entities?.[0]; if(real?.id) setEmailSettings(s=>({...s,id:real.id})); }
     } catch(e){}
+    logActivity("Email Settings Updated","settings","Daily performance email settings changed","success","",currentUser?.email||"admin");
     setToast("Email settings saved — changes apply at next send");
   };
 
@@ -20132,6 +20159,7 @@ Return ONLY the JSON array, no markdown.`;
       if(brandingAssets.id) await ue("BrandingAssets",brandingAssets.id,updated);
       else { const res=await ce("BrandingAssets",[updated]); const real=res.entities?.[0]; if(real?.id) setBrandingAssets(s=>({...s,id:real.id})); }
     } catch(e){}
+    logActivity("Branding Updated","settings","Agency branding assets changed","success","",currentUser?.email||"admin");
     setToast("Branding saved — updated everywhere");
   };
 
@@ -20162,6 +20190,7 @@ Return ONLY the JSON array, no markdown.`;
         const real=res.entities?.[0]; if(real?.id) setData(d=>({...d,clientKnowledge:d.clientKnowledge.map(k=>k.id===local.id?{...k,...real}:k)}));
       }).catch(()=>{});
     }
+    logActivity("Client Knowledge Updated","clients",kData.client_name||kData.client_id,"success","",currentUser?.email||"admin");
     setToast("Knowledge profile updated");
   };
 
@@ -20209,6 +20238,7 @@ Return ONLY the JSON array, no markdown.`;
     ce("Invoice",[payload]).then(res=>{
       const real=res.entities?.[0]; if(real?.id) setData(d=>({...d,invoices:d.invoices.map(i=>i.id===local.id?{...i,...real}:i)}));
     }).catch(()=>{});
+    logActivity("Invoice Duplicated","finance",newNum,"success","",currentUser?.email||"admin");
     setToast(`Duplicated as ${newNum}`);
   };
 
@@ -20218,6 +20248,7 @@ Return ONLY the JSON array, no markdown.`;
     ce("Integration",[integData]).then(res=>{
       const real=res.entities?.[0]; if(real?.id) setData(d=>({...d,integrations:d.integrations.map(i=>i.id===local.id?{...i,...real}:i)}));
     }).catch(()=>{});
+    logActivity("Integration Added","integrations",integData.name,"success","",currentUser?.email||"admin");
     setToast(`Integration "${integData.name}" ${integData.status==="active"?"activated":"saved"}`);
   };
 
@@ -20225,12 +20256,15 @@ Return ONLY the JSON array, no markdown.`;
     setData(d=>({...d, integrations:d.integrations.map(i=>i.id===integData.id?{...i,...integData}:i)}));
     try { await ue("Integration",integData.id,integData); } catch(e){}
     const wasToggle = Object.keys(integData).length<=3;
+    logActivity("Integration Updated","integrations",integData.name||integData.id,"success","",currentUser?.email||"admin");
     if(!wasToggle) setToast(`Integration "${integData.name}" updated`);
     else setToast(`Integration ${integData.status==="active"?"enabled":"disabled"}`);
   };
 
   const deleteIntegration = async (integId) => {
+    const integ = (data.integrations||[]).find(i=>i.id===integId);
     setData(d=>({...d, integrations:d.integrations.filter(i=>i.id!==integId)}));
+    logActivity("Integration Removed","integrations",integ?.name||integId,"warning","",currentUser?.email||"admin");
     setToast("Integration removed");
   };
 
@@ -20244,6 +20278,7 @@ Return ONLY the JSON array, no markdown.`;
       error_count:success?0:(integ.error_count||0)+1,
     };
     setData(d=>({...d, integrations:d.integrations.map(i=>i.id===integ.id?updated:i)}));
+    logActivity("Integration Retry",  "integrations", integ.name, success?"success":"error", success?"":"Retry failed — check credentials", currentUser?.email||"admin");
     setToast(success?`✅ "${integ.name}" reconnected`:`❌ "${integ.name}" still failing`);
   };
 
@@ -20265,6 +20300,7 @@ Return ONLY the JSON array, no markdown.`;
         ).catch(()=>{});
       }
     }
+    logActivity("Subscription Created","finance",`${subData.service_name} for ${subData.client_name}`,"success","",currentUser?.email||"admin");
     setToast(`Subscription created for ${subData.client_name}`);
   };
 
@@ -20278,13 +20314,16 @@ Return ONLY the JSON array, no markdown.`;
     const updatedSub = {...sub, total_collected:newTotal, cycle_count:(sub.cycle_count||0)+1, last_payment_date:payData.payment_date, next_payment_date:newNext, status:"active"};
     setData(d=>({...d, subscriptions:d.subscriptions.map(s=>s.id===sub.id?updatedSub:s)}));
     ue("Subscription", sub.id, {total_collected:newTotal, cycle_count:updatedSub.cycle_count, last_payment_date:payData.payment_date, next_payment_date:newNext, status:"active"}).catch(()=>{});
+    logActivity("Subscription Payment Recorded","finance",`${sub.currency} ${payData.amount} for ${sub.client_name}`,"success","",currentUser?.email||"admin");
     setToast(`✅ Payment of ${sub.currency} ${payData.amount?.toLocaleString()} recorded for ${sub.client_name}`);
   };
 
   const updateSubStatus = async (subId, status) => {
+    const sub = (data.subscriptions||[]).find(s=>s.id===subId);
     setData(d=>({...d, subscriptions:d.subscriptions.map(s=>s.id===subId?{...s,status}:s)}));
     ue("Subscription", subId, {status}).catch(()=>{});
     const labels = {active:"activated",paused:"paused",cancelled:"cancelled"};
+    logActivity("Subscription Status Changed","finance",`${sub?.service_name||subId} → ${status}`,status==="cancelled"?"warning":"success","",currentUser?.email||"admin");
     setToast(`Subscription ${labels[status]||status}`);
   };
 
@@ -20298,6 +20337,7 @@ Return ONLY the JSON array, no markdown.`;
     const newDoc = {...docData,id:uid(),analyzed:false,created_date:new Date().toISOString()};
     setData(d=>({...d,clientDocuments:[newDoc,...d.clientDocuments]}));
     try { await ce("ClientDocument",[docData]); } catch(e){}
+    logActivity("Client Document Uploaded","clients",`${docData.name} (${docData.client_name})`,"success","",currentUser?.email||"admin");
     // AI analysis
     const allDocs = [newDoc,...data.clientDocuments.filter(d=>d.client_id===docData.client_id)];
     const allText = allDocs.slice(0,3).map(d=>"=== "+d.name+" ===\n"+d.content).join("\n\n");
