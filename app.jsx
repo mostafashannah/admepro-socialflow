@@ -501,7 +501,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.89";
+const APP_VERSION = "beta 1.90";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19216,6 +19216,12 @@ function App() {
   // eslint-disable-next-line
   },[]);
   const [loading,setLoading] = useState(true);
+  const [refreshing,setRefreshing] = useState(false);
+  const [pullDistance,setPullDistance] = useState(0);
+  const loadAllDataRef = React.useRef(null);
+  const mainScrollRef = React.useRef(null);
+  const touchStartYRef = React.useRef(null);
+  const pullingRef = React.useRef(false);
   const oauthRequestSaved = React.useRef(false);
   // Check for invite token in URL
   const [inviteToken] = useState(()=>{
@@ -19340,8 +19346,8 @@ function App() {
 
   // ── Load from Supabase — 2-wave for fast startup ──────────────
   useEffect(()=>{
-    async function load() {
-      setLoading(true);
+    async function load(silent) {
+      if(!silent) setLoading(true);
       // ── Wave 1: critical data needed to show any page (all parallel) ──
       const wave1 = await Promise.allSettled([
         qe("TeamMember"),                           // 0
@@ -19367,7 +19373,7 @@ function App() {
         clients:       pick(clientR, d.clients),
         notifications: pick(notifR,  d.notifications),
       }));
-      setLoading(false); // show app now — wave 2 loads silently in background
+      if(!silent) setLoading(false); // show app now — wave 2 loads silently in background
 
       // ── Wave 2: secondary data (background, all parallel) ──
       const wave2 = await Promise.allSettled([
@@ -19454,8 +19460,39 @@ function App() {
         monthlyBriefs:         pick(g2(37), d.monthlyBriefs||[]),
       }));
     }
-    load();
+    loadAllDataRef.current = load;
+    load(false);
   },[]);
+
+  // ── Pull-to-refresh (mobile) ───────────────────────────────────
+  const handlePullRefresh = async () => {
+    if(refreshing) return;
+    setRefreshing(true);
+    try { await loadAllDataRef.current?.(true); }
+    finally { setRefreshing(false); setPullDistance(0); }
+  };
+  const PULL_THRESHOLD = 60;
+  const onMainTouchStart = (e) => {
+    if(!isMobile || page==="home" || refreshing) return;
+    const el = mainScrollRef.current;
+    if(el && el.scrollTop > 0) return;
+    touchStartYRef.current = e.touches[0].clientY;
+    pullingRef.current = true;
+  };
+  const onMainTouchMove = (e) => {
+    if(!pullingRef.current || touchStartYRef.current==null) return;
+    const el = mainScrollRef.current;
+    if(el && el.scrollTop > 0) { pullingRef.current=false; touchStartYRef.current=null; setPullDistance(0); return; }
+    const dy = e.touches[0].clientY - touchStartYRef.current;
+    if(dy>0) setPullDistance(Math.min(dy*0.5, 90));
+  };
+  const onMainTouchEnd = () => {
+    if(!pullingRef.current) return;
+    pullingRef.current = false;
+    touchStartYRef.current = null;
+    if(pullDistance > PULL_THRESHOLD) handlePullRefresh();
+    else setPullDistance(0);
+  };
 
   // ── Helpers ──────────────────────────────────────────────────
   // Creates a record optimistically, then replaces local temp ID with real Supabase UUID
@@ -21010,7 +21047,14 @@ Return ONLY valid JSON (no markdown, no explanation):
         })()}
 
         {/* Page content */}
-        <main id="main-content" className="main-content" style={{flex:1,padding:page==="home"?0:isMobile?"16px":"28px 32px",overflowY:page==="home"?"hidden":"auto",paddingBottom:page==="home"?0:isMobile?80:28,display:"flex",flexDirection:"column",minHeight:0}}>
+        <main id="main-content" className="main-content" ref={mainScrollRef}
+          onTouchStart={onMainTouchStart} onTouchMove={onMainTouchMove} onTouchEnd={onMainTouchEnd}
+          style={{flex:1,padding:page==="home"?0:isMobile?"16px":"28px 32px",overflowY:page==="home"?"hidden":"auto",paddingBottom:page==="home"?0:isMobile?80:28,display:"flex",flexDirection:"column",minHeight:0}}>
+          {isMobile&&page!=="home"&&(pullDistance>0||refreshing)&&(
+            <div style={{display:"flex",justifyContent:"center",alignItems:"center",height:refreshing?40:pullDistance,overflow:"hidden",transition:refreshing||pullDistance===0?"height 0.18s":"none",flexShrink:0,marginBottom:refreshing?8:0}}>
+              <Spinner size={20}/>
+            </div>
+          )}
           {page==="home"&&<ProHomePage
               currentUser={currentUser} data={data}
               setPage={setPage}
