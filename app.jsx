@@ -501,7 +501,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.96";
+const APP_VERSION = "beta 1.97";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16681,7 +16681,7 @@ RULES:
   return ReactDOM.createPortal(
     <>
       {/* Floating Button */}
-      <div style={{position:"fixed",bottom:isMobile?92:28,right:isMobile?16:28,zIndex:800}}>
+      <div style={{position:"fixed",bottom:isMobile?112:28,right:isMobile?16:28,zIndex:800}}>
         {unread>0&&!open&&(
           <div style={{position:"absolute",top:-4,right:-4,width:18,height:18,borderRadius:"50%",background:"var(--accent)",color:"#fff",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",zIndex:1}}>{unread}</div>
         )}
@@ -21350,8 +21350,10 @@ Return ONLY valid JSON (no markdown, no explanation):
         )}
       </main>
 
-      {/* Mobile bottom navigation bar — portaled to <body>, see Chatbot for why */}
-      {isMobile&&ReactDOM.createPortal(
+      {/* Mobile bottom navigation bar — portaled to <body>, see Chatbot for why.
+          Hidden while the sidebar drawer is open so it doesn't render on top of
+          the drawer's user menu (z-index 9000 vs drawer's 300). */}
+      {isMobile&&!sidebarOpen&&ReactDOM.createPortal(
         <nav className="bottom-nav">
           {mobileNavItems.map(({key,label,ico})=>{
             const active=page===key;
@@ -21466,7 +21468,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     {toast&&<Toast message={toast} onDone={()=>setToast(null)}/>}
 
     {/* AI Chatbot — global floating bubble; hidden on home page where the full Pro workspace already shows */}
-    {page!=="home" && <Chatbot
+    {page!=="home" && !sidebarOpen && <Chatbot
       currentUser={currentUser}
       currentPage={page}
       data={data}
