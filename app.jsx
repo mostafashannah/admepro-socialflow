@@ -497,7 +497,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.86";
+const APP_VERSION = "beta 1.87";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -2951,7 +2951,7 @@ function AddProjectModal({open,onClose,clients,onAdd}) {
   const s = (k,v) => setF(p=>({...p,[k]:v}));
   const togglePlt = p => s("platforms",f.platforms.includes(p)?f.platforms.filter(x=>x!==p):[...f.platforms,p]);
   const submit = async () => {
-    if(!f.title) return;
+    if(!f.title||!f.client_id) return;
     const client = clients.find(c=>c.id===f.client_id);
     setSaving(true);
     await onAdd({...f,client_name:client?.name||f.client_name});
@@ -3662,7 +3662,7 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd}) {
   const selectedClient = clients.find(c=>c.id===f.client_id);
 
   const handleSubmit = async () => {
-    if(!f.title.trim()) return;
+    if(!f.title.trim()||!f.project_id) return;
     setSaving(true);
     const proj = projects.find(p=>p.id===f.project_id);
     await onAdd({
@@ -3695,7 +3695,7 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd}) {
                   {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </Field>
-              <Field label="Project">
+              <Field label="Project" required>
                 <select value={f.project_id} onChange={e=>s("project_id",e.target.value)} style={inputSt}>
                   <option value="">— Select Project —</option>
                   {clientProjects.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}
@@ -3738,7 +3738,7 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd}) {
           </Field>
           <div style={{display:"flex",gap:10,paddingTop:6,borderTop:"1px solid var(--border)",marginTop:2}}>
             <Btn variant="secondary" onClick={()=>{reset();onClose();}} style={{flex:1}}>Cancel</Btn>
-            <Btn onClick={handleSubmit} disabled={saving||!f.title.trim()} style={{flex:2}}>
+            <Btn onClick={handleSubmit} disabled={saving||!f.title.trim()||!f.project_id} style={{flex:2}}>
               {saving?<><Spinner size={14}/> Creating…</>:<><Ico d={Icons.taskAdd} size={15}/>Create Task</>}
             </Btn>
           </div>
@@ -16305,7 +16305,9 @@ RULES:
           client_name: client?.name||payload.client_name||"",
           project_id: project?.id||"",
         };
-        if(onDirectAction) await onDirectAction("add_post", taskData);
+        if(!taskData.project_id){ addBotMsg(`⚠️ Couldn't create "${taskData.title}" — ${taskData.client_name||"this client"} has no project yet. Every task needs a project; create one first.`,"error"); return; }
+        const ok = onDirectAction ? await onDirectAction("add_post", taskData) : true;
+        if(!ok){ addBotMsg(`⚠️ Couldn't create "${taskData.title}" — save failed.`,"error"); return; }
         addBotMsg(`✅ Task "${taskData.title}" created successfully${taskData.client_name?` for ${taskData.client_name}`:""}!`,"success",{label:"📋 View Tasks", fn:"nav_tasks"});
       }
 
@@ -16321,7 +16323,9 @@ RULES:
           start_date: payload.start_date||new Date().toISOString().slice(0,10),
           deadline: payload.end_date||"",
         };
-        if(onDirectAction) await onDirectAction("add_project", projData);
+        if(!projData.client_id){ addBotMsg(`⚠️ Couldn't create project "${projData.name}" — I couldn't match a client called "${payload.client_name||""}". Every project needs a client; create or name one first.`,"error"); return; }
+        const ok = onDirectAction ? await onDirectAction("add_project", projData) : true;
+        if(!ok){ addBotMsg(`⚠️ Couldn't create project "${projData.name}" — save failed.`,"error"); return; }
         addBotMsg(`✅ Project "${projData.name}" created for ${projData.client_name||"client"}!`,"success",{label:"📁 View Projects", fn:"nav_projects"});
       }
 
@@ -17848,12 +17852,16 @@ RULES:
           client_name: client?.name||payload.client_name||"",
           project_id: project?.id||"",
         };
-        if(onDirectAction) await onDirectAction("add_post", taskData);
+        if(!taskData.project_id){ addBotMsg(`⚠️ Couldn't create "${taskData.title}" — ${taskData.client_name||"this client"} has no project yet. Every task needs a project; create one first.`,"error"); return; }
+        const ok = onDirectAction ? await onDirectAction("add_post", taskData) : true;
+        if(!ok){ addBotMsg(`⚠️ Couldn't create "${taskData.title}" — save failed.`,"error"); return; }
         addBotMsg(`✅ Done. Task **"${taskData.title}"** created${taskData.client_name?` for ${taskData.client_name}`:""}!`,"success",{label:"View Tasks →", fn:"nav_tasks"});
       } else if(act==="create_project") {
         const client = resolveEntity(payload.client_name, data.clients);
         const projData = {name:payload.title,client_id:client?.id||"",client_name:client?.name||payload.client_name||"",description:payload.description||"",project_type:payload.project_type||"social_media",platforms:payload.platforms||["instagram"],start_date:payload.start_date||new Date().toISOString().slice(0,10),deadline:payload.end_date||""};
-        if(onDirectAction) await onDirectAction("add_project", projData);
+        if(!projData.client_id){ addBotMsg(`⚠️ Couldn't create project "${projData.name}" — I couldn't match a client called "${payload.client_name||""}". Every project needs a client; create or name one first.`,"error"); return; }
+        const ok = onDirectAction ? await onDirectAction("add_project", projData) : true;
+        if(!ok){ addBotMsg(`⚠️ Couldn't create project "${projData.name}" — save failed.`,"error"); return; }
         addBotMsg(`✅ Project **"${projData.name}"** created for ${projData.client_name||"client"}!`,"success",{label:"View Projects →", fn:"nav_projects"});
       } else if(act==="create_client") {
         const clientData={name:payload.name,email:payload.email||"",phone:payload.phone||"",industry:payload.industry||"",platforms:payload.platforms||["instagram"],status:"active"};
@@ -19408,6 +19416,7 @@ function App() {
 
   // Handlers
   const addPost = async (postData) => {
+    if(!postData.project_id) { setToast("⚠️ Pick a project before creating a post/task — every post must belong to a project."); return false; }
     const local = {...postData, id:uid(), created_date:new Date().toISOString()};
     // Notify assignee
     if(postData.assigned_to && postData.assigned_to !== currentUser?.email) {
@@ -19436,6 +19445,7 @@ function App() {
         }
       }
     }
+    logActivity("Task Created","tasks",`"${postData.title}" created${postData.client_name?` for ${postData.client_name}`:""}`,"success","",currentUser?.email||"admin");
     return b44Create("Post","posts", local, postData);
   };
 
@@ -19462,6 +19472,7 @@ function App() {
   };
 
   const addProject = async (formData, pillars, intelligence) => {
+    if(!formData.client_id) { setToast("⚠️ Pick a client before creating a project — every project must belong to one."); return false; }
     // 1. Create project
     const projPayload = {
       title:        formData.name,
@@ -19547,6 +19558,7 @@ function App() {
     });
     logActivity("Project Created","clients",`New project: ${formData.name} for ${formData.client_name} (${scheduledPosts.length} posts)`,"success","",currentUser?.email||"admin");
     setToast(`✅ "${formData.name}" created with ${scheduledPosts.length} posts${formData.posting_start?" — smart scheduled":""}!`);
+    return true;
   };
 
   const addClient = async (clientData) => {
@@ -20448,6 +20460,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   };
 
   const generateCalendarPlan = async (planForm, tasks) => {
+    if(!planForm.client_id) { setToast("⚠️ Pick a client before generating a calendar plan."); return; }
     // Find or create project for this campaign
     const existingProj = data.projects.find(p=>p.client_id===planForm.client_id&&p.title===planForm.campaign);
     let projectId = existingProj?.id;
@@ -20937,8 +20950,8 @@ Return ONLY valid JSON (no markdown, no explanation):
                 else if(type==="add_client") setShowFABClient(true);
               }}
               onDirectAction={async(type,payload)=>{
-                if(type==="add_post")    await addPost(payload);
-                else if(type==="add_project") await addProject(payload);
+                if(type==="add_post")    return await addPost(payload);
+                else if(type==="add_project") return await addProject(payload);
                 else if(type==="add_client")  return await addClient(payload);
                 else if(type==="update_client") await updateClient(payload.clientId, payload.updates);
                 else if(type==="add_lead")    await addLead(payload);
@@ -21386,14 +21399,14 @@ Return ONLY valid JSON (no markdown, no explanation):
         if(type==="nav")          { setPage(payload); setSelectedClientId(null); }
       }}
       onDirectAction={async (actionType, payload) => {
-        if(actionType==="add_post")    { await addPost(payload); }
+        if(actionType==="add_post")    { return await addPost(payload); }
         if(actionType==="add_client")  { await addClient(payload); }
         if(actionType==="update_client") { await updateClient(payload.clientId, payload.updates); }
         if(actionType==="add_lead")    { addLead && addLead(payload); }
         if(actionType==="add_invoice") { await createInvoice(payload); }
         if(actionType==="add_project") {
           const pillars = [];
-          await addProject(payload, pillars, null);
+          return await addProject(payload, pillars, null);
         }
         if(actionType==="update_stage") {
           const {postId, newStage, updates} = payload;
