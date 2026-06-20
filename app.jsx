@@ -501,7 +501,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 1.88";
+const APP_VERSION = "beta 1.89";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1431,7 +1431,7 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       .bottom-nav{
         display:flex;position:fixed;bottom:0;left:0;right:0;
         background:var(--surface);border-top:1px solid var(--border);
-        z-index:200;padding:6px 0 max(6px,env(safe-area-inset-bottom));
+        z-index:200;padding:6px 0 max(10px,env(safe-area-inset-bottom));
         justify-content:space-around;align-items:center;
       }
       .main-content{
@@ -20958,11 +20958,14 @@ Return ONLY valid JSON (no markdown, no explanation):
             <div style={{
               position:"sticky",top:0,zIndex:100,
               height:(page==="home"&&!isMobile)?0:56,
+              boxSizing:"content-box",
               overflow:"hidden",
               background:"var(--surface)",
               borderBottom:(page==="home"&&!isMobile)?"none":"1px solid var(--border)",
               display:(page==="home"&&!isMobile)?"none":"flex",alignItems:"center",
-              padding:"0 16px",gap:10,flexShrink:0,
+              paddingLeft:16,paddingRight:16,
+              paddingTop:isMobile?"max(10px,env(safe-area-inset-top))":0,
+              gap:10,flexShrink:0,
             }}>
               {/* Hamburger (mobile only) */}
               {isMobile&&(
