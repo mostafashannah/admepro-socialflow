@@ -501,7 +501,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.01";
+const APP_VERSION = "beta 2.02";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1283,6 +1283,14 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       --top-bar-h:56px;
     }
     html,body,#root{height:100%;overflow-x:hidden}
+    .app-shell{height:100vh}
+    /* iOS standalone (Add to Home Screen) reserves extra dead space at the
+       bottom that doesn't exist in a regular Safari tab. Scoped strictly to
+       display-mode:standalone so the regular browser tab (already correct)
+       isn't affected. */
+    @media all and (display-mode:standalone){
+      .app-shell{height:-webkit-fill-available}
+    }
     body{
       background:${bg?bg:"var(--bg)"};
       background-attachment:fixed;
@@ -20910,7 +20918,7 @@ Return ONLY valid JSON (no markdown, no explanation):
 
   return (
     <><GStyle wallpaper={wallpaper} accentColor={accentColor}/>
-    <div style={{display:"flex",height:"100vh",position:"relative",overflow:"hidden"}}>
+    <div className="app-shell" style={{display:"flex",position:"relative",overflow:"hidden"}}>
 
       {/* Sidebar — hidden on mobile (uses drawer instead) */}
       {!isMobile&&(
