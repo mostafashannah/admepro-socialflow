@@ -502,7 +502,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.13";
+const APP_VERSION = "beta 2.14";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16043,6 +16043,7 @@ Format answers for readability, not as a wall of text:
    [ACTION:{"action":"delete_client","client_name":"..."}]
    [ACTION:{"action":"save_exemplar","client_name":"...","caption":"...the full caption text to save as a style reference..."}]
    [ACTION:{"action":"save_voice_card","client_name":"...","voice_paragraph":"...one paragraph describing tone, POV, formality, emoji policy, signature phrases..."}]
+   [ACTION:{"action":"save_client_facts","client_name":"...","facts":{"legal_name":"...","activity":"...","capital":"...","hq":"...","branches":"...","manager":"...","commercial_register":"..."}}] — use this whenever the user shares standalone business/profile facts about a client (legal name, capital, HQ/branches, registration numbers, manager, etc.) that don't fit update_client's fixed fields (industry/email/phone/platforms). Put each distinct fact as its own key in "facts" using a short snake_case key and the value as given; omit keys with no value. This is the correct action for "remember/save this info about client X" requests — update_client only supports industry/email/phone/platforms and will report nothing to update for anything else.
 4. The action block(s) are SEPARATE from your reply. Your text reply comes FIRST (answer / confirm the plan), then each [ACTION:{...}] on its own new line.
 4b. KEEP ACTION JSON COMPACT. Each [ACTION:{...}] must be a SINGLE LINE of valid JSON with NO real newlines inside string values (use \\n if you must). NEVER paste full bilingual captions, long briefs, or hashtag walls inside ACTION JSON — put a SHORT description (≤120 chars) in the description field and put the full caption/brief in your normal chat reply text BEFORE the action blocks. This is critical: long JSON strings break parsing and cause only some actions to run.
 5. Never include action blocks for pure questions/answers.
@@ -16121,6 +16122,7 @@ const CHATBOT_ACTION_ROLES = {
   delete_client: ["admin"],
   save_exemplar: ["admin","account_manager","content_creator"],
   save_voice_card: ["admin","account_manager"],
+  save_client_facts: ["admin","account_manager"],
 };
 
 // Simple inline markdown renderer for chat messages
@@ -16965,6 +16967,15 @@ RULES:
         if(onUpsertMemory) await onUpsertMemory(cl.id, cl.name, "brand_voice_paragraph", vp, "voice_card");
         addBotMsg(` Brand voice saved for **${cl.name}**.`,"success");
       }
+      else if(act==="save_client_facts") {
+        const cl=(data.clients||[]).find(c=>c.id===payload.client_id||(c.name||"").toLowerCase().includes((payload.client_name||"").toLowerCase()));
+        if(!cl){addBotMsg(` Couldn't find client "${payload.client_name}".`,"error");return;}
+        const facts = payload.facts||{};
+        const entries = Object.entries(facts).filter(([,v])=>String(v||"").trim());
+        if(entries.length===0){addBotMsg(" No facts provided to save.","error");return;}
+        if(onUpsertMemory) for(const [k,v] of entries) await onUpsertMemory(cl.id, cl.name, k, String(v).trim(), "ai");
+        addBotMsg(` Saved ${entries.length} fact${entries.length>1?"s":""} for **${cl.name}**.`,"success");
+      }
       else if(act==="delete_task") {
         const post=(data.posts||[]).find(p=>p.id===payload.post_id||(p.title||"").toLowerCase().includes((payload.post_title||"").toLowerCase()));
         if(!post){addBotMsg(` Couldn't find task "${payload.post_title||payload.post_id}".`,"error");return;}
@@ -17324,9 +17335,9 @@ RULES:
 
           {/* Input */}
           <div style={{padding:"8px 12px 12px",borderTop:"1px solid var(--border)"}}>
-            <div style={{display:"flex",alignItems:"flex-end",gap:8,background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:12,padding:"7px 10px",transition:"border-color 0.2s"}}
-            onFocusCapture={e=>e.currentTarget.style.borderColor="var(--accent)"}
-            onBlurCapture={e=>e.currentTarget.style.borderColor="var(--border2)"}>
+            <div style={{display:"flex",alignItems:"flex-end",gap:8,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:12,padding:"7px 10px",transition:"box-shadow 0.2s"}}
+            onFocusCapture={e=>e.currentTarget.style.boxShadow="var(--shadow-sm)"}
+            onBlurCapture={e=>e.currentTarget.style.boxShadow="none"}>
               <textarea ref={inputRef} value={input}
                 onChange={e=>{
                   const v = e.target.value;
@@ -18513,6 +18524,14 @@ RULES:
         if(!vp){addBotMsg(" No voice paragraph provided.","error");return;}
         if(onUpsertMemory) await onUpsertMemory(cl.id, cl.name, "brand_voice_paragraph", vp, "voice_card");
         addBotMsg(` Brand voice saved for **${cl.name}**.`,"success");
+      } else if(act==="save_client_facts") {
+        const cl=(data.clients||[]).find(c=>c.id===payload.client_id||(c.name||"").toLowerCase().includes((payload.client_name||"").toLowerCase()));
+        if(!cl){addBotMsg(` Couldn't find client "${payload.client_name}".`,"error");return;}
+        const facts = payload.facts||{};
+        const entries = Object.entries(facts).filter(([,v])=>String(v||"").trim());
+        if(entries.length===0){addBotMsg(" No facts provided to save.","error");return;}
+        if(onUpsertMemory) for(const [k,v] of entries) await onUpsertMemory(cl.id, cl.name, k, String(v).trim(), "ai");
+        addBotMsg(` Saved ${entries.length} fact${entries.length>1?"s":""} for **${cl.name}**.`,"success");
       } else if(act==="delete_task") {
         const post=(data.posts||[]).find(p=>p.id===payload.post_id||(p.title||"").toLowerCase().includes((payload.post_title||"").toLowerCase()));
         if(!post){addBotMsg(` Couldn't find task "${payload.post_title||payload.post_id}".`,"error");return;}
@@ -18987,9 +19006,9 @@ RULES:
         </div>
       )}
 
-      <div style={{display:"flex",flexDirection:"column",background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:24,padding:"16px 16px 10px",boxShadow:"0 2px 16px rgba(0,0,0,0.05)",transition:"border-color 0.2s"}}
-        onFocusCapture={e=>e.currentTarget.style.borderColor="var(--accent)"}
-        onBlurCapture={e=>e.currentTarget.style.borderColor="var(--border2)"}>
+      <div style={{display:"flex",flexDirection:"column",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:24,padding:"16px 16px 10px",boxShadow:"var(--shadow-sm)",transition:"box-shadow 0.2s"}}
+        onFocusCapture={e=>e.currentTarget.style.boxShadow="var(--shadow-md)"}
+        onBlurCapture={e=>e.currentTarget.style.boxShadow="var(--shadow-sm)"}>
         <input ref={fileInputRef} type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,text/plain,text/csv,text/markdown,application/json,.txt,.csv,.md,.json"
           style={{display:"none"}}
           onChange={e=>{ handleFilesSelected(e.target.files); e.target.value=""; }}/>
