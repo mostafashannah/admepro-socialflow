@@ -502,7 +502,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.18";
+const APP_VERSION = "beta 2.19";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21607,8 +21607,8 @@ Return ONLY valid JSON (no markdown, no explanation):
               height:(page==="home"&&!isMobile)?0:56,
               boxSizing:"content-box",
               overflow:"hidden",
-              background:(isMobile&&page==="home")?"var(--bg)":"var(--surface)",
-              borderBottom:(page==="home")?"none":"1px solid var(--border)",
+              background:isMobile?"var(--bg)":"var(--surface)",
+              borderBottom:(page==="home"||isMobile)?"none":"1px solid var(--border)",
               display:(page==="home"&&!isMobile)?"none":"flex",alignItems:"center",
               paddingLeft:16,paddingRight:16,
               paddingTop:isMobile?"max(10px,env(safe-area-inset-top))":0,
@@ -21616,7 +21616,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             }}>
               {/* Hamburger (mobile only) */}
               {isMobile&&(
-                <button onClick={()=>setSidebarOpen(true)} aria-label="Open navigation menu" style={page==="home"?{padding:0,borderRadius:"50%",width:38,height:38,background:"var(--surface2)",color:"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}:{padding:6,borderRadius:8,color:"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",minHeight:44,minWidth:44}}>
+                <button onClick={()=>setSidebarOpen(true)} aria-label="Open navigation menu" style={{padding:0,borderRadius:"50%",width:38,height:38,background:"var(--surface2)",color:"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                   <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                     <line x1="3" y1="6" x2="21" y2="6"/>
                     <line x1="3" y1="12" x2="21" y2="12"/>
@@ -21625,11 +21625,12 @@ Return ONLY valid JSON (no markdown, no explanation):
                 </button>
               )}
 
-              {/* Logo + brand (mobile only, hidden on the Pro home page for a cleaner header) */}
+              {/* Page title (mobile, non-home pages) */}
               {isMobile&&page!=="home"&&(
-                <div style={{display:"flex",alignItems:"center",gap:7,flex:1,minWidth:0}}>
-                  <img src="/favicon.svg" width={26} height={26} style={{borderRadius:6,flexShrink:0}} alt="logo"/>
-                  <p style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:14,color:"var(--accent)",whiteSpace:"nowrap"}}>SocialFlow</p>
+                <div style={{flex:1,minWidth:0}}>
+                  <p style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,fontSize:15,color:"var(--text)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                    {PAGE_NAMES[page]||"SocialFlow"}
+                  </p>
                 </div>
               )}
               {isMobile&&page==="home"&&<div style={{flex:1}}/>}
@@ -21644,16 +21645,16 @@ Return ONLY valid JSON (no markdown, no explanation):
               )}
 
               {/* Right actions */}
-              <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
-                {/* Theme toggle (hidden on the Pro home page for a cleaner header) */}
-                {!(isMobile&&page==="home")&&(
-                  <button onClick={()=>handleWallpaperChange(["light","soft"].includes(wallpaper)?"dark":"light")} aria-label="Toggle theme" style={{padding:8,borderRadius:8,color:"var(--text3)",minHeight:44,minWidth:44,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                    <Ico d={["light","soft"].includes(wallpaper)?Icons.moon:Icons.sun} size={17}/>
+              <div style={{display:"flex",alignItems:"center",gap:isMobile?8:4,flexShrink:0}}>
+                {/* Theme toggle */}
+                <button onClick={()=>handleWallpaperChange(["light","soft"].includes(wallpaper)?"dark":"light")} aria-label="Toggle theme" style={isMobile
+                  ?{padding:0,borderRadius:"50%",width:38,height:38,background:"var(--surface2)",color:"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}
+                  :{padding:8,borderRadius:8,color:"var(--text3)",minHeight:44,minWidth:44,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <Ico d={["light","soft"].includes(wallpaper)?Icons.moon:Icons.sun} size={isMobile?16:17}/>
                   </button>
-                )}
 
                 {/* Notifications dropdown */}
-                <NotifBell notifications={data.notifications} currentUser={currentUser} onNavigate={setPage} circle={isMobile&&page==="home"}/>
+                <NotifBell notifications={data.notifications} currentUser={currentUser} onNavigate={setPage} circle={isMobile}/>
               </div>
             </div>
           );
@@ -22011,11 +22012,13 @@ Return ONLY valid JSON (no markdown, no explanation):
             const active=page===key;
             return (
               <button key={key} onClick={()=>{setPage(key);setSelectedClientId(null);}} style={{
-                display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,
-                padding:"8px 0",flex:1,color:active?"var(--accent)":"var(--text3)",
-                fontSize:10,fontWeight:active?700:500,minHeight:44,
+                display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,
+                padding:"4px 0",flex:1,color:active?"var(--text)":"var(--text3)",
+                fontSize:10,fontWeight:active?700:500,minHeight:44,background:"none",border:"none",
               }}>
-                <Ico d={ico} size={20} stroke={active?"var(--accent)":"var(--text3)"}/>
+                <span style={{display:"flex",alignItems:"center",justifyContent:"center",width:44,height:26,borderRadius:14,background:active?"var(--accent)":"transparent",transition:"background 0.15s"}}>
+                  <Ico d={ico} size={18} stroke={active?"#fff":"var(--text3)"}/>
+                </span>
                 {label}
               </button>
             );
