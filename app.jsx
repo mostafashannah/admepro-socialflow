@@ -502,7 +502,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.09";
+const APP_VERSION = "beta 2.10";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -15505,12 +15505,35 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
   const [proOpen, setProOpen] = useState(false);
   const [proShowAll, setProShowAll] = useState(false);
   const [proSessions, setProSessions] = useState(()=>loadProSessions());
+  const [proActiveId, setProActiveId] = useState(()=>loadActiveChatId());
+
+  // Keep the flyout's list + active highlight live while it's open, so a
+  // title that finishes deriving (or a session switch from the chat itself)
+  // shows up here without needing to close/reopen the flyout.
+  useEffect(()=>{
+    if(!proOpen) return;
+    const sync = () => {
+      try{
+        const raw = localStorage.getItem(PRO_CHAT_SESSIONS_KEY);
+        if(raw){
+          const parsed = JSON.parse(raw);
+          setProSessions(prev => JSON.stringify(parsed)!==JSON.stringify(prev) ? parsed : prev);
+        }
+        const aid = localStorage.getItem(PRO_CHAT_ACTIVE_KEY)||"";
+        setProActiveId(prev => aid!==prev ? aid : prev);
+      }catch{}
+    };
+    const t = setInterval(sync, 1000);
+    window.addEventListener("storage", sync);
+    return ()=>{ clearInterval(t); window.removeEventListener("storage", sync); };
+  },[proOpen]);
 
   const toggleProOpen = () => {
     setProOpen(o => {
       const next = !o;
       if(next){
         setProSessions(loadProSessions());
+        setProActiveId(loadActiveChatId());
         setOpenGroups(new Set()); // collapse other groups to make room
       } else {
         setProShowAll(false);
@@ -15521,6 +15544,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
 
   const openProSession = (s) => {
     saveActiveChatId(s.id);
+    setProActiveId(s.id);
     handleNav("home");
   };
 
@@ -15532,6 +15556,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     saveProSessions(next);
     saveActiveChatId(fresh.id);
     setProSessions(next);
+    setProActiveId(fresh.id);
     handleNav("home");
   };
 
@@ -15646,7 +15671,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
                     {visibleSessions.map(s=>(
                       <button key={s.id} onClick={()=>openProSession(s)} style={{
                         display:"block",width:"100%",padding:"6px 10px",borderRadius:"var(--rs)",
-                        background: s.id===loadActiveChatId() ? "var(--accentbg)" : "transparent",
+                        background: s.id===proActiveId ? "var(--accentbg)" : "transparent",
                         border:"none",color:"var(--text2)",fontSize:12,fontWeight:500,
                         textAlign:"left",cursor:"pointer",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
                       }}>
@@ -16471,6 +16496,20 @@ function saveProSessions(s){ try{ localStorage.setItem(PRO_CHAT_SESSIONS_KEY, JS
 function loadActiveChatId(){ try{ return localStorage.getItem(PRO_CHAT_ACTIVE_KEY)||""; }catch(e){ return ""; } }
 function saveActiveChatId(id){ try{ localStorage.setItem(PRO_CHAT_ACTIVE_KEY, id||""); }catch(e){} }
 
+// Every real page load (hard refresh, new tab/window) should land on a brand
+// new Pro conversation rather than silently resuming the last one — but
+// navigating within the SPA back to Pro Home should keep resuming it. Since
+// this flag lives in module scope, it only resets when the script itself
+// re-runs (i.e. an actual page load), not on in-app navigation. Both
+// ProHomePage and the floating Chatbot widget can mount at load time, so
+// this also guards against either of them creating a duplicate fresh chat.
+let _proFreshSessionClaimed = false;
+function claimFreshProSessionOnLoad(){
+  if(_proFreshSessionClaimed) return false;
+  _proFreshSessionClaimed = true;
+  return true;
+}
+
 function makeChatSession({user_id="", client_id="", title="New conversation"}={}){
   return {
     id: uid(),
@@ -16534,9 +16573,19 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
   useEffect(()=>{ saveProSessions(sessions); },[sessions]);
   useEffect(()=>{ saveActiveChatId(activeChatId); },[activeChatId]);
 
-  // Ensure we always have an active session when user is logged in
+  // Ensure we always have an active session when user is logged in.
+  // On a real page load this widget may mount before Pro Home does (if the
+  // app doesn't land on the Home page first), so it also claims the
+  // once-per-load fresh session so the bubble doesn't silently resume an
+  // old conversation.
   useEffect(()=>{
     if(!currentUser) return;
+    if(claimFreshProSessionOnLoad()){
+      const fresh = makeChatSession({user_id:currentUser.email||"", client_id:selectedClientId||""});
+      setSessions(prev=>[fresh, ...prev]);
+      setActiveChatId(fresh.id);
+      return;
+    }
     if(!activeChatId || !sessions.find(s=>s.id===activeChatId)){
       // Reuse the most recent existing session if any, else create one
       if(sessions.length>0){
@@ -18148,14 +18197,24 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
   const name = currentUser?.name?.split(" ")[0] || "there";
   const {isMobile} = useResponsive();
 
-  // Initialise welcome message — only when there's truly no active session
+  // Initialise welcome message. A real page load (refresh/new tab) always
+  // starts a brand-new conversation; in-app navigation back to Pro Home
+  // resumes whatever was active.
   useEffect(()=>{
-    if(currentUser && !activeChatId && chatSessions.length===0){
+    if(!currentUser) return;
+    if(claimFreshProSessionOnLoad()){
+      const fresh = makeChatSession({user_id:currentUser.email||""});
+      fresh.messages = [{role:"bot", content:`Hi ${name} I'm **Pro** — your AI workspace inside SocialFlow. Tell me what you want to do and I'll handle it.\n\nYou can say things like:\n• "Create a task for Nova Digital"\n• "Add a new client"\n• "Show me all overdue posts"\n• "Generate a calendar plan for TechStart"`, id:uid(), type:"welcome", chat_id:fresh.id, sender:"pro", created_at:new Date().toISOString()}];
+      setChatSessions(prev=>[fresh, ...prev]);
+      setActiveChatId(fresh.id);
+      return;
+    }
+    if(!activeChatId && chatSessions.length===0){
       const fresh = makeChatSession({user_id:currentUser.email||""});
       fresh.messages = [{role:"bot", content:`Hi ${name} I'm **Pro** — your AI workspace inside SocialFlow. Tell me what you want to do and I'll handle it.\n\nYou can say things like:\n• "Create a task for Nova Digital"\n• "Add a new client"\n• "Show me all overdue posts"\n• "Generate a calendar plan for TechStart"`, id:uid(), type:"welcome", chat_id:fresh.id, sender:"pro", created_at:new Date().toISOString()}];
       setChatSessions([fresh]);
       setActiveChatId(fresh.id);
-    } else if(currentUser && !activeChatId && chatSessions.length>0){
+    } else if(!activeChatId && chatSessions.length>0){
       setActiveChatId(chatSessions[0].id);
     }
   },[currentUser, activeChatId, chatSessions.length]);
@@ -18756,16 +18815,22 @@ RULES:
 
   // Quick action suggestions — one flat list, no duplicate tiles/pills elsewhere
   const QUICK_TILES = [
-    {label:"Create a task", action:()=>sendMessage("Create a new task")},
-    {label:"Plan my calendar", action:()=>onAction("add_calendar")},
-    {label:"Add a new client", action:()=>sendMessage("Add a new client")},
-    {label:"Create an invoice", action:()=>sendMessage("Create an invoice")},
-    {label:"What's overdue?", action:()=>sendMessage("What tasks are overdue?")},
+    {label:"Create a task", ico:Icons.tasks, action:()=>sendMessage("Create a new task")},
+    {label:"Plan my calendar", ico:Icons.calendar, action:()=>onAction("add_calendar")},
+    {label:"Add a new client", ico:Icons.clients, action:()=>sendMessage("Add a new client")},
+    {label:"Create an invoice", ico:Icons.invoice, action:()=>sendMessage("Create an invoice")},
+    {label:"What's overdue?", ico:Icons.clock, action:()=>sendMessage("What tasks are overdue?")},
   ].filter(t=>{
     if(t.label==="Create an invoice"&&!["admin","accountant"].includes(role)) return false;
     if(t.label==="Add a new client"&&!["admin","account_manager"].includes(role)) return false;
     return true;
   });
+
+  // Time-of-day greeting, matching name (full name once, no truncation to first name here)
+  const greetWord = (() => {
+    const h = new Date().getHours();
+    return h<5 ? "Working late" : h<12 ? "Morning" : h<18 ? "Afternoon" : "Evening";
+  })();
 
   const isEmpty = messages.length<=1;
 
@@ -18818,18 +18883,12 @@ RULES:
         </div>
       )}
 
-      <div style={{display:"flex",alignItems:"flex-end",gap:10,background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:20,padding:"10px 10px 10px 16px",transition:"border-color 0.2s"}}
+      <div style={{display:"flex",flexDirection:"column",background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:24,padding:"16px 16px 10px",boxShadow:"0 2px 16px rgba(0,0,0,0.05)",transition:"border-color 0.2s"}}
         onFocusCapture={e=>e.currentTarget.style.borderColor="var(--accent)"}
         onBlurCapture={e=>e.currentTarget.style.borderColor="var(--border2)"}>
         <input ref={fileInputRef} type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,text/plain,text/csv,text/markdown,application/json,.txt,.csv,.md,.json"
           style={{display:"none"}}
           onChange={e=>{ handleFilesSelected(e.target.files); e.target.value=""; }}/>
-        <button onClick={()=>fileInputRef.current?.click()} title="Attach a file or image" style={{
-          width:32,height:32,borderRadius:10,flexShrink:0,background:"transparent",border:"none",
-          color:"var(--text3)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",
-        }}>
-          <Ico d={Icons.paperclip} size={17}/>
-        </button>
         <textarea ref={inputRef} value={input} className="composer-textarea"
           onChange={e=>{
             const v = e.target.value;
@@ -18845,16 +18904,24 @@ RULES:
           }}
           placeholder="Ask anything or tell Pro what to do… (English or Arabic)"
           rows={1}
-          style={{flex:1,fontSize:14,color:"var(--text)",lineHeight:1.5,minHeight:24,maxHeight:120,background:"none",resize:"none",border:"none",outline:"none"}}
+          style={{flex:1,fontSize:14,color:"var(--text)",lineHeight:1.5,minHeight:24,maxHeight:120,background:"none",resize:"none",border:"none",outline:"none",marginBottom:10}}
         />
-        <button onClick={()=>sendMessage()} disabled={(!input.trim()&&attachments.length===0)||typing} style={{
-          width:38,height:38,borderRadius:12,flexShrink:0,
-          background:(input.trim()||attachments.length)&&!typing?"var(--accent)":"var(--border)",
-          color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",
-          transition:"all 0.15s",border:"none",cursor:(input.trim()||attachments.length)&&!typing?"pointer":"default",
-        }}>
-          {typing?<Spinner size={14}/>:<Ico d={Icons.send} size={15} stroke="#fff"/>}
-        </button>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <button onClick={()=>fileInputRef.current?.click()} title="Attach a file or image" style={{
+            width:32,height:32,borderRadius:10,flexShrink:0,background:"transparent",border:"none",
+            color:"var(--text3)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",
+          }}>
+            <Ico d={Icons.paperclip} size={17}/>
+          </button>
+          <button onClick={()=>sendMessage()} disabled={(!input.trim()&&attachments.length===0)||typing} style={{
+            width:34,height:34,borderRadius:11,flexShrink:0,
+            background:(input.trim()||attachments.length)&&!typing?"var(--accent)":"var(--border)",
+            color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",
+            transition:"all 0.15s",border:"none",cursor:(input.trim()||attachments.length)&&!typing?"pointer":"default",
+          }}>
+            {typing?<Spinner size={14}/>:<Ico d={Icons.send} size={15} stroke="#fff"/>}
+          </button>
+        </div>
       </div>
     </>
   );
@@ -18928,29 +18995,32 @@ RULES:
       {/* ── Messages area ── */}
       <div style={{flex:1,overflowY:"auto",padding:isMobile?"16px":"24px 20%",display:"flex",flexDirection:"column",justifyContent:isEmpty?"center":"flex-start"}}>
         {isEmpty ? (
-          <div style={{textAlign:"center",maxWidth:600,width:"100%",margin:"0 auto"}}>
-            <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:600,fontSize:isMobile?20:26,color:"var(--text)",marginBottom:24}}>
-              Hi {name}, what do you want to do today?
+          <div style={{textAlign:"center",maxWidth:640,width:"100%",margin:"0 auto"}}>
+            <h2 style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12,fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:600,fontSize:isMobile?22:32,color:"var(--text)",marginBottom:28}}>
+              <Ico d={Icons.sparkle} size={isMobile?22:28} stroke="var(--accent)"/>
+              {greetWord}, {currentUser?.name||name}
             </h2>
 
             {Composer}
 
-            {/* Suggestions — plain text chips, directly under the input */}
-            <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginTop:16}}>
+            {/* Suggestions — outlined pill chips with icons, directly under the input */}
+            <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center",marginTop:18}}>
               {QUICK_TILES.map(t=>(
                 <button key={t.label} onClick={t.action} style={{
-                  padding:"8px 16px",borderRadius:99,
-                  background:"transparent",border:"1px solid var(--border2)",
-                  fontSize:13,fontWeight:500,color:"var(--text2)",cursor:"pointer",
-                  transition:"border-color 0.15s",
+                  display:"flex",alignItems:"center",gap:7,
+                  padding:"9px 16px",borderRadius:99,
+                  background:"var(--surface)",border:"1px solid var(--border2)",
+                  fontSize:13,fontWeight:600,color:"var(--text2)",cursor:"pointer",
+                  transition:"border-color 0.15s, color 0.15s",
                 }}
-                onMouseEnter={e=>e.currentTarget.style.borderColor="var(--accent)"}
-                onMouseLeave={e=>e.currentTarget.style.borderColor="var(--border2)"}>
+                onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--accent)";e.currentTarget.style.color="var(--accent)";}}
+                onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border2)";e.currentTarget.style.color="var(--text2)";}}>
+                  <Ico d={t.ico} size={14} stroke="currentColor"/>
                   {t.label}
                 </button>
               ))}
             </div>
-            <p style={{fontSize:11,color:"var(--text3)",marginTop:16,textAlign:"center"}}>Pro can make mistakes. Double-check important info.</p>
+            <p style={{fontSize:11,color:"var(--text3)",marginTop:20,textAlign:"center"}}>Pro can make mistakes. Double-check important info.</p>
           </div>
         ) : (
           <>
