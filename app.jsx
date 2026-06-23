@@ -502,7 +502,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.14";
+const APP_VERSION = "beta 2.15";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17338,7 +17338,7 @@ RULES:
             <div style={{display:"flex",alignItems:"flex-end",gap:8,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:12,padding:"7px 10px",transition:"box-shadow 0.2s"}}
             onFocusCapture={e=>e.currentTarget.style.boxShadow="var(--shadow-sm)"}
             onBlurCapture={e=>e.currentTarget.style.boxShadow="none"}>
-              <textarea ref={inputRef} value={input}
+              <textarea ref={inputRef} value={input} className="composer-textarea"
                 onChange={e=>{
                   const v = e.target.value;
                   const grew = v.length - (input?.length||0);
