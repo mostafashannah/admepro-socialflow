@@ -502,7 +502,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.15";
+const APP_VERSION = "beta 2.16";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1549,6 +1549,8 @@ const Icons = {
   chevD: "M6 9l6 6 6-6",
   send: "M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z",
   sparkle: ["M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z","M19 3l.8 2.2L22 6l-2.2.8L19 9l-.8-2.2L16 6l2.2-.8z"],
+  robot: ["M12 8V4H8","M4 8h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z","M2 14h2","M20 14h2","M15 13v2","M9 13v2"],
+  panelLeft: ["M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z","M9 3v18"],
   eye: ["M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z","M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"],
   edit: ["M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7","M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"],
   trash: ["M3 6h18","M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"],
@@ -5862,7 +5864,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
         {/* Input */}
         <div style={{borderTop:"1px solid var(--border)",padding:"10px 14px",display:"flex",gap:8,alignItems:"flex-end",background:"var(--surface)"}}>
           <textarea ref={inputRef} value={input} onChange={e=>setInput(e.target.value)} onKeyDown={handleKey}
-            className="composer-textarea"
+            className="composer-textarea" spellCheck={false}
             placeholder={`Tell Pro about ${client.name}'s content style, audience, tone, examples…`}
             rows={1} style={{flex:1,fontSize:13,resize:"none",border:"1px solid var(--border2)",borderRadius:8,padding:"8px 10px",background:"var(--surface2)",color:"var(--text)",lineHeight:1.5,maxHeight:100,minHeight:36}}/>
           <button onClick={sendMessage} disabled={!input.trim()||typing} style={{
@@ -15427,7 +15429,6 @@ function TeamMembersPage({team,posts,perfLogs,onMemberSelect}) {
 // ════════════════════════════════════════════════════════════════
 function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfile,onLogout,open,onClose,wallpaper,onWallpaperChange}) {
   const {isMobile, isTablet} = useResponsive();
-  const collapsed = isTablet;
   const unread = notifications.filter(n=>n.recipient_email===currentUser?.email&&!n.is_read).length;
   const isAdmin = currentUser?.role==="admin";
   const isAccountant = currentUser?.role==="accountant";
@@ -15437,7 +15438,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
 
   // ── Nav structure ─────────────────────────────────────────────
   const rawGroups = isClientRole ? [
-    { group: null, icon: null, items: [{key:"home", label:"Pro (Home)", ico:Icons.sparkle}] },
+    { group: null, icon: null, items: [{key:"home", label:"Pro", ico:Icons.robot}] },
     { group: "PORTAL", icon: Icons.globe, items: [
       {key:"dashboard", label:"Dashboard", ico:Icons.home},
       {key:"tasks", label:"My Content", ico:Icons.tasks},
@@ -15446,7 +15447,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     ]},
     { group: "ACCOUNT", icon: Icons.person, items: [{key:"account", label:"My Account", ico:Icons.person}] },
   ] : [
-    { group: null, icon: null, items: [{key:"home", label:"Pro (Home)", ico:Icons.sparkle}] },
+    { group: null, icon: null, items: [{key:"home", label:"Pro", ico:Icons.robot}] },
     { group: "WORKSPACE", icon: Icons.home, items: [
       {key:"dashboard", label:"Dashboard", ico:Icons.home},
     ]},
@@ -15491,6 +15492,19 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
       ]:[]),
     ]}] : []),
   ];
+
+  // ── Manual collapse (desktop) ───────────────────────────────────
+  const [manualCollapsed, setManualCollapsed] = useState(()=>{ try{ return localStorage.getItem("sf_sidebar_collapsed")==="1"; }catch(e){ return false; } });
+  useEffect(()=>{ try{ localStorage.setItem("sf_sidebar_collapsed", manualCollapsed?"1":"0"); }catch(e){} },[manualCollapsed]);
+  const collapsed = isTablet || manualCollapsed;
+
+  // ── Quick search (desktop/tablet) ───────────────────────────────
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const allNavItems = rawGroups.flatMap(g => g.items);
+  const searchResults = searchQuery.trim()
+    ? allNavItems.filter(i => i.label.toLowerCase().includes(searchQuery.trim().toLowerCase())).slice(0,8)
+    : allNavItems.slice(0,6);
 
   // Find which group the active page lives in
   const activeGroup = rawGroups.find(g => g.items.some(i => i.key === page))?.group || null;
@@ -15555,6 +15569,9 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
   const openProSession = (s) => {
     saveActiveChatId(s.id);
     setProActiveId(s.id);
+    const next = loadProSessions().map(x=>x.id===s.id?{...x,updated_at:new Date().toISOString()}:x);
+    saveProSessions(next);
+    setProSessions(next);
     handleNav("home");
   };
 
@@ -15674,7 +15691,8 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
             if(item.key !== "home" || compact) {
               return <NavItem key={item.key} item={item} compact={compact} indented={false}/>;
             }
-            const visibleSessions = proShowAll ? proSessions : proSessions.slice(0,5);
+            const sortedProSessions = [...proSessions].sort((a,b)=>new Date(b.updated_at||b.created_at||0)-new Date(a.updated_at||a.created_at||0));
+            const visibleSessions = proShowAll ? sortedProSessions : sortedProSessions.slice(0,5);
             return (
               <div key={item.key}>
                 <div style={{display:"flex",alignItems:"center",gap:2}}>
@@ -15807,9 +15825,39 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
       background:"var(--surface)", borderRight:"1px solid var(--border)",
       display:"flex", flexDirection:"column",
       height:"100vh", position:"sticky", top:0,
-      transition:"width 0.22s cubic-bezier(0.4,0,0.2,1)", overflow:"hidden",
+      transition:"width 0.22s cubic-bezier(0.4,0,0.2,1)", overflow:"visible",
     }}>
       <LogoBlock compact={collapsed}/>
+      <div style={{padding: collapsed ? "8px 8px 4px" : "10px 12px 4px", display:"flex", flexDirection: collapsed ? "column" : "row", gap:6, position:"relative", flexShrink:0}}>
+        {!isTablet && (
+          <button onClick={()=>setManualCollapsed(c=>!c)} title={collapsed?"Expand menu":"Collapse menu"} style={{display:"flex",alignItems:"center",justifyContent:"center",width:32,height:32,borderRadius:"var(--rs)",background:"transparent",border:"none",color:"var(--text3)",cursor:"pointer",flexShrink:0}}>
+            <Ico d={Icons.panelLeft} size={16}/>
+          </button>
+        )}
+        <button onClick={()=>setSearchOpen(o=>!o)} title="Search" style={{display:"flex",alignItems:"center",justifyContent:collapsed?"center":"flex-start",gap:8,flex:collapsed?"none":1,width:collapsed?32:"auto",height:32,padding:collapsed?0:"0 10px",borderRadius:"var(--rs)",background:searchOpen?"var(--surface2)":"transparent",border:"1px solid var(--border)",color:"var(--text3)",cursor:"pointer"}}>
+          <Ico d={Icons.search} size={15}/>
+          {!collapsed && <span style={{fontSize:12}}>Search</span>}
+        </button>
+        {searchOpen && (
+          <>
+            <div onClick={()=>setSearchOpen(false)} style={{position:"fixed",inset:0,zIndex:399}}/>
+            <div style={{position:"absolute", top:"100%", left:0, marginTop:6, width:260, background:"var(--surface)cc", backdropFilter:"blur(20px) saturate(180%)", WebkitBackdropFilter:"blur(20px) saturate(180%)", border:"1px solid var(--border2)", borderRadius:"var(--r)", boxShadow:"var(--shadow-lg)", zIndex:400, padding:10}}>
+              <input autoFocus value={searchQuery} onChange={e=>setSearchQuery(e.target.value)}
+                onKeyDown={e=>{ if(e.key==="Escape"){ setSearchOpen(false); setSearchQuery(""); } }}
+                placeholder="Search pages…"
+                style={{width:"100%",padding:"8px 10px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface2)",color:"var(--text)",fontSize:13,marginBottom:8,outline:"none"}}/>
+              <div style={{display:"flex",flexDirection:"column",gap:2,maxHeight:280,overflowY:"auto"}}>
+                {searchResults.length===0 && <p style={{fontSize:12,color:"var(--text3)",padding:"8px 4px"}}>No matches.</p>}
+                {searchResults.map(item=>(
+                  <button key={item.key} onClick={()=>{ setPage(item.key); setSearchOpen(false); setSearchQuery(""); }} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 8px",borderRadius:8,background:"transparent",border:"none",color:"var(--text2)",fontSize:12.5,fontWeight:600,cursor:"pointer",textAlign:"left"}}>
+                    <Ico d={item.ico} size={14}/> {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
       <SidebarContent compact={collapsed}/>
       <div style={{padding:"8px",borderTop:"1px solid var(--border)",flexShrink:0}}>
         {collapsed
@@ -16688,6 +16736,7 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
   };
   const switchChat = (id) => {
     if(!sessions.find(s=>s.id===id)) return;
+    setSessions(prev=>prev.map(s=>s.id===id?{...s,updated_at:new Date().toISOString()}:s));
     setActiveChatId(id);
     setShowHistory(false);
   };
@@ -17236,7 +17285,7 @@ RULES:
               </div>
               <div style={{flex:1,overflowY:"auto",padding:"6px 8px"}}>
                 {sessions.length===0 && <p style={{fontSize:12,color:"var(--text3)",textAlign:"center",padding:30}}>No previous chats yet.</p>}
-                {sessions.map(s=>{
+                {[...sessions].sort((a,b)=>new Date(b.updated_at||b.created_at||0)-new Date(a.updated_at||a.created_at||0)).map(s=>{
                   const cName = (data?.clients||[]).find(c=>c.id===s.client_id)?.name;
                   const isActive = s.id===activeChatId;
                   const last = (s.messages||[]).filter(m=>m.role==="user"||m.role==="bot").slice(-1)[0];
@@ -17338,7 +17387,7 @@ RULES:
             <div style={{display:"flex",alignItems:"flex-end",gap:8,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:12,padding:"7px 10px",transition:"box-shadow 0.2s"}}
             onFocusCapture={e=>e.currentTarget.style.boxShadow="var(--shadow-sm)"}
             onBlurCapture={e=>e.currentTarget.style.boxShadow="none"}>
-              <textarea ref={inputRef} value={input} className="composer-textarea"
+              <textarea ref={inputRef} value={input} className="composer-textarea" spellCheck={false}
                 onChange={e=>{
                   const v = e.target.value;
                   const grew = v.length - (input?.length||0);
@@ -18351,6 +18400,7 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
   };
 
   const loadSession = (session) => {
+    setChatSessions(prev=>prev.map(s=>s.id===session.id?{...s,updated_at:new Date().toISOString()}:s));
     setActiveChatId(session.id);
     setShowHistory(false);
   };
@@ -19012,7 +19062,7 @@ RULES:
         <input ref={fileInputRef} type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,text/plain,text/csv,text/markdown,application/json,.txt,.csv,.md,.json"
           style={{display:"none"}}
           onChange={e=>{ handleFilesSelected(e.target.files); e.target.value=""; }}/>
-        <textarea ref={inputRef} value={input} className="composer-textarea"
+        <textarea ref={inputRef} value={input} className="composer-textarea" spellCheck={false}
           onChange={e=>{
             const v = e.target.value;
             const grew = v.length - (input?.length||0);
@@ -19102,7 +19152,7 @@ RULES:
           {chatSessions.length===0?(
             <p style={{fontSize:12,color:"var(--text3)",textAlign:"center",padding:"20px 0"}}>No saved conversations yet.</p>
           ):(
-            chatSessions.map(s=>(
+            [...chatSessions].sort((a,b)=>new Date(b.updated_at||b.created_at||0)-new Date(a.updated_at||a.created_at||0)).map(s=>(
               <div key={s.id} onClick={()=>editingHomeId!==s.id&&loadSession(s)} style={{padding:"8px 10px",borderRadius:8,cursor:"pointer",marginBottom:4,background:"var(--surface2)",border:"1px solid var(--border)",display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:6}}>
                 <div style={{flex:1,minWidth:0}}>
                   {editingHomeId===s.id ? (
@@ -19116,7 +19166,7 @@ RULES:
                   ) : (
                     <p style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:"var(--text)"}}>{s.title}</p>
                   )}
-                  <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{s.clientName?`${s.clientName} · `:""}{ new Date(s.date).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</p>
+                  <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{new Date(s.updated_at||s.created_at||Date.now()).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</p>
                 </div>
                 <ChatSessionMenu onRename={()=>startRenameSession(s)} onDelete={()=>{
                   setChatSessions(prev=>prev.filter(x=>x.id!==s.id));
@@ -19757,7 +19807,7 @@ function App() {
   const {isMobile, isTablet} = useResponsive();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const mobileNavItems = [
-    {key:"home", label:"Pro", ico:Icons.sparkle},
+    {key:"home", label:"Pro", ico:Icons.robot},
     {key:"dashboard",label:"Dashboard",ico:Icons.home},
     {key:"tasks", label:"Tasks", ico:Icons.tasks},
     {key:"clients", label:"Clients", ico:Icons.clients},
