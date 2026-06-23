@@ -55,7 +55,7 @@ function speedTokens(speed,base){if(speed==="low")return Math.max(300,Math.round
 function logActivity(action,category,details="",status="success",errorMsg="",user="system"){const entry={action,category,details,status,error_message:errorMsg,performed_by:user,performed_at:new Date().toISOString()};ce("ActivityLog",[entry]).then(({entities})=>{const saved=entities===null||entities===void 0?void 0:entities[0];// Push the freshly-saved row (with real id) into the live UI immediately,
 // otherwise System Log only reflects what was loaded at page load.
 if(saved&&!saved._saveError)window.dispatchEvent(new CustomEvent("sf:activitylog",{detail:saved}));}).catch(()=>{});}// ── Email HTML templates ─────────────────────────────────────────
-const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 2.11";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 2.12";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
 <tr><td align="center">
@@ -293,10 +293,13 @@ const uid=()=>"local_"+Date.now()+"_"+Math.random().toString(36).slice(2,7);cons
 // WALLPAPER / THEME DEFINITIONS
 // ════════════════════════════════════════════════════════════════
 const WALLPAPERS=[{key:"dark",label:"Dark Mode",desc:"Classic dark workspace",preview:["#080810","#111122","#d90b2c"],bg:null,// uses CSS vars only
-vars:()=>({"--bg":"#080810","--bg2":"#0d0d1a","--surface":"#111122","--surface2":"#191930","--surface3":"#20203a","--border":"rgba(255,255,255,0.06)","--border2":"rgba(255,255,255,0.1)","--text":"#f0eeff","--text2":"#9896c8","--text3":"#8886b5"})},{key:"light",label:"Light Minimal",desc:"Clean white workspace",preview:["#f5f5f0","#ffffff","#d90b2c"],bg:null,vars:()=>({"--bg":"#f5f5f0","--bg2":"#ebebe5","--surface":"#ffffff","--surface2":"#f8f8f5","--surface3":"#eeeeea","--border":"rgba(0,0,0,0.08)","--border2":"rgba(0,0,0,0.13)","--text":"#111110","--text2":"#444440","--text3":"#666666"})},{key:"midnight",label:"Midnight Blue",desc:"Deep navy professional",preview:["#020c1e","#071428","#d90b2c"],bg:"radial-gradient(ellipse at 20% 50%,#0a1f3a 0%,#020c1e 60%)",vars:()=>({"--bg":"#020c1e","--bg2":"#051020","--surface":"#071830","--surface2":"#0c2040","--surface3":"#102848","--border":"rgba(80,140,255,0.1)","--border2":"rgba(80,140,255,0.18)","--text":"#e0eeff","--text2":"#6a9acc","--text3":"#5a8fc0"})},{key:"forest",label:"Forest Green",desc:"Calm deep emerald",preview:["#030f07","#091a0e","#d90b2c"],bg:"radial-gradient(ellipse at 80% 20%,#0d2218 0%,#030f07 65%)",vars:()=>({"--bg":"#030f07","--bg2":"#060f09","--surface":"#091a0e","--surface2":"#0e2415","--surface3":"#132e1a","--border":"rgba(40,160,80,0.1)","--border2":"rgba(40,160,80,0.18)","--text":"#e0f5e8","--text2":"#55a870","--text3":"#4e9966"})},{key:"sunset",label:"Warm Sunset",desc:"Rich amber and deep brown",preview:["#0f0800","#1e1005","#d90b2c"],bg:"radial-gradient(ellipse at 70% 30%,#2a1500 0%,#0f0800 70%)",vars:()=>({"--bg":"#0f0800","--bg2":"#150a00","--surface":"#1e1005","--surface2":"#271500","--surface3":"#321c00","--border":"rgba(200,100,20,0.1)","--border2":"rgba(200,100,20,0.18)","--text":"#ffe8c8","--text2":"#c8884a","--text3":"#b08060"})},{key:"slate",label:"Slate Professional",desc:"Neutral gray elegance",preview:["#0e1117","#161b22","#d90b2c"],bg:null,vars:()=>({"--bg":"#0e1117","--bg2":"#121820","--surface":"#161b22","--surface2":"#1e242d","--surface3":"#252c38","--border":"rgba(255,255,255,0.07)","--border2":"rgba(255,255,255,0.12)","--text":"#e6edf3","--text2":"#8b949e","--text3":"#7a8899"})}];const getWallpaperVars=key=>{const wp=WALLPAPERS.find(w=>w.key===key)||WALLPAPERS[0];return wp.vars();};const getWallpaperBg=key=>{const wp=WALLPAPERS.find(w=>w.key===key);return(wp===null||wp===void 0?void 0:wp.bg)||null;};// ════════════════════════════════════════════════════════════════
+vars:()=>({"--bg":"#080810","--bg2":"#0d0d1a","--surface":"#111122","--surface2":"#191930","--surface3":"#20203a","--border":"rgba(255,255,255,0.06)","--border2":"rgba(255,255,255,0.1)","--text":"#f0eeff","--text2":"#9896c8","--text3":"#8886b5"})},{key:"light",label:"Light Minimal",desc:"Clean white workspace",preview:["#fafafa","#ffffff","#d90b2c"],bg:null,vars:()=>({"--bg":"#fafafa","--bg2":"#f1f1ef","--surface":"#ffffff","--surface2":"#f7f7f5","--surface3":"#eeeeec","--border":"rgba(0,0,0,0.07)","--border2":"rgba(0,0,0,0.11)","--text":"#1a1a1a","--text2":"#5a5a58","--text3":"#8a8a87"})},{key:"midnight",label:"Midnight Blue",desc:"Deep navy professional",preview:["#020c1e","#071428","#d90b2c"],bg:"radial-gradient(ellipse at 20% 50%,#0a1f3a 0%,#020c1e 60%)",vars:()=>({"--bg":"#020c1e","--bg2":"#051020","--surface":"#071830","--surface2":"#0c2040","--surface3":"#102848","--border":"rgba(80,140,255,0.1)","--border2":"rgba(80,140,255,0.18)","--text":"#e0eeff","--text2":"#6a9acc","--text3":"#5a8fc0"})},{key:"forest",label:"Forest Green",desc:"Calm deep emerald",preview:["#030f07","#091a0e","#d90b2c"],bg:"radial-gradient(ellipse at 80% 20%,#0d2218 0%,#030f07 65%)",vars:()=>({"--bg":"#030f07","--bg2":"#060f09","--surface":"#091a0e","--surface2":"#0e2415","--surface3":"#132e1a","--border":"rgba(40,160,80,0.1)","--border2":"rgba(40,160,80,0.18)","--text":"#e0f5e8","--text2":"#55a870","--text3":"#4e9966"})},{key:"sunset",label:"Warm Sunset",desc:"Rich amber and deep brown",preview:["#0f0800","#1e1005","#d90b2c"],bg:"radial-gradient(ellipse at 70% 30%,#2a1500 0%,#0f0800 70%)",vars:()=>({"--bg":"#0f0800","--bg2":"#150a00","--surface":"#1e1005","--surface2":"#271500","--surface3":"#321c00","--border":"rgba(200,100,20,0.1)","--border2":"rgba(200,100,20,0.18)","--text":"#ffe8c8","--text2":"#c8884a","--text3":"#b08060"})},{key:"slate",label:"Slate Professional",desc:"Neutral gray elegance",preview:["#0e1117","#161b22","#d90b2c"],bg:null,vars:()=>({"--bg":"#0e1117","--bg2":"#121820","--surface":"#161b22","--surface2":"#1e242d","--surface3":"#252c38","--border":"rgba(255,255,255,0.07)","--border2":"rgba(255,255,255,0.12)","--text":"#e6edf3","--text2":"#8b949e","--text3":"#7a8899"})}];const getWallpaperVars=key=>{const wp=WALLPAPERS.find(w=>w.key===key)||WALLPAPERS[0];return wp.vars();};const getWallpaperBg=key=>{const wp=WALLPAPERS.find(w=>w.key===key);return(wp===null||wp===void 0?void 0:wp.bg)||null;};// ════════════════════════════════════════════════════════════════
 // GLOBAL STYLES (wallpaper-aware)
 // ════════════════════════════════════════════════════════════════
-const GStyle=({wallpaper="dark",accentColor="#d90b2c"})=>{const wp=getWallpaperVars(wallpaper);const bg=getWallpaperBg(wallpaper);const cssVars=Object.entries(wp).map(([k,v])=>`${k}:${v}`).join(";");const r=parseInt(accentColor.slice(1,3),16);const g=parseInt(accentColor.slice(3,5),16);const b=parseInt(accentColor.slice(5,7),16);return/*#__PURE__*/React.createElement("style",null,`
+const GStyle=({wallpaper="dark",accentColor="#d90b2c"})=>{const wp=getWallpaperVars(wallpaper);const bg=getWallpaperBg(wallpaper);const cssVars=Object.entries(wp).map(([k,v])=>`${k}:${v}`).join(";");const r=parseInt(accentColor.slice(1,3),16);const g=parseInt(accentColor.slice(3,5),16);const b=parseInt(accentColor.slice(5,7),16);// Light backgrounds need much softer, more subtle shadows than dark ones —
+// the same 0.4-opacity dark shadow that reads fine on a navy surface looks
+// muddy on white. Scale the whole shadow system off the active theme.
+const isLight=wallpaper==="light";const shadowSm=isLight?"0 1px 3px rgba(0,0,0,0.05)":"0 1px 3px rgba(0,0,0,0.12)";const shadowMd=isLight?"0 4px 16px rgba(0,0,0,0.08)":"0 6px 20px rgba(0,0,0,0.15)";const shadowLg=isLight?"0 8px 28px rgba(0,0,0,0.1)":"0 8px 32px rgba(0,0,0,0.18)";return/*#__PURE__*/React.createElement("style",null,`
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Bricolage+Grotesque:wght@600;700;800&display=swap');
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
     :root{
@@ -304,8 +307,11 @@ const GStyle=({wallpaper="dark",accentColor="#d90b2c"})=>{const wp=getWallpaperV
       --accent:${accentColor};
       --accent2:${accentColor}dd;
       --accentbg:rgba(${r},${g},${b},0.12);
-      --shadow:rgba(0,0,0,0.4);
-      --r:12px;--rs:8px;--rxs:6px;
+      --shadow:${isLight?"rgba(0,0,0,0.12)":"rgba(0,0,0,0.4)"};
+      --shadow-sm:${shadowSm};
+      --shadow-md:${shadowMd};
+      --shadow-lg:${shadowLg};
+      --r:${isLight?"14px":"12px"};--rs:${isLight?"10px":"8px"};--rxs:6px;
       --sidebar-w:220px;
       --top-bar-h:56px;
     }
@@ -346,11 +352,11 @@ const GStyle=({wallpaper="dark",accentColor="#d90b2c"})=>{const wp=getWallpaperV
     .slide-in-left{animation:slide-in-left 0.28s cubic-bezier(0.25,0.46,0.45,0.94) both}
 
     /* ── CARD SYSTEM ── */
-    .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);transition:box-shadow 0.2s,transform 0.2s,border-color 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.12)}
-    .card:hover{box-shadow:0 8px 32px rgba(0,0,0,0.18);transform:translateY(-2px);border-color:var(--accent)}
-    .card-flat{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:0 1px 3px rgba(0,0,0,0.08)}
-    .stat-card{padding:24px 26px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:0 2px 6px rgba(0,0,0,0.1);transition:all 0.2s}
-    .stat-card:hover{box-shadow:0 6px 20px rgba(0,0,0,0.15);transform:translateY(-1px)}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);transition:box-shadow 0.2s,transform 0.2s,border-color 0.2s;box-shadow:var(--shadow-sm)}
+    .card:hover{box-shadow:var(--shadow-lg);transform:translateY(-2px);border-color:var(--accent)}
+    .card-flat{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow-sm)}
+    .stat-card{padding:24px 26px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow-sm);transition:all 0.2s}
+    .stat-card:hover{box-shadow:var(--shadow-md);transform:translateY(-1px)}
     .stat-card-value{font-size:32px;font-weight:800;font-family:'Bricolage Grotesque',sans-serif;line-height:1.1;margin:6px 0}
     .stat-card-label{font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px}
     .stat-card-sub{font-size:12px;color:var(--text3);margin-top:6px;line-height:1.4}

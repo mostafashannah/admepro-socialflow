@@ -502,7 +502,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.11";
+const APP_VERSION = "beta 2.12";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1185,13 +1185,13 @@ const WALLPAPERS = [
     key:"light",
     label:"Light Minimal",
     desc:"Clean white workspace",
-    preview:["#f5f5f0","#ffffff","#d90b2c"],
+    preview:["#fafafa","#ffffff","#d90b2c"],
     bg: null,
     vars:()=>({
-      "--bg":"#f5f5f0","--bg2":"#ebebe5","--surface":"#ffffff",
-      "--surface2":"#f8f8f5","--surface3":"#eeeeea",
-      "--border":"rgba(0,0,0,0.08)","--border2":"rgba(0,0,0,0.13)",
-      "--text":"#111110","--text2":"#444440","--text3":"#666666",
+      "--bg":"#fafafa","--bg2":"#f1f1ef","--surface":"#ffffff",
+      "--surface2":"#f7f7f5","--surface3":"#eeeeec",
+      "--border":"rgba(0,0,0,0.07)","--border2":"rgba(0,0,0,0.11)",
+      "--text":"#1a1a1a","--text2":"#5a5a58","--text3":"#8a8a87",
     }),
   },
   {
@@ -1269,6 +1269,13 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
   const r = parseInt(accentColor.slice(1,3),16);
   const g = parseInt(accentColor.slice(3,5),16);
   const b = parseInt(accentColor.slice(5,7),16);
+  // Light backgrounds need much softer, more subtle shadows than dark ones —
+  // the same 0.4-opacity dark shadow that reads fine on a navy surface looks
+  // muddy on white. Scale the whole shadow system off the active theme.
+  const isLight = wallpaper === "light";
+  const shadowSm = isLight ? "0 1px 3px rgba(0,0,0,0.05)" : "0 1px 3px rgba(0,0,0,0.12)";
+  const shadowMd = isLight ? "0 4px 16px rgba(0,0,0,0.08)" : "0 6px 20px rgba(0,0,0,0.15)";
+  const shadowLg = isLight ? "0 8px 28px rgba(0,0,0,0.1)" : "0 8px 32px rgba(0,0,0,0.18)";
   return (
   <style>{`
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Bricolage+Grotesque:wght@600;700;800&display=swap');
@@ -1278,8 +1285,11 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       --accent:${accentColor};
       --accent2:${accentColor}dd;
       --accentbg:rgba(${r},${g},${b},0.12);
-      --shadow:rgba(0,0,0,0.4);
-      --r:12px;--rs:8px;--rxs:6px;
+      --shadow:${isLight ? "rgba(0,0,0,0.12)" : "rgba(0,0,0,0.4)"};
+      --shadow-sm:${shadowSm};
+      --shadow-md:${shadowMd};
+      --shadow-lg:${shadowLg};
+      --r:${isLight ? "14px" : "12px"};--rs:${isLight ? "10px" : "8px"};--rxs:6px;
       --sidebar-w:220px;
       --top-bar-h:56px;
     }
@@ -1320,11 +1330,11 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
     .slide-in-left{animation:slide-in-left 0.28s cubic-bezier(0.25,0.46,0.45,0.94) both}
 
     /* ── CARD SYSTEM ── */
-    .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);transition:box-shadow 0.2s,transform 0.2s,border-color 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.12)}
-    .card:hover{box-shadow:0 8px 32px rgba(0,0,0,0.18);transform:translateY(-2px);border-color:var(--accent)}
-    .card-flat{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:0 1px 3px rgba(0,0,0,0.08)}
-    .stat-card{padding:24px 26px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:0 2px 6px rgba(0,0,0,0.1);transition:all 0.2s}
-    .stat-card:hover{box-shadow:0 6px 20px rgba(0,0,0,0.15);transform:translateY(-1px)}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);transition:box-shadow 0.2s,transform 0.2s,border-color 0.2s;box-shadow:var(--shadow-sm)}
+    .card:hover{box-shadow:var(--shadow-lg);transform:translateY(-2px);border-color:var(--accent)}
+    .card-flat{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow-sm)}
+    .stat-card{padding:24px 26px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow-sm);transition:all 0.2s}
+    .stat-card:hover{box-shadow:var(--shadow-md);transform:translateY(-1px)}
     .stat-card-value{font-size:32px;font-weight:800;font-family:'Bricolage Grotesque',sans-serif;line-height:1.1;margin:6px 0}
     .stat-card-label{font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px}
     .stat-card-sub{font-size:12px;color:var(--text3);margin-top:6px;line-height:1.4}
