@@ -502,7 +502,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.10";
+const APP_VERSION = "beta 2.11";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -15548,6 +15548,31 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     handleNav("home");
   };
 
+  const [editingProId, setEditingProId] = useState(null);
+  const [editingProTitle, setEditingProTitle] = useState("");
+
+  const startRenameProSession = (s) => {
+    setEditingProId(s.id);
+    setEditingProTitle(s.title||"");
+  };
+  const commitRenameProSession = () => {
+    if(editingProId){
+      const title = editingProTitle.trim();
+      if(title){
+        const next = loadProSessions().map(s=>s.id===editingProId?{...s,title}:s);
+        saveProSessions(next);
+        setProSessions(next);
+      }
+    }
+    setEditingProId(null);
+  };
+  const deleteProSession = (id) => {
+    const next = loadProSessions().filter(s=>s.id!==id);
+    saveProSessions(next);
+    setProSessions(next);
+    if(id===proActiveId){ saveActiveChatId(""); setProActiveId(""); }
+  };
+
   const startProChatFromSidebar = () => {
     const fresh = makeChatSession({user_id:currentUser?.email||""});
     const firstName = currentUser?.name?.split(" ")[0] || "there";
@@ -15669,14 +15694,27 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
                       <p style={{fontSize:11,color:"var(--text3)",padding:"4px 10px"}}>No previous chats yet.</p>
                     )}
                     {visibleSessions.map(s=>(
-                      <button key={s.id} onClick={()=>openProSession(s)} style={{
-                        display:"block",width:"100%",padding:"6px 10px",borderRadius:"var(--rs)",
-                        background: s.id===proActiveId ? "var(--accentbg)" : "transparent",
-                        border:"none",color:"var(--text2)",fontSize:12,fontWeight:500,
-                        textAlign:"left",cursor:"pointer",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
-                      }}>
-                        {s.title || "New conversation"}
-                      </button>
+                      editingProId===s.id ? (
+                        <input key={s.id} autoFocus value={editingProTitle}
+                          onChange={e=>setEditingProTitle(e.target.value)}
+                          onClick={e=>e.stopPropagation()}
+                          onKeyDown={e=>{ if(e.key==="Enter") commitRenameProSession(); if(e.key==="Escape") setEditingProId(null); }}
+                          onBlur={commitRenameProSession}
+                          style={{width:"100%",padding:"6px 10px",borderRadius:"var(--rs)",background:"var(--surface2)",border:"1px solid var(--accent)",color:"var(--text)",fontSize:12,fontWeight:500}}
+                        />
+                      ) : (
+                        <div key={s.id} onClick={()=>openProSession(s)} style={{
+                          display:"flex",alignItems:"center",gap:2,borderRadius:"var(--rs)",
+                          background: s.id===proActiveId ? "var(--accentbg)" : "transparent",
+                          cursor:"pointer",
+                        }}>
+                          <span style={{flex:1,minWidth:0,padding:"6px 10px",color:"var(--text2)",fontSize:12,fontWeight:500,
+                            whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                            {s.title || "New conversation"}
+                          </span>
+                          <ChatSessionMenu onRename={()=>startRenameProSession(s)} onDelete={()=>deleteProSession(s.id)}/>
+                        </div>
+                      )
                     ))}
                     {proSessions.length>5 && (
                       <button onClick={()=>setProShowAll(v=>!v)} style={{
@@ -16510,6 +16548,38 @@ function claimFreshProSessionOnLoad(){
   return true;
 }
 
+// ── Reusable "⋮" menu for a chat session row: Rename / Delete ──────
+function ChatSessionMenu({onRename, onDelete}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(()=>{
+    if(!open) return;
+    const close = (e) => { if(ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    return ()=>document.removeEventListener("mousedown", close);
+  },[open]);
+  return (
+    <div ref={ref} style={{position:"relative",flexShrink:0}} onClick={e=>e.stopPropagation()}>
+      <button onClick={()=>setOpen(o=>!o)} title="More options" style={{
+        padding:4, borderRadius:6, background:"transparent", border:"none",
+        color:"var(--text3)", cursor:"pointer", display:"flex", alignItems:"center",
+      }}>
+        <Ico d="M12 6a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm0 7.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm0 7.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3z" size={14}/>
+      </button>
+      {open && (
+        <div style={{position:"absolute",top:"100%",right:0,marginTop:2,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.2)",zIndex:50,minWidth:120,overflow:"hidden"}}>
+          <button onClick={()=>{setOpen(false);onRename();}} style={{display:"block",width:"100%",textAlign:"left",padding:"9px 12px",fontSize:12,fontWeight:600,color:"var(--text2)",background:"transparent",border:"none",cursor:"pointer"}}>
+            Rename
+          </button>
+          <button onClick={()=>{setOpen(false);onDelete();}} style={{display:"block",width:"100%",textAlign:"left",padding:"9px 12px",fontSize:12,fontWeight:600,color:"#ef4444",background:"transparent",border:"none",cursor:"pointer"}}>
+            Delete
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function makeChatSession({user_id="", client_id="", title="New conversation"}={}){
   return {
     id: uid(),
@@ -16613,6 +16683,16 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
   const deleteChat = (id) => {
     setSessions(prev=>prev.filter(s=>s.id!==id));
     if(id===activeChatId) setActiveChatId("");
+  };
+
+  const [editingChatId, setEditingChatId] = useState(null);
+  const [editingChatTitle, setEditingChatTitle] = useState("");
+  const startRenameChat = (s) => { setEditingChatId(s.id); setEditingChatTitle(s.title||""); };
+  const commitRenameChat = () => {
+    if(editingChatId && editingChatTitle.trim()){
+      setSessions(prev=>prev.map(s=>s.id===editingChatId?{...s,title:editingChatTitle.trim()}:s));
+    }
+    setEditingChatId(null);
   };
 
   const [input,setInput] = useState("");
@@ -17147,16 +17227,25 @@ RULES:
                   const preview = stripActionBlocks(last?.content||"").slice(0,60);
                   const when = s.updated_at ? new Date(s.updated_at).toLocaleDateString() : "";
                   return (
-                    <div key={s.id} onClick={()=>switchChat(s.id)} style={{padding:"8px 10px",borderRadius:8,marginBottom:4,cursor:"pointer",background:isActive?"var(--accentbg)":"transparent",border:isActive?"1px solid var(--accent)33":"1px solid transparent",display:"flex",gap:8,alignItems:"center"}}
+                    <div key={s.id} onClick={()=>editingChatId!==s.id&&switchChat(s.id)} style={{padding:"8px 10px",borderRadius:8,marginBottom:4,cursor:"pointer",background:isActive?"var(--accentbg)":"transparent",border:isActive?"1px solid var(--accent)33":"1px solid transparent",display:"flex",gap:8,alignItems:"center"}}
                       onMouseEnter={e=>{if(!isActive)e.currentTarget.style.background="var(--surface2)";}}
                       onMouseLeave={e=>{if(!isActive)e.currentTarget.style.background="transparent";}}>
                       <div style={{flex:1,minWidth:0}}>
-                        <p style={{fontSize:12,fontWeight:700,color:"var(--text)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.title||"New conversation"}</p>
+                        {editingChatId===s.id ? (
+                          <input autoFocus value={editingChatTitle}
+                            onChange={e=>setEditingChatTitle(e.target.value)}
+                            onClick={e=>e.stopPropagation()}
+                            onKeyDown={e=>{ if(e.key==="Enter") commitRenameChat(); if(e.key==="Escape") setEditingChatId(null); }}
+                            onBlur={commitRenameChat}
+                            style={{width:"100%",fontSize:12,fontWeight:700,padding:"2px 4px",borderRadius:6,background:"var(--surface)",border:"1px solid var(--accent)",color:"var(--text)"}}
+                          />
+                        ) : (
+                          <p style={{fontSize:12,fontWeight:700,color:"var(--text)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.title||"New conversation"}</p>
+                        )}
                         <p style={{fontSize:10,color:"var(--text3)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginTop:1}}>{cName?`${cName} · `:""}{preview||"…"}</p>
                         <p style={{fontSize:9,color:"var(--text3)",marginTop:2}}>{when} · {(s.messages||[]).length} msgs</p>
                       </div>
-                      <button onClick={(e)=>{e.stopPropagation();if(confirm("Delete this chat?")) deleteChat(s.id);}}
-                        title="Delete" style={{padding:4,color:"var(--text3)",fontSize:14,opacity:0.6}}>×</button>
+                      <ChatSessionMenu onRename={()=>startRenameChat(s)} onDelete={()=>deleteChat(s.id)}/>
                     </div>
                   );
                 })}
@@ -18256,6 +18345,16 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
     if(sessionId===activeChatId) setActiveChatId("");
   };
 
+  const [editingHomeId, setEditingHomeId] = useState(null);
+  const [editingHomeTitle, setEditingHomeTitle] = useState("");
+  const startRenameSession = (s) => { setEditingHomeId(s.id); setEditingHomeTitle(s.title||""); };
+  const commitRenameSession = () => {
+    if(editingHomeId && editingHomeTitle.trim()){
+      setChatSessions(prev=>prev.map(s=>s.id===editingHomeId?{...s,title:editingHomeTitle.trim()}:s));
+    }
+    setEditingHomeId(null);
+  };
+
   // Reuse the same ACTION_SYSTEM + sendMessage logic ─────────────
   const ACTION_SYSTEM_HOME = () => {
     const clients = (data?.clients||[]).map(c=>`- ${c.name} (id:${c.id})`).join("\n");
@@ -18980,12 +19079,25 @@ RULES:
             <p style={{fontSize:12,color:"var(--text3)",textAlign:"center",padding:"20px 0"}}>No saved conversations yet.</p>
           ):(
             chatSessions.map(s=>(
-              <div key={s.id} onClick={()=>loadSession(s)} style={{padding:"8px 10px",borderRadius:8,cursor:"pointer",marginBottom:4,background:"var(--surface2)",border:"1px solid var(--border)",display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:6}}>
+              <div key={s.id} onClick={()=>editingHomeId!==s.id&&loadSession(s)} style={{padding:"8px 10px",borderRadius:8,cursor:"pointer",marginBottom:4,background:"var(--surface2)",border:"1px solid var(--border)",display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:6}}>
                 <div style={{flex:1,minWidth:0}}>
-                  <p style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:"var(--text)"}}>{s.title}</p>
+                  {editingHomeId===s.id ? (
+                    <input autoFocus value={editingHomeTitle}
+                      onChange={e=>setEditingHomeTitle(e.target.value)}
+                      onClick={e=>e.stopPropagation()}
+                      onKeyDown={e=>{ if(e.key==="Enter") commitRenameSession(); if(e.key==="Escape") setEditingHomeId(null); }}
+                      onBlur={commitRenameSession}
+                      style={{width:"100%",fontSize:12,fontWeight:600,padding:"2px 4px",borderRadius:6,background:"var(--surface)",border:"1px solid var(--accent)",color:"var(--text)"}}
+                    />
+                  ) : (
+                    <p style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:"var(--text)"}}>{s.title}</p>
+                  )}
                   <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{s.clientName?`${s.clientName} · `:""}{ new Date(s.date).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</p>
                 </div>
-                <button onClick={(e)=>deleteSession(s.id,e)} style={{color:"var(--text3)",padding:2,flexShrink:0,background:"none",border:"none",cursor:"pointer",fontSize:11}} title="Delete">✕</button>
+                <ChatSessionMenu onRename={()=>startRenameSession(s)} onDelete={()=>{
+                  setChatSessions(prev=>prev.filter(x=>x.id!==s.id));
+                  if(s.id===activeChatId) setActiveChatId("");
+                }}/>
               </div>
             ))
           )}
