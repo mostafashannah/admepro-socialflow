@@ -502,7 +502,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.16";
+const APP_VERSION = "beta 2.17";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19056,12 +19056,23 @@ RULES:
         </div>
       )}
 
-      <div style={{display:"flex",flexDirection:"column",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:24,padding:"16px 16px 10px",boxShadow:"var(--shadow-sm)",transition:"box-shadow 0.2s"}}
+      <div style={isMobile?{
+          display:"flex",alignItems:"flex-end",gap:6,background:"var(--surface)",border:"1px solid var(--border)",
+          borderRadius:28,padding:"6px 6px 6px 14px",boxShadow:"var(--shadow-sm)",transition:"box-shadow 0.2s",
+        }:{display:"flex",flexDirection:"column",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:24,padding:"16px 16px 10px",boxShadow:"var(--shadow-sm)",transition:"box-shadow 0.2s"}}
         onFocusCapture={e=>e.currentTarget.style.boxShadow="var(--shadow-md)"}
         onBlurCapture={e=>e.currentTarget.style.boxShadow="var(--shadow-sm)"}>
         <input ref={fileInputRef} type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,text/plain,text/csv,text/markdown,application/json,.txt,.csv,.md,.json"
           style={{display:"none"}}
           onChange={e=>{ handleFilesSelected(e.target.files); e.target.value=""; }}/>
+        {isMobile && (
+          <button onClick={()=>fileInputRef.current?.click()} title="Attach a file or image" style={{
+            width:34,height:34,borderRadius:"50%",flexShrink:0,background:"var(--surface2)",border:"none",
+            color:"var(--text3)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",marginBottom:2,
+          }}>
+            <Ico d={Icons.plus} size={17}/>
+          </button>
+        )}
         <textarea ref={inputRef} value={input} className="composer-textarea" spellCheck={false}
           onChange={e=>{
             const v = e.target.value;
@@ -19075,26 +19086,37 @@ RULES:
             try { pasted = (e.clipboardData||e.nativeEvent?.clipboardData||window.clipboardData)?.getData("text")||""; } catch(err){}
             if(pasted && pasted.length>=300){ setLongPasteCandidate(pasted); }
           }}
-          placeholder="Ask anything or tell Pro what to do… (English or Arabic)"
+          placeholder={isMobile?"Chat with Pro":"Ask anything or tell Pro what to do… (English or Arabic)"}
           rows={1}
-          style={{flex:1,fontSize:14,color:"var(--text)",lineHeight:1.5,minHeight:24,maxHeight:120,background:"none",resize:"none",border:"none",outline:"none",marginBottom:10}}
+          style={isMobile?{flex:1,fontSize:15,color:"var(--text)",lineHeight:1.5,minHeight:36,maxHeight:120,padding:"7px 0",background:"none",resize:"none",border:"none",outline:"none"}:{flex:1,fontSize:14,color:"var(--text)",lineHeight:1.5,minHeight:24,maxHeight:120,background:"none",resize:"none",border:"none",outline:"none",marginBottom:10}}
         />
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <button onClick={()=>fileInputRef.current?.click()} title="Attach a file or image" style={{
-            width:32,height:32,borderRadius:10,flexShrink:0,background:"transparent",border:"none",
-            color:"var(--text3)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",
-          }}>
-            <Ico d={Icons.paperclip} size={17}/>
-          </button>
+        {isMobile ? (
           <button onClick={()=>sendMessage()} disabled={(!input.trim()&&attachments.length===0)||typing} style={{
-            width:34,height:34,borderRadius:11,flexShrink:0,
+            width:34,height:34,borderRadius:"50%",flexShrink:0,
             background:(input.trim()||attachments.length)&&!typing?"var(--accent)":"var(--border)",
             color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",
-            transition:"all 0.15s",border:"none",cursor:(input.trim()||attachments.length)&&!typing?"pointer":"default",
+            transition:"all 0.15s",border:"none",cursor:(input.trim()||attachments.length)&&!typing?"pointer":"default",marginBottom:2,
           }}>
             {typing?<Spinner size={14}/>:<Ico d={Icons.send} size={15} stroke="#fff"/>}
           </button>
-        </div>
+        ) : (
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <button onClick={()=>fileInputRef.current?.click()} title="Attach a file or image" style={{
+              width:32,height:32,borderRadius:10,flexShrink:0,background:"transparent",border:"none",
+              color:"var(--text3)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",
+            }}>
+              <Ico d={Icons.paperclip} size={17}/>
+            </button>
+            <button onClick={()=>sendMessage()} disabled={(!input.trim()&&attachments.length===0)||typing} style={{
+              width:34,height:34,borderRadius:11,flexShrink:0,
+              background:(input.trim()||attachments.length)&&!typing?"var(--accent)":"var(--border)",
+              color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",
+              transition:"all 0.15s",border:"none",cursor:(input.trim()||attachments.length)&&!typing?"pointer":"default",
+            }}>
+              {typing?<Spinner size={14}/>:<Ico d={Icons.send} size={15} stroke="#fff"/>}
+            </button>
+          </div>
+        )}
       </div>
     </>
   );
@@ -19103,32 +19125,35 @@ RULES:
     <div style={{display:"flex",flexDirection:"column",height:"100%",background:"var(--bg)",minHeight:0}}>
 
       {/* ── Top bar: client selector + mode toggle (pinned, never scrolls with the chat) ── */}
-      <div style={{padding:"10px 18px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:8,flexShrink:0,background:"var(--surface)",position:"sticky",top:0,zIndex:5}}>
-        <div style={{display:"flex",alignItems:"center",gap:7,flex:1}}>
-          <img src="/favicon.svg" width={20} height={20} style={{borderRadius:6,flexShrink:0}} alt="Pro"/>
-          <span style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:14,color:"var(--text)"}}>Pro</span>
-        </div>
+      <div style={{padding:isMobile?"8px 14px":"10px 18px",borderBottom:isMobile?"none":"1px solid var(--border)",display:"flex",alignItems:"center",gap:isMobile?4:8,flexShrink:0,background:"var(--surface)",position:"sticky",top:0,zIndex:5}}>
+        {!isMobile && (
+          <div style={{display:"flex",alignItems:"center",gap:7,flex:1}}>
+            <img src="/favicon.svg" width={20} height={20} style={{borderRadius:6,flexShrink:0}} alt="Pro"/>
+            <span style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:14,color:"var(--text)"}}>Pro</span>
+          </div>
+        )}
+        {isMobile && <div style={{flex:1}}/>}
         {/* Client selector */}
         {["admin","account_manager"].includes(role)&&(
           <select value={selectedClient?.id||""} onChange={e=>{
             const c=(data?.clients||[]).find(cl=>cl.id===e.target.value)||null;
             setSelectedClient(c);
             if(c) addBotMsg(`Context set to **${c.name}**. All answers and actions will use ${c.name}'s memory and data.`,"info");
-          }} style={{padding:"5px 8px",borderRadius:8,fontSize:12,fontWeight:500,background:"transparent",border:"none",color:"var(--text2)",cursor:"pointer"}}>
+          }} style={{padding:"5px 8px",borderRadius:8,fontSize:12,fontWeight:500,background:"transparent",border:"none",color:"var(--text2)",cursor:"pointer",maxWidth:isMobile?90:"none"}}>
             <option value="">Auto-detect</option>
             {(data?.clients||[]).filter(c=>!c.hidden).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         )}
         {/* Prospective client indicator (not yet a real client) */}
-        {!selectedClient && activeTempClient && (
+        {!selectedClient && activeTempClient && !isMobile && (
           <span title={`Remembering "${activeTempClient.name}" temporarily — not created yet`} style={{display:"flex",alignItems:"center",gap:4,padding:"4px 8px",borderRadius:8,fontSize:11,fontWeight:600,background:"var(--surface2)",color:"var(--text2)"}}>
              {activeTempClient.name}
           </span>
         )}
         {/* Brain inspector */}
-        {selectedClient && (
+        {selectedClient && !isMobile && (
           <button onClick={()=>setBrainOpen(true)} title="See everything Pro knows about this client" style={{display:"flex",alignItems:"center",padding:6,borderRadius:8,background:"transparent",border:"none",cursor:"pointer",fontSize:14,color:"var(--text2)"}}>
-            
+
           </button>
         )}
         {/* History toggle */}
@@ -21581,13 +21606,14 @@ Return ONLY valid JSON (no markdown, no explanation):
                 </button>
               )}
 
-              {/* Logo + brand (mobile only) */}
-              {isMobile&&(
+              {/* Logo + brand (mobile only, hidden on the Pro home page for a cleaner header) */}
+              {isMobile&&page!=="home"&&(
                 <div style={{display:"flex",alignItems:"center",gap:7,flex:1,minWidth:0}}>
                   <img src="/favicon.svg" width={26} height={26} style={{borderRadius:6,flexShrink:0}} alt="logo"/>
                   <p style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:14,color:"var(--accent)",whiteSpace:"nowrap"}}>SocialFlow</p>
                 </div>
               )}
+              {isMobile&&page==="home"&&<div style={{flex:1}}/>}
 
               {/* Page title (desktop/tablet) */}
               {!isMobile&&(
@@ -21600,10 +21626,12 @@ Return ONLY valid JSON (no markdown, no explanation):
 
               {/* Right actions */}
               <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
-                {/* Theme toggle */}
-                <button onClick={()=>handleWallpaperChange(["light","soft"].includes(wallpaper)?"dark":"light")} aria-label="Toggle theme" style={{padding:8,borderRadius:8,color:"var(--text3)",minHeight:44,minWidth:44,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <Ico d={["light","soft"].includes(wallpaper)?Icons.moon:Icons.sun} size={17}/>
-                </button>
+                {/* Theme toggle (hidden on the Pro home page for a cleaner header) */}
+                {!(isMobile&&page==="home")&&(
+                  <button onClick={()=>handleWallpaperChange(["light","soft"].includes(wallpaper)?"dark":"light")} aria-label="Toggle theme" style={{padding:8,borderRadius:8,color:"var(--text3)",minHeight:44,minWidth:44,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <Ico d={["light","soft"].includes(wallpaper)?Icons.moon:Icons.sun} size={17}/>
+                  </button>
+                )}
 
                 {/* Notifications dropdown */}
                 <NotifBell notifications={data.notifications} currentUser={currentUser} onNavigate={setPage}/>
