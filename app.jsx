@@ -502,7 +502,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.19";
+const APP_VERSION = "beta 2.20";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1294,7 +1294,7 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       --top-bar-h:56px;
     }
     html,body,#root{height:100%;overflow-x:hidden}
-    .app-shell{height:100vh}
+    .app-shell{height:100vh;height:100dvh}
     /* iOS standalone (Add to Home Screen) reserves extra dead space at the
        bottom that doesn't exist in a regular Safari tab. Scoped strictly to
        display-mode:standalone so the regular browser tab (already correct)
@@ -1447,15 +1447,18 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       pre,code{overflow-x:auto;white-space:pre-wrap}
       img{max-width:100%}
 
+      /* In-flow (not fixed): sits as the bottom row of the flex column so it
+         is always flush with the real bottom of the visible viewport — avoids
+         the iOS standalone-PWA dead-space gap that position:fixed leaves. */
       .bottom-nav{
-        display:flex;position:fixed;bottom:0;left:0;right:0;
+        display:flex;flex-shrink:0;
         background:var(--surface);border-top:1px solid var(--border);
-        z-index:9000;padding:8px 0 max(6px,env(safe-area-inset-bottom));
+        padding:8px 0 max(6px,env(safe-area-inset-bottom));
         justify-content:space-around;align-items:center;
       }
       .main-content{
         padding:14px!important;
-        padding-bottom:84px!important;
+        padding-bottom:14px!important;
         overflow-x:hidden!important;
       }
       .card-mobile{border-radius:var(--rs)!important;padding:14px!important}
@@ -22003,10 +22006,10 @@ Return ONLY valid JSON (no markdown, no explanation):
         )}
       </main>
 
-      {/* Mobile bottom navigation bar — portaled to <body>, see Chatbot for why.
-          Hidden while the sidebar drawer is open so it doesn't render on top of
-          the drawer's user menu (z-index 9000 vs drawer's 300). */}
-      {isMobile&&!sidebarOpen&&ReactDOM.createPortal(
+      {/* Mobile bottom navigation bar — in-flow (last row of the flex column)
+          so it is always flush with the real bottom of the visible viewport.
+          Hidden while the sidebar drawer is open. */}
+      {isMobile&&!sidebarOpen&&(
         <nav className="bottom-nav">
           {mobileNavItems.map(({key,label,ico})=>{
             const active=page===key;
@@ -22023,8 +22026,7 @@ Return ONLY valid JSON (no markdown, no explanation):
               </button>
             );
           })}
-        </nav>,
-        document.body
+        </nav>
       )}
       </div>{/* end flex content area */}
     </div>
