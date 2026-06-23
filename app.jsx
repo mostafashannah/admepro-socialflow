@@ -502,7 +502,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.12";
+const APP_VERSION = "beta 2.13";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16021,6 +16021,7 @@ Format answers for readability, not as a wall of text:
 - Use a markdown table (header row, then a |---|---| separator row, then data rows) whenever you're comparing multiple items across the same fields (e.g. posts, clients, metrics).
 - Use **bold** for key numbers/names and short ### headings to break up longer answers into sections.
 - Keep prose short; let the structure carry the information.
+- Don't decorate your own replies with emojis. Only include an emoji when the user explicitly asks for one, or when you're drafting/quoting actual social content (a caption, post copy) for a client whose brand voice calls for it.
 
 ═══ RULES ═══
 1. ANSWER EVERYTHING directly. If asked "what tasks are overdue?" — list them. If asked "how many clients?" — tell them. Use the live data above.
@@ -16247,11 +16248,10 @@ function renderChatMd(text) {
 
 function ChatMessage({msg, isTyping, onConfirm, onReject, onExecuteAction}) {
   if(isTyping) return (
-    <div style={{display:"flex",alignItems:"flex-end",gap:8,marginBottom:12}}>
-      <img src="/favicon.svg" width={28} height={28} style={{borderRadius:"50%",flexShrink:0}} alt="logo"/>
-      <div style={{padding:"10px 14px",background:"var(--surface2)",borderRadius:"16px 16px 16px 4px",border:"1px solid var(--border)",display:"flex",gap:5,alignItems:"center"}}>
+    <div style={{display:"flex",marginBottom:14}}>
+      <div style={{padding:"10px 14px",background:"var(--surface2)",borderRadius:"var(--rs)",display:"flex",gap:5,alignItems:"center"}}>
         {[0,1,2].map(i=>(
-          <div key={i} style={{width:6,height:6,borderRadius:"50%",background:"var(--accent)",animation:"pulse 1.2s infinite",animationDelay:`${i*0.2}s`}}/>
+          <div key={i} style={{width:6,height:6,borderRadius:"50%",background:"var(--text3)",animation:"pulse 1.2s infinite",animationDelay:`${i*0.2}s`}}/>
         ))}
       </div>
     </div>
@@ -16261,9 +16261,8 @@ function ChatMessage({msg, isTyping, onConfirm, onReject, onExecuteAction}) {
   const displayText = stripActionBlocks((msg.content||"").replace(/\[EXEC:[^\]]+\]/g,""));
 
   return (
-    <div style={{display:"flex",alignItems:"flex-end",gap:8,marginBottom:10,flexDirection:isBot?"row":"row-reverse"}} className="fade-in">
-      {isBot&&<img src="/favicon.svg" width={28} height={28} style={{borderRadius:"50%",flexShrink:0}} alt="logo"/>}
-      <div style={{maxWidth:"82%",display:"flex",flexDirection:"column",gap:6,alignItems:isBot?"flex-start":"flex-end"}}>
+    <div style={{display:"flex",marginBottom:14,justifyContent:isBot?"flex-start":"flex-end"}} className="fade-in">
+      <div style={{maxWidth:"88%",display:"flex",flexDirection:"column",gap:6,alignItems:isBot?"flex-start":"flex-end"}}>
         {(msg.attachments||[]).length>0 && (
           <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:isBot?"flex-start":"flex-end"}}>
             {msg.attachments.map(a=>a.kind==="image"
@@ -16274,11 +16273,11 @@ function ChatMessage({msg, isTyping, onConfirm, onReject, onExecuteAction}) {
           </div>
         )}
         <div style={{
-          padding:"10px 14px",fontSize:13,lineHeight:1.6,
-          borderRadius:isBot?"16px 16px 16px 4px":"16px 16px 4px 16px",
-          background:msg.type==="success"?"#dcfce7":msg.type==="error"?"#fee2e2":msg.type==="info"?"#eff6ff":isBot?"var(--surface2)":"var(--accent)",
+          padding: (isBot && !msg.type) ? "2px 0" : "10px 14px",
+          fontSize:13,lineHeight:1.6,
+          borderRadius:"var(--rs)",
+          background:msg.type==="success"?"#dcfce7":msg.type==="error"?"#fee2e2":msg.type==="info"?"#eff6ff":isBot?"transparent":"var(--accent)",
           color:msg.type==="success"?"#166534":msg.type==="error"?"#991b1b":msg.type==="info"?"#1e40af":isBot?"var(--text)":"#fff",
-          border:isBot?"1px solid var(--border)":"none",
           wordBreak:"break-word",
         }}>{isBot ? renderChatMd(displayText) : displayText}</div>
 
@@ -17191,32 +17190,28 @@ RULES:
         <div className="fade-in" style={{
           position:"fixed",bottom:isMobile?148:92,right:isMobile?8:28,zIndex:799,
           width:isMobile?"calc(100vw - 8px)":"370px",height:isMobile?500:560,
-          background:"var(--surface)",border:"1px solid var(--border2)",
-          borderRadius:20,display:"flex",flexDirection:"column",overflow:"hidden",
-          boxShadow:"0 24px 80px rgba(0,0,0,0.35)",
+          background:"var(--surface)",border:"1px solid var(--border)",
+          borderRadius:"var(--r)",display:"flex",flexDirection:"column",overflow:"hidden",
+          boxShadow:"var(--shadow-lg)",
         }}>
           {/* Header */}
           <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",background:"var(--surface)",display:"flex",alignItems:"center",gap:10}}>
-            <img src="/favicon.svg" width={32} height={32} style={{borderRadius:8,flexShrink:0}} alt="logo"/>
-            <div style={{flex:1}}>
+            <img src="/favicon.svg" width={28} height={28} style={{borderRadius:8,flexShrink:0}} alt="logo"/>
+            <div style={{flex:1,minWidth:0}}>
               <p style={{fontWeight:800,fontSize:13,fontFamily:"'Bricolage Grotesque',sans-serif"}}>Pro</p>
               <div style={{display:"flex",alignItems:"center",gap:5}}>
                 <div style={{width:5,height:5,borderRadius:"50%",background:"#10b981"}}/>
                 <p style={{fontSize:10,color:"var(--text3)"}}>Online · {pageLabels[currentPage]||currentPage}</p>
               </div>
             </div>
-            <div style={{display:"flex",alignItems:"center",gap:5,padding:"3px 8px",borderRadius:8,background:"var(--accentbg)",border:"1px solid var(--accent)33"}}>
-              <div style={{width:5,height:5,borderRadius:"50%",background:"var(--accent)"}}/>
-              <span style={{fontSize:10,fontWeight:700,color:"var(--accent)"}}> Smart Mode</span>
-            </div>
-            <button onClick={()=>setShowHistory(s=>!s)} title="Chat history" style={{color:showHistory?"var(--accent)":"var(--text3)",padding:4,borderRadius:6,display:"flex"}}>
+            <button onClick={()=>setPasteLearnOpen(true)} title="Paste & Learn — extract memory from chats/emails" style={{color:"var(--text3)",padding:5,borderRadius:6,display:"flex",background:"transparent",border:"none",cursor:"pointer"}}>
+              <Ico d={Icons.note2} size={14}/>
+            </button>
+            <button onClick={newChat} title="New chat" style={{color:"var(--text3)",padding:5,borderRadius:6,display:"flex",background:"transparent",border:"none",cursor:"pointer"}}>
+              <Ico d={Icons.plus} size={15}/>
+            </button>
+            <button onClick={()=>setShowHistory(s=>!s)} title="Chat history" style={{color:showHistory?"var(--accent)":"var(--text3)",padding:5,borderRadius:6,display:"flex",background:"transparent",border:"none",cursor:"pointer"}}>
               <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            </button>
-            <button onClick={newChat} title="New chat" style={{color:"var(--accent)",padding:"4px 8px",borderRadius:6,display:"flex",alignItems:"center",gap:3,fontSize:11,fontWeight:700,background:"var(--accentbg)",border:"1px solid var(--accent)33"}}>
-              + New
-            </button>
-            <button onClick={()=>setPasteLearnOpen(true)} title="Paste & Learn — extract memory from chats/emails" style={{color:"var(--accent)",padding:4,borderRadius:6,display:"flex"}}>
-              
             </button>
           </div>
 
