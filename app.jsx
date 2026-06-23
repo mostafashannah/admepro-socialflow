@@ -502,7 +502,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.17";
+const APP_VERSION = "beta 2.18";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19125,7 +19125,7 @@ RULES:
     <div style={{display:"flex",flexDirection:"column",height:"100%",background:"var(--bg)",minHeight:0}}>
 
       {/* ── Top bar: client selector + mode toggle (pinned, never scrolls with the chat) ── */}
-      <div style={{padding:isMobile?"8px 14px":"10px 18px",borderBottom:isMobile?"none":"1px solid var(--border)",display:"flex",alignItems:"center",gap:isMobile?4:8,flexShrink:0,background:"var(--surface)",position:"sticky",top:0,zIndex:5}}>
+      <div style={{padding:isMobile?"6px 14px":"10px 18px",borderBottom:isMobile?"none":"1px solid var(--border)",display:"flex",alignItems:"center",gap:isMobile?8:8,flexShrink:0,background:isMobile?"transparent":"var(--surface)",position:"sticky",top:0,zIndex:5}}>
         {!isMobile && (
           <div style={{display:"flex",alignItems:"center",gap:7,flex:1}}>
             <img src="/favicon.svg" width={20} height={20} style={{borderRadius:6,flexShrink:0}} alt="Pro"/>
@@ -19135,14 +19135,27 @@ RULES:
         {isMobile && <div style={{flex:1}}/>}
         {/* Client selector */}
         {["admin","account_manager"].includes(role)&&(
-          <select value={selectedClient?.id||""} onChange={e=>{
-            const c=(data?.clients||[]).find(cl=>cl.id===e.target.value)||null;
-            setSelectedClient(c);
-            if(c) addBotMsg(`Context set to **${c.name}**. All answers and actions will use ${c.name}'s memory and data.`,"info");
-          }} style={{padding:"5px 8px",borderRadius:8,fontSize:12,fontWeight:500,background:"transparent",border:"none",color:"var(--text2)",cursor:"pointer",maxWidth:isMobile?90:"none"}}>
-            <option value="">Auto-detect</option>
-            {(data?.clients||[]).filter(c=>!c.hidden).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          isMobile ? (
+            <div style={{position:"relative",borderRadius:99,background:"var(--surface2)",display:"flex",alignItems:"center"}}>
+              <select value={selectedClient?.id||""} onChange={e=>{
+                const c=(data?.clients||[]).find(cl=>cl.id===e.target.value)||null;
+                setSelectedClient(c);
+                if(c) addBotMsg(`Context set to **${c.name}**. All answers and actions will use ${c.name}'s memory and data.`,"info");
+              }} style={{padding:"6px 10px",borderRadius:99,fontSize:11,fontWeight:600,background:"transparent",border:"none",color:"var(--text2)",cursor:"pointer",maxWidth:90,appearance:"none"}}>
+                <option value="">Auto-detect</option>
+                {(data?.clients||[]).filter(c=>!c.hidden).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            </div>
+          ) : (
+            <select value={selectedClient?.id||""} onChange={e=>{
+              const c=(data?.clients||[]).find(cl=>cl.id===e.target.value)||null;
+              setSelectedClient(c);
+              if(c) addBotMsg(`Context set to **${c.name}**. All answers and actions will use ${c.name}'s memory and data.`,"info");
+            }} style={{padding:"5px 8px",borderRadius:8,fontSize:12,fontWeight:500,background:"transparent",border:"none",color:"var(--text2)",cursor:"pointer"}}>
+              <option value="">Auto-detect</option>
+              {(data?.clients||[]).filter(c=>!c.hidden).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          )
         )}
         {/* Prospective client indicator (not yet a real client) */}
         {!selectedClient && activeTempClient && !isMobile && (
@@ -19157,13 +19170,17 @@ RULES:
           </button>
         )}
         {/* History toggle */}
-        <button onClick={()=>setShowHistory(h=>!h)} title="Chat history" style={{color:showHistory?"var(--accent)":"var(--text3)",padding:6,borderRadius:8,display:"flex",position:"relative",background:"transparent",border:"none",cursor:"pointer"}}>
-          <Ico d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" size={16}/>
-          {chatSessions.length>0&&<span style={{position:"absolute",top:3,right:3,width:6,height:6,borderRadius:"50%",background:"var(--accent)"}}/>}
+        <button onClick={()=>setShowHistory(h=>!h)} title="Chat history" style={isMobile
+          ?{color:showHistory?"var(--accent)":"var(--text2)",width:34,height:34,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",background:"var(--surface2)",border:"none",cursor:"pointer",flexShrink:0}
+          :{color:showHistory?"var(--accent)":"var(--text3)",padding:6,borderRadius:8,display:"flex",position:"relative",background:"transparent",border:"none",cursor:"pointer"}}>
+          <Ico d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" size={isMobile?15:16}/>
+          {chatSessions.length>0&&<span style={{position:"absolute",top:isMobile?5:3,right:isMobile?5:3,width:6,height:6,borderRadius:"50%",background:"var(--accent)"}}/>}
         </button>
         {/* New chat */}
-        <button onClick={startNewChat} title="New chat" style={{padding:6,borderRadius:8,background:"transparent",border:"none",color:"var(--text2)",cursor:"pointer",display:"flex",alignItems:"center"}}>
-          <Ico d={Icons.plus} size={16}/>
+        <button onClick={startNewChat} title="New chat" style={isMobile
+          ?{width:34,height:34,borderRadius:"50%",background:"var(--surface2)",border:"none",color:"var(--text2)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}
+          :{padding:6,borderRadius:8,background:"transparent",border:"none",color:"var(--text2)",cursor:"pointer",display:"flex",alignItems:"center"}}>
+          <Ico d={Icons.plus} size={isMobile?15:16}/>
         </button>
       </div>
 
@@ -19703,16 +19720,18 @@ function NotificationsPage({notifications, currentUser, onMarkRead, onNavigate, 
   );
 }
 
-function NotifBell({notifications,currentUser,onNavigate}) {
+function NotifBell({notifications,currentUser,onNavigate,circle}) {
   const myNotifs = notifications.filter(n=>n.recipient_email===currentUser?.email);
   const unread = myNotifs.filter(n=>!n.is_read).length;
 
   return (
     <button onClick={()=>onNavigate("notifications")} aria-label={`Notifications${unread>0?`, ${unread} unread`:""}`}
-      style={{position:"relative",padding:8,borderRadius:8,color:"var(--text3)",minHeight:44,minWidth:44,display:"flex",alignItems:"center",justifyContent:"center",background:"none",transition:"all 0.15s"}}>
-      <Ico d={Icons.bell} size={17}/>
+      style={circle
+        ?{position:"relative",padding:0,borderRadius:"50%",width:38,height:38,color:"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",background:"var(--surface2)",flexShrink:0}
+        :{position:"relative",padding:8,borderRadius:8,color:"var(--text3)",minHeight:44,minWidth:44,display:"flex",alignItems:"center",justifyContent:"center",background:"none",transition:"all 0.15s"}}>
+      <Ico d={Icons.bell} size={circle?16:17}/>
       {unread>0&&(
-        <span style={{position:"absolute",top:6,right:6,width:16,height:16,borderRadius:"50%",background:"var(--accent)",color:"#fff",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>
+        <span style={{position:"absolute",top:circle?5:6,right:circle?5:6,width:16,height:16,borderRadius:"50%",background:"var(--accent)",color:"#fff",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>
           {unread>9?"9+":unread}
         </span>
       )}
@@ -21588,8 +21607,8 @@ Return ONLY valid JSON (no markdown, no explanation):
               height:(page==="home"&&!isMobile)?0:56,
               boxSizing:"content-box",
               overflow:"hidden",
-              background:"var(--surface)",
-              borderBottom:(page==="home"&&!isMobile)?"none":"1px solid var(--border)",
+              background:(isMobile&&page==="home")?"var(--bg)":"var(--surface)",
+              borderBottom:(page==="home")?"none":"1px solid var(--border)",
               display:(page==="home"&&!isMobile)?"none":"flex",alignItems:"center",
               paddingLeft:16,paddingRight:16,
               paddingTop:isMobile?"max(10px,env(safe-area-inset-top))":0,
@@ -21597,8 +21616,8 @@ Return ONLY valid JSON (no markdown, no explanation):
             }}>
               {/* Hamburger (mobile only) */}
               {isMobile&&(
-                <button onClick={()=>setSidebarOpen(true)} aria-label="Open navigation menu" style={{padding:6,borderRadius:8,color:"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",minHeight:44,minWidth:44}}>
-                  <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                <button onClick={()=>setSidebarOpen(true)} aria-label="Open navigation menu" style={page==="home"?{padding:0,borderRadius:"50%",width:38,height:38,background:"var(--surface2)",color:"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}:{padding:6,borderRadius:8,color:"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",minHeight:44,minWidth:44}}>
+                  <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
                     <line x1="3" y1="6" x2="21" y2="6"/>
                     <line x1="3" y1="12" x2="21" y2="12"/>
                     <line x1="3" y1="18" x2="21" y2="18"/>
@@ -21634,7 +21653,7 @@ Return ONLY valid JSON (no markdown, no explanation):
                 )}
 
                 {/* Notifications dropdown */}
-                <NotifBell notifications={data.notifications} currentUser={currentUser} onNavigate={setPage}/>
+                <NotifBell notifications={data.notifications} currentUser={currentUser} onNavigate={setPage} circle={isMobile&&page==="home"}/>
               </div>
             </div>
           );
