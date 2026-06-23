@@ -502,7 +502,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.07";
+const APP_VERSION = "beta 2.08";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -15853,6 +15853,14 @@ ${myTasks.slice(0,10).map(p=>`- "${p.title}" | Client: ${p.client_name||"?"} | S
 ═══ ALL POSTS & TASKS IN THE SYSTEM (${allPosts.length}) — you know every one of these, including ones with no client/project linked. Never claim a post doesn't exist if it's on this list. ═══
 ${allPosts.slice(0,50).map(p=>`- "${p.title}" | Client: ${p.client_name||"(none — not linked to a client)"} | Platform: ${p.platform||"?"} | Stage: ${p.stage} | Assigned: ${p.assigned_to||"unassigned"}`).join("\n")||"No posts/tasks yet."}
 
+═══ FORMATTING ═══
+Format answers for readability, not as a wall of text:
+- Use "- " bullet lines for lists (one item per line).
+- Use "1. " numbered lines for ranked or sequential steps.
+- Use a markdown table (header row, then a |---|---| separator row, then data rows) whenever you're comparing multiple items across the same fields (e.g. posts, clients, metrics).
+- Use **bold** for key numbers/names and short ### headings to break up longer answers into sections.
+- Keep prose short; let the structure carry the information.
+
 ═══ RULES ═══
 1. ANSWER EVERYTHING directly. If asked "what tasks are overdue?" — list them. If asked "how many clients?" — tell them. Use the live data above.
 2. NEVER say "go to the tasks page", "navigate to clients", "visit the dashboard", "click on X panel". Do it or answer it HERE.
@@ -15954,31 +15962,126 @@ const CHATBOT_ACTION_ROLES = {
 };
 
 // Simple inline markdown renderer for chat messages
+function renderChatMdInline(line) {
+  // Bold **text** and inline `code`
+  const parts = [];
+  let remaining = line;
+  let pi = 0;
+  while(remaining.length > 0) {
+    const boldIdx = remaining.indexOf("**");
+    const codeIdx = remaining.indexOf("`");
+    if(boldIdx === -1 && codeIdx === -1) { parts.push(<span key={pi++}>{remaining}</span>); break; }
+    if(codeIdx !== -1 && (boldIdx === -1 || codeIdx < boldIdx)) {
+      const codeEnd = remaining.indexOf("`", codeIdx + 1);
+      if(codeEnd === -1) { parts.push(<span key={pi++}>{remaining}</span>); break; }
+      if(codeIdx > 0) parts.push(<span key={pi++}>{remaining.slice(0, codeIdx)}</span>);
+      parts.push(<code key={pi++} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:4,padding:"1px 5px",fontSize:"0.92em",fontFamily:"monospace"}}>{remaining.slice(codeIdx + 1, codeEnd)}</code>);
+      remaining = remaining.slice(codeEnd + 1);
+      continue;
+    }
+    if(boldIdx > 0) parts.push(<span key={pi++}>{remaining.slice(0, boldIdx)}</span>);
+    const boldEnd = remaining.indexOf("**", boldIdx + 2);
+    if(boldEnd === -1) { parts.push(<span key={pi++}>{remaining}</span>); break; }
+    parts.push(<strong key={pi++}>{remaining.slice(boldIdx + 2, boldEnd)}</strong>);
+    remaining = remaining.slice(boldEnd + 2);
+  }
+  return parts;
+}
+
 function renderChatMd(text) {
   if(!text) return null;
-  // Split into lines, process each
-  return text.split("\n").map((line, li) => {
-    // Bold **text**
-    const parts = [];
-    let remaining = line;
-    let pi = 0;
-    while(remaining.length > 0) {
-      const boldStart = remaining.indexOf("**");
-      if(boldStart === -1) { parts.push(<span key={pi++}>{remaining}</span>); break; }
-      if(boldStart > 0) parts.push(<span key={pi++}>{remaining.slice(0, boldStart)}</span>);
-      const boldEnd = remaining.indexOf("**", boldStart + 2);
-      if(boldEnd === -1) { parts.push(<span key={pi++}>{remaining}</span>); break; }
-      parts.push(<strong key={pi++}>{remaining.slice(boldStart + 2, boldEnd)}</strong>);
-      remaining = remaining.slice(boldEnd + 2);
+  const lines = text.split("\n");
+  const blocks = [];
+  let i = 0;
+  let key = 0;
+
+  while(i < lines.length) {
+    const line = lines[i];
+
+    // Table block: a header row + separator row (---|---) followed by data rows
+    if(line.includes("|") && (lines[i+1]||"").replace(/[\s|:-]/g,"") === "") {
+      const headerCells = line.split("|").map(c=>c.trim()).filter((c,ci,arr)=>!(c==="" && (ci===0||ci===arr.length-1)));
+      const rows = [];
+      let j = i + 2;
+      while(j < lines.length && lines[j].includes("|")) {
+        const cells = lines[j].split("|").map(c=>c.trim()).filter((c,ci,arr)=>!(c==="" && (ci===0||ci===arr.length-1)));
+        rows.push(cells);
+        j++;
+      }
+      blocks.push(
+        <div key={key++} style={{overflowX:"auto",marginBottom:8}}>
+          <table style={{borderCollapse:"collapse",width:"100%",fontSize:12.5}}>
+            <thead>
+              <tr>{headerCells.map((c,ci)=>(
+                <th key={ci} style={{textAlign:"left",padding:"5px 8px",borderBottom:"2px solid var(--border2)",fontWeight:700,color:"var(--text)"}}>{renderChatMdInline(c)}</th>
+              ))}</tr>
+            </thead>
+            <tbody>
+              {rows.map((r,ri)=>(
+                <tr key={ri}>{r.map((c,ci)=>(
+                  <td key={ci} style={{padding:"5px 8px",borderBottom:"1px solid var(--border)",color:"var(--text2)"}}>{renderChatMdInline(c)}</td>
+                ))}</tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+      i = j;
+      continue;
     }
-    // Bullet lines
-    const isBullet = line.startsWith("• ") || line.startsWith("- ") || line.startsWith("* ");
-    return (
-      <div key={li} style={{marginBottom: isBullet ? 2 : (line === "" ? 6 : 0), paddingLeft: isBullet ? 8 : 0}}>
-        {parts}
-      </div>
-    );
-  });
+
+    // Heading: ### / ## / #
+    const headMatch = line.match(/^(#{1,3})\s+(.*)/);
+    if(headMatch) {
+      const size = headMatch[1].length === 1 ? 15 : headMatch[1].length === 2 ? 14 : 13;
+      blocks.push(<div key={key++} style={{fontWeight:800,fontSize:size,margin:"6px 0 4px",color:"var(--text)"}}>{renderChatMdInline(headMatch[2])}</div>);
+      i++;
+      continue;
+    }
+
+    // Bullet list (•, -, *)
+    if(/^[•\-*]\s+/.test(line)) {
+      const items = [];
+      while(i < lines.length && /^[•\-*]\s+/.test(lines[i])) {
+        items.push(lines[i].replace(/^[•\-*]\s+/, ""));
+        i++;
+      }
+      blocks.push(
+        <ul key={key++} style={{margin:"2px 0 6px",paddingLeft:18}}>
+          {items.map((it,ii)=>(<li key={ii} style={{marginBottom:2}}>{renderChatMdInline(it)}</li>))}
+        </ul>
+      );
+      continue;
+    }
+
+    // Numbered list (1. 2. ...)
+    if(/^\d+[.)]\s+/.test(line)) {
+      const items = [];
+      while(i < lines.length && /^\d+[.)]\s+/.test(lines[i])) {
+        items.push(lines[i].replace(/^\d+[.)]\s+/, ""));
+        i++;
+      }
+      blocks.push(
+        <ol key={key++} style={{margin:"2px 0 6px",paddingLeft:18}}>
+          {items.map((it,ii)=>(<li key={ii} style={{marginBottom:2}}>{renderChatMdInline(it)}</li>))}
+        </ol>
+      );
+      continue;
+    }
+
+    // Blank line = spacing
+    if(line.trim() === "") {
+      blocks.push(<div key={key++} style={{height:6}}/>);
+      i++;
+      continue;
+    }
+
+    // Plain paragraph line
+    blocks.push(<div key={key++} style={{marginBottom:0}}>{renderChatMdInline(line)}</div>);
+    i++;
+  }
+
+  return blocks;
 }
 
 function ChatMessage({msg, isTyping, onConfirm, onReject, onExecuteAction}) {
