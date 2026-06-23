@@ -502,7 +502,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.08";
+const APP_VERSION = "beta 2.09";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -15501,6 +15501,40 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     });
   };
 
+  // ── Pro (Home) recent-sessions flyout ───────────────────────────
+  const [proOpen, setProOpen] = useState(false);
+  const [proShowAll, setProShowAll] = useState(false);
+  const [proSessions, setProSessions] = useState(()=>loadProSessions());
+
+  const toggleProOpen = () => {
+    setProOpen(o => {
+      const next = !o;
+      if(next){
+        setProSessions(loadProSessions());
+        setOpenGroups(new Set()); // collapse other groups to make room
+      } else {
+        setProShowAll(false);
+      }
+      return next;
+    });
+  };
+
+  const openProSession = (s) => {
+    saveActiveChatId(s.id);
+    handleNav("home");
+  };
+
+  const startProChatFromSidebar = () => {
+    const fresh = makeChatSession({user_id:currentUser?.email||""});
+    const firstName = currentUser?.name?.split(" ")[0] || "there";
+    fresh.messages = [{role:"bot", content:`Hi ${firstName} I'm **Pro** — your AI workspace inside SocialFlow. Tell me what you want to do and I'll handle it.`, id:uid(), type:"welcome", chat_id:fresh.id, sender:"pro", created_at:new Date().toISOString()}];
+    const next = [fresh, ...loadProSessions()];
+    saveProSessions(next);
+    saveActiveChatId(fresh.id);
+    setProSessions(next);
+    handleNav("home");
+  };
+
   const handleNav = (key) => {
     setPage(key);
     if(isMobile && onClose) onClose();
@@ -15574,10 +15608,64 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     <nav style={{flex:1, padding: compact ? "8px 4px" : "6px 8px", display:"flex", flexDirection:"column", gap:1, overflowY:"auto"}}>
       {rawGroups.map((grp, gi) => {
         if(!grp.group) {
-          // Flat items (Dashboard)
-          return grp.items.map(item => (
-            <NavItem key={item.key} item={item} compact={compact} indented={false}/>
-          ));
+          // Flat items (Pro Home, Dashboard) — Pro Home gets an expand
+          // chevron showing recent chat sessions inline.
+          return grp.items.map(item => {
+            if(item.key !== "home" || compact) {
+              return <NavItem key={item.key} item={item} compact={compact} indented={false}/>;
+            }
+            const visibleSessions = proShowAll ? proSessions : proSessions.slice(0,5);
+            return (
+              <div key={item.key}>
+                <div style={{display:"flex",alignItems:"center",gap:2}}>
+                  <div style={{flex:1}}><NavItem item={item} compact={false} indented={false}/></div>
+                  <button onClick={toggleProOpen} title="Recent chats" style={{
+                    padding:8, borderRadius:"var(--rs)", background:"transparent", border:"none", cursor:"pointer",
+                    color: proOpen ? "var(--accent)" : "var(--text3)", display:"flex", flexShrink:0,
+                  }}>
+                    <span className={`sidebar-chevron ${proOpen ? "open" : ""}`}>
+                      <Ico d={Icons.chevD} size={13} stroke="currentColor"/>
+                    </span>
+                  </button>
+                </div>
+                <div
+                  className={`sidebar-accordion-items ${proOpen ? "" : "closed"}`}
+                  style={{maxHeight: proOpen ? 2000 : 0}}
+                >
+                  <div style={{display:"flex",flexDirection:"column",gap:1,paddingBottom:4,paddingLeft:14}}>
+                    <button onClick={startProChatFromSidebar} style={{
+                      display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:"var(--rs)",
+                      background:"transparent",border:"none",color:"var(--accent)",fontSize:12,fontWeight:700,
+                      cursor:"pointer",textAlign:"left",
+                    }}>
+                      <Ico d={Icons.plus} size={13}/> New chat
+                    </button>
+                    {proSessions.length===0 && (
+                      <p style={{fontSize:11,color:"var(--text3)",padding:"4px 10px"}}>No previous chats yet.</p>
+                    )}
+                    {visibleSessions.map(s=>(
+                      <button key={s.id} onClick={()=>openProSession(s)} style={{
+                        display:"block",width:"100%",padding:"6px 10px",borderRadius:"var(--rs)",
+                        background: s.id===loadActiveChatId() ? "var(--accentbg)" : "transparent",
+                        border:"none",color:"var(--text2)",fontSize:12,fontWeight:500,
+                        textAlign:"left",cursor:"pointer",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
+                      }}>
+                        {s.title || "New conversation"}
+                      </button>
+                    ))}
+                    {proSessions.length>5 && (
+                      <button onClick={()=>setProShowAll(v=>!v)} style={{
+                        padding:"6px 10px",fontSize:11.5,fontWeight:700,color:"var(--text3)",
+                        background:"transparent",border:"none",textAlign:"left",cursor:"pointer",
+                      }}>
+                        {proShowAll ? "See less" : `See more (${proSessions.length-5})`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          });
         }
         const isOpen = openGroups.has(grp.group);
         const itemH = compact ? 40 : 36;
