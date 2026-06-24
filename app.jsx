@@ -502,7 +502,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.24";
+const APP_VERSION = "beta 2.25";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17229,10 +17229,10 @@ RULES:
       {/* Floating Button */}
       <div style={{position:"fixed",bottom:isMobile?92:28,right:isMobile?16:28,zIndex:800}}>
         {unread>0&&!open&&(
-          <div style={{position:"absolute",top:-4,right:-4,width:18,height:18,borderRadius:"50%",background:"var(--accent)",color:"#fff",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",zIndex:1}}>{unread}</div>
+          <div style={{position:"absolute",top:-4,right:-4,width:18,height:18,borderRadius:"50%",background:"var(--accent)",color:"#fff",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",zIndex:1,pointerEvents:"none"}}>{unread}</div>
         )}
         {!open&&!hasOpened&&(
-          <div style={{position:"absolute",inset:-6,borderRadius:"50%",border:"2px solid var(--accent)",opacity:0.4,animation:"pulse 2s infinite"}}/>
+          <div style={{position:"absolute",inset:-6,borderRadius:"50%",border:"2px solid var(--accent)",opacity:0.4,animation:"pulse 2s infinite",pointerEvents:"none"}}/>
         )}
         <button onClick={()=>{setOpen(o=>!o);setHasOpened(true);}} style={{
           width:52,height:52,borderRadius:"50%",
