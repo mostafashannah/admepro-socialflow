@@ -502,7 +502,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.21";
+const APP_VERSION = "beta 2.22";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1295,6 +1295,12 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
     }
     html,body,#root{height:100%;overflow-x:hidden}
     .app-shell{height:100vh;height:100dvh}
+    /* iOS paints the safe-area strips (home-indicator inset, notch) using
+       the <html> element's background, not <body>'s — without this the
+       safe-area area stays the default white/gray even when body matches
+       the app theme, leaving a visible strip at the bottom of standalone
+       PWAs. */
+    html{background:${bg?bg:"var(--bg)"}}
     body{
       background:${bg?bg:"var(--bg)"};
       background-attachment:fixed;
