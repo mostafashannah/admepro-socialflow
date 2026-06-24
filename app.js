@@ -55,7 +55,7 @@ function speedTokens(speed,base){if(speed==="low")return Math.max(300,Math.round
 function logActivity(action,category,details="",status="success",errorMsg="",user="system"){const entry={action,category,details,status,error_message:errorMsg,performed_by:user,performed_at:new Date().toISOString()};ce("ActivityLog",[entry]).then(({entities})=>{const saved=entities===null||entities===void 0?void 0:entities[0];// Push the freshly-saved row (with real id) into the live UI immediately,
 // otherwise System Log only reflects what was loaded at page load.
 if(saved&&!saved._saveError)window.dispatchEvent(new CustomEvent("sf:activitylog",{detail:saved}));}).catch(()=>{});}// ── Email HTML templates ─────────────────────────────────────────
-const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 2.22";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 2.23";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
 <tr><td align="center">
@@ -317,6 +317,14 @@ const isLight=wallpaper==="light";const shadowSm=isLight?"0 1px 3px rgba(0,0,0,0
     }
     html,body,#root{height:100%;overflow-x:hidden}
     .app-shell{height:100vh;height:100dvh}
+    /* Standalone iOS PWA: stretch the shell past the visual viewport by the
+       home-indicator inset so the bottom nav's own background (not just the
+       <html> background behind it) physically reaches the true bottom edge
+       — otherwise there's a visible seam where --bg shows through instead
+       of the nav's --surface color. */
+    @media all and (display-mode:standalone){
+      .app-shell{height:calc(100dvh + env(safe-area-inset-bottom))}
+    }
     /* iOS paints the safe-area strips (home-indicator inset, notch) using
        the <html> element's background, not <body>'s — without this the
        safe-area area stays the default white/gray even when body matches
