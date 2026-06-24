@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS team_members (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   name TEXT NOT NULL, email VARCHAR(255) NOT NULL, role VARCHAR(50) DEFAULT 'content_creator',
   status VARCHAR(50) DEFAULT 'active', avatar_url MEDIUMTEXT, department TEXT,
+  whatsapp_number TEXT,
   permissions TEXT, password TEXT,
   UNIQUE KEY uq_team_members_email (email)
 ) ENGINE=InnoDB;

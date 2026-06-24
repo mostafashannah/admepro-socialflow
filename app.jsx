@@ -20539,6 +20539,12 @@ function App() {
         const real = res.entities?.[0];
         if(real?.id) setUserProfile(prev=>({...prev,...real}));
       }
+      // Mirror into team_members.whatsapp_number too — task-assignment
+      // notifications read from `data.team`, not the user_profiles row.
+      if("whatsapp_number" in profileData) {
+        const member = data.team.find(m=>m.email===currentUser.email);
+        if(member) updateTeamMember(member.id, {whatsapp_number: profileData.whatsapp_number||null});
+      }
     } catch(e){}
     logActivity("Profile Updated","users",currentUser?.email||"","success","",currentUser?.email||"admin");
     setToast("Profile saved successfully");

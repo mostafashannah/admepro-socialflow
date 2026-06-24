@@ -12,6 +12,14 @@ define('B44_APP_ID_VAL',    'your_base44_app_id');
 define('WA_PHONE_ID',      'your_whatsapp_phone_number_id');
 define('WA_ACCESS_TOKEN',  'your_whatsapp_access_token');
 
+// Inbound WhatsApp (wa-webhook.php) — lets team/clients message "Pro" directly.
+// WA_VERIFY_TOKEN: any string you choose; enter the SAME value when subscribing
+//   the webhook in Meta App Dashboard → WhatsApp → Configuration → Verify Token.
+// WA_APP_SECRET: Meta App Dashboard → App Settings → Basic → App Secret. Used to
+//   verify the X-Hub-Signature-256 header on incoming webhook POSTs.
+define('WA_VERIFY_TOKEN', 'CHANGE_ME_TO_A_LONG_RANDOM_STRING');
+define('WA_APP_SECRET',   'your_meta_app_secret');
+
 // Facebook/Instagram auto-publish (auto-publish.php cron) — kill switch.
 // Leave false until you've connected at least one active Facebook/Instagram
 // integration in Settings → Integrations with a real Page Access Token.
