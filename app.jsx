@@ -502,7 +502,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.23";
+const APP_VERSION = "beta 2.24";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1295,14 +1295,6 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
     }
     html,body,#root{height:100%;overflow-x:hidden}
     .app-shell{height:100vh;height:100dvh}
-    /* Standalone iOS PWA: stretch the shell past the visual viewport by the
-       home-indicator inset so the bottom nav's own background (not just the
-       <html> background behind it) physically reaches the true bottom edge
-       — otherwise there's a visible seam where --bg shows through instead
-       of the nav's --surface color. */
-    @media all and (display-mode:standalone){
-      .app-shell{height:calc(100dvh + env(safe-area-inset-bottom))}
-    }
     /* iOS paints the safe-area strips (home-indicator inset, notch) using
        the <html> element's background, not <body>'s — without this the
        safe-area area stays the default white/gray even when body matches
@@ -1460,7 +1452,7 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       .bottom-nav{
         display:flex;flex-shrink:0;
         background:var(--surface);border-top:1px solid var(--border);
-        padding:8px 0 max(6px,env(safe-area-inset-bottom));
+        padding:8px 0 max(6px,calc(env(safe-area-inset-bottom) - 16px));
         justify-content:space-around;align-items:center;
       }
       .main-content{
