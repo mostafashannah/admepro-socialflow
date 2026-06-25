@@ -5804,8 +5804,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
     ["assets","Assets"],
     ["reports","Reports"],
     ...(isPriv?[["inbox",`💬 Inbox${cMessagesNeedReplyCount?` (${cMessagesNeedReplyCount})`:""}`]]:[]),
-    ...(isPriv?[["intelligence","Intelligence"],["client_intel","🧠 Smart Intel"],["memory","🧩 Memory"],["brand_training","🎯 Brand Training"],["briefs",`📋 Briefs${pendingBriefCount?` (${pendingBriefCount} pending)`:""}`]]:[]),
-    ...(currentUser?.role==="admin"?[["context_file","📋 Context File"]]:[]),
+    ...(isPriv?[["brain","🧠 Client Brain"],["briefs",`📋 Briefs${pendingBriefCount?` (${pendingBriefCount} pending)`:""}`]]:[]),
   ];
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
@@ -5942,44 +5941,24 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
         </div>
       )}
       {tab==="calendar"&&<CalendarView posts={cPosts} onPostClick={onPostClick}/>}
-      {tab==="intelligence"&&(
-        <IntelligenceTab
+      {tab==="brain"&&(
+        <ClientBrainTab
           client={client}
           knowledge={knowledge}
+          clientKnowledge={clientKnowledge}
           documents={documents}
           currentUser={currentUser}
-          allPosts={cPosts}
           onUploadDoc={onUploadDoc}
           onSaveKnowledge={onSaveKnowledge}
-        />
-      )}
-      {tab==="client_intel"&&(
-        <ClientIntelligenceTab
-          client={client}
-          intelligence={clientIntelligence}
-          onSave={onSaveIntelligence}
-        />
-      )}
-      {tab==="context_file"&&(
-        <ClientContextFile
-          client={client}
-          knowledge={knowledge}
+          clientIntelligence={clientIntelligence}
+          onSaveIntelligence={onSaveIntelligence}
+          clientMemory={clientMemory}
+          onUpsertMemory={onUpsertMemory}
+          onDeleteMemory={onDeleteMemory}
+          cPosts={cPosts}
           posts={posts}
           projects={projects}
-          currentUser={currentUser}
-          onSaveKnowledge={onSaveKnowledge}
-          intelligence={clientIntelligence?.find?.(i=>i.client_id===client.id)}
-          comments={comments||[]}
-        />
-      )}
-
-      {tab==="memory"&&(
-        <ClientMemoryTab
-          client={client}
-          clientMemory={clientMemory||[]}
-          onUpsert={onUpsertMemory}
-          onDelete={onDeleteMemory}
-          currentUser={currentUser}
+          comments={comments}
         />
       )}
 
@@ -6014,18 +5993,6 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
             );
           })}
         </div>
-      )}
-
-      {tab==="brand_training"&&(
-        <BrandTrainingChat
-          client={client}
-          clientKnowledge={(clientKnowledge||[]).find?.(k=>k.client_id===client.id)||clientKnowledge||null}
-          clientIntelligence={(clientIntelligence||[]).find?.(i=>i.client_id===client.id)||clientIntelligence||null}
-          clientMemory={clientMemory||[]}
-          allClientPosts={cPosts}
-          currentUser={currentUser}
-          onUpsertMemory={onUpsertMemory}
-        />
       )}
 
       {/* Edit Client Modal */}
@@ -6890,15 +6857,18 @@ function ClientContextFile({client, knowledge, posts, projects, currentUser, onS
     // ── Project goals ──
     const projectGoals = cProjects.filter(p=>p.description).map(p=>`${p.title}: ${(p.description||"").slice(0,120)}`).slice(0,4).join("\n");
 
-    // ── Smart Intel data ──
+    // ── Scheduling intel data (posting strategy & timing) ──
     const intel = intelligence;
     const intelData = intel ? `
-Brand guidelines: ${intel.brand_guidelines||""}
-Target audience: ${intel.target_audience||""}
-Competitors: ${intel.competitors||""}
-Goals: ${intel.goals||""}
-Do's: ${intel.dos||""}
-Don'ts: ${intel.donts||""}`.trim() : "Not filled";
+Preferred platforms: ${(intel.preferred_platforms||[]).join(", ")||"—"}
+Best posting days: ${(intel.best_posting_days||[]).join(", ")||"—"}
+Posting frequency: ${intel.posting_frequency||"—"}/week
+Best times: IG ${intel.instagram_best_time||"—"} · FB ${intel.facebook_best_time||"—"} · TikTok ${intel.tiktok_best_time||"—"} · LinkedIn ${intel.linkedin_best_time||"—"}
+Active hours: ${intel.active_hours||"—"} (${intel.timezone||"—"})
+Peak engagement days: ${(intel.peak_engagement_days||[]).join(", ")||"—"}
+Preferred content types: ${(intel.preferred_content_types||[]).join(", ")||"—"}
+Preferred pillars: ${intel.preferred_pillars||"—"}
+Best performing: ${intel.best_performing_type||"—"} on ${intel.best_performing_day||"—"} (avg engagement ${intel.avg_engagement_rate||"—"}%)`.trim() : "Not filled";
 
     // ── Recent comments/feedback ──
     const recentComments = (comments||[]).filter(c=>cPosts.some(p=>p.id===c.post_id)).map(c=>`${c.author_name||"?"}: ${(c.content||"").slice(0,100)}`).slice(0,6).join("\n");
@@ -6922,7 +6892,7 @@ Industry: ${client.industry||"Unknown"}
 Platforms: ${(client.platforms||[]).join(", ")||"Unknown"}
 Status: ${client.status||"active"}
 
-=== SMART INTEL (manually filled by team) ===
+=== SCHEDULING INTEL (manually filled by team) ===
 ${intelData}
 
 === KNOWLEDGE BASE (from uploaded documents) ===
@@ -7242,6 +7212,63 @@ function ClientIntelligenceTab({client, intelligence, onSave}) {
         </button>
         {saved&&<span style={{color:"#10b981",fontWeight:600,fontSize:13}}>✓ Saved</span>}
       </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// CLIENT BRAIN TAB — consolidates Intelligence/Smart Intel/Memory/
+// Brand Training/Context File into one tab with sub-nav.
+// ════════════════════════════════════════════════════════════════
+function ClientBrainTab({client, knowledge, clientKnowledge, documents, currentUser, onUploadDoc, onSaveKnowledge, clientIntelligence, onSaveIntelligence, clientMemory, onUpsertMemory, onDeleteMemory, cPosts, posts, projects, comments}) {
+  const isAdmin = currentUser?.role==="admin";
+  const [sub,setSub] = usePersistentState(`sf_brain_sub_${client?.id}`,"profile");
+  const SUBS = [
+    ["profile","🧠 Profile & Docs"],
+    ["memory","🧩 Memory"],
+    ["scheduling","📡 Scheduling"],
+    ["training","🎯 Train AI"],
+    ...(isAdmin?[["export","📤 Export"]]:[]),
+  ];
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:18}}>
+      <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)",alignSelf:"flex-start",flexWrap:"wrap"}}>
+        {SUBS.map(([k,l])=>(
+          <button key={k} onClick={()=>setSub(k)} style={{padding:"6px 14px",borderRadius:"var(--rxs)",fontSize:12,fontWeight:700,background:sub===k?"var(--accent)":"none",color:sub===k?"#fff":"var(--text2)",transition:"all 0.15s"}}>{l}</button>
+        ))}
+      </div>
+      {sub==="profile"&&(
+        <IntelligenceTab client={client} knowledge={knowledge} documents={documents} currentUser={currentUser} onUploadDoc={onUploadDoc} onSaveKnowledge={onSaveKnowledge} allPosts={cPosts}/>
+      )}
+      {sub==="memory"&&(
+        <ClientMemoryTab client={client} clientMemory={clientMemory||[]} onUpsert={onUpsertMemory} onDelete={onDeleteMemory} currentUser={currentUser}/>
+      )}
+      {sub==="scheduling"&&(
+        <ClientIntelligenceTab client={client} intelligence={clientIntelligence} onSave={onSaveIntelligence}/>
+      )}
+      {sub==="training"&&(
+        <BrandTrainingChat
+          client={client}
+          clientKnowledge={(clientKnowledge||[]).find?.(k=>k.client_id===client.id)||clientKnowledge||null}
+          clientIntelligence={(clientIntelligence||[]).find?.(i=>i.client_id===client.id)||clientIntelligence||null}
+          clientMemory={clientMemory||[]}
+          allClientPosts={cPosts}
+          currentUser={currentUser}
+          onUpsertMemory={onUpsertMemory}
+        />
+      )}
+      {sub==="export"&&isAdmin&&(
+        <ClientContextFile
+          client={client}
+          knowledge={knowledge}
+          posts={posts}
+          projects={projects}
+          currentUser={currentUser}
+          onSaveKnowledge={onSaveKnowledge}
+          intelligence={(clientIntelligence||[]).find?.(i=>i.client_id===client.id)}
+          comments={comments||[]}
+        />
+      )}
     </div>
   );
 }
