@@ -504,7 +504,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.27";
+const APP_VERSION = "beta 2.28";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10461,9 +10461,46 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState("");
+  const [metaPages, setMetaPages] = useState(null);
   const sf = (k,v) => setF(p=>({...p,[k]:v}));
   const sc = (k,v) => setF(p=>({...p,config:{...p.config,[k]:v}}));
   const scred = (k,v) => setF(p=>({...p,credentials:{...p.credentials,[k]:v}}));
+
+  React.useEffect(()=>{
+    const onMsg = (e) => {
+      if(e.origin!==window.location.origin) return;
+      if(!e.data||e.data.type!=="meta_oauth_result") return;
+      setConnecting(false);
+      if(!e.data.ok){ setConnectError(e.data.error||"Connection failed."); return; }
+      const pages = e.data.pages||[];
+      if(pages.length===0){ setConnectError("No Facebook Pages found for this account."); return; }
+      setMetaPages(pages);
+      if(pages.length===1) applyMetaPage(pages[0]);
+    };
+    window.addEventListener("message", onMsg);
+    return ()=>window.removeEventListener("message", onMsg);
+  }, [f.app_key]);
+
+  const applyMetaPage = (page) => {
+    if(f.app_key==="instagram"){
+      if(!page.instagram){ setConnectError(`"${page.name}" has no linked Instagram Business account.`); return; }
+      scred("page_id", page.instagram.id);
+      scred("access_token", page.access_token);
+    } else {
+      scred("page_id", page.id);
+      scred("access_token", page.access_token);
+    }
+    setMetaPages(null);
+    setConnectError("");
+  };
+
+  const connectWithFacebook = () => {
+    setConnectError(""); setMetaPages(null); setConnecting(true);
+    const popup = window.open("/meta-oauth-start.php", "meta_oauth", "width=600,height=700");
+    if(!popup){ setConnecting(false); setConnectError("Popup blocked — please allow popups for this site."); }
+  };
 
   const selectedApp = APP_MAP[f.app_key];
   const selectedTrigger = TRIGGER_MAP[f.trigger];
@@ -10640,8 +10677,28 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                 <Field label="Access Token" required><input value={f.credentials?.access_token||""} onChange={e=>scred("access_token",e.target.value)} placeholder="Access token from OAuth" style={inputSt} type="password"/></Field>
               )}
               {(f.app_key==="facebook"||f.app_key==="instagram")&&(<>
+                <button onClick={connectWithFacebook} disabled={connecting} style={{
+                  display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"12px",
+                  background:"#1877F2",color:"#fff",border:"none",borderRadius:"var(--rs)",
+                  fontSize:13,fontWeight:700,cursor:connecting?"default":"pointer",opacity:connecting?0.7:1,
+                }}>
+                  {connecting?<><Spinner size={14}/> Waiting for Facebook login…</>:<>Connect with Facebook</>}
+                </button>
+                {connectError&&(
+                  <div style={{padding:10,background:"#ef444422",border:"1px solid #ef444455",borderRadius:"var(--rs)",fontSize:12,color:"#ef4444"}}>{connectError}</div>
+                )}
+                {metaPages&&metaPages.length>1&&(
+                  <div style={{display:"flex",flexDirection:"column",gap:6,padding:12,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
+                    <p style={{fontSize:12,fontWeight:700,color:"var(--text2)"}}>Choose a Page:</p>
+                    {metaPages.map(p=>(
+                      <button key={p.id} onClick={()=>applyMetaPage(p)} style={{textAlign:"left",padding:"8px 10px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>
+                        {p.name}{p.instagram&&` · IG @${p.instagram.username}`}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div style={{padding:14,background:"#1877F211",border:"1px solid #1877F233",borderRadius:"var(--rs)",fontSize:12,color:"#1877F2"}}>
-                  <strong>How to get credentials:</strong> Go to <em>Meta Business Suite → Settings → Page Access Tokens</em>, or use the <em>Graph API Explorer</em> to generate a long-lived Page Access Token. For Instagram, use your Instagram Business account's Page ID.
+                  <strong>Or paste credentials manually:</strong> Go to <em>Meta Business Suite → Settings → Page Access Tokens</em>, or use the <em>Graph API Explorer</em> to generate a long-lived Page Access Token. For Instagram, use your Instagram Business account's Page ID.
                 </div>
                 <Field label="Client" required hint="Which client does this Facebook/Instagram page belong to?">
                   <select value={f.client_id||""} onChange={e=>{

@@ -29,9 +29,13 @@ define('AUTO_PUBLISH_ENABLED', false);
 // "now" in auto-publish.php. Use a PHP timezone identifier, e.g. 'Africa/Cairo'.
 define('APP_TIMEZONE', 'UTC');
 
-// Meta App (Messenger/Instagram customer inbox webhook) — meta-inbox-webhook.php
-// App Secret: developers.facebook.com → your app → Settings → Basic
+// Meta App (Messenger/Instagram customer inbox webhook, and the
+// Facebook/Instagram "Connect" OAuth flow — meta-oauth-start.php /
+// meta-oauth-callback.php). App ID + Secret: developers.facebook.com →
+// your app → Settings → Basic. Also add this exact URL as a valid OAuth
+// redirect URI there: https://yourdomain.com/meta-oauth-callback.php
 // Verify Token: any string you choose, entered again when subscribing the webhook
+define('META_APP_ID',                'your_meta_app_id');
 define('META_APP_SECRET',            'your_meta_app_secret');
 define('META_WEBHOOK_VERIFY_TOKEN',  'choose_any_random_string');
 
