@@ -47,7 +47,7 @@ foreach ($members as $m) {
         }
     }
     if (!$message) {
-        $message = "Good morning {$firstName}! 👋 Here's what's on your plate today:\n{$list}\n\nI'm always here if you need anything!";
+        $message = "Good morning {$firstName}! Here's what's on your plate today:\n{$list}\n\nI'm always here if you need anything!";
     }
 
     sendWhatsAppReply($m['whatsapp_number'], $message);

@@ -1617,6 +1617,7 @@ const Icons = {
   briefcase:["M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z","M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"],
   brain: ["M9.5 2a2.5 2.5 0 0 0-2.5 2.5v.5A2.5 2.5 0 0 0 4.5 7.5 2.5 2.5 0 0 0 3 12a2.5 2.5 0 0 0 1.5 4.5 2.5 2.5 0 0 0 2.5 2.5 2.5 2.5 0 0 0 2.5 2.5h0V4.5A2.5 2.5 0 0 0 9.5 2z","M14.5 2a2.5 2.5 0 0 1 2.5 2.5v.5a2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-1.5 4.5 2.5 2.5 0 0 1-2.5 4.5 2.5 2.5 0 0 1-2.5 2.5h0V4.5A2.5 2.5 0 0 1 14.5 2z","M9.5 9.5h5","M9.5 14.5h5"],
   paperclip:["M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"],
+  chat: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
 };
 
 const Spinner = ({size=24}) => (
@@ -5929,9 +5930,9 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
     ["calendar","Calendar"],
     ["assets","Assets"],
     ["reports","Reports"],
-    ...(isPriv?[["inbox",`💬 Inbox${cMessagesNeedReplyCount?` (${cMessagesNeedReplyCount})`:""}`]]:[]),
-    ...(isPriv?[["meta_insights","📊 Meta Insights"]]:[]),
-    ...(isPriv?[["brain","🧠 Client Brain"],["briefs",`📋 Briefs${pendingBriefCount?` (${pendingBriefCount} pending)`:""}`]]:[]),
+    ...(isPriv?[["inbox",`Inbox${cMessagesNeedReplyCount?` (${cMessagesNeedReplyCount})`:""}`]]:[]),
+    ...(isPriv?[["meta_insights","Meta Insights"]]:[]),
+    ...(isPriv?[["brain","Client Brain"],["briefs",`Briefs${pendingBriefCount?` (${pendingBriefCount} pending)`:""}`]]:[]),
   ];
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
@@ -6153,9 +6154,9 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
 // CLIENT INBOX TAB — customer conversations (Messenger/Instagram/WhatsApp)
 // ════════════════════════════════════════════════════════════════
 const INBOX_CHANNEL_MAP = {
-  messenger: {label:"Messenger", icon:"💬", color:"#0084ff"},
-  instagram: {label:"Instagram", icon:"📷", color:"#e1306c"},
-  whatsapp:  {label:"WhatsApp",  icon:"📱", color:"#25d366"},
+  messenger: {label:"Messenger", icon:Icons.chat, color:"#0084ff"},
+  instagram: {label:"Instagram", icon:Icons.camera, color:"#e1306c"},
+  whatsapp:  {label:"WhatsApp",  icon:Icons.phone, color:"#25d366"},
 };
 function ClientInboxTab({client, messages=[], integrations=[], onSendReply}) {
   const [selThread, setSelThread] = useState(null); // {channel, customer_id}
@@ -6190,8 +6191,9 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply}) {
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       {connected.length===0&&(
-        <div style={{padding:14,background:"#f59e0b15",border:"1px solid #f59e0b44",borderRadius:"var(--rs)",fontSize:13,color:"var(--text2)"}}>
-          ⚠️ No active Facebook/Instagram connection for {client.name} yet. Connect one in Settings → Integrations to receive and reply to customer messages here.
+        <div style={{padding:14,background:"#f59e0b15",border:"1px solid #f59e0b44",borderRadius:"var(--rs)",fontSize:13,color:"var(--text2)",display:"flex",gap:10}}>
+          <Ico d={Icons.alert} size={16} stroke="#f59e0b"/>
+          <span>No active Facebook/Instagram connection for {client.name} yet. Connect one in Settings → Integrations to receive and reply to customer messages here.</span>
         </div>
       )}
       <div style={{display:"flex",gap:16,minHeight:420}}>
@@ -6203,13 +6205,13 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply}) {
           <div style={{flex:1,overflowY:"auto"}}>
             {threads.length===0&&<p style={{padding:18,fontSize:12,color:"var(--text3)",textAlign:"center"}}>No customer messages yet.</p>}
             {threads.map(t=>{
-              const ch = INBOX_CHANNEL_MAP[t.channel]||{label:t.channel,icon:"💬",color:"#888"};
+              const ch = INBOX_CHANNEL_MAP[t.channel]||{label:t.channel,icon:Icons.chat,color:"#888"};
               const isSel = activeThread===t;
               return (
                 <div key={t.channel+"_"+t.customer_id} onClick={()=>setSelThread({channel:t.channel,customer_id:t.customer_id})}
                   style={{padding:"10px 14px",borderBottom:"1px solid var(--border)",cursor:"pointer",background:isSel?"var(--accentbg)":"transparent"}}>
                   <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <span style={{fontSize:14}}>{ch.icon}</span>
+                    <Ico d={ch.icon} size={14} stroke={ch.color}/>
                     <p style={{fontWeight:700,fontSize:13,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.customer_name||t.customer_id}</p>
                     {t.last.direction==="in"&&<span style={{width:7,height:7,borderRadius:"50%",background:"var(--accent)",flexShrink:0}}/>}
                   </div>
@@ -6224,7 +6226,7 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply}) {
           {!activeThread&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text3)",fontSize:13}}>Select a conversation</div>}
           {activeThread&&(<>
             <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",gap:8}}>
-              <span style={{fontSize:16}}>{(INBOX_CHANNEL_MAP[activeThread.channel]||{}).icon}</span>
+              <Ico d={(INBOX_CHANNEL_MAP[activeThread.channel]||{icon:Icons.chat}).icon} size={16} stroke={(INBOX_CHANNEL_MAP[activeThread.channel]||{}).color||"#888"}/>
               <p style={{fontWeight:700,fontSize:14}}>{activeThread.customer_name||activeThread.customer_id}</p>
               <Badge label={(INBOX_CHANNEL_MAP[activeThread.channel]||{label:activeThread.channel}).label} color={(INBOX_CHANNEL_MAP[activeThread.channel]||{}).color||"#888"} xs/>
             </div>
@@ -6234,7 +6236,7 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply}) {
                   background:m.direction==="out"?(m.sent_by==="bot"?"#6366f122":"var(--accent)"):"var(--surface2)",
                   color:m.direction==="out"&&m.sent_by!=="bot"?"#fff":"var(--text)"}}>
                   <p style={{fontSize:13,lineHeight:1.5}}>{m.message_text}</p>
-                  <p style={{fontSize:9,marginTop:4,opacity:0.7}}>{m.sent_by==="bot"?"🤖 Pro · ":""}{new Date(m.created_at).toLocaleString()}</p>
+                  <p style={{fontSize:9,marginTop:4,opacity:0.7}}>{m.sent_by==="bot"?"Pro · ":""}{new Date(m.created_at).toLocaleString()}</p>
                 </div>
               ))}
             </div>
@@ -7492,11 +7494,11 @@ function ClientBrainTab({client, knowledge, clientKnowledge, documents, currentU
   const isAdmin = currentUser?.role==="admin";
   const [sub,setSub] = usePersistentState(`sf_brain_sub_${client?.id}`,"profile");
   const SUBS = [
-    ["profile","🧠 Profile & Docs"],
-    ["memory","🧩 Memory"],
-    ["scheduling","📡 Scheduling"],
-    ["training","🎯 Train AI"],
-    ...(isAdmin?[["export","📤 Export"]]:[]),
+    ["profile","Profile & Docs"],
+    ["memory","Memory"],
+    ["scheduling","Scheduling"],
+    ["training","Train AI"],
+    ...(isAdmin?[["export","Export"]]:[]),
   ];
   return (
     <div style={{display:"flex",flexDirection:"column",gap:18}}>
@@ -12712,7 +12714,7 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
   const handleTestWhatsApp = async () => {
     if(!form.whatsapp_number) return;
     setTestingWa(true); setTestWaResult(null);
-    const ok = await sendWhatsApp(form.whatsapp_number, `Hi ${form.display_name||currentUser?.name||"there"}! 👋 This is a test message from SocialFlow to confirm your WhatsApp number is set up correctly.`);
+    const ok = await sendWhatsApp(form.whatsapp_number, `Hi ${form.display_name||currentUser?.name||"there"}! This is a test message from SocialFlow to confirm your WhatsApp number is set up correctly.`);
     setTestingWa(false);
     setTestWaResult(ok?"sent":"failed");
     setTimeout(()=>setTestWaResult(null), 5000);
@@ -12816,7 +12818,7 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
               <Field label="WhatsApp Number" hint="Receive task notifications via WhatsApp">
                 <div style={{display:"flex",gap:8}}>
                   <div style={{position:"relative",flex:1}}>
-                    <div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:14,lineHeight:1}}>💬</div>
+                    <div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"var(--text3)"}}><Ico d={Icons.chat} size={14}/></div>
                     <input value={form.whatsapp_number} onChange={e=>sf("whatsapp_number",e.target.value)} placeholder="+20 100 000 0000" style={{...inputSt,paddingLeft:34}}/>
                   </div>
                   <button onClick={handleTestWhatsApp} disabled={!form.whatsapp_number||testingWa} style={{
@@ -20696,7 +20698,7 @@ function App() {
         if(newWaNumber && newWaNumber !== prevWaNumber) {
           const name = profileData.display_name || currentUser?.name || "there";
           const role = ROLES[currentUser?.role]?.label || currentUser?.role || "";
-          sendWhatsApp(newWaNumber, `Hi ${name}! 👋 Your WhatsApp number is now linked to your SocialFlow account.\n\nName: ${name}\nEmail: ${currentUser.email}\nRole: ${role}\n\nYou'll receive task and approval notifications here, and can message "Pro" anytime for help.`).catch(()=>{});
+          sendWhatsApp(newWaNumber, `Hi ${name}! Your WhatsApp number is now linked to your SocialFlow account.\n\nName: ${name}\nEmail: ${currentUser.email}\nRole: ${role}\n\nYou'll receive task and approval notifications here, and can message "Pro" anytime for help.`).catch(()=>{});
         }
       }
     } catch(e){}

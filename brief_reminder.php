@@ -48,7 +48,7 @@ function b44_update($table, $id, $data) {
 function send_reminder_email($to, $client_name, $month_label, $reminder_num) {
     require_once __DIR__ . '/mail.php'; // uses PHPMailer or mail()
 
-    $subject = "📋 Reminder #{$reminder_num}: {$month_label} Content Brief — Please Fill In";
+    $subject = "Reminder #{$reminder_num}: {$month_label} Content Brief — Please Fill In";
 
     $questions_html = '
         <ol style="padding-left:20px;line-height:2">
@@ -62,7 +62,7 @@ function send_reminder_email($to, $client_name, $month_label, $reminder_num) {
     $html = "
     <div style='font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#1a1a2e'>
       <div style='background:#d90b2c;border-radius:12px;padding:20px;text-align:center;margin-bottom:24px'>
-        <h2 style='color:#fff;margin:0;font-size:20px'>📋 Monthly Content Brief</h2>
+        <h2 style='color:#fff;margin:0;font-size:20px'>Monthly Content Brief</h2>
         <p style='color:#ffcccc;margin:8px 0 0;font-size:14px'>{$month_label} · Reminder #{$reminder_num}</p>
       </div>
       <p>Dear <strong>{$client_name}</strong>,</p>
@@ -132,10 +132,10 @@ foreach ($briefs as $brief) {
             'last_reminder_at'  => date('c'),
             'updated_at'        => date('c'),
         ]);
-        echo "[brief_reminder] ✅ Sent reminder #{$reminder_num} to {$client_email} ({$client_name})\n";
+        echo "[brief_reminder] Sent reminder #{$reminder_num} to {$client_email} ({$client_name})\n";
         $sent++;
     } else {
-        echo "[brief_reminder] ❌ Failed to send to {$client_email}\n";
+        echo "[brief_reminder] Failed to send to {$client_email}\n";
     }
 }
 
