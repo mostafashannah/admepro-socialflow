@@ -16791,11 +16791,30 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
   // ── Session-based persistent chat storage ──
   const [sessions, setSessions] = useState(()=>loadProSessions());
   const [activeChatId, setActiveChatId] = useState(()=>loadActiveChatId());
+  // A freshly-opened conversation that hasn't received a real user message yet.
+  // Kept OUT of `sessions` (and therefore out of localStorage) until the first
+  // message is sent, so opening/refreshing Pro never litters saved history.
+  const [pendingSession, setPendingSession] = useState(null);
   // Derive active session messages
-  const activeSession = sessions.find(s=>s.id===activeChatId) || null;
+  const activeSession = sessions.find(s=>s.id===activeChatId) || (pendingSession && pendingSession.id===activeChatId ? pendingSession : null);
   const messages = activeSession?.messages || [];
   // Update messages on the ACTIVE session (drop-in replacement for setMessages)
   const setMessages = (updater) => {
+    // First real message in a pending/unsaved draft → promote it into persisted sessions now.
+    if(pendingSession && pendingSession.id===activeChatId){
+      const raw = typeof updater==="function" ? updater(pendingSession.messages||[]) : updater;
+      const curId = pendingSession.id;
+      const newMsgs = (raw||[]).map(m=>({
+        ...m,
+        chat_id: m.chat_id || curId,
+        sender: m.sender || (m.role==="user" ? (currentUser?.email||"user") : "pro"),
+        created_at: m.created_at || new Date().toISOString(),
+      }));
+      const title = deriveSessionTitle(newMsgs) || pendingSession.title;
+      setSessions(prev=>[{...pendingSession, messages:newMsgs, title, updated_at:new Date().toISOString()}, ...prev]);
+      setPendingSession(null);
+      return;
+    }
     setSessions(prev=>{
       let curId = activeChatId;
       let curList = prev;
@@ -16829,22 +16848,23 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
   // On a real page load this widget may mount before Pro Home does (if the
   // app doesn't land on the Home page first), so it also claims the
   // once-per-load fresh session so the bubble doesn't silently resume an
-  // old conversation.
+  // old conversation. That fresh session stays unsaved (pendingSession)
+  // until the user actually sends a message in it.
   useEffect(()=>{
     if(!currentUser) return;
     if(claimFreshProSessionOnLoad()){
       const fresh = makeChatSession({user_id:currentUser.email||"", client_id:selectedClientId||""});
-      setSessions(prev=>[fresh, ...prev]);
+      setPendingSession(fresh);
       setActiveChatId(fresh.id);
       return;
     }
-    if(!activeChatId || !sessions.find(s=>s.id===activeChatId)){
+    if(!activeChatId || (!sessions.find(s=>s.id===activeChatId) && !(pendingSession && pendingSession.id===activeChatId))){
       // Reuse the most recent existing session if any, else create one
       if(sessions.length>0){
         setActiveChatId(sessions[0].id);
       } else {
         const fresh = makeChatSession({user_id:currentUser.email||"", client_id:selectedClientId||""});
-        setSessions([fresh]);
+        setPendingSession(fresh);
         setActiveChatId(fresh.id);
       }
     }
@@ -16852,18 +16872,24 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
 
   const newChat = () => {
     const fresh = makeChatSession({user_id:currentUser?.email||"", client_id:selectedClientId||""});
-    setSessions(prev=>[fresh, ...prev]);
+    setPendingSession(fresh);
     setActiveChatId(fresh.id);
     setShowHistory(false);
     try{ sessionStorage.removeItem(PRO_CHAT_SUGG_KEY); }catch(e){}
   };
   const switchChat = (id) => {
     if(!sessions.find(s=>s.id===id)) return;
+    if(pendingSession) setPendingSession(null);
     setSessions(prev=>prev.map(s=>s.id===id?{...s,updated_at:new Date().toISOString()}:s));
     setActiveChatId(id);
     setShowHistory(false);
   };
   const deleteChat = (id) => {
+    if(pendingSession && pendingSession.id===id){
+      setPendingSession(null);
+      if(id===activeChatId) setActiveChatId("");
+      return;
+    }
     setSessions(prev=>prev.filter(s=>s.id!==id));
     if(id===activeChatId) setActiveChatId("");
   };
@@ -16896,6 +16922,10 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
   // Track current client on the active session (only auto-set if blank)
   useEffect(()=>{
     if(!activeChatId || !selectedClientId) return;
+    if(pendingSession && pendingSession.id===activeChatId){
+      setPendingSession(p=>(p && !p.client_id) ? {...p, client_id:selectedClientId} : p);
+      return;
+    }
     setSessions(prev=>prev.map(s=>(s.id===activeChatId && !s.client_id) ? {...s, client_id:selectedClientId} : s));
   },[activeChatId, selectedClientId]);
 
@@ -18395,9 +18425,26 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
   // Same keys: PRO_CHAT_SESSIONS_KEY + PRO_CHAT_ACTIVE_KEY → continues whatever chat is open in floating bubble
   const [chatSessions, setChatSessions] = useState(()=>loadProSessions());
   const [activeChatId, setActiveChatId] = useState(()=>loadActiveChatId());
-  const activeSession = chatSessions.find(s=>s.id===activeChatId) || null;
+  // A freshly-opened conversation (incl. its welcome message) that hasn't received
+  // a real user message yet — kept out of chatSessions/localStorage until then.
+  const [pendingSession, setPendingSession] = useState(null);
+  const activeSession = chatSessions.find(s=>s.id===activeChatId) || (pendingSession && pendingSession.id===activeChatId ? pendingSession : null);
   const messages = activeSession?.messages || [];
   const setMessages = (updater) => {
+    if(pendingSession && pendingSession.id===activeChatId){
+      const raw = typeof updater==="function" ? updater(pendingSession.messages||[]) : updater;
+      const curId = pendingSession.id;
+      const newMsgs = (raw||[]).map(m=>({
+        ...m,
+        chat_id: m.chat_id || curId,
+        sender: m.sender || (m.role==="user" ? (currentUser?.email||"user") : "pro"),
+        created_at: m.created_at || new Date().toISOString(),
+      }));
+      const title = deriveSessionTitle(newMsgs) || pendingSession.title;
+      setChatSessions(prev=>[{...pendingSession, messages:newMsgs, title, updated_at:new Date().toISOString()}, ...prev]);
+      setPendingSession(null);
+      return;
+    }
     setChatSessions(prev=>{
       let curId = activeChatId;
       let curList = prev;
@@ -18482,14 +18529,14 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
     if(claimFreshProSessionOnLoad()){
       const fresh = makeChatSession({user_id:currentUser.email||""});
       fresh.messages = [{role:"bot", content:`Hi ${name} I'm **Pro** — your AI workspace inside SocialFlow. Tell me what you want to do and I'll handle it.\n\nYou can say things like:\n• "Create a task for Nova Digital"\n• "Add a new client"\n• "Show me all overdue posts"\n• "Generate a calendar plan for TechStart"`, id:uid(), type:"welcome", chat_id:fresh.id, sender:"pro", created_at:new Date().toISOString()}];
-      setChatSessions(prev=>[fresh, ...prev]);
+      setPendingSession(fresh);
       setActiveChatId(fresh.id);
       return;
     }
     if(!activeChatId && chatSessions.length===0){
       const fresh = makeChatSession({user_id:currentUser.email||""});
       fresh.messages = [{role:"bot", content:`Hi ${name} I'm **Pro** — your AI workspace inside SocialFlow. Tell me what you want to do and I'll handle it.\n\nYou can say things like:\n• "Create a task for Nova Digital"\n• "Add a new client"\n• "Show me all overdue posts"\n• "Generate a calendar plan for TechStart"`, id:uid(), type:"welcome", chat_id:fresh.id, sender:"pro", created_at:new Date().toISOString()}];
-      setChatSessions([fresh]);
+      setPendingSession(fresh);
       setActiveChatId(fresh.id);
     } else if(!activeChatId && chatSessions.length>0){
       setActiveChatId(chatSessions[0].id);
@@ -18515,7 +18562,7 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
   const startNewChat = () => {
     const fresh = makeChatSession({user_id:currentUser?.email||"", client_id:selectedClient?.id||""});
     fresh.messages = [{role:"bot", content:`Hi ${name} I'm **Pro** — your AI workspace inside SocialFlow. Tell me what you want to do and I'll handle it.`, id:uid(), type:"welcome", chat_id:fresh.id, sender:"pro", created_at:new Date().toISOString()}];
-    setChatSessions(prev=>[fresh, ...prev]);
+    setPendingSession(fresh);
     setActiveChatId(fresh.id);
     setInput("");
     setPendingActions({});
@@ -18523,6 +18570,7 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
   };
 
   const loadSession = (session) => {
+    if(pendingSession) setPendingSession(null);
     setChatSessions(prev=>prev.map(s=>s.id===session.id?{...s,updated_at:new Date().toISOString()}:s));
     setActiveChatId(session.id);
     setShowHistory(false);
@@ -18530,6 +18578,11 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
 
   const deleteSession = (sessionId, e) => {
     e.stopPropagation();
+    if(pendingSession && pendingSession.id===sessionId){
+      setPendingSession(null);
+      if(sessionId===activeChatId) setActiveChatId("");
+      return;
+    }
     setChatSessions(prev=>prev.filter(s=>s.id!==sessionId));
     if(sessionId===activeChatId) setActiveChatId("");
   };
@@ -19884,12 +19937,6 @@ function App() {
     }catch(e){return "home";}
   });
 
-  // Always clear selectedClientId/ProjectId on startup — they should only be set by user interaction
-  React.useEffect(()=>{
-    try{ localStorage.removeItem("sf_selected_client"); }catch(e){}
-    try{ localStorage.removeItem("sf_selected_project"); }catch(e){}
-  },[]);
-
   // Web Push: subscribe this device once logged in, and re-subscribe whenever
   // the app gets installed to the home screen (task-assignment alerts need this).
   React.useEffect(()=>{
@@ -19912,8 +19959,8 @@ function App() {
       if(VALID_PAGES.includes(p)){
         setPage_(p);
         // When navigating back to clients/projects via browser back, clear detail selection
-        if(p==="clients") try{localStorage.removeItem("sf_selected_client");}catch(e){}
-        if(p==="projects") try{localStorage.removeItem("sf_selected_project");}catch(e){}
+        if(p==="clients"){ setSelectedClientId_(null); try{localStorage.removeItem("sf_selected_client");}catch(e){} }
+        if(p==="projects"){ setSelectedProjectId_(null); try{localStorage.removeItem("sf_selected_project");}catch(e){} }
         try{localStorage.setItem("sf_page",p);}catch(e){}
       }
     };
@@ -19981,12 +20028,21 @@ function App() {
     {key:"calendar", label:"Calendar", ico:Icons.calendar},
   ];
   const [selectedPost,setSelectedPost] = useState(null);
-  // Never restore selected client from localStorage — always start at list view
-  const [selectedClientId,setSelectedClientId_] = useState(null);
-  const setSelectedClientId = (id) => { setSelectedClientId_(id); }; // no localStorage persistence
-  // Never restore selected project from localStorage — always start at list view
-  const [selectedProjectId,setSelectedProjectId_] = useState(null);
-  const setSelectedProjectId = (id) => { setSelectedProjectId_(id); };
+  // Restore selected client/project from localStorage so a refresh stays on the detail page being viewed
+  const [selectedClientId,setSelectedClientId_] = useState(()=>{
+    try{ return page==="clients" ? (localStorage.getItem("sf_selected_client")||null) : null; }catch(e){return null;}
+  });
+  const setSelectedClientId = (id) => {
+    setSelectedClientId_(id);
+    try{ id ? localStorage.setItem("sf_selected_client",id) : localStorage.removeItem("sf_selected_client"); }catch(e){}
+  };
+  const [selectedProjectId,setSelectedProjectId_] = useState(()=>{
+    try{ return page==="projects" ? (localStorage.getItem("sf_selected_project")||null) : null; }catch(e){return null;}
+  });
+  const setSelectedProjectId = (id) => {
+    setSelectedProjectId_(id);
+    try{ id ? localStorage.setItem("sf_selected_project",id) : localStorage.removeItem("sf_selected_project"); }catch(e){}
+  };
   const [showAddPost,setShowAddPost] = useState(false);
   const [showAddProject,setShowAddProject] = useState(false);
   const [showCreateBrief,setShowCreateBrief] = useState(false);
