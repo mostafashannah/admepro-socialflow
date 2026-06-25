@@ -29,15 +29,21 @@ define('AUTO_PUBLISH_ENABLED', false);
 // "now" in auto-publish.php. Use a PHP timezone identifier, e.g. 'Africa/Cairo'.
 define('APP_TIMEZONE', 'UTC');
 
-// Meta App (Messenger/Instagram customer inbox webhook, and the
-// Facebook/Instagram "Connect" OAuth flow — meta-oauth-start.php /
-// meta-oauth-callback.php). App ID + Secret: developers.facebook.com →
-// your app → Settings → Basic. Also add this exact URL as a valid OAuth
-// redirect URI there: https://yourdomain.com/meta-oauth-callback.php
+// Meta App (Messenger/Instagram customer inbox webhook). App ID + Secret:
+// developers.facebook.com → your app → Settings → Basic.
 // Verify Token: any string you choose, entered again when subscribing the webhook
 define('META_APP_ID',                'your_meta_app_id');
 define('META_APP_SECRET',            'your_meta_app_secret');
 define('META_WEBHOOK_VERIFY_TOKEN',  'choose_any_random_string');
+
+// Instagram API with Instagram login — the "Connect with Instagram" button
+// in Settings → Integrations (meta-oauth-start.php / meta-oauth-callback.php).
+// This is a SEPARATE product/credential from the Meta App above — get it from
+// developers.facebook.com → your app → Instagram API → API setup with
+// Instagram login. Also add this exact URL as a valid OAuth redirect URI there:
+// https://yourdomain.com/meta-oauth-callback.php
+define('INSTAGRAM_APP_ID',           'your_instagram_app_id');
+define('INSTAGRAM_APP_SECRET',       'your_instagram_app_secret');
 
 // --- Self-hosted MySQL backend (vps-migration/api.php + storage.php) ---
 // Only needed once you've moved off Supabase onto your own VPS database.

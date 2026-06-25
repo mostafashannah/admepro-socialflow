@@ -1,17 +1,17 @@
 <?php
 // ================================================================
-// SocialFlow — Step 1 of Facebook/Instagram OAuth "Connect" flow.
-// Opened in a popup from Settings → Integrations. Redirects the user
-// to Facebook's login dialog, then Facebook redirects back to
-// meta-oauth-callback.php with a ?code=... we exchange for a token.
+// SocialFlow — Step 1 of the Instagram "Connect" flow, using Meta's
+// "Instagram API with Instagram login" product (instagram.com OAuth,
+// not the classic Facebook Login dialog). No Facebook Page required —
+// the user logs in directly with their Instagram professional account.
+// Opened in a popup from Settings → Integrations.
 // ================================================================
 
 require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/meta-lib.php';
 
-if (!defined('META_APP_ID') || !defined('META_APP_SECRET')) {
+if (!defined('INSTAGRAM_APP_ID') || !defined('INSTAGRAM_APP_SECRET')) {
     http_response_code(500);
-    echo 'META_APP_ID / META_APP_SECRET not configured in config.php';
+    echo 'INSTAGRAM_APP_ID / INSTAGRAM_APP_SECRET not configured in config.php';
     exit;
 }
 
@@ -19,7 +19,7 @@ $origin = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https://' 
 $redirectUri = $origin . '/meta-oauth-callback.php';
 
 $state = bin2hex(random_bytes(16));
-setcookie('meta_oauth_state', $state, [
+setcookie('ig_oauth_state', $state, [
     'expires'  => time() + 600,
     'path'     => '/',
     'secure'   => true,
@@ -28,24 +28,20 @@ setcookie('meta_oauth_state', $state, [
 ]);
 
 $scopes = implode(',', [
-    'pages_show_list',
-    'pages_read_engagement',
-    'pages_manage_posts',
-    'pages_manage_metadata',
-    'read_insights',
-    'instagram_basic',
-    'instagram_content_publish',
-    'instagram_manage_comments',
-    'business_management',
+    'instagram_business_basic',
+    'instagram_business_manage_comments',
+    'instagram_business_manage_messages',
+    'instagram_business_content_publish',
 ]);
 
 $params = [
-    'client_id'     => META_APP_ID,
+    'client_id'     => INSTAGRAM_APP_ID,
     'redirect_uri'  => $redirectUri,
-    'state'         => $state,
-    'scope'         => $scopes,
     'response_type' => 'code',
+    'scope'         => $scopes,
+    'state'         => $state,
+    'force_reauth'  => 'true',
 ];
 
-header('Location: https://www.facebook.com/' . META_GRAPH_VERSION . '/dialog/oauth?' . http_build_query($params));
+header('Location: https://www.instagram.com/oauth/authorize?' . http_build_query($params));
 exit;
