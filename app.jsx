@@ -19463,6 +19463,7 @@ function App() {
   },[currentUser?.email]);
 
   const saveUserProfile = async (profileData) => {
+    const prevWaNumber = userProfile?.whatsapp_number || "";
     const payload = {...profileData, user_email:currentUser.email, wallpaper};
     const existingId = userProfile?.id;
     setUserProfile(prev=>({...prev,...payload}));
@@ -19474,6 +19475,18 @@ function App() {
         const res = await ce("UserProfile",[payload]);
         const real = res.entities?.[0];
         if(real?.id) setUserProfile(prev=>({...prev,...real}));
+      }
+      // Mirror into team_members.whatsapp_number too — task-assignment
+      // notifications read from `data.team`, not the user_profiles row.
+      if("whatsapp_number" in profileData) {
+        const member = data.team.find(m=>m.email===currentUser.email);
+        if(member) updateTeamMember(member.id, {whatsapp_number: profileData.whatsapp_number||null});
+        const newWaNumber = profileData.whatsapp_number || "";
+        if(newWaNumber && newWaNumber !== prevWaNumber) {
+          const name = profileData.display_name || currentUser?.name || "there";
+          const role = ROLES[currentUser?.role]?.label || currentUser?.role || "";
+          sendWhatsApp(newWaNumber, `Hi ${name}! 👋 Your WhatsApp number is now linked to your SocialFlow account.\n\nName: ${name}\nEmail: ${currentUser.email}\nRole: ${role}\n\nYou'll receive task and approval notifications here, and can message "Pro" anytime for help.`).catch(()=>{});
+        }
       }
     } catch(e){}
     setToast("Profile saved successfully");
