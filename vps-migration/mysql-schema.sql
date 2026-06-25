@@ -595,7 +595,14 @@ CREATE TABLE IF NOT EXISTS agent_runs (
 CREATE TABLE IF NOT EXISTS system_sessions (
   id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  data JSON DEFAULT ('{}')
+  user_email TEXT, user_name TEXT, user_role VARCHAR(50),
+  ip_address VARCHAR(64), country TEXT, country_code VARCHAR(10),
+  region TEXT, city TEXT, isp TEXT, org TEXT,
+  latitude DOUBLE, longitude DOUBLE,
+  browser TEXT, os TEXT, device_type VARCHAR(20),
+  screen_resolution VARCHAR(20), viewport VARCHAR(20),
+  timezone VARCHAR(64), language VARCHAR(20),
+  user_agent TEXT, login_at TIMESTAMP NULL, page_url TEXT
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS monthly_briefs (
