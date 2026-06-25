@@ -12243,6 +12243,8 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
   const [photo, setPhoto]   = useState(userProfile?.photo_url || null);
   const [saving, setSaving] = useState(false);
   const [saved,  setSaved]  = useState(false);
+  const [testingWa, setTestingWa] = useState(false);
+  const [testWaResult, setTestWaResult] = useState(null);
   const [notifEmail, setNotifEmail] = useState(userProfile?.notifications_email ?? true);
   const [notifBrowser, setNotifBrowser] = useState(userProfile?.notifications_browser ?? true);
   const fileRef = useRef(null);
@@ -12254,6 +12256,15 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
     const reader = new FileReader();
     reader.onload = (ev) => setPhoto(ev.target.result);
     reader.readAsDataURL(file);
+  };
+
+  const handleTestWhatsApp = async () => {
+    if(!form.whatsapp_number) return;
+    setTestingWa(true); setTestWaResult(null);
+    const ok = await sendWhatsApp(form.whatsapp_number, `Hi ${form.display_name||currentUser?.name||"there"}! 👋 This is a test message from SocialFlow to confirm your WhatsApp number is set up correctly.`);
+    setTestingWa(false);
+    setTestWaResult(ok?"sent":"failed");
+    setTimeout(()=>setTestWaResult(null), 5000);
   };
 
   const handleSave = async () => {
@@ -12352,10 +12363,21 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
                 </div>
               </Field>
               <Field label="WhatsApp Number" hint="Receive task notifications via WhatsApp">
-                <div style={{position:"relative"}}>
-                  <div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:14,lineHeight:1}}>💬</div>
-                  <input value={form.whatsapp_number} onChange={e=>sf("whatsapp_number",e.target.value)} placeholder="+20 100 000 0000" style={{...inputSt,paddingLeft:34}}/>
+                <div style={{display:"flex",gap:8}}>
+                  <div style={{position:"relative",flex:1}}>
+                    <div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:14,lineHeight:1}}>💬</div>
+                    <input value={form.whatsapp_number} onChange={e=>sf("whatsapp_number",e.target.value)} placeholder="+20 100 000 0000" style={{...inputSt,paddingLeft:34}}/>
+                  </div>
+                  <button onClick={handleTestWhatsApp} disabled={!form.whatsapp_number||testingWa} style={{
+                    padding:"0 12px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",
+                    fontSize:12,fontWeight:600,color:"var(--text2)",whiteSpace:"nowrap",
+                    cursor:(!form.whatsapp_number||testingWa)?"not-allowed":"pointer",opacity:(!form.whatsapp_number||testingWa)?0.5:1,
+                  }}>
+                    {testingWa?<Spinner size={12}/>:"Send Test"}
+                  </button>
                 </div>
+                {testWaResult==="sent"&&<p style={{fontSize:11,color:"#10b981",marginTop:5,fontWeight:600}}>Test message sent — check your WhatsApp.</p>}
+                {testWaResult==="failed"&&<p style={{fontSize:11,color:"#ef4444",marginTop:5,fontWeight:600}}>Failed to send. Check the number and try again.</p>}
               </Field>
               <Field label="Language">
                 <select value={form.language} onChange={e=>sf("language",e.target.value)} style={inputSt}>
