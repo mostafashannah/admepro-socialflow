@@ -8755,16 +8755,6 @@ function LoginScreen({onLogin,clients}) {
   const [err,setErr] = useState("");
   const [loading,setLoading] = useState(false);
   const [showRequestAccess, setShowRequestAccess] = useState(false);
-  const [showDemo, setShowDemo] = useState(false);
-
-  const DEMO_CREDENTIALS = [
-    {email:"mostafashannah@gmail.com",name:"Mostafa Shannah",role:"admin",department:"Management"},
-    {email:"sarah@agency.com",name:"Sarah Hassan",role:"account_manager",department:"Client Services"},
-    {email:"mike@agency.com",name:"Mike Adel",role:"content_creator",department:"Creative"},
-    {email:"lisa@agency.com",name:"Lisa Omar",role:"graphic_designer",department:"Design"},
-    {email:"alex@agency.com",name:"Alex Nour",role:"content_creator",department:"Creative"},
-    {email:"hana@agency.com",name:"Hana Khalil",role:"accountant",department:"Finance"},
-  ];
 
   const handleLogin = async () => {
     setErr(""); setLoading(true);
@@ -8781,10 +8771,7 @@ function LoginScreen({onLogin,clients}) {
           onLogin({...u, isClient:false}); setLoading(false); return;
         }
       } catch(e) {}
-      // 2. Fall back to demo credentials (no password needed)
-      const demo = DEMO_CREDENTIALS.find(u=>u.email===email);
-      if(demo) { onLogin({...demo, isClient:false}); setLoading(false); return; }
-      // 3. Check if pending approval
+      // 2. Check if pending approval
       try {
         const reqRes = await qe("AccessRequest",{email});
         if(reqRes.entities.length) {
@@ -8839,7 +8826,7 @@ function LoginScreen({onLogin,clients}) {
             <input type="email" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={handleKey} placeholder={mode==="team"?"your@email.com":"client@company.com"} style={inputSt} autoFocus/>
           </Field>
           <Field label="Password">
-            <input type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={handleKey} placeholder={mode==="team"?"Leave empty for demo accounts":"Your password"} style={inputSt}/>
+            <input type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={handleKey} placeholder="Your password" style={inputSt}/>
           </Field>
           {err&&<div style={{padding:"10px 12px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:"var(--rxs)",fontSize:13,color:"#ef4444",fontWeight:500}}>{err}</div>}
           <Btn onClick={handleLogin} style={{marginTop:4,opacity:loading?0.7:1}}>
@@ -8873,37 +8860,6 @@ function LoginScreen({onLogin,clients}) {
               Request Access
             </button>
           </div>
-
-          {/* Demo credentials collapsible */}
-          {mode==="team"&&(
-            <div>
-              <button onClick={()=>setShowDemo(v=>!v)} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontSize:12,padding:0,width:"100%",textAlign:"center"}}>
-                {showDemo?"▲ Hide":"▼ Show"} demo credentials
-              </button>
-              {showDemo&&<div style={{marginTop:8,padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
-                <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.06em"}}>Click to autofill (no password)</p>
-                {DEMO_CREDENTIALS.map(u=>(
-                  <button key={u.email} onClick={()=>{setEmail(u.email);setPassword("");}} style={{display:"block",width:"100%",textAlign:"left",padding:"5px 0",fontSize:12,color:"var(--text2)",background:"none",border:"none",cursor:"pointer"}}>
-                    <span style={{color:ROLES[u.role]?.color||"#888",fontWeight:700}}>{ROLES[u.role]?.label}</span> — {u.name}
-                  </button>
-                ))}
-              </div>}
-            </div>
-          )}
-          {mode==="client"&&(
-            <div>
-              <button onClick={()=>setShowDemo(v=>!v)} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontSize:12,padding:0,width:"100%",textAlign:"center"}}>
-                {showDemo?"▲ Hide":"▼ Show"} demo client accounts
-              </button>
-              {showDemo&&<div style={{marginTop:8,padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
-                {clients.slice(0,4).map(c=>(
-                  <button key={c.id} onClick={()=>{setEmail(c.email);setPassword(c.portal_password||"");}} style={{display:"block",width:"100%",textAlign:"left",padding:"4px 0",fontSize:12,color:"var(--text2)",background:"none",border:"none",cursor:"pointer"}}>
-                    <strong>{c.name}</strong> — pw: {c.portal_password}
-                  </button>
-                ))}
-              </div>}
-            </div>
-          )}
         </div>
       </div>
     </div>
