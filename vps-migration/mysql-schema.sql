@@ -256,6 +256,22 @@ CREATE TABLE IF NOT EXISTS integration_logs (
 ) ENGINE=InnoDB;
 
 -- ----------------------------------------------------------------
+-- CUSTOMER MESSAGES (per-client social inbox: Messenger/Instagram/WhatsApp)
+-- ----------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS customer_messages (
+  id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  client_id VARCHAR(36), client_name TEXT,
+  channel VARCHAR(20) NOT NULL, -- messenger | instagram | whatsapp
+  customer_id TEXT, customer_name TEXT,
+  direction VARCHAR(10) NOT NULL, -- in | out
+  message_text TEXT, sent_by VARCHAR(20) DEFAULT 'customer', -- customer | bot | human
+  thread_status VARCHAR(20) DEFAULT 'open' -- open | bot_handled | needs_human | closed
+) ENGINE=InnoDB;
+CREATE INDEX idx_customer_messages_client ON customer_messages(client_id);
+CREATE INDEX idx_customer_messages_customer ON customer_messages(customer_id);
+
+-- ----------------------------------------------------------------
 -- SUBSCRIPTIONS
 -- ----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS subscriptions (
@@ -610,7 +626,14 @@ CREATE TABLE IF NOT EXISTS agent_runs (
 CREATE TABLE IF NOT EXISTS system_sessions (
   id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  data JSON DEFAULT ('{}')
+  user_email TEXT, user_name TEXT, user_role VARCHAR(50),
+  ip_address VARCHAR(64), country TEXT, country_code VARCHAR(10),
+  region TEXT, city TEXT, isp TEXT, org TEXT,
+  latitude DOUBLE, longitude DOUBLE,
+  browser TEXT, os TEXT, device_type VARCHAR(20),
+  screen_resolution VARCHAR(20), viewport VARCHAR(20),
+  timezone VARCHAR(64), language VARCHAR(20),
+  user_agent TEXT, login_at TIMESTAMP NULL, page_url TEXT
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS monthly_briefs (

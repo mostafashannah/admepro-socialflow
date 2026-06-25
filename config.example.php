@@ -29,6 +29,12 @@ define('AUTO_PUBLISH_ENABLED', false);
 // "now" in auto-publish.php. Use a PHP timezone identifier, e.g. 'Africa/Cairo'.
 define('APP_TIMEZONE', 'UTC');
 
+// Meta App (Messenger/Instagram customer inbox webhook) — meta-inbox-webhook.php
+// App Secret: developers.facebook.com → your app → Settings → Basic
+// Verify Token: any string you choose, entered again when subscribing the webhook
+define('META_APP_SECRET',            'your_meta_app_secret');
+define('META_WEBHOOK_VERIFY_TOKEN',  'choose_any_random_string');
+
 // --- Self-hosted MySQL backend (vps-migration/api.php + storage.php) ---
 // Only needed once you've moved off Supabase onto your own VPS database.
 define('DB_HOST', '127.0.0.1');
