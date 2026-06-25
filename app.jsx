@@ -9022,16 +9022,6 @@ function LoginScreen({onLogin,clients}) {
   const [err,setErr] = useState("");
   const [loading,setLoading] = useState(false);
   const [showRequestAccess, setShowRequestAccess] = useState(false);
-  const [showDemo, setShowDemo] = useState(false);
-
-  const DEMO_CREDENTIALS = [
-    {email:"mostafashannah@gmail.com",name:"Mostafa Shannah",role:"admin",department:"Management"},
-    {email:"sarah@agency.com",name:"Sarah Hassan",role:"account_manager",department:"Client Services"},
-    {email:"mike@agency.com",name:"Mike Adel",role:"content_creator",department:"Creative"},
-    {email:"lisa@agency.com",name:"Lisa Omar",role:"graphic_designer",department:"Design"},
-    {email:"alex@agency.com",name:"Alex Nour",role:"content_creator",department:"Creative"},
-    {email:"hana@agency.com",name:"Hana Khalil",role:"accountant",department:"Finance"},
-  ];
 
   const handleLogin = async () => {
     setErr(""); setLoading(true);
@@ -9048,10 +9038,7 @@ function LoginScreen({onLogin,clients}) {
           onLogin({...u, isClient:false}); setLoading(false); return;
         }
       } catch(e) {}
-      // 2. Fall back to demo credentials (no password needed)
-      const demo = DEMO_CREDENTIALS.find(u=>u.email===email);
-      if(demo) { onLogin({...demo, isClient:false}); setLoading(false); return; }
-      // 3. Check if pending approval
+      // 2. Check if pending approval
       try {
         const reqRes = await qe("AccessRequest",{email});
         if(reqRes.entities.length) {
@@ -9106,7 +9093,7 @@ function LoginScreen({onLogin,clients}) {
             <input type="email" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={handleKey} placeholder={mode==="team"?"your@email.com":"client@company.com"} style={inputSt} autoFocus/>
           </Field>
           <Field label="Password">
-            <input type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={handleKey} placeholder={mode==="team"?"Leave empty for demo accounts":"Your password"} style={inputSt}/>
+            <input type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={handleKey} placeholder="Your password" style={inputSt}/>
           </Field>
           {err&&<div style={{padding:"10px 12px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:"var(--rxs)",fontSize:13,color:"#ef4444",fontWeight:500}}>{err}</div>}
           <Btn onClick={handleLogin} style={{marginTop:4,opacity:loading?0.7:1}}>
@@ -9140,37 +9127,6 @@ function LoginScreen({onLogin,clients}) {
               Request Access
             </button>
           </div>
-
-          {/* Demo credentials collapsible */}
-          {mode==="team"&&(
-            <div>
-              <button onClick={()=>setShowDemo(v=>!v)} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontSize:12,padding:0,width:"100%",textAlign:"center"}}>
-                {showDemo?"▲ Hide":"▼ Show"} demo credentials
-              </button>
-              {showDemo&&<div style={{marginTop:8,padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
-                <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.06em"}}>Click to autofill (no password)</p>
-                {DEMO_CREDENTIALS.map(u=>(
-                  <button key={u.email} onClick={()=>{setEmail(u.email);setPassword("");}} style={{display:"block",width:"100%",textAlign:"left",padding:"5px 0",fontSize:12,color:"var(--text2)",background:"none",border:"none",cursor:"pointer"}}>
-                    <span style={{color:ROLES[u.role]?.color||"#888",fontWeight:700}}>{ROLES[u.role]?.label}</span> — {u.name}
-                  </button>
-                ))}
-              </div>}
-            </div>
-          )}
-          {mode==="client"&&(
-            <div>
-              <button onClick={()=>setShowDemo(v=>!v)} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontSize:12,padding:0,width:"100%",textAlign:"center"}}>
-                {showDemo?"▲ Hide":"▼ Show"} demo client accounts
-              </button>
-              {showDemo&&<div style={{marginTop:8,padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
-                {clients.slice(0,4).map(c=>(
-                  <button key={c.id} onClick={()=>{setEmail(c.email);setPassword(c.portal_password||"");}} style={{display:"block",width:"100%",textAlign:"left",padding:"4px 0",fontSize:12,color:"var(--text2)",background:"none",border:"none",cursor:"pointer"}}>
-                    <strong>{c.name}</strong> — pw: {c.portal_password}
-                  </button>
-                ))}
-              </div>}
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -12597,6 +12553,8 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
   const [photo, setPhoto] = useState(userProfile?.photo_url || null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [testingWa, setTestingWa] = useState(false);
+  const [testWaResult, setTestWaResult] = useState(null);
   const [notifEmail, setNotifEmail] = useState(userProfile?.notifications_email ?? true);
   const [notifBrowser, setNotifBrowser] = useState(userProfile?.notifications_browser ?? true);
   const fileRef = useRef(null);
@@ -12608,6 +12566,15 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
     const reader = new FileReader();
     reader.onload = (ev) => setPhoto(ev.target.result);
     reader.readAsDataURL(file);
+  };
+
+  const handleTestWhatsApp = async () => {
+    if(!form.whatsapp_number) return;
+    setTestingWa(true); setTestWaResult(null);
+    const ok = await sendWhatsApp(form.whatsapp_number, `Hi ${form.display_name||currentUser?.name||"there"}! 👋 This is a test message from SocialFlow to confirm your WhatsApp number is set up correctly.`);
+    setTestingWa(false);
+    setTestWaResult(ok?"sent":"failed");
+    setTimeout(()=>setTestWaResult(null), 5000);
   };
 
   const handleSave = async () => {
@@ -12706,10 +12673,21 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
                 </div>
               </Field>
               <Field label="WhatsApp Number" hint="Receive task notifications via WhatsApp">
-                <div style={{position:"relative"}}>
-                  <div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:14,lineHeight:1}}></div>
-                  <input value={form.whatsapp_number} onChange={e=>sf("whatsapp_number",e.target.value)} placeholder="+20 100 000 0000" style={{...inputSt,paddingLeft:34}}/>
+                <div style={{display:"flex",gap:8}}>
+                  <div style={{position:"relative",flex:1}}>
+                    <div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",fontSize:14,lineHeight:1}}>💬</div>
+                    <input value={form.whatsapp_number} onChange={e=>sf("whatsapp_number",e.target.value)} placeholder="+20 100 000 0000" style={{...inputSt,paddingLeft:34}}/>
+                  </div>
+                  <button onClick={handleTestWhatsApp} disabled={!form.whatsapp_number||testingWa} style={{
+                    padding:"0 12px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",
+                    fontSize:12,fontWeight:600,color:"var(--text2)",whiteSpace:"nowrap",
+                    cursor:(!form.whatsapp_number||testingWa)?"not-allowed":"pointer",opacity:(!form.whatsapp_number||testingWa)?0.5:1,
+                  }}>
+                    {testingWa?<Spinner size={12}/>:"Send Test"}
+                  </button>
                 </div>
+                {testWaResult==="sent"&&<p style={{fontSize:11,color:"#10b981",marginTop:5,fontWeight:600}}>Test message sent — check your WhatsApp.</p>}
+                {testWaResult==="failed"&&<p style={{fontSize:11,color:"#ef4444",marginTop:5,fontWeight:600}}>Failed to send. Check the number and try again.</p>}
               </Field>
               <Field label="Language">
                 <select value={form.language} onChange={e=>sf("language",e.target.value)} style={inputSt}>
@@ -20527,6 +20505,7 @@ function App() {
   },[currentUser?.email]);
 
   const saveUserProfile = async (profileData) => {
+    const prevWaNumber = userProfile?.whatsapp_number || "";
     const payload = {...profileData, user_email:currentUser.email, wallpaper};
     const existingId = userProfile?.id;
     setUserProfile(prev=>({...prev,...payload}));
@@ -20544,6 +20523,12 @@ function App() {
       if("whatsapp_number" in profileData) {
         const member = data.team.find(m=>m.email===currentUser.email);
         if(member) updateTeamMember(member.id, {whatsapp_number: profileData.whatsapp_number||null});
+        const newWaNumber = profileData.whatsapp_number || "";
+        if(newWaNumber && newWaNumber !== prevWaNumber) {
+          const name = profileData.display_name || currentUser?.name || "there";
+          const role = ROLES[currentUser?.role]?.label || currentUser?.role || "";
+          sendWhatsApp(newWaNumber, `Hi ${name}! 👋 Your WhatsApp number is now linked to your SocialFlow account.\n\nName: ${name}\nEmail: ${currentUser.email}\nRole: ${role}\n\nYou'll receive task and approval notifications here, and can message "Pro" anytime for help.`).catch(()=>{});
+        }
       }
     } catch(e){}
     logActivity("Profile Updated","users",currentUser?.email||"","success","",currentUser?.email||"admin");
