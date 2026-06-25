@@ -504,7 +504,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.26";
+const APP_VERSION = "beta 2.27";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16840,9 +16840,15 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
       });
     });
   };
-  // Persist sessions + active id
+  // Persist sessions + active id. Never persist the active id while it points
+  // at an unsaved draft (pendingSession) — otherwise navigating away and back
+  // without sending a message leaves localStorage pointing at an id that no
+  // longer exists anywhere, which renders as a blank "new" chat.
   useEffect(()=>{ saveProSessions(sessions); },[sessions]);
-  useEffect(()=>{ saveActiveChatId(activeChatId); },[activeChatId]);
+  useEffect(()=>{
+    if(pendingSession && pendingSession.id===activeChatId) return;
+    saveActiveChatId(activeChatId);
+  },[activeChatId, pendingSession]);
 
   // Ensure we always have an active session when user is logged in.
   // On a real page load this widget may mount before Pro Home does (if the
@@ -18469,7 +18475,10 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
     });
   };
   useEffect(()=>{ saveProSessions(chatSessions); },[chatSessions]);
-  useEffect(()=>{ saveActiveChatId(activeChatId); },[activeChatId]);
+  useEffect(()=>{
+    if(pendingSession && pendingSession.id===activeChatId) return;
+    saveActiveChatId(activeChatId);
+  },[activeChatId, pendingSession]);
   // Cross-tab / cross-surface sync (floating bubble writes → home re-reads)
   useEffect(()=>{
     const onStorage = (e) => {
