@@ -12,6 +12,12 @@ define('B44_APP_ID_VAL',    'your_base44_app_id');
 define('WA_PHONE_ID',      'your_whatsapp_phone_number_id');
 define('WA_ACCESS_TOKEN',  'your_whatsapp_access_token');
 
+// Meta App (Messenger/Instagram customer inbox webhook) — meta-inbox-webhook.php
+// App Secret: developers.facebook.com → your app → Settings → Basic
+// Verify Token: any string you choose, entered again when subscribing the webhook
+define('META_APP_SECRET',            'your_meta_app_secret');
+define('META_WEBHOOK_VERIFY_TOKEN',  'choose_any_random_string');
+
 // --- Self-hosted MySQL backend (vps-migration/api.php + storage.php) ---
 // Only needed once you've moved off Supabase onto your own VPS database.
 define('DB_HOST', '127.0.0.1');

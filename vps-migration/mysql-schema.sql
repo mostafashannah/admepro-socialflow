@@ -237,7 +237,8 @@ CREATE TABLE IF NOT EXISTS integrations (
   credentials TEXT, config TEXT, webhook_url TEXT,
   last_run_at TEXT, last_run_status TEXT DEFAULT ('never'),
   last_run_message TEXT, run_count DECIMAL(14,0) DEFAULT 0, error_count DECIMAL(14,0) DEFAULT 0,
-  created_by TEXT, icon_url TEXT, template_id TEXT
+  created_by TEXT, icon_url TEXT, template_id TEXT,
+  client_id VARCHAR(36), client_name TEXT
 ) ENGINE=InnoDB;
 
 -- ----------------------------------------------------------------
@@ -250,6 +251,22 @@ CREATE TABLE IF NOT EXISTS integration_logs (
   status TEXT, duration_ms DECIMAL(14,2), error TEXT,
   payload_summary TEXT, triggered_by TEXT
 ) ENGINE=InnoDB;
+
+-- ----------------------------------------------------------------
+-- CUSTOMER MESSAGES (per-client social inbox: Messenger/Instagram/WhatsApp)
+-- ----------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS customer_messages (
+  id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  client_id VARCHAR(36), client_name TEXT,
+  channel VARCHAR(20) NOT NULL, -- messenger | instagram | whatsapp
+  customer_id TEXT, customer_name TEXT,
+  direction VARCHAR(10) NOT NULL, -- in | out
+  message_text TEXT, sent_by VARCHAR(20) DEFAULT 'customer', -- customer | bot | human
+  thread_status VARCHAR(20) DEFAULT 'open' -- open | bot_handled | needs_human | closed
+) ENGINE=InnoDB;
+CREATE INDEX idx_customer_messages_client ON customer_messages(client_id);
+CREATE INDEX idx_customer_messages_customer ON customer_messages(customer_id);
 
 -- ----------------------------------------------------------------
 -- SUBSCRIPTIONS

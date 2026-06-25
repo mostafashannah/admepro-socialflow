@@ -305,6 +305,7 @@ const SB_TABLE = {
   AgentRun:"agent_runs",
   SystemSession:"system_sessions",
   MonthlyBrief:"monthly_briefs",
+  CustomerMessage:"customer_messages",
 };
 
 function sbTable(entityName) {
@@ -317,6 +318,7 @@ const SB_SCHEMA = {
   posts: ["project_id","client_id","client_name","title","description","stage","platform","post_type","caption","hashtags","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes"],
   clients: ["name","email","phone","industry","status","platforms","portal_password","address","website","contact_person","notes"],
   client_tasks: ["client_id","client_name","title","description","task_type","priority","stage","assigned_to","created_by","deliverable_note"],
+  customer_messages: ["client_id","client_name","channel","customer_id","customer_name","direction","message_text","sent_by","thread_status"],
 };
 function sbSanitize(tableName, payload) {
   const allowed = SB_SCHEMA[tableName];
@@ -5775,7 +5777,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
   );
 }
 
-function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief}) {
+function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply}) {
   const [tab,setTab] = usePersistentState(`sf_tab_client_${client?.id}`,"overview");
   const [showEdit,setShowEdit] = useState(false);
   const [confirmDelete,setConfirmDelete] = useState(false);
@@ -5788,6 +5790,12 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
   const isAdmin = currentUser?.role==="admin";
   const clientBriefs = (monthlyBriefs||[]).filter(b=>b.client_id===client.id);
   const pendingBriefCount = clientBriefs.filter(b=>b.status==="pending").length;
+  const cMessages = (customerMessages||[]).filter(m=>m.client_id===client.id);
+  const cMessagesNeedReplyCount = (()=>{
+    const byThread = {};
+    cMessages.forEach(m=>{ const k=m.channel+"_"+m.customer_id; if(!byThread[k]||new Date(m.created_at)>new Date(byThread[k].created_at)) byThread[k]=m; });
+    return Object.values(byThread).filter(m=>m.direction==="in").length;
+  })();
   const tabs = [
     ["overview","Overview"],
     ...(isPriv?[["projects","Projects"]]:[]),
@@ -5795,6 +5803,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
     ["calendar","Calendar"],
     ["assets","Assets"],
     ["reports","Reports"],
+    ...(isPriv?[["inbox",`💬 Inbox${cMessagesNeedReplyCount?` (${cMessagesNeedReplyCount})`:""}`]]:[]),
     ...(isPriv?[["intelligence","Intelligence"],["client_intel","🧠 Smart Intel"],["memory","🧩 Memory"],["brand_training","🎯 Brand Training"],["briefs",`📋 Briefs${pendingBriefCount?` (${pendingBriefCount} pending)`:""}`]]:[]),
     ...(currentUser?.role==="admin"?[["context_file","📋 Context File"]]:[]),
   ];
@@ -5876,6 +5885,9 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
         </div>
       )}
       {tab==="tasks"&&<KanbanView posts={cPosts} project={cProjects[0]} team={[]} onPostClick={onPostClick}/>}
+      {tab==="inbox"&&(
+        <ClientInboxTab client={client} messages={cMessages} integrations={integrations} onSendReply={onSendInboxReply}/>
+      )}
       {tab==="reports"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12}}>
@@ -6036,6 +6048,107 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// CLIENT INBOX TAB — customer conversations (Messenger/Instagram/WhatsApp)
+// ════════════════════════════════════════════════════════════════
+const INBOX_CHANNEL_MAP = {
+  messenger: {label:"Messenger", icon:"💬", color:"#0084ff"},
+  instagram: {label:"Instagram", icon:"📷", color:"#e1306c"},
+  whatsapp:  {label:"WhatsApp",  icon:"📱", color:"#25d366"},
+};
+function ClientInboxTab({client, messages=[], integrations=[], onSendReply}) {
+  const [selThread, setSelThread] = useState(null); // {channel, customer_id}
+  const [reply, setReply] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const connected = integrations.filter(i=>i.client_id===client.id && i.status==="active" && ["facebook","instagram"].includes(i.app_key));
+
+  const threads = (()=>{
+    const byKey = {};
+    messages.forEach(m=>{
+      const k = m.channel+"_"+m.customer_id;
+      if(!byKey[k]) byKey[k] = {channel:m.channel, customer_id:m.customer_id, customer_name:m.customer_name, messages:[]};
+      byKey[k].messages.push(m);
+    });
+    return Object.values(byKey).map(t=>({
+      ...t,
+      messages: t.messages.sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)),
+      last: t.messages.reduce((a,b)=>new Date(a.created_at)>new Date(b.created_at)?a:b),
+    })).sort((a,b)=>new Date(b.last.created_at)-new Date(a.last.created_at));
+  })();
+
+  const activeThread = selThread ? threads.find(t=>t.channel===selThread.channel&&t.customer_id===selThread.customer_id) : threads[0];
+
+  const handleSend = async () => {
+    if(!reply.trim()||!activeThread) return;
+    setSending(true);
+    await onSendReply&&onSendReply(activeThread.last, reply);
+    setReply(""); setSending(false);
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      {connected.length===0&&(
+        <div style={{padding:14,background:"#f59e0b15",border:"1px solid #f59e0b44",borderRadius:"var(--rs)",fontSize:13,color:"var(--text2)"}}>
+          ⚠️ No active Facebook/Instagram connection for {client.name} yet. Connect one in Settings → Integrations to receive and reply to customer messages here.
+        </div>
+      )}
+      <div style={{display:"flex",gap:16,minHeight:420}}>
+        {/* Thread list */}
+        <div style={{width:260,flexShrink:0,border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+          <div style={{padding:"10px 14px",borderBottom:"1px solid var(--border)",background:"var(--surface2)"}}>
+            <p style={{fontSize:12,fontWeight:700,color:"var(--text2)"}}>{threads.length} conversation{threads.length!==1?"s":""}</p>
+          </div>
+          <div style={{flex:1,overflowY:"auto"}}>
+            {threads.length===0&&<p style={{padding:18,fontSize:12,color:"var(--text3)",textAlign:"center"}}>No customer messages yet.</p>}
+            {threads.map(t=>{
+              const ch = INBOX_CHANNEL_MAP[t.channel]||{label:t.channel,icon:"💬",color:"#888"};
+              const isSel = activeThread===t;
+              return (
+                <div key={t.channel+"_"+t.customer_id} onClick={()=>setSelThread({channel:t.channel,customer_id:t.customer_id})}
+                  style={{padding:"10px 14px",borderBottom:"1px solid var(--border)",cursor:"pointer",background:isSel?"var(--accentbg)":"transparent"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{fontSize:14}}>{ch.icon}</span>
+                    <p style={{fontWeight:700,fontSize:13,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.customer_name||t.customer_id}</p>
+                    {t.last.direction==="in"&&<span style={{width:7,height:7,borderRadius:"50%",background:"var(--accent)",flexShrink:0}}/>}
+                  </div>
+                  <p style={{fontSize:11,color:"var(--text3)",marginTop:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.last.message_text}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        {/* Thread detail */}
+        <div style={{flex:1,border:"1px solid var(--border)",borderRadius:"var(--r)",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+          {!activeThread&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text3)",fontSize:13}}>Select a conversation</div>}
+          {activeThread&&(<>
+            <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:16}}>{(INBOX_CHANNEL_MAP[activeThread.channel]||{}).icon}</span>
+              <p style={{fontWeight:700,fontSize:14}}>{activeThread.customer_name||activeThread.customer_id}</p>
+              <Badge label={(INBOX_CHANNEL_MAP[activeThread.channel]||{label:activeThread.channel}).label} color={(INBOX_CHANNEL_MAP[activeThread.channel]||{}).color||"#888"} xs/>
+            </div>
+            <div style={{flex:1,overflowY:"auto",padding:16,display:"flex",flexDirection:"column",gap:10}}>
+              {activeThread.messages.map(m=>(
+                <div key={m.id} style={{maxWidth:"70%",alignSelf:m.direction==="out"?"flex-end":"flex-start",padding:"8px 12px",borderRadius:12,
+                  background:m.direction==="out"?(m.sent_by==="bot"?"#6366f122":"var(--accent)"):"var(--surface2)",
+                  color:m.direction==="out"&&m.sent_by!=="bot"?"#fff":"var(--text)"}}>
+                  <p style={{fontSize:13,lineHeight:1.5}}>{m.message_text}</p>
+                  <p style={{fontSize:9,marginTop:4,opacity:0.7}}>{m.sent_by==="bot"?"🤖 Pro · ":""}{new Date(m.created_at).toLocaleString()}</p>
+                </div>
+              ))}
+            </div>
+            <div style={{padding:12,borderTop:"1px solid var(--border)",display:"flex",gap:8}}>
+              <input value={reply} onChange={e=>setReply(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSend()}
+                placeholder="Type a reply…" style={{...inputSt,flex:1}}/>
+              <Btn onClick={handleSend} disabled={sending||!reply.trim()}>{sending?<Spinner size={14}/>:"Send"}</Btn>
+            </div>
+          </>)}
+        </div>
+      </div>
     </div>
   );
 }
@@ -18911,7 +19024,7 @@ function App() {
     subscriptions:SEED.subscriptions, subscriptionPayments:SEED.subscriptionPayments,
     tasks:SEED.tasks, clientContracts:SEED.clientContracts,
     clientIntelligence:[], contentPillars:[], clientMemory:[],
-    monthlyBriefs:[],
+    monthlyBriefs:[], customerMessages:[],
     timeEntries: [], schedules: [], scheduleOverrides: [],
     invitations: [], accessRequests: [], clientUsers: [],
     emailLogs: [], activityLogs: [], notifPrefs: [],
@@ -18999,6 +19112,7 @@ function App() {
         qe("AgentRun",{},"-started_at",100),        // 35
         qe("SystemSession",{},"-login_at",200),     // 36
         qe("MonthlyBrief",{},"-created_at",200),   // 37
+        qe("CustomerMessage",{},"-created_at",500), // 38
       ]);
       const g2 = i => wave2[i].status==="fulfilled" ? wave2[i].value : {entities:[]};
 
@@ -19042,6 +19156,7 @@ function App() {
         agentRuns:             pick(g2(35), d.agentRuns||[]),
         systemSessions:        pick(g2(36), d.systemSessions||[]),
         monthlyBriefs:         pick(g2(37), d.monthlyBriefs||[]),
+        customerMessages:      pick(g2(38), d.customerMessages||[]),
       }));
     }
     load();
@@ -19392,6 +19507,32 @@ function App() {
   const deleteClientMemory = async (memId) => {
     setData(d=>({...d, clientMemory:(d.clientMemory||[]).filter(m=>m.id!==memId)}));
     de("ClientMemory", memId).catch(()=>{});
+  };
+
+  // Send a manual reply to a customer in the per-client social inbox (Messenger/Instagram/WhatsApp)
+  const sendInboxReply = async (msg, replyText) => {
+    if(!msg||!replyText?.trim()) return;
+    const integration = (data.integrations||[]).find(i=>
+      i.status==="active" && i.client_id===msg.client_id &&
+      (i.app_key===msg.channel||(msg.channel==="instagram"&&i.app_key==="instagram")||(msg.channel==="messenger"&&i.app_key==="facebook"))
+    );
+    if(!integration) { alert("No active connection found for this client/channel."); return; }
+    let creds = {};
+    try { creds = typeof integration.credentials==="string" ? JSON.parse(integration.credentials) : (integration.credentials||{}); } catch(e) {}
+    try {
+      const res = await fetch(window.location.origin+"/meta-send-reply.php", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({channel:msg.channel, recipient_id:msg.customer_id, page_id:creds.page_id, access_token:creds.access_token, message:replyText.trim()}),
+      });
+      const out = await res.json();
+      if(!res.ok) throw new Error(out.error||"Send failed");
+    } catch(e) { alert("Failed to send: "+e.message); return; }
+    const now = new Date().toISOString();
+    const local = {id:uid(), client_id:msg.client_id, client_name:msg.client_name, channel:msg.channel, customer_id:msg.customer_id, customer_name:msg.customer_name, direction:"out", message_text:replyText.trim(), sent_by:"human", thread_status:"open", created_at:now};
+    setData(d=>({...d, customerMessages:[local,...(d.customerMessages||[])]}));
+    ce("CustomerMessage",[{client_id:msg.client_id, client_name:msg.client_name, channel:msg.channel, customer_id:msg.customer_id, customer_name:msg.customer_name, direction:"out", message_text:replyText.trim(), sent_by:"human", thread_status:"open"}])
+      .then(r=>{ const real=r.entities?.[0]; if(real?.id) setData(d=>({...d,customerMessages:d.customerMessages.map(m=>m.id===local.id?{...m,...real}:m)})); })
+      .catch(()=>{});
   };
 
   // Auto-learn: called internally when key events happen
@@ -20664,6 +20805,9 @@ Return ONLY valid JSON (no markdown, no explanation):
               onDeleteMemory={deleteClientMemory}
               monthlyBriefs={data.monthlyBriefs||[]}
               onCreateBrief={(cl)=>setShowCreateBrief(cl||true)}
+              customerMessages={data.customerMessages||[]}
+              integrations={data.integrations||[]}
+              onSendInboxReply={sendInboxReply}
             />
           );
         })()}
