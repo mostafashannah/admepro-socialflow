@@ -506,7 +506,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.49";
+const APP_VERSION = "beta 2.50";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7320,11 +7320,15 @@ function MetaInsightsTab({client, integrations}) {
 
   const fetchAll = async () => {
     setLoading(true); setError("");
-    try {
-      const results = {};
-      for (const integ of matches) {
-        const creds = parseJ(integ.credentials||"{}");
-        if (!creds.page_id || !creds.access_token) continue;
+    const results = {};
+    const problems = [];
+    for (const integ of matches) {
+      const creds = parseJ(integ.credentials||"{}", {});
+      if (!creds.page_id || !creds.access_token) {
+        problems.push(`${integ.app_key}: missing ${!creds.page_id?"page_id":"access_token"} — reconnect this integration in Settings → Integrations.`);
+        continue;
+      }
+      try {
         const r = await fetch(META_INSIGHTS_ENDPOINT, {
           method:"POST", headers:{"Content-Type":"application/json"},
           body: JSON.stringify({
@@ -7335,9 +7339,11 @@ function MetaInsightsTab({client, integrations}) {
         const d = await r.json();
         if (!r.ok) throw new Error(d.error||`Failed to fetch ${integ.app_key} insights`);
         results[integ.id] = d;
-      }
-      setData(results);
-    } catch(e) { setError(e.message||"Failed to fetch insights"); }
+      } catch(e) { problems.push(`${integ.app_key}: ${e.message||"request failed"}`); }
+    }
+    setData(results);
+    if (problems.length) setError(problems.join("  •  "));
+    else if (!Object.keys(results).length) setError("No data returned — check the connected integration still has a valid access token.");
     setLoading(false);
   };
 
