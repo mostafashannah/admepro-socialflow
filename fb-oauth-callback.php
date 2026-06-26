@@ -46,6 +46,7 @@ function fb_post($url, $fields) {
 }
 
 function finish($ok, $payload) {
+    error_log('fb-oauth-callback finish: ok=' . ($ok ? '1' : '0') . ' payload=' . json_encode($payload));
     header('Content-Type: text/html; charset=UTF-8');
     $json = json_encode(array_merge(['type' => 'fb_oauth_result', 'ok' => $ok], $payload));
     echo "<!DOCTYPE html><html><body><script>

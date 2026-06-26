@@ -47,6 +47,7 @@ function ig_get($url) {
 }
 
 function finish($ok, $payload) {
+    error_log('meta-oauth-callback finish: ok=' . ($ok ? '1' : '0') . ' payload=' . json_encode($payload));
     header('Content-Type: text/html; charset=UTF-8');
     $json = json_encode(array_merge(['type' => 'meta_oauth_result', 'ok' => $ok], $payload));
     echo "<!DOCTYPE html><html><body><script>
