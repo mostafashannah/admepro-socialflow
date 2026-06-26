@@ -52,7 +52,11 @@ if ($platform === "facebook") {
 }
 
 if ($platform === "instagram") {
-    [$code, $resp] = graph_get("https://graph.facebook.com/{$v}/{$page_id}/insights", [
+    // Instagram-Login API tokens ("IGAA..." prefix) are scoped to graph.instagram.com —
+    // graph.facebook.com rejects them with "Cannot parse access token". Page-linked
+    // Instagram tokens (old-style) still use graph.facebook.com as before.
+    $ig_host = str_starts_with($access_token, 'IGAA') ? 'graph.instagram.com' : 'graph.facebook.com';
+    [$code, $resp] = graph_get("https://{$ig_host}/{$v}/{$page_id}/insights", [
         "metric"       => "reach,impressions,profile_views,follower_count",
         "period"       => "day",
         "access_token" => $access_token,
