@@ -101,14 +101,15 @@ if ($err || empty($tokenResp['access_token'])) {
 $shortToken = $tokenResp['access_token'];
 $igUserId   = $tokenResp['user_id'] ?? '';
 
-// Step 2: exchange for a long-lived access token (~60 days). Meta's
-// graph.instagram.com/access_token endpoint rejects GET with "Unsupported
-// request - method type: get" — it now requires POST.
-[$longResp, $err] = ig_post('https://graph.instagram.com/access_token', [
+// Step 2: exchange for a long-lived access token (~60 days). This endpoint
+// only works as GET with every param in the query string (including
+// access_token) — POST always fails with a generic "object does not exist"
+// error because Graph's router can't find access_token in the URL/query.
+[$longResp, $err] = ig_get('https://graph.instagram.com/access_token?' . http_build_query([
     'grant_type'    => 'ig_exchange_token',
     'client_secret' => INSTAGRAM_APP_SECRET,
     'access_token'  => $shortToken,
-]);
+]));
 error_log('meta-oauth-callback step2 longResp=' . json_encode($longResp) . ' err=' . $err);
 $longToken = $longResp['access_token'] ?? $shortToken;
 
