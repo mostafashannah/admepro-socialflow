@@ -307,6 +307,7 @@ const SB_TABLE = {
   MonthlyBrief:"monthly_briefs",
   PushSubscription:"push_subscriptions",
   CustomerMessage:"customer_messages",
+  ReplyBotSetting:"reply_bot_settings",
 };
 
 function sbTable(entityName) {
@@ -319,7 +320,8 @@ const SB_SCHEMA = {
   posts: ["project_id","client_id","client_name","title","description","stage","platform","post_type","caption","hashtags","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes"],
   clients: ["name","email","phone","industry","status","platforms","portal_password","address","website","contact_person","notes"],
   client_tasks: ["client_id","client_name","title","description","task_type","priority","stage","assigned_to","created_by","deliverable_note"],
-  customer_messages: ["client_id","client_name","channel","customer_id","customer_name","direction","message_text","sent_by","thread_status"],
+  customer_messages: ["client_id","client_name","channel","customer_id","customer_name","direction","message_text","sent_by","thread_status","draft_status"],
+  reply_bot_settings: ["client_id","client_name","enabled","mode","channels","brain","updated_by"],
 };
 function sbSanitize(tableName, payload) {
   const allowed = SB_SCHEMA[tableName];
@@ -504,7 +506,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.42";
+const APP_VERSION = "beta 2.43";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5904,7 +5906,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
   );
 }
 
-function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply}) {
+function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft}) {
   const [tab,setTab] = usePersistentState(`sf_tab_client_${client?.id}`,"overview");
   const [showEdit,setShowEdit] = useState(false);
   const [confirmDelete,setConfirmDelete] = useState(false);
@@ -6013,7 +6015,10 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
       )}
       {tab==="tasks"&&<KanbanView posts={cPosts} project={cProjects[0]} team={[]} onPostClick={onPostClick}/>}
       {tab==="inbox"&&(
-        <ClientInboxTab client={client} messages={cMessages} integrations={integrations} onSendReply={onSendInboxReply}/>
+        <ClientInboxTab client={client} messages={cMessages} integrations={integrations} onSendReply={onSendInboxReply}
+          botSettings={(replyBotSettings||[]).find(s=>s.client_id===client.id)}
+          onSaveBotSettings={(patch)=>onSaveReplyBotSettings&&onSaveReplyBotSettings(client.id,client.name,patch)}
+          onApproveDraft={onApproveDraft} onDismissDraft={onDismissDraft}/>
       )}
       {tab==="reports"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -6158,16 +6163,22 @@ const INBOX_CHANNEL_MAP = {
   instagram: {label:"Instagram", icon:Icons.camera, color:"#e1306c"},
   whatsapp:  {label:"WhatsApp",  icon:Icons.phone, color:"#25d366"},
 };
-function ClientInboxTab({client, messages=[], integrations=[], onSendReply}) {
+function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botSettings, onSaveBotSettings, onApproveDraft, onDismissDraft}) {
   const [selThread, setSelThread] = useState(null); // {channel, customer_id}
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
+  const [botPanelOpen, setBotPanelOpen] = useState(false);
+  const [editingDraftId, setEditingDraftId] = useState(null);
+  const [editingDraftText, setEditingDraftText] = useState("");
 
   const connected = integrations.filter(i=>i.client_id===client.id && i.status==="active" && ["facebook","instagram"].includes(i.app_key));
+  const bot = botSettings || {enabled:false, mode:"approve", channels:["instagram","messenger"], brain:""};
+  const botChannels = Array.isArray(bot.channels) ? bot.channels : (bot.channels ? JSON.parse(bot.channels) : []);
+  const visibleMessages = messages.filter(m=>m.draft_status!=="dismissed");
 
   const threads = (()=>{
     const byKey = {};
-    messages.forEach(m=>{
+    visibleMessages.forEach(m=>{
       const k = m.channel+"_"+m.customer_id;
       if(!byKey[k]) byKey[k] = {channel:m.channel, customer_id:m.customer_id, customer_name:m.customer_name, messages:[]};
       byKey[k].messages.push(m);
@@ -6188,6 +6199,11 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply}) {
     setReply(""); setSending(false);
   };
 
+  const toggleBotChannel = (ch) => {
+    const next = botChannels.includes(ch) ? botChannels.filter(c=>c!==ch) : [...botChannels, ch];
+    onSaveBotSettings&&onSaveBotSettings({channels:next});
+  };
+
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       {connected.length===0&&(
@@ -6196,6 +6212,75 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply}) {
           <span>No active Facebook/Instagram connection for {client.name} yet. Connect one in Settings → Integrations to receive and reply to customer messages here.</span>
         </div>
       )}
+
+      {/* Reply Bot config panel */}
+      <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+        <div onClick={()=>setBotPanelOpen(o=>!o)} style={{padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",background:"var(--surface2)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <Ico d={Icons.robot||Icons.chat} size={15} stroke="#6366f1"/>
+            <p style={{fontWeight:700,fontSize:13}}>Reply Bot</p>
+            <Badge label={bot.enabled?(bot.mode==="auto"?"Auto-send":"Drafting"):"Off"} color={bot.enabled?(bot.mode==="auto"?"#10b981":"#6366f1"):"#6b7280"} xs/>
+          </div>
+          <Ico d={Icons.chevD} size={14} stroke="var(--text3)" style={{transform:botPanelOpen?"rotate(180deg)":"none",transition:"transform 0.2s"}}/>
+        </div>
+        {botPanelOpen&&(
+          <div style={{padding:16,display:"flex",flexDirection:"column",gap:14,borderTop:"1px solid var(--border)"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div>
+                <p style={{fontWeight:600,fontSize:13}}>Enable AI auto-replies for {client.name}</p>
+                <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>Uses this client's Client Brain tone plus the reply-bot brain below to answer DMs.</p>
+              </div>
+              <button onClick={()=>onSaveBotSettings&&onSaveBotSettings({enabled:!bot.enabled})}
+                style={{width:42,height:24,borderRadius:99,border:"none",cursor:"pointer",position:"relative",
+                  background:bot.enabled?"var(--accent)":"var(--border2)",transition:"background 0.15s",flexShrink:0}}
+                aria-pressed={!!bot.enabled} aria-label="Toggle reply bot">
+                <span style={{position:"absolute",top:3,left:bot.enabled?21:3,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left 0.15s"}}/>
+              </button>
+            </div>
+
+            <div>
+              <p style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>Send mode</p>
+              <div style={{display:"flex",gap:8}}>
+                {[["approve","Draft for approval"],["auto","Auto-send"]].map(([v,l])=>(
+                  <button key={v} onClick={()=>onSaveBotSettings&&onSaveBotSettings({mode:v})}
+                    style={{flex:1,padding:"8px 10px",borderRadius:8,border:`1px solid ${bot.mode===v?"var(--accent)":"var(--border)"}`,
+                      background:bot.mode===v?"var(--accentbg)":"transparent",color:bot.mode===v?"var(--accent)":"var(--text2)",
+                      fontSize:12,fontWeight:600,cursor:"pointer"}}>{l}</button>
+                ))}
+              </div>
+              <p style={{fontSize:11,color:"var(--text3)",marginTop:6}}>
+                {bot.mode==="auto"?"Replies are sent to the customer immediately, no review.":"Replies are drafted in the thread for a team member to approve, edit, or dismiss before sending."}
+              </p>
+            </div>
+
+            <div>
+              <p style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>Channels</p>
+              <div style={{display:"flex",gap:8}}>
+                {["instagram","messenger"].map(ch=>{
+                  const on = botChannels.includes(ch);
+                  const meta = INBOX_CHANNEL_MAP[ch];
+                  return (
+                    <button key={ch} onClick={()=>toggleBotChannel(ch)}
+                      style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:99,border:`1px solid ${on?meta.color:"var(--border)"}`,
+                        background:on?meta.color+"18":"transparent",color:on?meta.color:"var(--text3)",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                      <Ico d={meta.icon} size={12} stroke={on?meta.color:"var(--text3)"}/>{meta.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <p style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>Reply bot brain</p>
+              <textarea defaultValue={bot.brain||""} onBlur={e=>onSaveBotSettings&&onSaveBotSettings({brain:e.target.value})}
+                placeholder="Specific things this bot should know or always say for this client — e.g. pricing rules, FAQs, what to never promise, how to greet customers…"
+                style={{...inputSt,width:"100%",minHeight:90,resize:"vertical",fontFamily:"inherit"}}/>
+              <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Combined with this client's Client Brain tone/voice and recent human-sent replies to match their reply pattern.</p>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div style={{display:"flex",gap:16,minHeight:420}}>
         {/* Thread list */}
         <div style={{width:260,flexShrink:0,border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden",display:"flex",flexDirection:"column"}}>
@@ -6231,14 +6316,37 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply}) {
               <Badge label={(INBOX_CHANNEL_MAP[activeThread.channel]||{label:activeThread.channel}).label} color={(INBOX_CHANNEL_MAP[activeThread.channel]||{}).color||"#888"} xs/>
             </div>
             <div style={{flex:1,overflowY:"auto",padding:16,display:"flex",flexDirection:"column",gap:10}}>
-              {activeThread.messages.map(m=>(
-                <div key={m.id} style={{maxWidth:"70%",alignSelf:m.direction==="out"?"flex-end":"flex-start",padding:"8px 12px",borderRadius:12,
-                  background:m.direction==="out"?(m.sent_by==="bot"?"#6366f122":"var(--accent)"):"var(--surface2)",
-                  color:m.direction==="out"&&m.sent_by!=="bot"?"#fff":"var(--text)"}}>
-                  <p style={{fontSize:13,lineHeight:1.5}}>{m.message_text}</p>
-                  <p style={{fontSize:9,marginTop:4,opacity:0.7}}>{m.sent_by==="bot"?"Pro · ":""}{new Date(m.created_at).toLocaleString()}</p>
-                </div>
-              ))}
+              {activeThread.messages.map(m=>{
+                const isPendingDraft = m.sent_by==="bot" && m.draft_status==="pending_review";
+                const isEditing = editingDraftId===m.id;
+                return (
+                  <div key={m.id} style={{maxWidth:"70%",alignSelf:m.direction==="out"?"flex-end":"flex-start",padding:"8px 12px",borderRadius:12,
+                    background:m.direction==="out"?(m.sent_by==="bot"?(isPendingDraft?"#6366f114":"#6366f122"):"var(--accent)"):"var(--surface2)",
+                    border:isPendingDraft?"1px dashed #6366f1":"none",
+                    color:m.direction==="out"&&m.sent_by!=="bot"?"#fff":"var(--text)"}}>
+                    {isPendingDraft&&<p style={{fontSize:10,fontWeight:700,color:"#6366f1",marginBottom:4,display:"flex",alignItems:"center",gap:4}}><Ico d={Icons.robot} size={11} stroke="#6366f1"/>Suggested reply — awaiting approval</p>}
+                    {isEditing?(
+                      <textarea value={editingDraftText} onChange={e=>setEditingDraftText(e.target.value)}
+                        style={{...inputSt,width:"100%",minHeight:60,fontSize:13,fontFamily:"inherit"}}/>
+                    ):(
+                      <p style={{fontSize:13,lineHeight:1.5}}>{m.message_text}</p>
+                    )}
+                    <p style={{fontSize:9,marginTop:4,opacity:0.7}}>{m.sent_by==="bot"?"Pro · ":""}{new Date(m.created_at).toLocaleString()}</p>
+                    {isPendingDraft&&(
+                      <div style={{display:"flex",gap:6,marginTop:8}}>
+                        {isEditing?(<>
+                          <Btn size="sm" onClick={()=>{onApproveDraft&&onApproveDraft(m,editingDraftText);setEditingDraftId(null);}} disabled={!editingDraftText.trim()}>Send</Btn>
+                          <Btn size="sm" variant="secondary" onClick={()=>setEditingDraftId(null)}>Cancel</Btn>
+                        </>):(<>
+                          <Btn size="sm" onClick={()=>onApproveDraft&&onApproveDraft(m)}>Approve & Send</Btn>
+                          <Btn size="sm" variant="secondary" onClick={()=>{setEditingDraftId(m.id);setEditingDraftText(m.message_text);}}>Edit</Btn>
+                          <Btn size="sm" variant="secondary" onClick={()=>onDismissDraft&&onDismissDraft(m)} style={{color:"var(--accent)"}}>Dismiss</Btn>
+                        </>)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
             <div style={{padding:12,borderTop:"1px solid var(--border)",display:"flex",gap:8}}>
               <input value={reply} onChange={e=>setReply(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleSend()}
@@ -20242,6 +20350,7 @@ function App() {
         qe("SystemSession",{},"-login_at",200), // 36
         qe("MonthlyBrief",{},"-created_at",200), // 37
         qe("CustomerMessage",{},"-created_at",500), // 38
+        qe("ReplyBotSetting"), // 39
       ]);
       if(wave2[13].status==="fulfilled" && wave2[13].value?.entities?.length) setEmailSettings(wave2[13].value.entities[0]);
 
@@ -20284,6 +20393,7 @@ function App() {
         systemSessions: pick(wave2[36], d.systemSessions||[]),
         monthlyBriefs: pick(wave2[37], d.monthlyBriefs||[]),
         customerMessages: pick(wave2[38], d.customerMessages||[]),
+        replyBotSettings: pick(wave2[39], d.replyBotSettings||[]),
       }));
     }
     loadAllDataRef.current = load;
@@ -20740,6 +20850,50 @@ function App() {
     ce("CustomerMessage",[{client_id:msg.client_id, client_name:msg.client_name, channel:msg.channel, customer_id:msg.customer_id, customer_name:msg.customer_name, direction:"out", message_text:replyText.trim(), sent_by:"human", thread_status:"open"}])
       .then(r=>{ const real=r.entities?.[0]; if(real?.id) setData(d=>({...d,customerMessages:d.customerMessages.map(m=>m.id===local.id?{...m,...real}:m)})); })
       .catch(()=>{});
+  };
+
+  // Approve a bot-drafted reply (pending_review) — sends it as-is, or with edited text — then marks it sent.
+  const approveDraftReply = async (draftMsg, editedText) => {
+    const text = (editedText ?? draftMsg.message_text ?? "").trim();
+    if(!text) return;
+    const integration = (data.integrations||[]).find(i=>
+      i.status==="active" && i.client_id===draftMsg.client_id &&
+      (draftMsg.channel==="instagram"?i.app_key==="instagram":i.app_key==="facebook")
+    );
+    if(!integration) { alert("No active connection found for this client/channel."); return; }
+    let creds = {};
+    try { creds = typeof integration.credentials==="string" ? JSON.parse(integration.credentials) : (integration.credentials||{}); } catch(e) {}
+    try {
+      const res = await fetch(window.location.origin+"/meta-send-reply.php", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({channel:draftMsg.channel, recipient_id:draftMsg.customer_id, page_id:creds.page_id, access_token:creds.access_token, message:text}),
+      });
+      const out = await res.json();
+      if(!res.ok) throw new Error(out.error||"Send failed");
+    } catch(e) { alert("Failed to send: "+e.message); return; }
+    setData(d=>({...d, customerMessages:d.customerMessages.map(m=>m.id===draftMsg.id?{...m,message_text:text,draft_status:"sent",thread_status:"bot_handled"}:m)}));
+    ue("CustomerMessage", draftMsg.id, {message_text:text, draft_status:"sent", thread_status:"bot_handled"}).catch(()=>{});
+  };
+
+  const dismissDraftReply = async (draftMsg) => {
+    setData(d=>({...d, customerMessages:d.customerMessages.map(m=>m.id===draftMsg.id?{...m,draft_status:"dismissed"}:m)}));
+    ue("CustomerMessage", draftMsg.id, {draft_status:"dismissed"}).catch(()=>{});
+  };
+
+  // Create or update this client's reply-bot configuration (enabled, mode, channels, custom brain).
+  const saveReplyBotSettings = async (clientId, clientName, patch) => {
+    const existing = (data.replyBotSettings||[]).find(s=>s.client_id===clientId);
+    if(existing) {
+      const updated = {...existing, ...patch};
+      setData(d=>({...d, replyBotSettings:d.replyBotSettings.map(s=>s.id===existing.id?updated:s)}));
+      ue("ReplyBotSetting", existing.id, patch).catch(()=>{});
+    } else {
+      const local = {id:uid(), client_id:clientId, client_name:clientName, enabled:false, mode:"approve", channels:["instagram","messenger"], brain:"", ...patch};
+      setData(d=>({...d, replyBotSettings:[local,...(d.replyBotSettings||[])]}));
+      ce("ReplyBotSetting",[{client_id:clientId, client_name:clientName, enabled:false, mode:"approve", channels:["instagram","messenger"], brain:"", ...patch}])
+        .then(r=>{ const real=r.entities?.[0]; if(real?.id) setData(d=>({...d,replyBotSettings:d.replyBotSettings.map(s=>s.id===local.id?{...s,...real}:s)})); })
+        .catch(()=>{});
+    }
   };
 
   // Auto-learn: called internally when key events happen
@@ -22057,6 +22211,10 @@ Return ONLY valid JSON (no markdown, no explanation):
               customerMessages={data.customerMessages||[]}
               integrations={data.integrations||[]}
               onSendInboxReply={sendInboxReply}
+              replyBotSettings={data.replyBotSettings||[]}
+              onSaveReplyBotSettings={saveReplyBotSettings}
+              onApproveDraft={approveDraftReply}
+              onDismissDraft={dismissDraftReply}
             />
           );
         })()}

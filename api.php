@@ -47,7 +47,7 @@ $ALLOWED_TABLES = [
     'client_users','client_tasks','client_memory','email_logs','activity_logs',
     'generated_leads','lead_agent_configs','agent_configs','agent_logs',
     'agent_runs','system_sessions','monthly_briefs','push_subscriptions',
-    'meta_insights_snapshots','customer_messages',
+    'meta_insights_snapshots','customer_messages','reply_bot_settings',
 ];
 
 $table = $_GET['table'] ?? '';

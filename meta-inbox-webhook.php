@@ -5,6 +5,7 @@
 // page_id in the event against integrations.credentials.page_id.
 // ================================================================
 require_once 'config.php';
+require_once 'reply-bot-lib.php';
 
 // ── Webhook verification (Meta calls this once when you subscribe) ──
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
@@ -101,6 +102,8 @@ try {
             $senderId = $m['sender']['id'] ?? null;
             if ($text && $senderId) {
                 storeMessage($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $text);
+                try { maybeAutoReply($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, null); }
+                catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
             }
         }
 
@@ -111,6 +114,8 @@ try {
                 $senderId = $c['value']['sender']['id'] ?? null;
                 if ($text && $senderId) {
                     storeMessage($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, $text);
+                    try { maybeAutoReply($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, null); }
+                    catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
                 }
             }
         }

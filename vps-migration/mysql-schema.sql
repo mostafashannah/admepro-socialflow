@@ -266,10 +266,27 @@ CREATE TABLE IF NOT EXISTS customer_messages (
   customer_id TEXT, customer_name TEXT,
   direction VARCHAR(10) NOT NULL, -- in | out
   message_text TEXT, sent_by VARCHAR(20) DEFAULT 'customer', -- customer | bot | human
-  thread_status VARCHAR(20) DEFAULT 'open' -- open | bot_handled | needs_human | closed
+  thread_status VARCHAR(20) DEFAULT 'open', -- open | bot_handled | needs_human | closed
+  draft_status VARCHAR(20) DEFAULT NULL -- pending_review | sent | dismissed (NULL = not a bot draft)
 ) ENGINE=InnoDB;
 CREATE INDEX idx_customer_messages_client ON customer_messages(client_id);
 CREATE INDEX idx_customer_messages_customer ON customer_messages(customer_id);
+
+-- ----------------------------------------------------------------
+-- REPLY BOT SETTINGS (per-client AI auto-reply configuration)
+-- ----------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS reply_bot_settings (
+  id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  client_id VARCHAR(36) UNIQUE NOT NULL, client_name TEXT,
+  enabled TINYINT(1) DEFAULT 0,
+  mode VARCHAR(20) DEFAULT 'approve', -- approve | auto
+  channels JSON DEFAULT ('["instagram","messenger"]'),
+  brain TEXT, -- dedicated reply-bot instructions, separate from general Client Brain
+  updated_by TEXT
+) ENGINE=InnoDB;
+CREATE INDEX idx_reply_bot_settings_client ON reply_bot_settings(client_id);
 
 -- ----------------------------------------------------------------
 -- SUBSCRIPTIONS
