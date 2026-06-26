@@ -49,6 +49,7 @@ if (!$signatureValid) {
 }
 
 $body = json_decode($raw, true);
+error_log('meta-inbox-webhook payload: ' . $raw);
 http_response_code(200); // ack immediately, Meta requires a fast 200
 echo 'EVENT_RECEIVED';
 
