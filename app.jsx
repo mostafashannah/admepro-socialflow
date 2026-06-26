@@ -506,7 +506,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.62";
+const APP_VERSION = "beta 2.63";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7448,6 +7448,41 @@ No markdown, no explanation, just the JSON array.`;
   );
 }
 
+// ── Simple SVG line chart: solid line for the current period, dashed line
+// for the immediately-preceding period of equal length (index-aligned, not
+// date-aligned — same "today vs yesterday" idea as a calendar overlay).
+function MetricLineChart({current, previous, color="#3b82f6", height=220}) {
+  const w = 600;
+  const padL = 8, padR = 8, padT = 10, padB = 24;
+  const maxVal = Math.max(1, ...current.map(d=>d.value), ...previous.map(d=>d.value));
+  const toPoints = (series) => series.map((d,i)=>{
+    const x = padL + (series.length>1 ? (i/(series.length-1))*(w-padL-padR) : 0);
+    const y = padT + (1-(d.value/maxVal))*(height-padT-padB);
+    return [x,y];
+  });
+  const pathFrom = (pts) => pts.length ? pts.map((p,i)=>(i===0?"M":"L")+p[0].toFixed(1)+","+p[1].toFixed(1)).join(" ") : "";
+  const curPts = toPoints(current);
+  const prevPts = toPoints(previous);
+  const ticks = [0,0.25,0.5,0.75,1];
+  const labelIdxs = current.length>1 ? [0, Math.floor((current.length-1)/2), current.length-1] : [];
+  return (
+    <svg viewBox={`0 0 ${w} ${height}`} style={{width:"100%",height,display:"block"}}>
+      {ticks.map(t=>{
+        const y = padT + t*(height-padT-padB);
+        return <line key={t} x1={padL} x2={w-padR} y1={y} y2={y} stroke="var(--border)" strokeWidth={1}/>;
+      })}
+      {prevPts.length>1&&<path d={pathFrom(prevPts)} fill="none" stroke={color} strokeWidth={2} strokeDasharray="6,5" opacity={0.4}/>}
+      {curPts.length>1&&<path d={pathFrom(curPts)} fill="none" stroke={color} strokeWidth={2.5}/>}
+      {curPts.length===1&&<circle cx={curPts[0][0]} cy={curPts[0][1]} r={4} fill={color}/>}
+      {labelIdxs.map(i=>(
+        <text key={i} x={toPoints(current)[i][0]} y={height-4} fontSize={10} fill="var(--text3)" textAnchor={i===0?"start":i===current.length-1?"end":"middle"}>
+          {current[i]?.date ? new Date(current[i].date).toLocaleDateString(undefined,{month:"short",day:"numeric"}) : ""}
+        </text>
+      ))}
+    </svg>
+  );
+}
+
 function MetaInsightsTab({client, integrations}) {
   const matches = integrations.filter(i=>
     ["facebook","instagram"].includes(i.app_key) && i.status==="active" &&
@@ -7464,6 +7499,8 @@ function MetaInsightsTab({client, integrations}) {
   const [compareMode, setCompareMode] = useState("none"); // none|day|week|month
   const [compareData, setCompareData] = useState({}); // {integId:{a,b,aLabel,bLabel}}
   const [comparing, setComparing] = useState(false);
+  const [prevData, setPrevData] = useState({}); // {integId: payload} — previous equal-length period, for the line chart
+  const [selectedMetric, setSelectedMetric] = useState("");
 
   const rangeEpochs = (r, cs, cu) => {
     const now = new Date();
@@ -7582,12 +7619,48 @@ function MetaInsightsTab({client, integrations}) {
     if (problems.length) setError(problems.join("  •  "));
     else if (!Object.keys(results).length) setError("No data returned — check the connected integration still has a valid access token.");
     setLoading(false);
+
+    // Auto-fetch the immediately-preceding equal-length window too, so the
+    // line chart's comparison line is ready the moment the tab opens —
+    // no extra click needed.
+    const span = Math.max(until-since, 86400);
+    fetchOneWindow(since-span, since).then(setPrevData);
   };
 
   useEffect(()=>{
     if (matches.length) fetchAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client.id]);
+
+  // ── Daily time-series extraction for the line chart. Only Facebook's
+  // page_insights and Instagram's ig_insights_daily (reach) carry real
+  // day-by-day values — everything else in ig_insights is a single
+  // aggregated total and can't be charted as a series.
+  const dailySeriesFor = (d) => d ? [
+    ...(Array.isArray(d.page_insights)?d.page_insights:[]),
+    ...(Array.isArray(d.ig_insights_daily)?d.ig_insights_daily:[]),
+  ].filter(m=>(m.values||[]).length>1) : [];
+
+  const buildSeriesMap = (src) => {
+    const map = {};
+    matches.forEach(integ=>{
+      dailySeriesFor(src[integ.id]).forEach(m=>{
+        if (!map[m.name]) map[m.name] = {label: INSIGHTS_METRIC_LABELS[m.name]||m.name.replace(/_/g," "), points: []};
+        map[m.name].points = map[m.name].points.concat((m.values||[]).map(v=>({date: v.end_time, value: v.value||0})));
+      });
+    });
+    return map;
+  };
+
+  const seriesByMetric = buildSeriesMap(data);
+  const prevSeriesByMetric = buildSeriesMap(prevData);
+  const metricKeys = Object.keys(seriesByMetric);
+
+  useEffect(()=>{
+    if (!metricKeys.length) { if (selectedMetric) setSelectedMetric(""); return; }
+    if (!selectedMetric || !metricKeys.includes(selectedMetric)) setSelectedMetric(metricKeys[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [metricKeys.join(",")]);
 
   const onRangeSelect = (val) => {
     setRange(val);
@@ -7677,6 +7750,36 @@ No markdown, no explanation, just the JSON array.`;
           No active Facebook/Instagram integration is connected for {client.name} yet. Connect one in <strong>Settings → Integrations</strong> (include the Ad Account ID to also pull ads performance).
         </div>
       )}
+
+      {!!metricKeys.length&&(()=>{
+        const curSeries = seriesByMetric[selectedMetric];
+        const prevSeries = prevSeriesByMetric[selectedMetric];
+        const curPts = curSeries?.points||[];
+        const prevPts = prevSeries?.points||[];
+        const curTotal = curPts.reduce((s,p)=>s+(p.value||0),0);
+        const prevTotal = prevPts.reduce((s,p)=>s+(p.value||0),0);
+        const pct = prevTotal>0 ? Math.round((curTotal-prevTotal)/prevTotal*100) : (curTotal>0?100:0);
+        return (
+          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:18}}>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
+              {metricKeys.map(k=>(
+                <button key={k} onClick={()=>setSelectedMetric(k)}
+                  style={{height:32,padding:"0 14px",borderRadius:99,border:`1px solid ${selectedMetric===k?"var(--accent)":"var(--border)"}`,
+                    background:selectedMetric===k?"var(--accent)":"transparent",color:selectedMetric===k?"#fff":"var(--text2)",
+                    fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                  {seriesByMetric[k].label}
+                </button>
+              ))}
+            </div>
+            <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:8}}>
+              <span style={{fontSize:32,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif"}}>{curTotal.toLocaleString()}</span>
+              <span style={{fontSize:13,fontWeight:700,color:pct>=0?"#10b981":"#ef4444"}}>{pct>=0?"↗":"↘"}{Math.abs(pct)}%</span>
+              <span style={{fontSize:12,color:"var(--text3)"}}>vs previous period</span>
+            </div>
+            <MetricLineChart current={curPts} previous={prevPts} color="var(--accent)"/>
+          </div>
+        );
+      })()}
 
       {error&&(
         <div style={{padding:14,background:"#ef444411",border:"1px solid #ef444444",borderRadius:"var(--rs)",fontSize:13,color:"#ef4444"}}>{error}</div>

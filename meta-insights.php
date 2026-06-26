@@ -102,6 +102,19 @@ if ($platform === "instagram") {
         }
         $out["ig_insights"] = $series;
     }
+
+    // The metrics above are forced into metric_type=total_value (a single
+    // aggregated number for the whole window) so they can't be charted. Reach
+    // is the one metric Meta still serves as a real day-by-day time series —
+    // fetch it again without metric_type so the frontend has something to graph.
+    [$code3, $resp3] = graph_get("https://{$ig_host}/{$v}/{$page_id}/insights", [
+        "metric"       => "reach",
+        "period"       => "day",
+        "since"        => $since,
+        "until"        => $until,
+        "access_token" => $access_token,
+    ]);
+    $out["ig_insights_daily"] = $code3 === 200 ? ($resp3["data"] ?? []) : [];
 }
 
 if ($ad_account_id) {
