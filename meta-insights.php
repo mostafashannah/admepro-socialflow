@@ -56,15 +56,39 @@ if ($platform === "instagram") {
     // graph.facebook.com rejects them with "Cannot parse access token". Page-linked
     // Instagram tokens (old-style) still use graph.facebook.com as before.
     $ig_host = str_starts_with($access_token, 'IGAA') ? 'graph.instagram.com' : 'graph.facebook.com';
-    // "impressions" is rejected by graph.instagram.com ("metric[1] must be one of
-    // reach, follower_count, ..." — impressions isn't in that list); use total_interactions
-    // (engagement-equivalent metric) instead.
-    [$code, $resp] = graph_get("https://{$ig_host}/{$v}/{$page_id}/insights", [
-        "metric"       => "reach,total_interactions,profile_views,follower_count",
+
+    // reach/follower_count are time-series metrics (default metric_type) — they come
+    // back as a per-day "values" array. profile_views/accounts_engaged/total_interactions/
+    // likes/comments/shares/saves/replies are "total_value" metrics — they need
+    // metric_type=total_value and come back as a single total_value.value instead of
+    // a values array. Mixing the two in one request silently drops the total_value ones.
+    [$code1, $resp1] = graph_get("https://{$ig_host}/{$v}/{$page_id}/insights", [
+        "metric"       => "reach,follower_count",
         "period"       => "day",
         "access_token" => $access_token,
     ]);
-    $out["ig_insights"] = $code === 200 ? $resp["data"] ?? [] : ["error" => $resp];
+    [$code2, $resp2] = graph_get("https://{$ig_host}/{$v}/{$page_id}/insights", [
+        "metric"       => "profile_views,accounts_engaged,total_interactions,likes,comments,shares,saves,replies",
+        "period"       => "day",
+        "metric_type"  => "total_value",
+        "access_token" => $access_token,
+    ]);
+
+    if ($code1 !== 200) { $out["ig_insights"] = ["error" => $resp1]; }
+    else {
+        $series = $resp1["data"] ?? [];
+        $totals = $code2 === 200 ? ($resp2["data"] ?? []) : [];
+        // Normalize total_value metrics into the same {title,values:[{value}]} shape
+        // the time-series metrics use, so the frontend doesn't need to special-case them.
+        foreach ($totals as $t) {
+            $series[] = [
+                "name"   => $t["name"] ?? "",
+                "title"  => $t["title"] ?? ($t["name"] ?? ""),
+                "values" => [["value" => $t["total_value"]["value"] ?? 0]],
+            ];
+        }
+        $out["ig_insights"] = $series;
+    }
 }
 
 if ($ad_account_id) {
