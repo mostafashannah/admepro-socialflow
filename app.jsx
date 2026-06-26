@@ -504,7 +504,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.32";
+const APP_VERSION = "beta 2.33";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21325,6 +21325,7 @@ Return ONLY the JSON array, no markdown.`;
   const deleteIntegration = async (integId) => {
     const integ = (data.integrations||[]).find(i=>i.id===integId);
     setData(d=>({...d, integrations:d.integrations.filter(i=>i.id!==integId)}));
+    de("Integration", integId).catch(()=>{});
     logActivity("Integration Removed","integrations",integ?.name||integId,"warning","",currentUser?.email||"admin");
     setToast("Integration removed");
   };
