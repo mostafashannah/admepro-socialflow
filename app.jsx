@@ -506,7 +506,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.43";
+const APP_VERSION = "beta 2.44";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -20842,7 +20842,7 @@ function App() {
         body: JSON.stringify({channel:msg.channel, recipient_id:msg.customer_id, page_id:creds.page_id, access_token:creds.access_token, message:replyText.trim()}),
       });
       const out = await res.json();
-      if(!res.ok) throw new Error(out.error||"Send failed");
+      if(!res.ok) throw new Error((out.error&&(out.error.message||out.error.error_user_msg))||(typeof out.error==="string"?out.error:JSON.stringify(out.error))||"Send failed");
     } catch(e) { alert("Failed to send: "+e.message); return; }
     const now = new Date().toISOString();
     const local = {id:uid(), client_id:msg.client_id, client_name:msg.client_name, channel:msg.channel, customer_id:msg.customer_id, customer_name:msg.customer_name, direction:"out", message_text:replyText.trim(), sent_by:"human", thread_status:"open", created_at:now};
@@ -20869,7 +20869,7 @@ function App() {
         body: JSON.stringify({channel:draftMsg.channel, recipient_id:draftMsg.customer_id, page_id:creds.page_id, access_token:creds.access_token, message:text}),
       });
       const out = await res.json();
-      if(!res.ok) throw new Error(out.error||"Send failed");
+      if(!res.ok) throw new Error((out.error&&(out.error.message||out.error.error_user_msg))||(typeof out.error==="string"?out.error:JSON.stringify(out.error))||"Send failed");
     } catch(e) { alert("Failed to send: "+e.message); return; }
     setData(d=>({...d, customerMessages:d.customerMessages.map(m=>m.id===draftMsg.id?{...m,message_text:text,draft_status:"sent",thread_status:"bot_handled"}:m)}));
     ue("CustomerMessage", draftMsg.id, {message_text:text, draft_status:"sent", thread_status:"bot_handled"}).catch(()=>{});
