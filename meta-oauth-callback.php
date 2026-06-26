@@ -15,7 +15,11 @@ function ig_post($url, $fields) {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => $fields,
+        // Passing an array here makes PHP-cURL send multipart/form-data, which
+        // graph.instagram.com's /access_token endpoint fails to parse (it returns
+        // a generic "Unsupported request - method type" error instead of a real
+        // one). Force application/x-www-form-urlencoded by pre-encoding the body.
+        CURLOPT_POSTFIELDS     => http_build_query($fields),
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_SSL_VERIFYPEER => true,
         CURLOPT_TIMEOUT        => 20,
