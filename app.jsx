@@ -506,7 +506,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.59";
+const APP_VERSION = "beta 2.60";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5909,13 +5909,14 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
   );
 }
 
-function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft}) {
+function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[]}) {
   const [tab,setTab] = usePersistentState(`sf_tab_client_${client?.id}`,"overview");
   const [showEdit,setShowEdit] = useState(false);
   const [confirmDelete,setConfirmDelete] = useState(false);
   const cProjects = projects.filter(p=>p.client_id===client.id||p.client_name===client.name);
   const cPosts = posts.filter(p=>cProjects.some(pr=>pr.id===p.project_id));
   const cAssets = assets.filter(a=>cProjects.some(pr=>pr.id===a.project_id));
+  const cInvoices = invoices.filter(inv=>inv.client_id===client.id||inv.client_name===client.name);
   const knowledge = (clientKnowledge||[]).find(k=>k.client_id===client.id||k.client_name===client.name);
   const documents = (clientDocuments||[]).filter(d=>d.client_id===client.id);
   const isPriv = ["admin","account_manager"].includes(currentUser?.role);
@@ -5985,12 +5986,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
       </div>
       {/* Tab content */}
       {tab==="overview"&&(
-        <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
-          <StatCard label="Projects" value={cProjects.length} color="#3b82f6"/>
-          <StatCard label="Total Posts" value={cPosts.length} color="#8b5cf6"/>
-          <StatCard label="Published" value={cPosts.filter(p=>p.stage==="published").length} color="#10b981"/>
-          <StatCard label="Pending Approval" value={cPosts.filter(p=>p.stage==="client_approval").length} color="#ec4899"/>
-        </div>
+        <ClientOverviewTab client={client} cProjects={cProjects} cPosts={cPosts} cInvoices={cInvoices}/>
       )}
       {tab==="projects"&&(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
@@ -7329,6 +7325,106 @@ const INSIGHTS_METRIC_LABELS = {
   page_post_engagements: "Page Post Engagements",
   page_views_total: "Page Views",
 };
+
+function ClientOverviewTab({client, cProjects, cPosts, cInvoices}) {
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysis, setAnalysis] = useState(null);
+  const VERDICT_COLOR = {do:"#10b981", dont:"#ef4444"};
+
+  const published = cPosts.filter(p=>p.stage==="published").length;
+  const pendingApproval = cPosts.filter(p=>p.stage==="client_approval").length;
+  const overdueInvoices = cInvoices.filter(inv=>isOverdueInvoice(inv)&&inv.status!=="paid");
+  const revenueCollected = cInvoices.reduce((s,inv)=>s+(inv.amount_paid||0),0);
+  const outstanding = cInvoices.reduce((s,inv)=>s+Math.max(0,(inv.total||0)-(inv.amount_paid||0)),0);
+  const currency = cInvoices[0]?.currency || "USD";
+
+  const kpis = [
+    {label:"Projects", value:cProjects.length, color:"#3b82f6"},
+    {label:"Total Posts", value:cPosts.length, color:"#8b5cf6"},
+    {label:"Published", value:published, color:"#10b981"},
+    {label:"Pending Approval", value:pendingApproval, color:"#ec4899"},
+    {label:"Revenue Collected", value:fmtMoney(revenueCollected,currency), color:"#10b981"},
+    {label:"Outstanding", value:fmtMoney(outstanding,currency), color:"#f59e0b"},
+    {label:"Overdue Invoices", value:overdueInvoices.length, color:"#dc2626"},
+  ];
+
+  const generateAnalysis = async () => {
+    setAnalyzing(true);
+    try {
+      const stageSummary = STAGES.map(s=>`${s.label}: ${cPosts.filter(p=>p.stage===s.key).length}`).join(", ");
+      const summary = `Client: ${client.name}
+Projects: ${cProjects.length}
+Total posts: ${cPosts.length}, Published: ${published}, Pending client approval: ${pendingApproval}
+Workflow pipeline breakdown: ${stageSummary}
+Invoices: ${cInvoices.length} total, ${fmtMoney(revenueCollected,currency)} collected, ${fmtMoney(outstanding,currency)} outstanding, ${overdueInvoices.length} overdue`;
+
+      const prompt = `You are an account management analyst at a social media agency. Here is a snapshot of one client's account health:
+
+${summary}
+
+Based on this real data, return ONLY a JSON array of 4-6 objects, each a concrete "do this" or "don't do this" recommendation for the account manager handling this client:
+[{"title":"...","insight":"1-2 sentence read of what the data shows","action":"1 sentence recommendation, specific and actionable","category":"workflow|finance|approval|content|relationship","verdict":"do|dont"}]
+No markdown, no explanation, just the JSON array.`;
+
+      const raw = await ai(prompt, 1000);
+      const cleaned = raw.replace(/```json|```/g,"").trim();
+      setAnalysis(JSON.parse(cleaned));
+    } catch(e) {
+      setAnalysis([{title:"Error", insight:"Could not generate analysis. Check AI connection.", action:"", category:"general", verdict:"dont"}]);
+    }
+    setAnalyzing(false);
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
+      <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12}}>
+        {kpis.map(k=><StatCard key={k.label} label={k.label} value={k.value} color={k.color}/>)}
+      </div>
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"16px 20px"}}>
+        <h4 style={{fontWeight:700,fontSize:14,marginBottom:14}}>Workflow Pipeline</h4>
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {STAGES.map(s=>{
+            const cnt=cPosts.filter(p=>p.stage===s.key).length;
+            return (
+              <div key={s.key} style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{width:8,height:8,borderRadius:"50%",background:s.color,flexShrink:0}}/>
+                <span style={{fontSize:12,color:"var(--text2)",width:120,flexShrink:0}}>{s.label}</span>
+                <div style={{flex:1}}><ProgressBar value={cnt} max={Math.max(cPosts.length,1)} color={s.color} height={6}/></div>
+                <span style={{fontSize:11,fontWeight:700,color:s.color,width:20,textAlign:"right"}}>{cnt}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+        <div>
+          <h4 style={{fontWeight:700,fontSize:14}}>AI Recommendations</h4>
+          <p style={{fontSize:12,color:"var(--text2)",marginTop:2}}>AI-generated do's and don'ts based on this client's real account health</p>
+        </div>
+        <Btn onClick={generateAnalysis} disabled={analyzing}>
+          {analyzing?<><Spinner size={14}/> Analyzing…</>:<><Ico d={Icons.sparkle} size={15}/> Generate Smart Analysis</>}
+        </Btn>
+      </div>
+
+      {analysis&&(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {analysis.map((ins,i)=>(
+            <div key={i} style={{background:"var(--surface)",border:`1px solid ${VERDICT_COLOR[ins.verdict]||"var(--border)"}44`,borderRadius:"var(--r)",padding:16,display:"flex",gap:12}}>
+              <Badge label={ins.verdict==="do"?"DO":"DON'T"} color={VERDICT_COLOR[ins.verdict]||"#6b7280"}/>
+              <div style={{flex:1}}>
+                <p style={{fontSize:14,fontWeight:700,marginBottom:4}}>{ins.title}</p>
+                <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.5,marginBottom:6}}>{ins.insight}</p>
+                {ins.action&&<p style={{fontSize:13,fontWeight:600,color:VERDICT_COLOR[ins.verdict]||"var(--text1)"}}>→ {ins.action}</p>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function MetaInsightsTab({client, integrations}) {
   const matches = integrations.filter(i=>
@@ -22294,6 +22390,7 @@ Return ONLY valid JSON (no markdown, no explanation):
           return (
             <ClientDetailPage client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets}
               integrations={data.integrations||[]}
+              invoices={data.invoices||[]}
               onBack={()=>setSelectedClientId(null)} onPostClick={setSelectedPost}
               onAddProject={()=>setShowAddProject(true)}
               onAddPost={()=>{setAddPostForClient(selectedClient);setShowAddPost(true);}}
