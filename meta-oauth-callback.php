@@ -86,6 +86,7 @@ $redirectUri = $origin . '/meta-oauth-callback.php';
     'redirect_uri'  => $redirectUri,
     'code'          => $code,
 ]);
+error_log('meta-oauth-callback step1 tokenResp=' . json_encode($tokenResp) . ' err=' . $err);
 if ($err || empty($tokenResp['access_token'])) {
     finish(false, ['error' => 'Token exchange failed: ' . ($err ?: 'no access_token in response')]);
 }
@@ -98,16 +99,15 @@ $igUserId   = $tokenResp['user_id'] ?? '';
     'client_secret' => INSTAGRAM_APP_SECRET,
     'access_token'  => $shortToken,
 ]));
+error_log('meta-oauth-callback step2 longResp=' . json_encode($longResp) . ' err=' . $err);
 $longToken = $longResp['access_token'] ?? $shortToken;
 
-// Step 3: fetch the connected account's id/username. The version-less
-// "/me" endpoint intermittently returns a Basic-Display-style
-// {"error_message":"Unsupported request - method type: get"} error —
-// pinning a Graph API version avoids it, same as the subscribed_apps call below.
+// Step 3: fetch the connected account's id/username.
 [$meResp, $err] = ig_get('https://graph.instagram.com/v21.0/me?' . http_build_query([
     'fields'       => 'id,username,account_type',
     'access_token' => $longToken,
 ]));
+error_log('meta-oauth-callback step3 meResp=' . json_encode($meResp) . ' err=' . $err);
 if ($err) {
     finish(false, ['error' => 'Could not fetch Instagram account info: ' . $err]);
 }
