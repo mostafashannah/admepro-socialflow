@@ -100,8 +100,11 @@ $igUserId   = $tokenResp['user_id'] ?? '';
 ]));
 $longToken = $longResp['access_token'] ?? $shortToken;
 
-// Step 3: fetch the connected account's id/username
-[$meResp, $err] = ig_get('https://graph.instagram.com/me?' . http_build_query([
+// Step 3: fetch the connected account's id/username. The version-less
+// "/me" endpoint intermittently returns a Basic-Display-style
+// {"error_message":"Unsupported request - method type: get"} error —
+// pinning a Graph API version avoids it, same as the subscribed_apps call below.
+[$meResp, $err] = ig_get('https://graph.instagram.com/v21.0/me?' . http_build_query([
     'fields'       => 'id,username,account_type',
     'access_token' => $longToken,
 ]));
