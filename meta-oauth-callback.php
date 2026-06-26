@@ -11,6 +11,10 @@
 
 require_once __DIR__ . '/config.php';
 
+function redact_secrets($str) {
+    return preg_replace('/((?:client_secret|access_token)=)[^&"\s]+/', '$1[REDACTED]', (string)$str);
+}
+
 function ig_post($url, $fields) {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
@@ -28,7 +32,7 @@ function ig_post($url, $fields) {
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $err = curl_error($ch);
     curl_close($ch);
-    error_log("ig_post {$url} -> HTTP {$httpCode} raw=" . substr((string)$res, 0, 1000));
+    error_log("ig_post " . redact_secrets($url) . " -> HTTP {$httpCode} raw=" . redact_secrets(substr((string)$res, 0, 1000)));
     if ($err) return [null, "cURL error: {$err}"];
     $data = json_decode($res, true);
     if (isset($data['error_message'])) return [null, $data['error_message']];
@@ -47,7 +51,7 @@ function ig_get($url) {
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $err = curl_error($ch);
     curl_close($ch);
-    error_log("ig_get {$url} -> HTTP {$httpCode} raw=" . substr((string)$res, 0, 1000));
+    error_log("ig_get " . redact_secrets($url) . " -> HTTP {$httpCode} raw=" . redact_secrets(substr((string)$res, 0, 1000)));
     if ($err) return [null, "cURL error: {$err}"];
     $data = json_decode($res, true);
     if (isset($data['error'])) return [null, is_array($data['error']) ? ($data['error']['message'] ?? 'Unknown error') : $data['error']];
@@ -55,7 +59,7 @@ function ig_get($url) {
 }
 
 function finish($ok, $payload) {
-    error_log('meta-oauth-callback finish: ok=' . ($ok ? '1' : '0') . ' payload=' . json_encode($payload));
+    error_log('meta-oauth-callback finish: ok=' . ($ok ? '1' : '0') . ' payload=' . redact_secrets(json_encode($payload)));
     header('Content-Type: text/html; charset=UTF-8');
     $json = json_encode(array_merge(['type' => 'meta_oauth_result', 'ok' => $ok], $payload));
     echo "<!DOCTYPE html><html><body><script>
@@ -94,7 +98,6 @@ $redirectUri = $origin . '/meta-oauth-callback.php';
     'redirect_uri'  => $redirectUri,
     'code'          => $code,
 ]);
-error_log('meta-oauth-callback step1 tokenResp=' . json_encode($tokenResp) . ' err=' . $err);
 if ($err || empty($tokenResp['access_token'])) {
     finish(false, ['error' => 'Token exchange failed: ' . ($err ?: 'no access_token in response')]);
 }
@@ -110,7 +113,6 @@ $igUserId   = $tokenResp['user_id'] ?? '';
     'client_secret' => INSTAGRAM_APP_SECRET,
     'access_token'  => $shortToken,
 ]));
-error_log('meta-oauth-callback step2 longResp=' . json_encode($longResp) . ' err=' . $err);
 $longToken = $longResp['access_token'] ?? $shortToken;
 
 // Step 3: fetch the connected account's id/username.
@@ -118,7 +120,6 @@ $longToken = $longResp['access_token'] ?? $shortToken;
     'fields'       => 'id,username,account_type',
     'access_token' => $longToken,
 ]));
-error_log('meta-oauth-callback step3 meResp=' . json_encode($meResp) . ' err=' . $err);
 if ($err) {
     finish(false, ['error' => 'Could not fetch Instagram account info: ' . $err]);
 }
