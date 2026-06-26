@@ -63,13 +63,12 @@ if ($platform === "instagram") {
     // Instagram tokens (old-style) still use graph.facebook.com as before.
     $ig_host = str_starts_with($access_token, 'IGAA') ? 'graph.instagram.com' : 'graph.facebook.com';
 
-    // follower_count is a snapshot (not additive — summing it across days is
-    // meaningless), so it stays a time-series call and we take the latest day's value.
-    [$code1, $resp1] = graph_get("https://{$ig_host}/{$v}/{$page_id}/insights", [
-        "metric"       => "follower_count",
-        "period"       => "day",
-        "since"        => $since,
-        "until"        => $until,
+    // The Insights "follower_count" metric only tracks day-over-day deltas since
+    // Meta started recording them for this account, and can read 0 even when the
+    // account has thousands of real followers — pull the actual current count from
+    // the account's own profile field instead, which is always accurate.
+    [$code1, $resp1] = graph_get("https://{$ig_host}/{$v}/{$page_id}", [
+        "fields"       => "followers_count",
         "access_token" => $access_token,
     ]);
     // reach and the rest are additive-eligible — metric_type=total_value aggregates
@@ -86,7 +85,11 @@ if ($platform === "instagram") {
 
     if ($code1 !== 200) { $out["ig_insights"] = ["error" => $resp1]; }
     else {
-        $series = $resp1["data"] ?? [];
+        $series = [[
+            "name"   => "follower_count",
+            "title"  => "Follower Count",
+            "values" => [["value" => $resp1["followers_count"] ?? 0]],
+        ]];
         $totals = $code2 === 200 ? ($resp2["data"] ?? []) : [];
         // Normalize total_value metrics into the same {title,values:[{value}]} shape
         // the time-series metrics use, so the frontend doesn't need to special-case them.
