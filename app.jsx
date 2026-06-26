@@ -506,7 +506,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.51";
+const APP_VERSION = "beta 2.52";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7411,11 +7411,21 @@ No markdown, no explanation, just the JSON array.`;
       {matches.map(integ=>{
         const d = data[integ.id];
         if (!d) return null;
-        const rows = [...(d.page_insights||[]), ...(d.ig_insights||[])];
-        const ads = d.ads_insights||[];
+        // meta-insights.php returns {error:{...}} (not an array) for page_insights/ig_insights
+        // when the Graph API call itself fails — spreading that as an array crashes the page.
+        const pageErr = !Array.isArray(d.page_insights) ? d.page_insights?.error : null;
+        const igErr = !Array.isArray(d.ig_insights) ? d.ig_insights?.error : null;
+        const adsErr = !Array.isArray(d.ads_insights) ? d.ads_insights?.error : null;
+        const rows = [...(Array.isArray(d.page_insights)?d.page_insights:[]), ...(Array.isArray(d.ig_insights)?d.ig_insights:[])];
+        const ads = Array.isArray(d.ads_insights)?d.ads_insights:[];
         return (
           <div key={integ.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:18}}>
             <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:14}}>{integ.app_key==="instagram"?"Instagram":"Facebook"} — last 30 days</p>
+            {(pageErr||igErr||adsErr)&&(
+              <p style={{fontSize:12,color:"#ef4444",marginBottom:10}}>
+                {[pageErr,igErr,adsErr].filter(Boolean).map(e=>e?.message||JSON.stringify(e)).join("  •  ")}
+              </p>
+            )}
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(180px,100%),1fr))",gap:12,marginBottom:ads.length?14:0}}>
               {rows.length?rows.map((m,i)=>(
                 <div key={i} style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
