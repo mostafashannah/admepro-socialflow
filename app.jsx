@@ -506,7 +506,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.58";
+const APP_VERSION = "beta 2.59";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7340,12 +7340,27 @@ function MetaInsightsTab({client, integrations}) {
   const [error, setError] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState(null);
-  const [range, setRange] = useState("30d"); // "30d" | "3m" | "custom"
+  const [range, setRange] = useState("30d"); // today|yesterday|last_week|30d|this_month|last_month|3m|custom
   const [customSince, setCustomSince] = useState("");
   const [customUntil, setCustomUntil] = useState("");
 
   const rangeEpochs = (r, cs, cu) => {
-    const until = Math.floor(Date.now()/1000);
+    const now = new Date();
+    const until = Math.floor(now.getTime()/1000);
+    const startOfDay = d => Math.floor(new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime()/1000);
+    const endOfDay = d => Math.floor(new Date(d.getFullYear(),d.getMonth(),d.getDate(),23,59,59).getTime()/1000);
+    if (r==="today") return {since: startOfDay(now), until};
+    if (r==="yesterday") {
+      const y = new Date(now); y.setDate(y.getDate()-1);
+      return {since: startOfDay(y), until: endOfDay(y)};
+    }
+    if (r==="last_week") return {since: until - 7*86400, until};
+    if (r==="this_month") return {since: Math.floor(new Date(now.getFullYear(),now.getMonth(),1).getTime()/1000), until};
+    if (r==="last_month") {
+      const lastMonthEnd = new Date(now.getFullYear(),now.getMonth(),1,0,0,-1); // 1s before this month started
+      const lastMonthStart = new Date(lastMonthEnd.getFullYear(),lastMonthEnd.getMonth(),1);
+      return {since: Math.floor(lastMonthStart.getTime()/1000), until: Math.floor(lastMonthEnd.getTime()/1000)};
+    }
     if (r==="3m") return {since: until - 90*86400, until};
     if (r==="custom" && cs && cu) {
       return {since: Math.floor(new Date(cs+"T00:00:00Z").getTime()/1000), until: Math.floor(new Date(cu+"T23:59:59Z").getTime()/1000)};
@@ -7398,7 +7413,8 @@ function MetaInsightsTab({client, integrations}) {
     if (val!=="custom") fetchAll(val);
   };
 
-  const rangeLabel = range==="3m" ? "last 3 months" : (range==="custom" && customSince && customUntil) ? `${customSince} to ${customUntil}` : "last 30 days";
+  const RANGE_LABELS = {today:"today", yesterday:"yesterday", last_week:"last 7 days", "30d":"last 30 days", this_month:"this month", last_month:"last month", "3m":"last 3 months"};
+  const rangeLabel = (range==="custom" && customSince && customUntil) ? `${customSince} to ${customUntil}` : (RANGE_LABELS[range]||"last 30 days");
 
   const generateAnalysis = async () => {
     setAnalyzing(true);
@@ -7438,7 +7454,12 @@ No markdown, no explanation, just the JSON array.`;
         <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
           <select value={range} onChange={e=>onRangeSelect(e.target.value)} disabled={loading||!matches.length}
             style={{height:38,padding:"0 10px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)",fontSize:13,fontWeight:600}}>
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="last_week">Last 7 days</option>
             <option value="30d">Last 30 days</option>
+            <option value="this_month">This month</option>
+            <option value="last_month">Last month</option>
             <option value="3m">Last 3 months</option>
             <option value="custom">Custom range</option>
           </select>
