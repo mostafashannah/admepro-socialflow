@@ -66,7 +66,11 @@ function findClientByPageId(PDO $pdo, string $pageId) {
     $stmt->execute();
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $creds = json_decode($row['credentials'] ?? '{}', true) ?: [];
-        if (($creds['page_id'] ?? '') === $pageId) {
+        // Instagram (API with Instagram login) webhook events arrive keyed by the
+        // legacy Instagram-Business-Account ID, which can differ from the new-style
+        // user ID returned by graph.instagram.com/me and stored as page_id during
+        // OAuth — page_id_alt lets a connected account match on either ID.
+        if (($creds['page_id'] ?? '') === $pageId || ($creds['page_id_alt'] ?? '') === $pageId) {
             // need client_id/client_name from the integrations row itself
             $stmt2 = $pdo->prepare("SELECT client_id, client_name FROM integrations WHERE id = :id");
             $stmt2->execute([':id' => $row['id']]);
