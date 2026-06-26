@@ -6,7 +6,7 @@
 // shape in one place so both stay in sync.
 // ================================================================
 
-define('META_GRAPH_VERSION', 'v19.0');
+define('META_GRAPH_VERSION', 'v23.0');
 
 // Performs a Facebook or Instagram publish. Returns [http_code, decoded_response].
 function meta_publish($platform, $page_id, $access_token, $message, $image_url, $scheduled_at = null) {
