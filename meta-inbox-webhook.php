@@ -74,15 +74,38 @@ function findClientByPageId(PDO $pdo, string $pageId) {
             // need client_id/client_name from the integrations row itself
             $stmt2 = $pdo->prepare("SELECT client_id, client_name FROM integrations WHERE id = :id");
             $stmt2->execute([':id' => $row['id']]);
-            return $stmt2->fetch(PDO::FETCH_ASSOC);
+            $out = $stmt2->fetch(PDO::FETCH_ASSOC);
+            if ($out) $out['access_token'] = $creds['access_token'] ?? null;
+            return $out;
         }
     }
     return null;
 }
 
-function storeMessage(PDO $pdo, $clientId, $clientName, $channel, $customerId, $text) {
-    $stmt = $pdo->prepare("INSERT INTO customer_messages (client_id, client_name, channel, customer_id, customer_name, direction, message_text, sent_by, thread_status) VALUES (:cid, :cname, :ch, :custid, NULL, 'in', :txt, 'customer', 'needs_human')");
-    $stmt->execute([':cid'=>$clientId, ':cname'=>$clientName, ':ch'=>$channel, ':custid'=>$customerId, ':txt'=>$text]);
+// Looks up the sender's display name from Meta's profile API so the inbox
+// shows a real name instead of the raw PSID/IGSID. Best-effort — a failed
+// lookup just leaves the name blank rather than blocking message storage.
+function fetchSenderName(string $channel, ?string $accessToken, string $senderId) {
+    if (!$accessToken) return null;
+    // Instagram-Login API tokens ("IGAA..." prefix) are scoped to graph.instagram.com;
+    // Page/Messenger tokens use graph.facebook.com — same split as meta-send-reply.php.
+    $host = ($channel === 'instagram' && str_starts_with($accessToken, 'IGAA')) ? 'graph.instagram.com' : 'graph.facebook.com';
+    $fields = $channel === 'instagram' ? 'name,username' : 'first_name,last_name';
+    $url = "https://{$host}/v19.0/{$senderId}?" . http_build_query(['fields' => $fields, 'access_token' => $accessToken]);
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_SSL_VERIFYPEER => true, CURLOPT_TIMEOUT => 8]);
+    $res = curl_exec($ch);
+    curl_close($ch);
+    $data = json_decode($res, true);
+    if (!$data || isset($data['error'])) return null;
+    if ($channel === 'instagram') return $data['name'] ?? ($data['username'] ?? null);
+    $name = trim(($data['first_name'] ?? '') . ' ' . ($data['last_name'] ?? ''));
+    return $name ?: null;
+}
+
+function storeMessage(PDO $pdo, $clientId, $clientName, $channel, $customerId, $customerName, $text) {
+    $stmt = $pdo->prepare("INSERT INTO customer_messages (client_id, client_name, channel, customer_id, customer_name, direction, message_text, sent_by, thread_status) VALUES (:cid, :cname, :ch, :custid, :custname, 'in', :txt, 'customer', 'needs_human')");
+    $stmt->execute([':cid'=>$clientId, ':cname'=>$clientName, ':ch'=>$channel, ':custid'=>$customerId, ':custname'=>$customerName, ':txt'=>$text]);
 }
 
 // Meta tells us the platform at the top level — Instagram DMs arrive under
@@ -101,8 +124,9 @@ try {
             $text = $m['message']['text'] ?? null;
             $senderId = $m['sender']['id'] ?? null;
             if ($text && $senderId) {
-                storeMessage($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $text);
-                try { maybeAutoReply($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, null); }
+                $senderName = fetchSenderName($channel, $client['access_token'], $senderId);
+                storeMessage($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName, $text);
+                try { maybeAutoReply($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName); }
                 catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
             }
         }
@@ -113,8 +137,9 @@ try {
                 $text = $c['value']['message']['text'] ?? null;
                 $senderId = $c['value']['sender']['id'] ?? null;
                 if ($text && $senderId) {
-                    storeMessage($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, $text);
-                    try { maybeAutoReply($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, null); }
+                    $senderName = fetchSenderName('instagram', $client['access_token'], $senderId);
+                    storeMessage($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, $senderName, $text);
+                    try { maybeAutoReply($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, $senderName); }
                     catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
                 }
             }
