@@ -506,7 +506,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.54";
+const APP_VERSION = "beta 2.55";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7310,6 +7310,26 @@ Rules: Max 60 words per section. Specific and actionable — no generic advice. 
   );
 }
 
+// Graph API localizes metric title/description based on the account's configured
+// language — override with our own English labels rather than trusting that field.
+const INSIGHTS_METRIC_LABELS = {
+  reach: "Reach",
+  follower_count: "Follower Count",
+  profile_views: "Profile Visits",
+  accounts_engaged: "Accounts Engaged",
+  total_interactions: "Total Interactions",
+  likes: "Likes",
+  comments: "Comments",
+  shares: "Shares",
+  saves: "Saves",
+  replies: "Replies",
+  page_impressions: "Page Impressions",
+  page_engaged_users: "Page Engaged Users",
+  page_fans: "Page Fans",
+  page_post_engagements: "Page Post Engagements",
+  page_views_total: "Page Views",
+};
+
 function MetaInsightsTab({client, integrations}) {
   const matches = integrations.filter(i=>
     ["facebook","instagram"].includes(i.app_key) && i.status==="active" &&
@@ -7429,7 +7449,7 @@ No markdown, no explanation, just the JSON array.`;
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(180px,100%),1fr))",gap:12,marginBottom:ads.length?14:0}}>
               {rows.length?rows.map((m,i)=>(
                 <div key={i} style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
-                  <p style={{fontSize:9,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{(m.title||m.name||"").replace(/_/g," ")}</p>
+                  <p style={{fontSize:9,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{INSIGHTS_METRIC_LABELS[m.name]||(m.name||m.title||"").replace(/_/g," ")}</p>
                   <p style={{fontSize:20,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif"}}>{m.values?.[m.values.length-1]?.value ?? "—"}</p>
                 </div>
               )):<p style={{fontSize:12,color:"var(--text3)"}}>No page metrics returned.</p>}
