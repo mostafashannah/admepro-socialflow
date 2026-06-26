@@ -504,7 +504,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.35";
+const APP_VERSION = "beta 2.36";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10673,6 +10673,18 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                 <Field label="Access Token" required><input value={f.credentials?.access_token||""} onChange={e=>scred("access_token",e.target.value)} placeholder="Access token from OAuth" style={inputSt} type="password"/></Field>
               )}
               {(f.app_key==="facebook"||f.app_key==="instagram")&&(<>
+                <Field label="Client" required hint="Which client does this Facebook/Instagram page belong to?">
+                  <select value={f.client_id||""} onChange={e=>{
+                    const c = clients.find(cl=>cl.id===e.target.value);
+                    sf("client_id", c?.id||"");
+                    sf("client_name", c?.name||"");
+                  }} style={inputSt}>
+                    <option value="">— Select a client —</option>
+                    {clients.filter(c=>c.status!=="hidden").map(c=>(
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </Field>
                 <button onClick={connectWithFacebook} disabled={connecting} style={{
                   display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"12px",
                   background:f.app_key==="instagram"?"linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888)":"#1877F2",color:"#fff",border:"none",borderRadius:"var(--rs)",
@@ -10693,32 +10705,13 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                     ))}
                   </div>
                 )}
-                <div style={{padding:14,background:"#1877F211",border:"1px solid #1877F233",borderRadius:"var(--rs)",fontSize:12,color:"#1877F2"}}>
-                  <strong>{f.app_key==="instagram"?"Or paste credentials manually:":"How to get credentials:"}</strong> Go to <em>Meta Business Suite → Settings → Page Access Tokens</em>, or use the <em>Graph API Explorer</em> to generate a long-lived Page Access Token. For Instagram, use your Instagram Business account's Page ID.
-                </div>
-                <Field label="Client" required hint="Which client does this Facebook/Instagram page belong to?">
-                  <select value={f.client_id||""} onChange={e=>{
-                    const c = clients.find(cl=>cl.id===e.target.value);
-                    sf("client_id", c?.id||"");
-                    sf("client_name", c?.name||"");
-                  }} style={inputSt}>
-                    <option value="">— Select a client —</option>
-                    {clients.filter(c=>c.status!=="hidden").map(c=>(
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Page ID" required hint="Numeric Facebook Page ID or Instagram Business account ID">
-                  <input value={f.credentials?.page_id||""} onChange={e=>scred("page_id",e.target.value)} placeholder="e.g. 123456789012345" style={inputSt}/>
-                </Field>
-                <Field label="Page Access Token" required>
-                  <input value={f.credentials?.access_token||""} onChange={e=>scred("access_token",e.target.value)} placeholder="Long-lived Page Access Token" style={inputSt} type="password"/>
-                </Field>
-                <Field label="Ad Account ID" hint="Optional — numeric Meta Ads account ID (without the act_ prefix), enables the Meta Insights tab to pull ad spend/CTR/CPC on the client page">
-                  <input value={f.credentials?.ad_account_id||""} onChange={e=>scred("ad_account_id",e.target.value)} placeholder="e.g. 123456789012345" style={inputSt}/>
-                </Field>
+                {metaConnected&&(
+                  <div style={{padding:10,background:"#10b98122",border:"1px solid #10b98155",borderRadius:"var(--rs)",fontSize:12,color:"#10b981",fontWeight:600}}>
+                    Connected{f.credentials?.page_id?` — Page ID ${f.credentials.page_id}`:""}
+                  </div>
+                )}
                 {!metaConnected&&(
-                  <p style={{fontSize:11,color:"#ef4444"}}>Connect with {f.app_key==="instagram"?"Instagram":"Facebook"} (or paste a Page ID + Access Token) and pick a Client before you can continue — otherwise messages will never reach this integration.</p>
+                  <p style={{fontSize:11,color:"#ef4444"}}>Pick a Client and connect with {f.app_key==="instagram"?"Instagram":"Facebook"} before you can continue — otherwise messages will never reach this integration.</p>
                 )}
               </>)}
             </div>
