@@ -506,7 +506,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.50";
+const APP_VERSION = "beta 2.51";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -904,7 +904,10 @@ async function setupPushSubscription(userEmail) {
 }
 
 async function publishPost(post, integration) {
-  const creds = parseJ(integration.credentials||"{}");
+  // api.php auto-decodes JSON-looking string columns server-side, so credentials
+  // can arrive already as an object — parseJ()/JSON.parse() on an object throws
+  // and silently falls back to {}, wiping out page_id/access_token.
+  const creds = typeof integration.credentials==="string" ? parseJ(integration.credentials,{}) : (integration.credentials||{});
   const r = await fetch(PUBLISH_ENDPOINT, {
     method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({
@@ -7323,7 +7326,10 @@ function MetaInsightsTab({client, integrations}) {
     const results = {};
     const problems = [];
     for (const integ of matches) {
-      const creds = parseJ(integ.credentials||"{}", {});
+      // api.php auto-decodes JSON-looking string columns server-side, so credentials
+      // can arrive already as an object — parseJ()/JSON.parse() on an object throws
+      // and silently falls back to {}, wiping out page_id/access_token.
+      const creds = typeof integ.credentials==="string" ? parseJ(integ.credentials,{}) : (integ.credentials||{});
       if (!creds.page_id || !creds.access_token) {
         problems.push(`${integ.app_key}: missing ${!creds.page_id?"page_id":"access_token"} — reconnect this integration in Settings → Integrations.`);
         continue;
