@@ -28,8 +28,13 @@ if (!$page_id || !$access_token) {
     exit;
 }
 
+// Caller picks a date range (last 30 days / last 3 months / custom) on the frontend
+// and sends it as unix-second epochs — default to the last 30 days if not given.
+$until = !empty($data["until"]) ? (int)$data["until"] : time();
+$since = !empty($data["since"]) ? (int)$data["since"] : ($until - 30 * 86400);
+
 $v = "v19.0";
-$out = ["platform" => $platform, "fetched_at" => date('c')];
+$out = ["platform" => $platform, "fetched_at" => date('c'), "since" => $since, "until" => $until];
 
 function graph_get($url, $params) {
     $qs = http_build_query($params);
@@ -45,7 +50,8 @@ if ($platform === "facebook") {
     [$code, $resp] = graph_get("https://graph.facebook.com/{$v}/{$page_id}/insights", [
         "metric"       => "page_impressions,page_engaged_users,page_fans,page_post_engagements,page_views_total",
         "period"       => "day",
-        "date_preset"  => "last_30d",
+        "since"        => $since,
+        "until"        => $until,
         "access_token" => $access_token,
     ]);
     $out["page_insights"] = $code === 200 ? $resp["data"] ?? [] : ["error" => $resp];
@@ -56,13 +62,6 @@ if ($platform === "instagram") {
     // graph.facebook.com rejects them with "Cannot parse access token". Page-linked
     // Instagram tokens (old-style) still use graph.facebook.com as before.
     $ig_host = str_starts_with($access_token, 'IGAA') ? 'graph.instagram.com' : 'graph.facebook.com';
-
-    // Without since/until, Graph API's default window for period=day is undocumented
-    // and inconsistent between calls (observed: reach returned only the last 2 days
-    // while total_value metrics covered a much longer span) — pin both calls to the
-    // exact same explicit 30-day window so the numbers are actually comparable.
-    $until = time();
-    $since = $until - 30 * 86400;
 
     // follower_count is a snapshot (not additive — summing it across days is
     // meaningless), so it stays a time-series call and we take the latest day's value.
@@ -103,9 +102,11 @@ if ($platform === "instagram") {
 }
 
 if ($ad_account_id) {
+    // Ads Insights uses date strings (YYYY-MM-DD) inside a time_range object, not
+    // unix-second since/until like the other two endpoints.
     [$code, $resp] = graph_get("https://graph.facebook.com/{$v}/act_{$ad_account_id}/insights", [
         "fields"       => "spend,impressions,clicks,ctr,cpc,cpm,reach,actions",
-        "date_preset"  => "last_30d",
+        "time_range"   => json_encode(["since" => date('Y-m-d', $since), "until" => date('Y-m-d', $until)]),
         "access_token" => $access_token,
     ]);
     $out["ads_insights"] = $code === 200 ? $resp["data"] ?? [] : ["error" => $resp];

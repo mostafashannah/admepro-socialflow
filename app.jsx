@@ -506,7 +506,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.56";
+const APP_VERSION = "beta 2.57";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7340,8 +7340,22 @@ function MetaInsightsTab({client, integrations}) {
   const [error, setError] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState(null);
+  const [range, setRange] = useState("30d"); // "30d" | "3m" | "custom"
+  const [customSince, setCustomSince] = useState("");
+  const [customUntil, setCustomUntil] = useState("");
 
-  const fetchAll = async () => {
+  const rangeEpochs = (r, cs, cu) => {
+    const until = Math.floor(Date.now()/1000);
+    if (r==="3m") return {since: until - 90*86400, until};
+    if (r==="custom" && cs && cu) {
+      return {since: Math.floor(new Date(cs+"T00:00:00Z").getTime()/1000), until: Math.floor(new Date(cu+"T23:59:59Z").getTime()/1000)};
+    }
+    return {since: until - 30*86400, until};
+  };
+
+  const fetchAll = async (overrideRange) => {
+    const r = overrideRange || range;
+    const {since, until} = rangeEpochs(r, customSince, customUntil);
     setLoading(true); setError("");
     const results = {};
     const problems = [];
@@ -7355,15 +7369,16 @@ function MetaInsightsTab({client, integrations}) {
         continue;
       }
       try {
-        const r = await fetch(META_INSIGHTS_ENDPOINT, {
+        const r2 = await fetch(META_INSIGHTS_ENDPOINT, {
           method:"POST", headers:{"Content-Type":"application/json"},
           body: JSON.stringify({
             platform: integ.app_key, page_id: creds.page_id,
             access_token: creds.access_token, ad_account_id: creds.ad_account_id||"",
+            since, until,
           }),
         });
-        const d = await r.json();
-        if (!r.ok) throw new Error(d.error||`Failed to fetch ${integ.app_key} insights`);
+        const d = await r2.json();
+        if (!r2.ok) throw new Error(d.error||`Failed to fetch ${integ.app_key} insights`);
         results[integ.id] = d;
       } catch(e) { problems.push(`${integ.app_key}: ${e.message||"request failed"}`); }
     }
@@ -7372,6 +7387,18 @@ function MetaInsightsTab({client, integrations}) {
     else if (!Object.keys(results).length) setError("No data returned — check the connected integration still has a valid access token.");
     setLoading(false);
   };
+
+  useEffect(()=>{
+    if (matches.length) fetchAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client.id]);
+
+  const onRangeSelect = (val) => {
+    setRange(val);
+    if (val!=="custom") fetchAll(val);
+  };
+
+  const rangeLabel = range==="3m" ? "last 3 months" : (range==="custom" && customSince && customUntil) ? `${customSince} to ${customUntil}` : "last 30 days";
 
   const generateAnalysis = async () => {
     setAnalyzing(true);
@@ -7382,7 +7409,7 @@ function MetaInsightsTab({client, integrations}) {
         return `Platform: ${integ.app_key}\nPage insights: ${JSON.stringify(d.page_insights||d.ig_insights||[])}\nAds insights: ${JSON.stringify(d.ads_insights||[])}`;
       }).filter(Boolean).join("\n\n");
 
-      const prompt = `You are a paid social + organic social media analyst for an agency. Here is the last 30 days of live Meta (Facebook/Instagram/Ads) data for client "${client.name}":
+      const prompt = `You are a paid social + organic social media analyst for an agency. Here is the ${rangeLabel} of live Meta (Facebook/Instagram/Ads) data for client "${client.name}":
 
 ${summary}
 
@@ -7408,8 +7435,24 @@ No markdown, no explanation, just the JSON array.`;
           <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:18,fontWeight:800}}>Meta Insights</h3>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:3}}>Live Facebook/Instagram/Ads performance for {client.name}, with AI-generated do's and don'ts</p>
         </div>
-        <div style={{display:"flex",gap:8}}>
-          <Btn variant="secondary" onClick={fetchAll} disabled={loading||!matches.length}>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+          <select value={range} onChange={e=>onRangeSelect(e.target.value)} disabled={loading||!matches.length}
+            style={{height:38,padding:"0 10px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)",fontSize:13,fontWeight:600}}>
+            <option value="30d">Last 30 days</option>
+            <option value="3m">Last 3 months</option>
+            <option value="custom">Custom range</option>
+          </select>
+          {range==="custom"&&(
+            <>
+              <input type="date" value={customSince} onChange={e=>setCustomSince(e.target.value)}
+                style={{height:38,padding:"0 10px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)",fontSize:13}}/>
+              <span style={{fontSize:13,color:"var(--text3)"}}>to</span>
+              <input type="date" value={customUntil} onChange={e=>setCustomUntil(e.target.value)}
+                style={{height:38,padding:"0 10px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)",fontSize:13}}/>
+              <Btn variant="secondary" onClick={()=>fetchAll("custom")} disabled={loading||!customSince||!customUntil}>Apply</Btn>
+            </>
+          )}
+          <Btn variant="secondary" onClick={()=>fetchAll()} disabled={loading||!matches.length}>
             {loading?<><Spinner size={14}/> Fetching…</>:<><Ico d={Icons.refresh||Icons.sync||Icons.clock} size={15}/> Refresh Data</>}
           </Btn>
           <Btn onClick={generateAnalysis} disabled={analyzing||!Object.keys(data).length}>
@@ -7440,7 +7483,7 @@ No markdown, no explanation, just the JSON array.`;
         const ads = Array.isArray(d.ads_insights)?d.ads_insights:[];
         return (
           <div key={integ.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:18}}>
-            <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:14}}>{integ.app_key==="instagram"?"Instagram":"Facebook"} — last 30 days</p>
+            <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:14}}>{integ.app_key==="instagram"?"Instagram":"Facebook"} — {rangeLabel}</p>
             {(pageErr||igErr||adsErr)&&(
               <p style={{fontSize:12,color:"#ef4444",marginBottom:10}}>
                 {[pageErr,igErr,adsErr].filter(Boolean).map(e=>e?.message||JSON.stringify(e)).join("  •  ")}
