@@ -506,7 +506,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.60";
+const APP_VERSION = "beta 2.61";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7436,9 +7436,12 @@ function MetaInsightsTab({client, integrations}) {
   const [error, setError] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState(null);
-  const [range, setRange] = useState("30d"); // today|yesterday|last_week|30d|this_month|last_month|3m|custom
+  const [range, setRange] = useState("30d"); // today|yesterday|last_week|30d|this_month|last_month|3m|180d|1y|custom
   const [customSince, setCustomSince] = useState("");
   const [customUntil, setCustomUntil] = useState("");
+  const [compareMode, setCompareMode] = useState("none"); // none|day|week|month
+  const [compareData, setCompareData] = useState({}); // {integId:{a,b,aLabel,bLabel}}
+  const [comparing, setComparing] = useState(false);
 
   const rangeEpochs = (r, cs, cu) => {
     const now = new Date();
@@ -7458,11 +7461,71 @@ function MetaInsightsTab({client, integrations}) {
       return {since: Math.floor(lastMonthStart.getTime()/1000), until: Math.floor(lastMonthEnd.getTime()/1000)};
     }
     if (r==="3m") return {since: until - 90*86400, until};
+    if (r==="180d") return {since: until - 180*86400, until};
+    if (r==="1y") return {since: until - 365*86400, until};
     if (r==="custom" && cs && cu) {
       return {since: Math.floor(new Date(cs+"T00:00:00Z").getTime()/1000), until: Math.floor(new Date(cu+"T23:59:59Z").getTime()/1000)};
     }
     return {since: until - 30*86400, until};
   };
+
+  // ── Period-over-period comparison (today vs yesterday / this week vs last
+  // week / this month vs last month) — fetched as two separate windows since
+  // the Graph API has no built-in "compare to previous period" param.
+  const compareWindows = (mode) => {
+    const now = new Date();
+    const until = Math.floor(now.getTime()/1000);
+    const startOfDay = d => Math.floor(new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime()/1000);
+    const endOfDay = d => Math.floor(new Date(d.getFullYear(),d.getMonth(),d.getDate(),23,59,59).getTime()/1000);
+    if (mode==="day") {
+      const y = new Date(now); y.setDate(y.getDate()-1);
+      return {aSince:startOfDay(now), aUntil:until, bSince:startOfDay(y), bUntil:endOfDay(y), aLabel:"Today", bLabel:"Yesterday"};
+    }
+    if (mode==="week") {
+      return {aSince: until-7*86400, aUntil: until, bSince: until-14*86400, bUntil: until-7*86400, aLabel:"This week", bLabel:"Last week"};
+    }
+    if (mode==="month") {
+      const thisMonthStart = Math.floor(new Date(now.getFullYear(),now.getMonth(),1).getTime()/1000);
+      const lastMonthEnd = new Date(now.getFullYear(),now.getMonth(),1,0,0,-1);
+      const lastMonthStart = new Date(lastMonthEnd.getFullYear(),lastMonthEnd.getMonth(),1);
+      return {aSince:thisMonthStart, aUntil:until, bSince:Math.floor(lastMonthStart.getTime()/1000), bUntil:Math.floor(lastMonthEnd.getTime()/1000), aLabel:"This month", bLabel:"Last month"};
+    }
+    return null;
+  };
+
+  const fetchOneWindow = async (since, until) => {
+    const results = {};
+    for (const integ of matches) {
+      const creds = typeof integ.credentials==="string" ? parseJ(integ.credentials,{}) : (integ.credentials||{});
+      if (!creds.page_id || !creds.access_token) continue;
+      try {
+        const r2 = await fetch(META_INSIGHTS_ENDPOINT, {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({platform: integ.app_key, page_id: creds.page_id, access_token: creds.access_token, ad_account_id: creds.ad_account_id||"", since, until}),
+        });
+        const d = await r2.json();
+        if (r2.ok) results[integ.id] = d;
+      } catch(e) {}
+    }
+    return results;
+  };
+
+  const fetchCompare = async (mode) => {
+    if (mode==="none") { setCompareData({}); return; }
+    const w = compareWindows(mode);
+    if (!w || !matches.length) return;
+    setComparing(true);
+    const [a,b] = await Promise.all([fetchOneWindow(w.aSince,w.aUntil), fetchOneWindow(w.bSince,w.bUntil)]);
+    const merged = {};
+    matches.forEach(integ=>{ merged[integ.id] = {a:a[integ.id], b:b[integ.id], aLabel:w.aLabel, bLabel:w.bLabel}; });
+    setCompareData(merged);
+    setComparing(false);
+  };
+
+  const onCompareSelect = (val) => { setCompareMode(val); fetchCompare(val); };
+
+  const extractRows = (d) => d ? [...(Array.isArray(d.page_insights)?d.page_insights:[]), ...(Array.isArray(d.ig_insights)?d.ig_insights:[])] : [];
+  const metricValue = (rows, name) => { const m = rows.find(x=>x.name===name); return m?.values?.[m.values.length-1]?.value ?? 0; };
 
   const fetchAll = async (overrideRange) => {
     const r = overrideRange || range;
@@ -7509,7 +7572,7 @@ function MetaInsightsTab({client, integrations}) {
     if (val!=="custom") fetchAll(val);
   };
 
-  const RANGE_LABELS = {today:"today", yesterday:"yesterday", last_week:"last 7 days", "30d":"last 30 days", this_month:"this month", last_month:"last month", "3m":"last 3 months"};
+  const RANGE_LABELS = {today:"today", yesterday:"yesterday", last_week:"last 7 days", "30d":"last 30 days", this_month:"this month", last_month:"last month", "3m":"last 3 months", "180d":"last 180 days", "1y":"last year"};
   const rangeLabel = (range==="custom" && customSince && customUntil) ? `${customSince} to ${customUntil}` : (RANGE_LABELS[range]||"last 30 days");
 
   const generateAnalysis = async () => {
@@ -7557,6 +7620,8 @@ No markdown, no explanation, just the JSON array.`;
             <option value="this_month">This month</option>
             <option value="last_month">Last month</option>
             <option value="3m">Last 3 months</option>
+            <option value="180d">Last 180 days</option>
+            <option value="1y">Last year</option>
             <option value="custom">Custom range</option>
           </select>
           {range==="custom"&&(
@@ -7569,6 +7634,13 @@ No markdown, no explanation, just the JSON array.`;
               <Btn variant="secondary" onClick={()=>fetchAll("custom")} disabled={loading||!customSince||!customUntil}>Apply</Btn>
             </>
           )}
+          <select value={compareMode} onChange={e=>onCompareSelect(e.target.value)} disabled={comparing||!matches.length}
+            style={{height:38,padding:"0 10px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)",fontSize:13,fontWeight:600}}>
+            <option value="none">No comparison</option>
+            <option value="day">Today vs Yesterday</option>
+            <option value="week">This week vs Last week</option>
+            <option value="month">This month vs Last month</option>
+          </select>
           <Btn variant="secondary" onClick={()=>fetchAll()} disabled={loading||!matches.length}>
             {loading?<><Spinner size={14}/> Fetching…</>:<><Ico d={Icons.refresh||Icons.sync||Icons.clock} size={15}/> Refresh Data</>}
           </Btn>
@@ -7627,6 +7699,44 @@ No markdown, no explanation, just the JSON array.`;
           </div>
         );
       })}
+
+      {compareMode!=="none"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>Comparison</p>
+          {comparing&&(
+            <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text2)"}}><Spinner size={14}/> Loading comparison…</div>
+          )}
+          {!comparing&&matches.map(integ=>{
+            const cd = compareData[integ.id];
+            if (!cd) return null;
+            const rowsA = extractRows(cd.a), rowsB = extractRows(cd.b);
+            const names = Array.from(new Set([...rowsA.map(r=>r.name), ...rowsB.map(r=>r.name)])).filter(Boolean);
+            if (!names.length) return null;
+            return (
+              <div key={integ.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:18}}>
+                <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:14}}>{integ.app_key==="instagram"?"Instagram":"Facebook"} — {cd.aLabel} vs {cd.bLabel}</p>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(140px,100%),1fr))",gap:16}}>
+                  {names.map(name=>{
+                    const va = metricValue(rowsA,name), vb = metricValue(rowsB,name);
+                    const max = Math.max(va,vb,1);
+                    const delta = vb>0 ? Math.round((va-vb)/vb*100) : (va>0?100:0);
+                    return (
+                      <div key={name} style={{display:"flex",flexDirection:"column",gap:6}}>
+                        <p style={{fontSize:9,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",textAlign:"center"}}>{INSIGHTS_METRIC_LABELS[name]||name.replace(/_/g," ")}</p>
+                        <div style={{display:"flex",gap:6}}>
+                          <MiniBar value={va} max={max} color="var(--accent)" label={cd.aLabel}/>
+                          <MiniBar value={vb} max={max} color="#6b7280" label={cd.bLabel}/>
+                        </div>
+                        <span style={{fontSize:11,fontWeight:700,textAlign:"center",color:delta>=0?"#10b981":"#ef4444"}}>{delta>=0?"+":""}{delta}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {analysis&&(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
