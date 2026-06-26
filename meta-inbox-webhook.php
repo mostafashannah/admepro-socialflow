@@ -49,7 +49,6 @@ if (!$signatureValid) {
 }
 
 $body = json_decode($raw, true);
-error_log('meta-inbox-webhook payload: ' . $raw);
 http_response_code(200); // ack immediately, Meta requires a fast 200
 echo 'EVENT_RECEIVED';
 
@@ -95,7 +94,6 @@ try {
         $pageId = $entry['id'] ?? '';
         if (!$pageId) continue;
         $client = findClientByPageId($pdo, $pageId);
-        error_log('meta-inbox-webhook match for pageId=' . $pageId . ': ' . ($client ? json_encode($client) : 'NO MATCH'));
         if (!$client) continue; // page not connected to any client — ignore
 
         foreach (($entry['messaging'] ?? []) as $m) {
@@ -103,7 +101,6 @@ try {
             $senderId = $m['sender']['id'] ?? null;
             if ($text && $senderId) {
                 storeMessage($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $text);
-                error_log('meta-inbox-webhook stored ' . $channel . ' message for client_id=' . $client['client_id']);
             }
         }
 
@@ -114,7 +111,6 @@ try {
                 $senderId = $c['value']['sender']['id'] ?? null;
                 if ($text && $senderId) {
                     storeMessage($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, $text);
-                    error_log('meta-inbox-webhook stored instagram message for client_id=' . $client['client_id']);
                 }
             }
         }
