@@ -47,6 +47,18 @@ function proTools() {
             'input_schema' => ['type' => 'object', 'properties' => new stdClass(), 'required' => []],
         ],
         [
+            'name' => 'list_team_members',
+            'description' => 'List/search the agency\'s team members (name, role, department, status). Use this whenever asked about a colleague by name, who works at the agency, or who holds a given role.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'name' => ['type' => 'string', 'description' => 'Partial name match, e.g. "Monay" to find "Monay Khalid"'],
+                    'role' => ['type' => 'string', 'description' => 'Exact role filter, e.g. admin, account_manager, content_creator, graphic_designer, accountant'],
+                ],
+                'required' => [],
+            ],
+        ],
+        [
             'name' => 'search_tasks',
             'description' => 'Search posts/tasks. All filters are optional and combinable: query matches the task title, stage filters by exact pipeline stage, client_name matches the client (partial match ok), assigned_to matches the exact team member name. Returns up to 15 results.',
             'input_schema' => [
@@ -78,6 +90,16 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         }
         return ['error' => 'You do not have permission to list agency clients. Ask about your own assigned tasks instead.'];
+    }
+    if ($name === 'list_team_members') {
+        $sql = "SELECT name, role, department, status FROM team_members WHERE status = 'active'";
+        $params = [];
+        if (!empty($input['name'])) { $sql .= " AND name LIKE :n"; $params[':n'] = '%' . $input['name'] . '%'; }
+        if (!empty($input['role'])) { $sql .= " AND role = :r"; $params[':r'] = $input['role']; }
+        $sql .= " ORDER BY name ASC LIMIT 50";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
     if ($name === 'search_tasks') {
         $sql = "SELECT title, stage, scheduled_date, client_name FROM posts WHERE 1=1";
