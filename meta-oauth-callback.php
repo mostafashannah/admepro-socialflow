@@ -108,8 +108,21 @@ if ($err) {
     finish(false, ['error' => 'Could not fetch Instagram account info: ' . $err]);
 }
 
+$accountId = $meResp['id'] ?? $igUserId;
+
+// Step 4: subscribe this account to webhook delivery. App-level webhook config
+// (Callback URL + Verify Token + field subscription) only registers the app with
+// Meta — each connected account must separately opt in to receive events, or no
+// webhook POSTs will ever arrive for it.
+if ($accountId) {
+    ig_post("https://graph.instagram.com/v21.0/{$accountId}/subscribed_apps", [
+        'subscribed_fields' => 'messages',
+        'access_token'      => $longToken,
+    ]);
+}
+
 finish(true, ['accounts' => [[
-    'id'           => $meResp['id'] ?? $igUserId,
+    'id'           => $accountId,
     'username'     => $meResp['username'] ?? '',
     'account_type' => $meResp['account_type'] ?? '',
     'access_token' => $longToken,

@@ -27,6 +27,24 @@ function fb_get($url) {
     return [$data, null];
 }
 
+function fb_post($url, $fields) {
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => $fields,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_TIMEOUT        => 20,
+    ]);
+    $res = curl_exec($ch);
+    $err = curl_error($ch);
+    curl_close($ch);
+    if ($err) return [null, "cURL error: {$err}"];
+    $data = json_decode($res, true);
+    if (isset($data['error'])) return [null, $data['error']['message'] ?? 'Unknown Graph API error'];
+    return [$data, null];
+}
+
 function finish($ok, $payload) {
     header('Content-Type: text/html; charset=UTF-8');
     $json = json_encode(array_merge(['type' => 'fb_oauth_result', 'ok' => $ok], $payload));
@@ -87,8 +105,16 @@ if ($err) {
     finish(false, ['error' => 'Could not list Facebook Pages: ' . $err]);
 }
 
+// Step 4: subscribe each Page to webhook delivery. App-level webhook config
+// (Callback URL + Verify Token + field subscription) only registers the app with
+// Meta — each Page must separately opt in to receive events, or no webhook
+// POSTs will ever arrive for it.
 $pages = [];
 foreach (($pagesResp['data'] ?? []) as $p) {
+    fb_post("https://graph.facebook.com/{$v}/{$p['id']}/subscribed_apps", [
+        'subscribed_fields' => 'messages',
+        'access_token'      => $p['access_token'],
+    ]);
     $pages[] = ['id' => $p['id'], 'name' => $p['name'], 'access_token' => $p['access_token']];
 }
 
