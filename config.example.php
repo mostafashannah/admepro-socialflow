@@ -36,6 +36,15 @@ define('META_APP_ID',                'your_meta_app_id');
 define('META_APP_SECRET',            'your_meta_app_secret');
 define('META_WEBHOOK_VERIFY_TOKEN',  'choose_any_random_string');
 
+// Required for the "Connect with Facebook" button to grant Messenger send/receive
+// permission (pages_messaging). Create one at developers.facebook.com → your app →
+// Use Cases → Facebook Login for Business → Configurations → Create configuration:
+// asset type "Page", permissions pages_show_list + pages_read_engagement +
+// pages_manage_posts + pages_manage_metadata + pages_messaging + read_insights +
+// business_management. Copy the resulting Configuration ID here. Leave undefined to
+// fall back to the old scope-list dialog (Page posting/insights only, no messaging).
+define('META_FB_LOGIN_CONFIG_ID',    '');
+
 // Instagram API with Instagram login — the "Connect with Instagram" button
 // in Settings → Integrations (meta-oauth-start.php / meta-oauth-callback.php).
 // This is a SEPARATE product/credential from the Meta App above — get it from
