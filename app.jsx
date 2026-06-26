@@ -504,7 +504,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.34";
+const APP_VERSION = "beta 2.35";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10502,6 +10502,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
   const categoryActions = INTEGRATION_ACTIONS[selectedApp?.category||"automation"]||INTEGRATION_ACTIONS.automation;
   const selectedAction = categoryActions.find(a=>a.key===f.action);
   const isSocialPublish = f.app_key==="facebook"||f.app_key==="instagram";
+  const metaConnected = !isSocialPublish || !!(f.credentials?.page_id && f.credentials?.access_token && f.client_id);
 
   const applyTemplate = (tpl) => {
     setF(p=>({...p, app_key:tpl.app_key, trigger:tpl.trigger, action:tpl.action, name:tpl.title, config:tpl.config||{}}));
@@ -10716,6 +10717,9 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                 <Field label="Ad Account ID" hint="Optional — numeric Meta Ads account ID (without the act_ prefix), enables the Meta Insights tab to pull ad spend/CTR/CPC on the client page">
                   <input value={f.credentials?.ad_account_id||""} onChange={e=>scred("ad_account_id",e.target.value)} placeholder="e.g. 123456789012345" style={inputSt}/>
                 </Field>
+                {!metaConnected&&(
+                  <p style={{fontSize:11,color:"#ef4444"}}>Connect with {f.app_key==="instagram"?"Instagram":"Facebook"} (or paste a Page ID + Access Token) and pick a Client before you can continue — otherwise messages will never reach this integration.</p>
+                )}
               </>)}
             </div>
           )}
@@ -10888,13 +10892,13 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
         <div style={{padding:"14px 24px",borderTop:"1px solid var(--border)",display:"flex",gap:10,alignItems:"center",background:"var(--surface2)"}}>
           {step>1&&<Btn variant="secondary" onClick={()=>setStep(s=>(s===5&&isSocialPublish)?2:s-1)} style={{flex:1}}>← Back</Btn>}
           {step<TOTAL_STEPS&&(
-            <Btn onClick={()=>setStep(s=>(s===2&&isSocialPublish)?5:s+1)} disabled={step===1&&!f.app_key||(!isSocialPublish&&step===3&&!f.trigger)||(!isSocialPublish&&step===4&&!f.action)} style={{flex:2}}>
+            <Btn onClick={()=>setStep(s=>(s===2&&isSocialPublish)?5:s+1)} disabled={step===1&&!f.app_key||(!isSocialPublish&&step===3&&!f.trigger)||(!isSocialPublish&&step===4&&!f.action)||(step===2&&isSocialPublish&&!metaConnected)} style={{flex:2}}>
               Next →
             </Btn>
           )}
           {step===TOTAL_STEPS&&(<>
             <Btn variant="secondary" onClick={()=>handleSave(false)} disabled={saving} style={{flex:1}}>Save (Inactive)</Btn>
-            <Btn onClick={()=>handleSave(true)} disabled={saving||(!isSocialPublish&&(!f.trigger||!f.action))} style={{flex:2}}>
+            <Btn onClick={()=>handleSave(true)} disabled={saving||(!isSocialPublish&&(!f.trigger||!f.action))||(isSocialPublish&&!metaConnected)} style={{flex:2}}>
               {saving?<><Spinner size={14}/> Saving…</>:<><Ico d={Icons.zap2} size={15}/> Save & Enable</>}
             </Btn>
           </>)}
