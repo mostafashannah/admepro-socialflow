@@ -57,20 +57,31 @@ if ($platform === "instagram") {
     // Instagram tokens (old-style) still use graph.facebook.com as before.
     $ig_host = str_starts_with($access_token, 'IGAA') ? 'graph.instagram.com' : 'graph.facebook.com';
 
-    // reach/follower_count are time-series metrics (default metric_type) — they come
-    // back as a per-day "values" array. profile_views/accounts_engaged/total_interactions/
-    // likes/comments/shares/saves/replies are "total_value" metrics — they need
-    // metric_type=total_value and come back as a single total_value.value instead of
-    // a values array. Mixing the two in one request silently drops the total_value ones.
+    // Without since/until, Graph API's default window for period=day is undocumented
+    // and inconsistent between calls (observed: reach returned only the last 2 days
+    // while total_value metrics covered a much longer span) — pin both calls to the
+    // exact same explicit 30-day window so the numbers are actually comparable.
+    $until = time();
+    $since = $until - 30 * 86400;
+
+    // follower_count is a snapshot (not additive — summing it across days is
+    // meaningless), so it stays a time-series call and we take the latest day's value.
     [$code1, $resp1] = graph_get("https://{$ig_host}/{$v}/{$page_id}/insights", [
-        "metric"       => "reach,follower_count",
+        "metric"       => "follower_count",
         "period"       => "day",
+        "since"        => $since,
+        "until"        => $until,
         "access_token" => $access_token,
     ]);
+    // reach and the rest are additive-eligible — metric_type=total_value aggregates
+    // them (de-duplicated for reach) into one true total over the 30-day window,
+    // instead of a misleading single-day or summed-with-overcounting figure.
     [$code2, $resp2] = graph_get("https://{$ig_host}/{$v}/{$page_id}/insights", [
-        "metric"       => "profile_views,accounts_engaged,total_interactions,likes,comments,shares,saves,replies",
+        "metric"       => "reach,profile_views,accounts_engaged,total_interactions,likes,comments,shares,saves,replies",
         "period"       => "day",
         "metric_type"  => "total_value",
+        "since"        => $since,
+        "until"        => $until,
         "access_token" => $access_token,
     ]);
 
