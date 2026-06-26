@@ -506,7 +506,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.66";
+const APP_VERSION = "beta 2.67";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1531,8 +1531,8 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
 // ════════════════════════════════════════════════════════════════
 // TINY COMPONENTS
 // ════════════════════════════════════════════════════════════════
-const Ico = ({d,size=18,sw=1.6,fill="none",stroke="currentColor"}) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}>
+const Ico = ({d,size=18,sw=1.6,fill="none",stroke="currentColor",fillRule}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" fillRule={fillRule} clipRule={fillRule} style={{flexShrink:0}}>
     {(Array.isArray(d)?d:[d]).map((p,i)=><path key={i} d={p}/>)}
   </svg>
 );
@@ -1623,6 +1623,11 @@ const Icons = {
   brain: ["M9.5 2a2.5 2.5 0 0 0-2.5 2.5v.5A2.5 2.5 0 0 0 4.5 7.5 2.5 2.5 0 0 0 3 12a2.5 2.5 0 0 0 1.5 4.5 2.5 2.5 0 0 0 2.5 2.5 2.5 2.5 0 0 0 2.5 2.5h0V4.5A2.5 2.5 0 0 0 9.5 2z","M14.5 2a2.5 2.5 0 0 1 2.5 2.5v.5a2.5 2.5 0 0 1 2.5 2.5 2.5 2.5 0 0 1-1.5 4.5 2.5 2.5 0 0 1-2.5 4.5 2.5 2.5 0 0 1-2.5 2.5h0V4.5A2.5 2.5 0 0 1 14.5 2z","M9.5 9.5h5","M9.5 14.5h5"],
   paperclip:["M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"],
   chat: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
+  // ── Brand glyphs (filled — render with fill=color, stroke=none via ChannelIcon) ──
+  fbBrand: "M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07c0 6.02 4.39 11.01 10.13 11.93v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.96.93-1.96 1.89v2.25h3.33l-.53 3.49h-2.8V24C19.61 23.08 24 18.09 24 12.07z",
+  igBrand: "M12 2.16c3.2 0 3.58.01 4.85.07 1.17.05 1.8.25 2.23.41.56.22.96.48 1.38.9.42.42.68.82.9 1.38.16.42.36 1.06.41 2.23.06 1.27.07 1.65.07 4.85s-.01 3.58-.07 4.85c-.05 1.17-.25 1.8-.41 2.23-.22.56-.48.96-.9 1.38-.42.42-.82.68-1.38.9-.42.16-1.06.36-2.23.41-1.27.06-1.65.07-4.85.07s-3.58-.01-4.85-.07c-1.17-.05-1.8-.25-2.23-.41-.56-.22-.96-.48-1.38-.9-.42-.42-.68-.82-.9-1.38-.16-.42-.36-1.06-.41-2.23-.06-1.27-.07-1.65-.07-4.85s.01-3.58.07-4.85c.05-1.17.25-1.8.41-2.23.22-.56.48-.96.9-1.38.42-.42.82-.68 1.38-.9.42-.16 1.06-.36 2.23-.41 1.27-.06 1.65-.07 4.85-.07M12 0C8.74 0 8.33.01 7.05.07 5.78.13 4.9.33 4.14.63c-.79.31-1.46.72-2.13 1.38C1.35 2.68.94 3.35.63 4.14.33 4.9.13 5.78.07 7.05.01 8.33 0 8.74 0 12s.01 3.67.07 4.95c.06 1.27.26 2.15.56 2.91.31.79.72 1.46 1.38 2.13.67.66 1.34 1.07 2.13 1.38.76.3 1.64.5 2.91.56C8.33 23.99 8.74 24 12 24s3.67-.01 4.95-.07c1.27-.06 2.15-.26 2.91-.56.79-.31 1.46-.72 2.13-1.38.66-.67 1.07-1.34 1.38-2.13.3-.76.5-1.64.56-2.91.06-1.28.07-1.69.07-4.95s-.01-3.67-.07-4.95c-.06-1.27-.26-2.15-.56-2.91-.31-.79-.72-1.46-1.38-2.13C21.32 1.35 20.65.94 19.86.63c-.76-.3-1.64-.5-2.91-.56C15.67.01 15.26 0 12 0z M12 5.84A6.16 6.16 0 1 0 12 18.16 6.16 6.16 0 0 0 12 5.84M12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8z M18.41 4.15a1.44 1.44 0 1 0 0 2.88 1.44 1.44 0 0 0 0-2.88z",
+  msgrBrand: "M12 0C5.24 0 0 4.95 0 11.64c0 3.5 1.44 6.53 3.77 8.62.2.18.31.43.32.7l.07 2.13c.02.68.72 1.12 1.34.85l2.38-1.05c.21-.09.44-.11.66-.05 1.09.3 2.26.46 3.46.46 6.76 0 12-4.95 12-11.64C24 4.95 18.76 0 12 0zm7.2 8.94l-3.52 5.59c-.56.89-1.76 1.11-2.6.48l-2.8-2.1a.72.72 0 0 0-.86 0l-3.79 2.88c-.5.38-1.16-.22-.82-.76l3.52-5.59c.56-.89 1.76-1.11 2.6-.48l2.8 2.1c.26.19.6.19.86 0l3.79-2.88c.5-.38 1.16.22.82.76z",
+  waBrand: "M.06 24l1.69-6.16a11.87 11.87 0 0 1-1.59-5.95C.16 5.34 5.5 0 12.06 0a11.82 11.82 0 0 1 8.41 3.49 11.82 11.82 0 0 1 3.48 8.41c0 6.56-5.34 11.9-11.9 11.9a11.9 11.9 0 0 1-5.69-1.45L.06 24zm6.6-3.8c1.68.99 3.28 1.59 5.4 1.59 5.45 0 9.89-4.43 9.89-9.89 0-5.45-4.44-9.89-9.89-9.89-5.45 0-9.89 4.44-9.89 9.89 0 2.22.65 3.89 1.74 5.64l-1 3.66 3.65-1zm11.39-5.55c-.07-.12-.27-.2-.57-.35-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.65.07-.3-.15-1.25-.46-2.39-1.47-.88-.79-1.48-1.76-1.65-2.06-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.07-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.51-.17-.01-.37-.01-.57-.01-.2 0-.52.07-.8.37-.27.3-1.04 1.02-1.04 2.48 0 1.46 1.07 2.88 1.22 3.08.15.2 2.1 3.2 5.08 4.49.71.31 1.26.49 1.69.62.71.23 1.36.19 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.29.17-1.41z",
 };
 
 const Spinner = ({size=24}) => (
@@ -6159,9 +6164,18 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
 // CLIENT INBOX TAB — customer conversations (Messenger/Instagram/WhatsApp)
 // ════════════════════════════════════════════════════════════════
 const INBOX_CHANNEL_MAP = {
-  messenger: {label:"Messenger", icon:Icons.chat, color:"#0084ff"},
-  instagram: {label:"Instagram", icon:Icons.camera, color:"#e1306c"},
-  whatsapp:  {label:"WhatsApp",  icon:Icons.phone, color:"#25d366"},
+  messenger: {label:"Messenger", icon:Icons.msgrBrand, color:"#0084ff", brand:true},
+  instagram: {label:"Instagram", icon:Icons.igBrand,   color:"#e1306c", brand:true},
+  whatsapp:  {label:"WhatsApp",  icon:Icons.waBrand,   color:"#25d366", brand:true},
+};
+// Renders a channel's real platform logo (Messenger/Instagram/WhatsApp) as a
+// filled brand mark in the platform colour, or a fallback chat glyph.
+const ChannelIcon = ({channel, size=14, color}) => {
+  const m = INBOX_CHANNEL_MAP[channel] || {icon:Icons.chat, color:"#888"};
+  const c = color || m.color;
+  return m.brand
+    ? <Ico d={m.icon} size={size} fill={c} stroke="none" fillRule="evenodd"/>
+    : <Ico d={m.icon} size={size} stroke={c}/>;
 };
 function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botSettings, onSaveBotSettings, onApproveDraft, onDismissDraft}) {
   const [selThread, setSelThread] = useState(null); // {channel, customer_id}
@@ -6170,6 +6184,7 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
   const [botPanelOpen, setBotPanelOpen] = useState(false);
   const [editingDraftId, setEditingDraftId] = useState(null);
   const [editingDraftText, setEditingDraftText] = useState("");
+  const [chanFilter, setChanFilter] = useState("all"); // inbox platform filter
 
   const connected = integrations.filter(i=>i.client_id===client.id && i.status==="active" && ["facebook","instagram"].includes(i.app_key));
   const bot = botSettings || {enabled:false, mode:"approve", channels:["instagram","messenger"], brain:""};
@@ -6190,7 +6205,10 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
     })).sort((a,b)=>new Date(b.last.created_at)-new Date(a.last.created_at));
   })();
 
-  const activeThread = selThread ? threads.find(t=>t.channel===selThread.channel&&t.customer_id===selThread.customer_id) : threads[0];
+  // Platforms that actually have conversations — drives the filter chips.
+  const presentChannels = [...new Set(threads.map(t=>t.channel))];
+  const shownThreads = chanFilter==="all" ? threads : threads.filter(t=>t.channel===chanFilter);
+  const activeThread = selThread ? threads.find(t=>t.channel===selThread.channel&&t.customer_id===selThread.customer_id) : shownThreads[0];
 
   const handleSend = async () => {
     if(!reply.trim()||!activeThread) return;
@@ -6263,7 +6281,7 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
                     <button key={ch} onClick={()=>toggleBotChannel(ch)}
                       style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:99,border:`1px solid ${on?meta.color:"var(--border)"}`,
                         background:on?meta.color+"18":"transparent",color:on?meta.color:"var(--text3)",fontSize:12,fontWeight:600,cursor:"pointer"}}>
-                      <Ico d={meta.icon} size={12} stroke={on?meta.color:"var(--text3)"}/>{meta.label}
+                      <ChannelIcon channel={ch} size={13} color={on?meta.color:"var(--text3)"}/>{meta.label}
                     </button>
                   );
                 })}
@@ -6284,19 +6302,35 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
       <div style={{display:"flex",gap:16,minHeight:420}}>
         {/* Thread list */}
         <div style={{width:260,flexShrink:0,border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden",display:"flex",flexDirection:"column"}}>
-          <div style={{padding:"10px 14px",borderBottom:"1px solid var(--border)",background:"var(--surface2)"}}>
-            <p style={{fontSize:12,fontWeight:700,color:"var(--text2)"}}>{threads.length} conversation{threads.length!==1?"s":""}</p>
+          <div style={{padding:"10px 12px",borderBottom:"1px solid var(--border)",background:"var(--surface2)"}}>
+            <p style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:presentChannels.length>1?8:0}}>{shownThreads.length} conversation{shownThreads.length!==1?"s":""}</p>
+            {presentChannels.length>1&&(
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {["all",...presentChannels].map(c=>{
+                  const on = chanFilter===c;
+                  const meta = c==="all" ? {label:"All",color:"var(--accent)"} : (INBOX_CHANNEL_MAP[c]||{label:c,color:"#888"});
+                  return (
+                    <button key={c} onClick={()=>setChanFilter(c)}
+                      style={{display:"flex",alignItems:"center",gap:5,padding:"4px 10px",borderRadius:99,
+                        border:`1px solid ${on?meta.color:"var(--border)"}`,
+                        background:on?(c==="all"?"var(--accentbg)":meta.color+"18"):"transparent",
+                        color:on?meta.color:"var(--text3)",fontSize:11,fontWeight:600,cursor:"pointer"}}>
+                      {c!=="all"&&<ChannelIcon channel={c} size={12} color={on?meta.color:"var(--text3)"}/>}{meta.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
           <div style={{flex:1,overflowY:"auto"}}>
-            {threads.length===0&&<p style={{padding:18,fontSize:12,color:"var(--text3)",textAlign:"center"}}>No customer messages yet.</p>}
-            {threads.map(t=>{
-              const ch = INBOX_CHANNEL_MAP[t.channel]||{label:t.channel,icon:Icons.chat,color:"#888"};
+            {shownThreads.length===0&&<p style={{padding:18,fontSize:12,color:"var(--text3)",textAlign:"center"}}>{threads.length===0?"No customer messages yet.":"No conversations on this platform."}</p>}
+            {shownThreads.map(t=>{
               const isSel = activeThread===t;
               return (
                 <div key={t.channel+"_"+t.customer_id} onClick={()=>setSelThread({channel:t.channel,customer_id:t.customer_id})}
                   style={{padding:"10px 14px",borderBottom:"1px solid var(--border)",cursor:"pointer",background:isSel?"var(--accentbg)":"transparent"}}>
                   <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <Ico d={ch.icon} size={14} stroke={ch.color}/>
+                    <ChannelIcon channel={t.channel} size={14}/>
                     <p style={{fontWeight:700,fontSize:13,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.customer_name||t.customer_id}</p>
                     {t.last.direction==="in"&&<span style={{width:7,height:7,borderRadius:"50%",background:"var(--accent)",flexShrink:0}}/>}
                   </div>
@@ -6311,7 +6345,7 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
           {!activeThread&&<div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text3)",fontSize:13}}>Select a conversation</div>}
           {activeThread&&(<>
             <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",gap:8}}>
-              <Ico d={(INBOX_CHANNEL_MAP[activeThread.channel]||{icon:Icons.chat}).icon} size={16} stroke={(INBOX_CHANNEL_MAP[activeThread.channel]||{}).color||"#888"}/>
+              <ChannelIcon channel={activeThread.channel} size={16}/>
               <p style={{fontWeight:700,fontSize:14}}>{activeThread.customer_name||activeThread.customer_id}</p>
               <Badge label={(INBOX_CHANNEL_MAP[activeThread.channel]||{label:activeThread.channel}).label} color={(INBOX_CHANNEL_MAP[activeThread.channel]||{}).color||"#888"} xs/>
             </div>
