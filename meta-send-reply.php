@@ -33,7 +33,12 @@ if (!in_array($channel, ['messenger', 'instagram'], true)) {
 }
 
 $graph_version = 'v19.0';
-$endpoint = "https://graph.facebook.com/{$graph_version}/{$pageId}/messages";
+// Instagram accounts connected via "Instagram API with Instagram Login" issue tokens
+// prefixed "IGAA" that are scoped to graph.instagram.com — graph.facebook.com can't
+// even parse them ("Cannot parse access token"). Messenger/Page tokens still use
+// graph.facebook.com as before.
+$graph_host = ($channel === 'instagram' && str_starts_with($accessToken, 'IGAA')) ? 'graph.instagram.com' : 'graph.facebook.com';
+$endpoint = "https://{$graph_host}/{$graph_version}/{$pageId}/messages";
 $post_data = [
     'recipient'    => json_encode(['id' => $recipientId]),
     'message'      => json_encode(['text' => $message]),

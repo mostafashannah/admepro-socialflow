@@ -103,7 +103,11 @@ function generateBotReply(PDO $pdo, string $clientId, string $clientName, string
 
 // Sends a DM reply via the Graph API (same shape as meta-send-reply.php).
 function sendMetaDM(string $channel, string $pageId, string $accessToken, string $recipientId, string $message) {
-    $endpoint = "https://graph.facebook.com/v19.0/{$pageId}/messages";
+    // Instagram-Login API tokens ("IGAA..." prefix) are scoped to graph.instagram.com —
+    // graph.facebook.com rejects them with "Cannot parse access token". Page/Messenger
+    // tokens still go through graph.facebook.com as before.
+    $graph_host = ($channel === 'instagram' && str_starts_with($accessToken, 'IGAA')) ? 'graph.instagram.com' : 'graph.facebook.com';
+    $endpoint = "https://{$graph_host}/v19.0/{$pageId}/messages";
     $post_data = [
         'recipient'    => json_encode(['id' => $recipientId]),
         'message'      => json_encode(['text' => $message]),
