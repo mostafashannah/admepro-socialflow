@@ -504,7 +504,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.33";
+const APP_VERSION = "beta 2.34";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -20129,7 +20129,7 @@ function App() {
     clientKnowledge:SEED.clientKnowledge, clientDocuments:SEED.clientDocuments,
     perfLogs:SEED.perfLogs, aiInsights:SEED.aiInsights,
     invoices:SEED.invoices, payments:SEED.payments,
-    integrations:SEED.integrations, integrationLogs:SEED.integrationLogs,
+    integrations:[], integrationLogs:[],
     subscriptions:SEED.subscriptions, subscriptionPayments:SEED.subscriptionPayments,
     tasks:SEED.tasks, clientContracts:SEED.clientContracts,
     clientIntelligence:[], contentPillars:[], clientMemory:[],
