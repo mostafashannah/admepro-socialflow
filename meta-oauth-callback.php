@@ -21,8 +21,10 @@ function ig_post($url, $fields) {
         CURLOPT_TIMEOUT        => 20,
     ]);
     $res = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $err = curl_error($ch);
     curl_close($ch);
+    error_log("ig_post {$url} -> HTTP {$httpCode} raw=" . substr((string)$res, 0, 1000));
     if ($err) return [null, "cURL error: {$err}"];
     $data = json_decode($res, true);
     if (isset($data['error_message'])) return [null, $data['error_message']];
@@ -38,8 +40,10 @@ function ig_get($url) {
         CURLOPT_TIMEOUT        => 20,
     ]);
     $res = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $err = curl_error($ch);
     curl_close($ch);
+    error_log("ig_get {$url} -> HTTP {$httpCode} raw=" . substr((string)$res, 0, 1000));
     if ($err) return [null, "cURL error: {$err}"];
     $data = json_decode($res, true);
     if (isset($data['error'])) return [null, is_array($data['error']) ? ($data['error']['message'] ?? 'Unknown error') : $data['error']];
