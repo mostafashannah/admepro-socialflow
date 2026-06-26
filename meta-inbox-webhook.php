@@ -25,13 +25,25 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); exit; }
 $raw = file_get_contents('php://input');
 
 // ── Verify request signature (X-Hub-Signature-256) ──
+// Facebook Pages and Instagram (API with Instagram login) are separate Meta
+// apps with separate secrets — a webhook event can be signed with either one
+// depending on which app's dashboard the subscription was configured under.
+// Accept the request if it matches either app's secret.
 $sig = $_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? '';
-if (!$sig || !defined('META_APP_SECRET') || !META_APP_SECRET) {
+if (!$sig) {
     http_response_code(403);
     exit;
 }
-$expected = 'sha256=' . hash_hmac('sha256', $raw, META_APP_SECRET);
-if (!hash_equals($expected, $sig)) {
+$secrets = array_filter([
+    defined('META_APP_SECRET') ? META_APP_SECRET : null,
+    defined('INSTAGRAM_APP_SECRET') ? INSTAGRAM_APP_SECRET : null,
+]);
+$signatureValid = false;
+foreach ($secrets as $secret) {
+    $expected = 'sha256=' . hash_hmac('sha256', $raw, $secret);
+    if (hash_equals($expected, $sig)) { $signatureValid = true; break; }
+}
+if (!$signatureValid) {
     http_response_code(403);
     exit;
 }
