@@ -27,37 +27,30 @@ setcookie('fb_oauth_state', $state, [
     'samesite' => 'Lax',
 ]);
 
-// "pages_messaging" (and several other Page-asset permissions) can only be granted
-// through "Facebook Login for Business" — a config_id created in the App Dashboard
-// under Use Cases → Facebook Login for Business, which bundles the permission set.
-// The classic scope-list dialog rejects pages_messaging outright ("Invalid Scopes").
-// Falls back to the old scope-based dialog (no messaging) if no config_id is set,
-// so existing setups that only need posting/insights keep working unmodified.
-if (defined('META_FB_LOGIN_CONFIG_ID') && META_FB_LOGIN_CONFIG_ID) {
-    $params = [
-        'client_id'     => META_APP_ID,
-        'redirect_uri'  => $redirectUri,
-        'state'         => $state,
-        'response_type' => 'code',
-        'config_id'     => META_FB_LOGIN_CONFIG_ID,
-    ];
-} else {
-    $scopes = implode(',', [
-        'pages_show_list',
-        'pages_read_engagement',
-        'pages_manage_posts',
-        'pages_manage_metadata',
-        'read_insights',
-        'business_management',
-    ]);
-    $params = [
-        'client_id'     => META_APP_ID,
-        'redirect_uri'  => $redirectUri,
-        'state'         => $state,
-        'scope'         => $scopes,
-        'response_type' => 'code',
-    ];
-}
+// Classic scope-list OAuth dialog. We deliberately do NOT use the
+// "Facebook Login for Business" config_id flow: it failed 100% of the time with a
+// generic "Sorry, something went wrong" error for this app across every variation
+// tested (every configuration, permission set, platform registration, and login
+// variation), while the classic dialog below works reliably. "pages_messaging" was
+// verified to be accepted by the classic dialog directly — the earlier belief that it
+// required Login-for-Business / a config_id was incorrect. META_FB_LOGIN_CONFIG_ID is
+// intentionally ignored now and can be removed from config.php.
+$scopes = implode(',', [
+    'pages_show_list',
+    'pages_read_engagement',
+    'pages_manage_posts',
+    'pages_manage_metadata',
+    'pages_messaging',
+    'read_insights',
+    'business_management',
+]);
+$params = [
+    'client_id'     => META_APP_ID,
+    'redirect_uri'  => $redirectUri,
+    'state'         => $state,
+    'scope'         => $scopes,
+    'response_type' => 'code',
+];
 
 header('Location: https://www.facebook.com/' . META_GRAPH_VERSION . '/dialog/oauth?' . http_build_query($params));
 exit;
