@@ -85,30 +85,40 @@ function storeMessage(PDO $pdo, $clientId, $clientName, $channel, $customerId, $
     $stmt->execute([':cid'=>$clientId, ':cname'=>$clientName, ':ch'=>$channel, ':custid'=>$customerId, ':txt'=>$text]);
 }
 
-foreach ($body['entry'] as $entry) {
-    $pageId = $entry['id'] ?? '';
-    if (!$pageId) continue;
-    $client = findClientByPageId($pdo, $pageId);
-    if (!$client) continue; // page not connected to any client — ignore
+// Meta tells us the platform at the top level — Instagram DMs arrive under
+// entry.messaging using the exact same shape as Messenger, so the array shape
+// alone can't be used to label the channel; $body['object'] can.
+$channel = ($body['object'] ?? '') === 'instagram' ? 'instagram' : 'messenger';
 
-    // Messenger
-    foreach (($entry['messaging'] ?? []) as $m) {
-        $text = $m['message']['text'] ?? null;
-        $senderId = $m['sender']['id'] ?? null;
-        if ($text && $senderId) {
-            storeMessage($pdo, $client['client_id'], $client['client_name'], 'messenger', $senderId, $text);
-        }
-    }
+try {
+    foreach ($body['entry'] as $entry) {
+        $pageId = $entry['id'] ?? '';
+        if (!$pageId) continue;
+        $client = findClientByPageId($pdo, $pageId);
+        error_log('meta-inbox-webhook match for pageId=' . $pageId . ': ' . ($client ? json_encode($client) : 'NO MATCH'));
+        if (!$client) continue; // page not connected to any client — ignore
 
-    // Instagram DMs arrive under "changes" with field "messages" on some setups,
-    // or under "messaging" like Messenger on others — handle both shapes.
-    foreach (($entry['changes'] ?? []) as $c) {
-        if (($c['field'] ?? '') === 'messages') {
-            $text = $c['value']['message']['text'] ?? null;
-            $senderId = $c['value']['sender']['id'] ?? null;
+        foreach (($entry['messaging'] ?? []) as $m) {
+            $text = $m['message']['text'] ?? null;
+            $senderId = $m['sender']['id'] ?? null;
             if ($text && $senderId) {
-                storeMessage($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, $text);
+                storeMessage($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $text);
+                error_log('meta-inbox-webhook stored ' . $channel . ' message for client_id=' . $client['client_id']);
+            }
+        }
+
+        // Some Instagram setups deliver via "changes" with field "messages" instead.
+        foreach (($entry['changes'] ?? []) as $c) {
+            if (($c['field'] ?? '') === 'messages') {
+                $text = $c['value']['message']['text'] ?? null;
+                $senderId = $c['value']['sender']['id'] ?? null;
+                if ($text && $senderId) {
+                    storeMessage($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, $text);
+                    error_log('meta-inbox-webhook stored instagram message for client_id=' . $client['client_id']);
+                }
             }
         }
     }
+} catch (\Throwable $e) {
+    error_log('meta-inbox-webhook EXCEPTION: ' . $e->getMessage());
 }
