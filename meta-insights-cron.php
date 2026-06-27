@@ -10,6 +10,7 @@
  */
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/meta-lib.php';
 
 $pdo = new PDO(
     'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4',
@@ -27,7 +28,20 @@ function graph_get($url, $params) {
     return [$code, json_decode($res, true)];
 }
 
-$v = "v19.0";
+// Keeps only the metrics Meta still serves — see meta-insights.php for the rationale
+// (a single deprecated metric otherwise fails the whole /insights call with #100).
+function insights_resilient($base, array $metrics, array $extraParams) {
+    [$code, $resp] = graph_get($base, array_merge($extraParams, ["metric" => implode(",", $metrics)]));
+    if ($code === 200 && isset($resp["data"])) return $resp["data"];
+    $data = [];
+    foreach ($metrics as $m) {
+        [$c, $r] = graph_get($base, array_merge($extraParams, ["metric" => $m]));
+        if ($c === 200 && !empty($r["data"])) $data = array_merge($data, $r["data"]);
+    }
+    return $data;
+}
+
+$v = defined('META_GRAPH_VERSION') ? META_GRAPH_VERSION : 'v23.0';
 $today = date('Y-m-d');
 $integrations = $pdo->query("SELECT * FROM integrations WHERE status = 'active' AND app_key IN ('facebook','instagram')")->fetchAll(PDO::FETCH_ASSOC);
 
@@ -44,17 +58,14 @@ foreach ($integrations as $integ) {
     $metrics  = [];
 
     if ($platform === 'facebook') {
-        [$code, $resp] = graph_get("https://graph.facebook.com/{$v}/{$page_id}/insights", [
-            "metric" => "page_impressions,page_engaged_users,page_fans,page_post_engagements,page_views_total",
-            "period" => "day", "access_token" => $access_token,
-        ]);
-        $metrics['page_insights'] = $code === 200 ? ($resp['data'] ?? []) : null;
+        $metrics['page_insights'] = insights_resilient("https://graph.facebook.com/{$v}/{$page_id}/insights",
+            ["page_post_engagements","page_impressions_unique","page_views_total","page_fan_adds","page_daily_follows_unique","page_fans","page_impressions","page_total_actions"],
+            ["period" => "day", "access_token" => $access_token]);
     } else {
-        [$code, $resp] = graph_get("https://graph.facebook.com/{$v}/{$page_id}/insights", [
-            "metric" => "reach,impressions,profile_views,follower_count",
-            "period" => "day", "access_token" => $access_token,
-        ]);
-        $metrics['ig_insights'] = $code === 200 ? ($resp['data'] ?? []) : null;
+        $ig_host = str_starts_with($access_token, 'IGAA') ? 'graph.instagram.com' : 'graph.facebook.com';
+        $metrics['ig_insights'] = insights_resilient("https://{$ig_host}/{$v}/{$page_id}/insights",
+            ["reach","profile_views","accounts_engaged","total_interactions"],
+            ["period" => "day", "access_token" => $access_token]);
     }
 
     if ($ad_account_id) {

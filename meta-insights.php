@@ -8,6 +8,7 @@
 // ================================================================
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/meta-lib.php';
 header("Content-Type: application/json");
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: POST, OPTIONS");
@@ -33,7 +34,7 @@ if (!$page_id || !$access_token) {
 $until = !empty($data["until"]) ? (int)$data["until"] : time();
 $since = !empty($data["since"]) ? (int)$data["since"] : ($until - 30 * 86400);
 
-$v = "v19.0";
+$v = defined('META_GRAPH_VERSION') ? META_GRAPH_VERSION : 'v23.0';
 $out = ["platform" => $platform, "fetched_at" => date('c'), "since" => $since, "until" => $until];
 
 function graph_get($url, $params) {
@@ -46,15 +47,42 @@ function graph_get($url, $params) {
     return [$code, json_decode($res, true)];
 }
 
+// Meta deprecates Insights metrics on a rolling basis, and a SINGLE invalid metric
+// makes the whole /insights call fail with "(#100) ... must be a valid insights metric",
+// blanking the entire panel. Fetch the batch first (one call when everything's valid);
+// if that fails, probe each metric on its own and keep the ones Meta still serves, so
+// the dashboard degrades gracefully to whatever is currently supported.
+function insights_resilient($base, array $metrics, array $extraParams) {
+    [$code, $resp] = graph_get($base, array_merge($extraParams, ["metric" => implode(",", $metrics)]));
+    if ($code === 200 && isset($resp["data"])) return $resp["data"];
+    $data = [];
+    foreach ($metrics as $m) {
+        [$c, $r] = graph_get($base, array_merge($extraParams, ["metric" => $m]));
+        if ($c === 200 && !empty($r["data"])) $data = array_merge($data, $r["data"]);
+    }
+    return $data;
+}
+
 if ($platform === "facebook") {
-    [$code, $resp] = graph_get("https://graph.facebook.com/{$v}/{$page_id}/insights", [
-        "metric"       => "page_impressions,page_engaged_users,page_fans,page_post_engagements,page_views_total",
+    // Candidate metrics: a mix of long-standing names and the newer replacements Meta
+    // is migrating to (e.g. impressions → views). insights_resilient() keeps whichever
+    // are still valid for the current API version and silently drops the deprecated ones.
+    $fbMetrics = [
+        "page_post_engagements",
+        "page_impressions_unique",
+        "page_views_total",
+        "page_fan_adds",
+        "page_daily_follows_unique",
+        "page_fans",
+        "page_impressions",
+        "page_total_actions",
+    ];
+    $out["page_insights"] = insights_resilient("https://graph.facebook.com/{$v}/{$page_id}/insights", $fbMetrics, [
         "period"       => "day",
         "since"        => $since,
         "until"        => $until,
         "access_token" => $access_token,
     ]);
-    $out["page_insights"] = $code === 200 ? $resp["data"] ?? [] : ["error" => $resp];
 }
 
 if ($platform === "instagram") {
@@ -73,15 +101,17 @@ if ($platform === "instagram") {
     ]);
     // reach and the rest are additive-eligible — metric_type=total_value aggregates
     // them (de-duplicated for reach) into one true total over the 30-day window,
-    // instead of a misleading single-day or summed-with-overcounting figure.
-    [$code2, $resp2] = graph_get("https://{$ig_host}/{$v}/{$page_id}/insights", [
-        "metric"       => "reach,profile_views,accounts_engaged,total_interactions,likes,comments,shares,saves,replies",
-        "period"       => "day",
-        "metric_type"  => "total_value",
-        "since"        => $since,
-        "until"        => $until,
-        "access_token" => $access_token,
-    ]);
+    // instead of a misleading single-day or summed-with-overcounting figure. Fetched
+    // resiliently so one deprecated IG metric doesn't blank the whole panel.
+    $igTotals = insights_resilient("https://{$ig_host}/{$v}/{$page_id}/insights",
+        ["reach","profile_views","accounts_engaged","total_interactions","likes","comments","shares","saves","replies"],
+        [
+            "period"       => "day",
+            "metric_type"  => "total_value",
+            "since"        => $since,
+            "until"        => $until,
+            "access_token" => $access_token,
+        ]);
 
     if ($code1 !== 200) { $out["ig_insights"] = ["error" => $resp1]; }
     else {
@@ -90,7 +120,7 @@ if ($platform === "instagram") {
             "title"  => "Follower Count",
             "values" => [["value" => $resp1["followers_count"] ?? 0]],
         ]];
-        $totals = $code2 === 200 ? ($resp2["data"] ?? []) : [];
+        $totals = $igTotals;
         // Normalize total_value metrics into the same {title,values:[{value}]} shape
         // the time-series metrics use, so the frontend doesn't need to special-case them.
         foreach ($totals as $t) {
