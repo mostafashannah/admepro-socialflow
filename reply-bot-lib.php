@@ -294,15 +294,18 @@ function summarizeLeadInquiry(string $combinedText) {
     return trim($text) ?: null;
 }
 
-// Creates a CRM lead from an inbound message to admepro's own inbox, if it isn't
-// already a duplicate of one captured from the same sender. $phone is digits-only,
-// passed only for WhatsApp (used as the lead's phone number). $clientId is needed
-// to pull this sender's recent thread — interest and the phone number are often
-// expressed across separate messages ("What is your services" then, later, just a
-// bare phone number), so checking only the single latest message's text missed
-// both: the phone-only message never reads as "interested" on its own, and a
-// number given a message or two after the actual interest was never found at all.
-function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerId, ?string $customerName, string $text, ?string $phone = null, ?string $clientId = null) {
+// Creates a CRM lead from an inbound message expressing interest, whether it's
+// addressed to admepro's own inbox or to a managed client's — a customer asking
+// a client's Page/IG for a callback is just as much a real lead as one asking
+// admepro directly, just attributed to that client via $clientId/$clientName.
+// $phone is digits-only, passed only for WhatsApp (used as the lead's phone
+// number). $clientId is needed to pull this sender's recent thread — interest
+// and the phone number are often expressed across separate messages ("What is
+// your services" then, later, just a bare phone number), so checking only the
+// single latest message's text missed both: the phone-only message never reads
+// as "interested" on its own, and a number given a message or two after the
+// actual interest was never found at all.
+function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerId, ?string $customerName, string $text, ?string $phone = null, ?string $clientId = null, ?string $clientName = null) {
     if (trim($text) === '') return;
     try {
         $threadTexts = [$text];
@@ -313,16 +316,13 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
         }
         $combinedText = implode("\n", array_reverse($threadTexts));
 
-        // No mobile number yet (e.g. an Instagram/Facebook DM, where WhatsApp's
-        // automatic sender number isn't available) — try to pull one out of the
-        // thread (current or any earlier message), but otherwise don't create
-        // the lead until we have one.
-        if (!$phone) {
-            if (preg_match('/(\+?\d[\d\s\-\(\)]{7,}\d)/', $combinedText, $m)) {
-                $phone = preg_replace('/[^\d+]/', '', $m[1]);
-            } else {
-                return;
-            }
+        // Try to pull a phone number out of the thread if the customer happened to
+        // share one, but — unlike WhatsApp, where Meta always gives us the sender's
+        // real number — a Facebook/Instagram DM customer often never types one at
+        // all (e.g. just agrees to a callback time). That's still a real lead; it
+        // just gets captured with no phone number.
+        if (!$phone && preg_match('/(\+?\d[\d\s\-\(\)]{7,}\d)/', $combinedText, $m)) {
+            $phone = preg_replace('/[^\d+]/', '', $m[1]);
         }
 
         if (!isInterestedInOurServices($combinedText)) return;
@@ -335,16 +335,18 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
         $brief = summarizeLeadInquiry($combinedText) ?: $combinedText;
 
         $leadName = $customerName ?: 'Unknown (' . $channel . ')';
-        $stmt = $pdo->prepare("INSERT INTO leads (name, phone, source, status, platforms, notes) VALUES (:name, :phone, :source, 'new', :platforms, :notes)");
+        $stmt = $pdo->prepare("INSERT INTO leads (name, phone, source, status, platforms, notes, client_id, client_name) VALUES (:name, :phone, :source, 'new', :platforms, :notes, :cid, :cname)");
         $stmt->execute([
             ':name' => $leadName,
             ':phone' => $phone,
             ':source' => $channel === 'whatsapp' ? 'whatsapp' : $channel,
             ':platforms' => json_encode([$channel]),
-            ':notes' => "Auto-captured by SocialFlow from an inbound {$channel} conversation expressing interest in our services:\n{$brief}\n\n{$tag}",
+            ':notes' => "Auto-captured by SocialFlow from an inbound {$channel} conversation" . ($clientName ? " on {$clientName}'s account" : '') . " expressing interest in our services:\n{$brief}\n\n{$tag}",
+            ':cid' => $clientId,
+            ':cname' => $clientName,
         ]);
 
-        notifyAdminsOfNewLead($pdo, $leadName, $channel, $phone, $brief);
+        notifyAdminsOfNewLead($pdo, $leadName, $channel, $phone, $brief, $clientName);
     } catch (\Throwable $e) {
         error_log('maybeCreateLeadFromMessage EXCEPTION: ' . $e->getMessage());
     }
@@ -352,13 +354,14 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
 
 // WhatsApps every active admin team member with the new lead's details, sent from
 // the same "Pro" number/token used by wa-webhook.php and identifySender().
-function notifyAdminsOfNewLead(PDO $pdo, string $leadName, string $channel, ?string $phone, string $brief) {
+function notifyAdminsOfNewLead(PDO $pdo, string $leadName, string $channel, ?string $phone, string $brief, ?string $clientName = null) {
     if (!function_exists('sendWhatsAppReply')) return; // pro-lib.php not loaded
     $admins = $pdo->query("SELECT whatsapp_number FROM team_members WHERE status = 'active' AND role = 'admin' AND whatsapp_number IS NOT NULL AND whatsapp_number != ''")->fetchAll(PDO::FETCH_COLUMN);
     if (!$admins) return;
     $snippet = mb_strlen($brief) > 400 ? mb_substr($brief, 0, 400) . '…' : $brief;
     $body = "New lead captured by SocialFlow!\n\n"
           . "Name: {$leadName}\n"
+          . ($clientName ? "Client: {$clientName}\n" : '')
           . "Channel: {$channel}" . ($phone ? " ({$phone})" : '') . "\n\n"
           . "What they're asking about:\n{$snippet}\n\n"
           . "View it on the CRM Leads page.";

@@ -163,7 +163,13 @@ try {
         $pageId = $entry['id'] ?? '';
         if (!$pageId) continue;
         $client = findClientByPageId($pdo, $pageId);
-        if (!$client) continue; // page not connected to any client — ignore
+        if (!$client) {
+            // Logged so a silently-dropped event (e.g. the connected account's stored
+            // page_id no longer matches the ID Meta sends in entry.id after a
+            // reconnect) is diagnosable from the server log instead of just vanishing.
+            error_log("meta-inbox-webhook: no integration matched entry.id={$pageId} object=" . ($body['object'] ?? '?'));
+            continue;
+        }
 
         foreach (($entry['messaging'] ?? []) as $m) {
             $msgData = $m['message'] ?? [];
@@ -180,7 +186,7 @@ try {
                 $senderName = fetchSenderName($channel, $client['access_token'], $senderId);
                 storeMessage($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName, $text);
                 try {
-                    if ($client['is_own']) { maybeCreateLeadFromMessage($pdo, $channel, $senderId, $senderName, $text, null, $client['client_id']); }
+                    maybeCreateLeadFromMessage($pdo, $channel, $senderId, $senderName, $text, null, $client['client_id'], $client['is_own'] ? null : $client['client_name']);
                     maybeAutoReply($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName);
                 } catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
             }
@@ -200,7 +206,7 @@ try {
                     $senderName = fetchSenderName('instagram', $client['access_token'], $senderId);
                     storeMessage($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, $senderName, $text);
                     try {
-                        if ($client['is_own']) { maybeCreateLeadFromMessage($pdo, 'instagram', $senderId, $senderName, $text, null, $client['client_id']); }
+                        maybeCreateLeadFromMessage($pdo, 'instagram', $senderId, $senderName, $text, null, $client['client_id'], $client['is_own'] ? null : $client['client_name']);
                         maybeAutoReply($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, $senderName);
                     } catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
                 }
