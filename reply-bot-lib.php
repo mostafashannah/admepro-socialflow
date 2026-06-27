@@ -72,6 +72,12 @@ function buildReplyBotSystemPrompt(PDO $pdo, string $clientId, string $clientNam
     // don't have it or ask the customer to repeat it if it's already been given.
     $parts[] = "If a customer name is provided to you, use it naturally to personalize your reply. If no name is provided, just don't bring up names at all — never say you don't know their name or ask them to share it.";
 
+    // Instagram story replies/mentions arrive tagged in the conversation text below
+    // (e.g. "[Replied to your Instagram story] 🔥") since the bot has no way to see
+    // the actual story image — acknowledge the context naturally without claiming
+    // to know exactly what was in it.
+    $parts[] = "If a customer message is tagged [Replied to your Instagram story] or [Mentioned you in their story], acknowledge that naturally (e.g. thank them for the reaction/mention) — but never claim to know the specific contents of the story, since you can't see it. Never repeat the bracketed tag itself in your reply.";
+
     $stmt = $pdo->prepare("SELECT tone, summary, keywords, priorities, industry_context, content_preferences FROM client_knowledge WHERE client_id = :cid ORDER BY created_at DESC LIMIT 1");
     $stmt->execute([':cid' => $clientId]);
     if ($k = $stmt->fetch(PDO::FETCH_ASSOC)) {

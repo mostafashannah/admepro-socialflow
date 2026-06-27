@@ -118,6 +118,18 @@ function fetchSenderName(string $channel, ?string $accessToken, string $senderId
     return $name ?: null;
 }
 
+// Story replies/mentions arrive as a normal DM in the messaging webhook, but with
+// no indication in the bare text that it's a reaction to a story rather than a
+// regular message — tag it so the inbox and the reply bot both know the context
+// ("🔥" reads very differently as a story reply vs. an out-of-nowhere DM).
+function storyContextTag(array $message) {
+    if (!empty($message['reply_to']['story'])) return '[Replied to your Instagram story]';
+    foreach (($message['attachments'] ?? []) as $att) {
+        if (($att['type'] ?? '') === 'story_mention') return '[Mentioned you in their story]';
+    }
+    return null;
+}
+
 function storeMessage(PDO $pdo, $clientId, $clientName, $channel, $customerId, $customerName, $text, $externalId = null) {
     $stmt = $pdo->prepare("INSERT INTO customer_messages (client_id, client_name, channel, customer_id, customer_name, direction, message_text, sent_by, thread_status, external_id) VALUES (:cid, :cname, :ch, :custid, :custname, 'in', :txt, 'customer', 'needs_human', :eid)");
     $stmt->execute([':cid'=>$clientId, ':cname'=>$clientName, ':ch'=>$channel, ':custid'=>$customerId, ':custname'=>$customerName, ':txt'=>$text, ':eid'=>$externalId]);
@@ -136,8 +148,10 @@ try {
         if (!$client) continue; // page not connected to any client — ignore
 
         foreach (($entry['messaging'] ?? []) as $m) {
-            $text = $m['message']['text'] ?? null;
+            $msgData = $m['message'] ?? [];
+            $text = $msgData['text'] ?? null;
             $senderId = $m['sender']['id'] ?? null;
+            if ($tag = storyContextTag($msgData)) { $text = $text ? "{$tag} {$text}" : $tag; }
             if ($text && $senderId) {
                 $senderName = fetchSenderName($channel, $client['access_token'], $senderId);
                 storeMessage($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName, $text);
@@ -153,8 +167,10 @@ try {
             $field = $c['field'] ?? '';
 
             if ($field === 'messages') {
-                $text = $c['value']['message']['text'] ?? null;
+                $msgData = $c['value']['message'] ?? [];
+                $text = $msgData['text'] ?? null;
                 $senderId = $c['value']['sender']['id'] ?? null;
+                if ($tag = storyContextTag($msgData)) { $text = $text ? "{$tag} {$text}" : $tag; }
                 if ($text && $senderId) {
                     $senderName = fetchSenderName('instagram', $client['access_token'], $senderId);
                     storeMessage($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, $senderName, $text);
