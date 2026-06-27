@@ -172,30 +172,34 @@ function storeBotMessage(PDO $pdo, $clientId, $clientName, $channel, $customerId
 // for a team member to review (mode=approve). $externalId is the comment_id for
 // comment channels (fb_comment/ig_comment) — null for DM channels.
 function maybeAutoReply(PDO $pdo, string $clientId, string $clientName, string $channel, string $customerId, ?string $customerName, ?string $externalId = null) {
+    $log = function (string $reason) use ($clientName, $channel, $customerId) {
+        error_log("reply-bot SKIP [{$clientName}/{$channel}/{$customerId}]: {$reason}");
+    };
+
     $settings = getReplyBotSettings($pdo, $clientId);
-    if (!$settings || !$settings['enabled']) return;
-    if (!in_array($channel, $settings['channels'], true)) return;
+    if (!$settings || !$settings['enabled']) { $log('bot disabled or no settings row'); return; }
+    if (!in_array($channel, $settings['channels'], true)) { $log('channel not enabled in settings: ' . json_encode($settings['channels'])); return; }
 
     $isComment = $channel === 'fb_comment' || $channel === 'ig_comment';
-    if ($isComment && !$externalId) return; // no comment_id to reply to
+    if ($isComment && !$externalId) { $log('comment channel but no external_id'); return; }
 
     $stmt = $pdo->prepare("SELECT direction, message_text FROM customer_messages WHERE client_id = :cid AND channel = :ch AND customer_id = :custid ORDER BY created_at DESC LIMIT 12");
     $stmt->execute([':cid' => $clientId, ':ch' => $channel, ':custid' => $customerId]);
     $thread = array_reverse($stmt->fetchAll(PDO::FETCH_ASSOC));
-    if (!$thread) return;
+    if (!$thread) { $log('empty thread'); return; }
 
     $reply = generateBotReply($pdo, $clientId, $clientName, (string)($settings['brain'] ?? ''), $thread, $isComment);
-    if (!$reply) return;
+    if (!$reply) { $log('generateBotReply returned empty (Claude opted out or API error)'); return; }
 
     if ($settings['mode'] === 'auto') {
         $creds = findIntegrationCreds($pdo, $clientId, $isComment ? ($channel === 'ig_comment' ? 'instagram' : 'facebook') : $channel);
-        if (!$creds) return; // no credentials to send with — drop rather than fake a sent message
+        if (!$creds) { $log('no integration credentials found'); return; } // no credentials to send with — drop rather than fake a sent message
         if ($isComment) {
-            [$httpCode] = sendMetaCommentReply($channel, $creds['access_token'], $externalId, $reply);
+            [$httpCode, $body] = sendMetaCommentReply($channel, $creds['access_token'], $externalId, $reply);
         } else {
-            [$httpCode] = sendMetaDM($channel, $creds['page_id'], $creds['access_token'], $customerId, $reply);
+            [$httpCode, $body] = sendMetaDM($channel, $creds['page_id'], $creds['access_token'], $customerId, $reply);
         }
-        if ($httpCode < 200 || $httpCode >= 300) return; // send failed — don't record a phantom "sent" message
+        if ($httpCode < 200 || $httpCode >= 300) { $log("Graph API send failed, http {$httpCode}: " . json_encode($body)); return; } // send failed — don't record a phantom "sent" message
         storeBotMessage($pdo, $clientId, $clientName, $channel, $customerId, $customerName, $reply, 'sent', 'bot_handled', $externalId);
     } else {
         storeBotMessage($pdo, $clientId, $clientName, $channel, $customerId, $customerName, $reply, 'pending_review', 'needs_human', $externalId);
