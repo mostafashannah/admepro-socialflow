@@ -243,6 +243,8 @@ function sendWhatsAppReply($to, $body) {
         CURLOPT_POST => true,
         CURLOPT_POSTFIELDS => $payload,
         CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_TIMEOUT => 15,
         CURLOPT_HTTPHEADER => [
             'Content-Type: application/json',
             'Authorization: Bearer ' . WA_ACCESS_TOKEN,
