@@ -328,9 +328,19 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
         if (!isInterestedInOurServices($combinedText)) return;
 
         $tag = "src_id:{$channel}:{$customerId}";
-        $dupe = $pdo->prepare("SELECT id FROM leads WHERE notes LIKE :tag LIMIT 1");
+        $dupe = $pdo->prepare("SELECT id, phone FROM leads WHERE notes LIKE :tag LIMIT 1");
         $dupe->execute([':tag' => "%{$tag}%"]);
-        if ($dupe->fetch()) return; // already captured this sender before
+        if ($existing = $dupe->fetch(PDO::FETCH_ASSOC)) {
+            // Already captured this sender before, but they may not have shared a phone
+            // number yet at that point (e.g. first message was just "what are your
+            // services", phone came a few messages later in the same thread) — backfill
+            // it onto the existing lead instead of silently dropping it.
+            if ($phone && empty($existing['phone'])) {
+                $upd = $pdo->prepare("UPDATE leads SET phone = :phone WHERE id = :id");
+                $upd->execute([':phone' => $phone, ':id' => $existing['id']]);
+            }
+            return;
+        }
 
         $brief = summarizeLeadInquiry($combinedText) ?: $combinedText;
 
