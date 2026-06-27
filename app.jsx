@@ -544,7 +544,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.71";
+const APP_VERSION = "beta 2.72";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17530,11 +17530,17 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
   // until the user actually sends a message in it.
   useEffect(()=>{
     if(!currentUser) return;
-    // Resume the conversation open before a refresh — don't start a new one on load.
+    // Every real page load opens a FRESH blank chat (pendingSession) that isn't saved
+    // to history until the user actually sends a message — same as Pro Home.
+    if(claimFreshProSessionOnLoad()){
+      const fresh = makeChatSession({user_id:currentUser.email||"", client_id:selectedClientId||""});
+      setPendingSession(fresh);
+      setActiveChatId(fresh.id);
+      return;
+    }
+    // SPA navigation with nothing active → resume most recent, else a fresh pending one.
     if(activeChatId && (sessions.find(s=>s.id===activeChatId) || (pendingSession && pendingSession.id===activeChatId))) return;
     if(sessions.length>0){ setActiveChatId(sessions[0].id); return; }
-    // Nothing to resume → one fresh unsaved session (claimed once across both surfaces).
-    if(!claimFreshProSessionOnLoad()) return;
     const fresh = makeChatSession({user_id:currentUser.email||"", client_id:selectedClientId||""});
     setPendingSession(fresh);
     setActiveChatId(fresh.id);
@@ -19209,14 +19215,21 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
   // resumes whatever was active.
   useEffect(()=>{
     if(!currentUser) return;
-    // Resume the conversation that was open before a refresh — do NOT reset to a new
-    // session on every page load. A new session is only started when the user
-    // explicitly opens one (New chat) or has no history at all to resume.
+    // Every real page load (refresh / new tab) opens a FRESH blank Pro chat rather
+    // than resuming the last one. That fresh chat is a pendingSession — it is NOT
+    // saved to history or the session list until the user actually writes a message
+    // and sends it. In-app navigation back to Pro Home keeps the current chat.
+    if(claimFreshProSessionOnLoad()){
+      const fresh = makeChatSession({user_id:currentUser.email||""});
+      fresh.messages = [{role:"bot", content:`Hi ${name} I'm **Pro** — your AI workspace inside SocialFlow. Tell me what you want to do and I'll handle it.\n\nYou can say things like:\n• "Create a task for Nova Digital"\n• "Add a new client"\n• "Show me all overdue posts"\n• "Generate a calendar plan for TechStart"`, id:uid(), type:"welcome", chat_id:fresh.id, sender:"pro", created_at:new Date().toISOString()}];
+      setPendingSession(fresh);
+      setActiveChatId(fresh.id);
+      return;
+    }
+    // SPA navigation back to Pro Home with nothing active → resume most recent, or a
+    // fresh pending welcome if there's no history yet.
     if(activeChatId && (chatSessions.find(s=>s.id===activeChatId) || (pendingSession && pendingSession.id===activeChatId))) return;
     if(chatSessions.length>0){ setActiveChatId(chatSessions[0].id); return; }
-    // Nothing to resume (first-ever chat) → one fresh unsaved welcome chat. The
-    // once-per-load claim ensures the two Pro surfaces don't each spawn one.
-    if(!claimFreshProSessionOnLoad()) return;
     const fresh = makeChatSession({user_id:currentUser.email||""});
     fresh.messages = [{role:"bot", content:`Hi ${name} I'm **Pro** — your AI workspace inside SocialFlow. Tell me what you want to do and I'll handle it.\n\nYou can say things like:\n• "Create a task for Nova Digital"\n• "Add a new client"\n• "Show me all overdue posts"\n• "Generate a calendar plan for TechStart"`, id:uid(), type:"welcome", chat_id:fresh.id, sender:"pro", created_at:new Date().toISOString()}];
     setPendingSession(fresh);
