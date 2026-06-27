@@ -544,7 +544,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.70";
+const APP_VERSION = "beta 2.71";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17530,22 +17530,14 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
   // until the user actually sends a message in it.
   useEffect(()=>{
     if(!currentUser) return;
-    if(claimFreshProSessionOnLoad()){
-      const fresh = makeChatSession({user_id:currentUser.email||"", client_id:selectedClientId||""});
-      setPendingSession(fresh);
-      setActiveChatId(fresh.id);
-      return;
-    }
-    if(!activeChatId || (!sessions.find(s=>s.id===activeChatId) && !(pendingSession && pendingSession.id===activeChatId))){
-      // Reuse the most recent existing session if any, else create one
-      if(sessions.length>0){
-        setActiveChatId(sessions[0].id);
-      } else {
-        const fresh = makeChatSession({user_id:currentUser.email||"", client_id:selectedClientId||""});
-        setPendingSession(fresh);
-        setActiveChatId(fresh.id);
-      }
-    }
+    // Resume the conversation open before a refresh — don't start a new one on load.
+    if(activeChatId && (sessions.find(s=>s.id===activeChatId) || (pendingSession && pendingSession.id===activeChatId))) return;
+    if(sessions.length>0){ setActiveChatId(sessions[0].id); return; }
+    // Nothing to resume → one fresh unsaved session (claimed once across both surfaces).
+    if(!claimFreshProSessionOnLoad()) return;
+    const fresh = makeChatSession({user_id:currentUser.email||"", client_id:selectedClientId||""});
+    setPendingSession(fresh);
+    setActiveChatId(fresh.id);
   },[currentUser, activeChatId, sessions.length]);
 
   const newChat = () => {
@@ -19217,21 +19209,18 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
   // resumes whatever was active.
   useEffect(()=>{
     if(!currentUser) return;
-    if(claimFreshProSessionOnLoad()){
-      const fresh = makeChatSession({user_id:currentUser.email||""});
-      fresh.messages = [{role:"bot", content:`Hi ${name} I'm **Pro** — your AI workspace inside SocialFlow. Tell me what you want to do and I'll handle it.\n\nYou can say things like:\n• "Create a task for Nova Digital"\n• "Add a new client"\n• "Show me all overdue posts"\n• "Generate a calendar plan for TechStart"`, id:uid(), type:"welcome", chat_id:fresh.id, sender:"pro", created_at:new Date().toISOString()}];
-      setPendingSession(fresh);
-      setActiveChatId(fresh.id);
-      return;
-    }
-    if(!activeChatId && chatSessions.length===0){
-      const fresh = makeChatSession({user_id:currentUser.email||""});
-      fresh.messages = [{role:"bot", content:`Hi ${name} I'm **Pro** — your AI workspace inside SocialFlow. Tell me what you want to do and I'll handle it.\n\nYou can say things like:\n• "Create a task for Nova Digital"\n• "Add a new client"\n• "Show me all overdue posts"\n• "Generate a calendar plan for TechStart"`, id:uid(), type:"welcome", chat_id:fresh.id, sender:"pro", created_at:new Date().toISOString()}];
-      setPendingSession(fresh);
-      setActiveChatId(fresh.id);
-    } else if(!activeChatId && chatSessions.length>0){
-      setActiveChatId(chatSessions[0].id);
-    }
+    // Resume the conversation that was open before a refresh — do NOT reset to a new
+    // session on every page load. A new session is only started when the user
+    // explicitly opens one (New chat) or has no history at all to resume.
+    if(activeChatId && (chatSessions.find(s=>s.id===activeChatId) || (pendingSession && pendingSession.id===activeChatId))) return;
+    if(chatSessions.length>0){ setActiveChatId(chatSessions[0].id); return; }
+    // Nothing to resume (first-ever chat) → one fresh unsaved welcome chat. The
+    // once-per-load claim ensures the two Pro surfaces don't each spawn one.
+    if(!claimFreshProSessionOnLoad()) return;
+    const fresh = makeChatSession({user_id:currentUser.email||""});
+    fresh.messages = [{role:"bot", content:`Hi ${name} I'm **Pro** — your AI workspace inside SocialFlow. Tell me what you want to do and I'll handle it.\n\nYou can say things like:\n• "Create a task for Nova Digital"\n• "Add a new client"\n• "Show me all overdue posts"\n• "Generate a calendar plan for TechStart"`, id:uid(), type:"welcome", chat_id:fresh.id, sender:"pro", created_at:new Date().toISOString()}];
+    setPendingSession(fresh);
+    setActiveChatId(fresh.id);
   },[currentUser, activeChatId, chatSessions.length]);
 
   useEffect(()=>{ messagesEndRef.current?.scrollIntoView({behavior:"smooth"}); },[messages,typing]);
