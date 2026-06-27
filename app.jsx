@@ -544,7 +544,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.80";
+const APP_VERSION = "beta 2.81";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1666,6 +1666,8 @@ const Icons = {
   igBrand: "M12 2.16c3.2 0 3.58.01 4.85.07 1.17.05 1.8.25 2.23.41.56.22.96.48 1.38.9.42.42.68.82.9 1.38.16.42.36 1.06.41 2.23.06 1.27.07 1.65.07 4.85s-.01 3.58-.07 4.85c-.05 1.17-.25 1.8-.41 2.23-.22.56-.48.96-.9 1.38-.42.42-.82.68-1.38.9-.42.16-1.06.36-2.23.41-1.27.06-1.65.07-4.85.07s-3.58-.01-4.85-.07c-1.17-.05-1.8-.25-2.23-.41-.56-.22-.96-.48-1.38-.9-.42-.42-.68-.82-.9-1.38-.16-.42-.36-1.06-.41-2.23-.06-1.27-.07-1.65-.07-4.85s.01-3.58.07-4.85c.05-1.17.25-1.8.41-2.23.22-.56.48-.96.9-1.38.42-.42.82-.68 1.38-.9.42-.16 1.06-.36 2.23-.41 1.27-.06 1.65-.07 4.85-.07M12 0C8.74 0 8.33.01 7.05.07 5.78.13 4.9.33 4.14.63c-.79.31-1.46.72-2.13 1.38C1.35 2.68.94 3.35.63 4.14.33 4.9.13 5.78.07 7.05.01 8.33 0 8.74 0 12s.01 3.67.07 4.95c.06 1.27.26 2.15.56 2.91.31.79.72 1.46 1.38 2.13.67.66 1.34 1.07 2.13 1.38.76.3 1.64.5 2.91.56C8.33 23.99 8.74 24 12 24s3.67-.01 4.95-.07c1.27-.06 2.15-.26 2.91-.56.79-.31 1.46-.72 2.13-1.38.66-.67 1.07-1.34 1.38-2.13.3-.76.5-1.64.56-2.91.06-1.28.07-1.69.07-4.95s-.01-3.67-.07-4.95c-.06-1.27-.26-2.15-.56-2.91-.31-.79-.72-1.46-1.38-2.13C21.32 1.35 20.65.94 19.86.63c-.76-.3-1.64-.5-2.91-.56C15.67.01 15.26 0 12 0z M12 5.84A6.16 6.16 0 1 0 12 18.16 6.16 6.16 0 0 0 12 5.84M12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8z M18.41 4.15a1.44 1.44 0 1 0 0 2.88 1.44 1.44 0 0 0 0-2.88z",
   msgrBrand: "M12 0C5.24 0 0 4.95 0 11.64c0 3.5 1.44 6.53 3.77 8.62.2.18.31.43.32.7l.07 2.13c.02.68.72 1.12 1.34.85l2.38-1.05c.21-.09.44-.11.66-.05 1.09.3 2.26.46 3.46.46 6.76 0 12-4.95 12-11.64C24 4.95 18.76 0 12 0zm7.2 8.94l-3.52 5.59c-.56.89-1.76 1.11-2.6.48l-2.8-2.1a.72.72 0 0 0-.86 0l-3.79 2.88c-.5.38-1.16-.22-.82-.76l3.52-5.59c.56-.89 1.76-1.11 2.6-.48l2.8 2.1c.26.19.6.19.86 0l3.79-2.88c.5-.38 1.16.22.82.76z",
   waBrand: "M.06 24l1.69-6.16a11.87 11.87 0 0 1-1.59-5.95C.16 5.34 5.5 0 12.06 0a11.82 11.82 0 0 1 8.41 3.49 11.82 11.82 0 0 1 3.48 8.41c0 6.56-5.34 11.9-11.9 11.9a11.9 11.9 0 0 1-5.69-1.45L.06 24zm6.6-3.8c1.68.99 3.28 1.59 5.4 1.59 5.45 0 9.89-4.43 9.89-9.89 0-5.45-4.44-9.89-9.89-9.89-5.45 0-9.89 4.44-9.89 9.89 0 2.22.65 3.89 1.74 5.64l-1 3.66 3.65-1zm11.39-5.55c-.07-.12-.27-.2-.57-.35-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.65.07-.3-.15-1.25-.46-2.39-1.47-.88-.79-1.48-1.76-1.65-2.06-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.07-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.51-.17-.01-.37-.01-.57-.01-.2 0-.52.07-.8.37-.27.3-1.04 1.02-1.04 2.48 0 1.46 1.07 2.88 1.22 3.08.15.2 2.1 3.2 5.08 4.49.71.31 1.26.49 1.69.62.71.23 1.36.19 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.29.17-1.41z",
+  sheetsBrand: ["M5 2h10l4 4v15a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z","M14 2v4h4"],
+  shopifyBrand: "M7.5 9.2l.3-2.1c.3-1.9 1.8-4 4.3-4 1 0 1.7.3 2.2.7l1.1-.4 2 18.6-9.4 1.7-3.4-2.6.1-1.1zm1.3-.2h1.5c.1-1.1.5-2.6 1.1-3.5-1.3.2-2.3 1.8-2.6 3.5zm2.7 0h2c-.1-1.4-.5-2.7-1-3.3-.5.6-.9 1.9-1 3.3zm1-4.6c.2.6.5 1.9.6 4.6h1.5c-.2-1.8-.8-3.4-1.6-4.2-.2-.2-.3-.3-.5-.4z",
 };
 
 const Spinner = ({size=24}) => (
@@ -10964,29 +10966,14 @@ function AddLeadModal({open,onClose,team,onAdd}) {
 // ════════════════════════════════════════════════════════════════
 
 const INTEGRATION_APPS = [
-  // Messaging
-  {key:"slack", label:"Slack", category:"messaging", color:"#4A154B", icon:"", description:"Send messages to Slack channels"},
-  {key:"gmail", label:"Gmail", category:"messaging", color:"#EA4335", icon:"", description:"Send emails via Gmail"},
-  {key:"teams", label:"Microsoft Teams",category:"messaging", color:"#6264A7", icon:"", description:"Post messages to Teams channels"},
-  {key:"telegram", label:"Telegram", category:"messaging", color:"#2CA5E0", icon:"", description:"Send Telegram bot messages"},
-  // Productivity
-  {key:"trello", label:"Trello", category:"productivity", color:"#0052CC", icon:"", description:"Create cards in Trello boards"},
-  {key:"asana", label:"Asana", category:"productivity", color:"#F06A6A", icon:"", description:"Create tasks in Asana projects"},
-  {key:"notion", label:"Notion", category:"productivity", color:"#000000", icon:"", description:"Add entries to Notion databases"},
-  {key:"clickup", label:"ClickUp", category:"productivity", color:"#7B68EE", icon:"", description:"Create tasks in ClickUp"},
-  // Spreadsheet / Data
-  {key:"google_sheets",label:"Google Sheets", category:"spreadsheet", color:"#0F9D58", icon:"", description:"Add rows to Google Sheets"},
-  {key:"airtable", label:"Airtable", category:"spreadsheet", color:"#FCB400", icon:"", description:"Add records to Airtable bases"},
-  // Automation
-  {key:"zapier", label:"Zapier", category:"automation", color:"#FF4A00", icon:"", description:"Trigger any Zapier workflow"},
-  {key:"make", label:"Make (Integromat)",category:"automation", color:"#6D00CC", icon:"", description:"Trigger Make.com scenarios"},
-  {key:"webhook", label:"Custom Webhook", category:"automation", color:"#374151", icon:"", description:"Call any webhook endpoint"},
   // Social
-  {key:"facebook", label:"Facebook", category:"social", color:"#1877F2", icon:"", description:"Publish posts directly to Facebook Pages"},
-  {key:"instagram", label:"Instagram", category:"social", color:"#E1306C", icon:"", description:"Publish posts to Instagram Business accounts"},
-  {key:"buffer", label:"Buffer", category:"social", color:"#168EEA", icon:"", description:"Schedule social media posts"},
-  {key:"hootsuite", label:"Hootsuite", category:"social", color:"#1F3044", icon:"", description:"Publish to Hootsuite streams"},
-  {key:"whatsapp", label:"WhatsApp", category:"social", color:"#25D366", icon:"", description:"Connect a client's WhatsApp number to their inbox"},
+  {key:"facebook", label:"Facebook", category:"social", color:"#1877F2", icon:Icons.fbBrand, brand:true, description:"Publish posts directly to Facebook Pages"},
+  {key:"instagram", label:"Instagram", category:"social", color:"#E1306C", icon:Icons.igBrand, brand:true, description:"Publish posts to Instagram Business accounts"},
+  {key:"whatsapp", label:"WhatsApp", category:"social", color:"#25D366", icon:Icons.waBrand, brand:true, description:"Connect a client's WhatsApp number to their inbox"},
+  // Spreadsheet / Data
+  {key:"google_sheets",label:"Google Sheets", category:"spreadsheet", color:"#0F9D58", icon:Icons.sheetsBrand, description:"Add rows to Google Sheets"},
+  // Ecommerce
+  {key:"shopify", label:"Shopify", category:"ecommerce", color:"#95BF47", icon:Icons.shopifyBrand, brand:true, description:"Sync orders and products with your Shopify store"},
 ];
 const APP_MAP = Object.fromEntries(INTEGRATION_APPS.map(a=>[a.key,a]));
 
@@ -11005,20 +10992,13 @@ const INTEGRATION_TRIGGERS = [
 const TRIGGER_MAP = Object.fromEntries(INTEGRATION_TRIGGERS.map(t=>[t.key,t]));
 
 const INTEGRATION_ACTIONS = {
-  messaging: [{key:"send_slack_message",label:"Send Slack Message",fields:["channel","message_template"]},{key:"send_email",label:"Send Email",fields:["to","subject","message_template"]},{key:"send_teams_message",label:"Post to Teams Channel",fields:["channel","message_template"]},{key:"send_telegram",label:"Send Telegram Message",fields:["chat_id","message_template"]}],
-  productivity: [{key:"create_trello_card",label:"Create Trello Card",fields:["board_id","list_id","title_template"]},{key:"create_asana_task",label:"Create Asana Task",fields:["project_id","task_name_template"]},{key:"create_notion_entry",label:"Add Notion Entry",fields:["database_id","title_template"]},{key:"create_clickup_task",label:"Create ClickUp Task",fields:["list_id","task_name_template"]}],
-  spreadsheet: [{key:"add_sheet_row",label:"Add Google Sheets Row",fields:["spreadsheet_id","sheet_name","columns"]},{key:"add_airtable_record",label:"Add Airtable Record",fields:["base_id","table_name"]}],
-  automation: [{key:"send_webhook",label:"Send Webhook (POST)",fields:["webhook_url","payload_template"]},{key:"trigger_zapier",label:"Trigger Zapier Webhook",fields:["webhook_url"]},{key:"trigger_make",label:"Trigger Make Scenario",fields:["webhook_url"]}],
-  social: [{key:"publish_post",label:"Publish Post to Page",fields:[]},{key:"post_buffer",label:"Add to Buffer Queue",fields:["profile_ids","message_template"]},{key:"post_hootsuite",label:"Post to Hootsuite",fields:["profile_id","message_template"]}],
+  spreadsheet: [{key:"add_sheet_row",label:"Add Google Sheets Row",fields:["spreadsheet_id","sheet_name","columns"]}],
+  social: [{key:"publish_post",label:"Publish Post to Page",fields:[]}],
+  ecommerce: [{key:"sync_orders",label:"Sync Shopify Orders",fields:[]},{key:"sync_products",label:"Sync Shopify Products",fields:[]}],
 };
 
 const INTEGRATION_TEMPLATES = [
-  {id:"tpl1",title:"Invoice Paid → Notify Slack",app_key:"slack",trigger:"invoice_paid",action:"send_slack_message",config:{channel:"#finance",message_template:" Invoice {invoice_number} paid by {client_name} — {total}"},desc:"Get a Slack message every time a payment is received"},
   {id:"tpl2",title:"New Client → Google Sheet",app_key:"google_sheets",trigger:"new_client",action:"add_sheet_row",config:{spreadsheet_id:"",sheet_name:"Clients",columns:["name","email","phone","created_date"]},desc:"Log every new client to a Google Sheet automatically"},
-  {id:"tpl3",title:"Task Done → Zapier",app_key:"zapier",trigger:"task_completed",action:"send_webhook",config:{message_template:"Task completed: {task_title} by {user_name}"},desc:"Trigger any Zapier workflow when a task is published"},
-  {id:"tpl4",title:"Client Approval → Email",app_key:"gmail",trigger:"client_approval",action:"send_email",config:{to:"",subject:" Client Approved: {task_title}",message_template:"Good news! {client_name} approved the post '{task_title}'."},desc:"Email your team when a client approves content"},
-  {id:"tpl5",title:"New Lead → Trello Card",app_key:"trello",trigger:"new_lead",action:"create_trello_card",config:{board_id:"",list_id:"",title_template:"New Lead: {lead_name} — {company}"},desc:"Create a Trello card for every new CRM lead"},
-  {id:"tpl6",title:"Performance Report → Teams",app_key:"teams",trigger:"performance_report",action:"send_teams_message",config:{channel:"#management",message_template:" Weekly report: {completed_tasks} tasks done, top: {top_performer}"},desc:"Post weekly performance digest to Microsoft Teams"},
 ];
 
 const STATUS_CONFIG = {
@@ -11045,7 +11025,9 @@ function AppCard({app, selected, onClick}) {
     onMouseLeave={e=>{if(!selected){e.currentTarget.style.borderColor="var(--border)";e.currentTarget.style.background="var(--surface2)";}}}
     >
       <div style={{width:48,height:48,borderRadius:12,background:app.color+"22",border:`1.5px solid ${app.color}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>
-        {app.icon}
+        {app.brand
+          ? <Ico d={app.icon} size={24} fill={app.color} stroke="none" fillRule="evenodd"/>
+          : <Ico d={app.icon} size={24} stroke={app.color}/>}
       </div>
       <p style={{fontWeight:700,fontSize:12,textAlign:"center",color:selected?"var(--accent)":"var(--text)"}}>{app.label}</p>
       {selected&&<div style={{width:20,height:20,borderRadius:"50%",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -11136,7 +11118,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
 
   const selectedApp = APP_MAP[f.app_key];
   const selectedTrigger = TRIGGER_MAP[f.trigger];
-  const categoryActions = INTEGRATION_ACTIONS[selectedApp?.category||"automation"]||INTEGRATION_ACTIONS.automation;
+  const categoryActions = INTEGRATION_ACTIONS[selectedApp?.category||"social"]||INTEGRATION_ACTIONS.social;
   const selectedAction = categoryActions.find(a=>a.key===f.action);
   const isWhatsApp = f.app_key==="whatsapp";
   const isSocialPublish = f.app_key==="facebook"||f.app_key==="instagram"||isWhatsApp;
@@ -11243,7 +11225,9 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                       onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--accent)";e.currentTarget.style.background="var(--accentbg)";}}
                       onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border)";e.currentTarget.style.background="var(--surface)";}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
-                          <span style={{fontSize:14}}>{app?.icon}</span>
+                          {app&&(app.brand
+                            ? <Ico d={app.icon} size={14} fill={app.color} stroke="none" fillRule="evenodd"/>
+                            : <Ico d={app.icon} size={14} stroke={app.color}/>)}
                           <span style={{fontSize:11,fontWeight:700,color:"var(--text)"}}>{tpl.title}</span>
                         </div>
                         <p style={{fontSize:10,color:"var(--text3)",lineHeight:1.4}}>{tpl.desc}</p>
@@ -11254,7 +11238,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
               </div>
               {/* Category filter */}
               <div style={{display:"flex",gap:5}}>
-                {["all","messaging","productivity","spreadsheet","automation","social"].map(c=>(
+                {["all","social","spreadsheet","ecommerce"].map(c=>(
                   <button key={c} onClick={()=>setCategoryFilter(c)} style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,background:categoryFilter===c?"var(--accent)":"var(--surface2)",color:categoryFilter===c?"#fff":"var(--text2)",border:`1px solid ${categoryFilter===c?"var(--accent)":"var(--border2)"}`,textTransform:"capitalize"}}>{c}</button>
                 ))}
               </div>
@@ -11278,7 +11262,11 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
           {step===2&&selectedApp&&(
             <div style={{display:"flex",flexDirection:"column",gap:16}}>
               <div style={{display:"flex",alignItems:"center",gap:14}}>
-                <div style={{width:56,height:56,borderRadius:14,background:selectedApp.color+"22",border:`2px solid ${selectedApp.color}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28}}>{selectedApp.icon}</div>
+                <div style={{width:56,height:56,borderRadius:14,background:selectedApp.color+"22",border:`2px solid ${selectedApp.color}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:28}}>
+                  {selectedApp.brand
+                    ? <Ico d={selectedApp.icon} size={28} fill={selectedApp.color} stroke="none" fillRule="evenodd"/>
+                    : <Ico d={selectedApp.icon} size={28} stroke={selectedApp.color}/>}
+                </div>
                 <div>
                   <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:17,fontWeight:800}}>Connect {selectedApp.label}</h3>
                   <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{selectedApp.description}</p>
@@ -11289,31 +11277,29 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                 <span>Credentials are stored securely and masked. Only Admins can view or edit connection settings.</span>
               </div>
               {/* Credential fields by app type */}
-              {(f.app_key==="zapier"||f.app_key==="webhook"||f.app_key==="make")&&(
-                <Field label="Webhook URL" required>
-                  <input value={f.credentials?.webhook_url||""} onChange={e=>scred("webhook_url",e.target.value)} placeholder={`https://hooks.${f.app_key}.com/hooks/catch/xxxxx`} style={inputSt}/>
-                </Field>
-              )}
-              {f.app_key==="slack"&&(<>
-                <Field label="Bot Token" required><input value={f.credentials?.bot_token||""} onChange={e=>scred("bot_token",e.target.value)} placeholder="xoxb-xxxx-xxxx-xxxx" style={inputSt} type="password"/></Field>
-                <Field label="Signing Secret"><input value={f.credentials?.signing_secret||""} onChange={e=>scred("signing_secret",e.target.value)} placeholder="xxxxxxxxxxxx" style={inputSt} type="password"/></Field>
-              </>)}
-              {f.app_key==="gmail"&&(<>
-                <Field label="OAuth Client ID"><input value={f.credentials?.client_id||""} onChange={e=>scred("client_id",e.target.value)} placeholder="xxxx.apps.googleusercontent.com" style={inputSt}/></Field>
-                <Field label="Refresh Token"><input value={f.credentials?.refresh_token||""} onChange={e=>scred("refresh_token",e.target.value)} placeholder="1//xxxx" style={inputSt} type="password"/></Field>
-              </>)}
-              {(f.app_key==="google_sheets"||f.app_key==="airtable")&&(
+              {f.app_key==="google_sheets"&&(
                 <Field label="API Key" required><input value={f.credentials?.api_key||""} onChange={e=>scred("api_key",e.target.value)} placeholder="AIzaxxxxxxxxxxxxxxxx" style={inputSt} type="password"/></Field>
               )}
-              {(f.app_key==="trello"||f.app_key==="asana"||f.app_key==="notion"||f.app_key==="clickup")&&(<>
-                <Field label="API Token" required><input value={f.credentials?.api_token||""} onChange={e=>scred("api_token",e.target.value)} placeholder="API token from your account settings" style={inputSt} type="password"/></Field>
+              {f.app_key==="shopify"&&(<>
+                <Field label="Client" required hint="Which client does this Shopify store belong to?">
+                  <select value={f.client_id||""} onChange={e=>{
+                    const c = clients.find(cl=>cl.id===e.target.value);
+                    sf("client_id", c?.id||"");
+                    sf("client_name", c?.name||"");
+                  }} style={inputSt}>
+                    <option value="">— Select a client —</option>
+                    {clients.filter(c=>c.status!=="hidden").map(c=>(
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Shop Domain" required hint="From Shopify Admin → Settings → Domains, e.g. my-store.myshopify.com">
+                  <input value={f.credentials?.shop_domain||""} onChange={e=>scred("shop_domain",e.target.value)} placeholder="my-store.myshopify.com" style={inputSt}/>
+                </Field>
+                <Field label="Admin API Access Token" required hint="From a custom app in Shopify Admin → Settings → Apps and sales channels → Develop apps">
+                  <input value={f.credentials?.access_token||""} onChange={e=>scred("access_token",e.target.value)} placeholder="shpat_xxxxxxxxxxxxxxxxxxxx" style={inputSt} type="password"/>
+                </Field>
               </>)}
-              {f.app_key==="teams"&&(
-                <Field label="Incoming Webhook URL" required><input value={f.credentials?.webhook_url||""} onChange={e=>scred("webhook_url",e.target.value)} placeholder="https://xxxx.webhook.office.com/webhookb2/xxxx" style={inputSt}/></Field>
-              )}
-              {(f.app_key==="buffer"||f.app_key==="hootsuite")&&(
-                <Field label="Access Token" required><input value={f.credentials?.access_token||""} onChange={e=>scred("access_token",e.target.value)} placeholder="Access token from OAuth" style={inputSt} type="password"/></Field>
-              )}
               {(f.app_key==="facebook"||f.app_key==="instagram")&&(<>
                 <Field label="Client" required hint="Which client does this Facebook/Instagram page belong to?">
                   <select value={f.client_id||""} onChange={e=>{
