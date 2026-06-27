@@ -132,7 +132,7 @@ $accountId = $meResp['id'] ?? $igUserId;
 // webhook POSTs will ever arrive for it.
 if ($accountId) {
     ig_post("https://graph.instagram.com/v21.0/{$accountId}/subscribed_apps", [
-        'subscribed_fields' => 'messages',
+        'subscribed_fields' => 'messages,comments',
         'access_token'      => $longToken,
     ]);
 }

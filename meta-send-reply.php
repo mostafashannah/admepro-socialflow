@@ -19,31 +19,52 @@ $recipientId  = trim($data['recipient_id']  ?? '');
 $pageId       = trim($data['page_id']       ?? '');
 $accessToken  = trim($data['access_token']  ?? '');
 $message      = trim($data['message']       ?? '');
+$externalId   = trim($data['external_id']   ?? ''); // comment_id, required for fb_comment/ig_comment
 
-if (!$channel || !$recipientId || !$pageId || !$accessToken || !$message) {
+if (!$channel || !$accessToken || !$message || (!$recipientId && !$externalId)) {
     http_response_code(400);
-    echo json_encode(['error' => 'Missing required fields: channel, recipient_id, page_id, access_token, message']);
+    echo json_encode(['error' => 'Missing required fields: channel, access_token, message, and recipient_id (DMs) or external_id (comments)']);
     exit;
 }
 
-if (!in_array($channel, ['messenger', 'instagram'], true)) {
+if (!in_array($channel, ['messenger', 'instagram', 'fb_comment', 'ig_comment'], true)) {
     http_response_code(400);
-    echo json_encode(['error' => 'Unsupported channel. Supported: messenger, instagram']);
+    echo json_encode(['error' => 'Unsupported channel. Supported: messenger, instagram, fb_comment, ig_comment']);
     exit;
 }
 
 $graph_version = 'v19.0';
-// Instagram accounts connected via "Instagram API with Instagram Login" issue tokens
-// prefixed "IGAA" that are scoped to graph.instagram.com — graph.facebook.com can't
-// even parse them ("Cannot parse access token"). Messenger/Page tokens still use
-// graph.facebook.com as before.
-$graph_host = ($channel === 'instagram' && str_starts_with($accessToken, 'IGAA')) ? 'graph.instagram.com' : 'graph.facebook.com';
-$endpoint = "https://{$graph_host}/{$graph_version}/{$pageId}/messages";
-$post_data = [
-    'recipient'    => json_encode(['id' => $recipientId]),
-    'message'      => json_encode(['text' => $message]),
-    'access_token' => $accessToken,
-];
+$isComment = $channel === 'fb_comment' || $channel === 'ig_comment';
+
+if ($isComment) {
+    if (!$externalId) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Missing external_id (comment id) for comment reply']);
+        exit;
+    }
+    $graph_host = ($channel === 'ig_comment' && str_starts_with($accessToken, 'IGAA')) ? 'graph.instagram.com' : 'graph.facebook.com';
+    // Facebook Page comments: POST /{comment-id}/comments. Instagram: dedicated /replies endpoint.
+    $path = $channel === 'ig_comment' ? 'replies' : 'comments';
+    $endpoint = "https://{$graph_host}/{$graph_version}/{$externalId}/{$path}";
+    $post_data = ['message' => $message, 'access_token' => $accessToken];
+} else {
+    if (!$pageId) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Missing required field: page_id']);
+        exit;
+    }
+    // Instagram accounts connected via "Instagram API with Instagram Login" issue tokens
+    // prefixed "IGAA" that are scoped to graph.instagram.com — graph.facebook.com can't
+    // even parse them ("Cannot parse access token"). Messenger/Page tokens still use
+    // graph.facebook.com as before.
+    $graph_host = ($channel === 'instagram' && str_starts_with($accessToken, 'IGAA')) ? 'graph.instagram.com' : 'graph.facebook.com';
+    $endpoint = "https://{$graph_host}/{$graph_version}/{$pageId}/messages";
+    $post_data = [
+        'recipient'    => json_encode(['id' => $recipientId]),
+        'message'      => json_encode(['text' => $message]),
+        'access_token' => $accessToken,
+    ];
+}
 
 $ch = curl_init($endpoint);
 curl_setopt_array($ch, [

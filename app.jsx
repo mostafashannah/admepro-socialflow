@@ -320,7 +320,7 @@ const SB_SCHEMA = {
   posts: ["project_id","client_id","client_name","title","description","stage","platform","post_type","caption","hashtags","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes"],
   clients: ["name","email","phone","industry","status","platforms","portal_password","address","website","contact_person","notes"],
   client_tasks: ["client_id","client_name","title","description","task_type","priority","stage","assigned_to","created_by","deliverable_note"],
-  customer_messages: ["client_id","client_name","channel","customer_id","customer_name","direction","message_text","sent_by","thread_status","draft_status"],
+  customer_messages: ["client_id","client_name","channel","customer_id","customer_name","direction","message_text","sent_by","thread_status","draft_status","external_id"],
   reply_bot_settings: ["client_id","client_name","enabled","mode","channels","brain","updated_by"],
 };
 function sbSanitize(tableName, payload) {
@@ -544,7 +544,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.72";
+const APP_VERSION = "beta 2.73";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6202,9 +6202,11 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
 // CLIENT INBOX TAB — customer conversations (Messenger/Instagram/WhatsApp)
 // ════════════════════════════════════════════════════════════════
 const INBOX_CHANNEL_MAP = {
-  messenger: {label:"Messenger", icon:Icons.msgrBrand, color:"#0084ff", brand:true},
-  instagram: {label:"Instagram", icon:Icons.igBrand,   color:"#e1306c", brand:true},
-  whatsapp:  {label:"WhatsApp",  icon:Icons.waBrand,   color:"#25d366", brand:true},
+  messenger:  {label:"Messenger",    icon:Icons.msgrBrand, color:"#0084ff", brand:true},
+  instagram:  {label:"Instagram",    icon:Icons.igBrand,   color:"#e1306c", brand:true},
+  whatsapp:   {label:"WhatsApp",     icon:Icons.waBrand,   color:"#25d366", brand:true},
+  fb_comment: {label:"FB Comments",  icon:Icons.fbBrand,   color:"#1877f2", brand:true},
+  ig_comment: {label:"IG Comments",  icon:Icons.igBrand,   color:"#c13584", brand:true},
 };
 // Renders a channel's real platform logo (Messenger/Instagram/WhatsApp) as a
 // filled brand mark in the platform colour, or a fallback chat glyph.
@@ -6284,7 +6286,7 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div>
                 <p style={{fontWeight:600,fontSize:13}}>Enable AI auto-replies for {client.name}</p>
-                <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>Uses this client's Client Brain tone plus the reply-bot brain below to answer DMs.</p>
+                <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>Uses this client's Client Brain tone plus the reply-bot brain below to answer DMs and, if enabled, public post comments.</p>
               </div>
               <button onClick={()=>onSaveBotSettings&&onSaveBotSettings({enabled:!bot.enabled})}
                 style={{width:42,height:24,borderRadius:99,border:"none",cursor:"pointer",position:"relative",
@@ -6311,8 +6313,8 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
 
             <div>
               <p style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>Channels</p>
-              <div style={{display:"flex",gap:8}}>
-                {["instagram","messenger"].map(ch=>{
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                {["instagram","messenger","fb_comment","ig_comment"].map(ch=>{
                   const on = botChannels.includes(ch);
                   const meta = INBOX_CHANNEL_MAP[ch];
                   return (
@@ -21336,11 +21338,14 @@ function App() {
   };
 
   // Send a manual reply to a customer in the per-client social inbox (Messenger/Instagram/WhatsApp)
+  // fb_comment/ig_comment channels reply publicly via the comment's own id (external_id),
+  // not a DM recipient — everything else is a normal Messenger/Instagram DM send.
+  const inboxAppKey = (channel) => (channel==="instagram"||channel==="ig_comment") ? "instagram" : "facebook";
+
   const sendInboxReply = async (msg, replyText) => {
     if(!msg||!replyText?.trim()) return;
     const integration = (data.integrations||[]).find(i=>
-      i.status==="active" && i.client_id===msg.client_id &&
-      (i.app_key===msg.channel||(msg.channel==="instagram"&&i.app_key==="instagram")||(msg.channel==="messenger"&&i.app_key==="facebook"))
+      i.status==="active" && i.client_id===msg.client_id && i.app_key===inboxAppKey(msg.channel)
     );
     if(!integration) { alert("No active connection found for this client/channel."); return; }
     let creds = {};
@@ -21348,7 +21353,7 @@ function App() {
     try {
       const res = await fetch(window.location.origin+"/meta-send-reply.php", {
         method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({channel:msg.channel, recipient_id:msg.customer_id, page_id:creds.page_id, access_token:creds.access_token, message:replyText.trim()}),
+        body: JSON.stringify({channel:msg.channel, recipient_id:msg.customer_id, external_id:msg.external_id||"", page_id:creds.page_id, access_token:creds.access_token, message:replyText.trim()}),
       });
       const out = await res.json();
       if(!res.ok) throw new Error((out.error&&(out.error.message||out.error.error_user_msg))||(typeof out.error==="string"?out.error:JSON.stringify(out.error))||"Send failed");
@@ -21366,8 +21371,7 @@ function App() {
     const text = (editedText ?? draftMsg.message_text ?? "").trim();
     if(!text) return;
     const integration = (data.integrations||[]).find(i=>
-      i.status==="active" && i.client_id===draftMsg.client_id &&
-      (draftMsg.channel==="instagram"?i.app_key==="instagram":i.app_key==="facebook")
+      i.status==="active" && i.client_id===draftMsg.client_id && i.app_key===inboxAppKey(draftMsg.channel)
     );
     if(!integration) { alert("No active connection found for this client/channel."); return; }
     let creds = {};
@@ -21375,7 +21379,7 @@ function App() {
     try {
       const res = await fetch(window.location.origin+"/meta-send-reply.php", {
         method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({channel:draftMsg.channel, recipient_id:draftMsg.customer_id, page_id:creds.page_id, access_token:creds.access_token, message:text}),
+        body: JSON.stringify({channel:draftMsg.channel, recipient_id:draftMsg.customer_id, external_id:draftMsg.external_id||"", page_id:creds.page_id, access_token:creds.access_token, message:text}),
       });
       const out = await res.json();
       if(!res.ok) throw new Error((out.error&&(out.error.message||out.error.error_user_msg))||(typeof out.error==="string"?out.error:JSON.stringify(out.error))||"Send failed");

@@ -262,12 +262,13 @@ CREATE TABLE IF NOT EXISTS customer_messages (
   id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   client_id VARCHAR(36), client_name TEXT,
-  channel VARCHAR(20) NOT NULL, -- messenger | instagram | whatsapp
+  channel VARCHAR(20) NOT NULL, -- messenger | instagram | whatsapp | fb_comment | ig_comment
   customer_id TEXT, customer_name TEXT,
   direction VARCHAR(10) NOT NULL, -- in | out
   message_text TEXT, sent_by VARCHAR(20) DEFAULT 'customer', -- customer | bot | human
   thread_status VARCHAR(20) DEFAULT 'open', -- open | bot_handled | needs_human | closed
-  draft_status VARCHAR(20) DEFAULT NULL -- pending_review | sent | dismissed (NULL = not a bot draft)
+  draft_status VARCHAR(20) DEFAULT NULL, -- pending_review | sent | dismissed (NULL = not a bot draft)
+  external_id VARCHAR(64) DEFAULT NULL -- Graph API comment_id, used to post the public reply (NULL for DMs)
 ) ENGINE=InnoDB;
 CREATE INDEX idx_customer_messages_client ON customer_messages(client_id);
 CREATE INDEX idx_customer_messages_customer ON customer_messages(customer_id);

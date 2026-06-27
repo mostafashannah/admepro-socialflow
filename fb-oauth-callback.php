@@ -113,7 +113,7 @@ if ($err) {
 $pages = [];
 foreach (($pagesResp['data'] ?? []) as $p) {
     fb_post("https://graph.facebook.com/{$v}/{$p['id']}/subscribed_apps", [
-        'subscribed_fields' => 'messages',
+        'subscribed_fields' => 'messages,feed',
         'access_token'      => $p['access_token'],
     ]);
     $pages[] = ['id' => $p['id'], 'name' => $p['name'], 'access_token' => $p['access_token']];

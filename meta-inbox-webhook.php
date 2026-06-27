@@ -103,9 +103,9 @@ function fetchSenderName(string $channel, ?string $accessToken, string $senderId
     return $name ?: null;
 }
 
-function storeMessage(PDO $pdo, $clientId, $clientName, $channel, $customerId, $customerName, $text) {
-    $stmt = $pdo->prepare("INSERT INTO customer_messages (client_id, client_name, channel, customer_id, customer_name, direction, message_text, sent_by, thread_status) VALUES (:cid, :cname, :ch, :custid, :custname, 'in', :txt, 'customer', 'needs_human')");
-    $stmt->execute([':cid'=>$clientId, ':cname'=>$clientName, ':ch'=>$channel, ':custid'=>$customerId, ':custname'=>$customerName, ':txt'=>$text]);
+function storeMessage(PDO $pdo, $clientId, $clientName, $channel, $customerId, $customerName, $text, $externalId = null) {
+    $stmt = $pdo->prepare("INSERT INTO customer_messages (client_id, client_name, channel, customer_id, customer_name, direction, message_text, sent_by, thread_status, external_id) VALUES (:cid, :cname, :ch, :custid, :custname, 'in', :txt, 'customer', 'needs_human', :eid)");
+    $stmt->execute([':cid'=>$clientId, ':cname'=>$clientName, ':ch'=>$channel, ':custid'=>$customerId, ':custname'=>$customerName, ':txt'=>$text, ':eid'=>$externalId]);
 }
 
 // Meta tells us the platform at the top level — Instagram DMs arrive under
@@ -133,13 +133,47 @@ try {
 
         // Some Instagram setups deliver via "changes" with field "messages" instead.
         foreach (($entry['changes'] ?? []) as $c) {
-            if (($c['field'] ?? '') === 'messages') {
+            $field = $c['field'] ?? '';
+
+            if ($field === 'messages') {
                 $text = $c['value']['message']['text'] ?? null;
                 $senderId = $c['value']['sender']['id'] ?? null;
                 if ($text && $senderId) {
                     $senderName = fetchSenderName('instagram', $client['access_token'], $senderId);
                     storeMessage($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, $senderName, $text);
                     try { maybeAutoReply($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, $senderName); }
+                    catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
+                }
+                continue;
+            }
+
+            // Facebook Page comments arrive via field "feed" (item=comment, verb=add).
+            if ($field === 'feed' && ($c['value']['item'] ?? '') === 'comment' && ($c['value']['verb'] ?? 'add') === 'add') {
+                $v = $c['value'];
+                $commentId = $v['comment_id'] ?? null;
+                $fromId    = $v['from']['id'] ?? null;
+                $text      = $v['message'] ?? null;
+                // Skip comments authored by the Page itself — otherwise the bot's own
+                // public replies (posted as the Page) would re-trigger another reply.
+                if ($commentId && $fromId && $fromId !== $pageId && $text !== null && $text !== '') {
+                    $fromName = $v['from']['name'] ?? null;
+                    storeMessage($pdo, $client['client_id'], $client['client_name'], 'fb_comment', $fromId, $fromName, $text, $commentId);
+                    try { maybeAutoReply($pdo, $client['client_id'], $client['client_name'], 'fb_comment', $fromId, $fromName, $commentId); }
+                    catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
+                }
+                continue;
+            }
+
+            // Instagram comments arrive via field "comments".
+            if ($field === 'comments') {
+                $v = $c['value'];
+                $commentId = $v['id'] ?? null;
+                $fromId    = $v['from']['id'] ?? null;
+                $text      = $v['text'] ?? null;
+                if ($commentId && $fromId && $fromId !== $pageId && $text !== null && $text !== '') {
+                    $fromName = $v['from']['username'] ?? null;
+                    storeMessage($pdo, $client['client_id'], $client['client_name'], 'ig_comment', $fromId, $fromName, $text, $commentId);
+                    try { maybeAutoReply($pdo, $client['client_id'], $client['client_name'], 'ig_comment', $fromId, $fromName, $commentId); }
                     catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
                 }
             }
