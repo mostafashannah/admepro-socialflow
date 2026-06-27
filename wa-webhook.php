@@ -57,15 +57,18 @@ if (function_exists('fastcgi_finish_request')) {
     fastcgi_finish_request();
 }
 
-$body = json_decode($raw, true);
-$message = $body['entry'][0]['changes'][0]['value']['messages'][0] ?? null;
-if (!$message || $message['type'] !== 'text') {
+$body    = json_decode($raw, true);
+$value   = $body['entry'][0]['changes'][0]['value'] ?? [];
+$message = $value['messages'][0] ?? null;
+if (!$message || ($message['type'] ?? '') !== 'text') {
     exit; // ignore statuses, non-text messages, etc.
 }
 
+$phoneNumberId = (string)($value['metadata']['phone_number_id'] ?? ''); // which of our numbers received it
 $from = preg_replace('/\D/', '', $message['from'] ?? ''); // digits only, no '+'
 $text = trim($message['text']['body'] ?? '');
 if (!$from || !$text) exit;
+$contactName = $value['contacts'][0]['profile']['name'] ?? null; // customer display name, if sent
 
 try {
     $pdo = new PDO(
@@ -74,8 +77,31 @@ try {
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]
     );
 
-    [$senderName, $senderRole, $contextBlock, $senderId] = identifySender($pdo, $from);
+    // Route by which WhatsApp number received the message. The "Pro" assistant runs on
+    // its own dedicated number (WA_PHONE_ID). Every OTHER connected number belongs to a
+    // client's customer inbox — those messages are stored and handed to the reply bot,
+    // exactly like Messenger/Instagram, instead of going to Pro.
+    $proPhoneId = defined('WA_PHONE_ID') ? (string)WA_PHONE_ID : '';
+    if ($phoneNumberId && $phoneNumberId !== $proPhoneId) {
+        // Match the receiving number to a client's WhatsApp integration.
+        $rows = $pdo->query("SELECT client_id, client_name, credentials FROM integrations WHERE app_key='whatsapp' AND status='active' AND client_id IS NOT NULL")->fetchAll(PDO::FETCH_ASSOC);
+        $match = null;
+        foreach ($rows as $row) {
+            $creds = json_decode($row['credentials'] ?? '{}', true) ?: [];
+            if (($creds['phone_id'] ?? '') === $phoneNumberId) { $match = $row; break; }
+        }
+        if ($match) {
+            require_once __DIR__ . '/reply-bot-lib.php';
+            $ins = $pdo->prepare("INSERT INTO customer_messages (client_id, client_name, channel, customer_id, customer_name, direction, message_text, sent_by, thread_status) VALUES (:cid,:cname,'whatsapp',:custid,:custname,'in',:txt,'customer','needs_human')");
+            $ins->execute([':cid'=>$match['client_id'], ':cname'=>$match['client_name'], ':custid'=>$from, ':custname'=>$contactName, ':txt'=>$text]);
+            try { maybeAutoReply($pdo, $match['client_id'], $match['client_name'], 'whatsapp', $from, $contactName); }
+            catch (\Throwable $e) { error_log('[wa-webhook] reply-bot EXCEPTION: ' . $e->getMessage()); }
+        }
+        exit; // handled (or no matching client) — do not fall through to Pro
+    }
 
+    // ---- Pro assistant path (the dedicated Pro number) ----
+    [$senderName, $senderRole, $contextBlock, $senderId] = identifySender($pdo, $from);
     $reply = askPro($pdo, $senderName, $senderRole, $contextBlock, $text, $senderId);
     if ($reply) sendWhatsAppReply($from, $reply);
 } catch (Throwable $e) {

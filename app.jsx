@@ -544,7 +544,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.77";
+const APP_VERSION = "beta 2.78";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6314,7 +6314,7 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
             <div>
               <p style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>Channels</p>
               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                {["instagram","messenger","fb_comment","ig_comment"].map(ch=>{
+                {["instagram","messenger","fb_comment","ig_comment","whatsapp"].map(ch=>{
                   const on = botChannels.includes(ch);
                   const meta = INBOX_CHANNEL_MAP[ch];
                   return (
@@ -10978,6 +10978,7 @@ const INTEGRATION_APPS = [
   {key:"instagram", label:"Instagram", category:"social", color:"#E1306C", icon:"", description:"Publish posts to Instagram Business accounts"},
   {key:"buffer", label:"Buffer", category:"social", color:"#168EEA", icon:"", description:"Schedule social media posts"},
   {key:"hootsuite", label:"Hootsuite", category:"social", color:"#1F3044", icon:"", description:"Publish to Hootsuite streams"},
+  {key:"whatsapp", label:"WhatsApp", category:"social", color:"#25D366", icon:"", description:"Connect a client's WhatsApp number to their inbox"},
 ];
 const APP_MAP = Object.fromEntries(INTEGRATION_APPS.map(a=>[a.key,a]));
 
@@ -11129,8 +11130,11 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
   const selectedTrigger = TRIGGER_MAP[f.trigger];
   const categoryActions = INTEGRATION_ACTIONS[selectedApp?.category||"automation"]||INTEGRATION_ACTIONS.automation;
   const selectedAction = categoryActions.find(a=>a.key===f.action);
-  const isSocialPublish = f.app_key==="facebook"||f.app_key==="instagram";
-  const metaConnected = !isSocialPublish || !!(f.credentials?.page_id && f.credentials?.access_token && f.client_id);
+  const isWhatsApp = f.app_key==="whatsapp";
+  const isSocialPublish = f.app_key==="facebook"||f.app_key==="instagram"||isWhatsApp;
+  const metaConnected = isWhatsApp
+    ? !!(f.credentials?.phone_id && f.credentials?.access_token && f.client_id)
+    : (!isSocialPublish || !!(f.credentials?.page_id && f.credentials?.access_token && f.client_id));
 
   const applyTemplate = (tpl) => {
     setF(p=>({...p, app_key:tpl.app_key, trigger:tpl.trigger, action:tpl.action, name:tpl.title, config:tpl.config||{}}));
@@ -11251,6 +11255,8 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                   <AppCard key={app.key} app={app} selected={f.app_key===app.key} onClick={()=>{
                     if(app.key==="facebook"||app.key==="instagram") {
                       setF(p=>({...p,app_key:app.key,trigger:"task_completed",action:"publish_post"}));
+                    } else if(app.key==="whatsapp") {
+                      setF(p=>({...p,app_key:app.key,trigger:"new_lead",action:"send_message"}));
                     } else {
                       sf("app_key",app.key);
                     }
@@ -11340,6 +11346,34 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                 )}
                 {!metaConnected&&(
                   <p style={{fontSize:11,color:"#ef4444"}}>Pick a Client and connect with {f.app_key==="instagram"?"Instagram":"Facebook"} before you can continue — otherwise messages will never reach this integration.</p>
+                )}
+              </>)}
+              {f.app_key==="whatsapp"&&(<>
+                <Field label="Client" required hint="Which client does this WhatsApp number belong to?">
+                  <select value={f.client_id||""} onChange={e=>{
+                    const c = clients.find(cl=>cl.id===e.target.value);
+                    sf("client_id", c?.id||"");
+                    sf("client_name", c?.name||"");
+                  }} style={inputSt}>
+                    <option value="">— Select a client —</option>
+                    {clients.filter(c=>c.status!=="hidden").map(c=>(
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Phone Number ID" required hint="From Meta App Dashboard → WhatsApp → API Setup. This must be a different number than the agency's own Pro WhatsApp number.">
+                  <input value={f.credentials?.phone_id||""} onChange={e=>scred("phone_id",e.target.value)} placeholder="1234567890123456" style={inputSt}/>
+                </Field>
+                <Field label="Access Token" required>
+                  <input value={f.credentials?.access_token||""} onChange={e=>scred("access_token",e.target.value)} placeholder="Permanent access token for this number" style={inputSt} type="password"/>
+                </Field>
+                {metaConnected&&(
+                  <div style={{padding:10,background:"#10b98122",border:"1px solid #10b98155",borderRadius:"var(--rs)",fontSize:12,color:"#10b981",fontWeight:600}}>
+                    Connected — Phone Number ID {f.credentials.phone_id}
+                  </div>
+                )}
+                {!metaConnected&&(
+                  <p style={{fontSize:11,color:"#ef4444"}}>Pick a Client and fill in the Phone Number ID + Access Token before you can continue.</p>
                 )}
               </>)}
             </div>
@@ -11447,8 +11481,8 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                   <div style={{display:"flex",alignItems:"center",gap:14}}>
                     <div style={{width:48,height:48,borderRadius:12,background:selectedApp.color+"22",border:`1.5px solid ${selectedApp.color}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0}}>{selectedApp.icon}</div>
                     <div>
-                      <p style={{fontWeight:800,fontSize:15}}>{selectedApp.label} Page Connected</p>
-                      <p style={{fontSize:12,color:"var(--text2)",marginTop:2}}>One-click publishing enabled for this client</p>
+                      <p style={{fontWeight:800,fontSize:15}}>{selectedApp.label} {isWhatsApp?"Number":"Page"} Connected</p>
+                      <p style={{fontSize:12,color:"var(--text2)",marginTop:2}}>{isWhatsApp?"Customer messages on this number now reach this client's inbox":"One-click publishing enabled for this client"}</p>
                     </div>
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
@@ -11457,8 +11491,8 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                       <p style={{fontWeight:700,fontSize:13}}>{f.client_name||"— not set —"}</p>
                     </div>
                     <div style={{padding:"10px 14px",background:"var(--surface)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
-                      <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Page ID</p>
-                      <p style={{fontWeight:700,fontSize:13,fontFamily:"monospace"}}>{f.credentials?.page_id||"— not set —"}</p>
+                      <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{isWhatsApp?"Phone Number ID":"Page ID"}</p>
+                      <p style={{fontWeight:700,fontSize:13,fontFamily:"monospace"}}>{(isWhatsApp?f.credentials?.phone_id:f.credentials?.page_id)||"— not set —"}</p>
                     </div>
                   </div>
                   <Field label="Integration Name">
@@ -21343,7 +21377,10 @@ function App() {
   // Send a manual reply to a customer in the per-client social inbox (Messenger/Instagram/WhatsApp)
   // fb_comment/ig_comment channels reply publicly via the comment's own id (external_id),
   // not a DM recipient — everything else is a normal Messenger/Instagram DM send.
-  const inboxAppKey = (channel) => (channel==="instagram"||channel==="ig_comment") ? "instagram" : "facebook";
+  const inboxAppKey = (channel) => channel==="whatsapp" ? "whatsapp" : (channel==="instagram"||channel==="ig_comment") ? "instagram" : "facebook";
+  const inboxSendBody = (channel, customerId, externalId, creds, message) => channel==="whatsapp"
+    ? {channel, recipient_id:customerId, phone_id:creds.phone_id, access_token:creds.access_token, message}
+    : {channel, recipient_id:customerId, external_id:externalId||"", page_id:creds.page_id, access_token:creds.access_token, message};
 
   const sendInboxReply = async (msg, replyText) => {
     if(!msg||!replyText?.trim()) return;
@@ -21356,7 +21393,7 @@ function App() {
     try {
       const res = await fetch(window.location.origin+"/meta-send-reply.php", {
         method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({channel:msg.channel, recipient_id:msg.customer_id, external_id:msg.external_id||"", page_id:creds.page_id, access_token:creds.access_token, message:replyText.trim()}),
+        body: JSON.stringify(inboxSendBody(msg.channel, msg.customer_id, msg.external_id, creds, replyText.trim())),
       });
       const out = await res.json();
       if(!res.ok) throw new Error((out.error&&(out.error.message||out.error.error_user_msg))||(typeof out.error==="string"?out.error:JSON.stringify(out.error))||"Send failed");
@@ -21382,7 +21419,7 @@ function App() {
     try {
       const res = await fetch(window.location.origin+"/meta-send-reply.php", {
         method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({channel:draftMsg.channel, recipient_id:draftMsg.customer_id, external_id:draftMsg.external_id||"", page_id:creds.page_id, access_token:creds.access_token, message:text}),
+        body: JSON.stringify(inboxSendBody(draftMsg.channel, draftMsg.customer_id, draftMsg.external_id, creds, text)),
       });
       const out = await res.json();
       if(!res.ok) throw new Error((out.error&&(out.error.message||out.error.error_user_msg))||(typeof out.error==="string"?out.error:JSON.stringify(out.error))||"Send failed");

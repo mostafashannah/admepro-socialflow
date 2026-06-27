@@ -21,13 +21,17 @@ function getReplyBotSettings(PDO $pdo, string $clientId) {
 }
 
 function findIntegrationCreds(PDO $pdo, string $clientId, string $channel) {
-    $appKey = $channel === 'instagram' ? 'instagram' : 'facebook';
+    // channel is already resolved to an app_key by the caller (instagram|facebook|whatsapp).
+    $appKey = in_array($channel, ['instagram', 'facebook', 'whatsapp'], true) ? $channel : 'facebook';
     $stmt = $pdo->prepare("SELECT credentials FROM integrations WHERE client_id = :cid AND app_key = :k AND status = 'active' LIMIT 1");
     $stmt->execute([':cid' => $clientId, ':k' => $appKey]);
     $row = $stmt->fetch(PDO::FETCH_ASSOC);
     if (!$row) return null;
     $creds = json_decode($row['credentials'] ?? '{}', true) ?: [];
-    if (empty($creds['page_id']) || empty($creds['access_token'])) return null;
+    if (empty($creds['access_token'])) return null;
+    // WhatsApp creds carry phone_id instead of page_id.
+    if ($appKey === 'whatsapp') { if (empty($creds['phone_id'])) return null; }
+    elseif (empty($creds['page_id'])) return null;
     return $creds;
 }
 
@@ -164,6 +168,36 @@ function sendMetaCommentReply(string $channel, string $accessToken, string $comm
     return [$http_code, json_decode($response, true)];
 }
 
+// Sends a WhatsApp text reply via the WhatsApp Cloud API (same shape as whatsapp.php).
+// $phoneId is the client's WhatsApp phone-number ID; $to is the customer's number.
+// Named distinctly from pro-lib.php's sendWhatsAppReply() (the Pro-number sender),
+// since both files are loaded together.
+function sendWhatsAppBotReply(string $phoneId, string $accessToken, string $to, string $message) {
+    $to = '+' . preg_replace('/\D/', '', $to); // E.164-ish, digits only
+    $endpoint = "https://graph.facebook.com/v19.0/{$phoneId}/messages";
+    $payload  = json_encode([
+        'messaging_product' => 'whatsapp',
+        'to'                => $to,
+        'type'              => 'text',
+        'text'              => ['body' => $message],
+    ]);
+    $ch = curl_init($endpoint);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => $payload,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_TIMEOUT        => 20,
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json', "Authorization: Bearer {$accessToken}"],
+    ]);
+    $response  = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curl_err  = curl_error($ch);
+    curl_close($ch);
+    if ($curl_err) return [502, null];
+    return [$http_code, json_decode($response, true)];
+}
+
 function storeBotMessage(PDO $pdo, $clientId, $clientName, $channel, $customerId, $customerName, $text, $draftStatus, $threadStatus, $externalId = null) {
     $stmt = $pdo->prepare("INSERT INTO customer_messages (client_id, client_name, channel, customer_id, customer_name, direction, message_text, sent_by, thread_status, draft_status, external_id) VALUES (:cid, :cname, :ch, :custid, :custname, 'out', :txt, 'bot', :tstatus, :dstatus, :eid)");
     $stmt->execute([':cid'=>$clientId, ':cname'=>$clientName, ':ch'=>$channel, ':custid'=>$customerId, ':custname'=>$customerName, ':txt'=>$text, ':tstatus'=>$threadStatus, ':dstatus'=>$draftStatus, ':eid'=>$externalId]);
@@ -183,7 +217,8 @@ function maybeAutoReply(PDO $pdo, string $clientId, string $clientName, string $
     if (!$settings || !$settings['enabled']) { $log('bot disabled or no settings row'); return; }
     if (!in_array($channel, $settings['channels'], true)) { $log('channel not enabled in settings: ' . json_encode($settings['channels'])); return; }
 
-    $isComment = $channel === 'fb_comment' || $channel === 'ig_comment';
+    $isComment   = $channel === 'fb_comment' || $channel === 'ig_comment';
+    $isWhatsApp  = $channel === 'whatsapp';
     if ($isComment && !$externalId) { $log('comment channel but no external_id'); return; }
 
     $stmt = $pdo->prepare("SELECT direction, message_text FROM customer_messages WHERE client_id = :cid AND channel = :ch AND customer_id = :custid ORDER BY created_at DESC LIMIT 12");
@@ -195,10 +230,14 @@ function maybeAutoReply(PDO $pdo, string $clientId, string $clientName, string $
     if (!$reply) { $log('generateBotReply returned empty (Claude opted out or API error)'); return; }
 
     if ($settings['mode'] === 'auto') {
-        $creds = findIntegrationCreds($pdo, $clientId, $isComment ? ($channel === 'ig_comment' ? 'instagram' : 'facebook') : $channel);
+        // Resolve the channel to the integration app_key that holds the send credentials.
+        $appKey = $isWhatsApp ? 'whatsapp' : ($isComment ? ($channel === 'ig_comment' ? 'instagram' : 'facebook') : $channel);
+        $creds = findIntegrationCreds($pdo, $clientId, $appKey);
         if (!$creds) { $log('no integration credentials found'); return; } // no credentials to send with — drop rather than fake a sent message
         if ($isComment) {
             [$httpCode, $body] = sendMetaCommentReply($channel, $creds['access_token'], $externalId, $reply);
+        } elseif ($isWhatsApp) {
+            [$httpCode, $body] = sendWhatsAppBotReply($creds['phone_id'], $creds['access_token'], $customerId, $reply);
         } else {
             [$httpCode, $body] = sendMetaDM($channel, $creds['page_id'], $creds['access_token'], $customerId, $reply);
         }

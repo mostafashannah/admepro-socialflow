@@ -17,6 +17,7 @@ $data         = json_decode(file_get_contents('php://input'), true);
 $channel      = strtolower(trim($data['channel']      ?? ''));
 $recipientId  = trim($data['recipient_id']  ?? '');
 $pageId       = trim($data['page_id']       ?? '');
+$phoneId      = trim($data['phone_id']      ?? ''); // whatsapp only
 $accessToken  = trim($data['access_token']  ?? '');
 $message      = trim($data['message']       ?? '');
 $externalId   = trim($data['external_id']   ?? ''); // comment_id, required for fb_comment/ig_comment
@@ -27,14 +28,48 @@ if (!$channel || !$accessToken || !$message || (!$recipientId && !$externalId)) 
     exit;
 }
 
-if (!in_array($channel, ['messenger', 'instagram', 'fb_comment', 'ig_comment'], true)) {
+if (!in_array($channel, ['messenger', 'instagram', 'fb_comment', 'ig_comment', 'whatsapp'], true)) {
     http_response_code(400);
-    echo json_encode(['error' => 'Unsupported channel. Supported: messenger, instagram, fb_comment, ig_comment']);
+    echo json_encode(['error' => 'Unsupported channel. Supported: messenger, instagram, fb_comment, ig_comment, whatsapp']);
     exit;
 }
 
 $graph_version = 'v19.0';
-$isComment = $channel === 'fb_comment' || $channel === 'ig_comment';
+$isComment  = $channel === 'fb_comment' || $channel === 'ig_comment';
+$isWhatsApp = $channel === 'whatsapp';
+
+if ($isWhatsApp) {
+    if (!$phoneId) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Missing required field: phone_id']);
+        exit;
+    }
+    $to = '+' . preg_replace('/\D/', '', $recipientId);
+    $endpoint = "https://graph.facebook.com/{$graph_version}/{$phoneId}/messages";
+    $jsonBody = json_encode([
+        'messaging_product' => 'whatsapp',
+        'to'                => $to,
+        'type'              => 'text',
+        'text'              => ['body' => $message],
+    ]);
+    $ch = curl_init($endpoint);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => $jsonBody,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json', "Authorization: Bearer {$accessToken}"],
+    ]);
+    $response  = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curl_err  = curl_error($ch);
+    curl_close($ch);
+
+    if ($curl_err) { http_response_code(502); echo json_encode(['error' => "cURL error: {$curl_err}"]); exit; }
+    http_response_code($http_code);
+    echo $response;
+    exit;
+}
 
 if ($isComment) {
     if (!$externalId) {
