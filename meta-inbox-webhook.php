@@ -143,7 +143,7 @@ try {
                 storeMessage($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName, $text);
                 try {
                     if ($client['is_own']) { maybeCreateLeadFromMessage($pdo, $channel, $senderId, $senderName, $text); }
-                    else { maybeAutoReply($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName); }
+                    maybeAutoReply($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName);
                 } catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
             }
         }
@@ -160,7 +160,7 @@ try {
                     storeMessage($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, $senderName, $text);
                     try {
                         if ($client['is_own']) { maybeCreateLeadFromMessage($pdo, 'instagram', $senderId, $senderName, $text); }
-                        else { maybeAutoReply($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, $senderName); }
+                        maybeAutoReply($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, $senderName);
                     } catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
                 }
                 continue;
