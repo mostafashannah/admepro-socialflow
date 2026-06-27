@@ -186,7 +186,7 @@ try {
                 $senderName = fetchSenderName($channel, $client['access_token'], $senderId);
                 storeMessage($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName, $text);
                 try {
-                    maybeCreateLeadFromMessage($pdo, $channel, $senderId, $senderName, $text, null, $client['client_id'], $client['is_own'] ? null : $client['client_name']);
+                    if ($client['is_own']) { maybeCreateLeadFromMessage($pdo, $channel, $senderId, $senderName, $text, null, $client['client_id']); }
                     maybeAutoReply($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName);
                 } catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
             }
@@ -206,7 +206,7 @@ try {
                     $senderName = fetchSenderName('instagram', $client['access_token'], $senderId);
                     storeMessage($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, $senderName, $text);
                     try {
-                        maybeCreateLeadFromMessage($pdo, 'instagram', $senderId, $senderName, $text, null, $client['client_id'], $client['is_own'] ? null : $client['client_name']);
+                        if ($client['is_own']) { maybeCreateLeadFromMessage($pdo, 'instagram', $senderId, $senderName, $text, null, $client['client_id']); }
                         maybeAutoReply($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, $senderName);
                     } catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
                 }
