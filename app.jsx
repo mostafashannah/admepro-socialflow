@@ -544,7 +544,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.84";
+const APP_VERSION = "beta 2.85";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11473,7 +11473,9 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
               {isSocialPublish?(
                 <div style={{padding:18,background:"var(--surface2)",borderRadius:"var(--r)",border:"1px solid var(--border)",display:"flex",flexDirection:"column",gap:12}}>
                   <div style={{display:"flex",alignItems:"center",gap:14}}>
-                    <div style={{width:48,height:48,borderRadius:12,background:selectedApp.color+"22",border:`1.5px solid ${selectedApp.color}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0}}>{selectedApp.icon}</div>
+                    <div style={{width:48,height:48,borderRadius:12,background:selectedApp.color+"22",border:`1.5px solid ${selectedApp.color}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,flexShrink:0}}>
+                      {selectedApp.icon&&(selectedApp.brand?<Ico d={selectedApp.icon} size={24} fill={selectedApp.color} stroke="none" fillRule="evenodd"/>:<Ico d={selectedApp.icon} size={24} stroke={selectedApp.color}/>)}
+                    </div>
                     <div>
                       <p style={{fontWeight:800,fontSize:15}}>{selectedApp.label} {isWhatsApp?"Number":"Page"} Connected</p>
                       <p style={{fontSize:12,color:"var(--text2)",marginTop:2}}>{isWhatsApp?"Customer messages on this number now reach this client's inbox":"One-click publishing enabled for this client"}</p>
@@ -11506,7 +11508,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                 </div>
                 <div style={{textAlign:"center",padding:14,background:"var(--surface)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
                   <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>Do This</p>
-                  <div style={{fontSize:24,marginBottom:6}}>{selectedApp?.icon||""}</div>
+                  <div style={{fontSize:24,marginBottom:6}}>{selectedApp?.icon&&(selectedApp.brand?<Ico d={selectedApp.icon} size={24} fill={selectedApp.color} stroke="none" fillRule="evenodd"/>:<Ico d={selectedApp.icon} size={24} stroke={selectedApp.color}/>)}</div>
                   <p style={{fontWeight:700,fontSize:13}}>{categoryActions.find(a=>a.key===f.action)?.label||f.action}</p>
                   <p style={{fontSize:11,color:"var(--text3)",marginTop:3}}>via {selectedApp?.label}</p>
                 </div>
@@ -11619,7 +11621,9 @@ function IntegrationsPage({integrations, integrationLogs, currentUser, clients=[
               onMouseLeave={e=>e.currentTarget.style.boxShadow=""}>
               <div style={{padding:"16px 20px",display:"flex",alignItems:"center",gap:16}}>
                 {/* App icon */}
-                <div style={{width:48,height:48,borderRadius:12,background:app.color+"22",border:`1.5px solid ${app.color}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>{app.icon}</div>
+                <div style={{width:48,height:48,borderRadius:12,background:app.color+"22",border:`1.5px solid ${app.color}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>
+                  {app.icon&&(app.brand?<Ico d={app.icon} size={22} fill={app.color} stroke="none" fillRule="evenodd"/>:<Ico d={app.icon} size={22} stroke={app.color}/>)}
+                </div>
                 {/* Info */}
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
