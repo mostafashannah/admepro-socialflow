@@ -71,13 +71,16 @@ function findClientByPageId(PDO $pdo, string $pageId) {
         // user ID returned by graph.instagram.com/me and stored as page_id during
         // OAuth — page_id_alt lets a connected account match on either ID.
         if (($creds['page_id'] ?? '') === $pageId || ($creds['page_id_alt'] ?? '') === $pageId) {
-            // client_id IS NULL means this is admepro's own page (not a client's) —
-            // those messages go through lead-capture instead of the per-client reply bot.
+            // The "Connect" wizard always requires picking a real client row, so
+            // admepro's own page is connected via a client literally named "admepro"
+            // (client_id is never actually NULL in practice) — match on that name,
+            // falling back to NULL/empty client_id in case that ever changes.
+            $clientName = (string)($row['client_name'] ?? '');
             return [
                 'client_id' => $row['client_id'],
                 'client_name' => $row['client_name'],
                 'access_token' => $creds['access_token'] ?? null,
-                'is_own' => $row['client_id'] === null || $row['client_id'] === '',
+                'is_own' => $row['client_id'] === null || $row['client_id'] === '' || strcasecmp($clientName, 'admepro') === 0,
             ];
         }
     }
