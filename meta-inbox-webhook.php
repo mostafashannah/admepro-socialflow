@@ -53,6 +53,16 @@ $body = json_decode($raw, true);
 http_response_code(200); // ack immediately, Meta requires a fast 200
 echo 'EVENT_RECEIVED';
 
+// Actually close the connection to Meta here instead of just queuing the
+// response — without this, the script kept running synchronously through
+// every entry (Meta can batch multiple pages into one POST), so a slow
+// Claude call for one client's message could delay/timeout processing of
+// another client's message later in the same batch.
+if (function_exists('fastcgi_finish_request')) {
+    fastcgi_finish_request();
+}
+set_time_limit(0);
+
 if (!$body || empty($body['entry'])) { exit; }
 
 $pdo = new PDO(

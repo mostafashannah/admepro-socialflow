@@ -257,6 +257,17 @@ function isInterestedInOurServices(string $text) {
 function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerId, ?string $customerName, string $text, ?string $phone = null) {
     if (trim($text) === '') return;
     try {
+        // No mobile number yet (e.g. an Instagram/Facebook DM, where WhatsApp's
+        // automatic sender number isn't available) — try to pull one out of the
+        // message itself, but otherwise don't create the lead until we have one.
+        if (!$phone) {
+            if (preg_match('/(\+?\d[\d\s\-\(\)]{7,}\d)/', $text, $m)) {
+                $phone = preg_replace('/[^\d+]/', '', $m[1]);
+            } else {
+                return;
+            }
+        }
+
         if (!isInterestedInOurServices($text)) return;
 
         $tag = "src_id:{$channel}:{$customerId}";

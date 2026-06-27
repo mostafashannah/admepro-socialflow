@@ -544,7 +544,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.87";
+const APP_VERSION = "beta 2.88";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11094,6 +11094,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState("");
+  const [connectWarning, setConnectWarning] = useState("");
   const [metaPages, setMetaPages] = useState(null);
   const sf = (k,v) => setF(p=>({...p,[k]:v}));
   const sc = (k,v) => setF(p=>({...p,config:{...p.config,[k]:v}}));
@@ -11107,6 +11108,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
       if(!e.data.ok){ setConnectError(e.data.error||"Connection failed."); return; }
       const accounts = e.data.accounts || e.data.pages || [];
       if(accounts.length===0){ setConnectError("No account/Page returned."); return; }
+      setConnectWarning(e.data.warning||"");
       setMetaPages(accounts);
       if(accounts.length===1) applyMetaPage(accounts[0]);
     };
@@ -11122,7 +11124,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
   };
 
   const connectWithFacebook = () => {
-    setConnectError(""); setMetaPages(null); setConnecting(true);
+    setConnectError(""); setConnectWarning(""); setMetaPages(null); setConnecting(true);
     // Cache-buster: browsers can cache the 302 redirect (with its scope+state),
     // which replays a stale OAuth URL. A unique query each click forces a fresh hit.
     const startBase = f.app_key==="instagram" ? "/meta-oauth-start.php" : "/fb-oauth-start.php";
@@ -11376,6 +11378,9 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                 </button>
                 {connectError&&(
                   <div style={{padding:10,background:"#ef444422",border:"1px solid #ef444455",borderRadius:"var(--rs)",fontSize:12,color:"#ef4444"}}>{connectError}</div>
+                )}
+                {connectWarning&&(
+                  <div style={{padding:10,background:"#f59e0b22",border:"1px solid #f59e0b55",borderRadius:"var(--rs)",fontSize:12,color:"#b45309"}}>{connectWarning}</div>
                 )}
                 {metaPages&&metaPages.length>1&&(
                   <div style={{display:"flex",flexDirection:"column",gap:6,padding:12,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
@@ -17696,11 +17701,20 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
     setSessions(prev=>prev.map(s=>(s.id===activeChatId && !s.client_id) ? {...s, client_id:selectedClientId} : s));
   },[activeChatId, selectedClientId]);
 
-  // Seed welcome message into the active (empty) session
+  // Seed welcome message into the active (empty) session. If it's still a
+  // pendingSession (unsaved draft), set it directly on the draft instead of
+  // going through setMessages — that promotes drafts into persisted history,
+  // which would defeat the "only save once the user actually sends a
+  // message" rule and create a new session on every page load/refresh.
   useEffect(()=>{
     if(currentUser && activeSession && (activeSession.messages||[]).length===0){
       const welcome = WELCOME_MESSAGES[role] || WELCOME_MESSAGES.admin;
-      setMessages([{role:"bot",content:welcome,id:uid(),created_at:new Date().toISOString()}]);
+      const welcomeMsg = {role:"bot",content:welcome,id:uid(),created_at:new Date().toISOString()};
+      if(pendingSession && pendingSession.id===activeChatId){
+        setPendingSession(p=>p ? {...p, messages:[welcomeMsg]} : p);
+      } else {
+        setMessages([welcomeMsg]);
+      }
     }
   },[currentUser, activeChatId]);
 
@@ -19326,6 +19340,31 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
     setPendingSession(fresh);
     setActiveChatId(fresh.id);
   },[currentUser, activeChatId, chatSessions.length]);
+
+  // Restore the client this session was locked to, so memory/knowledge for that
+  // client gets injected into the system prompt again even after a refresh or
+  // switching sessions — without this, a session that was previously talking
+  // about a client silently loses that context (and its saved memory) the
+  // moment selectedClient resets to null, making memory look "per session"
+  // instead of "per client".
+  useEffect(()=>{
+    if(!activeSession || !activeSession.client_id) return;
+    if(selectedClient && selectedClient.id===activeSession.client_id) return;
+    const c = (data?.clients||[]).find(cl=>cl.id===activeSession.client_id);
+    if(c) setSelectedClient(c);
+  },[activeSession?.id, activeSession?.client_id, data?.clients]);
+
+  // ...and the other direction: if the user (re)picks a client mid-conversation,
+  // stamp it onto the session so it's remembered the next time this session
+  // (or a fresh one for the same client) is opened.
+  useEffect(()=>{
+    if(!activeChatId || !selectedClient) return;
+    if(pendingSession && pendingSession.id===activeChatId){
+      setPendingSession(p=>(p && !p.client_id) ? {...p, client_id:selectedClient.id} : p);
+      return;
+    }
+    setChatSessions(prev=>prev.map(s=>(s.id===activeChatId && !s.client_id) ? {...s, client_id:selectedClient.id} : s));
+  },[activeChatId, selectedClient]);
 
   useEffect(()=>{ messagesEndRef.current?.scrollIntoView({behavior:"smooth"}); },[messages,typing]);
 

@@ -58,7 +58,11 @@ function insights_resilient($base, array $metrics, array $extraParams) {
     $data = [];
     foreach ($metrics as $m) {
         [$c, $r] = graph_get($base, array_merge($extraParams, ["metric" => $m]));
-        if ($c === 200 && !empty($r["data"])) $data = array_merge($data, $r["data"]);
+        if ($c === 200 && !empty($r["data"])) {
+            $data = array_merge($data, $r["data"]);
+        } else {
+            error_log("insights_resilient: metric '{$m}' failed for {$base} -> HTTP {$c} " . json_encode($r));
+        }
     }
     return $data;
 }

@@ -130,11 +130,16 @@ $accountId = $meResp['id'] ?? $igUserId;
 // (Callback URL + Verify Token + field subscription) only registers the app with
 // Meta — each connected account must separately opt in to receive events, or no
 // webhook POSTs will ever arrive for it.
+$subscribeWarning = null;
 if ($accountId) {
-    ig_post("https://graph.instagram.com/v21.0/{$accountId}/subscribed_apps", [
+    [$subResp, $subErr] = ig_post("https://graph.instagram.com/v21.0/{$accountId}/subscribed_apps", [
         'subscribed_fields' => 'messages,comments',
         'access_token'      => $longToken,
     ]);
+    if ($subErr || empty($subResp['success'])) {
+        error_log("meta-oauth-callback: subscribed_apps FAILED for IG account {$accountId}: " . ($subErr ?: json_encode($subResp)));
+        $subscribeWarning = 'Connected, but webhook subscription for DMs/comments failed: ' . ($subErr ?: 'unknown error') . '. Messages may not arrive in the inbox until this is fixed.';
+    }
 }
 
 finish(true, ['accounts' => [[
@@ -142,4 +147,4 @@ finish(true, ['accounts' => [[
     'username'     => $meResp['username'] ?? '',
     'account_type' => $meResp['account_type'] ?? '',
     'access_token' => $longToken,
-]]]);
+]], 'warning' => $subscribeWarning]);
