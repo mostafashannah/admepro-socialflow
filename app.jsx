@@ -544,7 +544,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.86";
+const APP_VERSION = "beta 2.87";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1667,6 +1667,7 @@ const Icons = {
   msgrBrand: "M12 0C5.24 0 0 4.95 0 11.64c0 3.5 1.44 6.53 3.77 8.62.2.18.31.43.32.7l.07 2.13c.02.68.72 1.12 1.34.85l2.38-1.05c.21-.09.44-.11.66-.05 1.09.3 2.26.46 3.46.46 6.76 0 12-4.95 12-11.64C24 4.95 18.76 0 12 0zm7.2 8.94l-3.52 5.59c-.56.89-1.76 1.11-2.6.48l-2.8-2.1a.72.72 0 0 0-.86 0l-3.79 2.88c-.5.38-1.16-.22-.82-.76l3.52-5.59c.56-.89 1.76-1.11 2.6-.48l2.8 2.1c.26.19.6.19.86 0l3.79-2.88c.5-.38 1.16.22.82.76z",
   waBrand: "M.06 24l1.69-6.16a11.87 11.87 0 0 1-1.59-5.95C.16 5.34 5.5 0 12.06 0a11.82 11.82 0 0 1 8.41 3.49 11.82 11.82 0 0 1 3.48 8.41c0 6.56-5.34 11.9-11.9 11.9a11.9 11.9 0 0 1-5.69-1.45L.06 24zm6.6-3.8c1.68.99 3.28 1.59 5.4 1.59 5.45 0 9.89-4.43 9.89-9.89 0-5.45-4.44-9.89-9.89-9.89-5.45 0-9.89 4.44-9.89 9.89 0 2.22.65 3.89 1.74 5.64l-1 3.66 3.65-1zm11.39-5.55c-.07-.12-.27-.2-.57-.35-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.65.07-.3-.15-1.25-.46-2.39-1.47-.88-.79-1.48-1.76-1.65-2.06-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.07-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.51-.17-.01-.37-.01-.57-.01-.2 0-.52.07-.8.37-.27.3-1.04 1.02-1.04 2.48 0 1.46 1.07 2.88 1.22 3.08.15.2 2.1 3.2 5.08 4.49.71.31 1.26.49 1.69.62.71.23 1.36.19 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.29.17-1.41z",
   sheetsBrand: ["M5 2h10l4 4v15a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z","M14 2v4h4"],
+  linkedinBrand: "M20.45 20.45h-3.55v-5.57c0-1.33-.02-3.03-1.85-3.03-1.85 0-2.14 1.45-2.14 2.94v5.66H9.36V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.45v6.29zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.73v20.54C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.73C24 .77 23.2 0 22.22 0z",
   shopifyBrand: "M7.5 9.2l.3-2.1c.3-1.9 1.8-4 4.3-4 1 0 1.7.3 2.2.7l1.1-.4 2 18.6-9.4 1.7-3.4-2.6.1-1.1zm1.3-.2h1.5c.1-1.1.5-2.6 1.1-3.5-1.3.2-2.3 1.8-2.6 3.5zm2.7 0h2c-.1-1.4-.5-2.7-1-3.3-.5.6-.9 1.9-1 3.3zm1-4.6c.2.6.5 1.9.6 4.6h1.5c-.2-1.8-.8-3.4-1.6-4.2-.2-.2-.3-.3-.5-.4z",
 };
 
@@ -10983,6 +10984,7 @@ const INTEGRATION_APPS = [
   {key:"facebook", label:"Facebook", category:"social", color:"#1877F2", icon:Icons.fbBrand, brand:true, description:"Publish posts directly to Facebook Pages"},
   {key:"instagram", label:"Instagram", category:"social", color:"#E1306C", icon:Icons.igBrand, brand:true, description:"Publish posts to Instagram Business accounts"},
   {key:"whatsapp", label:"WhatsApp", category:"social", color:"#25D366", icon:Icons.waBrand, brand:true, description:"Connect a client's WhatsApp number to their inbox"},
+  {key:"linkedin", label:"LinkedIn", category:"social", color:"#0A66C2", icon:Icons.linkedinBrand, brand:true, description:"Publish posts to LinkedIn (posting only — no DM/comment replies)"},
   // Spreadsheet / Data
   {key:"google_sheets",label:"Google Sheets", category:"spreadsheet", color:"#0F9D58", icon:Icons.sheetsBrand, description:"Add rows to Google Sheets"},
   // Ecommerce
@@ -11100,7 +11102,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
   React.useEffect(()=>{
     const onMsg = (e) => {
       if(e.origin!==window.location.origin) return;
-      if(!e.data||(e.data.type!=="meta_oauth_result"&&e.data.type!=="fb_oauth_result")) return;
+      if(!e.data||(e.data.type!=="meta_oauth_result"&&e.data.type!=="fb_oauth_result"&&e.data.type!=="linkedin_oauth_result")) return;
       setConnecting(false);
       if(!e.data.ok){ setConnectError(e.data.error||"Connection failed."); return; }
       const accounts = e.data.accounts || e.data.pages || [];
@@ -11129,12 +11131,19 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
     if(!popup){ setConnecting(false); setConnectError("Popup blocked — please allow popups for this site."); }
   };
 
+  const connectWithLinkedIn = () => {
+    setConnectError(""); setMetaPages(null); setConnecting(true);
+    const startUrl = "/linkedin-oauth-start.php?t=" + Date.now();
+    const popup = window.open(startUrl, "linkedin_oauth", "width=600,height=700");
+    if(!popup){ setConnecting(false); setConnectError("Popup blocked — please allow popups for this site."); }
+  };
+
   const selectedApp = APP_MAP[f.app_key];
   const selectedTrigger = TRIGGER_MAP[f.trigger];
   const categoryActions = INTEGRATION_ACTIONS[selectedApp?.category||"social"]||INTEGRATION_ACTIONS.social;
   const selectedAction = categoryActions.find(a=>a.key===f.action);
   const isWhatsApp = f.app_key==="whatsapp";
-  const isSocialPublish = f.app_key==="facebook"||f.app_key==="instagram"||isWhatsApp;
+  const isSocialPublish = f.app_key==="facebook"||f.app_key==="instagram"||f.app_key==="linkedin"||isWhatsApp;
   const metaConnected = isWhatsApp
     ? !!(f.credentials?.phone_id && f.credentials?.access_token && f.client_id)
     : (!isSocialPublish || !!(f.credentials?.page_id && f.credentials?.access_token && f.client_id));
@@ -11258,7 +11267,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
               <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10}}>
                 {INTEGRATION_APPS.filter(a=>categoryFilter==="all"||a.category===categoryFilter).map(app=>(
                   <AppCard key={app.key} app={app} selected={f.app_key===app.key} onClick={()=>{
-                    if(app.key==="facebook"||app.key==="instagram") {
+                    if(app.key==="facebook"||app.key==="instagram"||app.key==="linkedin") {
                       setF(p=>({...p,app_key:app.key,trigger:"task_completed",action:"publish_post"}));
                     } else if(app.key==="whatsapp") {
                       setF(p=>({...p,app_key:app.key,trigger:"new_lead",action:"send_message"}));
@@ -11312,6 +11321,38 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                 <Field label="Admin API Access Token" required hint="From a custom app in Shopify Admin → Settings → Apps and sales channels → Develop apps">
                   <input value={f.credentials?.access_token||""} onChange={e=>scred("access_token",e.target.value)} placeholder="shpat_xxxxxxxxxxxxxxxxxxxx" style={inputSt} type="password"/>
                 </Field>
+              </>)}
+              {f.app_key==="linkedin"&&(<>
+                <Field label="Client" required hint="Which client does this LinkedIn account belong to?">
+                  <select value={f.client_id||""} onChange={e=>{
+                    const c = clients.find(cl=>cl.id===e.target.value);
+                    sf("client_id", c?.id||"");
+                    sf("client_name", c?.name||"");
+                  }} style={inputSt}>
+                    <option value="">— Select a client —</option>
+                    {clients.filter(c=>c.status!=="hidden").map(c=>(
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </Field>
+                <div style={{padding:10,background:"#f59e0b22",border:"1px solid #f59e0b55",borderRadius:"var(--rs)",fontSize:12,color:"#b45309"}}>
+                  LinkedIn posts go out as the member who connects below (not a Company Page), and LinkedIn's API doesn't support reading/replying to DMs or comments — publishing only.
+                </div>
+                <button onClick={connectWithLinkedIn} disabled={connecting} style={{
+                  display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"12px",
+                  background:"#0A66C2",color:"#fff",border:"none",borderRadius:"var(--rs)",
+                  fontSize:13,fontWeight:700,cursor:connecting?"default":"pointer",opacity:connecting?0.7:1,
+                }}>
+                  {connecting?<><Spinner size={14}/> Waiting for LinkedIn login…</>:<>Connect with LinkedIn</>}
+                </button>
+                {connectError&&(
+                  <div style={{padding:10,background:"#ef444422",border:"1px solid #ef444455",borderRadius:"var(--rs)",fontSize:12,color:"#ef4444"}}>{connectError}</div>
+                )}
+                {metaConnected&&(
+                  <div style={{padding:10,background:"#10b98122",border:"1px solid #10b98155",borderRadius:"var(--rs)",fontSize:12,color:"#10b981",display:"flex",alignItems:"center",gap:6}}>
+                    <Ico d={Icons.check} size={14} stroke="#10b981"/> Connected
+                  </div>
+                )}
               </>)}
               {(f.app_key==="facebook"||f.app_key==="instagram")&&(<>
                 <Field label="Client" required hint="Which client does this Facebook/Instagram page belong to?">

@@ -19,6 +19,7 @@
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/meta-lib.php';
+require_once __DIR__ . '/linkedin-lib.php';
 
 if (!defined('AUTO_PUBLISH_ENABLED') || !AUTO_PUBLISH_ENABLED) {
     echo json_encode(['skipped' => true, 'reason' => 'AUTO_PUBLISH_ENABLED is not true in config.php']);
@@ -54,7 +55,7 @@ foreach ($due as $post) {
     if ($scheduledAt > $now) continue; // not due yet
 
     $platform = strtolower(trim($post['platform'] ?? ''));
-    if (!in_array($platform, ['facebook', 'instagram'], true)) continue;
+    if (!in_array($platform, ['facebook', 'instagram', 'linkedin'], true)) continue;
 
     // Prefer an integration scoped to this post's client; fall back to any
     // active integration for the platform (e.g. a single shared Page).
@@ -80,7 +81,11 @@ foreach ($due as $post) {
     $message     = trim(($post['caption'] ?? '') . "\n\n" . ($post['hashtags'] ?? ''));
     $image_url   = $design_urls[0] ?? '';
 
-    [$code, $resp] = meta_publish($platform, $page_id, $access_token, $message, $image_url);
+    if ($platform === 'linkedin') {
+        [$code, $resp] = linkedin_publish($page_id, $access_token, $message, $image_url);
+    } else {
+        [$code, $resp] = meta_publish($platform, $page_id, $access_token, $message, $image_url);
+    }
     $ok = $code >= 200 && $code < 300;
 
     if ($ok) {

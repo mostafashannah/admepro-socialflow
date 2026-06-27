@@ -54,6 +54,17 @@ define('META_FB_LOGIN_CONFIG_ID',    '');
 define('INSTAGRAM_APP_ID',           'your_instagram_app_id');
 define('INSTAGRAM_APP_SECRET',       'your_instagram_app_secret');
 
+// LinkedIn (linkedin-oauth-start.php / linkedin-oauth-callback.php) — the
+// "Connect with LinkedIn" button in Settings → Integrations. Create an app at
+// https://www.linkedin.com/developers/apps, request the "Share on LinkedIn" AND
+// "Sign In with LinkedIn using OpenID Connect" products, then add this exact
+// redirect URL under the Auth tab: https://yourdomain.com/linkedin-oauth-callback.php
+// Note: LinkedIn's public API only supports posting as the connecting member
+// (or a Company Page if you're separately approved for the Marketing API) —
+// it does not support reading or replying to DMs/comments.
+define('LINKEDIN_CLIENT_ID',     'your_linkedin_client_id');
+define('LINKEDIN_CLIENT_SECRET', 'your_linkedin_client_secret');
+
 // --- Self-hosted MySQL backend (vps-migration/api.php + storage.php) ---
 // Only needed once you've moved off Supabase onto your own VPS database.
 define('DB_HOST', '127.0.0.1');

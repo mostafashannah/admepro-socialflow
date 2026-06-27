@@ -1,6 +1,7 @@
 <?php
 require_once 'config.php';
 require_once 'meta-lib.php';
+require_once 'linkedin-lib.php';
 header("Content-Type: application/json");
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: POST, OPTIONS");
@@ -23,12 +24,16 @@ if (!$platform || !$page_id || !$access_token || !$message) {
     exit;
 }
 
-if (!in_array($platform, ["facebook", "instagram"])) {
+if (!in_array($platform, ["facebook", "instagram", "linkedin"])) {
     http_response_code(400);
-    echo json_encode(["error" => "Unsupported platform. Supported: facebook, instagram"]);
+    echo json_encode(["error" => "Unsupported platform. Supported: facebook, instagram, linkedin"]);
     exit;
 }
 
-[$http_code, $response] = meta_publish($platform, $page_id, $access_token, $message, $image_url, $scheduled_at ?: null);
+if ($platform === "linkedin") {
+    [$http_code, $response] = linkedin_publish($page_id, $access_token, $message, $image_url);
+} else {
+    [$http_code, $response] = meta_publish($platform, $page_id, $access_token, $message, $image_url, $scheduled_at ?: null);
+}
 http_response_code($http_code);
 echo json_encode($response);
