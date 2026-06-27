@@ -129,6 +129,10 @@ function wantsRepresentation() {
 // to MySQL's "Y-m-d H:i:s" format — MySQL TIMESTAMP/DATETIME columns reject the
 // 'T'/'Z' ISO format outright (SQLSTATE 22007).
 function normalizeDbValue($v) {
+    // PDO's native (non-emulated) MySQL prepares bind PHP bool false as an empty
+    // string rather than 0, which TINYINT columns reject outright (SQLSTATE HY000
+    // 1366) — bind explicit 0/1 instead.
+    if (is_bool($v)) return $v ? 1 : 0;
     if (is_array($v)) return json_encode($v);
     if (is_string($v) && preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/', $v)) {
         try {
