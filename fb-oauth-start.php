@@ -41,6 +41,7 @@ $scopes = implode(',', [
     'pages_manage_posts',
     'pages_manage_metadata',
     'pages_manage_engagement',
+    'pages_read_user_content',
     'pages_messaging',
     'read_insights',
     'business_management',
