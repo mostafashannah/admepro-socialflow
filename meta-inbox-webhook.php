@@ -130,6 +130,24 @@ function storyContextTag(array $message) {
     return null;
 }
 
+// Fetches the caption of the post/reel a comment was left on, so the reply bot
+// knows what the comment is actually reacting to (a hiring post vs. a service
+// promo vs. a product reel all warrant very different replies) instead of only
+// ever seeing the bare comment text in isolation.
+function fetchPostCaption(string $channel, ?string $accessToken, string $mediaOrPostId) {
+    if (!$accessToken || !$mediaOrPostId) return null;
+    $host = ($channel === 'ig_comment' && str_starts_with($accessToken, 'IGAA')) ? 'graph.instagram.com' : 'graph.facebook.com';
+    $field = $channel === 'ig_comment' ? 'caption' : 'message';
+    $url = "https://{$host}/v19.0/{$mediaOrPostId}?" . http_build_query(['fields' => $field, 'access_token' => $accessToken]);
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_SSL_VERIFYPEER => true, CURLOPT_TIMEOUT => 8]);
+    $res = curl_exec($ch);
+    curl_close($ch);
+    $data = json_decode($res, true);
+    if (!$data || isset($data['error'])) return null;
+    return $data[$field] ?? null;
+}
+
 function storeMessage(PDO $pdo, $clientId, $clientName, $channel, $customerId, $customerName, $text, $externalId = null) {
     $stmt = $pdo->prepare("INSERT INTO customer_messages (client_id, client_name, channel, customer_id, customer_name, direction, message_text, sent_by, thread_status, external_id) VALUES (:cid, :cname, :ch, :custid, :custname, 'in', :txt, 'customer', 'needs_human', :eid)");
     $stmt->execute([':cid'=>$clientId, ':cname'=>$clientName, ':ch'=>$channel, ':custid'=>$customerId, ':custname'=>$customerName, ':txt'=>$text, ':eid'=>$externalId]);
@@ -199,8 +217,10 @@ try {
                 // public replies (posted as the Page) would re-trigger another reply.
                 if ($commentId && $fromId && $fromId !== $pageId && $text !== null && $text !== '') {
                     $fromName = $v['from']['name'] ?? null;
+                    $postId = $v['post_id'] ?? null;
+                    $caption = fetchPostCaption('fb_comment', $client['access_token'], $postId);
                     storeMessage($pdo, $client['client_id'], $client['client_name'], 'fb_comment', $fromId, $fromName, $text, $commentId);
-                    try { maybeAutoReply($pdo, $client['client_id'], $client['client_name'], 'fb_comment', $fromId, $fromName, $commentId); }
+                    try { maybeAutoReply($pdo, $client['client_id'], $client['client_name'], 'fb_comment', $fromId, $fromName, $commentId, $caption); }
                     catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
                 }
                 continue;
@@ -214,8 +234,10 @@ try {
                 $text      = $v['text'] ?? null;
                 if ($commentId && $fromId && $fromId !== $pageId && $text !== null && $text !== '') {
                     $fromName = $v['from']['username'] ?? null;
+                    $mediaId = $v['media']['id'] ?? null;
+                    $caption = fetchPostCaption('ig_comment', $client['access_token'], $mediaId);
                     storeMessage($pdo, $client['client_id'], $client['client_name'], 'ig_comment', $fromId, $fromName, $text, $commentId);
-                    try { maybeAutoReply($pdo, $client['client_id'], $client['client_name'], 'ig_comment', $fromId, $fromName, $commentId); }
+                    try { maybeAutoReply($pdo, $client['client_id'], $client['client_name'], 'ig_comment', $fromId, $fromName, $commentId, $caption); }
                     catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
                 }
             }

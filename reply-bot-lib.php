@@ -78,6 +78,11 @@ function buildReplyBotSystemPrompt(PDO $pdo, string $clientId, string $clientNam
     // to know exactly what was in it.
     $parts[] = "If a customer message is tagged [Replied to your Instagram story] or [Mentioned you in their story], acknowledge that naturally (e.g. thank them for the reaction/mention) — but never claim to know the specific contents of the story, since you can't see it. Never repeat the bracketed tag itself in your reply.";
 
+    // Comments carry the caption of the post/reel they're on (see generateBotReply) —
+    // use it to tell apart very different comment contexts, most importantly hiring/
+    // job posts vs. service-promo posts, since the right reply is completely different.
+    $parts[] = "If you're given the caption of the post/reel a comment is on, use it to understand the context — e.g. a comment on a hiring/job post (someone applying or asking about the role) should get a reply about the application process, NOT a sales pitch about the agency's services. Reserve the services pitch for comments on posts that are actually promoting the agency's work.";
+
     $stmt = $pdo->prepare("SELECT tone, summary, keywords, priorities, industry_context, content_preferences FROM client_knowledge WHERE client_id = :cid ORDER BY created_at DESC LIMIT 1");
     $stmt->execute([':cid' => $clientId]);
     if ($k = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -120,7 +125,7 @@ function buildReplyBotSystemPrompt(PDO $pdo, string $clientId, string $clientNam
 }
 
 // Returns the drafted reply text, or null (on failure, or if Claude opts out via NEEDS_HUMAN).
-function generateBotReply(PDO $pdo, string $clientId, string $clientName, string $botBrain, array $threadMessages, bool $isComment = false, string $dontDo = '', string $tone = 'friendly', ?string $customerName = null) {
+function generateBotReply(PDO $pdo, string $clientId, string $clientName, string $botBrain, array $threadMessages, bool $isComment = false, string $dontDo = '', string $tone = 'friendly', ?string $customerName = null, ?string $postCaption = null) {
     $system = buildReplyBotSystemPrompt($pdo, $clientId, $clientName, $botBrain, $isComment, $dontDo, $tone);
 
     $convo = implode("\n", array_map(
@@ -130,11 +135,15 @@ function generateBotReply(PDO $pdo, string $clientId, string $clientName, string
 
     $label = $isComment ? 'Draft the next public reply comment from the agency.' : 'Draft the next reply from the agency.';
     $nameLine = $customerName ? "Customer's name: {$customerName}\n" : '';
+    // For comments, the caption tells the bot what kind of post this is reacting to
+    // (a hiring post needs a very different reply than a service-promo post or a
+    // product reel) — without it, the bot only ever saw the comment text in isolation.
+    $captionLine = $postCaption ? "Caption of the post/reel this comment is on:\n\"{$postCaption}\"\n\n" : '';
     $payload = [
         'model' => 'claude-sonnet-4-6',
         'max_tokens' => 400,
         'system' => $system,
-        'messages' => [['role' => 'user', 'content' => "{$nameLine}Conversation so far:\n{$convo}\n\n{$label}"]],
+        'messages' => [['role' => 'user', 'content' => "{$nameLine}{$captionLine}Conversation so far:\n{$convo}\n\n{$label}"]],
     ];
     [$status, $data] = callClaude($payload);
     if ($status < 200 || $status >= 300) return null;
@@ -363,7 +372,7 @@ function notifyAdminsOfNewLead(PDO $pdo, string $leadName, string $channel, ?str
 // reply and either sends it immediately (mode=auto) or stores it as a pending draft
 // for a team member to review (mode=approve). $externalId is the comment_id for
 // comment channels (fb_comment/ig_comment) — null for DM channels.
-function maybeAutoReply(PDO $pdo, string $clientId, string $clientName, string $channel, string $customerId, ?string $customerName, ?string $externalId = null) {
+function maybeAutoReply(PDO $pdo, string $clientId, string $clientName, string $channel, string $customerId, ?string $customerName, ?string $externalId = null, ?string $postCaption = null) {
     $log = function (string $reason) use ($clientName, $channel, $customerId) {
         error_log("reply-bot SKIP [{$clientName}/{$channel}/{$customerId}]: {$reason}");
     };
@@ -381,7 +390,7 @@ function maybeAutoReply(PDO $pdo, string $clientId, string $clientName, string $
     $thread = array_reverse($stmt->fetchAll(PDO::FETCH_ASSOC));
     if (!$thread) { $log('empty thread'); return; }
 
-    $reply = generateBotReply($pdo, $clientId, $clientName, (string)($settings['brain'] ?? ''), $thread, $isComment, (string)($settings['dont_do'] ?? ''), (string)($settings['tone'] ?? 'friendly'), $customerName);
+    $reply = generateBotReply($pdo, $clientId, $clientName, (string)($settings['brain'] ?? ''), $thread, $isComment, (string)($settings['dont_do'] ?? ''), (string)($settings['tone'] ?? 'friendly'), $customerName, $postCaption);
     if (!$reply) { $log('generateBotReply returned empty (Claude opted out or API error)'); return; }
 
     if ($settings['mode'] === 'auto') {
