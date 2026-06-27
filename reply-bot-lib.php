@@ -263,6 +263,28 @@ function isInterestedInOurServices(string $text) {
     return stripos(trim($reply), 'yes') === 0;
 }
 
+// Condenses a lead's conversation into a short brief for the CRM notes and the
+// WhatsApp notification, instead of dumping the raw (often multi-message) thread
+// text — admins want "what are they asking about", not a transcript.
+function summarizeLeadInquiry(string $combinedText) {
+    $payload = [
+        'model' => 'claude-sonnet-4-6',
+        'max_tokens' => 150,
+        'system' => "You summarize an inbound conversation to a social media marketing agency from a potential lead. "
+                  . "Write a brief, at most 4 short lines, covering what they're asking about / interested in and any "
+                  . "key details mentioned (budget, timeline, business type, etc). Plain text, no markdown, no headers, "
+                  . "no greeting/preamble — just the brief itself.",
+        'messages' => [['role' => 'user', 'content' => $combinedText]],
+    ];
+    [$status, $data] = callClaude($payload);
+    if ($status < 200 || $status >= 300) return null;
+    $text = '';
+    foreach (($data['content'] ?? []) as $block) {
+        if (($block['type'] ?? '') === 'text') $text .= $block['text'];
+    }
+    return trim($text) ?: null;
+}
+
 // Creates a CRM lead from an inbound message to admepro's own inbox, if it isn't
 // already a duplicate of one captured from the same sender. $phone is digits-only,
 // passed only for WhatsApp (used as the lead's phone number). $clientId is needed
@@ -301,6 +323,8 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
         $dupe->execute([':tag' => "%{$tag}%"]);
         if ($dupe->fetch()) return; // already captured this sender before
 
+        $brief = summarizeLeadInquiry($combinedText) ?: $combinedText;
+
         $leadName = $customerName ?: 'Unknown (' . $channel . ')';
         $stmt = $pdo->prepare("INSERT INTO leads (name, phone, source, status, platforms, notes) VALUES (:name, :phone, :source, 'new', :platforms, :notes)");
         $stmt->execute([
@@ -308,10 +332,10 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
             ':phone' => $phone,
             ':source' => $channel === 'whatsapp' ? 'whatsapp' : $channel,
             ':platforms' => json_encode([$channel]),
-            ':notes' => "Auto-captured by SocialFlow from an inbound {$channel} conversation expressing interest in our services:\n\"{$combinedText}\"\n\n{$tag}",
+            ':notes' => "Auto-captured by SocialFlow from an inbound {$channel} conversation expressing interest in our services:\n{$brief}\n\n{$tag}",
         ]);
 
-        notifyAdminsOfNewLead($pdo, $leadName, $channel, $phone, $text);
+        notifyAdminsOfNewLead($pdo, $leadName, $channel, $phone, $brief);
     } catch (\Throwable $e) {
         error_log('maybeCreateLeadFromMessage EXCEPTION: ' . $e->getMessage());
     }
@@ -319,15 +343,15 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
 
 // WhatsApps every active admin team member with the new lead's details, sent from
 // the same "Pro" number/token used by wa-webhook.php and identifySender().
-function notifyAdminsOfNewLead(PDO $pdo, string $leadName, string $channel, ?string $phone, string $text) {
+function notifyAdminsOfNewLead(PDO $pdo, string $leadName, string $channel, ?string $phone, string $brief) {
     if (!function_exists('sendWhatsAppReply')) return; // pro-lib.php not loaded
     $admins = $pdo->query("SELECT whatsapp_number FROM team_members WHERE status = 'active' AND role = 'admin' AND whatsapp_number IS NOT NULL AND whatsapp_number != ''")->fetchAll(PDO::FETCH_COLUMN);
     if (!$admins) return;
-    $snippet = mb_strlen($text) > 300 ? mb_substr($text, 0, 300) . '…' : $text;
+    $snippet = mb_strlen($brief) > 400 ? mb_substr($brief, 0, 400) . '…' : $brief;
     $body = "New lead captured by SocialFlow!\n\n"
           . "Name: {$leadName}\n"
           . "Channel: {$channel}" . ($phone ? " ({$phone})" : '') . "\n\n"
-          . "Message:\n\"{$snippet}\"\n\n"
+          . "What they're asking about:\n{$snippet}\n\n"
           . "View it on the CRM Leads page.";
     foreach ($admins as $number) {
         sendWhatsAppReply($number, $body);

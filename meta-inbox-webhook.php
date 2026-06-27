@@ -149,6 +149,12 @@ try {
 
         foreach (($entry['messaging'] ?? []) as $m) {
             $msgData = $m['message'] ?? [];
+            // Meta also fires a webhook event for messages the Page itself sends (an
+            // "echo", is_echo:true, sender.id = the Page) — without this skip, the
+            // bot's own auto-reply got webhooked right back in and was treated as a
+            // brand-new inbound message from "the customer", re-triggering lead
+            // capture/auto-reply on the bot's own text.
+            if (!empty($msgData['is_echo'])) continue;
             $text = $msgData['text'] ?? null;
             $senderId = $m['sender']['id'] ?? null;
             if ($tag = storyContextTag($msgData)) { $text = $text ? "{$tag} {$text}" : $tag; }
@@ -168,6 +174,7 @@ try {
 
             if ($field === 'messages') {
                 $msgData = $c['value']['message'] ?? [];
+                if (!empty($msgData['is_echo'])) continue;
                 $text = $msgData['text'] ?? null;
                 $senderId = $c['value']['sender']['id'] ?? null;
                 if ($tag = storyContextTag($msgData)) { $text = $text ? "{$tag} {$text}" : $tag; }
