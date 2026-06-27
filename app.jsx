@@ -321,7 +321,7 @@ const SB_SCHEMA = {
   clients: ["name","email","phone","industry","status","platforms","portal_password","address","website","contact_person","notes"],
   client_tasks: ["client_id","client_name","title","description","task_type","priority","stage","assigned_to","created_by","deliverable_note"],
   customer_messages: ["client_id","client_name","channel","customer_id","customer_name","direction","message_text","sent_by","thread_status","draft_status","external_id"],
-  reply_bot_settings: ["client_id","client_name","enabled","mode","channels","brain","dont_do","updated_by"],
+  reply_bot_settings: ["client_id","client_name","enabled","mode","channels","tone","brain","dont_do","updated_by"],
 };
 function sbSanitize(tableName, payload) {
   const allowed = SB_SCHEMA[tableName];
@@ -544,7 +544,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.85";
+const APP_VERSION = "beta 2.86";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6311,6 +6311,19 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
               <p style={{fontSize:11,color:"var(--text3)",marginTop:6}}>
                 {bot.mode==="auto"?"Replies are sent to the customer immediately, no review.":"Replies are drafted in the thread for a team member to approve, edit, or dismiss before sending."}
               </p>
+            </div>
+
+            <div>
+              <p style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>Tone</p>
+              <div style={{display:"flex",gap:8}}>
+                {[["slang","Slang / Casual"],["friendly","Friendly"],["formal","Formal / Professional"]].map(([v,l])=>(
+                  <button key={v} onClick={()=>onSaveBotSettings&&onSaveBotSettings({tone:v})}
+                    style={{flex:1,padding:"8px 10px",borderRadius:8,border:`1px solid ${(bot.tone||"friendly")===v?"var(--accent)":"var(--border)"}`,
+                      background:(bot.tone||"friendly")===v?"var(--accentbg)":"transparent",color:(bot.tone||"friendly")===v?"var(--accent)":"var(--text2)",
+                      fontSize:12,fontWeight:600,cursor:"pointer"}}>{l}</button>
+                ))}
+              </div>
+              <p style={{fontSize:11,color:"var(--text3)",marginTop:6}}>Locks every auto-reply for this client to this register — the bot sticks to it regardless of how the customer writes, on top of this client's Brain context and past human replies.</p>
             </div>
 
             <div>
@@ -21439,9 +21452,9 @@ function App() {
       setData(d=>({...d, replyBotSettings:d.replyBotSettings.map(s=>s.id===existing.id?updated:s)}));
       ue("ReplyBotSetting", existing.id, patch).catch(()=>{});
     } else {
-      const local = {id:uid(), client_id:clientId, client_name:clientName, enabled:false, mode:"approve", channels:["instagram","messenger"], brain:"", dont_do:"", ...patch};
+      const local = {id:uid(), client_id:clientId, client_name:clientName, enabled:false, mode:"approve", channels:["instagram","messenger"], tone:"friendly", brain:"", dont_do:"", ...patch};
       setData(d=>({...d, replyBotSettings:[local,...(d.replyBotSettings||[])]}));
-      ce("ReplyBotSetting",[{client_id:clientId, client_name:clientName, enabled:false, mode:"approve", channels:["instagram","messenger"], brain:"", dont_do:"", ...patch}])
+      ce("ReplyBotSetting",[{client_id:clientId, client_name:clientName, enabled:false, mode:"approve", channels:["instagram","messenger"], tone:"friendly", brain:"", dont_do:"", ...patch}])
         .then(r=>{ const real=r.entities?.[0]; if(real?.id) setData(d=>({...d,replyBotSettings:d.replyBotSettings.map(s=>s.id===local.id?{...s,...real}:s)})); })
         .catch(()=>{});
     }

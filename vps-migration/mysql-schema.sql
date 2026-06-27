@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS projects (
   title TEXT NOT NULL, description TEXT,
   client_id VARCHAR(36), client_name TEXT NOT NULL,
   status VARCHAR(50) DEFAULT 'active',
+  project_type VARCHAR(50) DEFAULT 'social_calendar',
   start_date TEXT, end_date TEXT,
   posting_start DATE, posting_end DATE,
   platforms JSON DEFAULT ('[]'), team_members JSON DEFAULT ('[]')
@@ -284,6 +285,7 @@ CREATE TABLE IF NOT EXISTS reply_bot_settings (
   enabled TINYINT(1) DEFAULT 0,
   mode VARCHAR(20) DEFAULT 'approve', -- approve | auto
   channels JSON DEFAULT ('["instagram","messenger"]'),
+  tone VARCHAR(20) DEFAULT 'friendly', -- slang | friendly | formal
   brain TEXT, -- dedicated reply-bot instructions, separate from general Client Brain
   dont_do TEXT, -- hard "never do this" rules, takes priority over brain
   updated_by TEXT

@@ -35,8 +35,23 @@ function findIntegrationCreds(PDO $pdo, string $clientId, string $channel) {
     return $creds;
 }
 
+// Maps a reply-bot tone level to a concrete writing-style directive for Claude.
+function toneDirective(string $tone): string {
+    switch ($tone) {
+        case 'slang':
+            return "Tone level — Casual/Slang: write like texting a friend. Contractions, casual slang, emoji where natural, "
+                 . "short punchy sentences. Skip formal greetings/sign-offs.";
+        case 'formal':
+            return "Tone level — Formal/Professional: polished business register. Full sentences, no slang or emoji, "
+                 . "proper greetings/sign-offs, precise word choice.";
+        default:
+            return "Tone level — Friendly/Conversational: warm and approachable but still polished. Plain language, "
+                 . "occasional light emoji is fine, no stiff corporate phrasing.";
+    }
+}
+
 // Builds the Claude system prompt from Client Brain + reply-bot brain + reply history.
-function buildReplyBotSystemPrompt(PDO $pdo, string $clientId, string $clientName, string $botBrain, bool $isComment = false, string $dontDo = '') {
+function buildReplyBotSystemPrompt(PDO $pdo, string $clientId, string $clientName, string $botBrain, bool $isComment = false, string $dontDo = '', string $tone = 'friendly') {
     $parts = [];
     $parts[] = $isComment
         ? "You are the AI auto-reply assistant for {$clientName}'s social media inbox, built into SocialFlow. "
@@ -46,6 +61,11 @@ function buildReplyBotSystemPrompt(PDO $pdo, string $clientId, string $clientNam
         : "You are the AI auto-reply assistant for {$clientName}'s social media inbox (Instagram/Messenger DMs), built into SocialFlow. "
           . "Write ONE short, natural reply to the customer's latest message below — a few sentences max, no markdown, no headers, "
           . "matching this client's actual tone and the way they typically reply. Reply only with the message text itself, nothing else.";
+
+    // The agency-chosen tone level is a strict, sticky directive — every reply in every
+    // conversation for this client must stay in this register, regardless of how the
+    // customer writes to you.
+    $parts[] = toneDirective($tone) . " Stay in this register for every reply, no matter what tone the customer uses.";
 
     $stmt = $pdo->prepare("SELECT tone, summary, keywords, priorities, industry_context, content_preferences FROM client_knowledge WHERE client_id = :cid ORDER BY created_at DESC LIMIT 1");
     $stmt->execute([':cid' => $clientId]);
@@ -89,8 +109,8 @@ function buildReplyBotSystemPrompt(PDO $pdo, string $clientId, string $clientNam
 }
 
 // Returns the drafted reply text, or null (on failure, or if Claude opts out via NEEDS_HUMAN).
-function generateBotReply(PDO $pdo, string $clientId, string $clientName, string $botBrain, array $threadMessages, bool $isComment = false, string $dontDo = '') {
-    $system = buildReplyBotSystemPrompt($pdo, $clientId, $clientName, $botBrain, $isComment, $dontDo);
+function generateBotReply(PDO $pdo, string $clientId, string $clientName, string $botBrain, array $threadMessages, bool $isComment = false, string $dontDo = '', string $tone = 'friendly') {
+    $system = buildReplyBotSystemPrompt($pdo, $clientId, $clientName, $botBrain, $isComment, $dontDo, $tone);
 
     $convo = implode("\n", array_map(
         fn($m) => ($m['direction'] === 'in' ? 'Customer' : 'Agency') . ': ' . $m['message_text'],
@@ -300,7 +320,7 @@ function maybeAutoReply(PDO $pdo, string $clientId, string $clientName, string $
     $thread = array_reverse($stmt->fetchAll(PDO::FETCH_ASSOC));
     if (!$thread) { $log('empty thread'); return; }
 
-    $reply = generateBotReply($pdo, $clientId, $clientName, (string)($settings['brain'] ?? ''), $thread, $isComment, (string)($settings['dont_do'] ?? ''));
+    $reply = generateBotReply($pdo, $clientId, $clientName, (string)($settings['brain'] ?? ''), $thread, $isComment, (string)($settings['dont_do'] ?? ''), (string)($settings['tone'] ?? 'friendly'));
     if (!$reply) { $log('generateBotReply returned empty (Claude opted out or API error)'); return; }
 
     if ($settings['mode'] === 'auto') {
