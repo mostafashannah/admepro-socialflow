@@ -33,7 +33,7 @@ const SB_SCHEMA={projects:["title","description","client_id","client_name","stat
 return Object.fromEntries(Object.entries(payload).filter(([k])=>allowed.includes(k)));}// Convert sort string: "-created_date" → "created_at.desc", "payment_date" → "payment_date.asc"
 function sbOrder(sort){if(!sort)return null;const desc=sort.startsWith("-");let col=sort.replace(/^-/,"");if(col==="created_date")col="created_at";return`${col}.${desc?"desc":"asc"}`;}// Query / list — returns {entities:[]}
 async function qe(entityName,query={},sort=null,limit=500){try{const tbl=sbTable(entityName);const params=new URLSearchParams({select:"*",limit:String(limit)});const order=sbOrder(sort);if(order)params.set("order",order);// PostgREST filter format: column=eq.value (passed as separate params)
-Object.entries(query).forEach(([k,v])=>params.set(k,`eq.${v}`));const r=await fetch(`${SB_URL}/${tbl}?${params}`,{headers:SB_HEADERS});if(!r.ok)return{entities:[]};const d=await r.json();return{entities:Array.isArray(d)?d:[]};}catch(e){return{entities:[]};}}// Create one or more records — returns {entities:[created records with real UUIDs]}
+Object.entries(query).forEach(([k,v])=>params.set(k,`eq.${v}`));const r=await fetch(`${SB_URL}/${tbl}?${params}`,{headers:SB_HEADERS});if(!r.ok)return{entities:[],ok:false};const d=await r.json();return{entities:Array.isArray(d)?d:[],ok:true};}catch(e){return{entities:[],ok:false};}}// Create one or more records — returns {entities:[created records with real UUIDs]}
 async function ce(entityName,records){try{const tbl=sbTable(entityName);const results=[];for(const rec of records){let payload={...rec};// Strip any local/temp id — Supabase will generate real UUIDs
 const idStr=String(payload.id||"");if(!idStr||idStr.startsWith("local_")||idStr.includes("_")||idStr.length<36)delete payload.id;// Strip client-side date field (Supabase uses created_at)
 delete payload.created_date;// Strip fields not in the table schema (prevents PGRST204 errors)
@@ -68,7 +68,7 @@ function speedTokens(speed,base){if(speed==="low")return Math.max(300,Math.round
 function logActivity(action,category,details="",status="success",errorMsg="",user="system"){const entry={action,category,details,status,error_message:errorMsg,performed_by:user,performed_at:new Date().toISOString()};ce("ActivityLog",[entry]).then(({entities})=>{const saved=entities===null||entities===void 0?void 0:entities[0];// Push the freshly-saved row (with real id) into the live UI immediately,
 // otherwise System Log only reflects what was loaded at page load.
 if(saved&&!saved._saveError)window.dispatchEvent(new CustomEvent("sf:activitylog",{detail:saved}));}).catch(()=>{});}// ── Email HTML templates ─────────────────────────────────────────
-const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 2.95";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 2.96";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
 <tr><td align="center">
@@ -2027,7 +2027,10 @@ if(settR.entities.length){const s=settR.entities[0];setAppSettings(s);if(s.prima
 // was deleted) and must be trusted — only a *rejected* fetch should fall
 // back to the previous/seed state. Operate on the raw settled result so
 // "fulfilled but empty" and "rejected" aren't conflated.
-const pick=(item,fb)=>{var _item$value;return item.status==="fulfilled"?((_item$value=item.value)===null||_item$value===void 0?void 0:_item$value.entities)||[]:fb;};setData(d=>({...d,team:pick(wave1[0],d.team),posts:pick(wave1[1],d.posts),projects:pick(wave1[2],d.projects),clients:pick(wave1[3],d.clients),notifications:pick(wave1[6],d.notifications)}));if(!silent)setLoading(false);// show app now — wave 2 loads silently in background
+// qe() swallows its own network/HTTP errors and always resolves (never rejects),
+// so Promise.allSettled alone can't tell a real failure from a real empty result —
+// it must check qe()'s own ok flag instead of just item.status.
+const pick=(item,fb)=>{var _item$value,_item$value2;return item.status==="fulfilled"&&(_item$value=item.value)!==null&&_item$value!==void 0&&_item$value.ok?((_item$value2=item.value)===null||_item$value2===void 0?void 0:_item$value2.entities)||[]:fb;};setData(d=>({...d,team:pick(wave1[0],d.team),posts:pick(wave1[1],d.posts),projects:pick(wave1[2],d.projects),clients:pick(wave1[3],d.clients),notifications:pick(wave1[6],d.notifications)}));if(!silent)setLoading(false);// show app now — wave 2 loads silently in background
 // ── Wave 2: secondary data (background, all parallel) ──
 const wave2=await Promise.allSettled([qe("Comment",{},"created_at"),// 0
 qe("Asset"),// 1

@@ -348,10 +348,10 @@ async function qe(entityName, query={}, sort=null, limit=500) {
     // PostgREST filter format: column=eq.value (passed as separate params)
     Object.entries(query).forEach(([k,v]) => params.set(k, `eq.${v}`));
     const r = await fetch(`${SB_URL}/${tbl}?${params}`, { headers: SB_HEADERS });
-    if(!r.ok) return {entities:[]};
+    if(!r.ok) return {entities:[], ok:false};
     const d = await r.json();
-    return {entities: Array.isArray(d) ? d : []};
-  } catch(e) { return {entities:[]}; }
+    return {entities: Array.isArray(d) ? d : [], ok:true};
+  } catch(e) { return {entities:[], ok:false}; }
 }
 
 // Create one or more records — returns {entities:[created records with real UUIDs]}
@@ -544,7 +544,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.95";
+const APP_VERSION = "beta 2.96";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -20942,7 +20942,10 @@ function App() {
       // was deleted) and must be trusted — only a *rejected* fetch should fall
       // back to the previous/seed state. Operate on the raw settled result so
       // "fulfilled but empty" and "rejected" aren't conflated.
-      const pick = (item,fb) => item.status==="fulfilled" ? (item.value?.entities||[]) : fb;
+      // qe() swallows its own network/HTTP errors and always resolves (never rejects),
+      // so Promise.allSettled alone can't tell a real failure from a real empty result —
+      // it must check qe()'s own ok flag instead of just item.status.
+      const pick = (item,fb) => (item.status==="fulfilled" && item.value?.ok) ? (item.value?.entities||[]) : fb;
       setData(d=>({...d,
         team: pick(wave1[0], d.team),
         posts: pick(wave1[1], d.posts),
