@@ -506,7 +506,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.68";
+const APP_VERSION = "beta 2.69";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7355,10 +7355,16 @@ const INSIGHTS_METRIC_LABELS = {
   saves: "Saves",
   replies: "Replies",
   page_impressions: "Page Impressions",
+  page_impressions_unique: "Reach",
   page_engaged_users: "Page Engaged Users",
-  page_fans: "Page Fans",
-  page_post_engagements: "Page Post Engagements",
+  page_fans: "Page Likes",
+  fan_count: "Page Likes",
+  followers_count: "Followers",
+  page_post_engagements: "Post Engagements",
   page_views_total: "Page Views",
+  page_fan_adds: "New Likes",
+  page_daily_follows_unique: "New Follows",
+  page_total_actions: "Page Actions (CTA)",
 };
 
 function ClientOverviewTab({client, cProjects, cPosts, cMessages, cLeads, integrations}) {

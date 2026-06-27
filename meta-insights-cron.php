@@ -58,9 +58,19 @@ foreach ($integrations as $integ) {
     $metrics  = [];
 
     if ($platform === 'facebook') {
-        $metrics['page_insights'] = insights_resilient("https://graph.facebook.com/{$v}/{$page_id}/insights",
+        $series = insights_resilient("https://graph.facebook.com/{$v}/{$page_id}/insights",
             ["page_post_engagements","page_impressions_unique","page_views_total","page_fan_adds","page_daily_follows_unique","page_fans","page_impressions","page_total_actions"],
             ["period" => "day", "access_token" => $access_token]);
+        // Lifetime follower/like counts from the Page node (see meta-insights.php).
+        [$pc, $presp] = graph_get("https://graph.facebook.com/{$v}/{$page_id}", [
+            "fields" => "followers_count,fan_count", "access_token" => $access_token,
+        ]);
+        $pageStats = [];
+        if ($pc === 200) {
+            if (isset($presp["followers_count"])) $pageStats[] = ["name"=>"followers_count","title"=>"Followers","values"=>[["value"=>$presp["followers_count"]]]];
+            if (isset($presp["fan_count"]))       $pageStats[] = ["name"=>"fan_count","title"=>"Page Likes","values"=>[["value"=>$presp["fan_count"]]]];
+        }
+        $metrics['page_insights'] = array_merge($pageStats, $series);
     } else {
         $ig_host = str_starts_with($access_token, 'IGAA') ? 'graph.instagram.com' : 'graph.facebook.com';
         $metrics['ig_insights'] = insights_resilient("https://{$ig_host}/{$v}/{$page_id}/insights",

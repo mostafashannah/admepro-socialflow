@@ -77,12 +77,27 @@ if ($platform === "facebook") {
         "page_impressions",
         "page_total_actions",
     ];
-    $out["page_insights"] = insights_resilient("https://graph.facebook.com/{$v}/{$page_id}/insights", $fbMetrics, [
+    $series = insights_resilient("https://graph.facebook.com/{$v}/{$page_id}/insights", $fbMetrics, [
         "period"       => "day",
         "since"        => $since,
         "until"        => $until,
         "access_token" => $access_token,
     ]);
+
+    // Total followers + Page likes are lifetime counts the /insights endpoint no longer
+    // reliably serves (page_fans/page_follows reject period=day). Read them straight from
+    // the Page node — always accurate — and show them first, same approach as Instagram.
+    [$pc, $presp] = graph_get("https://graph.facebook.com/{$v}/{$page_id}", [
+        "fields"       => "followers_count,fan_count,name",
+        "access_token" => $access_token,
+    ]);
+    $pageStats = [];
+    if ($pc === 200) {
+        if (isset($presp["followers_count"])) $pageStats[] = ["name"=>"followers_count","title"=>"Followers","values"=>[["value"=>$presp["followers_count"]]]];
+        if (isset($presp["fan_count"]))       $pageStats[] = ["name"=>"fan_count","title"=>"Page Likes","values"=>[["value"=>$presp["fan_count"]]]];
+    }
+
+    $out["page_insights"] = array_merge($pageStats, $series);
 }
 
 if ($platform === "instagram") {
