@@ -102,6 +102,14 @@ try {
 
     // ---- Pro assistant path (the dedicated Pro number) ----
     [$senderName, $senderRole, $contextBlock, $senderId] = identifySender($pdo, $from);
+    if (!$senderName) {
+        // Not a known team member or client — this is an outside number messaging
+        // admepro directly. Check if it's a prospect interested in our services
+        // and capture it as a lead before replying as Pro.
+        require_once __DIR__ . '/reply-bot-lib.php';
+        try { maybeCreateLeadFromMessage($pdo, 'whatsapp', $from, $contactName, $text, $from); }
+        catch (\Throwable $e) { error_log('[wa-webhook] lead-capture EXCEPTION: ' . $e->getMessage()); }
+    }
     $reply = askPro($pdo, $senderName, $senderRole, $contextBlock, $text, $senderId);
     if ($reply) sendWhatsAppReply($from, $reply);
 } catch (Throwable $e) {

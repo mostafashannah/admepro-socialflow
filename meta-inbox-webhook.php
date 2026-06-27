@@ -62,7 +62,7 @@ $pdo = new PDO(
 );
 
 function findClientByPageId(PDO $pdo, string $pageId) {
-    $stmt = $pdo->prepare("SELECT id, name, credentials FROM integrations WHERE status='active' AND app_key IN ('facebook','instagram') AND client_id IS NOT NULL");
+    $stmt = $pdo->prepare("SELECT id, name, credentials, client_id, client_name FROM integrations WHERE status='active' AND app_key IN ('facebook','instagram')");
     $stmt->execute();
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $creds = json_decode($row['credentials'] ?? '{}', true) ?: [];
@@ -71,12 +71,14 @@ function findClientByPageId(PDO $pdo, string $pageId) {
         // user ID returned by graph.instagram.com/me and stored as page_id during
         // OAuth — page_id_alt lets a connected account match on either ID.
         if (($creds['page_id'] ?? '') === $pageId || ($creds['page_id_alt'] ?? '') === $pageId) {
-            // need client_id/client_name from the integrations row itself
-            $stmt2 = $pdo->prepare("SELECT client_id, client_name FROM integrations WHERE id = :id");
-            $stmt2->execute([':id' => $row['id']]);
-            $out = $stmt2->fetch(PDO::FETCH_ASSOC);
-            if ($out) $out['access_token'] = $creds['access_token'] ?? null;
-            return $out;
+            // client_id IS NULL means this is admepro's own page (not a client's) —
+            // those messages go through lead-capture instead of the per-client reply bot.
+            return [
+                'client_id' => $row['client_id'],
+                'client_name' => $row['client_name'],
+                'access_token' => $creds['access_token'] ?? null,
+                'is_own' => $row['client_id'] === null || $row['client_id'] === '',
+            ];
         }
     }
     return null;
@@ -126,8 +128,10 @@ try {
             if ($text && $senderId) {
                 $senderName = fetchSenderName($channel, $client['access_token'], $senderId);
                 storeMessage($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName, $text);
-                try { maybeAutoReply($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName); }
-                catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
+                try {
+                    if ($client['is_own']) { maybeCreateLeadFromMessage($pdo, $channel, $senderId, $senderName, $text); }
+                    else { maybeAutoReply($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName); }
+                } catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
             }
         }
 
@@ -141,8 +145,10 @@ try {
                 if ($text && $senderId) {
                     $senderName = fetchSenderName('instagram', $client['access_token'], $senderId);
                     storeMessage($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, $senderName, $text);
-                    try { maybeAutoReply($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, $senderName); }
-                    catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
+                    try {
+                        if ($client['is_own']) { maybeCreateLeadFromMessage($pdo, 'instagram', $senderId, $senderName, $text); }
+                        else { maybeAutoReply($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, $senderName); }
+                    } catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
                 }
                 continue;
             }

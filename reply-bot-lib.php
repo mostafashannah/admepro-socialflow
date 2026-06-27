@@ -208,6 +208,55 @@ function storeBotMessage(PDO $pdo, $clientId, $clientName, $channel, $customerId
     $stmt->execute([':cid'=>$clientId, ':cname'=>$clientName, ':ch'=>$channel, ':custid'=>$customerId, ':custname'=>$customerName, ':txt'=>$text, ':tstatus'=>$threadStatus, ':dstatus'=>$draftStatus, ':eid'=>$externalId]);
 }
 
+// Asks Claude whether an inbound message to admepro's OWN social/WhatsApp account
+// (not a client's) signals interest in admepro's services — used to auto-capture
+// leads from the agency's own inbox. Returns true/false; fails closed (false) on
+// any API error so a glitch never spams the Leads page.
+function isInterestedInOurServices(string $text) {
+    $payload = [
+        'model' => 'claude-sonnet-4-6',
+        'max_tokens' => 10,
+        'system' => "You classify inbound messages sent to a social media marketing agency's own Facebook/Instagram/WhatsApp account. "
+                  . "Reply with exactly one word: YES if the message shows interest in hiring the agency or its services "
+                  . "(asking about pricing, packages, social media management, content creation, ads, collaboration, etc.), "
+                  . "or NO if it's spam, a job application, an existing client/team message, or unrelated chatter.",
+        'messages' => [['role' => 'user', 'content' => $text]],
+    ];
+    [$status, $data] = callClaude($payload);
+    if ($status < 200 || $status >= 300) return false;
+    $reply = '';
+    foreach (($data['content'] ?? []) as $block) {
+        if (($block['type'] ?? '') === 'text') $reply .= $block['text'];
+    }
+    return stripos(trim($reply), 'yes') === 0;
+}
+
+// Creates a CRM lead from an inbound message to admepro's own inbox, if it isn't
+// already a duplicate of one captured from the same sender. $phone is digits-only,
+// passed only for WhatsApp (used as the lead's phone number).
+function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerId, ?string $customerName, string $text, ?string $phone = null) {
+    if (trim($text) === '') return;
+    try {
+        if (!isInterestedInOurServices($text)) return;
+
+        $tag = "src_id:{$channel}:{$customerId}";
+        $dupe = $pdo->prepare("SELECT id FROM leads WHERE notes LIKE :tag LIMIT 1");
+        $dupe->execute([':tag' => "%{$tag}%"]);
+        if ($dupe->fetch()) return; // already captured this sender before
+
+        $stmt = $pdo->prepare("INSERT INTO leads (name, phone, source, status, platforms, notes) VALUES (:name, :phone, :source, 'new', :platforms, :notes)");
+        $stmt->execute([
+            ':name' => $customerName ?: 'Unknown (' . $channel . ')',
+            ':phone' => $phone,
+            ':source' => $channel === 'whatsapp' ? 'whatsapp' : $channel,
+            ':platforms' => json_encode([$channel]),
+            ':notes' => "Auto-captured by SocialFlow from an inbound {$channel} message expressing interest in our services:\n\"{$text}\"\n\n{$tag}",
+        ]);
+    } catch (\Throwable $e) {
+        error_log('maybeCreateLeadFromMessage EXCEPTION: ' . $e->getMessage());
+    }
+}
+
 // Entry point called from meta-inbox-webhook.php right after an inbound message is stored.
 // Looks up this client's reply-bot settings, and if enabled for this channel, drafts a
 // reply and either sends it immediately (mode=auto) or stores it as a pending draft
