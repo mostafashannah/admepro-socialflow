@@ -544,7 +544,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.98";
+const APP_VERSION = "beta 2.99";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10522,6 +10522,10 @@ const ACTIVITY_ICONS = {
 
 const isOverdue = (date) => date && new Date(date) < new Date() && new Date(date).toDateString() !== new Date().toDateString();
 const isDueToday = (date) => date && new Date(date).toDateString() === new Date().toDateString();
+// followup_date is plain text — older leads only ever stored a bare date, newer
+// ones (set via the datetime-local picker below) also carry a time, so only show
+// the time portion when one was actually saved.
+const fmtFollowup = (d) => d ? (d.includes("T") ? fmtDateTime(d) : fmtDate(d)) : "";
 
 // Lead Detail Panel
 function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivity, onConvert, currentUser}) {
@@ -10643,7 +10647,7 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
                   <p style={{fontSize:12,fontWeight:700,color:isOverdue(lead.followup_date)?"#ef4444":isDueToday(lead.followup_date)?"#f59e0b":"var(--text)"}}>
                     {isOverdue(lead.followup_date)?" Overdue":isDueToday(lead.followup_date)?" Due Today":"Next Follow-up"}
                   </p>
-                  <p style={{fontSize:11,color:"var(--text2)"}}>{fmtDate(lead.followup_date)}</p>
+                  <p style={{fontSize:11,color:"var(--text2)"}}>{fmtFollowup(lead.followup_date)}</p>
                 </div>
               </div>
             )}
@@ -10662,7 +10666,7 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
                       <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(a.created_date)}</span>
                     </div>
                     <p style={{fontSize:13,lineHeight:1.5}}>{a.content}</p>
-                    {a.followup_date&&<p style={{fontSize:11,color:"#f59e0b",marginTop:3}}> Follow-up: {fmtDate(a.followup_date)}</p>}
+                    {a.followup_date&&<p style={{fontSize:11,color:"#f59e0b",marginTop:3}}> Follow-up: {fmtFollowup(a.followup_date)}</p>}
                   </div>
                 </div>
               ))}
@@ -10693,8 +10697,8 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
             <div style={{background:"var(--surface2)",borderRadius:"var(--r)",padding:16,border:"1px solid var(--border)"}}>
               <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:12}}>Schedule Follow-up</p>
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                <Field label="Follow-up Date">
-                  <input type="date" value={followupDate||lead.followup_date||""} onChange={e=>setFollowupDate(e.target.value)} style={inputSt}/>
+                <Field label="Follow-up Date & Time">
+                  <input type="datetime-local" value={(followupDate||lead.followup_date||"").slice(0,16)} onChange={e=>setFollowupDate(e.target.value)} style={inputSt}/>
                 </Field>
                 <Field label="Note">
                   <textarea value={note} onChange={e=>setNote(e.target.value)} rows={2} placeholder="What to discuss…" style={inputSt}/>
@@ -10716,7 +10720,7 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
               {activities.filter(a=>a.lead_id===lead.id&&a.type==="followup").map(a=>(
                 <div key={a.id} style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
                   <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-                    <span style={{fontSize:11,fontWeight:700,color:"#f59e0b"}}> {fmtDate(a.followup_date||a.created_date)}</span>
+                    <span style={{fontSize:11,fontWeight:700,color:"#f59e0b"}}> {fmtFollowup(a.followup_date)||fmtDateTime(a.created_date)}</span>
                     <span style={{fontSize:10,color:"var(--text3)"}}>{fmtDate(a.created_date)}</span>
                   </div>
                   <p style={{fontSize:12,color:"var(--text2)"}}>{a.content}</p>
@@ -10758,7 +10762,7 @@ function LeadCard({lead, onClick}) {
       {lead.followup_date&&(
         <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,color:overdue?"#ef4444":dueToday?"#f59e0b":"var(--text3)"}}>
           <Ico d={Icons.clock} size={11} stroke={overdue?"#ef4444":dueToday?"#f59e0b":"var(--text3)"}/>
-          {overdue?" Overdue":dueToday?"Due Today":fmtDate(lead.followup_date)}
+          {overdue?" Overdue":dueToday?"Due Today":fmtFollowup(lead.followup_date)}
         </div>
       )}
     </div>
@@ -10889,7 +10893,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
                 </div>
                 <Badge label={status.label} color={status.color} xs/>
                 <span style={{fontSize:12,color:"var(--text2)",textTransform:"capitalize"}}>{lead.source||"—"}</span>
-                <span style={{fontSize:12,color:overdue?"#ef4444":"var(--text2)"}}>{lead.followup_date?`${overdue?" ":""}${fmtDate(lead.followup_date)}`:"—"}</span>
+                <span style={{fontSize:12,color:overdue?"#ef4444":"var(--text2)"}}>{lead.followup_date?`${overdue?" ":""}${fmtFollowup(lead.followup_date)}`:"—"}</span>
                 <span style={{fontWeight:700,fontSize:13,color:"#10b981"}}>{lead.value?`$${lead.value.toLocaleString()}`:"—"}</span>
                 <span style={{fontSize:11,color:"var(--text2)"}}>{assignee?.name?.split(" ")[0]||"—"}</span>
                 <Btn size="sm" variant="ghost" onClick={e=>{e.stopPropagation();setSelectedLead(lead);}}>View</Btn>
