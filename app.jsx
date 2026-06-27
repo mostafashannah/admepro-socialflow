@@ -428,6 +428,44 @@ const PUSH_ENDPOINT = window.location.origin + "/push-send.php";
 const VAPID_PUBLIC_KEY = "BGFP5W8qioz7-199m_66qK9dm1dXRK2RxXF8HC3nNCcQqP6IoxUC17kOFAzwwBoZ9MpWURXprtMx9SEF2yCPepc";
 const AI_HEADERS = {"Content-Type":"application/json"};
 
+// ── Shared: Pro learns from a chat exchange ───────────────────────────────────
+// After any Pro reply where a client is in context, silently extract DURABLE brand
+// facts from the exchange and persist them to that client's Memory (tagged
+// auto / source:"conversation"). Returns the saved [{key,value}] so the chat can
+// show a "learned" confirmation. Used by BOTH Pro surfaces (ProHomePage and the
+// floating Chatbot) so conversation-learning is universal and identical.
+async function proLearnFromExchange({client, userText, botText, existingKeys=[], onUpsertMemory, currentUserEmail=""}) {
+  if(!client?.id || !onUpsertMemory) return [];
+  const combined = `USER: ${userText}\n\nPRO: ${botText}`.slice(0,8000);
+  if(combined.length<150) return [];
+  try{
+    const sys = `You silently extract DURABLE brand knowledge from a chat exchange about "${client.name}". Return ONLY JSON: {"insights":[{"key":"snake_case","value":"≤140 chars concrete directive","confidence":0.4-0.95}]}.
+Rules:
+- 0–4 insights only (skip if nothing durable).
+- key snake_case, ≤32 chars. Avoid these existing keys: ${existingKeys.slice(0,30).join(", ")||"(none)"}.
+- value: a stable fact about the brand/audience/tone/products/preferences. Skip ephemeral chat-specific things.
+- Skip greetings, scheduling, one-off questions.
+- Return {"insights":[]} if nothing durable.`;
+    const res = await fetch(AI_ENDPOINT,{method:"POST",headers:AI_HEADERS,
+      body: JSON.stringify({model:"claude-haiku-4-5-20251001", max_tokens:600, system:sys, messages:[{role:"user",content:combined}]})});
+    const d = await res.json();
+    const raw = (d.content?.map(b=>b.text||"").join("")||"").trim();
+    const m = raw.match(/\{[\s\S]*\}/); if(!m) return [];
+    const parsed = JSON.parse(m[0]);
+    const items = (parsed.insights||[]).slice(0,4);
+    const saved = [];
+    for(const it of items){
+      const k = (it.key||"").toLowerCase().replace(/[^a-z0-9_]/g,"_").slice(0,32);
+      const v = (it.value||"").slice(0,140);
+      if(!k||!v) continue;
+      if(existingKeys.includes(k)) continue; // don't overwrite stronger existing memories
+      await onUpsertMemory(client.id, client.name||"", k, v, "auto", {source:"conversation", confidence: typeof it.confidence==="number"?it.confidence:0.5, created_by: currentUserEmail});
+      saved.push({key:k, value:v});
+    }
+    return saved;
+  }catch(e){ return []; }
+}
+
 // ── Feature flags ──────────────────────────────────────────────
 // Untested/in-progress features stay off by default until toggled on
 // from Settings → Feature Flags (writes to app_settings.feature_flags).
@@ -506,7 +544,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.69";
+const APP_VERSION = "beta 2.70";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17932,7 +17970,7 @@ RULES:
     // Build clean conversation history
     const allMsgs = [...messages, userMsgObj].slice(-14);
     const history = allMsgs
-      .filter(m=>m.content && typeof m.content==="string" && !m.pendingAction)
+      .filter(m=>m.content && typeof m.content==="string" && !m.pendingAction && !m.meta)
       .map(m=>({
         role: m.role==="bot" ? "assistant" : "user",
         content: stripActionBlocks(m.content),
@@ -17999,6 +18037,16 @@ RULES:
         const combined = (displayText?displayText+"\n\n":"") + "**Plan:**\n" + planLines;
         setMessages(m=>[...m,{role:"bot",content:combined,id:msgId,pendingAction:true,confirmData}]);
       }
+
+      // Auto-learn durable brand facts when a client is in context — same engine as ProHomePage,
+      // so the floating Pro and the Pro page both learn from conversations identically.
+      const learnClient = (data?.clients||[]).find(c=>c.id===selectedClientId);
+      if(learnClient && displayText && userMsg){
+        const existingKeys = (data?.clientMemory||[]).filter(mm=>mm.client_id===learnClient.id).map(mm=>mm.key);
+        proLearnFromExchange({client:learnClient, userText:userMsg, botText:displayText, existingKeys, onUpsertMemory, currentUserEmail:currentUser?.email||""})
+          .then(saved=>{ if(saved.length) setMessages(m=>[...m,{role:"bot",id:uid(),type:"success",meta:true,content:`🧠 Learned & saved to ${learnClient.name}'s memory: ${saved.map(s=>s.key.replace(/_/g," ")).join(", ")}`}]); });
+      }
+
       if(!open) setUnread(u=>u+1);
     } catch(e) {
       console.error("[Pro]",e);
@@ -19516,33 +19564,15 @@ RULES:
 
   // ── CONTINUOUS LEARN: silently extract durable insights from each exchange ──
   const learnFromExchange = async (clientObj, userText, botText) => {
-    if(!clientObj?.id || !onUpsertMemory) return;
-    const combined = `USER: ${userText}\n\nPRO: ${botText}`.slice(0,8000);
-    if(combined.length<150) return;
-    try{
-      const existing = (data?.clientMemory||[]).filter(m=>m.client_id===clientObj.id).map(m=>m.key);
-      const sys = `You silently extract DURABLE brand knowledge from a chat exchange about "${clientObj.name}". Return ONLY JSON: {"insights":[{"key":"snake_case","value":"≤140 chars concrete directive","confidence":0.4-0.95}]}.
-Rules:
-- 0–4 insights only (skip if nothing durable).
-- key snake_case, ≤32 chars. Avoid these existing keys: ${existing.slice(0,30).join(", ")||"(none)"}.
-- value: a stable fact about the brand/audience/tone/products/preferences. Skip ephemeral chat-specific things.
-- Skip greetings, scheduling, one-off questions.
-- Return {"insights":[]} if nothing durable.`;
-      const res = await fetch(AI_ENDPOINT,{method:"POST",headers:AI_HEADERS,
-        body: JSON.stringify({model:"claude-haiku-4-5-20251001", max_tokens:600, system:sys, messages:[{role:"user",content:combined}]})});
-      const d = await res.json();
-      const raw = (d.content?.map(b=>b.text||"").join("")||"").trim();
-      const m = raw.match(/\{[\s\S]*\}/); if(!m) return;
-      const parsed = JSON.parse(m[0]);
-      const items = (parsed.insights||[]).slice(0,4);
-      for(const it of items){
-        const k = (it.key||"").toLowerCase().replace(/[^a-z0-9_]/g,"_").slice(0,32);
-        const v = (it.value||"").slice(0,140);
-        if(!k||!v) continue;
-        if(existing.includes(k)) continue; // don't overwrite stronger memories
-        await onUpsertMemory(clientObj.id, clientObj.name||"", k, v, "auto", {source:"conversation", confidence: typeof it.confidence==="number"?it.confidence:0.5, created_by: currentUser?.email||""});
-      }
-    }catch(e){ /* silent */ }
+    const existing = (data?.clientMemory||[]).filter(m=>m.client_id===clientObj?.id).map(m=>m.key);
+    const saved = await proLearnFromExchange({client:clientObj, userText, botText, existingKeys:existing, onUpsertMemory, currentUserEmail:currentUser?.email||""});
+    if(saved.length){
+      // Visible, auditable confirmation that Pro learned + persisted to memory.
+      // meta:true keeps this note out of the history sent back to Claude next turn.
+      setMessages(m=>[...m,{role:"bot",id:uid(),type:"success",meta:true,
+        content:`🧠 Learned & saved to ${clientObj.name}'s memory: ${saved.map(s=>s.key.replace(/_/g," ")).join(", ")}`}]);
+    }
+    return saved;
   };
 
   // ── File attachments: images (vision), PDFs (document), text files (inlined) ──
@@ -19676,7 +19706,7 @@ Rules:
     const allMsgs = [...messages, userMsgObj].slice(-10);
     const history = allMsgs
       .filter(m=>(m.content && typeof m.content==="string") || (m.attachments||[]).length)
-      .filter(m=>!m.pendingAction)
+      .filter(m=>!m.pendingAction && !m.meta)
       .map(m=>{
         const isCurrent = m===userMsgObj;
         let textContent = truncMsg(stripActionBlocks(m.content||""));
