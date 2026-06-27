@@ -544,7 +544,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.96";
+const APP_VERSION = "beta 2.97";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16903,6 +16903,16 @@ const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId) => {
     const editBlock = captionEdits.length ? `▼ RECENT USER EDITS — preempt these patterns (the user keeps rewriting Pro's drafts this way):\n${captionEdits.map((e,i)=>` [${i+1}] ${(e.value||"").slice(0,400)}`).join("\n")}` : "";
 
     const intelBlock = ci ? `▼ INTELLIGENCE: brand_voice=${ci.brand_voice||"-"} | audience=${ci.target_audience||"-"} | goals=${(ci.business_goals||"").slice(0,240)} | do=${ciDos.join(" | ")||"-"} | dont=${ciDon.join(" | ")||"-"} | competitors=${ciComp.join(" | ")||"-"} | preferred_platforms=${(parseList(ci.preferred_platforms)).join(", ")||"-"} | content_types=${(parseList(ci.preferred_content_types)).join(", ")||"-"} | best_days=${(parseList(ci.best_posting_days)).join(", ")||"-"} | freq=${ci.posting_frequency||"-"}/wk` : "";
+
+    // ── Reply Bot brain/rules — admin-only context, mirrors the admin-only edit action below ──
+    let replyBotBlock = "";
+    if (user?.role==="admin") {
+      const bot = (data?.replyBotSettings||[]).find(s=>s.client_id===c.id);
+      replyBotBlock = bot ? `▼ REPLY BOT (auto-reply assistant for this client's DMs/comments — admin-only):
+  • Enabled: ${bot.enabled?"yes":"no"} | Mode: ${bot.mode||"-"} | Tone: ${bot.tone||"-"} | Channels: ${(bot.channels||[]).join(", ")||"-"}
+  • Brain (instructions): ${bot.brain||"(empty)"}
+  • Don't (hard rules): ${bot.dont_do||"(empty)"}` : `▼ REPLY BOT: not configured for this client yet (admin-only).`;
+    }
     return `CLIENT: ${c.name} | Industry: ${c.industry||"?"} | Platforms: ${(c.platforms||[]).join(",")||"none"}
 Projects: ${cProj.map(p=>p.title||p.name).join(", ")||"none"} | Posts by stage: ${stageCounts||"no posts"}
 ${briefBlock}
@@ -16911,6 +16921,7 @@ ${exemplarBlock}
 ${editBlock}
 ${knowledgeBlock}
 ${intelBlock}
+${replyBotBlock}
 ${mem?`MEMORY (key=value):\n${mem.slice(0,memCap)}`:"MEMORY: (empty — say so honestly if asked)"}
 ${isFocused && recentPosts?`RECENT POSTS:\n${recentPosts}`:""}`.trim();
   }).join("\n\n");
@@ -16983,6 +16994,7 @@ Format answers for readability, not as a wall of text:
    [ACTION:{"action":"save_exemplar","client_name":"...","caption":"...the full caption text to save as a style reference..."}]
    [ACTION:{"action":"save_voice_card","client_name":"...","voice_paragraph":"...one paragraph describing tone, POV, formality, emoji policy, signature phrases..."}]
    [ACTION:{"action":"save_client_facts","client_name":"...","facts":{"legal_name":"...","activity":"...","capital":"...","hq":"...","branches":"...","manager":"...","commercial_register":"..."}}] — use this whenever the user shares standalone business/profile facts about a client (legal name, capital, HQ/branches, registration numbers, manager, etc.) that don't fit update_client's fixed fields (industry/email/phone/platforms). Put each distinct fact as its own key in "facts" using a short snake_case key and the value as given; omit keys with no value. This is the correct action for "remember/save this info about client X" requests — update_client only supports industry/email/phone/platforms and will report nothing to update for anything else.
+   [ACTION:{"action":"update_reply_bot_settings","client_name":"...","brain":"...full new instructions text for the auto-reply bot...","dont_do":"...full new hard-rules text the bot must never violate..."}] — ADMIN ONLY. Use this when an admin asks you to view/edit the Reply Bot's "Brain" (its instructions/system prompt) or "Don't" (hard rules) for a client. The current values are shown in the REPLY BOT block under CLIENT DATA above (admin-only) — read from there when asked to show/summarize them. Omit "brain" or "dont_do" if the admin only wants to change one of them; never overwrite the one they didn't mention.
 4. The action block(s) are SEPARATE from your reply. Your text reply comes FIRST (answer / confirm the plan), then each [ACTION:{...}] on its own new line.
 4b. KEEP ACTION JSON COMPACT. Each [ACTION:{...}] must be a SINGLE LINE of valid JSON with NO real newlines inside string values (use \\n if you must). NEVER paste full bilingual captions, long briefs, or hashtag walls inside ACTION JSON — put a SHORT description (≤120 chars) in the description field and put the full caption/brief in your normal chat reply text BEFORE the action blocks. This is critical: long JSON strings break parsing and cause only some actions to run.
 5. Never include action blocks for pure questions/answers.
@@ -17062,6 +17074,7 @@ const CHATBOT_ACTION_ROLES = {
   save_exemplar: ["admin","account_manager","content_creator"],
   save_voice_card: ["admin","account_manager"],
   save_client_facts: ["admin","account_manager"],
+  update_reply_bot_settings: ["admin"],
 };
 
 // Simple inline markdown renderer for chat messages
@@ -17958,6 +17971,16 @@ RULES:
         if(entries.length===0){addBotMsg(" No facts provided to save.","error");return;}
         if(onUpsertMemory) for(const [k,v] of entries) await onUpsertMemory(cl.id, cl.name, k, String(v).trim(), "ai");
         addBotMsg(` Saved ${entries.length} fact${entries.length>1?"s":""} for **${cl.name}**.`,"success");
+      }
+      else if(act==="update_reply_bot_settings") {
+        const cl = resolveEntity(payload.client_name, data.clients);
+        if(!cl){ addBotMsg(` Couldn't find client "${payload.client_name}".`,"error"); return; }
+        const patch = {};
+        if(payload.brain!=null) patch.brain = payload.brain;
+        if(payload.dont_do!=null) patch.dont_do = payload.dont_do;
+        if(Object.keys(patch).length===0){ addBotMsg(" Nothing to update for the reply bot.","error"); return; }
+        if(onDirectAction) await onDirectAction("update_reply_bot_settings", {clientId:cl.id, clientName:cl.name, patch});
+        addBotMsg(` Updated the Reply Bot${patch.brain!=null?" brain":""}${patch.dont_do!=null?" and hard rules":""} for **${cl.name}**.`,"success");
       }
       else if(act==="delete_task") {
         const post=(data.posts||[]).find(p=>p.id===payload.post_id||(p.title||"").toLowerCase().includes((payload.post_title||"").toLowerCase()));
@@ -19585,6 +19608,15 @@ RULES:
         if(entries.length===0){addBotMsg(" No facts provided to save.","error");return;}
         if(onUpsertMemory) for(const [k,v] of entries) await onUpsertMemory(cl.id, cl.name, k, String(v).trim(), "ai");
         addBotMsg(` Saved ${entries.length} fact${entries.length>1?"s":""} for **${cl.name}**.`,"success");
+      } else if(act==="update_reply_bot_settings") {
+        const cl = resolveEntity(payload.client_name, data.clients);
+        if(!cl){ addBotMsg(` Couldn't find client "${payload.client_name}".`,"error"); return; }
+        const patch = {};
+        if(payload.brain!=null) patch.brain = payload.brain;
+        if(payload.dont_do!=null) patch.dont_do = payload.dont_do;
+        if(Object.keys(patch).length===0){ addBotMsg(" Nothing to update for the reply bot.","error"); return; }
+        if(onDirectAction) await onDirectAction("update_reply_bot_settings", {clientId:cl.id, clientName:cl.name, patch});
+        addBotMsg(` Updated the Reply Bot${patch.brain!=null?" brain":""}${patch.dont_do!=null?" and hard rules":""} for **${cl.name}**.`,"success");
       } else if(act==="delete_task") {
         const post=(data.posts||[]).find(p=>p.id===payload.post_id||(p.title||"").toLowerCase().includes((payload.post_title||"").toLowerCase()));
         if(!post){addBotMsg(` Couldn't find task "${payload.post_title||payload.post_id}".`,"error");return;}
@@ -22820,6 +22852,7 @@ Return ONLY valid JSON (no markdown, no explanation):
                   for(const cp of childProjs){ de("Project",cp.id).catch(()=>{}); }
                   for(const cp of childPosts){ de("Post",cp.id).catch(()=>{}); }
                 }
+                else if(type==="update_reply_bot_settings") await saveReplyBotSettings(payload.clientId, payload.clientName, payload.patch);
               }}
             />}
           {page==="dashboard"&&<DashboardPage data={data} currentUser={currentUser} setPage={setPage}
@@ -23288,6 +23321,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             else if(agAct==="stop") await stopAgent(agentObj);
           }
         }
+        if(actionType==="update_reply_bot_settings") { await saveReplyBotSettings(payload.clientId, payload.clientName, payload.patch); }
       }}
     />}
     </>
