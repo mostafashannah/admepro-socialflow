@@ -244,16 +244,36 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
         $dupe->execute([':tag' => "%{$tag}%"]);
         if ($dupe->fetch()) return; // already captured this sender before
 
+        $leadName = $customerName ?: 'Unknown (' . $channel . ')';
         $stmt = $pdo->prepare("INSERT INTO leads (name, phone, source, status, platforms, notes) VALUES (:name, :phone, :source, 'new', :platforms, :notes)");
         $stmt->execute([
-            ':name' => $customerName ?: 'Unknown (' . $channel . ')',
+            ':name' => $leadName,
             ':phone' => $phone,
             ':source' => $channel === 'whatsapp' ? 'whatsapp' : $channel,
             ':platforms' => json_encode([$channel]),
             ':notes' => "Auto-captured by SocialFlow from an inbound {$channel} message expressing interest in our services:\n\"{$text}\"\n\n{$tag}",
         ]);
+
+        notifyAdminsOfNewLead($pdo, $leadName, $channel, $phone, $text);
     } catch (\Throwable $e) {
         error_log('maybeCreateLeadFromMessage EXCEPTION: ' . $e->getMessage());
+    }
+}
+
+// WhatsApps every active admin team member with the new lead's details, sent from
+// the same "Pro" number/token used by wa-webhook.php and identifySender().
+function notifyAdminsOfNewLead(PDO $pdo, string $leadName, string $channel, ?string $phone, string $text) {
+    if (!function_exists('sendWhatsAppReply')) return; // pro-lib.php not loaded
+    $admins = $pdo->query("SELECT whatsapp_number FROM team_members WHERE status = 'active' AND role = 'admin' AND whatsapp_number IS NOT NULL AND whatsapp_number != ''")->fetchAll(PDO::FETCH_COLUMN);
+    if (!$admins) return;
+    $snippet = mb_strlen($text) > 300 ? mb_substr($text, 0, 300) . '…' : $text;
+    $body = "New lead captured by SocialFlow!\n\n"
+          . "Name: {$leadName}\n"
+          . "Channel: {$channel}" . ($phone ? " ({$phone})" : '') . "\n\n"
+          . "Message:\n\"{$snippet}\"\n\n"
+          . "View it on the CRM Leads page.";
+    foreach ($admins as $number) {
+        sendWhatsAppReply($number, $body);
     }
 }
 
