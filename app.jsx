@@ -321,7 +321,7 @@ const SB_SCHEMA = {
   clients: ["name","email","phone","industry","status","platforms","portal_password","address","website","contact_person","notes"],
   client_tasks: ["client_id","client_name","title","description","task_type","priority","stage","assigned_to","created_by","deliverable_note"],
   customer_messages: ["client_id","client_name","channel","customer_id","customer_name","direction","message_text","sent_by","thread_status","draft_status","external_id"],
-  reply_bot_settings: ["client_id","client_name","enabled","mode","channels","brain","updated_by"],
+  reply_bot_settings: ["client_id","client_name","enabled","mode","channels","brain","dont_do","updated_by"],
 };
 function sbSanitize(tableName, payload) {
   const allowed = SB_SCHEMA[tableName];
@@ -544,7 +544,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.79";
+const APP_VERSION = "beta 2.80";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6334,6 +6334,14 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
                 placeholder="Specific things this bot should know or always say for this client — e.g. pricing rules, FAQs, what to never promise, how to greet customers…"
                 style={{...inputSt,width:"100%",minHeight:90,resize:"vertical",fontFamily:"inherit"}}/>
               <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Combined with this client's Client Brain tone/voice and recent human-sent replies to match their reply pattern.</p>
+            </div>
+
+            <div>
+              <p style={{fontSize:12,fontWeight:700,color:"#ef4444",marginBottom:6}}>Don't (hard rules)</p>
+              <textarea defaultValue={bot.dont_do||""} onBlur={e=>onSaveBotSettings&&onSaveBotSettings({dont_do:e.target.value})}
+                placeholder="Things this bot must never do — e.g. never give refunds or discounts, never quote a price, never confirm an appointment, never mention competitors…"
+                style={{...inputSt,width:"100%",minHeight:70,resize:"vertical",fontFamily:"inherit",borderColor:"#ef444444"}}/>
+              <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Treated as strict boundaries — takes priority over the brain instructions above if the two ever conflict.</p>
             </div>
           </div>
         )}
@@ -21441,9 +21449,9 @@ function App() {
       setData(d=>({...d, replyBotSettings:d.replyBotSettings.map(s=>s.id===existing.id?updated:s)}));
       ue("ReplyBotSetting", existing.id, patch).catch(()=>{});
     } else {
-      const local = {id:uid(), client_id:clientId, client_name:clientName, enabled:false, mode:"approve", channels:["instagram","messenger"], brain:"", ...patch};
+      const local = {id:uid(), client_id:clientId, client_name:clientName, enabled:false, mode:"approve", channels:["instagram","messenger"], brain:"", dont_do:"", ...patch};
       setData(d=>({...d, replyBotSettings:[local,...(d.replyBotSettings||[])]}));
-      ce("ReplyBotSetting",[{client_id:clientId, client_name:clientName, enabled:false, mode:"approve", channels:["instagram","messenger"], brain:"", ...patch}])
+      ce("ReplyBotSetting",[{client_id:clientId, client_name:clientName, enabled:false, mode:"approve", channels:["instagram","messenger"], brain:"", dont_do:"", ...patch}])
         .then(r=>{ const real=r.entities?.[0]; if(real?.id) setData(d=>({...d,replyBotSettings:d.replyBotSettings.map(s=>s.id===local.id?{...s,...real}:s)})); })
         .catch(()=>{});
     }

@@ -36,7 +36,7 @@ function findIntegrationCreds(PDO $pdo, string $clientId, string $channel) {
 }
 
 // Builds the Claude system prompt from Client Brain + reply-bot brain + reply history.
-function buildReplyBotSystemPrompt(PDO $pdo, string $clientId, string $clientName, string $botBrain, bool $isComment = false) {
+function buildReplyBotSystemPrompt(PDO $pdo, string $clientId, string $clientName, string $botBrain, bool $isComment = false, string $dontDo = '') {
     $parts = [];
     $parts[] = $isComment
         ? "You are the AI auto-reply assistant for {$clientName}'s social media inbox, built into SocialFlow. "
@@ -68,6 +68,11 @@ function buildReplyBotSystemPrompt(PDO $pdo, string $clientId, string $clientNam
         $parts[] = "Specific instructions set by the agency for this client's auto-replies — follow these closely:\n" . trim($botBrain);
     }
 
+    if (trim($dontDo) !== '') {
+        $parts[] = "Hard rules — things you must NEVER do, no matter what the customer asks or how the conversation goes. "
+                  . "These override every other instruction above if there's ever a conflict:\n" . trim($dontDo);
+    }
+
     // Few-shot: last human-sent replies for this client, so the bot mimics actual phrasing.
     $stmt = $pdo->prepare("SELECT message_text FROM customer_messages WHERE client_id = :cid AND direction = 'out' AND sent_by = 'human' ORDER BY created_at DESC LIMIT 12");
     $stmt->execute([':cid' => $clientId]);
@@ -84,8 +89,8 @@ function buildReplyBotSystemPrompt(PDO $pdo, string $clientId, string $clientNam
 }
 
 // Returns the drafted reply text, or null (on failure, or if Claude opts out via NEEDS_HUMAN).
-function generateBotReply(PDO $pdo, string $clientId, string $clientName, string $botBrain, array $threadMessages, bool $isComment = false) {
-    $system = buildReplyBotSystemPrompt($pdo, $clientId, $clientName, $botBrain, $isComment);
+function generateBotReply(PDO $pdo, string $clientId, string $clientName, string $botBrain, array $threadMessages, bool $isComment = false, string $dontDo = '') {
+    $system = buildReplyBotSystemPrompt($pdo, $clientId, $clientName, $botBrain, $isComment, $dontDo);
 
     $convo = implode("\n", array_map(
         fn($m) => ($m['direction'] === 'in' ? 'Customer' : 'Agency') . ': ' . $m['message_text'],
@@ -226,7 +231,7 @@ function maybeAutoReply(PDO $pdo, string $clientId, string $clientName, string $
     $thread = array_reverse($stmt->fetchAll(PDO::FETCH_ASSOC));
     if (!$thread) { $log('empty thread'); return; }
 
-    $reply = generateBotReply($pdo, $clientId, $clientName, (string)($settings['brain'] ?? ''), $thread, $isComment);
+    $reply = generateBotReply($pdo, $clientId, $clientName, (string)($settings['brain'] ?? ''), $thread, $isComment, (string)($settings['dont_do'] ?? ''));
     if (!$reply) { $log('generateBotReply returned empty (Claude opted out or API error)'); return; }
 
     if ($settings['mode'] === 'auto') {

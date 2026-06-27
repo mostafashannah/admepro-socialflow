@@ -285,6 +285,7 @@ CREATE TABLE IF NOT EXISTS reply_bot_settings (
   mode VARCHAR(20) DEFAULT 'approve', -- approve | auto
   channels JSON DEFAULT ('["instagram","messenger"]'),
   brain TEXT, -- dedicated reply-bot instructions, separate from general Client Brain
+  dont_do TEXT, -- hard "never do this" rules, takes priority over brain
   updated_by TEXT
 ) ENGINE=InnoDB;
 CREATE INDEX idx_reply_bot_settings_client ON reply_bot_settings(client_id);
