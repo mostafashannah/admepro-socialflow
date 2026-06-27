@@ -544,7 +544,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.97";
+const APP_VERSION = "beta 2.98";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10840,7 +10840,9 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
       {view==="kanban"&&(
         <div style={{display:"flex",gap:12,overflowX:"auto",paddingBottom:12,alignItems:"flex-start"}}>
           {LEAD_STATUSES.map(status=>{
-            const statusLeads = filtered.filter(l=>l.status===status.key);
+            // Leads with a missing/unrecognized status (e.g. a NULL from a manual
+            // insert) fall back into "New" instead of silently vanishing from every column.
+            const statusLeads = filtered.filter(l=>(LEAD_STATUS_MAP[l.status]?l.status:"new")===status.key);
             const val = statusLeads.reduce((a,l)=>a+(l.value||0),0);
             return (
               <div key={status.key} style={{minWidth:240,flexShrink:0,display:"flex",flexDirection:"column",gap:8}}>
@@ -16816,6 +16818,7 @@ const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId) => {
   const allProj = data?.projects||[];
   const allClients= data?.clients||[];
   const allTeam = data?.team||[];
+  const allLeads = data?.leads||[];
 
   const overdue = allPosts.filter(p=>p.scheduled_date&&new Date(p.scheduled_date)<new Date()&&!["published","rejected"].includes(p.stage));
   const pendAppr = allPosts.filter(p=>p.stage==="client_approval");
@@ -16928,6 +16931,8 @@ ${isFocused && recentPosts?`RECENT POSTS:\n${recentPosts}`:""}`.trim();
 
   const teamList = allTeam.slice(0,20).map(m=>`- ${m.name} <${m.email}> [${m.role}]`).join("\n");
   const projList = activeProj.slice(0,20).map(p=>`- ${p.title||p.name} (id:${p.id}, client:${p.client_name})`).join("\n");
+  const leadsToShow = focusClientId ? allLeads.filter(l=>l.client_id===focusClientId) : allLeads;
+  const leadList = leadsToShow.slice(0,40).map(l=>`- ${l.name||"(no name)"} | phone:${l.phone||"-"} | status:${l.status||"new"} | source:${l.source||"-"}${l.client_name?` | client:${l.client_name}`:""}`).join("\n");
 
   return `You are Pro — a powerful AI assistant built into SocialFlow by admepro. You work like ChatGPT or Claude: you answer EVERYTHING directly in the chat. You NEVER say "go to a page" or "navigate to X" or "visit the panel". You handle every question and every action right here in the conversation.
 
@@ -16948,6 +16953,9 @@ ${teamList||"No team yet."}
 
 ACTIVE PROJECTS:
 ${projList||"No active projects."}
+
+LEADS / CRM (${leadsToShow.length} total — you know every one of these, never say there are 0 if this list is non-empty):
+${leadList||"No leads yet."}
 
 CLIENT DATA:
 ${clientBlocks||"No clients yet."}
