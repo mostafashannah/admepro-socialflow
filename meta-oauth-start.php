@@ -15,6 +15,11 @@ if (!defined('INSTAGRAM_APP_ID') || !defined('INSTAGRAM_APP_SECRET')) {
     exit;
 }
 
+// Never let the browser cache this redirect — the Location carries the scope
+// list and a one-time state nonce, both of which must be fresh on every click.
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+
 $origin = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https://' : 'http://') . $_SERVER['HTTP_HOST'];
 $redirectUri = $origin . '/meta-oauth-callback.php';
 

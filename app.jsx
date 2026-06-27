@@ -544,7 +544,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.76";
+const APP_VERSION = "beta 2.77";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11117,7 +11117,10 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
 
   const connectWithFacebook = () => {
     setConnectError(""); setMetaPages(null); setConnecting(true);
-    const startUrl = f.app_key==="instagram" ? "/meta-oauth-start.php" : "/fb-oauth-start.php";
+    // Cache-buster: browsers can cache the 302 redirect (with its scope+state),
+    // which replays a stale OAuth URL. A unique query each click forces a fresh hit.
+    const startBase = f.app_key==="instagram" ? "/meta-oauth-start.php" : "/fb-oauth-start.php";
+    const startUrl = startBase + "?t=" + Date.now();
     const popup = window.open(startUrl, "meta_oauth", "width=600,height=700");
     if(!popup){ setConnecting(false); setConnectError("Popup blocked — please allow popups for this site."); }
   };
