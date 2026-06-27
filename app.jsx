@@ -441,6 +441,7 @@ async function proLearnFromExchange({client, userText, botText, existingKeys=[],
   try{
     const sys = `You silently extract DURABLE brand knowledge from a chat exchange about "${client.name}". Return ONLY JSON: {"insights":[{"key":"snake_case","value":"≤140 chars concrete directive","confidence":0.4-0.95}]}.
 Rules:
+- FIRST check: is this exchange actually about "${client.name}"'s brand/business (products, audience, tone, industry, goals, preferences)? If the user/Pro is instead discussing something unrelated — system-wide CRM/leads, other clients, admin/team matters, app features, general questions with no connection to this client's brand — return {"insights":[]} immediately. Do not extract anything just because the chat happened to be locked onto this client at the time.
 - 0–4 insights only (skip if nothing durable).
 - key snake_case, ≤32 chars. Avoid these existing keys: ${existingKeys.slice(0,30).join(", ")||"(none)"}.
 - value: a stable fact about the brand/audience/tone/products/preferences. Skip ephemeral chat-specific things.
@@ -544,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.02";
+const APP_VERSION = "beta 3.03";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17010,6 +17011,8 @@ Format answers for readability, not as a wall of text:
    [ACTION:{"action":"delete_task","post_title":"..."}]
    [ACTION:{"action":"delete_project","project_name":"...","client_name":"..."}]
    [ACTION:{"action":"delete_client","client_name":"..."}]
+   [ACTION:{"action":"delete_lead","lead_name":"..."}]
+   [ACTION:{"action":"delete_all_leads"}] (requires the user to explicitly confirm deleting ALL leads — never emit this for a single named lead)
    [ACTION:{"action":"save_exemplar","client_name":"...","caption":"...the full caption text to save as a style reference..."}]
    [ACTION:{"action":"save_voice_card","client_name":"...","voice_paragraph":"...one paragraph describing tone, POV, formality, emoji policy, signature phrases..."}]
    [ACTION:{"action":"save_client_facts","client_name":"...","facts":{"legal_name":"...","activity":"...","capital":"...","hq":"...","branches":"...","manager":"...","commercial_register":"..."}}] — use this whenever the user shares standalone business/profile facts about a client (legal name, capital, HQ/branches, registration numbers, manager, etc.) that don't fit update_client's fixed fields (industry/email/phone/platforms). Put each distinct fact as its own key in "facts" using a short snake_case key and the value as given; omit keys with no value. This is the correct action for "remember/save this info about client X" requests — update_client only supports industry/email/phone/platforms and will report nothing to update for anything else.
@@ -17090,6 +17093,8 @@ const CHATBOT_ACTION_ROLES = {
   delete_task: ["admin","account_manager"],
   delete_project: ["admin","account_manager"],
   delete_client: ["admin"],
+  delete_lead: ["admin","account_manager"],
+  delete_all_leads: ["admin"],
   save_exemplar: ["admin","account_manager","content_creator"],
   save_voice_card: ["admin","account_manager"],
   save_client_facts: ["admin","account_manager"],
@@ -19651,6 +19656,16 @@ RULES:
         if(!cl){addBotMsg(` Couldn't find client "${payload.client_name||payload.client_id}".`,"error");return;}
         if(onDirectAction) await onDirectAction("delete_client",{clientId:cl.id});
         addBotMsg(` Client **"${cl.name}"** removed (with all projects & tasks).`,"success");
+      } else if(act==="delete_lead") {
+        const lead=(data.leads||[]).find(l=>l.id===payload.lead_id||(l.name||"").toLowerCase().includes((payload.lead_name||"").toLowerCase()));
+        if(!lead){addBotMsg(` Couldn't find lead "${payload.lead_name||payload.lead_id}".`,"error");return;}
+        if(onDirectAction) await onDirectAction("delete_lead",{leadId:lead.id});
+        addBotMsg(` Lead **"${lead.name}"** deleted.`,"success");
+      } else if(act==="delete_all_leads") {
+        const count=(data.leads||[]).length;
+        if(count===0){addBotMsg(" There are no leads to delete.","success");return;}
+        if(onDirectAction) await onDirectAction("delete_all_leads",{});
+        addBotMsg(` Deleted all ${count} lead${count>1?"s":""}.`,"success",{label:"View Leads →", fn:"nav_leads"});
       } else if(act==="nav") {
         setPage(payload.page);
         addBotMsg(`Navigating to ${payload.page}…`);
@@ -23333,6 +23348,16 @@ Return ONLY valid JSON (no markdown, no explanation):
           de("Client", clientId).catch(()=>{});
           for(const cp of childProjs){ de("Project", cp.id).catch(()=>{}); }
           for(const cp of childPosts){ de("Post", cp.id).catch(()=>{}); }
+        }
+        if(actionType==="delete_lead") {
+          const {leadId} = payload;
+          setData(d=>({...d, leads:d.leads.filter(l=>l.id!==leadId)}));
+          de("Lead", leadId).catch(()=>{});
+        }
+        if(actionType==="delete_all_leads") {
+          const ids = (data.leads||[]).map(l=>l.id);
+          setData(d=>({...d, leads:[]}));
+          for(const id of ids){ de("Lead", id).catch(()=>{}); }
         }
         if(actionType==="control_agent") {
           const {agent_id, action:agAct, count, agentDef} = payload;
