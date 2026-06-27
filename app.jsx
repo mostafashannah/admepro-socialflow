@@ -544,7 +544,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.99";
+const APP_VERSION = "beta 3.00";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11124,6 +11124,10 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
 
   const applyMetaPage = (account) => {
     scred("page_id", account.id);
+    // For Instagram (API with Instagram Login), Meta's webhook entry.id uses a
+    // different ID space than this account's own "id" — id_alt is the legacy
+    // Instagram-Business-Account ID (the webhook-matching one), when available.
+    if(account.id_alt) scred("page_id_alt", account.id_alt);
     scred("access_token", account.access_token);
     setMetaPages(null);
     setConnectError("");

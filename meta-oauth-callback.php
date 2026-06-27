@@ -115,9 +115,14 @@ $igUserId   = $tokenResp['user_id'] ?? '';
 ]));
 $longToken = $longResp['access_token'] ?? $shortToken;
 
-// Step 3: fetch the connected account's id/username.
+// Step 3: fetch the connected account's id/username. "user_id" here is the
+// legacy Instagram-Business-Account ID — confirmed via live API testing to be
+// exactly the ID Meta's webhook payload sends as entry.id, which differs from
+// "id" (the Instagram-Login-scoped ID) for the very same account. Both are
+// genuine, just different ID spaces; storing both lets the webhook handler
+// match on whichever one Meta actually sends.
 [$meResp, $err] = ig_get('https://graph.instagram.com/v21.0/me?' . http_build_query([
-    'fields'       => 'id,username,account_type',
+    'fields'       => 'id,user_id,username,account_type',
     'access_token' => $longToken,
 ]));
 if ($err) {
@@ -125,6 +130,7 @@ if ($err) {
 }
 
 $accountId = $meResp['id'] ?? $igUserId;
+$accountIdAlt = $meResp['user_id'] ?? null;
 
 // Step 4: subscribe this account to webhook delivery. App-level webhook config
 // (Callback URL + Verify Token + field subscription) only registers the app with
@@ -144,6 +150,7 @@ if ($accountId) {
 
 finish(true, ['accounts' => [[
     'id'           => $accountId,
+    'id_alt'       => $accountIdAlt,
     'username'     => $meResp['username'] ?? '',
     'account_type' => $meResp['account_type'] ?? '',
     'access_token' => $longToken,
