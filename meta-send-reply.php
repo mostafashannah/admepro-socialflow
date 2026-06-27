@@ -44,8 +44,10 @@ if ($isComment) {
     }
     $graph_host = ($channel === 'ig_comment' && str_starts_with($accessToken, 'IGAA')) ? 'graph.instagram.com' : 'graph.facebook.com';
     // Facebook Page comments: POST /{comment-id}/comments. Instagram: dedicated /replies endpoint.
+    // v23.0: comment replies map to pages_manage_engagement; legacy v19.0 demanded the
+    // deprecated pages_read_user_content that Meta no longer issues.
     $path = $channel === 'ig_comment' ? 'replies' : 'comments';
-    $endpoint = "https://{$graph_host}/{$graph_version}/{$externalId}/{$path}";
+    $endpoint = "https://{$graph_host}/v23.0/{$externalId}/{$path}";
     $post_data = ['message' => $message, 'access_token' => $accessToken];
 } else {
     if (!$pageId) {

@@ -143,7 +143,10 @@ function sendMetaCommentReply(string $channel, string $accessToken, string $comm
     // Facebook Page comments: POST /{comment-id}/comments creates a reply comment.
     // Instagram comments: POST /{ig-comment-id}/replies is the dedicated reply endpoint.
     $path = $channel === 'ig_comment' ? 'replies' : 'comments';
-    $endpoint = "https://{$graph_host}/v19.0/{$commentId}/{$path}";
+    // v23.0: replying to a Page-post comment maps to pages_manage_engagement.
+    // The legacy v19.0 endpoint demanded the now-deprecated pages_read_user_content,
+    // which Meta no longer issues (the OAuth dialog rejects it as an invalid scope).
+    $endpoint = "https://{$graph_host}/v23.0/{$commentId}/{$path}";
     $post_data = ['message' => $message, 'access_token' => $accessToken];
     $ch = curl_init($endpoint);
     curl_setopt_array($ch, [
