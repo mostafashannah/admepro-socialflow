@@ -544,7 +544,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.00";
+const APP_VERSION = "beta 3.02";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16939,7 +16939,10 @@ ${isFocused && recentPosts?`RECENT POSTS:\n${recentPosts}`:""}`.trim();
 
   const teamList = allTeam.slice(0,20).map(m=>`- ${m.name} <${m.email}> [${m.role}]`).join("\n");
   const projList = activeProj.slice(0,20).map(p=>`- ${p.title||p.name} (id:${p.id}, client:${p.client_name})`).join("\n");
-  const leadsToShow = focusClientId ? allLeads.filter(l=>l.client_id===focusClientId) : allLeads;
+  // Leads are the agency's own CRM pipeline, not per-client brand data — they
+  // should never disappear just because the chat happens to be locked onto a
+  // particular client for content-creation purposes, so always show all of them.
+  const leadsToShow = allLeads;
   const leadList = leadsToShow.slice(0,40).map(l=>`- ${l.name||"(no name)"} | phone:${l.phone||"-"} | status:${l.status||"new"} | source:${l.source||"-"}${l.client_name?` | client:${l.client_name}`:""}`).join("\n");
 
   return `You are Pro — a powerful AI assistant built into SocialFlow by admepro. You work like ChatGPT or Claude: you answer EVERYTHING directly in the chat. You NEVER say "go to a page" or "navigate to X" or "visit the panel". You handle every question and every action right here in the conversation.
@@ -20921,13 +20924,17 @@ function App() {
     clients:SEED.clients, team:SEED.team, projects:SEED.projects,
     posts:SEED.posts, comments:SEED.comments, assets:SEED.assets,
     timelogs:SEED.timelogs, notifications:SEED.notifications, templates:SEED.templates,
-    quotes:SEED.quotes, leads:SEED.leads, leadActivities:SEED.leadActivities,
-    clientKnowledge:SEED.clientKnowledge, clientDocuments:SEED.clientDocuments,
-    perfLogs:SEED.perfLogs, aiInsights:SEED.aiInsights,
-    invoices:SEED.invoices, payments:SEED.payments,
+    // The fields below are all loaded for real in wave 2 — seeding them with
+    // SEED's hardcoded demo rows just makes those fake rows flash on screen
+    // for the moment between mount and wave 2 resolving, before being
+    // replaced by the real fetched data.
+    quotes:[], leads:[], leadActivities:[],
+    clientKnowledge:[], clientDocuments:[],
+    perfLogs:[], aiInsights:[],
+    invoices:[], payments:[],
     integrations:[], integrationLogs:[],
-    subscriptions:SEED.subscriptions, subscriptionPayments:SEED.subscriptionPayments,
-    tasks:SEED.tasks, clientContracts:SEED.clientContracts,
+    subscriptions:[], subscriptionPayments:[],
+    tasks:[], clientContracts:[],
     clientIntelligence:[], contentPillars:[], clientMemory:[],
     monthlyBriefs:[], customerMessages:[],
     timeEntries: [], schedules: [], scheduleOverrides: [],
