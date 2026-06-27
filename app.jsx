@@ -544,7 +544,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 2.94";
+const APP_VERSION = "beta 2.95";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19325,7 +19325,11 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
     // saved to history or the session list until the user actually writes a message
     // and sends it. In-app navigation back to Pro Home keeps the current chat.
     if(claimFreshProSessionOnLoad()){
-      const fresh = makeChatSession({user_id:currentUser.email||""});
+      // The new conversation starts blank, but it should still pick up wherever the
+      // user last left off client-wise — otherwise every hard refresh looks like
+      // "memory disappeared" even though the per-client memory itself is intact.
+      const lastClientId = chatSessions[0]?.client_id || "";
+      const fresh = makeChatSession({user_id:currentUser.email||"", client_id:lastClientId});
       fresh.messages = [{role:"bot", content:`Hi ${name} I'm **Pro** — your AI workspace inside SocialFlow. Tell me what you want to do and I'll handle it.\n\nYou can say things like:\n• "Create a task for Nova Digital"\n• "Add a new client"\n• "Show me all overdue posts"\n• "Generate a calendar plan for TechStart"`, id:uid(), type:"welcome", chat_id:fresh.id, sender:"pro", created_at:new Date().toISOString()}];
       setPendingSession(fresh);
       setActiveChatId(fresh.id);
