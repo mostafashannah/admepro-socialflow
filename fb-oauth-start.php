@@ -49,6 +49,10 @@ $scopes = implode(',', [
     'pages_messaging',
     'read_insights',
     'business_management',
+    // Required by the Page "feed" webhook subscription used for comment-reply —
+    // without it Facebook rejects the whole OAuth dialog for the app, not just
+    // this scope. Re-added after 5eb3476 wrongly dropped it as "deprecated".
+    'pages_read_user_content',
 ]);
 $params = [
     'client_id'     => META_APP_ID,
