@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.13";
+const APP_VERSION = "beta 3.14";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -2850,6 +2850,8 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
                   <div key={i} style={{position:"relative",aspectRatio:"1/1",background:"var(--surface)",borderRadius:"var(--rs)",border:"1px solid var(--border)",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
                     {(asset.url||asset.data||"").match(/\.(jpg|jpeg|png|gif|webp|svg)/i)||(asset.type||"").startsWith("image")?
                       <img src={asset.url||asset.data} style={{width:"100%",height:"100%",objectFit:"cover"}} alt={asset.name}/>
+                    :(asset.url||asset.data||"").match(/\.(mp4|mov|webm|m4v)/i)||(asset.type||"").startsWith("video")?
+                      <video src={asset.url||asset.data} controls playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                     :<div style={{textAlign:"center",padding:8}}>
                       <div style={{fontSize:24,marginBottom:4}}></div>
                       <p style={{fontSize:9,color:"var(--text3)",wordBreak:"break-all"}}>{(asset.name||"").substring(0,14)}…</p>
@@ -7258,7 +7260,7 @@ function AssetsPage({assets,projects,onAddAsset}) {
         {filtered.map(a=>{
           const proj = projects.find(p=>p.id===a.project_id);
           const isImage = a.file_type==="image"||(a.file_url||"").match(/\.(jpg|jpeg|png|gif|webp|svg)/i);
-          const isVideo = a.file_type==="video";
+          const isVideo = a.file_type==="video"||(a.file_url||"").match(/\.(mp4|mov|webm|m4v)/i);
           return (
             <div key={a.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden",cursor:"pointer",transition:"all 0.18s"}}
               onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 20px var(--shadow)";}}
@@ -7266,6 +7268,8 @@ function AssetsPage({assets,projects,onAddAsset}) {
               <div style={{height:140,background:`linear-gradient(135deg,${clr(a.name)}22,${clr(a.name+"x")}11)`,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden"}}>
                 {isImage&&a.file_url&&a.file_url!="#"
                   ? <img src={a.file_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt={a.name}/>
+                  : isVideo&&a.file_url&&a.file_url!="#"
+                  ? <video src={a.file_url} controls playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}} onClick={e=>e.stopPropagation()}/>
                   : <Ico d={isVideo?Icons.play:Icons.assets} size={40} stroke={clr(a.name)}/>
                 }
                 <span style={{position:"absolute",top:8,right:8,fontSize:9,padding:"2px 6px",borderRadius:4,background:"#00000044",color:"#fff",fontWeight:700}}>{(a.file_type||"file").toUpperCase()}</span>
@@ -8948,6 +8952,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
             {assets.filter(a=>a.project_id===project.id).map(a=>(
               <div key={a.id} style={{background:"var(--surface1)",borderRadius:10,border:"1px solid var(--border)",overflow:"hidden"}}>
                 {a.file_type==="image"?<img src={a.file_url} style={{width:"100%",height:100,objectFit:"cover"}} alt={a.name}/>
+                :a.file_type==="video"?<video src={a.file_url} controls playsInline preload="metadata" style={{width:"100%",height:100,objectFit:"cover"}}/>
                 :<div style={{height:100,background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:32}}></div>}
                 <div style={{padding:"8px 10px"}}>
                   <div style={{fontSize:12,fontWeight:600,color:"var(--text1)",overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{a.name}</div>
