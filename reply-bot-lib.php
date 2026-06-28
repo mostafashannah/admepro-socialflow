@@ -325,7 +325,10 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
             $phone = preg_replace('/[^\d+]/', '', $m[1]);
         }
 
-        if (!isInterestedInOurServices($combinedText)) return;
+        // A sender who voluntarily shares their phone number is showing strong
+        // buying intent on its own — don't let the AI "interest" classifier
+        // (tuned for chatty inquiries, not a bare phone number) veto that.
+        if (!$phone && !isInterestedInOurServices($combinedText)) return;
 
         $tag = "src_id:{$channel}:{$customerId}";
         $dupe = $pdo->prepare("SELECT id, phone FROM leads WHERE notes LIKE :tag LIMIT 1");
