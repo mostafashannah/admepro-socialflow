@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.11";
+const APP_VERSION = "beta 3.12";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -952,6 +952,10 @@ async function publishPost(post, integration) {
   const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
   const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
   const imageUrl = designUrls[0] || designAssets[0]?.url || "";
+  // A design_assets entry tagged kind:"story" (set by the Ready Content "Also
+  // post as Instagram Story" option) requests a parallel Story publish alongside
+  // the regular feed post — only meaningful for Instagram.
+  const storyUrl = integration.app_key==="instagram" ? (designAssets.find(a=>a.kind==="story")?.url || "") : "";
   const r = await fetch(PUBLISH_ENDPOINT, {
     method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({
@@ -960,6 +964,7 @@ async function publishPost(post, integration) {
       access_token: creds.access_token||"",
       message: [post.caption, post.hashtags].filter(Boolean).join("\n\n"),
       image_url: imageUrl,
+      story_image_url: storyUrl,
     }),
   });
   const d = await r.json();
@@ -2988,11 +2993,12 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
 // ════════════════════════════════════════════════════════════════
 function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset}) {
   const [step,setStep] = useState(1);
-  const blankForm = {project_id:projects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:"",scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",content_mode:"new",platforms:[],platform_types:{},media:[],cover:null,publish_mode:"schedule"};
+  const blankForm = {project_id:projects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:"",scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",content_mode:"new",platforms:[],platform_types:{},media:[],cover:null,publish_mode:"schedule",postStory:false,storyImage:null};
   const [f,setF] = useState({...blankForm});
   const [saving,setSaving] = useState(false);
   const [uploading,setUploading] = useState(false);
   const [uploadingCover,setUploadingCover] = useState(false);
+  const [uploadingStory,setUploadingStory] = useState(false);
   const s = (k,v) => setF(p=>({...p,[k]:v}));
   const defaultTypeFor = (media) => (media||f.media).some(m=>(m.type||"").startsWith("video")) ? "reel" : "image";
   const togglePlt = p => setF(prev => {
@@ -3040,6 +3046,18 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset}) 
     setUploadingCover(false);
   };
 
+  const handleStoryUpload = async (files) => {
+    const file = (files||[])[0];
+    if(!file) return;
+    setUploadingStory(true);
+    try {
+      const url = await uploadToStorage(file, "ready-content/stories");
+      if(onAddAsset) onAddAsset({name:file.name, file_url:url, file_type:file.type.startsWith("video")?"video":"image", category:"Content", project_id:f.project_id, tags:["story"], file_size:file.size, mime_type:file.type, created_date:new Date().toISOString()}).catch(()=>{});
+      s("storyImage",{name:file.name, type:file.type, url, uploaded_at:new Date().toISOString()});
+    } catch(e) { alert("Story upload failed: "+e.message); }
+    setUploadingStory(false);
+  };
+
   const canSubmit = f.content_mode==="ready"
     ? f.title.trim()&&f.project_id&&f.caption.trim()&&f.platforms.length&&(f.publish_mode!=="schedule"||f.scheduled_date)&&!needsInstaCover
     : f.title.trim()&&f.project_id;
@@ -3052,6 +3070,10 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset}) 
       const design_urls = JSON.stringify(f.media.map(m=>m.url));
       const list = f.platforms.map(pl=>{
         const post_type = f.platform_types[pl] || defaultTypeFor();
+        const storySrc = f.storyImage || f.media[0];
+        const design_assets = pl==="instagram" && f.postStory && storySrc
+          ? [...f.media, {...storySrc, kind:"story"}]
+          : f.media;
         return {
           title:f.title, client_id:proj?.client_id||"", project_id:f.project_id,
           description:f.description, assigned_to:f.assigned_to,
@@ -3059,7 +3081,7 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset}) 
           scheduled_time: f.publish_mode==="schedule" ? f.scheduled_time : "",
           platform:pl, post_type, priority:f.priority, stage:"scheduled",
           client_name: proj?.client_name||"", hashtags:"",
-          caption:f.caption, design_assets:f.media, design_urls,
+          caption:f.caption, design_assets, design_urls,
           carousel_cover: post_type==="reel" ? (f.cover?.url||"") : "",
         };
       });
@@ -3178,6 +3200,27 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset}) 
                       </div>
                     )}
                     {!f.cover&&<p style={{fontSize:11,color:"#f59e0b",marginTop:4}}>Instagram requires a cover image for Reels.</p>}
+                  </Field>
+                )}
+                {f.platforms.includes("instagram")&&(
+                  <Field label="Instagram Story (optional)">
+                    <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer"}}>
+                      <input type="checkbox" checked={f.postStory} onChange={e=>s("postStory",e.target.checked)}/>
+                      Also post this as an Instagram Story at the same time
+                    </label>
+                    {f.postStory&&(
+                      <div style={{marginTop:8}}>
+                        <input type="file" accept="image/*,video/*" onChange={e=>handleStoryUpload(e.target.files)} disabled={uploadingStory} style={inputSt}/>
+                        {uploadingStory&&<div style={{fontSize:12,color:"var(--text3)",marginTop:6}}><Spinner size={12}/> Uploading…</div>}
+                        {f.storyImage&&(
+                          <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,padding:"4px 8px",borderRadius:8,background:"var(--surface2)",fontSize:11,width:"fit-content"}}>
+                            <span style={{maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.storyImage.name}</span>
+                            <button onClick={()=>s("storyImage",null)} style={{border:"none",background:"none",cursor:"pointer",color:"var(--text3)",fontWeight:700}}>×</button>
+                          </div>
+                        )}
+                        {!f.storyImage&&<p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Upload a 9:16 story-sized image/video, or leave blank to reuse the post media.</p>}
+                      </div>
+                    )}
                   </Field>
                 )}
               </div>
@@ -3960,12 +4003,13 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
     assigned_to:"",scheduled_date:"",platform:"instagram",
     post_type:"image",priority:"medium",stage:"planning",
     content_mode:"new", caption:"", platforms:[], platform_types:{}, media:[], cover:null,
-    publish_mode:"schedule", scheduled_time:"",
+    publish_mode:"schedule", scheduled_time:"", postStory:false, storyImage:null,
   };
   const [f,setF] = useState({...blankForm});
   const [saving,setSaving] = useState(false);
   const [uploading,setUploading] = useState(false);
   const [uploadingCover,setUploadingCover] = useState(false);
+  const [uploadingStory,setUploadingStory] = useState(false);
   const [done,setDone] = useState(false);
   const s = (k,v) => setF(p=>({...p,[k]:v}));
   const clientProjects = projects.filter(p=>p.client_id===f.client_id||(!f.client_id&&true));
@@ -4013,6 +4057,18 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
     setUploadingCover(false);
   };
 
+  const handleStoryUpload = async (files) => {
+    const file = (files||[])[0];
+    if(!file) return;
+    setUploadingStory(true);
+    try {
+      const url = await uploadToStorage(file, "ready-content/stories");
+      if(onAddAsset) onAddAsset({name:file.name, file_url:url, file_type:file.type.startsWith("video")?"video":"image", category:"Content", project_id:f.project_id, tags:["story"], file_size:file.size, mime_type:file.type, created_date:new Date().toISOString()}).catch(()=>{});
+      s("storyImage",{name:file.name, type:file.type, url, uploaded_at:new Date().toISOString()});
+    } catch(e) { alert("Story upload failed: "+e.message); }
+    setUploadingStory(false);
+  };
+
   const handleSubmit = async () => {
     if(!f.title.trim()||!f.project_id) return;
     if(f.content_mode==="ready") {
@@ -4025,6 +4081,10 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
       const design_urls = JSON.stringify(f.media.map(m=>m.url));
       const list = f.platforms.map(pl=>{
         const post_type = f.platform_types[pl] || defaultTypeFor();
+        const storySrc = f.storyImage || f.media[0];
+        const design_assets = pl==="instagram" && f.postStory && storySrc
+          ? [...f.media, {...storySrc, kind:"story"}]
+          : f.media;
         return {
           title:f.title, client_id:f.client_id, project_id:f.project_id,
           description:f.description, assigned_to:f.assigned_to,
@@ -4032,7 +4092,7 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
           scheduled_time: f.publish_mode==="schedule" ? f.scheduled_time : "",
           platform:pl, post_type, priority:f.priority, stage:"scheduled",
           client_name: selectedClient?.name||"", hashtags:"",
-          caption:f.caption, design_assets:f.media, design_urls,
+          caption:f.caption, design_assets, design_urls,
           carousel_cover: post_type==="reel" ? (f.cover?.url||"") : "",
         };
       });
@@ -4161,6 +4221,27 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
                       </div>
                     )}
                     {!f.cover&&<p style={{fontSize:11,color:"#f59e0b",marginTop:4}}>Instagram requires a cover image for Reels.</p>}
+                  </Field>
+                )}
+                {f.platforms.includes("instagram")&&(
+                  <Field label="Instagram Story (optional)">
+                    <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer"}}>
+                      <input type="checkbox" checked={f.postStory} onChange={e=>s("postStory",e.target.checked)}/>
+                      Also post this as an Instagram Story at the same time
+                    </label>
+                    {f.postStory&&(
+                      <div style={{marginTop:8}}>
+                        <input type="file" accept="image/*,video/*" onChange={e=>handleStoryUpload(e.target.files)} disabled={uploadingStory} style={inputSt}/>
+                        {uploadingStory&&<div style={{fontSize:12,color:"var(--text3)",marginTop:6}}><Spinner size={12}/> Uploading…</div>}
+                        {f.storyImage&&(
+                          <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,padding:"4px 8px",borderRadius:8,background:"var(--surface2)",fontSize:11,width:"fit-content"}}>
+                            <span style={{maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.storyImage.name}</span>
+                            <button onClick={()=>s("storyImage",null)} style={{border:"none",background:"none",cursor:"pointer",color:"var(--text3)",fontWeight:700}}>×</button>
+                          </div>
+                        )}
+                        {!f.storyImage&&<p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Upload a 9:16 story-sized image/video, or leave blank to reuse the post media.</p>}
+                      </div>
+                    )}
                   </Field>
                 )}
                 <Field label="When">

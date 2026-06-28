@@ -77,14 +77,22 @@ foreach ($due as $post) {
     $access_token = trim($creds['access_token'] ?? '');
     if (!$page_id || !$access_token) continue;
 
-    $design_urls = json_decode($post['design_urls'] ?? '[]', true) ?: [];
-    $message     = trim(($post['caption'] ?? '') . "\n\n" . ($post['hashtags'] ?? ''));
-    $image_url   = $design_urls[0] ?? '';
+    $design_urls   = json_decode($post['design_urls'] ?? '[]', true) ?: [];
+    $design_assets = json_decode($post['design_assets'] ?? '[]', true) ?: [];
+    $message       = trim(($post['caption'] ?? '') . "\n\n" . ($post['hashtags'] ?? ''));
+    $image_url     = $design_urls[0] ?? ($design_assets[0]['url'] ?? '');
+    // Tagged kind:"story" by the Ready Content "Also post as Instagram Story" option.
+    $story_image_url = '';
+    if ($platform === 'instagram') {
+        foreach ($design_assets as $asset) {
+            if (($asset['kind'] ?? '') === 'story') { $story_image_url = $asset['url'] ?? ''; break; }
+        }
+    }
 
     if ($platform === 'linkedin') {
         [$code, $resp] = linkedin_publish($page_id, $access_token, $message, $image_url);
     } else {
-        [$code, $resp] = meta_publish($platform, $page_id, $access_token, $message, $image_url);
+        [$code, $resp] = meta_publish($platform, $page_id, $access_token, $message, $image_url, null, $story_image_url ?: null);
     }
     $ok = $code >= 200 && $code < 300;
 

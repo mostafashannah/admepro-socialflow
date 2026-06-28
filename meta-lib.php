@@ -9,7 +9,11 @@
 define('META_GRAPH_VERSION', 'v23.0');
 
 // Performs a Facebook or Instagram publish. Returns [http_code, decoded_response].
-function meta_publish($platform, $page_id, $access_token, $message, $image_url, $scheduled_at = null) {
+// $story_image_url is Instagram-only: when set, a Story is published in addition
+// to the regular feed post, using the same container → poll → media_publish flow
+// but with media_type=STORIES. Failure to publish the story does not fail the
+// whole request — it's reported back under the "story" key of the response.
+function meta_publish($platform, $page_id, $access_token, $message, $image_url, $scheduled_at = null, $story_image_url = null) {
     $v = META_GRAPH_VERSION;
 
     if ($platform === 'facebook') {
@@ -38,38 +42,51 @@ function meta_publish($platform, $page_id, $access_token, $message, $image_url, 
         // account IDs — graph.facebook.com cannot parse those tokens at all (hence
         // the misleading "Cannot parse access token" error), so publishing must go
         // through graph.instagram.com too, not graph.facebook.com.
-        $container_ep = "https://graph.instagram.com/{$v}/{$page_id}/media";
-        [$code, $resp] = meta_curl($container_ep, [
-            'image_url'    => $image_url,
-            'caption'      => $message,
-            'access_token' => $access_token,
-        ]);
-        if ($code !== 200 || empty($resp['id'])) {
-            return [$code ?: 502, ['error' => 'Failed to create media container', 'detail' => $resp]];
-        }
+        [$code, $resp] = ig_publish_media($v, $page_id, $access_token, $image_url, $message, null);
+        if ($code !== 200) return [$code, $resp];
 
-        // The container starts out PENDING/IN_PROGRESS while Instagram downloads
-        // and processes the image; publishing before it reaches FINISHED fails
-        // with "Media ID is not available" (code 9007 / subcode 2207027). Poll
-        // status_code with a short backoff before attempting media_publish.
-        $status_ep = "https://graph.instagram.com/{$v}/{$resp['id']}?" . http_build_query([
-            'fields' => 'status_code', 'access_token' => $access_token,
-        ]);
-        for ($i = 0; $i < 10; $i++) {
-            usleep(($i === 0 ? 500 : 1500) * 1000);
-            [, $statusResp] = meta_curl_get($status_ep);
-            $status = $statusResp['status_code'] ?? null;
-            if ($status === 'FINISHED') break;
-            if ($status === 'ERROR') {
-                return [502, ['error' => 'Instagram failed to process the media', 'detail' => $statusResp]];
-            }
+        if ($story_image_url) {
+            [$storyCode, $storyResp] = ig_publish_media($v, $page_id, $access_token, $story_image_url, null, 'STORIES');
+            $resp['story'] = $storyCode === 200 ? $storyResp : ['error' => 'Story publish failed', 'detail' => $storyResp];
         }
-
-        $publish_ep = "https://graph.instagram.com/{$v}/{$page_id}/media_publish";
-        return meta_curl($publish_ep, ['creation_id' => $resp['id'], 'access_token' => $access_token]);
+        return [200, $resp];
     }
 
     return [400, ['error' => 'Unsupported platform. Supported: facebook, instagram']];
+}
+
+// Creates an Instagram media container (feed post or, when $media_type is
+// 'STORIES', a Story), polls until processed, then publishes it.
+function ig_publish_media($v, $ig_user_id, $access_token, $image_url, $caption, $media_type) {
+    $container_ep = "https://graph.instagram.com/{$v}/{$ig_user_id}/media";
+    $container_data = ['image_url' => $image_url, 'access_token' => $access_token];
+    if ($caption) $container_data['caption'] = $caption;
+    if ($media_type) $container_data['media_type'] = $media_type;
+
+    [$code, $resp] = meta_curl($container_ep, $container_data);
+    if ($code !== 200 || empty($resp['id'])) {
+        return [$code ?: 502, ['error' => 'Failed to create media container', 'detail' => $resp]];
+    }
+
+    // The container starts out PENDING/IN_PROGRESS while Instagram downloads
+    // and processes the image; publishing before it reaches FINISHED fails
+    // with "Media ID is not available" (code 9007 / subcode 2207027). Poll
+    // status_code with a short backoff before attempting media_publish.
+    $status_ep = "https://graph.instagram.com/{$v}/{$resp['id']}?" . http_build_query([
+        'fields' => 'status_code', 'access_token' => $access_token,
+    ]);
+    for ($i = 0; $i < 10; $i++) {
+        usleep(($i === 0 ? 500 : 1500) * 1000);
+        [, $statusResp] = meta_curl_get($status_ep);
+        $status = $statusResp['status_code'] ?? null;
+        if ($status === 'FINISHED') break;
+        if ($status === 'ERROR') {
+            return [502, ['error' => 'Instagram failed to process the media', 'detail' => $statusResp]];
+        }
+    }
+
+    $publish_ep = "https://graph.instagram.com/{$v}/{$ig_user_id}/media_publish";
+    return meta_curl($publish_ep, ['creation_id' => $resp['id'], 'access_token' => $access_token]);
 }
 
 function meta_curl_get($endpoint) {
