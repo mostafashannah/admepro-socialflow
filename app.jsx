@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.21";
+const APP_VERSION = "beta 3.22";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6688,7 +6688,7 @@ const ChannelIcon = ({channel, size=14, color}) => {
     ? <Ico d={m.icon} size={size} fill={c} stroke="none" fillRule="evenodd"/>
     : <Ico d={m.icon} size={size} stroke={c}/>;
 };
-function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botSettings, onSaveBotSettings, onApproveDraft, onDismissDraft}) {
+function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botSettings, onSaveBotSettings, onApproveDraft, onDismissDraft, hideBotPanel=false}) {
   const [selThread, setSelThread] = useState(null); // {channel, customer_id}
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
@@ -6738,12 +6738,12 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
       {connected.length===0&&(
         <div style={{padding:14,background:"#f59e0b15",border:"1px solid #f59e0b44",borderRadius:"var(--rs)",fontSize:13,color:"var(--text2)",display:"flex",gap:10}}>
           <Ico d={Icons.alert} size={16} stroke="#f59e0b"/>
-          <span>No active Facebook/Instagram connection for {client.name} yet. Connect one in Settings → Integrations to receive and reply to customer messages here.</span>
+          <span>No active Facebook/Instagram connection for {client.name} yet.{hideBotPanel?" Ask your account manager to connect one to receive and reply to customer messages here.":" Connect one in Settings → Integrations to receive and reply to customer messages here."}</span>
         </div>
       )}
 
-      {/* Reply Bot config panel */}
-      <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+      {/* Reply Bot config panel — internal team tool, never shown to clients */}
+      {!hideBotPanel&&<div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
         <div onClick={()=>setBotPanelOpen(o=>!o)} style={{padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",background:"var(--surface2)"}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <Ico d={Icons.robot||Icons.chat} size={15} stroke="#6366f1"/>
@@ -6829,7 +6829,7 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
             </div>
           </div>
         )}
-      </div>
+      </div>}
 
       <div style={{display:"flex",gap:16,minHeight:420}}>
         {/* Thread list */}
@@ -9682,9 +9682,9 @@ function TemplatesPage({templates}) {
 // ════════════════════════════════════════════════════════════════
 // CLIENT PORTAL
 // ════════════════════════════════════════════════════════════════
-function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tasks=[],onAddTask,onUpdateTask,contract,wallpaper,onWallpaperChange,monthlyBriefs=[],onSubmitBrief,onSelfCreateBrief}) {
+function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tasks=[],onAddTask,onUpdateTask,contract,wallpaper,onWallpaperChange,monthlyBriefs=[],onSubmitBrief,onSelfCreateBrief,messages=[],integrations=[],onSendReply,onApproveDraft,onDismissDraft}) {
   const {isMobile} = useResponsive();
-  const [view,setView] = useState("tasks");
+  const [view,setView] = useState("dashboard");
   const [sel,setSel] = useState(null);
   const [selTask,setSelTask] = useState(null);
   const [reason,setReason] = useState("");
@@ -9709,14 +9709,32 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
   const stageLabel = {client_approval:"Pending Approval",scheduled:"Scheduled",published:"Published"};
 
   const pendingBrief = (monthlyBriefs||[]).find(b=>b.client_id===client?.id&&b.status==="pending");
+  const cMessages = (messages||[]).filter(m=>m.client_id===client.id);
+  const unreadCount = cMessages.filter(m=>m.direction==="in"&&m.draft_status!=="dismissed").length;
   const navItems = [
+    {key:"dashboard", label:"Dashboard", mLabel:"Home"},
     {key:"tasks", label:"Requests", mLabel:"Requests"},
     {key:"posts", label:"Content", mLabel:"Content"},
     {key:"calendar",label:"Calendar", mLabel:"Calendar"},
+    {key:"inbox", label:`Inbox${unreadCount?` (${unreadCount})`:""}`, mLabel:"Inbox"},
     {key:"brief", label:pendingBrief?" Brief ●":" Brief", mLabel:pendingBrief?"Brief●":"Brief"},
     ...(clientSubs.length>0?[{key:"subscriptions",label:"Subscriptions",mLabel:"Billing"}]:[]),
     {key:"settings",label:"Settings", mLabel:"Settings"},
   ];
+
+  // Dashboard stats — client-scoped summary, no internal team/perf data
+  const allCPosts = posts.filter(p=>cProjects.some(pr=>pr.id===p.project_id));
+  const dashStats = {
+    activeProjects: cProjects.filter(p=>p.status==="active").length,
+    totalPosts: allCPosts.length,
+    pendingApproval: allCPosts.filter(p=>p.stage==="client_approval").length,
+    scheduled: allCPosts.filter(p=>p.stage==="scheduled").length,
+    published: allCPosts.filter(p=>p.stage==="published").length,
+  };
+  const upcomingPosts = allCPosts.filter(p=>["client_approval","scheduled"].includes(p.stage)&&p.scheduled_date)
+    .sort((a,b)=>new Date(a.scheduled_date)-new Date(b.scheduled_date)).slice(0,6);
+  const recentPublished = allCPosts.filter(p=>p.stage==="published")
+    .sort((a,b)=>new Date(b.scheduled_date||0)-new Date(a.scheduled_date||0)).slice(0,5);
 
   const modalCard = (mobile) => ({
     background:"var(--surface)",
@@ -9894,7 +9912,80 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
         />
       )}
 
-      <div style={{maxWidth:1000,margin:"0 auto",padding:isMobile?"16px 16px 80px":"32px 24px"}}>
+      <div style={{maxWidth:view==="inbox"?1100:1000,margin:"0 auto",padding:isMobile?"16px 16px 80px":"32px 24px"}}>
+
+        {/* DASHBOARD VIEW */}
+        {view==="dashboard"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:20}}>
+            <div>
+              <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?20:22,fontWeight:800}}>Welcome back, {client.name}</h2>
+              <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Here's how your account is looking right now.</p>
+            </div>
+
+            <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(5,1fr)",gap:12}}>
+              {[
+                ["Active Projects",dashStats.activeProjects,"var(--accent)"],
+                ["Total Content",dashStats.totalPosts,"#6366f1"],
+                ["Awaiting Approval",dashStats.pendingApproval,"#ec4899"],
+                ["Scheduled",dashStats.scheduled,"#06b6d4"],
+                ["Published",dashStats.published,"#10b981"],
+              ].map(([label,val,color])=>(
+                <div key={label} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"14px 16px"}}>
+                  <p style={{fontSize:24,fontWeight:800,color}}>{val}</p>
+                  <p style={{fontSize:11,color:"var(--text3)",marginTop:2,fontWeight:600}}>{label}</p>
+                </div>
+              ))}
+            </div>
+
+            {dashStats.pendingApproval>0&&(
+              <div onClick={()=>setView("tasks")} style={{cursor:"pointer",padding:14,background:"#ec489915",border:"1px solid #ec489944",borderRadius:"var(--rs)",fontSize:13,color:"var(--text2)",display:"flex",alignItems:"center",gap:10}}>
+                <Ico d={Icons.alert} size={16} stroke="#ec4899"/>
+                <span>You have <strong>{dashStats.pendingApproval}</strong> piece{dashStats.pendingApproval!==1?"s":""} of content waiting for your approval. <span style={{color:"var(--accent)",fontWeight:700}}>Review now →</span></span>
+              </div>
+            )}
+
+            <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:16}}>
+              <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16}}>
+                <p style={{fontWeight:700,fontSize:14,marginBottom:10}}>Upcoming</p>
+                {upcomingPosts.length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>Nothing scheduled yet.</p>}
+                {upcomingPosts.map(p=>(
+                  <div key={p.id} onClick={()=>setSel(p)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid var(--border)",cursor:"pointer"}}>
+                    <div style={{minWidth:0}}>
+                      <p style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}</p>
+                      <p style={{fontSize:11,color:"var(--text3)"}}>{new Date(p.scheduled_date).toLocaleDateString()}</p>
+                    </div>
+                    <Badge label={stageLabel[p.stage]||p.stage} color={stageColor[p.stage]||"#888"} xs/>
+                  </div>
+                ))}
+              </div>
+              <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16}}>
+                <p style={{fontWeight:700,fontSize:14,marginBottom:10}}>Recently Published</p>
+                {recentPublished.length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>Nothing published yet.</p>}
+                {recentPublished.map(p=>(
+                  <div key={p.id} onClick={()=>setSel(p)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid var(--border)",cursor:"pointer"}}>
+                    <div style={{minWidth:0}}>
+                      <p style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}</p>
+                      <p style={{fontSize:11,color:"var(--text3)"}}>{p.scheduled_date?new Date(p.scheduled_date).toLocaleDateString():""}</p>
+                    </div>
+                    <Badge label="Published" color="#10b981" xs/>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* INBOX VIEW */}
+        {view==="inbox"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            <div>
+              <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?20:22,fontWeight:800}}>Inbox</h2>
+              <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Conversations with your customers on Instagram & Facebook.</p>
+            </div>
+            <ClientInboxTab client={client} messages={cMessages} integrations={integrations} onSendReply={onSendReply}
+              onApproveDraft={onApproveDraft} onDismissDraft={onDismissDraft} hideBotPanel/>
+          </div>
+        )}
 
         {/* TASKS VIEW */}
         {view==="tasks"&&(
@@ -23434,7 +23525,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   // Client portal
   if(currentUser?.isClient) {
     const clientRecord = data.clients.find(c=>c.email===currentUser.email)||currentUser;
-    return (<><GStyle wallpaper={wallpaper} accentColor={accentColor}/><ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief}/></>);
+    return (<><GStyle wallpaper={wallpaper} accentColor={accentColor}/><ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply}/></>);
   }
 
   // Accept invitation flow (URL has ?invite=TOKEN)
