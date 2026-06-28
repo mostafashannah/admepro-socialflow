@@ -33,7 +33,12 @@ function meta_publish($platform, $page_id, $access_token, $message, $image_url, 
     if ($platform === 'instagram') {
         if (!$image_url) return [400, ['error' => 'Instagram requires image_url']];
 
-        $container_ep = "https://graph.facebook.com/{$v}/{$page_id}/media";
+        // The Instagram "Connect" flow (meta-oauth-callback.php) uses Instagram API
+        // with Instagram Login, which issues graph.instagram.com-scoped tokens and
+        // account IDs — graph.facebook.com cannot parse those tokens at all (hence
+        // the misleading "Cannot parse access token" error), so publishing must go
+        // through graph.instagram.com too, not graph.facebook.com.
+        $container_ep = "https://graph.instagram.com/{$v}/{$page_id}/media";
         [$code, $resp] = meta_curl($container_ep, [
             'image_url'    => $image_url,
             'caption'      => $message,
@@ -43,7 +48,7 @@ function meta_publish($platform, $page_id, $access_token, $message, $image_url, 
             return [$code ?: 502, ['error' => 'Failed to create media container', 'detail' => $resp]];
         }
 
-        $publish_ep = "https://graph.facebook.com/{$v}/{$page_id}/media_publish";
+        $publish_ep = "https://graph.instagram.com/{$v}/{$page_id}/media_publish";
         return meta_curl($publish_ep, ['creation_id' => $resp['id'], 'access_token' => $access_token]);
     }
 
