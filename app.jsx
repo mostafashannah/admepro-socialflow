@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.12";
+const APP_VERSION = "beta 3.13";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -2626,11 +2626,11 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
   };
 
   const clientId = post.client_id || project?.client_id;
-  const socialIntegration = integrations.find(i=>
-    i.status==="active" &&
-    (i.app_key===post.platform || (post.platform==="instagram"&&i.app_key==="instagram") || (post.platform==="facebook"&&i.app_key==="facebook")) &&
-    (!i.client_id || i.client_id===clientId)
-  );
+  // A client-specific integration must win over a global (no client_id) one for
+  // the same app_key — otherwise .find() can match a different client's
+  // dedicated FB/IG integration before ever considering the right one.
+  const socialIntegration = integrations.find(i=>i.status==="active" && i.app_key===post.platform && i.client_id===clientId)
+    || integrations.find(i=>i.status==="active" && i.app_key===post.platform && !i.client_id);
 
   const handlePublish = async () => {
     if(!socialIntegration) return;
@@ -2991,9 +2991,13 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
 // ════════════════════════════════════════════════════════════════
 // ADD POST MODAL — 2-step wizard
 // ════════════════════════════════════════════════════════════════
-function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset}) {
+function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,presetClient}) {
   const [step,setStep] = useState(1);
-  const blankForm = {project_id:projects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:"",scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",content_mode:"new",platforms:[],platform_types:{},media:[],cover:null,publish_mode:"schedule",postStory:false,storyImage:null};
+  // When opened from a client's profile, only that client's projects should be
+  // selectable/defaulted — otherwise this silently defaults to projects[0],
+  // which can belong to a totally different client.
+  const selectableProjects = presetClient ? projects.filter(p=>p.client_id===presetClient.id) : projects;
+  const blankForm = {project_id:selectableProjects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:"",scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",content_mode:"new",platforms:[],platform_types:{},media:[],cover:null,publish_mode:"schedule",postStory:false,storyImage:null};
   const [f,setF] = useState({...blankForm});
   const [saving,setSaving] = useState(false);
   const [uploading,setUploading] = useState(false);
@@ -3127,7 +3131,7 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset}) 
             <Field label="Project" required>
               <select value={f.project_id} onChange={e=>s("project_id",e.target.value)} style={inputSt}>
                 <option value="">— Select project —</option>
-                {projects.map(p=><option key={p.id} value={p.id}>{p.title} · {p.client_name}</option>)}
+                {selectableProjects.map(p=><option key={p.id} value={p.id}>{p.title} · {p.client_name}</option>)}
               </select>
             </Field>
             {f.content_mode==="new"?(
@@ -7874,7 +7878,8 @@ function ClientOverviewTab({client, cProjects, cPosts, cMessages, cLeads, integr
   // Which of the client's platforms have an active, connected integration —
   // a quick "are we actually live everywhere we should be" check.
   const platformStatus = (client.platforms||[]).map(p=>{
-    const integ = (integrations||[]).find(i=>i.app_key===p && i.status==="active" && (!i.client_id||i.client_id===client.id));
+    const integ = (integrations||[]).find(i=>i.app_key===p && i.status==="active" && i.client_id===client.id)
+      || (integrations||[]).find(i=>i.app_key===p && i.status==="active" && !i.client_id);
     return {platform:p, connected:!!integ};
   });
 
@@ -8463,7 +8468,8 @@ function ClientIntelligenceTab({client, intelligence, onSave, integrations=[]}) 
   };
 
   const fetchAutoBestTime = async (pl) => {
-    const integ = integrations.find(i=>i.app_key===pl && i.status==="active" && (!i.client_id||i.client_id===client.id));
+    const integ = integrations.find(i=>i.app_key===pl && i.status==="active" && i.client_id===client.id)
+      || integrations.find(i=>i.app_key===pl && i.status==="active" && !i.client_id);
     const creds = integ ? (typeof integ.credentials==="string" ? parseJ(integ.credentials,{}) : (integ.credentials||{})) : null;
     if(!creds?.page_id||!creds?.access_token){
       setAutoState(s=>({...s,[pl]:"error"})); setAutoError(e=>({...e,[pl]:`No connected ${pl} integration found for ${client.name}.`}));
@@ -22137,7 +22143,10 @@ function App() {
   const addAsset = async (assetData) => {
     const a = {...assetData, id:uid(), created_date:new Date().toISOString()};
     setData(d=>({...d, assets:[...d.assets, a]}));
-    try { await ce("Asset",[{...a, id:undefined}]); } catch(e){}
+    // The assets table has no mime_type/created_date columns (created_at is
+    // auto-set) — sending them throws "Unknown column" from the raw SQL layer.
+    const {mime_type, created_date, ...dbRow} = a;
+    try { await ce("Asset",[{...dbRow, id:undefined}]); } catch(e){}
     logActivity("Asset Uploaded","clients",assetData.name||"","success","",currentUser?.email||"admin");
   };
 
@@ -22973,9 +22982,8 @@ Return ONLY valid JSON (no markdown, no explanation):
     for(const pd of list) {
       const real = await addPost(pd);
       if(opts.postNow && real?.id) {
-        const integ = (data.integrations||[]).find(i=>
-          i.status==="active" && i.app_key===pd.platform && (!i.client_id||i.client_id===pd.client_id)
-        );
+        const integ = (data.integrations||[]).find(i=>i.status==="active" && i.app_key===pd.platform && i.client_id===pd.client_id)
+          || (data.integrations||[]).find(i=>i.status==="active" && i.app_key===pd.platform && !i.client_id);
         if(!integ) { failedCount++; continue; }
         try {
           await publishPost(real, integ);
@@ -23769,7 +23777,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     })()}
 
     {/* Add Post */}
-    {showAddPost&&<AddPostModal open onClose={()=>{setShowAddPost(false);setAddPostForClient(null);}} projects={data.projects} team={data.team} onAdd={addPost} onAddReady={addReadyContent} onAddAsset={addAsset}/>}
+    {showAddPost&&<AddPostModal open onClose={()=>{setShowAddPost(false);setAddPostForClient(null);}} projects={data.projects} team={data.team} onAdd={addPost} onAddReady={addReadyContent} onAddAsset={addAsset} presetClient={addPostForClient}/>}
 
     {/* New Project Wizard — used by FAB, Dashboard, Projects page */}
     {(showFABProject||showAddProject)&&<ProjectWizard
