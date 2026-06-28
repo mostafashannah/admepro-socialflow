@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.25";
+const APP_VERSION = "beta 3.26";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9694,7 +9694,7 @@ function TemplatesPage({templates}) {
 // ════════════════════════════════════════════════════════════════
 // CLIENT PORTAL
 // ════════════════════════════════════════════════════════════════
-function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tasks=[],onAddTask,onUpdateTask,contract,wallpaper,onWallpaperChange,monthlyBriefs=[],onSubmitBrief,onSelfCreateBrief,messages=[],integrations=[],onSendReply,onApproveDraft,onDismissDraft}) {
+function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tasks=[],onAddTask,onUpdateTask,contract,wallpaper,onWallpaperChange,monthlyBriefs=[],onSubmitBrief,onSelfCreateBrief,messages=[],integrations=[],onSendReply,onApproveDraft,onDismissDraft,assets=[],onAddAsset,onUpdateAsset,onDeleteAsset}) {
   const {isMobile} = useResponsive();
   const [view,setView] = useState("dashboard");
   const [sel,setSel] = useState(null);
@@ -9703,6 +9703,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
   const [showAddTask,setShowAddTask] = useState(false);
   const cProjects = projects.filter(p=>p.client_id===client.id||p.client_name===client.name);
   const cPosts = posts.filter(p=>cProjects.some(pr=>pr.id===p.project_id)&&["client_approval","scheduled","published"].includes(p.stage));
+  const cAssets = assets.filter(a=>cProjects.some(pr=>pr.id===a.project_id) || (a.tags||[]).includes(`client_${client.id}`));
   const [month,setMonth] = useState(()=>{const d=new Date();return{y:d.getFullYear(),m:d.getMonth()};});
   const clientSubs = subscriptions||[];
 
@@ -9730,6 +9731,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
     {key:"calendar",label:"Calendar", mLabel:"Calendar"},
     {key:"inbox", label:`Inbox${unreadCount?` (${unreadCount})`:""}`, mLabel:"Inbox"},
     {key:"meta_insights", label:"Meta Insights", mLabel:"Insights"},
+    {key:"assets", label:"Assets", mLabel:"Assets"},
     {key:"brief", label:pendingBrief?" Brief ●":" Brief", mLabel:pendingBrief?"Brief●":"Brief"},
     ...(clientSubs.length>0?[{key:"subscriptions",label:"Subscriptions",mLabel:"Billing"}]:[]),
     {key:"settings",label:"Settings", mLabel:"Settings"},
@@ -9925,7 +9927,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
         />
       )}
 
-      <div style={{maxWidth:["inbox","meta_insights"].includes(view)?1100:1000,margin:"0 auto",padding:isMobile?"16px 16px 80px":"32px 24px"}}>
+      <div style={{maxWidth:["inbox","meta_insights","assets"].includes(view)?1100:1000,margin:"0 auto",padding:isMobile?"16px 16px 80px":"32px 24px"}}>
 
         {/* DASHBOARD VIEW */}
         {view==="dashboard"&&(
@@ -10003,6 +10005,18 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
         {/* META INSIGHTS VIEW */}
         {view==="meta_insights"&&(
           <MetaInsightsTab client={client} integrations={integrations}/>
+        )}
+
+        {/* ASSETS VIEW */}
+        {view==="assets"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            <div>
+              <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?20:22,fontWeight:800}}>Assets</h2>
+              <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Your project files, organized by month.</p>
+            </div>
+            <FolderBrowser assets={cAssets} projects={cProjects} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset} onDeleteAsset={onDeleteAsset}
+              storagePrefix={`assets/client-${client.id}`} storageKey={`sf_extra_folders_${client.id}`} extraTags={[`client_${client.id}`]} currentUser={client}/>
+          </div>
         )}
 
         {/* TASKS VIEW */}
@@ -23543,7 +23557,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   // Client portal
   if(currentUser?.isClient) {
     const clientRecord = data.clients.find(c=>c.email===currentUser.email)||currentUser;
-    return (<><GStyle wallpaper={wallpaper} accentColor={accentColor}/><ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply}/></>);
+    return (<><GStyle wallpaper={wallpaper} accentColor={accentColor}/><ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset}/></>);
   }
 
   // Accept invitation flow (URL has ?invite=TOKEN)
