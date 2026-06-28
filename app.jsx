@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.17";
+const APP_VERSION = "beta 3.18";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6571,7 +6571,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
         </div>
       )}
       {tab==="assets"&&(
-        <FolderBrowser assets={cAssets} projects={cProjects} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset} onDeleteAsset={onDeleteAsset} storagePrefix={`assets/client-${client.id}`} storageKey={`sf_extra_folders_${client.id}`} extraTags={[`client_${client.id}`]}/>
+        <FolderBrowser assets={cAssets} projects={cProjects} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset} onDeleteAsset={onDeleteAsset} storagePrefix={`assets/client-${client.id}`} storageKey={`sf_extra_folders_${client.id}`} extraTags={[`client_${client.id}`]} currentUser={currentUser}/>
       )}
       {tab==="calendar"&&<CalendarView posts={cPosts} onPostClick={onPostClick}/>}
       {tab==="brain"&&(
@@ -7213,14 +7213,14 @@ function AssetCard({asset:a, proj, folders=[], onUpdate, onDelete}) {
               <button onClick={save} style={{flex:1,fontSize:11,fontWeight:700,padding:"6px 0",borderRadius:6,border:"none",background:"var(--accent)",color:"#fff",cursor:"pointer"}}>Save</button>
               <button onClick={()=>{setEditing(false);setName(a.name||"");setFolder(a.category||"");setNewFolder("");}} style={{fontSize:11,fontWeight:600,padding:"6px 10px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",cursor:"pointer"}}>Cancel</button>
             </div>
-            {confirmDel ? (
+            {onDelete&&(confirmDel ? (
               <div style={{display:"flex",gap:6}}>
                 <button onClick={()=>{onDelete&&onDelete(a.id);}} style={{flex:1,fontSize:11,fontWeight:700,padding:"6px 0",borderRadius:6,border:"none",background:"#ef4444",color:"#fff",cursor:"pointer"}}>Confirm delete</button>
                 <button onClick={()=>setConfirmDel(false)} style={{fontSize:11,padding:"6px 10px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",cursor:"pointer"}}>Cancel</button>
               </div>
             ) : (
               <button onClick={()=>setConfirmDel(true)} style={{fontSize:11,fontWeight:600,padding:"6px 0",borderRadius:6,border:"1px solid #ef444455",background:"transparent",color:"#ef4444",cursor:"pointer"}}>Delete asset</button>
-            )}
+            ))}
           </div>
         ) : (
           <>
@@ -7244,7 +7244,9 @@ function AssetCard({asset:a, proj, folders=[], onUpdate, onDelete}) {
 // new (empty) folders, drag-and-drop to move files between folders, and
 // drag-and-drop of OS files onto the panel to upload into the open folder.
 // ════════════════════════════════════════════════════════════════
-function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAsset, storagePrefix="assets", storageKey="sf_extra_folders", extraTags=[]}) {
+function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAsset, storagePrefix="assets", storageKey="sf_extra_folders", extraTags=[], currentUser}) {
+  const isAdmin = currentUser?.role==="admin";
+  const fileInputRef = useRef(null);
   const [path, setPath] = useState([]);
   const [view, setView] = useState("grid");
   const [extraFolders, setExtraFolders] = useState(()=>{
@@ -7339,6 +7341,10 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
               <Ico d={Icons.plus} size={12}/> New Folder
             </button>
           )}
+          <button onClick={()=>fileInputRef.current?.click()} disabled={uploading} style={{display:"flex",alignItems:"center",gap:5,fontSize:12,fontWeight:700,padding:"6px 10px",borderRadius:6,border:"none",background:"var(--accent)",color:"#fff",cursor:uploading?"default":"pointer",opacity:uploading?0.6:1}}>
+            {uploading?<Spinner size={12}/>:<Ico d={Icons.upload} size={12} stroke="#fff"/>} Upload File
+          </button>
+          <input ref={fileInputRef} type="file" multiple style={{display:"none"}} onChange={e=>{handleDropFiles(e.target.files); e.target.value="";}}/>
           <div style={{display:"flex",border:"1px solid var(--border)",borderRadius:6,overflow:"hidden"}}>
             <button onClick={()=>setView("grid")} style={{padding:"6px 10px",border:"none",cursor:"pointer",fontSize:11,fontWeight:700,background:view==="grid"?"var(--accent)":"var(--surface)",color:view==="grid"?"#fff":"var(--text2)"}}>Grid</button>
             <button onClick={()=>setView("list")} style={{padding:"6px 10px",border:"none",cursor:"pointer",fontSize:11,fontWeight:700,background:view==="list"?"var(--accent)":"var(--surface)",color:view==="list"?"#fff":"var(--text2)"}}>List</button>
@@ -7368,7 +7374,7 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
           {filesHere.map(a=>(
             <div key={a.id} draggable onDragStart={e=>e.dataTransfer.setData("text/plain", a.id)}>
-              <AssetCard asset={a} proj={projects.find(p=>p.id===a.project_id)} folders={[currentPath]} onUpdate={onUpdateAsset} onDelete={onDeleteAsset}/>
+              <AssetCard asset={a} proj={projects.find(p=>p.id===a.project_id)} folders={[currentPath]} onUpdate={onUpdateAsset} onDelete={isAdmin?onDeleteAsset:undefined}/>
             </div>
           ))}
         </div>
@@ -7385,7 +7391,7 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
                 <a href={a.file_url} download={a.name} target="_blank" rel="noreferrer" style={{fontSize:11,color:"var(--accent)",fontWeight:600,textDecoration:"none"}}>Download</a>
               </>}
               <button onClick={()=>{const n=prompt("Rename file",a.name); if(n&&n.trim()&&onUpdateAsset) onUpdateAsset(a.id,{name:n.trim()});}} style={{fontSize:11,color:"var(--text3)",fontWeight:600,background:"none",border:"none",cursor:"pointer"}}>Rename</button>
-              <button onClick={()=>{if(confirm(`Delete "${a.name}"?`)&&onDeleteAsset) onDeleteAsset(a.id);}} style={{fontSize:11,color:"#ef4444",fontWeight:600,background:"none",border:"none",cursor:"pointer"}}>Delete</button>
+              {isAdmin&&<button onClick={()=>{if(confirm(`Delete "${a.name}"?`)&&onDeleteAsset) onDeleteAsset(a.id);}} style={{fontSize:11,color:"#ef4444",fontWeight:600,background:"none",border:"none",cursor:"pointer"}}>Delete</button>}
             </div>
           ))}
         </div>
@@ -7405,17 +7411,16 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
 // ════════════════════════════════════════════════════════════════
 // ASSETS PAGE
 // ════════════════════════════════════════════════════════════════
-function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset}) {
+function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset,currentUser}) {
   const [catF,setCatF] = useState("all");
   const [typeF,setTypeF] = useState("all");
   const [uploading,setUploading] = useState(false);
   const [showUpload,setShowUpload] = useState(false);
-  const [uploadForm,setUploadForm] = useState({name:"",category:"Brand",project_id:"",tags:""});
+  const [uploadForm,setUploadForm] = useState({name:"",project_id:"",tags:""});
   const [preview,setPreview] = useState(null);
   const fileRef = useRef(null);
   const [pendingFile,setPendingFile] = useState(null);
 
-  const cats = ["Brand","Campaign","Product","Design","Video","Other",...new Set(assets.map(a=>a.category).filter(Boolean))].filter((v,i,a)=>a.indexOf(v)===i);
   const filtered = assets.filter(a=>{
     if(catF!=="all"&&a.category!==catF) return false;
     if(typeF!=="all"&&a.file_type!==typeF) return false;
@@ -7441,16 +7446,15 @@ function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset}) {
     try {
       const url = await uploadToStorage(pendingFile, "assets");
       const fileType = pendingFile.type.startsWith("video")?"video":pendingFile.type.startsWith("image")?"image":"file";
+      const projName = projects.find(p=>p.id===uploadForm.project_id)?.title;
       const assetData = {
-        name: uploadForm.name||pendingFile.name,
+        name: renameForTask(uploadForm.name, pendingFile.name),
         file_url: url,
         file_type: fileType,
-        category: uploadForm.category||"Brand",
+        category: monthProjectFolder(projName),
         project_id: uploadForm.project_id||null,
         tags: uploadForm.tags ? uploadForm.tags.split(",").map(t=>t.trim()).filter(Boolean) : [],
         file_size: pendingFile.size,
-        mime_type: pendingFile.type,
-        created_date: new Date().toISOString(),
       };
       if(onAddAsset) await onAddAsset(assetData);
       setShowUpload(false); setPendingFile(null); setPreview(null);
@@ -7478,13 +7482,8 @@ function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset}) {
           <p style={{fontSize:13,fontWeight:700}}> {pendingFile.name} <span style={{fontSize:11,color:"var(--text3)",fontWeight:400}}>({(pendingFile.size/1024/1024).toFixed(2)} MB)</span></p>
           {preview&&<img src={preview} style={{width:"100%",maxHeight:180,objectFit:"contain",borderRadius:"var(--rs)",background:"var(--surface2)"}} alt="preview"/>}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-            <Field label="Asset Name"><input value={uploadForm.name} onChange={e=>setUploadForm(f=>({...f,name:e.target.value}))} style={inputSt}/></Field>
-            <Field label="Category">
-              <select value={uploadForm.category} onChange={e=>setUploadForm(f=>({...f,category:e.target.value}))} style={inputSt}>
-                {cats.map(c=><option key={c} value={c}>{c}</option>)}
-              </select>
-            </Field>
-            <Field label="Link to Project (optional)">
+            <Field label="Asset Name (used as filename)"><input value={uploadForm.name} onChange={e=>setUploadForm(f=>({...f,name:e.target.value}))} style={inputSt}/></Field>
+            <Field label="Link to Project (files into that month/project folder)">
               <select value={uploadForm.project_id} onChange={e=>setUploadForm(f=>({...f,project_id:e.target.value}))} style={inputSt}>
                 <option value="">— No project —</option>
                 {projects.map(p=><option key={p.id} value={p.id}>{p.title} ({p.client_name})</option>)}
@@ -7510,7 +7509,7 @@ function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset}) {
         </select>
       </div>
 
-      <FolderBrowser assets={filtered} projects={projects} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset} onDeleteAsset={onDeleteAsset} storagePrefix="assets" storageKey="sf_extra_folders"/>
+      <FolderBrowser assets={filtered} projects={projects} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset} onDeleteAsset={onDeleteAsset} storagePrefix="assets" storageKey="sf_extra_folders" currentUser={currentUser}/>
     </div>
   );
 }
@@ -23681,7 +23680,7 @@ Return ONLY valid JSON (no markdown, no explanation):
               currentUser={currentUser} onToggleHide={toggleHideClient}/>
           );
           return (
-            <ClientDetailPage client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} onAddAsset={addAsset}
+            <ClientDetailPage client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} onAddAsset={addAsset} currentUser={currentUser}
               integrations={data.integrations||[]}
               invoices={data.invoices||[]}
               leads={data.leads||[]}
@@ -23730,7 +23729,7 @@ Return ONLY valid JSON (no markdown, no explanation):
 />}
         {page==="tasks"&&<TasksPage posts={data.posts} projects={data.projects} team={data.team} onPostClick={setSelectedPost} onAdd={addPost} clientTasks={(data.tasks||[])} onUpdateTask={updateClientTask} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset}/>}
         {page==="calendar"&&<div className="fade-in"><h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:24,fontWeight:800,marginBottom:24}}>Content Calendar</h2><CalendarView posts={data.posts} onPostClick={setSelectedPost}/></div>}
-        {page==="assets"&&<AssetsPage assets={data.assets} projects={data.projects} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset}/>}
+        {page==="assets"&&<AssetsPage assets={data.assets} projects={data.projects} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} currentUser={currentUser}/>}
         {page==="templates"&&<TemplatesPage templates={data.templates}/>}
         {page==="quotes"&&["admin","account_manager","accountant"].includes(currentUser?.role)&&(
           <QuotesPage
