@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.24";
+const APP_VERSION = "beta 3.25";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9729,6 +9729,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
     {key:"posts", label:"Content", mLabel:"Content"},
     {key:"calendar",label:"Calendar", mLabel:"Calendar"},
     {key:"inbox", label:`Inbox${unreadCount?` (${unreadCount})`:""}`, mLabel:"Inbox"},
+    {key:"meta_insights", label:"Meta Insights", mLabel:"Insights"},
     {key:"brief", label:pendingBrief?" Brief ●":" Brief", mLabel:pendingBrief?"Brief●":"Brief"},
     ...(clientSubs.length>0?[{key:"subscriptions",label:"Subscriptions",mLabel:"Billing"}]:[]),
     {key:"settings",label:"Settings", mLabel:"Settings"},
@@ -9924,7 +9925,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
         />
       )}
 
-      <div style={{maxWidth:view==="inbox"?1100:1000,margin:"0 auto",padding:isMobile?"16px 16px 80px":"32px 24px"}}>
+      <div style={{maxWidth:["inbox","meta_insights"].includes(view)?1100:1000,margin:"0 auto",padding:isMobile?"16px 16px 80px":"32px 24px"}}>
 
         {/* DASHBOARD VIEW */}
         {view==="dashboard"&&(
@@ -9997,6 +9998,11 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
             <ClientInboxTab client={client} messages={cMessages} integrations={integrations} onSendReply={onSendReply}
               onApproveDraft={onApproveDraft} onDismissDraft={onDismissDraft} hideBotPanel/>
           </div>
+        )}
+
+        {/* META INSIGHTS VIEW */}
+        {view==="meta_insights"&&(
+          <MetaInsightsTab client={client} integrations={integrations}/>
         )}
 
         {/* TASKS VIEW */}
