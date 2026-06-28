@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.09";
+const APP_VERSION = "beta 3.10";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -2987,12 +2987,23 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
 // ════════════════════════════════════════════════════════════════
 function AddPostModal({open,onClose,projects,team,onAdd,onAddReady}) {
   const [step,setStep] = useState(1);
-  const blankForm = {project_id:projects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:"",scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",content_mode:"new",platforms:[],media:[],publish_mode:"schedule"};
+  const blankForm = {project_id:projects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:"",scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",content_mode:"new",platforms:[],platform_types:{},media:[],cover:null,publish_mode:"schedule"};
   const [f,setF] = useState({...blankForm});
   const [saving,setSaving] = useState(false);
   const [uploading,setUploading] = useState(false);
+  const [uploadingCover,setUploadingCover] = useState(false);
   const s = (k,v) => setF(p=>({...p,[k]:v}));
-  const togglePlt = p => s("platforms",f.platforms.includes(p)?f.platforms.filter(x=>x!==p):[...f.platforms,p]);
+  const defaultTypeFor = (media) => (media||f.media).some(m=>(m.type||"").startsWith("video")) ? "reel" : "image";
+  const togglePlt = p => setF(prev => {
+    const selected = prev.platforms.includes(p);
+    return {
+      ...prev,
+      platforms: selected ? prev.platforms.filter(x=>x!==p) : [...prev.platforms,p],
+      platform_types: selected ? prev.platform_types : {...prev.platform_types, [p]: prev.platform_types[p]||defaultTypeFor(prev.media)},
+    };
+  });
+  const setPlatformType = (p,type) => s("platform_types",{...f.platform_types,[p]:type});
+  const needsInstaCover = f.platforms.includes("instagram") && f.platform_types.instagram==="reel" && !f.cover;
   const canNext = f.content_mode==="ready"
     ? f.title.trim() && f.project_id && f.caption.trim() && f.platforms.length
     : f.title.trim() && f.project_id;
@@ -3015,8 +3026,19 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady}) {
   };
   const removeMedia = (url) => s("media",f.media.filter(m=>m.url!==url));
 
+  const handleCoverUpload = async (files) => {
+    const file = (files||[])[0];
+    if(!file) return;
+    setUploadingCover(true);
+    try {
+      const url = await uploadToStorage(file, "ready-content/covers");
+      s("cover",{name:file.name, type:file.type, url, uploaded_at:new Date().toISOString()});
+    } catch(e) { alert("Cover upload failed: "+e.message); }
+    setUploadingCover(false);
+  };
+
   const canSubmit = f.content_mode==="ready"
-    ? f.title.trim()&&f.project_id&&f.caption.trim()&&f.platforms.length&&(f.publish_mode!=="schedule"||f.scheduled_date)
+    ? f.title.trim()&&f.project_id&&f.caption.trim()&&f.platforms.length&&(f.publish_mode!=="schedule"||f.scheduled_date)&&!needsInstaCover
     : f.title.trim()&&f.project_id;
 
   const submit = async () => {
@@ -3025,16 +3047,19 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady}) {
     if(f.content_mode==="ready") {
       const proj = projects.find(p=>p.id===f.project_id);
       const design_urls = JSON.stringify(f.media.map(m=>m.url));
-      const isVideo = f.media.some(m=>(m.type||"").startsWith("video"));
-      const list = f.platforms.map(pl=>({
-        title:f.title, client_id:proj?.client_id||"", project_id:f.project_id,
-        description:f.description, assigned_to:f.assigned_to,
-        scheduled_date: f.publish_mode==="schedule" ? f.scheduled_date : new Date().toISOString().slice(0,10),
-        scheduled_time: f.publish_mode==="schedule" ? f.scheduled_time : "",
-        platform:pl, post_type:isVideo?"reel":"image", priority:f.priority, stage:"scheduled",
-        client_name: proj?.client_name||"", hashtags:"",
-        caption:f.caption, design_assets:f.media, design_urls,
-      }));
+      const list = f.platforms.map(pl=>{
+        const post_type = f.platform_types[pl] || defaultTypeFor();
+        return {
+          title:f.title, client_id:proj?.client_id||"", project_id:f.project_id,
+          description:f.description, assigned_to:f.assigned_to,
+          scheduled_date: f.publish_mode==="schedule" ? f.scheduled_date : new Date().toISOString().slice(0,10),
+          scheduled_time: f.publish_mode==="schedule" ? f.scheduled_time : "",
+          platform:pl, post_type, priority:f.priority, stage:"scheduled",
+          client_name: proj?.client_name||"", hashtags:"",
+          caption:f.caption, design_assets:f.media, design_urls,
+          carousel_cover: post_type==="reel" ? (f.cover?.url||"") : "",
+        };
+      });
       await (onAddReady ? onAddReady(list,{postNow:f.publish_mode==="now"}) : Promise.all(list.map(onAdd)));
     } else {
       await onAdd({...f});
@@ -3099,16 +3124,30 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady}) {
                   <textarea value={f.caption} onChange={e=>s("caption",e.target.value)} rows={3} placeholder="Write the caption to post…" style={{...inputSt,resize:"vertical"}}/>
                 </Field>
                 <Field label="Platforms" required>
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                    {PLATFORMS.map(p=>(
-                      <button key={p} onClick={()=>togglePlt(p)} style={{
-                        padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:600,
-                        border:`1.5px solid ${f.platforms.includes(p)?PLT_COLOR[p]:"var(--border2)"}`,
-                        background:f.platforms.includes(p)?PLT_COLOR[p]+"22":"var(--surface2)",
-                        color:f.platforms.includes(p)?PLT_COLOR[p]:"var(--text2)",
-                        cursor:"pointer",transition:"all 0.15s",
-                      }}>{p.charAt(0).toUpperCase()+p.slice(1)}</button>
-                    ))}
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                      {PLATFORMS.map(p=>(
+                        <button key={p} onClick={()=>togglePlt(p)} style={{
+                          padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:600,
+                          border:`1.5px solid ${f.platforms.includes(p)?PLT_COLOR[p]:"var(--border2)"}`,
+                          background:f.platforms.includes(p)?PLT_COLOR[p]+"22":"var(--surface2)",
+                          color:f.platforms.includes(p)?PLT_COLOR[p]:"var(--text2)",
+                          cursor:"pointer",transition:"all 0.15s",
+                        }}>{p.charAt(0).toUpperCase()+p.slice(1)}</button>
+                      ))}
+                    </div>
+                    {!!f.platforms.length&&(
+                      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                        {f.platforms.map(p=>(
+                          <div key={p} style={{display:"flex",alignItems:"center",gap:8}}>
+                            <span style={{fontSize:11,fontWeight:700,color:PLT_COLOR[p],width:70}}>{p.charAt(0).toUpperCase()+p.slice(1)}</span>
+                            <select value={f.platform_types[p]||defaultTypeFor()} onChange={e=>setPlatformType(p,e.target.value)} style={{...inputSt,padding:"5px 10px",fontSize:12}}>
+                              {POST_TYPES.map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
+                            </select>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </Field>
                 <Field label="Media (image, reel/video, or any file)">
@@ -3125,6 +3164,19 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady}) {
                     </div>
                   )}
                 </Field>
+                {f.platforms.includes("instagram")&&f.platform_types.instagram==="reel"&&(
+                  <Field label="Reel Cover Image" required>
+                    <input type="file" accept="image/*" onChange={e=>handleCoverUpload(e.target.files)} disabled={uploadingCover} style={inputSt}/>
+                    {uploadingCover&&<div style={{fontSize:12,color:"var(--text3)",marginTop:6}}><Spinner size={12}/> Uploading…</div>}
+                    {f.cover&&(
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,padding:"4px 8px",borderRadius:8,background:"var(--surface2)",fontSize:11,width:"fit-content"}}>
+                        <span style={{maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.cover.name}</span>
+                        <button onClick={()=>s("cover",null)} style={{border:"none",background:"none",cursor:"pointer",color:"var(--text3)",fontWeight:700}}>×</button>
+                      </div>
+                    )}
+                    {!f.cover&&<p style={{fontSize:11,color:"#f59e0b",marginTop:4}}>Instagram requires a cover image for Reels.</p>}
+                  </Field>
+                )}
               </div>
             )}
           </>
@@ -3904,17 +3956,28 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady}) {
     title:"",client_id:"",project_id:"",description:"",
     assigned_to:"",scheduled_date:"",platform:"instagram",
     post_type:"image",priority:"medium",stage:"planning",
-    content_mode:"new", caption:"", platforms:[], media:[],
+    content_mode:"new", caption:"", platforms:[], platform_types:{}, media:[], cover:null,
     publish_mode:"schedule", scheduled_time:"",
   };
   const [f,setF] = useState({...blankForm});
   const [saving,setSaving] = useState(false);
   const [uploading,setUploading] = useState(false);
+  const [uploadingCover,setUploadingCover] = useState(false);
   const [done,setDone] = useState(false);
   const s = (k,v) => setF(p=>({...p,[k]:v}));
   const clientProjects = projects.filter(p=>p.client_id===f.client_id||(!f.client_id&&true));
   const selectedClient = clients.find(c=>c.id===f.client_id);
-  const togglePlt = p => s("platforms",f.platforms.includes(p)?f.platforms.filter(x=>x!==p):[...f.platforms,p]);
+  const defaultTypeFor = (media) => (media||f.media).some(m=>(m.type||"").startsWith("video")) ? "reel" : "image";
+  const togglePlt = p => setF(prev => {
+    const selected = prev.platforms.includes(p);
+    return {
+      ...prev,
+      platforms: selected ? prev.platforms.filter(x=>x!==p) : [...prev.platforms,p],
+      platform_types: selected ? prev.platform_types : {...prev.platform_types, [p]: prev.platform_types[p]||defaultTypeFor(prev.media)},
+    };
+  });
+  const setPlatformType = (p,type) => s("platform_types",{...f.platform_types,[p]:type});
+  const needsInstaCover = f.platforms.includes("instagram") && f.platform_types.instagram==="reel" && !f.cover;
 
   const handleMediaUpload = async (files) => {
     const valid = Array.from(files||[]).filter(file=>{
@@ -3934,25 +3997,40 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady}) {
   };
   const removeMedia = (url) => s("media",f.media.filter(m=>m.url!==url));
 
+  const handleCoverUpload = async (files) => {
+    const file = (files||[])[0];
+    if(!file) return;
+    setUploadingCover(true);
+    try {
+      const url = await uploadToStorage(file, "ready-content/covers");
+      s("cover",{name:file.name, type:file.type, url, uploaded_at:new Date().toISOString()});
+    } catch(e) { alert("Cover upload failed: "+e.message); }
+    setUploadingCover(false);
+  };
+
   const handleSubmit = async () => {
     if(!f.title.trim()||!f.project_id) return;
     if(f.content_mode==="ready") {
       if(!f.caption.trim()||!f.platforms.length) return;
       if(f.publish_mode==="schedule"&&!f.scheduled_date) return;
+      if(needsInstaCover) return;
     }
     setSaving(true);
     if(f.content_mode==="ready") {
       const design_urls = JSON.stringify(f.media.map(m=>m.url));
-      const isVideo = f.media.some(m=>(m.type||"").startsWith("video"));
-      const list = f.platforms.map(pl=>({
-        title:f.title, client_id:f.client_id, project_id:f.project_id,
-        description:f.description, assigned_to:f.assigned_to,
-        scheduled_date: f.publish_mode==="schedule" ? f.scheduled_date : new Date().toISOString().slice(0,10),
-        scheduled_time: f.publish_mode==="schedule" ? f.scheduled_time : "",
-        platform:pl, post_type:isVideo?"reel":"image", priority:f.priority, stage:"scheduled",
-        client_name: selectedClient?.name||"", hashtags:"",
-        caption:f.caption, design_assets:f.media, design_urls,
-      }));
+      const list = f.platforms.map(pl=>{
+        const post_type = f.platform_types[pl] || defaultTypeFor();
+        return {
+          title:f.title, client_id:f.client_id, project_id:f.project_id,
+          description:f.description, assigned_to:f.assigned_to,
+          scheduled_date: f.publish_mode==="schedule" ? f.scheduled_date : new Date().toISOString().slice(0,10),
+          scheduled_time: f.publish_mode==="schedule" ? f.scheduled_time : "",
+          platform:pl, post_type, priority:f.priority, stage:"scheduled",
+          client_name: selectedClient?.name||"", hashtags:"",
+          caption:f.caption, design_assets:f.media, design_urls,
+          carousel_cover: post_type==="reel" ? (f.cover?.url||"") : "",
+        };
+      });
       await onAddReady(list, {postNow:f.publish_mode==="now"});
     } else {
       await onAdd({
@@ -3969,7 +4047,7 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady}) {
   const reset = () => { setF({...blankForm}); setDone(false); };
 
   const canSubmit = f.content_mode==="ready"
-    ? f.title.trim()&&f.project_id&&f.caption.trim()&&f.platforms.length&&(f.publish_mode!=="schedule"||f.scheduled_date)
+    ? f.title.trim()&&f.project_id&&f.caption.trim()&&f.platforms.length&&(f.publish_mode!=="schedule"||f.scheduled_date)&&!needsInstaCover
     : f.title.trim()&&f.project_id;
 
   if(!open) return null;
@@ -4027,16 +4105,30 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady}) {
                   <textarea value={f.caption} onChange={e=>s("caption",e.target.value)} rows={3} placeholder="Write the caption to post…" style={{...inputSt,resize:"vertical"}}/>
                 </Field>
                 <Field label="Platforms" required>
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                    {PLATFORMS.map(p=>(
-                      <button key={p} onClick={()=>togglePlt(p)} style={{
-                        padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:600,
-                        border:`1.5px solid ${f.platforms.includes(p)?PLT_COLOR[p]:"var(--border2)"}`,
-                        background:f.platforms.includes(p)?PLT_COLOR[p]+"22":"var(--surface2)",
-                        color:f.platforms.includes(p)?PLT_COLOR[p]:"var(--text2)",
-                        cursor:"pointer",transition:"all 0.15s",
-                      }}>{p.charAt(0).toUpperCase()+p.slice(1)}</button>
-                    ))}
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                      {PLATFORMS.map(p=>(
+                        <button key={p} onClick={()=>togglePlt(p)} style={{
+                          padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:600,
+                          border:`1.5px solid ${f.platforms.includes(p)?PLT_COLOR[p]:"var(--border2)"}`,
+                          background:f.platforms.includes(p)?PLT_COLOR[p]+"22":"var(--surface2)",
+                          color:f.platforms.includes(p)?PLT_COLOR[p]:"var(--text2)",
+                          cursor:"pointer",transition:"all 0.15s",
+                        }}>{p.charAt(0).toUpperCase()+p.slice(1)}</button>
+                      ))}
+                    </div>
+                    {!!f.platforms.length&&(
+                      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                        {f.platforms.map(p=>(
+                          <div key={p} style={{display:"flex",alignItems:"center",gap:8}}>
+                            <span style={{fontSize:11,fontWeight:700,color:PLT_COLOR[p],width:70}}>{p.charAt(0).toUpperCase()+p.slice(1)}</span>
+                            <select value={f.platform_types[p]||defaultTypeFor()} onChange={e=>setPlatformType(p,e.target.value)} style={{...inputSt,padding:"5px 10px",fontSize:12}}>
+                              {POST_TYPES.map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
+                            </select>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </Field>
                 <Field label="Media (image, reel/video, or any file)">
@@ -4053,6 +4145,19 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady}) {
                     </div>
                   )}
                 </Field>
+                {f.platforms.includes("instagram")&&f.platform_types.instagram==="reel"&&(
+                  <Field label="Reel Cover Image" required>
+                    <input type="file" accept="image/*" onChange={e=>handleCoverUpload(e.target.files)} disabled={uploadingCover} style={inputSt}/>
+                    {uploadingCover&&<div style={{fontSize:12,color:"var(--text3)",marginTop:6}}><Spinner size={12}/> Uploading…</div>}
+                    {f.cover&&(
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,padding:"4px 8px",borderRadius:8,background:"var(--surface2)",fontSize:11,width:"fit-content"}}>
+                        <span style={{maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.cover.name}</span>
+                        <button onClick={()=>s("cover",null)} style={{border:"none",background:"none",cursor:"pointer",color:"var(--text3)",fontWeight:700}}>×</button>
+                      </div>
+                    )}
+                    {!f.cover&&<p style={{fontSize:11,color:"#f59e0b",marginTop:4}}>Instagram requires a cover image for Reels.</p>}
+                  </Field>
+                )}
                 <Field label="When">
                   <div style={{display:"flex",gap:8,marginBottom:f.publish_mode==="schedule"?10:0}}>
                     {[["now","Post Now"],["schedule","Schedule"]].map(([k,label])=>(
