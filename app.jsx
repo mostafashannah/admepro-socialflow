@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.04";
+const APP_VERSION = "beta 3.05";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -8019,6 +8019,29 @@ function ClientIntelligenceTab({client, intelligence, onSave, integrations=[]}) 
   const sf = (k,v) => { setForm(p=>({...p,[k]:v})); setSaved(false); };
   const toggleArr = (k,v) => sf(k, form[k].includes(v)?form[k].filter(x=>x!==v):[...form[k],v]);
 
+  const [autoReason, setAutoReason] = useState({});
+
+  // Flattens meta-insights.php's {name,title,values:[{value}]} series into {name:value}.
+  const flattenSeries = (arr) => {
+    const out = {};
+    (Array.isArray(arr)?arr:[]).forEach(s=>{ out[s.name||s.title] = s.values?.[s.values.length-1]?.value ?? null; });
+    return out;
+  };
+
+  const aiPredictBestTime = async (pl, metrics, onlineFollowers) => {
+    const sys = `You are a social media scheduling expert. Given a client's industry and recent platform performance data, predict the single best hour of day to publish on ${pl} to maximize reach and engagement. Reply with ONLY JSON: {"best_time":"HH:MM","reason":"≤140 chars"}. Use 24h format. If audience-online-hour data is provided, weigh it heavily alongside industry norms and the reach/engagement numbers; otherwise rely on general industry posting-time best practices for ${pl}.`;
+    const userMsg = `Industry: ${client.industry||"unspecified"}\nPlatform: ${pl}\nRecent 30-day metrics: ${JSON.stringify(metrics)}${onlineFollowers?`\nAudience online-hour breakdown: ${JSON.stringify(onlineFollowers)}`:""}`;
+    const res = await fetch(AI_ENDPOINT,{method:"POST",headers:AI_HEADERS,
+      body: JSON.stringify({model:"claude-haiku-4-5-20251001", max_tokens:200, system:sys, messages:[{role:"user",content:userMsg}]})});
+    const d = await res.json();
+    const raw = (d.content?.map(b=>b.text||"").join("")||"").trim();
+    const m = raw.match(/\{[\s\S]*\}/);
+    if(!m) throw new Error("AI returned no prediction");
+    const parsed = JSON.parse(m[0]);
+    if(!/^\d{2}:\d{2}$/.test(parsed.best_time||"")) throw new Error("AI returned an invalid time");
+    return parsed;
+  };
+
   const fetchAutoBestTime = async (pl) => {
     const integ = integrations.find(i=>i.app_key===pl && i.status==="active" && (!i.client_id||i.client_id===client.id));
     const creds = integ ? (typeof integ.credentials==="string" ? parseJ(integ.credentials,{}) : (integ.credentials||{})) : null;
@@ -8028,17 +8051,26 @@ function ClientIntelligenceTab({client, intelligence, onSave, integrations=[]}) 
     }
     setAutoState(s=>({...s,[pl]:"loading"}));
     try{
-      const res = await fetch(META_INSIGHTS_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({mode:"best_time", platform:pl, page_id:creds.page_id, access_token:creds.access_token})});
-      const d = await res.json();
-      if(d.ok && d.best_time){
-        sf(`${pl}_best_time`, d.best_time);
-        setAutoState(s=>({...s,[pl]:"ok"}));
-      } else {
-        setAutoState(s=>({...s,[pl]:"error"})); setAutoError(e=>({...e,[pl]:d.error||"Couldn't fetch audience activity data."}));
-      }
+      const until = Math.floor(Date.now()/1000), since = until - 30*86400;
+      const insRes = await fetch(META_INSIGHTS_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({platform:pl, page_id:creds.page_id, access_token:creds.access_token, since, until})});
+      const insD = await insRes.json();
+      const metrics = flattenSeries(pl==="instagram"?insD.ig_insights:insD.page_insights);
+
+      let onlineFollowers = null;
+      try{
+        const bestRes = await fetch(META_INSIGHTS_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({mode:"best_time", platform:pl, page_id:creds.page_id, access_token:creds.access_token})});
+        const bestD = await bestRes.json();
+        if(bestD.ok && bestD.online_followers) onlineFollowers = bestD.online_followers;
+      }catch{ /* optional signal — AI prediction still works without it */ }
+
+      const predicted = await aiPredictBestTime(pl, metrics, onlineFollowers);
+      sf(`${pl}_best_time`, predicted.best_time);
+      setAutoReason(r=>({...r,[pl]:predicted.reason||""}));
+      setAutoState(s=>({...s,[pl]:"ok"}));
     }catch(err){
-      setAutoState(s=>({...s,[pl]:"error"})); setAutoError(e=>({...e,[pl]:"Network error fetching audience data."}));
+      setAutoState(s=>({...s,[pl]:"error"})); setAutoError(e=>({...e,[pl]:err.message||"Couldn't generate a prediction."}));
     }
   };
 
@@ -8118,9 +8150,9 @@ function ClientIntelligenceTab({client, intelligence, onSave, integrations=[]}) 
                   </div>
                 </div>
                 <input type="time" value={form[`${pl}_best_time`]} onChange={e=>sf(`${pl}_best_time`,e.target.value)} disabled={isAuto} style={{...inSt, opacity:isAuto?0.7:1}}/>
-                {isAuto&&state==="loading"&&<p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Fetching audience activity from {label.trim()}…</p>}
-                {isAuto&&state==="ok"&&<p style={{fontSize:11,color:"#10b981",marginTop:4}}> Set from live audience activity data.</p>}
-                {isAuto&&state==="error"&&<p style={{fontSize:11,color:"#ef4444",marginTop:4}}>{autoError[pl]||"Couldn't auto-detect — using last known time."} <button type="button" onClick={()=>fetchAutoBestTime(pl)} style={{background:"none",border:"none",color:"var(--accent)",cursor:"pointer",fontWeight:700,fontSize:11,padding:0}}>Retry</button></p>}
+                {isAuto&&state==="loading"&&<p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Analyzing {label.trim()} performance & industry data…</p>}
+                {isAuto&&state==="ok"&&<p style={{fontSize:11,color:"#10b981",marginTop:4}}> AI-predicted{autoReason[pl]?`: ${autoReason[pl]}`:" from reach/engagement & industry data."}</p>}
+                {isAuto&&state==="error"&&<p style={{fontSize:11,color:"#ef4444",marginTop:4}}>{autoError[pl]||"Couldn't generate a prediction."} <button type="button" onClick={()=>fetchAutoBestTime(pl)} style={{background:"none",border:"none",color:"var(--accent)",cursor:"pointer",fontWeight:700,fontSize:11,padding:0}}>Retry</button></p>}
               </div>
             );
           })}
