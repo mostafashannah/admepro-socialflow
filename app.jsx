@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.26";
+const APP_VERSION = "beta 3.27";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9701,6 +9701,14 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
   const [selTask,setSelTask] = useState(null);
   const [reason,setReason] = useState("");
   const [showAddTask,setShowAddTask] = useState(false);
+  const [showBrief,setShowBrief] = useState(false);
+  const [showUserMenu,setShowUserMenu] = useState(false);
+  const userMenuRef = useRef(null);
+  useEffect(()=>{
+    const fn = e=>{ if(userMenuRef.current&&!userMenuRef.current.contains(e.target)) setShowUserMenu(false); };
+    document.addEventListener("mousedown",fn);
+    return ()=>document.removeEventListener("mousedown",fn);
+  },[]);
   const cProjects = projects.filter(p=>p.client_id===client.id||p.client_name===client.name);
   const cPosts = posts.filter(p=>cProjects.some(pr=>pr.id===p.project_id)&&["client_approval","scheduled","published"].includes(p.stage));
   const cAssets = assets.filter(a=>cProjects.some(pr=>pr.id===a.project_id) || (a.tags||[]).includes(`client_${client.id}`));
@@ -9732,9 +9740,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
     {key:"inbox", label:`Inbox${unreadCount?` (${unreadCount})`:""}`, mLabel:"Inbox"},
     {key:"meta_insights", label:"Meta Insights", mLabel:"Insights"},
     {key:"assets", label:"Assets", mLabel:"Assets"},
-    {key:"brief", label:pendingBrief?" Brief ●":" Brief", mLabel:pendingBrief?"Brief●":"Brief"},
     ...(clientSubs.length>0?[{key:"subscriptions",label:"Subscriptions",mLabel:"Billing"}]:[]),
-    {key:"settings",label:"Settings", mLabel:"Settings"},
   ];
 
   // Dashboard stats — client-scoped summary, no internal team/perf data
@@ -9780,24 +9786,39 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
               {navItems.map(({key,label})=>(
                 <button key={key} onClick={()=>setView(key)} style={{fontSize:13,fontWeight:600,color:view===key?"var(--accent)":"var(--text2)",borderBottom:`2px solid ${view===key?"var(--accent)":"transparent"}`,padding:"4px 0",background:"none",border:"none",borderBottom:`2px solid ${view===key?"var(--accent)":"transparent"}`,cursor:"pointer",transition:"color 0.15s"}}>{label}</button>
               ))}
-              {/* Theme toggle */}
-              <button onClick={()=>{const idx=WALLPAPERS.findIndex(w=>w.key===wallpaper);if(onWallpaperChange)onWallpaperChange(WALLPAPERS[(idx+1)%WALLPAPERS.length].key);}} style={{display:"flex",alignItems:"center",justifyContent:"center",width:32,height:32,borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer",transition:"all 0.2s"}} title={WALLPAPERS.find(w=>w.key===wallpaper)?.label}>
-                {wallpaper==="dark"?"":wallpaper==="light"?"":""}
-              </button>
-              <button onClick={onLogout} style={{display:"flex",alignItems:"center",gap:6,fontSize:13,color:"var(--text2)",background:"none",border:"none",cursor:"pointer"}}>
-                <Ico d={Icons.logout} size={15}/> Logout
-              </button>
             </div>
           )}
-          {/* Mobile: just logout */}
-          {isMobile&&(
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <button onClick={()=>{const idx=WALLPAPERS.findIndex(w=>w.key===wallpaper);if(onWallpaperChange)onWallpaperChange(WALLPAPERS[(idx+1)%WALLPAPERS.length].key);}} style={{display:"flex",alignItems:"center",justifyContent:"center",width:32,height:32,borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer",fontSize:14}} title={WALLPAPERS.find(w=>w.key===wallpaper)?.label}>
-                {wallpaper==="dark"?"":wallpaper==="light"?"":""}
-              </button>
-              <button onClick={onLogout} style={{padding:"6px 12px",borderRadius:"var(--rs)",fontSize:12,fontWeight:600,color:"var(--text2)",background:"var(--surface2)",border:"1px solid var(--border)",cursor:"pointer"}}>Logout</button>
-            </div>
-          )}
+          {/* User dropdown — name/avatar opens Settings/Themes/Logout */}
+          <div ref={userMenuRef} style={{position:"relative",flexShrink:0}}>
+            <button onClick={()=>setShowUserMenu(o=>!o)} style={{display:"flex",alignItems:"center",gap:8,background:"none",border:"none",cursor:"pointer",padding:"6px 4px"}}>
+              <div style={{width:30,height:30,borderRadius:99,background:clr(client.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,color:"#fff",flexShrink:0}}>{initials(client.name)}</div>
+              {!isMobile&&<span style={{fontSize:13,fontWeight:600,color:"var(--text2)",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{client.name}</span>}
+              <Ico d={Icons.chevD} size={13} stroke="var(--text3)" style={{transform:showUserMenu?"rotate(180deg)":"none",transition:"transform 0.2s",flexShrink:0}}/>
+            </button>
+            {showUserMenu&&(
+              <div className="fade-in" style={{position:"absolute",top:"calc(100% + 8px)",right:0,background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:"var(--r)",overflow:"hidden",boxShadow:"0 16px 48px rgba(0,0,0,0.3)",zIndex:600,minWidth:200}}>
+                <button onClick={()=>{setView("settings");setShowUserMenu(false);}} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"11px 14px",fontSize:13,fontWeight:600,color:"var(--text2)",background:"none",border:"none",cursor:"pointer"}}
+                  onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"} onMouseLeave={e=>e.currentTarget.style.background=""}>
+                  <Ico d={Icons.settings} size={15} stroke="var(--text3)"/> Settings
+                </button>
+                <div style={{padding:"8px 14px 4px",fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Theme</div>
+                <div style={{display:"flex",gap:6,padding:"4px 14px 11px",flexWrap:"wrap"}}>
+                  {WALLPAPERS.map(w=>(
+                    <button key={w.key} onClick={()=>{if(onWallpaperChange)onWallpaperChange(w.key);}} title={w.label} style={{
+                      width:26,height:26,borderRadius:99,cursor:"pointer",flexShrink:0,
+                      border:`2px solid ${wallpaper===w.key?"var(--accent)":"var(--border)"}`,
+                      background:`linear-gradient(135deg,${w.preview[0]},${w.preview[1]})`,
+                    }}/>
+                  ))}
+                </div>
+                <div style={{height:1,background:"var(--border)"}}/>
+                <button onClick={()=>{setShowUserMenu(false);onLogout();}} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"11px 14px",fontSize:13,fontWeight:600,color:"#ef4444",background:"none",border:"none",cursor:"pointer"}}
+                  onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"} onMouseLeave={e=>e.currentTarget.style.background=""}>
+                  <Ico d={Icons.logout} size={15} stroke="#ef4444"/> Logout
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -9927,6 +9948,21 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
         />
       )}
 
+      {/* Add Calendar Brief modal */}
+      {showBrief&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:200,display:"flex",alignItems:isMobile?"flex-end":"center",justifyContent:"center",backdropFilter:"blur(4px)",padding:isMobile?0:20}}>
+          <div onClick={e=>e.stopPropagation()} style={modalCard(isMobile)}>
+            <div style={{padding:`${isMobile?16:20}px ${isMobile?16:24}px`,borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+              <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,fontSize:isMobile?15:17}}>Calendar Brief</h3>
+              <button onClick={()=>setShowBrief(false)} style={{color:"var(--text3)",display:"flex",background:"none",border:"none",cursor:"pointer",flexShrink:0}}><Ico d={Icons.x} size={18}/></button>
+            </div>
+            <div style={{padding:isMobile?16:24}}>
+              <MonthlyBriefTab client={client} monthlyBriefs={monthlyBriefs} onSubmit={onSubmitBrief} onSelfCreate={onSelfCreateBrief}/>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{maxWidth:["inbox","meta_insights","assets"].includes(view)?1100:1000,margin:"0 auto",padding:isMobile?"16px 16px 80px":"32px 24px"}}>
 
         {/* DASHBOARD VIEW */}
@@ -10027,7 +10063,10 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                 <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?20:22,fontWeight:800}}>My Requests</h2>
                 <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{tasks.length} total · {tasks.filter(t=>t.stage==="ready_for_client_approval").length} awaiting approval</p>
               </div>
-              <Btn onClick={()=>setShowAddTask(true)} style={isMobile?{width:"100%",justifyContent:"center"}:{}}><Ico d={Icons.plus} size={15}/>New Request</Btn>
+              <div style={{display:"flex",gap:8,flexDirection:isMobile?"column":"row",width:isMobile?"100%":"auto"}}>
+                <Btn variant="secondary" onClick={()=>setShowBrief(true)} style={isMobile?{width:"100%",justifyContent:"center"}:{}}><Ico d={Icons.plus} size={15}/>Add Calendar Brief{pendingBrief?" ●":""}</Btn>
+                <Btn onClick={()=>setShowAddTask(true)} style={isMobile?{width:"100%",justifyContent:"center"}:{}}><Ico d={Icons.plus} size={15}/>New Request</Btn>
+              </div>
             </div>
 
             {/* Awaiting approval highlight */}
@@ -10173,12 +10212,6 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
         )}
 
         {view==="calendar"&&<CalendarView posts={cPosts} onPostClick={setSel}/>}
-
-        {view==="brief"&&(
-          <div className="fade-in" style={{padding:isMobile?"0 0 80px":"0 0 40px"}}>
-            <MonthlyBriefTab client={client} monthlyBriefs={monthlyBriefs} onSubmit={onSubmitBrief} onSelfCreate={onSelfCreateBrief}/>
-          </div>
-        )}
 
         {view==="settings"&&(
           <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
