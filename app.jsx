@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.23";
+const APP_VERSION = "beta 3.24";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6718,6 +6718,11 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
     });
     return Object.values(byKey).map(t=>({
       ...t,
+      // A thread's first-ever message may predate Meta resolving the sender's
+      // profile name (or that lookup may simply have failed for it) — use the
+      // most recent message that actually carries a name instead of locking
+      // the thread to whichever message happened to be processed first.
+      customer_name: [...t.messages].reverse().find(m=>m.customer_name)?.customer_name || t.customer_name,
       messages: t.messages.sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)),
       last: t.messages.reduce((a,b)=>new Date(a.created_at)>new Date(b.created_at)?a:b),
     })).sort((a,b)=>new Date(b.last.created_at)-new Date(a.last.created_at));
