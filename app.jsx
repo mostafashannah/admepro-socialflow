@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.05";
+const APP_VERSION = "beta 3.06";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3781,39 +3781,93 @@ No markdown, no explanation, just the JSON array.`);
 // ════════════════════════════════════════════════════════════════
 // ADD TASK MODAL (SINGLE)
 // ════════════════════════════════════════════════════════════════
-function AddTaskModal({open,onClose,clients,projects,team,onAdd}) {
-  const [f,setF] = useState({
+function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady}) {
+  const blankForm = {
     title:"",client_id:"",project_id:"",description:"",
     assigned_to:"",scheduled_date:"",platform:"instagram",
     post_type:"image",priority:"medium",stage:"planning",
-  });
+    content_mode:"new", caption:"", platforms:[], media:[],
+    publish_mode:"schedule", scheduled_time:"",
+  };
+  const [f,setF] = useState({...blankForm});
   const [saving,setSaving] = useState(false);
+  const [uploading,setUploading] = useState(false);
   const [done,setDone] = useState(false);
   const s = (k,v) => setF(p=>({...p,[k]:v}));
   const clientProjects = projects.filter(p=>p.client_id===f.client_id||(!f.client_id&&true));
   const selectedClient = clients.find(c=>c.id===f.client_id);
+  const togglePlt = p => s("platforms",f.platforms.includes(p)?f.platforms.filter(x=>x!==p):[...f.platforms,p]);
+
+  const handleMediaUpload = async (files) => {
+    const valid = Array.from(files||[]).filter(file=>{
+      if(file.size>50*1024*1024) { alert(`"${file.name}" is too large (max 50MB).`); return false; }
+      return true;
+    });
+    if(!valid.length) return;
+    setUploading(true);
+    try {
+      const uploaded = await Promise.all(valid.map(async file=>{
+        const url = await uploadToStorage(file, "ready-content");
+        return {name:file.name, type:file.type, url, uploaded_at:new Date().toISOString()};
+      }));
+      s("media",[...f.media,...uploaded]);
+    } catch(e) { alert("Upload failed: "+e.message); }
+    setUploading(false);
+  };
+  const removeMedia = (url) => s("media",f.media.filter(m=>m.url!==url));
 
   const handleSubmit = async () => {
     if(!f.title.trim()||!f.project_id) return;
+    if(f.content_mode==="ready") {
+      if(!f.caption.trim()||!f.platforms.length) return;
+      if(f.publish_mode==="schedule"&&!f.scheduled_date) return;
+    }
     setSaving(true);
-    const proj = projects.find(p=>p.id===f.project_id);
-    await onAdd({
-      ...f,
-      project_id: f.project_id,
-      client_name: selectedClient?.name||"",
-      hashtags:"",
-    });
+    if(f.content_mode==="ready") {
+      const design_urls = JSON.stringify(f.media.map(m=>m.url));
+      const isVideo = f.media.some(m=>(m.type||"").startsWith("video"));
+      const list = f.platforms.map(pl=>({
+        title:f.title, client_id:f.client_id, project_id:f.project_id,
+        description:f.description, assigned_to:f.assigned_to,
+        scheduled_date: f.publish_mode==="schedule" ? f.scheduled_date : new Date().toISOString().slice(0,10),
+        scheduled_time: f.publish_mode==="schedule" ? f.scheduled_time : "",
+        platform:pl, post_type:isVideo?"reel":"image", priority:f.priority, stage:"scheduled",
+        client_name: selectedClient?.name||"", hashtags:"",
+        caption:f.caption, design_assets:f.media, design_urls,
+      }));
+      await onAddReady(list, {postNow:f.publish_mode==="now"});
+    } else {
+      await onAdd({
+        ...f,
+        project_id: f.project_id,
+        client_name: selectedClient?.name||"",
+        hashtags:"",
+      });
+    }
     setSaving(false);
     setDone(true);
   };
 
-  const reset = () => { setF({title:"",client_id:"",project_id:"",description:"",assigned_to:"",scheduled_date:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning"}); setDone(false); };
+  const reset = () => { setF({...blankForm}); setDone(false); };
+
+  const canSubmit = f.content_mode==="ready"
+    ? f.title.trim()&&f.project_id&&f.caption.trim()&&f.platforms.length&&(f.publish_mode!=="schedule"||f.scheduled_date)
+    : f.title.trim()&&f.project_id;
 
   if(!open) return null;
   return (
-    <Modal open onClose={()=>{reset();onClose();}} title={done?"Task Created! ✓":"Add Task"} subtitle={done?undefined:"Fill in the details to create a new post/task"} width={520}>
+    <Modal open onClose={()=>{reset();onClose();}} title={done?"Task Created! ✓":"Add Post"} subtitle={done?undefined:"Fill in the details to create a new post/task"} width={520}>
       {!done?(
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{display:"flex",gap:8,padding:4,background:"var(--surface2)",borderRadius:10}}>
+            {[["new","New Content"],["ready","Ready Content"]].map(([k,label])=>(
+              <button key={k} onClick={()=>s("content_mode",k)} style={{
+                flex:1,padding:"9px 12px",borderRadius:8,fontSize:13,fontWeight:700,border:"none",cursor:"pointer",
+                background:f.content_mode===k?"var(--accent,#d90b2c)":"transparent",
+                color:f.content_mode===k?"#fff":"var(--text2)",transition:"all 0.15s",
+              }}>{label}</button>
+            ))}
+          </div>
           <Field label="Task Title" required>
             <input value={f.title} onChange={e=>s("title",e.target.value)} placeholder="e.g. Ramadan Launch Post" style={inputSt} autoFocus/>
           </Field>
@@ -3833,18 +3887,75 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd}) {
                   {clientProjects.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}
                 </select>
               </Field>
-              <Field label="Platform">
-                <select value={f.platform} onChange={e=>s("platform",e.target.value)} style={inputSt}>
-                  {PLATFORMS.map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
-                </select>
-              </Field>
-              <Field label="Post Type">
-                <select value={f.post_type} onChange={e=>s("post_type",e.target.value)} style={inputSt}>
-                  {POST_TYPES.map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
-                </select>
-              </Field>
+              {f.content_mode==="new"&&<>
+                <Field label="Platform">
+                  <select value={f.platform} onChange={e=>s("platform",e.target.value)} style={inputSt}>
+                    {PLATFORMS.map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+                  </select>
+                </Field>
+                <Field label="Post Type">
+                  <select value={f.post_type} onChange={e=>s("post_type",e.target.value)} style={inputSt}>
+                    {POST_TYPES.map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
+                  </select>
+                </Field>
+              </>}
             </div>
           </div>
+          {f.content_mode==="ready"&&(
+            <div className="form-section">
+              <div className="form-section-title"> Ready Content</div>
+              <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                <Field label="Caption" required>
+                  <textarea value={f.caption} onChange={e=>s("caption",e.target.value)} rows={3} placeholder="Write the caption to post…" style={{...inputSt,resize:"vertical"}}/>
+                </Field>
+                <Field label="Platforms" required>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {PLATFORMS.map(p=>(
+                      <button key={p} onClick={()=>togglePlt(p)} style={{
+                        padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:600,
+                        border:`1.5px solid ${f.platforms.includes(p)?PLT_COLOR[p]:"var(--border2)"}`,
+                        background:f.platforms.includes(p)?PLT_COLOR[p]+"22":"var(--surface2)",
+                        color:f.platforms.includes(p)?PLT_COLOR[p]:"var(--text2)",
+                        cursor:"pointer",transition:"all 0.15s",
+                      }}>{p.charAt(0).toUpperCase()+p.slice(1)}</button>
+                    ))}
+                  </div>
+                </Field>
+                <Field label="Media (image, reel/video, or any file)">
+                  <input type="file" multiple accept="image/*,video/*" onChange={e=>handleMediaUpload(e.target.files)} disabled={uploading} style={inputSt}/>
+                  {uploading&&<div style={{fontSize:12,color:"var(--text3)",marginTop:6}}><Spinner size={12}/> Uploading…</div>}
+                  {!!f.media.length&&(
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
+                      {f.media.map(m=>(
+                        <div key={m.url} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 8px",borderRadius:8,background:"var(--surface2)",fontSize:11}}>
+                          <span style={{maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name}</span>
+                          <button onClick={()=>removeMedia(m.url)} style={{border:"none",background:"none",cursor:"pointer",color:"var(--text3)",fontWeight:700}}>×</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Field>
+                <Field label="When">
+                  <div style={{display:"flex",gap:8,marginBottom:f.publish_mode==="schedule"?10:0}}>
+                    {[["now","Post Now"],["schedule","Schedule"]].map(([k,label])=>(
+                      <button key={k} onClick={()=>s("publish_mode",k)} style={{
+                        flex:1,padding:"8px 12px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",
+                        border:`1.5px solid ${f.publish_mode===k?"var(--accent,#d90b2c)":"var(--border2)"}`,
+                        background:f.publish_mode===k?"var(--accent,#d90b2c)22":"var(--surface2)",
+                        color:f.publish_mode===k?"var(--accent,#d90b2c)":"var(--text2)",
+                      }}>{label}</button>
+                    ))}
+                  </div>
+                  {f.publish_mode==="schedule"&&(
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                      <input type="date" value={f.scheduled_date} onChange={e=>s("scheduled_date",e.target.value)} style={inputSt}/>
+                      <input type="time" value={f.scheduled_time} onChange={e=>s("scheduled_time",e.target.value)} style={inputSt}/>
+                    </div>
+                  )}
+                </Field>
+              </div>
+            </div>
+          )}
           {/* Section: Who & When */}
           <div className="form-section">
             <div className="form-section-title"> Who & When</div>
@@ -3860,18 +3971,18 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd}) {
                   {PRIORITIES.map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
                 </select>
               </Field>
-              <Field label="Due Date">
+              {f.content_mode==="new"&&<Field label="Due Date">
                 <input type="date" value={f.scheduled_date} onChange={e=>s("scheduled_date",e.target.value)} style={inputSt}/>
-              </Field>
+              </Field>}
             </div>
           </div>
-          <Field label="Brief / Description">
+          {f.content_mode==="new"&&<Field label="Brief / Description">
             <textarea value={f.description} onChange={e=>s("description",e.target.value)} rows={3} placeholder="Describe what this post should achieve…" style={{...inputSt,resize:"vertical"}}/>
-          </Field>
+          </Field>}
           <div style={{display:"flex",gap:10,paddingTop:6,borderTop:"1px solid var(--border)",marginTop:2}}>
             <Btn variant="secondary" onClick={()=>{reset();onClose();}} style={{flex:1}}>Cancel</Btn>
-            <Btn onClick={handleSubmit} disabled={saving||!f.title.trim()||!f.project_id} style={{flex:2}}>
-              {saving?<><Spinner size={14}/> Creating…</>:<><Ico d={Icons.taskAdd} size={15}/>Create Task</>}
+            <Btn onClick={handleSubmit} disabled={saving||uploading||!canSubmit} style={{flex:2}}>
+              {saving?<><Spinner size={14}/> Creating…</>:<><Ico d={Icons.taskAdd} size={15}/>{f.content_mode==="ready"&&f.publish_mode==="now"?"Post Now":"Create"}</>}
             </Btn>
           </div>
         </div>
@@ -23357,6 +23468,31 @@ Return ONLY valid JSON (no markdown, no explanation):
       projects={data.projects}
       team={data.team}
       onAdd={async d=>{ await addPost(d); setToast("Task created and added to calendar"); }}
+      onAddReady={async (list,opts)=>{
+        let publishedCount=0, failedCount=0;
+        for(const pd of list) {
+          const real = await addPost(pd);
+          if(opts.postNow&&real?.id) {
+            const integ = (data.integrations||[]).find(i=>
+              i.status==="active" && i.app_key===pd.platform && (!i.client_id||i.client_id===pd.client_id)
+            );
+            if(!integ) { failedCount++; continue; }
+            try {
+              await publishPost(real, integ);
+              handleStageChange(real,"published");
+              publishedCount++;
+            } catch(e) {
+              failedCount++;
+              setToast(`Publish failed for ${pd.platform}: ${e.message}`);
+            }
+          }
+        }
+        if(opts.postNow) {
+          setToast(failedCount ? `Published to ${publishedCount} platform(s), ${failedCount} failed (no connection or error)` : `Published to ${publishedCount} platform(s)`);
+        } else {
+          setToast("Content scheduled");
+        }
+      }}
     />}
 
     {/* Monthly Brief — Create Modal */}
