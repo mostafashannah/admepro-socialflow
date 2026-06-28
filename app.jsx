@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.18";
+const APP_VERSION = "beta 3.19";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1229,6 +1229,19 @@ const renameForTask = (taskTitle, originalName, suffix="") => {
   const ext = (originalName||"").includes(".") ? originalName.slice(originalName.lastIndexOf(".")) : "";
   const base = (taskTitle||"").trim() || (originalName||"file").replace(/\.[^.]+$/,"");
   return `${base}${suffix?` ${suffix}`:""}${ext}`;
+};
+// Pre-creates a project's "<Month Year>/<Project Name>" folder (in both the
+// global Assets Library and that client's Assets tab) the moment the project
+// is created, so it's there waiting even before the first file is uploaded.
+// Mirrors FolderBrowser's own localStorage-backed "extra folder" persistence.
+const ensureProjectFolder = (clientId, projectName, date=new Date()) => {
+  const fp = monthProjectFolder(projectName, date);
+  [`sf_extra_folders`, clientId?`sf_extra_folders_${clientId}`:null].filter(Boolean).forEach(key=>{
+    try {
+      const list = JSON.parse(localStorage.getItem(key)||"[]");
+      if(!list.includes(fp)) localStorage.setItem(key, JSON.stringify([...list, fp]));
+    } catch(e){}
+  });
 };
 
 // ════════════════════════════════════════════════════════════════
@@ -22000,6 +22013,7 @@ function App() {
     };
     const localProj = {...projPayload, id:uid(), created_at:new Date().toISOString()};
     setData(d=>({...d, projects:[localProj,...d.projects]}));
+    ensureProjectFolder(formData.client_id, formData.name);
     let projectId = localProj.id;
     try {
       const res = await ce("Project",[projPayload]);
