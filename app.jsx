@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.22";
+const APP_VERSION = "beta 3.23";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5876,7 +5876,8 @@ function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUs
 
 function EditClientModal({open,client,onClose,onSave}) {
   const [f,setF] = useState({});
-  useEffect(()=>{ if(client) setF({name:client.name||"",email:client.email||"",phone:client.phone||"",industry:client.industry||"",status:client.status||"active",platforms:client.platforms||[]}); },[client]);
+  const [showPw,setShowPw] = useState(false);
+  useEffect(()=>{ if(client) setF({name:client.name||"",email:client.email||"",phone:client.phone||"",industry:client.industry||"",status:client.status||"active",platforms:client.platforms||[],portal_password:client.portal_password||""}); },[client]);
   if(!open) return null;
   const PLATFORMS = ["instagram","facebook","tiktok","twitter","linkedin","youtube"];
   const togglePlat = p => setF(x=>({...x,platforms:x.platforms.includes(p)?x.platforms.filter(v=>v!==p):[...x.platforms,p]}));
@@ -5912,10 +5913,16 @@ function EditClientModal({open,client,onClose,onSave}) {
               ))}
             </div>
           </Field>
+          <Field label="Client Portal Password" hint="Used by this client to log into their portal — leave blank to keep unchanged">
+            <div style={{display:"flex",gap:6}}>
+              <input value={f.portal_password||""} onChange={e=>setF(x=>({...x,portal_password:e.target.value}))} type={showPw?"text":"password"} style={{...inputSt,flex:1}} placeholder="Leave blank to keep current password"/>
+              <button type="button" onClick={()=>setShowPw(s=>!s)} style={{padding:"0 12px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",cursor:"pointer",fontSize:12,fontWeight:600}}>{showPw?"Hide":"Show"}</button>
+            </div>
+          </Field>
         </div>
         <div className="modal-footer" style={{display:"flex",gap:8,justifyContent:"flex-end",padding:"14px 24px",borderTop:"1px solid var(--border)"}}>
           <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
-          <Btn onClick={()=>{if(f.name?.trim()) onSave(f);}}>Save Changes</Btn>
+          <Btn onClick={()=>{if(f.name?.trim()) onSave({...f, portal_password:f.portal_password?.trim()||client?.portal_password||""});}}>Save Changes</Btn>
         </div>
       </div>
     </div>
