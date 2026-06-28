@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.15";
+const APP_VERSION = "beta 3.16";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1219,6 +1219,17 @@ const fmtDateTime = d => d ? new Date(d).toLocaleString("en-US",{month:"short",d
 const initials = n => (n||"").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
 const clr = (name,arr=["#d90b2c","#3b82f6","#8b5cf6","#10b981","#f59e0b","#ec4899"]) =>
   arr[(name||"").charCodeAt(0)%arr.length];
+
+// Auto-organizes uploaded assets into "<Month Year>/<Project Name>" folders
+// (category is reused as a "/"-joined folder path — no schema change needed).
+const monthProjectFolder = (projectName, date=new Date()) =>
+  `${date.toLocaleDateString("en-US",{month:"long",year:"numeric"})}/${projectName||"Unsorted"}`;
+// Names an uploaded file after its task/post title, keeping the original extension.
+const renameForTask = (taskTitle, originalName, suffix="") => {
+  const ext = (originalName||"").includes(".") ? originalName.slice(originalName.lastIndexOf(".")) : "";
+  const base = (taskTitle||"").trim() || (originalName||"file").replace(/\.[^.]+$/,"");
+  return `${base}${suffix?` ${suffix}`:""}${ext}`;
+};
 
 // ════════════════════════════════════════════════════════════════
 // WALLPAPER / THEME DEFINITIONS
@@ -2883,9 +2894,9 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
                       if(!validFiles.length) return;
                       setUploading_(true); setUploadErr_("");
                       try {
-                        const uploaded = await Promise.all(validFiles.map(async f=>{
+                        const uploaded = await Promise.all(validFiles.map(async (f,i)=>{
                           const url = await uploadToStorage(f, `design/${post.id}`);
-                          if(onAddAsset) onAddAsset({name:f.name, file_url:url, file_type:f.type.startsWith("video")?"video":"image", category:"Design", project_id:post.project_id, tags:[], file_size:f.size, mime_type:f.type, created_date:new Date().toISOString()}).catch(()=>{});
+                          if(onAddAsset) onAddAsset({name:renameForTask(post.title,f.name,validFiles.length>1?String(i+1):""), file_url:url, file_type:f.type.startsWith("video")?"video":"image", category:monthProjectFolder(project?.title), project_id:post.project_id, tags:[], file_size:f.size}).catch(()=>{});
                           return {name:f.name, type:f.type, url, uploaded_at:new Date().toISOString()};
                         }));
                         const newAssets = [...(post.design_assets||[]), ...uploaded];
@@ -3029,9 +3040,10 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,pr
     if(!valid.length) return;
     setUploading(true);
     try {
-      const uploaded = await Promise.all(valid.map(async file=>{
+      const projName = projects.find(p=>p.id===f.project_id)?.title;
+      const uploaded = await Promise.all(valid.map(async (file,i)=>{
         const url = await uploadToStorage(file, "ready-content");
-        if(onAddAsset) onAddAsset({name:file.name, file_url:url, file_type:file.type.startsWith("video")?"video":"image", category:"Content", project_id:f.project_id, tags:[], file_size:file.size, mime_type:file.type, created_date:new Date().toISOString()}).catch(()=>{});
+        if(onAddAsset) onAddAsset({name:renameForTask(f.title,file.name,valid.length>1?String(i+1):""), file_url:url, file_type:file.type.startsWith("video")?"video":"image", category:monthProjectFolder(projName), project_id:f.project_id, tags:[], file_size:file.size}).catch(()=>{});
         return {name:file.name, type:file.type, url, uploaded_at:new Date().toISOString()};
       }));
       s("media",[...f.media,...uploaded]);
@@ -3046,7 +3058,8 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,pr
     setUploadingCover(true);
     try {
       const url = await uploadToStorage(file, "ready-content/covers");
-      if(onAddAsset) onAddAsset({name:file.name, file_url:url, file_type:"image", category:"Content", project_id:f.project_id, tags:["cover"], file_size:file.size, mime_type:file.type, created_date:new Date().toISOString()}).catch(()=>{});
+      const projName = projects.find(p=>p.id===f.project_id)?.title;
+      if(onAddAsset) onAddAsset({name:renameForTask(f.title,file.name,"cover"), file_url:url, file_type:"image", category:monthProjectFolder(projName), project_id:f.project_id, tags:["cover"], file_size:file.size}).catch(()=>{});
       s("cover",{name:file.name, type:file.type, url, uploaded_at:new Date().toISOString()});
     } catch(e) { alert("Cover upload failed: "+e.message); }
     setUploadingCover(false);
@@ -3058,7 +3071,8 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,pr
     setUploadingStory(true);
     try {
       const url = await uploadToStorage(file, "ready-content/stories");
-      if(onAddAsset) onAddAsset({name:file.name, file_url:url, file_type:file.type.startsWith("video")?"video":"image", category:"Content", project_id:f.project_id, tags:["story"], file_size:file.size, mime_type:file.type, created_date:new Date().toISOString()}).catch(()=>{});
+      const projName = projects.find(p=>p.id===f.project_id)?.title;
+      if(onAddAsset) onAddAsset({name:renameForTask(f.title,file.name,"story"), file_url:url, file_type:file.type.startsWith("video")?"video":"image", category:monthProjectFolder(projName), project_id:f.project_id, tags:["story"], file_size:file.size}).catch(()=>{});
       s("storyImage",{name:file.name, type:file.type, url, uploaded_at:new Date().toISOString()});
     } catch(e) { alert("Story upload failed: "+e.message); }
     setUploadingStory(false);
@@ -4040,9 +4054,10 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
     if(!valid.length) return;
     setUploading(true);
     try {
-      const uploaded = await Promise.all(valid.map(async file=>{
+      const projName = projects.find(p=>p.id===f.project_id)?.title;
+      const uploaded = await Promise.all(valid.map(async (file,i)=>{
         const url = await uploadToStorage(file, "ready-content");
-        if(onAddAsset) onAddAsset({name:file.name, file_url:url, file_type:file.type.startsWith("video")?"video":"image", category:"Content", project_id:f.project_id, tags:[], file_size:file.size, mime_type:file.type, created_date:new Date().toISOString()}).catch(()=>{});
+        if(onAddAsset) onAddAsset({name:renameForTask(f.title,file.name,valid.length>1?String(i+1):""), file_url:url, file_type:file.type.startsWith("video")?"video":"image", category:monthProjectFolder(projName), project_id:f.project_id, tags:[], file_size:file.size}).catch(()=>{});
         return {name:file.name, type:file.type, url, uploaded_at:new Date().toISOString()};
       }));
       s("media",[...f.media,...uploaded]);
@@ -4057,7 +4072,8 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
     setUploadingCover(true);
     try {
       const url = await uploadToStorage(file, "ready-content/covers");
-      if(onAddAsset) onAddAsset({name:file.name, file_url:url, file_type:"image", category:"Content", project_id:f.project_id, tags:["cover"], file_size:file.size, mime_type:file.type, created_date:new Date().toISOString()}).catch(()=>{});
+      const projName = projects.find(p=>p.id===f.project_id)?.title;
+      if(onAddAsset) onAddAsset({name:renameForTask(f.title,file.name,"cover"), file_url:url, file_type:"image", category:monthProjectFolder(projName), project_id:f.project_id, tags:["cover"], file_size:file.size}).catch(()=>{});
       s("cover",{name:file.name, type:file.type, url, uploaded_at:new Date().toISOString()});
     } catch(e) { alert("Cover upload failed: "+e.message); }
     setUploadingCover(false);
@@ -4069,7 +4085,8 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
     setUploadingStory(true);
     try {
       const url = await uploadToStorage(file, "ready-content/stories");
-      if(onAddAsset) onAddAsset({name:file.name, file_url:url, file_type:file.type.startsWith("video")?"video":"image", category:"Content", project_id:f.project_id, tags:["story"], file_size:file.size, mime_type:file.type, created_date:new Date().toISOString()}).catch(()=>{});
+      const projName = projects.find(p=>p.id===f.project_id)?.title;
+      if(onAddAsset) onAddAsset({name:renameForTask(f.title,file.name,"story"), file_url:url, file_type:file.type.startsWith("video")?"video":"image", category:monthProjectFolder(projName), project_id:f.project_id, tags:["story"], file_size:file.size}).catch(()=>{});
       s("storyImage",{name:file.name, type:file.type, url, uploaded_at:new Date().toISOString()});
     } catch(e) { alert("Story upload failed: "+e.message); }
     setUploadingStory(false);
@@ -6382,7 +6399,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
   );
 }
 
-function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset}) {
+function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset}) {
   const [tab,setTab] = usePersistentState(`sf_tab_client_${client?.id}`,"overview");
   const [showEdit,setShowEdit] = useState(false);
   const [confirmDelete,setConfirmDelete] = useState(false);
@@ -6527,15 +6544,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
         </div>
       )}
       {tab==="assets"&&(
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
-          {cAssets.map(a=>(
-            <AssetCard key={a.id} asset={a} proj={cProjects.find(p=>p.id===a.project_id)} folders={[...new Set(cAssets.map(x=>x.category).filter(Boolean))]} onUpdate={onUpdateAsset} onDelete={onDeleteAsset}/>
-          ))}
-          {cAssets.length===0&&<div style={{gridColumn:"1/-1",padding:"40px",textAlign:"center",color:"var(--text3)"}}>
-            <Ico d={Icons.assets} size={36} stroke="var(--text3)"/>
-            <p style={{marginTop:10}}>No assets yet</p>
-          </div>}
-        </div>
+        <FolderBrowser assets={cAssets} projects={cProjects} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset} onDeleteAsset={onDeleteAsset} storagePrefix={`assets/client-${client.id}`} storageKey={`sf_extra_folders_${client.id}`}/>
       )}
       {tab==="calendar"&&<CalendarView posts={cPosts} onPostClick={onPostClick}/>}
       {tab==="brain"&&(
@@ -7203,6 +7212,169 @@ function AssetCard({asset:a, proj, folders=[], onUpdate, onDelete}) {
 }
 
 // ════════════════════════════════════════════════════════════════
+// FOLDER BROWSER — month → project folder hierarchy (built on top of the
+// asset "category" field, "/"-joined). Supports grid/list view, creating
+// new (empty) folders, drag-and-drop to move files between folders, and
+// drag-and-drop of OS files onto the panel to upload into the open folder.
+// ════════════════════════════════════════════════════════════════
+function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAsset, storagePrefix="assets", storageKey="sf_extra_folders"}) {
+  const [path, setPath] = useState([]);
+  const [view, setView] = useState("grid");
+  const [extraFolders, setExtraFolders] = useState(()=>{
+    try { return JSON.parse(localStorage.getItem(storageKey)||"[]"); } catch(e){ return []; }
+  });
+  const [newFolderName, setNewFolderName] = useState("");
+  const [showNewFolder, setShowNewFolder] = useState(false);
+  const [dragOverFolder, setDragOverFolder] = useState(null);
+  const [dragOverPanel, setDragOverPanel] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const currentPath = path.join("/");
+  const persistExtra = (list) => { setExtraFolders(list); try{ localStorage.setItem(storageKey, JSON.stringify(list)); }catch(e){} };
+
+  const childFolders = (() => {
+    const set = new Set();
+    assets.forEach(a=>{
+      const segs = (a.category||"").split("/").filter(Boolean);
+      if(segs.length>path.length && path.every((p,i)=>segs[i]===p)) set.add(segs[path.length]);
+    });
+    extraFolders.forEach(fp=>{
+      const segs = fp.split("/").filter(Boolean);
+      if(segs.length===path.length+1 && path.every((p,i)=>segs[i]===p)) set.add(segs[path.length]);
+    });
+    return [...set].sort();
+  })();
+
+  const filesHere = assets.filter(a=>(a.category||"").split("/").filter(Boolean).join("/")===currentPath);
+
+  const goto = (i) => setPath(path.slice(0,i));
+  const openFolder = (name) => setPath([...path, name]);
+
+  const createFolder = () => {
+    const name = newFolderName.trim();
+    if(!name) return;
+    const fp = [...path, name].join("/");
+    if(!extraFolders.includes(fp)) persistExtra([...extraFolders, fp]);
+    setNewFolderName(""); setShowNewFolder(false);
+  };
+
+  const moveAssetTo = (assetId, folderPath) => { onUpdateAsset && onUpdateAsset(assetId, {category: folderPath}); };
+
+  const handleDropFiles = async (fileList) => {
+    const files = Array.from(fileList||[]);
+    if(!files.length || !onAddAsset) return;
+    setUploading(true);
+    try {
+      for(const file of files) {
+        const url = await uploadToStorage(file, `${storagePrefix}/${currentPath||"root"}`);
+        await onAddAsset({name:file.name, file_url:url, file_type:file.type.startsWith("video")?"video":file.type.startsWith("image")?"image":"file", category:currentPath, project_id:null, tags:[], file_size:file.size});
+      }
+    } catch(e){}
+    setUploading(false);
+  };
+
+  const onPanelDrop = (e) => {
+    e.preventDefault(); setDragOverPanel(false);
+    if(e.dataTransfer.files && e.dataTransfer.files.length) handleDropFiles(e.dataTransfer.files);
+  };
+
+  return (
+    <div onDragOver={e=>{e.preventDefault(); if(e.dataTransfer.types.includes("Files")) setDragOverPanel(true);}}
+      onDragLeave={()=>setDragOverPanel(false)} onDrop={onPanelDrop}
+      style={{display:"flex",flexDirection:"column",gap:14,border:dragOverPanel?"2px dashed var(--accent)":"2px dashed transparent",borderRadius:"var(--r)",padding:dragOverPanel?8:0,transition:"all 0.15s"}}>
+
+      {/* Breadcrumb + controls */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap",fontSize:13}}>
+          <span onClick={()=>goto(0)} onDragOver={e=>{e.preventDefault();setDragOverFolder("__root__");}} onDragLeave={()=>setDragOverFolder(null)}
+            onDrop={e=>{e.preventDefault();setDragOverFolder(null);const id=e.dataTransfer.getData("text/plain");if(id)moveAssetTo(id,"");}}
+            style={{cursor:"pointer",fontWeight:path.length===0?700:500,color:path.length===0?"var(--text1)":"var(--accent)",padding:"3px 6px",borderRadius:6,background:dragOverFolder==="__root__"?"var(--accent)22":"transparent"}}>All Files</span>
+          {path.map((seg,i)=>(
+            <React.Fragment key={i}>
+              <span style={{color:"var(--text3)"}}>/</span>
+              <span onClick={()=>goto(i+1)} onDragOver={e=>{e.preventDefault();setDragOverFolder(i);}} onDragLeave={()=>setDragOverFolder(null)}
+                onDrop={e=>{e.preventDefault();setDragOverFolder(null);const id=e.dataTransfer.getData("text/plain");if(id)moveAssetTo(id,path.slice(0,i+1).join("/"));}}
+                style={{cursor:"pointer",fontWeight:i===path.length-1?700:500,color:i===path.length-1?"var(--text1)":"var(--accent)",padding:"3px 6px",borderRadius:6,background:dragOverFolder===i?"var(--accent)22":"transparent"}}>{seg}</span>
+            </React.Fragment>
+          ))}
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          {showNewFolder ? (
+            <div style={{display:"flex",gap:4}}>
+              <input autoFocus value={newFolderName} onChange={e=>setNewFolderName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")createFolder();if(e.key==="Escape"){setShowNewFolder(false);setNewFolderName("");}}}
+                placeholder="Folder name" style={{fontSize:12,padding:"6px 8px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)"}}/>
+              <button onClick={createFolder} style={{fontSize:11,fontWeight:700,padding:"6px 10px",borderRadius:6,border:"none",background:"var(--accent)",color:"#fff",cursor:"pointer"}}>Add</button>
+              <button onClick={()=>{setShowNewFolder(false);setNewFolderName("");}} style={{fontSize:11,padding:"6px 10px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",cursor:"pointer"}}>×</button>
+            </div>
+          ) : (
+            <button onClick={()=>setShowNewFolder(true)} style={{display:"flex",alignItems:"center",gap:5,fontSize:12,fontWeight:600,padding:"6px 10px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",cursor:"pointer"}}>
+              <Ico d={Icons.plus} size={12}/> New Folder
+            </button>
+          )}
+          <div style={{display:"flex",border:"1px solid var(--border)",borderRadius:6,overflow:"hidden"}}>
+            <button onClick={()=>setView("grid")} style={{padding:"6px 10px",border:"none",cursor:"pointer",fontSize:11,fontWeight:700,background:view==="grid"?"var(--accent)":"var(--surface)",color:view==="grid"?"#fff":"var(--text2)"}}>Grid</button>
+            <button onClick={()=>setView("list")} style={{padding:"6px 10px",border:"none",cursor:"pointer",fontSize:11,fontWeight:700,background:view==="list"?"var(--accent)":"var(--surface)",color:view==="list"?"#fff":"var(--text2)"}}>List</button>
+          </div>
+        </div>
+      </div>
+
+      {uploading&&<div style={{fontSize:12,color:"var(--text3)"}}><Spinner size={12}/> Uploading dropped file(s)…</div>}
+
+      {/* Folder tiles */}
+      {childFolders.length>0&&(
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:10}}>
+          {childFolders.map(name=>(
+            <div key={name} onClick={()=>openFolder(name)}
+              onDragOver={e=>{e.preventDefault();setDragOverFolder(name);}} onDragLeave={()=>setDragOverFolder(null)}
+              onDrop={e=>{e.preventDefault();setDragOverFolder(null);const id=e.dataTransfer.getData("text/plain");if(id)moveAssetTo(id,[...path,name].join("/"));}}
+              style={{display:"flex",alignItems:"center",gap:8,padding:"12px 14px",borderRadius:"var(--rs)",border:`1px solid ${dragOverFolder===name?"var(--accent)":"var(--border)"}`,background:dragOverFolder===name?"var(--accent)11":"var(--surface)",cursor:"pointer"}}>
+              <span style={{fontSize:20}}>📁</span>
+              <span style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Files in this folder */}
+      {view==="grid" ? (
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
+          {filesHere.map(a=>(
+            <div key={a.id} draggable onDragStart={e=>e.dataTransfer.setData("text/plain", a.id)}>
+              <AssetCard asset={a} proj={projects.find(p=>p.id===a.project_id)} folders={[currentPath]} onUpdate={onUpdateAsset} onDelete={onDeleteAsset}/>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+          {filesHere.map(a=>(
+            <div key={a.id} draggable onDragStart={e=>e.dataTransfer.setData("text/plain", a.id)}
+              style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderBottom:"1px solid var(--border)",background:"var(--surface)"}}>
+              <span style={{fontSize:16}}>{a.file_type==="video"?"🎬":a.file_type==="image"?"🖼️":"📄"}</span>
+              <span style={{flex:1,fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</span>
+              <span style={{fontSize:11,color:"var(--text3)",width:70}}>{a.file_size?`${(a.file_size/1024/1024).toFixed(1)} MB`:""}</span>
+              {a.file_url&&a.file_url!="#"&&<>
+                <a href={a.file_url} target="_blank" rel="noreferrer" style={{fontSize:11,color:"var(--accent)",fontWeight:600,textDecoration:"none"}}>Open</a>
+                <a href={a.file_url} download={a.name} target="_blank" rel="noreferrer" style={{fontSize:11,color:"var(--accent)",fontWeight:600,textDecoration:"none"}}>Download</a>
+              </>}
+              <button onClick={()=>{const n=prompt("Rename file",a.name); if(n&&n.trim()&&onUpdateAsset) onUpdateAsset(a.id,{name:n.trim()});}} style={{fontSize:11,color:"var(--text3)",fontWeight:600,background:"none",border:"none",cursor:"pointer"}}>Rename</button>
+              <button onClick={()=>{if(confirm(`Delete "${a.name}"?`)&&onDeleteAsset) onDeleteAsset(a.id);}} style={{fontSize:11,color:"#ef4444",fontWeight:600,background:"none",border:"none",cursor:"pointer"}}>Delete</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {childFolders.length===0&&filesHere.length===0&&(
+        <div style={{padding:"50px",textAlign:"center",color:"var(--text3)"}}>
+          <Ico d={Icons.assets} size={36} stroke="var(--text3)"/>
+          <p style={{marginTop:10}}>This folder is empty</p>
+          <p style={{fontSize:12,marginTop:4}}>Drag files here, or use "Upload Asset" / "New Folder"</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
 // ASSETS PAGE
 // ════════════════════════════════════════════════════════════════
 function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset}) {
@@ -7302,10 +7474,6 @@ function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset}) {
       )}
 
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-        <select value={catF} onChange={e=>setCatF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12}}>
-          <option value="all">All Categories</option>
-          {cats.map(c=><option key={c} value={c}>{c}</option>)}
-        </select>
         <select value={typeF} onChange={e=>setTypeF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12}}>
           <option value="all">All Types</option>
           <option value="image">Images</option>
@@ -7314,16 +7482,7 @@ function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset}) {
         </select>
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
-        {filtered.map(a=>(
-          <AssetCard key={a.id} asset={a} proj={projects.find(p=>p.id===a.project_id)} folders={cats} onUpdate={onUpdateAsset} onDelete={onDeleteAsset}/>
-        ))}
-        {filtered.length===0&&<div style={{gridColumn:"1/-1",padding:"60px",textAlign:"center",color:"var(--text3)"}}>
-          <Ico d={Icons.assets} size={40} stroke="var(--text3)"/>
-          <p style={{marginTop:10,fontWeight:600}}>No assets yet</p>
-          <p style={{fontSize:12,marginTop:4}}>Click "Upload Asset" to add your first file</p>
-        </div>}
-      </div>
+      <FolderBrowser assets={filtered} projects={projects} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset} onDeleteAsset={onDeleteAsset} storagePrefix="assets" storageKey="sf_extra_folders"/>
     </div>
   );
 }
@@ -23493,7 +23652,7 @@ Return ONLY valid JSON (no markdown, no explanation):
               currentUser={currentUser} onToggleHide={toggleHideClient}/>
           );
           return (
-            <ClientDetailPage client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset}
+            <ClientDetailPage client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} onAddAsset={addAsset}
               integrations={data.integrations||[]}
               invoices={data.invoices||[]}
               leads={data.leads||[]}
