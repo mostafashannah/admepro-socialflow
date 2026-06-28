@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.07";
+const APP_VERSION = "beta 3.08";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -954,7 +954,7 @@ async function publishPost(post, integration) {
       page_id: creds.page_id||"",
       access_token: creds.access_token||"",
       message: [post.caption, post.hashtags].filter(Boolean).join("\n\n"),
-      image_url: (parseJ(post.design_urls||"[]"))[0]||"",
+      image_url: (Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]"))[0]||"",
     }),
   });
   const d = await r.json();
