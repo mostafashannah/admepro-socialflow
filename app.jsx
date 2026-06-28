@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.14";
+const APP_VERSION = "beta 3.15";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6382,7 +6382,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
   );
 }
 
-function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[]}) {
+function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset}) {
   const [tab,setTab] = usePersistentState(`sf_tab_client_${client?.id}`,"overview");
   const [showEdit,setShowEdit] = useState(false);
   const [confirmDelete,setConfirmDelete] = useState(false);
@@ -6529,16 +6529,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
       {tab==="assets"&&(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
           {cAssets.map(a=>(
-            <div key={a.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
-              <div style={{height:120,background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                <Ico d={a.file_type==="video"?Icons.play:Icons.assets} size={32} stroke="var(--text3)"/>
-              </div>
-              <div style={{padding:"12px 14px"}}>
-                <p style={{fontWeight:600,fontSize:13}}>{a.name}</p>
-                <p style={{fontSize:11,color:"var(--text3)",marginTop:3}}>{a.category}</p>
-                {a.tags&&<div style={{display:"flex",gap:4,marginTop:6,flexWrap:"wrap"}}>{a.tags.map(t=><span key={t} style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:"var(--surface2)",color:"var(--text3)",border:"1px solid var(--border)"}}>{t}</span>)}</div>}
-              </div>
-            </div>
+            <AssetCard key={a.id} asset={a} proj={cProjects.find(p=>p.id===a.project_id)} folders={[...new Set(cAssets.map(x=>x.category).filter(Boolean))]} onUpdate={onUpdateAsset} onDelete={onDeleteAsset}/>
           ))}
           {cAssets.length===0&&<div style={{gridColumn:"1/-1",padding:"40px",textAlign:"center",color:"var(--text3)"}}>
             <Ico d={Icons.assets} size={36} stroke="var(--text3)"/>
@@ -7145,9 +7136,76 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
 }
 
 // ════════════════════════════════════════════════════════════════
+// ASSET CARD — shared thumbnail + rename/move-to-folder/delete editor,
+// used by both the global Assets Library and a client's Assets tab.
+// ════════════════════════════════════════════════════════════════
+function AssetCard({asset:a, proj, folders=[], onUpdate, onDelete}) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(a.name||"");
+  const [folder, setFolder] = useState(a.category||"");
+  const [newFolder, setNewFolder] = useState("");
+  const [confirmDel, setConfirmDel] = useState(false);
+  const isImage = a.file_type==="image"||(a.file_url||"").match(/\.(jpg|jpeg|png|gif|webp|svg)/i);
+  const isVideo = a.file_type==="video"||(a.file_url||"").match(/\.(mp4|mov|webm|m4v)/i);
+
+  const save = () => {
+    const cat = (newFolder.trim()||folder||a.category||"");
+    onUpdate && onUpdate(a.id, {name: name.trim()||a.name, category: cat});
+    setEditing(false); setNewFolder("");
+  };
+
+  return (
+    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+      <div style={{height:140,background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden"}}>
+        {isImage&&a.file_url&&a.file_url!="#"
+          ? <img src={a.file_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt={a.name}/>
+          : isVideo&&a.file_url&&a.file_url!="#"
+          ? <video src={a.file_url} controls playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+          : <Ico d={isVideo?Icons.play:Icons.assets} size={32} stroke="var(--text3)"/>
+        }
+      </div>
+      <div style={{padding:"10px 12px"}}>
+        {editing ? (
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            <input value={name} onChange={e=>setName(e.target.value)} placeholder="File name" style={{fontSize:12,padding:"6px 8px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)"}}/>
+            <select value={folder} onChange={e=>setFolder(e.target.value)} style={{fontSize:12,padding:"6px 8px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)"}}>
+              <option value="">— No folder —</option>
+              {folders.map(f=><option key={f} value={f}>{f}</option>)}
+            </select>
+            <input value={newFolder} onChange={e=>setNewFolder(e.target.value)} placeholder="Or create new folder…" style={{fontSize:12,padding:"6px 8px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)"}}/>
+            <div style={{display:"flex",gap:6,marginTop:2}}>
+              <button onClick={save} style={{flex:1,fontSize:11,fontWeight:700,padding:"6px 0",borderRadius:6,border:"none",background:"var(--accent)",color:"#fff",cursor:"pointer"}}>Save</button>
+              <button onClick={()=>{setEditing(false);setName(a.name||"");setFolder(a.category||"");setNewFolder("");}} style={{fontSize:11,fontWeight:600,padding:"6px 10px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",cursor:"pointer"}}>Cancel</button>
+            </div>
+            {confirmDel ? (
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={()=>{onDelete&&onDelete(a.id);}} style={{flex:1,fontSize:11,fontWeight:700,padding:"6px 0",borderRadius:6,border:"none",background:"#ef4444",color:"#fff",cursor:"pointer"}}>Confirm delete</button>
+                <button onClick={()=>setConfirmDel(false)} style={{fontSize:11,padding:"6px 10px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",cursor:"pointer"}}>Cancel</button>
+              </div>
+            ) : (
+              <button onClick={()=>setConfirmDel(true)} style={{fontSize:11,fontWeight:600,padding:"6px 0",borderRadius:6,border:"1px solid #ef444455",background:"transparent",color:"#ef4444",cursor:"pointer"}}>Delete asset</button>
+            )}
+          </div>
+        ) : (
+          <>
+            <p style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</p>
+            <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{a.category||"Uncategorized"}</p>
+            {proj&&<p style={{fontSize:10,color:"var(--text3)",marginTop:4}}>{proj.client_name}</p>}
+            <div style={{display:"flex",gap:8,marginTop:8}}>
+              {a.file_url&&a.file_url!="#"&&<a href={a.file_url} target="_blank" rel="noreferrer" style={{fontSize:11,color:"var(--accent)",fontWeight:600,textDecoration:"none"}}>Open</a>}
+              {onUpdate&&<button onClick={()=>setEditing(true)} style={{fontSize:11,color:"var(--text3)",fontWeight:600,background:"none",border:"none",cursor:"pointer",padding:0}}>Rename / Move</button>}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
 // ASSETS PAGE
 // ════════════════════════════════════════════════════════════════
-function AssetsPage({assets,projects,onAddAsset}) {
+function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset}) {
   const [catF,setCatF] = useState("all");
   const [typeF,setTypeF] = useState("all");
   const [uploading,setUploading] = useState(false);
@@ -7257,38 +7315,9 @@ function AssetsPage({assets,projects,onAddAsset}) {
       </div>
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
-        {filtered.map(a=>{
-          const proj = projects.find(p=>p.id===a.project_id);
-          const isImage = a.file_type==="image"||(a.file_url||"").match(/\.(jpg|jpeg|png|gif|webp|svg)/i);
-          const isVideo = a.file_type==="video"||(a.file_url||"").match(/\.(mp4|mov|webm|m4v)/i);
-          return (
-            <div key={a.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden",cursor:"pointer",transition:"all 0.18s"}}
-              onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 20px var(--shadow)";}}
-              onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="";}}>
-              <div style={{height:140,background:`linear-gradient(135deg,${clr(a.name)}22,${clr(a.name+"x")}11)`,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden"}}>
-                {isImage&&a.file_url&&a.file_url!="#"
-                  ? <img src={a.file_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt={a.name}/>
-                  : isVideo&&a.file_url&&a.file_url!="#"
-                  ? <video src={a.file_url} controls playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}} onClick={e=>e.stopPropagation()}/>
-                  : <Ico d={isVideo?Icons.play:Icons.assets} size={40} stroke={clr(a.name)}/>
-                }
-                <span style={{position:"absolute",top:8,right:8,fontSize:9,padding:"2px 6px",borderRadius:4,background:"#00000044",color:"#fff",fontWeight:700}}>{(a.file_type||"file").toUpperCase()}</span>
-                {a.file_url&&a.file_url!="#"&&(
-                  <a href={a.file_url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()}
-                    style={{position:"absolute",bottom:6,right:6,padding:"3px 8px",borderRadius:6,background:"#000000aa",color:"#fff",fontSize:10,fontWeight:600,textDecoration:"none"}}>
-                    Open 
-                  </a>
-                )}
-              </div>
-              <div style={{padding:"12px 14px"}}>
-                <p style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</p>
-                <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{a.category}</p>
-                {proj&&<p style={{fontSize:10,color:"var(--text3)",marginTop:4}}> {proj.client_name}</p>}
-                {a.tags&&<div style={{display:"flex",gap:3,marginTop:6,flexWrap:"wrap"}}>{(Array.isArray(a.tags)?a.tags:a.tags.split(",")).slice(0,3).map(t=><span key={t} style={{fontSize:9,padding:"1px 5px",borderRadius:4,background:"var(--surface2)",color:"var(--text3)",border:"1px solid var(--border)"}}>{t}</span>)}</div>}
-              </div>
-            </div>
-          );
-        })}
+        {filtered.map(a=>(
+          <AssetCard key={a.id} asset={a} proj={projects.find(p=>p.id===a.project_id)} folders={cats} onUpdate={onUpdateAsset} onDelete={onDeleteAsset}/>
+        ))}
         {filtered.length===0&&<div style={{gridColumn:"1/-1",padding:"60px",textAlign:"center",color:"var(--text3)"}}>
           <Ico d={Icons.assets} size={40} stroke="var(--text3)"/>
           <p style={{marginTop:10,fontWeight:600}}>No assets yet</p>
@@ -22155,6 +22184,16 @@ function App() {
     logActivity("Asset Uploaded","clients",assetData.name||"","success","",currentUser?.email||"admin");
   };
 
+  const updateAsset = async (id, patch) => {
+    setData(d=>({...d, assets:d.assets.map(a=>a.id===id?{...a,...patch}:a)}));
+    try { await ue("Asset", id, patch); } catch(e){}
+  };
+
+  const deleteAsset = async (id) => {
+    setData(d=>({...d, assets:d.assets.filter(a=>a.id!==id)}));
+    try { await de("Asset", id); } catch(e){}
+  };
+
   const updateClientTask = (id, updates) => {
     setData(d=>({...d, tasks:d.tasks.map(t=>t.id===id?{...t,...updates}:t)}));
   };
@@ -23454,7 +23493,7 @@ Return ONLY valid JSON (no markdown, no explanation):
               currentUser={currentUser} onToggleHide={toggleHideClient}/>
           );
           return (
-            <ClientDetailPage client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets}
+            <ClientDetailPage client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset}
               integrations={data.integrations||[]}
               invoices={data.invoices||[]}
               leads={data.leads||[]}
@@ -23503,7 +23542,7 @@ Return ONLY valid JSON (no markdown, no explanation):
 />}
         {page==="tasks"&&<TasksPage posts={data.posts} projects={data.projects} team={data.team} onPostClick={setSelectedPost} onAdd={addPost} clientTasks={(data.tasks||[])} onUpdateTask={updateClientTask} onAddReady={addReadyContent} onAddAsset={addAsset}/>}
         {page==="calendar"&&<div className="fade-in"><h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:24,fontWeight:800,marginBottom:24}}>Content Calendar</h2><CalendarView posts={data.posts} onPostClick={setSelectedPost}/></div>}
-        {page==="assets"&&<AssetsPage assets={data.assets} projects={data.projects} onAddAsset={addAsset}/>}
+        {page==="assets"&&<AssetsPage assets={data.assets} projects={data.projects} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset}/>}
         {page==="templates"&&<TemplatesPage templates={data.templates}/>}
         {page==="quotes"&&["admin","account_manager","accountant"].includes(currentUser?.role)&&(
           <QuotesPage
