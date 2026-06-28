@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.19";
+const APP_VERSION = "beta 3.20";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17764,6 +17764,8 @@ Format answers for readability, not as a wall of text:
 4. The action block(s) are SEPARATE from your reply. Your text reply comes FIRST (answer / confirm the plan), then each [ACTION:{...}] on its own new line.
 4b. KEEP ACTION JSON COMPACT. Each [ACTION:{...}] must be a SINGLE LINE of valid JSON with NO real newlines inside string values (use \\n if you must). NEVER paste full bilingual captions, long briefs, or hashtag walls inside ACTION JSON — put a SHORT description (≤120 chars) in the description field and put the full caption/brief in your normal chat reply text BEFORE the action blocks. This is critical: long JSON strings break parsing and cause only some actions to run.
 5. Never include action blocks for pure questions/answers.
+5b. NEVER write text that claims or implies you're creating/updating/deleting something ("Creating a new X now", "Done!", "I've added it") UNLESS that exact same reply also includes the matching [ACTION:{...}] block. If you're not ready to act yet (missing info), ask the question instead — don't write a future-tense or completed-tense confirmation sentence with no action block behind it.
+5c. RESOLVING "same/that/it/this one again" references: when the user refers back to something by pronoun or phrase like "same name", "that one", "the one I just made/deleted", "do it again" — re-read the conversation history above and copy the EXACT name/title used in the most recent matching turn (e.g. the name just confirmed in your own last "created"/"deleted" message). Do NOT substitute a different, already-existing, similarly-themed name from earlier context (e.g. don't swap "July Calendar" for "June Calendar" just because a "June Calendar" project also exists) — get it from the actual referent, and if genuinely ambiguous, ask which one instead of guessing.
 6. If info is missing for an action, ask for it conversationally — don't guess randomly.
 7. Be conversational, warm, professional. Use bullet points or bold for clarity when listing data.
 8. Response length: match the question. Short question = short answer. "List all overdue" = full list.
