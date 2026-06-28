@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.08";
+const APP_VERSION = "beta 3.09";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -947,6 +947,11 @@ async function publishPost(post, integration) {
   // can arrive already as an object — parseJ()/JSON.parse() on an object throws
   // and silently falls back to {}, wiping out page_id/access_token.
   const creds = typeof integration.credentials==="string" ? parseJ(integration.credentials,{}) : (integration.credentials||{});
+  // design_urls is set by the Ready Content flow; design_assets is set when
+  // photos are uploaded during the Design stage. Either can hold the image.
+  const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
+  const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
+  const imageUrl = designUrls[0] || designAssets[0]?.url || "";
   const r = await fetch(PUBLISH_ENDPOINT, {
     method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({
@@ -954,7 +959,7 @@ async function publishPost(post, integration) {
       page_id: creds.page_id||"",
       access_token: creds.access_token||"",
       message: [post.caption, post.hashtags].filter(Boolean).join("\n\n"),
-      image_url: (Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]"))[0]||"",
+      image_url: imageUrl,
     }),
   });
   const d = await r.json();
