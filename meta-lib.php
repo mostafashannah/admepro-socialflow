@@ -48,11 +48,44 @@ function meta_publish($platform, $page_id, $access_token, $message, $image_url, 
             return [$code ?: 502, ['error' => 'Failed to create media container', 'detail' => $resp]];
         }
 
+        // The container starts out PENDING/IN_PROGRESS while Instagram downloads
+        // and processes the image; publishing before it reaches FINISHED fails
+        // with "Media ID is not available" (code 9007 / subcode 2207027). Poll
+        // status_code with a short backoff before attempting media_publish.
+        $status_ep = "https://graph.instagram.com/{$v}/{$resp['id']}?" . http_build_query([
+            'fields' => 'status_code', 'access_token' => $access_token,
+        ]);
+        for ($i = 0; $i < 10; $i++) {
+            usleep(($i === 0 ? 500 : 1500) * 1000);
+            [, $statusResp] = meta_curl_get($status_ep);
+            $status = $statusResp['status_code'] ?? null;
+            if ($status === 'FINISHED') break;
+            if ($status === 'ERROR') {
+                return [502, ['error' => 'Instagram failed to process the media', 'detail' => $statusResp]];
+            }
+        }
+
         $publish_ep = "https://graph.instagram.com/{$v}/{$page_id}/media_publish";
         return meta_curl($publish_ep, ['creation_id' => $resp['id'], 'access_token' => $access_token]);
     }
 
     return [400, ['error' => 'Unsupported platform. Supported: facebook, instagram']];
+}
+
+function meta_curl_get($endpoint) {
+    $ch = curl_init($endpoint);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_TIMEOUT        => 20,
+    ]);
+    $response  = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curl_err  = curl_error($ch);
+    curl_close($ch);
+
+    if ($curl_err) return [502, ['error' => "cURL error: {$curl_err}"]];
+    return [$http_code, json_decode($response, true) ?: ['raw' => $response]];
 }
 
 function meta_curl($endpoint, $post_data) {
