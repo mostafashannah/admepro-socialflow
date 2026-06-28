@@ -47,6 +47,41 @@ function graph_get($url, $params) {
     return [$code, json_decode($res, true)];
 }
 
+// "Automatic" best posting time (Client Brain → Scheduling). Meta's "online_followers"
+// metric returns a lifetime breakdown of {"0".."23" => follower_count} for the hour of
+// day (in the Page's/account's own timezone) when the audience is most active — exactly
+// what's needed to pick a real best time instead of a guess. Only available on
+// graph.facebook.com (Page-linked tokens); Instagram-Login-scoped tokens
+// (graph.instagram.com) don't expose this metric, so that case is reported back
+// to the frontend as unavailable so it can fall back to a manual time.
+if (($data["mode"] ?? "") === "best_time") {
+    $ig_login_token = $platform === "instagram" && str_starts_with($access_token, 'IGAA');
+    if ($ig_login_token) {
+        http_response_code(200);
+        echo json_encode(["ok" => false, "error" => "Automatic best-time data isn't available for Instagram accounts connected via Instagram Login. Switch to manual for this platform."]);
+        exit;
+    }
+    [$code, $resp] = graph_get("https://graph.facebook.com/{$v}/{$page_id}/insights", [
+        "metric"       => "online_followers",
+        "period"       => "lifetime",
+        "access_token" => $access_token,
+    ]);
+    $breakdown = $resp["data"][0]["values"][0]["value"] ?? null;
+    if ($code !== 200 || !$breakdown) {
+        http_response_code(200);
+        echo json_encode(["ok" => false, "error" => "No audience-activity data available yet for this account."]);
+        exit;
+    }
+    $bestHour = array_key_first($breakdown);
+    $bestCount = -1;
+    foreach ($breakdown as $hour => $count) {
+        if ($count > $bestCount) { $bestCount = $count; $bestHour = $hour; }
+    }
+    http_response_code(200);
+    echo json_encode(["ok" => true, "best_time" => sprintf("%02d:00", (int)$bestHour), "online_followers" => $breakdown]);
+    exit;
+}
+
 // Meta deprecates Insights metrics on a rolling basis, and a SINGLE invalid metric
 // makes the whole /insights call fail with "(#100) ... must be a valid insights metric",
 // blanking the entire panel. Fetch the batch first (one call when everything's valid);

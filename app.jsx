@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.03";
+const APP_VERSION = "beta 3.04";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6139,6 +6139,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
           posts={posts}
           projects={projects}
           comments={comments}
+          integrations={integrations}
         />
       )}
       {tab==="meta_insights"&&(
@@ -7987,7 +7988,7 @@ No markdown, no explanation, just the JSON array.`;
   );
 }
 
-function ClientIntelligenceTab({client, intelligence, onSave}) {
+function ClientIntelligenceTab({client, intelligence, onSave, integrations=[]}) {
   const existing = intelligence?.find(i=>i.client_id===client.id)||{};
   const [form, setForm] = useState({
     preferred_platforms: existing.preferred_platforms||[],
@@ -7998,6 +7999,10 @@ function ClientIntelligenceTab({client, intelligence, onSave}) {
     facebook_best_time: existing.facebook_best_time||"12:00",
     tiktok_best_time: existing.tiktok_best_time||"19:00",
     linkedin_best_time: existing.linkedin_best_time||"09:00",
+    instagram_time_mode: existing.instagram_time_mode||"manual",
+    facebook_time_mode: existing.facebook_time_mode||"manual",
+    tiktok_time_mode: existing.tiktok_time_mode||"manual",
+    linkedin_time_mode: existing.linkedin_time_mode||"manual",
     active_hours: existing.active_hours||"evening",
     timezone: existing.timezone||"Africa/Cairo",
     peak_engagement_days:existing.peak_engagement_days||[],
@@ -8009,8 +8014,38 @@ function ClientIntelligenceTab({client, intelligence, onSave}) {
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [autoState, setAutoState] = useState({}); // {[platform]: "loading"|"ok"|"error"}
+  const [autoError, setAutoError] = useState({});
   const sf = (k,v) => { setForm(p=>({...p,[k]:v})); setSaved(false); };
   const toggleArr = (k,v) => sf(k, form[k].includes(v)?form[k].filter(x=>x!==v):[...form[k],v]);
+
+  const fetchAutoBestTime = async (pl) => {
+    const integ = integrations.find(i=>i.app_key===pl && i.status==="active" && (!i.client_id||i.client_id===client.id));
+    const creds = integ ? (typeof integ.credentials==="string" ? parseJ(integ.credentials,{}) : (integ.credentials||{})) : null;
+    if(!creds?.page_id||!creds?.access_token){
+      setAutoState(s=>({...s,[pl]:"error"})); setAutoError(e=>({...e,[pl]:`No connected ${pl} integration found for ${client.name}.`}));
+      return;
+    }
+    setAutoState(s=>({...s,[pl]:"loading"}));
+    try{
+      const res = await fetch(META_INSIGHTS_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({mode:"best_time", platform:pl, page_id:creds.page_id, access_token:creds.access_token})});
+      const d = await res.json();
+      if(d.ok && d.best_time){
+        sf(`${pl}_best_time`, d.best_time);
+        setAutoState(s=>({...s,[pl]:"ok"}));
+      } else {
+        setAutoState(s=>({...s,[pl]:"error"})); setAutoError(e=>({...e,[pl]:d.error||"Couldn't fetch audience activity data."}));
+      }
+    }catch(err){
+      setAutoState(s=>({...s,[pl]:"error"})); setAutoError(e=>({...e,[pl]:"Network error fetching audience data."}));
+    }
+  };
+
+  const setTimeMode = (pl, mode) => {
+    sf(`${pl}_time_mode`, mode);
+    if(mode==="auto") fetchAutoBestTime(pl);
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -8064,13 +8099,31 @@ function ClientIntelligenceTab({client, intelligence, onSave}) {
       </Section>
 
       <Section title=" Best Posting Times">
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          {[["instagram"," Instagram"],["facebook"," Facebook"],["tiktok"," TikTok"],["linkedin"," LinkedIn"]].map(([pl,label])=>(
-            <div key={pl}>
-              <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>{label}</label>
-              <input type="time" value={form[`${pl}_best_time`]} onChange={e=>sf(`${pl}_best_time`,e.target.value)} style={inSt}/>
-            </div>
-          ))}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+          {[["instagram"," Instagram"],["facebook"," Facebook"],["tiktok"," TikTok"],["linkedin"," LinkedIn"]].map(([pl,label])=>{
+            const mode = form[`${pl}_time_mode`]||"manual";
+            const isAuto = mode==="auto";
+            const state = autoState[pl];
+            return (
+              <div key={pl}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}>
+                  <label style={{fontSize:12,fontWeight:600,color:"var(--text2)"}}>{label}</label>
+                  <div style={{display:"flex",gap:2,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:99,padding:2}}>
+                    {["manual","auto"].map(m=>(
+                      <button key={m} type="button" onClick={()=>setTimeMode(pl,m)} style={{
+                        padding:"3px 10px",borderRadius:99,border:"none",fontSize:10,fontWeight:700,cursor:"pointer",textTransform:"uppercase",letterSpacing:"0.04em",
+                        background:mode===m?"var(--accent)":"transparent", color:mode===m?"#fff":"var(--text3)",
+                      }}>{m}</button>
+                    ))}
+                  </div>
+                </div>
+                <input type="time" value={form[`${pl}_best_time`]} onChange={e=>sf(`${pl}_best_time`,e.target.value)} disabled={isAuto} style={{...inSt, opacity:isAuto?0.7:1}}/>
+                {isAuto&&state==="loading"&&<p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Fetching audience activity from {label.trim()}…</p>}
+                {isAuto&&state==="ok"&&<p style={{fontSize:11,color:"#10b981",marginTop:4}}> Set from live audience activity data.</p>}
+                {isAuto&&state==="error"&&<p style={{fontSize:11,color:"#ef4444",marginTop:4}}>{autoError[pl]||"Couldn't auto-detect — using last known time."} <button type="button" onClick={()=>fetchAutoBestTime(pl)} style={{background:"none",border:"none",color:"var(--accent)",cursor:"pointer",fontWeight:700,fontSize:11,padding:0}}>Retry</button></p>}
+              </div>
+            );
+          })}
         </div>
       </Section>
 
@@ -8140,7 +8193,7 @@ function ClientIntelligenceTab({client, intelligence, onSave}) {
 // CLIENT BRAIN TAB — consolidates Intelligence/Smart Intel/Memory/
 // Brand Training/Context File into one tab with sub-nav.
 // ════════════════════════════════════════════════════════════════
-function ClientBrainTab({client, knowledge, clientKnowledge, documents, currentUser, onUploadDoc, onSaveKnowledge, clientIntelligence, onSaveIntelligence, clientMemory, onUpsertMemory, onDeleteMemory, cPosts, posts, projects, comments}) {
+function ClientBrainTab({client, knowledge, clientKnowledge, documents, currentUser, onUploadDoc, onSaveKnowledge, clientIntelligence, onSaveIntelligence, clientMemory, onUpsertMemory, onDeleteMemory, cPosts, posts, projects, comments, integrations=[]}) {
   const isAdmin = currentUser?.role==="admin";
   const [sub,setSub] = usePersistentState(`sf_brain_sub_${client?.id}`,"profile");
   const SUBS = [
@@ -8164,7 +8217,7 @@ function ClientBrainTab({client, knowledge, clientKnowledge, documents, currentU
         <ClientMemoryTab client={client} clientMemory={clientMemory||[]} onUpsert={onUpsertMemory} onDelete={onDeleteMemory} currentUser={currentUser}/>
       )}
       {sub==="scheduling"&&(
-        <ClientIntelligenceTab client={client} intelligence={clientIntelligence} onSave={onSaveIntelligence}/>
+        <ClientIntelligenceTab client={client} intelligence={clientIntelligence} onSave={onSaveIntelligence} integrations={integrations}/>
       )}
       {sub==="training"&&(
         <BrandTrainingChat
