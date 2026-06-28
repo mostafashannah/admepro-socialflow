@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.20";
+const APP_VERSION = "beta 3.21";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7274,15 +7274,20 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
   const currentPath = path.join("/");
   const persistExtra = (list) => { setExtraFolders(list); try{ localStorage.setItem(storageKey, JSON.stringify(list)); }catch(e){} };
 
+  // Project folders are derived live from `projects` (not localStorage) so a
+  // freshly-created project's folder shows up immediately, even if this
+  // FolderBrowser instance was already mounted when the project was created.
+  const projectFolders = projects.map(p=>monthProjectFolder(p.title, p.created_at?new Date(p.created_at):new Date()));
+
   const childFolders = (() => {
     const set = new Set();
     assets.forEach(a=>{
       const segs = (a.category||"").split("/").filter(Boolean);
       if(segs.length>path.length && path.every((p,i)=>segs[i]===p)) set.add(segs[path.length]);
     });
-    extraFolders.forEach(fp=>{
+    [...extraFolders, ...projectFolders].forEach(fp=>{
       const segs = fp.split("/").filter(Boolean);
-      if(segs.length===path.length+1 && path.every((p,i)=>segs[i]===p)) set.add(segs[path.length]);
+      if(segs.length>path.length && path.every((p,i)=>segs[i]===p)) set.add(segs[path.length]);
     });
     return [...set].sort();
   })();
