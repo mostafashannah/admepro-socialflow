@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.10";
+const APP_VERSION = "beta 3.11";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -2578,7 +2578,7 @@ No markdown, no explanation. Return the JSON array only.`;
 
 // POST DETAIL MODAL
 // ════════════════════════════════════════════════════════════════
-function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[]}) {
+function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset}) {
   const [comment,setComment] = useState("");
   const [sending,setSending] = useState(false);
   const isManager = ["admin","account_manager"].includes(currentUser?.role);
@@ -2878,6 +2878,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
                       try {
                         const uploaded = await Promise.all(validFiles.map(async f=>{
                           const url = await uploadToStorage(f, `design/${post.id}`);
+                          if(onAddAsset) onAddAsset({name:f.name, file_url:url, file_type:f.type.startsWith("video")?"video":"image", category:"Design", project_id:post.project_id, tags:[], file_size:f.size, mime_type:f.type, created_date:new Date().toISOString()}).catch(()=>{});
                           return {name:f.name, type:f.type, url, uploaded_at:new Date().toISOString()};
                         }));
                         const newAssets = [...(post.design_assets||[]), ...uploaded];
@@ -2985,7 +2986,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
 // ════════════════════════════════════════════════════════════════
 // ADD POST MODAL — 2-step wizard
 // ════════════════════════════════════════════════════════════════
-function AddPostModal({open,onClose,projects,team,onAdd,onAddReady}) {
+function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset}) {
   const [step,setStep] = useState(1);
   const blankForm = {project_id:projects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:"",scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",content_mode:"new",platforms:[],platform_types:{},media:[],cover:null,publish_mode:"schedule"};
   const [f,setF] = useState({...blankForm});
@@ -3018,6 +3019,7 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady}) {
     try {
       const uploaded = await Promise.all(valid.map(async file=>{
         const url = await uploadToStorage(file, "ready-content");
+        if(onAddAsset) onAddAsset({name:file.name, file_url:url, file_type:file.type.startsWith("video")?"video":"image", category:"Content", project_id:f.project_id, tags:[], file_size:file.size, mime_type:file.type, created_date:new Date().toISOString()}).catch(()=>{});
         return {name:file.name, type:file.type, url, uploaded_at:new Date().toISOString()};
       }));
       s("media",[...f.media,...uploaded]);
@@ -3032,6 +3034,7 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady}) {
     setUploadingCover(true);
     try {
       const url = await uploadToStorage(file, "ready-content/covers");
+      if(onAddAsset) onAddAsset({name:file.name, file_url:url, file_type:"image", category:"Content", project_id:f.project_id, tags:["cover"], file_size:file.size, mime_type:file.type, created_date:new Date().toISOString()}).catch(()=>{});
       s("cover",{name:file.name, type:file.type, url, uploaded_at:new Date().toISOString()});
     } catch(e) { alert("Cover upload failed: "+e.message); }
     setUploadingCover(false);
@@ -3951,7 +3954,7 @@ No markdown, no explanation, just the JSON array.`);
 // ════════════════════════════════════════════════════════════════
 // ADD TASK MODAL (SINGLE)
 // ════════════════════════════════════════════════════════════════
-function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady}) {
+function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAddAsset}) {
   const blankForm = {
     title:"",client_id:"",project_id:"",description:"",
     assigned_to:"",scheduled_date:"",platform:"instagram",
@@ -3989,6 +3992,7 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady}) {
     try {
       const uploaded = await Promise.all(valid.map(async file=>{
         const url = await uploadToStorage(file, "ready-content");
+        if(onAddAsset) onAddAsset({name:file.name, file_url:url, file_type:file.type.startsWith("video")?"video":"image", category:"Content", project_id:f.project_id, tags:[], file_size:file.size, mime_type:file.type, created_date:new Date().toISOString()}).catch(()=>{});
         return {name:file.name, type:file.type, url, uploaded_at:new Date().toISOString()};
       }));
       s("media",[...f.media,...uploaded]);
@@ -4003,6 +4007,7 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady}) {
     setUploadingCover(true);
     try {
       const url = await uploadToStorage(file, "ready-content/covers");
+      if(onAddAsset) onAddAsset({name:file.name, file_url:url, file_type:"image", category:"Content", project_id:f.project_id, tags:["cover"], file_size:file.size, mime_type:file.type, created_date:new Date().toISOString()}).catch(()=>{});
       s("cover",{name:file.name, type:file.type, url, uploaded_at:new Date().toISOString()});
     } catch(e) { alert("Cover upload failed: "+e.message); }
     setUploadingCover(false);
@@ -6908,7 +6913,7 @@ function ProjectsPage({projects, posts, clients, team, assets, clientIntelligenc
 // ════════════════════════════════════════════════════════════════
 // ALL TASKS PAGE (Posts)
 // ════════════════════════════════════════════════════════════════
-function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdateTask,onAddReady}) {
+function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdateTask,onAddReady,onAddAsset}) {
   const [view,setView] = usePersistentState("sf_tasks_view","kanban");
   const [stageF,setStageF] = useState("all");
   const [platF,setPlatF] = useState("all");
@@ -7047,7 +7052,7 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
       {view==="kanban"&&<KanbanView posts={filtered} project={null} team={team} onPostClick={onPostClick}/>}
       {view==="list"&&<ListView posts={filtered} projects={projects} team={team} onPostClick={onPostClick}/>}
       {view==="calendar"&&<CalendarView posts={filtered} onPostClick={onPostClick}/>}
-      {showAdd&&<AddPostModal open onClose={()=>setShowAdd(false)} projects={projects} team={team} onAdd={async d=>{onAdd(d);setShowAdd(false);}} onAddReady={onAddReady ? async (list,opts)=>{await onAddReady(list,opts);setShowAdd(false);} : undefined}/>}
+      {showAdd&&<AddPostModal open onClose={()=>setShowAdd(false)} projects={projects} team={team} onAdd={async d=>{onAdd(d);setShowAdd(false);}} onAddReady={onAddReady ? async (list,opts)=>{await onAddReady(list,opts);setShowAdd(false);} : undefined} onAddAsset={onAddAsset}/>}
     </div>
   );
 }
@@ -23402,7 +23407,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   initialProjectId={selectedProjectId}
   onClearInitialProject={()=>setSelectedProjectId(null)}
 />}
-        {page==="tasks"&&<TasksPage posts={data.posts} projects={data.projects} team={data.team} onPostClick={setSelectedPost} onAdd={addPost} clientTasks={(data.tasks||[])} onUpdateTask={updateClientTask} onAddReady={addReadyContent}/>}
+        {page==="tasks"&&<TasksPage posts={data.posts} projects={data.projects} team={data.team} onPostClick={setSelectedPost} onAdd={addPost} clientTasks={(data.tasks||[])} onUpdateTask={updateClientTask} onAddReady={addReadyContent} onAddAsset={addAsset}/>}
         {page==="calendar"&&<div className="fade-in"><h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:24,fontWeight:800,marginBottom:24}}>Content Calendar</h2><CalendarView posts={data.posts} onPostClick={setSelectedPost}/></div>}
         {page==="assets"&&<AssetsPage assets={data.assets} projects={data.projects} onAddAsset={addAsset}/>}
         {page==="templates"&&<TemplatesPage templates={data.templates}/>}
@@ -23678,11 +23683,12 @@ Return ONLY valid JSON (no markdown, no explanation):
           if(cid) appendToContextFile(cid, ` Caption chosen for "${post.title}" (${post.platform||""}): "${captionText.slice(0,120)}${captionText.length>120?"…":""}"`);
         }}
         onMemoryLearn={upsertClientMemory}
+        onAddAsset={addAsset}
       />;
     })()}
 
     {/* Add Post */}
-    {showAddPost&&<AddPostModal open onClose={()=>{setShowAddPost(false);setAddPostForClient(null);}} projects={data.projects} team={data.team} onAdd={addPost} onAddReady={addReadyContent}/>}
+    {showAddPost&&<AddPostModal open onClose={()=>{setShowAddPost(false);setAddPostForClient(null);}} projects={data.projects} team={data.team} onAdd={addPost} onAddReady={addReadyContent} onAddAsset={addAsset}/>}
 
     {/* New Project Wizard — used by FAB, Dashboard, Projects page */}
     {(showFABProject||showAddProject)&&<ProjectWizard
@@ -23720,6 +23726,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       team={data.team}
       onAdd={async d=>{ await addPost(d); setToast("Task created and added to calendar"); }}
       onAddReady={addReadyContent}
+      onAddAsset={addAsset}
     />}
 
     {/* Monthly Brief — Create Modal */}
