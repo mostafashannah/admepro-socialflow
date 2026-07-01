@@ -202,12 +202,17 @@ try {
                 $text = $msgData['text'] ?? null;
                 $senderId = $c['value']['sender']['id'] ?? null;
                 if ($tag = storyContextTag($msgData)) { $text = $text ? "{$tag} {$text}" : $tag; }
+                // $channel (computed above from $body['object']) is 'instagram' or 'messenger' —
+                // this "changes" delivery shape isn't Instagram-exclusive, so hardcoding
+                // 'instagram' here mis-tagged real Facebook Messenger events, storing them
+                // under the wrong channel and sending replies with the wrong integration's
+                // credentials (Instagram's token/page_id instead of Facebook's).
                 if ($text && $senderId) {
-                    $senderName = fetchSenderName('instagram', $client['access_token'], $senderId);
-                    storeMessage($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, $senderName, $text);
+                    $senderName = fetchSenderName($channel, $client['access_token'], $senderId);
+                    storeMessage($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName, $text);
                     try {
-                        if ($client['is_own']) { maybeCreateLeadFromMessage($pdo, 'instagram', $senderId, $senderName, $text, null, $client['client_id']); }
-                        maybeAutoReply($pdo, $client['client_id'], $client['client_name'], 'instagram', $senderId, $senderName);
+                        if ($client['is_own']) { maybeCreateLeadFromMessage($pdo, $channel, $senderId, $senderName, $text, null, $client['client_id']); }
+                        maybeAutoReply($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName);
                     } catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
                 }
                 continue;
