@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.28";
+const APP_VERSION = "beta 3.29";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -2606,9 +2606,122 @@ No markdown, no explanation. Return the JSON array only.`;
   );
 }
 
+// ════════════════════════════════════════════════════════════════
+// ASSET PICKER MODAL — choose from existing assets or upload new
+// ════════════════════════════════════════════════════════════════
+function AssetPickerModal({open, assets=[], onPick, onClose, multiple=true}) {
+  const [q, setQ] = useState("");
+  const [selected, setSelected] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef(null);
+
+  useEffect(()=>{ if(open) setSelected([]); },[open]);
+  if(!open) return null;
+
+  const mediaAssets = assets.filter(a=>["image","video"].includes(a.file_type||(
+    (a.file_url||"").match(/\.(mp4|mov|webm|m4v)/i)?"video":
+    (a.file_url||"").match(/\.(jpg|jpeg|png|gif|webp|svg)/i)?"image":""
+  )));
+
+  const filtered = mediaAssets.filter(a=>{
+    if(!q) return true;
+    return (a.name||"").toLowerCase().includes(q.toLowerCase());
+  });
+
+  const toggle = (a) => {
+    if(multiple) {
+      setSelected(s=>s.find(x=>x.id===a.id)?s.filter(x=>x.id!==a.id):[...s,a]);
+    } else {
+      onPick([a]); onClose();
+    }
+  };
+
+  const handleUpload = async(files) => {
+    const list = Array.from(files||[]);
+    if(!list.length) return;
+    setUploading(true);
+    try {
+      const results = await Promise.all(list.map(async f=>{
+        const url = await uploadToStorage(f, "design/picker");
+        return {name:f.name, url, type:f.type, file_type:f.type.startsWith("video")?"video":"image"};
+      }));
+      if(multiple) { onPick(results); onClose(); }
+      else { onPick([results[0]]); onClose(); }
+    } catch(e){ alert("Upload failed — check connection"); }
+    setUploading(false);
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center",padding:16,backdropFilter:"blur(4px)"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"var(--surface)",borderRadius:"var(--r)",width:"100%",maxWidth:640,maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 24px 80px rgba(0,0,0,0.5)"}}>
+        {/* Header */}
+        <div style={{padding:"16px 20px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:12}}>
+          <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,fontSize:16,flex:1}}>Choose Media</h3>
+          <button onClick={()=>{setUploading(false);onClose();}} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text3)",fontSize:20,lineHeight:1}}>×</button>
+        </div>
+        {/* Search + Upload */}
+        <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",display:"flex",gap:8}}>
+          <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search assets…"
+            style={{flex:1,padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)"}}/>
+          <button onClick={()=>fileRef.current?.click()} disabled={uploading}
+            style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:8,background:"var(--accent)",color:"#fff",border:"none",cursor:uploading?"default":"pointer",fontWeight:700,fontSize:12,opacity:uploading?0.6:1,flexShrink:0}}>
+            {uploading?<Spinner size={12}/>:<Ico d={Icons.upload} size={13} stroke="#fff"/>}
+            {uploading?"Uploading…":"Upload New"}
+          </button>
+          <input ref={fileRef} type="file" multiple={multiple} accept="image/*,video/*" style={{display:"none"}}
+            onChange={e=>{handleUpload(e.target.files); e.target.value="";}}/>
+        </div>
+        {/* Grid */}
+        <div style={{flex:1,overflowY:"auto",padding:16}}>
+          {filtered.length===0?(
+            <div style={{textAlign:"center",padding:"40px 20px",color:"var(--text3)"}}>
+              <p style={{fontSize:28,marginBottom:8}}>🖼️</p>
+              <p style={{fontSize:14,fontWeight:600}}>No media assets yet</p>
+              <p style={{fontSize:12,marginTop:4}}>Upload a file using the button above</p>
+            </div>
+          ):(
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(110px,1fr))",gap:8}}>
+              {filtered.map(a=>{
+                const isSel = selected.find(x=>x.id===a.id);
+                const isVid = (a.file_type==="video")||((a.file_url||"").match(/\.(mp4|mov|webm|m4v)/i));
+                return (
+                  <div key={a.id} onClick={()=>toggle(a)} style={{position:"relative",aspectRatio:"1/1",borderRadius:8,overflow:"hidden",border:`2px solid ${isSel?"var(--accent)":"var(--border)"}`,cursor:"pointer",background:"var(--surface2)",transition:"border-color 0.15s"}}>
+                    {isVid?(
+                      <video src={a.file_url} muted preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                    ):(
+                      <img src={a.file_url} alt={a.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                    )}
+                    {isSel&&<div style={{position:"absolute",inset:0,background:"var(--accent)44",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      <div style={{width:24,height:24,borderRadius:99,background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        <Ico d="M5 13l4 4L19 7" size={14} stroke="#fff"/>
+                      </div>
+                    </div>}
+                    {isVid&&<div style={{position:"absolute",bottom:4,right:4,background:"rgba(0,0,0,0.6)",borderRadius:4,padding:"2px 5px",fontSize:9,color:"#fff",fontWeight:700}}>VIDEO</div>}
+                    <div style={{position:"absolute",bottom:0,left:0,right:0,background:"linear-gradient(transparent,rgba(0,0,0,0.6))",padding:"12px 5px 4px",fontSize:9,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        {/* Footer (multi-select confirm) */}
+        {multiple&&selected.length>0&&(
+          <div style={{padding:"12px 16px",borderTop:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <span style={{fontSize:13,color:"var(--text2)"}}>{selected.length} selected</span>
+            <button onClick={()=>{onPick(selected);onClose();}}
+              style={{padding:"8px 20px",borderRadius:8,background:"var(--accent)",color:"#fff",border:"none",cursor:"pointer",fontWeight:700,fontSize:13}}>
+              Use Selected
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // POST DETAIL MODAL
 // ════════════════════════════════════════════════════════════════
-function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset}) {
+function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[]}) {
   const [comment,setComment] = useState("");
   const [sending,setSending] = useState(false);
   const isManager = ["admin","account_manager"].includes(currentUser?.role);
@@ -2891,41 +3004,32 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
               </div>
             )}
 
-            {/* File upload input */}
+            {/* File picker — choose from assets or upload new */}
             {(()=>{
-              const [uploading, setUploading_] = useState(false);
-              const [uploadErr, setUploadErr_] = useState("");
+              const [showPicker, setShowPicker_] = useState(false);
               return (
-                <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:14,background:"var(--surface)",borderRadius:"var(--rs)",border:`2px dashed ${uploading?"var(--accent)44":"#8b5cf644"}`,cursor:"pointer",transition:"all 0.2s",opacity:uploading?0.7:1}}>
-                    {uploading?<><Spinner size={14}/><span style={{fontSize:12,fontWeight:600,color:"#8b5cf6"}}>Uploading…</span></>:<><Ico d={Icons.plus} size={14} stroke="#8b5cf6"/><span style={{fontSize:12,fontWeight:600,color:"#8b5cf6"}}>Upload Photo / Video</span></>}
-                    <input type="file" accept="image/*,video/*" multiple style={{display:"none"}} disabled={uploading} onChange={async(e)=>{
-                      const files = Array.from(e.target.files||[]);
-                      if(!files.length) return;
-                      const oversized = files.filter(f=>f.size > 5*1024*1024);
-                      if(oversized.length){ alert(`${oversized.map(f=>f.name).join(", ")} exceed${oversized.length===1?"s":""} the 5 MB limit and won't be uploaded.`); }
-                      const validFiles = files.filter(f=>f.size <= 5*1024*1024);
-                      if(!validFiles.length) return;
-                      setUploading_(true); setUploadErr_("");
-                      try {
-                        const uploaded = await Promise.all(validFiles.map(async (f,i)=>{
-                          const url = await uploadToStorage(f, `design/${post.id}`);
-                          if(onAddAsset) onAddAsset({name:renameForTask(post.title,f.name,validFiles.length>1?String(i+1):""), file_url:url, file_type:f.type.startsWith("video")?"video":"image", category:monthProjectFolder(project?.title), project_id:post.project_id, tags:[], file_size:f.size}).catch(()=>{});
-                          return {name:f.name, type:f.type, url, uploaded_at:new Date().toISOString()};
-                        }));
-                        const newAssets = [...(post.design_assets||[]), ...uploaded];
-                        ue("Post", post.id, {design_assets: newAssets}).catch(()=>{});
-                        onStageChange({...post, design_assets:newAssets}, post.stage);
-                      } catch(err){ setUploadErr_("Upload failed — check connection"); }
-                      setUploading_(false);
+                <>
+                  <button onClick={()=>setShowPicker_(true)}
+                    style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:14,background:"var(--surface)",borderRadius:"var(--rs)",border:"2px dashed #8b5cf644",cursor:"pointer",width:"100%"}}>
+                    <Ico d={Icons.plus} size={14} stroke="#8b5cf6"/>
+                    <span style={{fontSize:12,fontWeight:600,color:"#8b5cf6"}}>Add Photo / Video</span>
+                  </button>
+                  <AssetPickerModal open={showPicker} assets={assets} multiple onClose={()=>setShowPicker_(false)}
+                    onPick={async(picked)=>{
+                      const mapped = await Promise.all(picked.map(async(a,i)=>{
+                        if(a.url) return a; // came from picker's own upload flow
+                        if(onAddAsset) onAddAsset({name:renameForTask(post.title,a.name,picked.length>1?String(i+1):""), file_url:a.file_url, file_type:a.file_type||"image", category:monthProjectFolder(project?.title), project_id:post.project_id, tags:[]}).catch(()=>{});
+                        return {name:a.name, type:a.file_type, url:a.file_url, uploaded_at:new Date().toISOString()};
+                      }));
+                      const newAssets = [...(post.design_assets||[]), ...mapped];
+                      ue("Post", post.id, {design_assets: newAssets}).catch(()=>{});
+                      onStageChange({...post, design_assets:newAssets}, post.stage);
                     }}/>
-                  </label>
-                  {uploadErr&&<p style={{fontSize:11,color:"#ef4444"}}>{uploadErr}</p>}
-                </div>
+                </>
               );
             })()}
 
-            <p style={{fontSize:11,color:"var(--text3)"}}> Files are stored permanently in Supabase Storage. Upload multiple at once.</p>
+            <p style={{fontSize:11,color:"var(--text3)"}}> Choose from your existing assets or upload a new file.</p>
           </div>
         )}
 
@@ -3018,7 +3122,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
 // ════════════════════════════════════════════════════════════════
 // ADD POST MODAL — 2-step wizard
 // ════════════════════════════════════════════════════════════════
-function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,onUpdateAsset,presetClient}) {
+function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,onUpdateAsset,presetClient,assets=[]}) {
   const [step,setStep] = useState(1);
   // When opened from a client's profile, only that client's projects should be
   // selectable/defaulted — otherwise this silently defaults to projects[0],
@@ -3030,6 +3134,8 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
   const [uploading,setUploading] = useState(false);
   const [uploadingCover,setUploadingCover] = useState(false);
   const [uploadingStory,setUploadingStory] = useState(false);
+  const [showMediaPicker,setShowMediaPicker] = useState(false);
+  const [showCoverPicker,setShowCoverPicker] = useState(false);
   const s = (k,v) => setF(p=>({...p,[k]:v}));
   const defaultTypeFor = (media) => (media||f.media).some(m=>(m.type||"").startsWith("video")) ? "reel" : "image";
   const togglePlt = p => setF(prev => {
@@ -3223,7 +3329,10 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
                   </div>
                 </Field>
                 <Field label="Media (image, reel/video, or any file)">
-                  <input type="file" multiple accept="image/*,video/*" onChange={e=>handleMediaUpload(e.target.files)} disabled={uploading} style={inputSt}/>
+                  <button onClick={()=>setShowMediaPicker(true)}
+                    style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontSize:13,fontWeight:600,color:"var(--text2)",width:"100%"}}>
+                    <Ico d={Icons.upload} size={14} stroke="var(--text2)"/> Choose from Assets or Upload New…
+                  </button>
                   {uploading&&<div style={{fontSize:12,color:"var(--text3)",marginTop:6}}><Spinner size={12}/> Uploading…</div>}
                   {!!f.media.length&&(
                     <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
@@ -3235,10 +3344,17 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
                       ))}
                     </div>
                   )}
+                  <AssetPickerModal open={showMediaPicker} assets={assets} multiple onClose={()=>setShowMediaPicker(false)}
+                    onPick={(picked)=>{ s("media",[...f.media,...picked.map(a=>a.url?a:{name:a.name,type:a.file_type,url:a.file_url,uploaded_at:new Date().toISOString()})]); }}/>
                 </Field>
                 {f.platforms.includes("instagram")&&f.platform_types.instagram==="reel"&&(
                   <Field label="Reel Cover Image" required>
-                    <input type="file" accept="image/*" onChange={e=>handleCoverUpload(e.target.files)} disabled={uploadingCover} style={inputSt}/>
+                    <button onClick={()=>setShowCoverPicker(true)}
+                      style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontSize:13,fontWeight:600,color:"var(--text2)",width:"100%"}}>
+                      <Ico d={Icons.upload} size={14} stroke="var(--text2)"/> Choose Cover Image…
+                    </button>
+                    <AssetPickerModal open={showCoverPicker} assets={assets.filter(a=>a.file_type==="image"||(a.file_url||"").match(/\.(jpg|jpeg|png|gif|webp)/i))} multiple={false} onClose={()=>setShowCoverPicker(false)}
+                      onPick={(picked)=>{ const a=picked[0]; s("cover",a.url?a:{name:a.name,type:a.file_type,url:a.file_url}); }}/>
                     {uploadingCover&&<div style={{fontSize:12,color:"var(--text3)",marginTop:6}}><Spinner size={12}/> Uploading…</div>}
                     {f.cover&&(
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,padding:"4px 8px",borderRadius:8,background:"var(--surface2)",fontSize:11,width:"fit-content"}}>
@@ -4044,7 +4160,7 @@ No markdown, no explanation, just the JSON array.`);
 // ════════════════════════════════════════════════════════════════
 // ADD TASK MODAL (SINGLE)
 // ════════════════════════════════════════════════════════════════
-function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAddAsset,onUpdateAsset}) {
+function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAddAsset,onUpdateAsset,assets=[]}) {
   const blankForm = {
     title:"",client_id:"",project_id:"",description:"",
     assigned_to:"",scheduled_date:"",platform:"instagram",
@@ -4057,6 +4173,8 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
   const [uploading,setUploading] = useState(false);
   const [uploadingCover,setUploadingCover] = useState(false);
   const [uploadingStory,setUploadingStory] = useState(false);
+  const [showMediaPicker,setShowMediaPicker] = useState(false);
+  const [showCoverPicker,setShowCoverPicker] = useState(false);
   const [done,setDone] = useState(false);
   const s = (k,v) => setF(p=>({...p,[k]:v}));
   const clientProjects = projects.filter(p=>p.client_id===f.client_id||(!f.client_id&&true));
@@ -4261,7 +4379,10 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
                   </div>
                 </Field>
                 <Field label="Media (image, reel/video, or any file)">
-                  <input type="file" multiple accept="image/*,video/*" onChange={e=>handleMediaUpload(e.target.files)} disabled={uploading} style={inputSt}/>
+                  <button onClick={()=>setShowMediaPicker(true)}
+                    style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontSize:13,fontWeight:600,color:"var(--text2)",width:"100%"}}>
+                    <Ico d={Icons.upload} size={14} stroke="var(--text2)"/> Choose from Assets or Upload New…
+                  </button>
                   {uploading&&<div style={{fontSize:12,color:"var(--text3)",marginTop:6}}><Spinner size={12}/> Uploading…</div>}
                   {!!f.media.length&&(
                     <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
@@ -4273,10 +4394,17 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
                       ))}
                     </div>
                   )}
+                  <AssetPickerModal open={showMediaPicker} assets={assets} multiple onClose={()=>setShowMediaPicker(false)}
+                    onPick={(picked)=>{ s("media",[...f.media,...picked.map(a=>a.url?a:{name:a.name,type:a.file_type,url:a.file_url,uploaded_at:new Date().toISOString()})]); }}/>
                 </Field>
                 {f.platforms.includes("instagram")&&f.platform_types.instagram==="reel"&&(
                   <Field label="Reel Cover Image" required>
-                    <input type="file" accept="image/*" onChange={e=>handleCoverUpload(e.target.files)} disabled={uploadingCover} style={inputSt}/>
+                    <button onClick={()=>setShowCoverPicker(true)}
+                      style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontSize:13,fontWeight:600,color:"var(--text2)",width:"100%"}}>
+                      <Ico d={Icons.upload} size={14} stroke="var(--text2)"/> Choose Cover Image…
+                    </button>
+                    <AssetPickerModal open={showCoverPicker} assets={assets.filter(a=>a.file_type==="image"||(a.file_url||"").match(/\.(jpg|jpeg|png|gif|webp)/i))} multiple={false} onClose={()=>setShowCoverPicker(false)}
+                      onPick={(picked)=>{ const a=picked[0]; s("cover",a.url?a:{name:a.name,type:a.file_type,url:a.file_url}); }}/>
                     {uploadingCover&&<div style={{fontSize:12,color:"var(--text3)",marginTop:6}}><Spinner size={12}/> Uploading…</div>}
                     {f.cover&&(
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,padding:"4px 8px",borderRadius:8,background:"var(--surface2)",fontSize:11,width:"fit-content"}}>
@@ -24212,11 +24340,12 @@ Return ONLY valid JSON (no markdown, no explanation):
         }}
         onMemoryLearn={upsertClientMemory}
         onAddAsset={addAsset}
+        assets={data.assets||[]}
       />;
     })()}
 
     {/* Add Post */}
-    {showAddPost&&<AddPostModal open onClose={()=>{setShowAddPost(false);setAddPostForClient(null);}} projects={data.projects} team={data.team} onAdd={addPost} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} presetClient={addPostForClient}/>}
+    {showAddPost&&<AddPostModal open onClose={()=>{setShowAddPost(false);setAddPostForClient(null);}} projects={data.projects} team={data.team} onAdd={addPost} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} presetClient={addPostForClient} assets={data.assets||[]}/>}
 
     {/* New Project Wizard — used by FAB, Dashboard, Projects page */}
     {(showFABProject||showAddProject)&&<ProjectWizard
@@ -24256,6 +24385,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       onAddReady={addReadyContent}
       onAddAsset={addAsset}
       onUpdateAsset={updateAsset}
+      assets={data.assets||[]}
     />}
 
     {/* Monthly Brief — Create Modal */}
