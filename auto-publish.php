@@ -92,7 +92,7 @@ foreach ($due as $post) {
     if ($platform === 'linkedin') {
         [$code, $resp] = linkedin_publish($page_id, $access_token, $message, $image_url);
     } else {
-        [$code, $resp] = meta_publish($platform, $page_id, $access_token, $message, $image_url, null, $story_image_url ?: null);
+        [$code, $resp] = meta_publish($platform, $page_id, $access_token, $message, $image_url, null, $story_image_url ?: null, $post['post_type'] ?? null);
     }
     $ok = $code >= 200 && $code < 300;
 

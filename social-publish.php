@@ -18,6 +18,7 @@ $message      = trim($data["message"]      ?? "");
 $image_url    = trim($data["image_url"]    ?? "");
 $story_image_url = trim($data["story_image_url"] ?? ""); // Instagram-only, optional
 $scheduled_at = trim($data["scheduled_at"] ?? ""); // ISO-8601, optional
+$post_type    = trim($data["post_type"]    ?? ""); // e.g. "reel","video","image","story"
 
 if (!$platform || !$page_id || !$access_token || !$message) {
     http_response_code(400);
@@ -34,7 +35,7 @@ if (!in_array($platform, ["facebook", "instagram", "linkedin"])) {
 if ($platform === "linkedin") {
     [$http_code, $response] = linkedin_publish($page_id, $access_token, $message, $image_url);
 } else {
-    [$http_code, $response] = meta_publish($platform, $page_id, $access_token, $message, $image_url, $scheduled_at ?: null, $story_image_url ?: null);
+    [$http_code, $response] = meta_publish($platform, $page_id, $access_token, $message, $image_url, $scheduled_at ?: null, $story_image_url ?: null, $post_type ?: null);
 }
 http_response_code($http_code);
 echo json_encode($response);

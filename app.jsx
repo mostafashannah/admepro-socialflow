@@ -545,7 +545,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.27";
+const APP_VERSION = "beta 3.28";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -965,6 +965,7 @@ async function publishPost(post, integration) {
       message: [post.caption, post.hashtags].filter(Boolean).join("\n\n"),
       image_url: imageUrl,
       story_image_url: storyUrl,
+      post_type: post.post_type||"",
     }),
   });
   const d = await r.json();
@@ -5877,7 +5878,7 @@ function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUs
 function EditClientModal({open,client,onClose,onSave}) {
   const [f,setF] = useState({});
   const [showPw,setShowPw] = useState(false);
-  useEffect(()=>{ if(client) setF({name:client.name||"",email:client.email||"",phone:client.phone||"",industry:client.industry||"",status:client.status||"active",platforms:client.platforms||[],portal_password:client.portal_password||""}); },[client]);
+  useEffect(()=>{ if(client) setF({name:client.name||"",username:client.username||"",email:client.email||"",phone:client.phone||"",industry:client.industry||"",status:client.status||"active",platforms:client.platforms||[],portal_password:client.portal_password||""}); },[client]);
   if(!open) return null;
   const PLATFORMS = ["instagram","facebook","tiktok","twitter","linkedin","youtube"];
   const togglePlat = p => setF(x=>({...x,platforms:x.platforms.includes(p)?x.platforms.filter(v=>v!==p):[...x.platforms,p]}));
@@ -5889,7 +5890,10 @@ function EditClientModal({open,client,onClose,onSave}) {
           <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text3)",fontSize:20,lineHeight:1}}>×</button>
         </div>
         <div className="modal-body" style={{padding:"20px 24px",display:"flex",flexDirection:"column",gap:14}}>
-          <Field label="Company Name"><input value={f.name||""} onChange={e=>setF(x=>({...x,name:e.target.value}))} style={inputSt} placeholder="Company name"/></Field>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <Field label="Company Name"><input value={f.name||""} onChange={e=>setF(x=>({...x,name:e.target.value}))} style={inputSt} placeholder="Company name"/></Field>
+            <Field label="Contact Username" hint="Displayed in client portal instead of company name"><input value={f.username||""} onChange={e=>setF(x=>({...x,username:e.target.value}))} style={inputSt} placeholder="e.g. Ahmed"/></Field>
+          </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
             <Field label="Email"><input value={f.email||""} onChange={e=>setF(x=>({...x,email:e.target.value}))} style={inputSt} type="email"/></Field>
             <Field label="Phone"><input value={f.phone||""} onChange={e=>setF(x=>({...x,phone:e.target.value}))} style={inputSt}/></Field>
@@ -5922,7 +5926,7 @@ function EditClientModal({open,client,onClose,onSave}) {
         </div>
         <div className="modal-footer" style={{display:"flex",gap:8,justifyContent:"flex-end",padding:"14px 24px",borderTop:"1px solid var(--border)"}}>
           <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
-          <Btn onClick={()=>{if(f.name?.trim()) onSave({...f, portal_password:f.portal_password?.trim()||client?.portal_password||""});}}>Save Changes</Btn>
+          <Btn onClick={()=>{if(f.name?.trim()) onSave({...f, username:f.username?.trim()||"", portal_password:f.portal_password?.trim()||client?.portal_password||""});}}>Save Changes</Btn>
         </div>
       </div>
     </div>
@@ -7371,9 +7375,9 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
               <Ico d={Icons.plus} size={12}/> New Folder
             </button>
           )}
-          <button onClick={()=>fileInputRef.current?.click()} disabled={uploading} style={{display:"flex",alignItems:"center",gap:5,fontSize:12,fontWeight:700,padding:"6px 10px",borderRadius:6,border:"none",background:"var(--accent)",color:"#fff",cursor:uploading?"default":"pointer",opacity:uploading?0.6:1}}>
+          {onAddAsset&&<button onClick={()=>fileInputRef.current?.click()} disabled={uploading} style={{display:"flex",alignItems:"center",gap:5,fontSize:12,fontWeight:700,padding:"6px 10px",borderRadius:6,border:"none",background:"var(--accent)",color:"#fff",cursor:uploading?"default":"pointer",opacity:uploading?0.6:1}}>
             {uploading?<Spinner size={12}/>:<Ico d={Icons.upload} size={12} stroke="#fff"/>} Upload File
-          </button>
+          </button>}
           <input ref={fileInputRef} type="file" multiple style={{display:"none"}} onChange={e=>{handleDropFiles(e.target.files); e.target.value="";}}/>
           <div style={{display:"flex",border:"1px solid var(--border)",borderRadius:6,overflow:"hidden"}}>
             <button onClick={()=>setView("grid")} style={{padding:"6px 10px",border:"none",cursor:"pointer",fontSize:11,fontWeight:700,background:view==="grid"?"var(--accent)":"var(--surface)",color:view==="grid"?"#fff":"var(--text2)"}}>Grid</button>
@@ -9791,8 +9795,8 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
           {/* User dropdown — name/avatar opens Settings/Themes/Logout */}
           <div ref={userMenuRef} style={{position:"relative",flexShrink:0}}>
             <button onClick={()=>setShowUserMenu(o=>!o)} style={{display:"flex",alignItems:"center",gap:8,background:"none",border:"none",cursor:"pointer",padding:"6px 4px"}}>
-              <div style={{width:30,height:30,borderRadius:99,background:clr(client.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,color:"#fff",flexShrink:0}}>{initials(client.name)}</div>
-              {!isMobile&&<span style={{fontSize:13,fontWeight:600,color:"var(--text2)",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{client.name}</span>}
+              <div style={{width:30,height:30,borderRadius:99,background:clr(client.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,color:"#fff",flexShrink:0}}>{initials(client.username||client.name)}</div>
+              {!isMobile&&<span style={{fontSize:13,fontWeight:600,color:"var(--text2)",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{client.username||client.name}</span>}
               <Ico d={Icons.chevD} size={13} stroke="var(--text3)" style={{transform:showUserMenu?"rotate(180deg)":"none",transition:"transform 0.2s",flexShrink:0}}/>
             </button>
             {showUserMenu&&(
@@ -9969,7 +9973,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
         {view==="dashboard"&&(
           <div style={{display:"flex",flexDirection:"column",gap:20}}>
             <div>
-              <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?20:22,fontWeight:800}}>Welcome back, {client.name}</h2>
+              <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?20:22,fontWeight:800}}>Welcome back, {client.username||client.name}</h2>
               <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Here's how your account is looking right now.</p>
             </div>
 
@@ -10050,7 +10054,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
               <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?20:22,fontWeight:800}}>Assets</h2>
               <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Your project files, organized by month.</p>
             </div>
-            <FolderBrowser assets={cAssets} projects={cProjects} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset} onDeleteAsset={onDeleteAsset}
+            <FolderBrowser assets={cAssets} projects={cProjects} onUpdateAsset={onUpdateAsset} onDeleteAsset={onDeleteAsset}
               storagePrefix={`assets/client-${client.id}`} storageKey={`sf_extra_folders_${client.id}`} extraTags={[`client_${client.id}`]} currentUser={client}/>
           </div>
         )}
@@ -10162,34 +10166,61 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
               <div style={{padding:14,background:"#ec489922",border:"1px solid #ec489966",borderRadius:"var(--r)"}}>
                 <p style={{fontSize:13,fontWeight:700,color:"#ec4899",marginBottom:10}}> Awaiting Your Approval ({cPosts.filter(p=>p.stage==="client_approval").length})</p>
                 <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  {cPosts.filter(p=>p.stage==="client_approval").map(p=>(
-                    <div key={p.id} onClick={()=>setSel(p)} style={{background:"var(--surface)",borderRadius:"var(--rs)",padding:"12px 14px",cursor:"pointer",border:"1px solid #ec489944",display:"flex",alignItems:"center",gap:10}}
+                  {cPosts.filter(p=>p.stage==="client_approval").map(p=>{
+                    const pUrls = Array.isArray(p.design_urls)?p.design_urls:parseJ(p.design_urls||"[]");
+                    const pAssets = Array.isArray(p.design_assets)?p.design_assets:parseJ(p.design_assets||"[]");
+                    const pThumb = pUrls[0]||pAssets[0]?.url||"";
+                    return (
+                    <div key={p.id} onClick={()=>setSel(p)} style={{background:"var(--surface)",borderRadius:"var(--rs)",padding:"10px 14px",cursor:"pointer",border:"1px solid #ec489944",display:"flex",alignItems:"center",gap:10}}
                     onMouseEnter={e=>e.currentTarget.style.borderColor="#ec4899"}
                     onMouseLeave={e=>e.currentTarget.style.borderColor="#ec489944"}>
-                      <PChip platform={p.platform} xs/>
+                      {pThumb?(
+                        <img src={pThumb} alt="" style={{width:44,height:44,borderRadius:8,objectFit:"cover",flexShrink:0,background:"var(--surface2)"}}/>
+                      ):(
+                        <div style={{width:44,height:44,borderRadius:8,background:`${PLT_COLOR[p.platform]}22`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                          <span style={{fontSize:16,fontWeight:800,color:PLT_COLOR[p.platform]}}>{PLT_ICON[p.platform]}</span>
+                        </div>
+                      )}
                       <div style={{flex:1,minWidth:0}}>
                         <p style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}</p>
                         <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{fmtDate(p.scheduled_date)||"TBD"}</p>
                       </div>
                       <Btn size="sm" style={{flexShrink:0}}>Review →</Btn>
                     </div>
-                  ))}
+                  );})}
                 </div>
               </div>
             )}
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fill,minmax(280px,1fr))",gap:isMobile?8:14}}>
-              {cPosts.filter(p=>p.stage!=="client_approval").map(p=>(
+              {cPosts.filter(p=>p.stage!=="client_approval").map(p=>{
+                const pUrls = Array.isArray(p.design_urls)?p.design_urls:parseJ(p.design_urls||"[]");
+                const pAssets = Array.isArray(p.design_assets)?p.design_assets:parseJ(p.design_assets||"[]");
+                const pThumb = pUrls[0]||pAssets[0]?.url||"";
+                return (
                 <div key={p.id} onClick={()=>setSel(p)} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden",cursor:"pointer",display:isMobile?"flex":"block",alignItems:"center",transition:"border-color 0.15s"}}
                 onMouseEnter={e=>e.currentTarget.style.borderColor="var(--border2)"}
                 onMouseLeave={e=>e.currentTarget.style.borderColor="var(--border)"}>
                   {isMobile?(
-                    <div style={{width:44,height:44,background:`${PLT_COLOR[p.platform]}22`,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,margin:12,flexShrink:0}}>
-                      <span style={{fontSize:15,fontWeight:800,color:PLT_COLOR[p.platform]}}>{PLT_ICON[p.platform]}</span>
-                    </div>
+                    pThumb?(
+                      <img src={pThumb} alt="" style={{width:56,height:56,objectFit:"cover",flexShrink:0,margin:10,borderRadius:8,background:"var(--surface2)"}}/>
+                    ):(
+                      <div style={{width:44,height:44,background:`${PLT_COLOR[p.platform]}22`,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,margin:12,flexShrink:0}}>
+                        <span style={{fontSize:15,fontWeight:800,color:PLT_COLOR[p.platform]}}>{PLT_ICON[p.platform]}</span>
+                      </div>
+                    )
                   ):(
-                    <div style={{height:80,background:`linear-gradient(135deg,${PLT_COLOR[p.platform]}33,${PLT_COLOR[p.platform]}11)`,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                      <span style={{fontSize:24,fontWeight:800,color:PLT_COLOR[p.platform]}}>{PLT_ICON[p.platform]}</span>
-                    </div>
+                    pThumb?(
+                      <div style={{height:120,overflow:"hidden",position:"relative",background:"var(--surface2)"}}>
+                        <img src={pThumb} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                        <div style={{position:"absolute",bottom:6,right:6,background:"rgba(0,0,0,0.55)",borderRadius:6,padding:"2px 7px",fontSize:11,fontWeight:700,color:"#fff",display:"flex",alignItems:"center",gap:4}}>
+                          <span style={{fontSize:13}}>{PLT_ICON[p.platform]}</span>
+                        </div>
+                      </div>
+                    ):(
+                      <div style={{height:80,background:`linear-gradient(135deg,${PLT_COLOR[p.platform]}33,${PLT_COLOR[p.platform]}11)`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        <span style={{fontSize:24,fontWeight:800,color:PLT_COLOR[p.platform]}}>{PLT_ICON[p.platform]}</span>
+                      </div>
+                    )
                   )}
                   <div style={{padding:isMobile?"10px 12px 10px 0":"10px 14px",flex:1,minWidth:0}}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:4}}>
@@ -10199,7 +10230,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                     {p.scheduled_date&&<p style={{fontSize:11,color:"var(--text3)"}}>{fmtDate(p.scheduled_date)}</p>}
                   </div>
                 </div>
-              ))}
+              );})}
             </div>
             {cPosts.length===0&&(
               <div style={{textAlign:"center",padding:isMobile?"48px 20px":"80px",color:"var(--text3)"}}>
@@ -10224,9 +10255,9 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
             {/* Profile Section */}
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:isMobile?16:24}}>
               <div style={{display:"flex",alignItems:"flex-start",gap:16,marginBottom:20}}>
-                <div style={{width:80,height:80,borderRadius:12,background:clr(client.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,fontWeight:800,color:"#fff",flexShrink:0}}>{initials(client.name)}</div>
+                <div style={{width:80,height:80,borderRadius:12,background:clr(client.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,fontWeight:800,color:"#fff",flexShrink:0}}>{initials(client.username||client.name)}</div>
                 <div style={{flex:1}}>
-                  <p style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?18:20,fontWeight:800,marginBottom:2}}>{client.name}</p>
+                  <p style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?18:20,fontWeight:800,marginBottom:2}}>{client.username||client.name}</p>
                   <p style={{fontSize:13,color:"var(--text2)",marginBottom:8}}>{client.industry}</p>
                   <Badge label="Active Client" color="#10b981" xs/>
                 </div>

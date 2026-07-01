@@ -13,7 +13,7 @@ define('META_GRAPH_VERSION', 'v23.0');
 // to the regular feed post, using the same container → poll → media_publish flow
 // but with media_type=STORIES. Failure to publish the story does not fail the
 // whole request — it's reported back under the "story" key of the response.
-function meta_publish($platform, $page_id, $access_token, $message, $image_url, $scheduled_at = null, $story_image_url = null) {
+function meta_publish($platform, $page_id, $access_token, $message, $image_url, $scheduled_at = null, $story_image_url = null, $post_type = null) {
     $v = META_GRAPH_VERSION;
 
     if ($platform === 'facebook') {
@@ -35,14 +35,15 @@ function meta_publish($platform, $page_id, $access_token, $message, $image_url, 
     }
 
     if ($platform === 'instagram') {
-        if (!$image_url) return [400, ['error' => 'Instagram requires image_url']];
+        $isReel = in_array($post_type, ['reel', 'video'], true);
+        if (!$image_url) return [400, ['error' => 'Instagram requires image_url (or video_url for reels)']];
 
         // The Instagram "Connect" flow (meta-oauth-callback.php) uses Instagram API
         // with Instagram Login, which issues graph.instagram.com-scoped tokens and
         // account IDs — graph.facebook.com cannot parse those tokens at all (hence
         // the misleading "Cannot parse access token" error), so publishing must go
         // through graph.instagram.com too, not graph.facebook.com.
-        [$code, $resp] = ig_publish_media($v, $page_id, $access_token, $image_url, $message, null);
+        [$code, $resp] = ig_publish_media($v, $page_id, $access_token, $image_url, $message, $isReel ? 'REELS' : null);
         if ($code !== 200) return [$code, $resp];
 
         if ($story_image_url) {
@@ -59,7 +60,9 @@ function meta_publish($platform, $page_id, $access_token, $message, $image_url, 
 // 'STORIES', a Story), polls until processed, then publishes it.
 function ig_publish_media($v, $ig_user_id, $access_token, $image_url, $caption, $media_type) {
     $container_ep = "https://graph.instagram.com/{$v}/{$ig_user_id}/media";
-    $container_data = ['image_url' => $image_url, 'access_token' => $access_token];
+    // Reels require video_url; images and stories use image_url.
+    $url_key = ($media_type === 'REELS') ? 'video_url' : 'image_url';
+    $container_data = [$url_key => $image_url, 'access_token' => $access_token];
     if ($caption) $container_data['caption'] = $caption;
     if ($media_type) $container_data['media_type'] = $media_type;
 
