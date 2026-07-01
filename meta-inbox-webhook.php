@@ -153,6 +153,16 @@ function storeMessage(PDO $pdo, $clientId, $clientName, $channel, $customerId, $
     $stmt->execute([':cid'=>$clientId, ':cname'=>$clientName, ':ch'=>$channel, ':custid'=>$customerId, ':custname'=>$customerName, ':txt'=>$text, ':eid'=>$externalId]);
 }
 
+// Meta's Messenger PSID-name lookup (fetchSenderName) is unreliable and often fails
+// on a customer's first message, leaving the inbox showing their raw numeric ID
+// forever even though a later lookup for the same customer_id would have worked —
+// backfill every earlier row for this thread once a name lookup finally succeeds.
+function backfillCustomerName(PDO $pdo, $clientId, $channel, $customerId, $customerName) {
+    if (!$customerName) return;
+    $stmt = $pdo->prepare("UPDATE customer_messages SET customer_name = :name WHERE client_id = :cid AND channel = :ch AND customer_id = :custid AND (customer_name IS NULL OR customer_name = '')");
+    $stmt->execute([':name' => $customerName, ':cid' => $clientId, ':ch' => $channel, ':custid' => $customerId]);
+}
+
 // Meta tells us the platform at the top level — Instagram DMs arrive under
 // entry.messaging using the exact same shape as Messenger, so the array shape
 // alone can't be used to label the channel; $body['object'] can.
@@ -184,6 +194,7 @@ try {
             if ($tag = storyContextTag($msgData)) { $text = $text ? "{$tag} {$text}" : $tag; }
             if ($text && $senderId) {
                 $senderName = fetchSenderName($channel, $client['access_token'], $senderId);
+                backfillCustomerName($pdo, $client['client_id'], $channel, $senderId, $senderName);
                 storeMessage($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName, $text);
                 try {
                     if ($client['is_own']) { maybeCreateLeadFromMessage($pdo, $channel, $senderId, $senderName, $text, null, $client['client_id']); }
@@ -209,6 +220,7 @@ try {
                 // credentials (Instagram's token/page_id instead of Facebook's).
                 if ($text && $senderId) {
                     $senderName = fetchSenderName($channel, $client['access_token'], $senderId);
+                    backfillCustomerName($pdo, $client['client_id'], $channel, $senderId, $senderName);
                     storeMessage($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName, $text);
                     try {
                         if ($client['is_own']) { maybeCreateLeadFromMessage($pdo, $channel, $senderId, $senderName, $text, null, $client['client_id']); }
