@@ -20,7 +20,12 @@ function meta_publish($platform, $page_id, $access_token, $message, $image_url, 
     $v = META_GRAPH_VERSION;
 
     if ($platform === 'facebook') {
-        if ($image_url) {
+        $isFbVideo = in_array($post_type, ['reel', 'video'], true);
+        if ($isFbVideo && $image_url) {
+            // Facebook video/reel: use the /videos endpoint with file_url
+            $endpoint  = "https://graph.facebook.com/{$v}/{$page_id}/videos";
+            $post_data = ['file_url' => $image_url, 'description' => $message, 'access_token' => $access_token];
+        } elseif ($image_url) {
             $endpoint  = "https://graph.facebook.com/{$v}/{$page_id}/photos";
             $post_data = ['url' => $image_url, 'caption' => $message, 'access_token' => $access_token];
         } else {
