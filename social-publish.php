@@ -9,6 +9,9 @@ header("Access-Control-Allow-Headers: Content-Type");
 
 if ($_SERVER["REQUEST_METHOD"] === "OPTIONS") { http_response_code(200); exit; }
 if ($_SERVER["REQUEST_METHOD"] !== "POST")    { http_response_code(405); echo json_encode(["error"=>"Method not allowed"]); exit; }
+// Reels can take 60-120s for Meta to process before publishing — extend the
+// script timeout so the polling loop isn't killed before FINISHED is reached.
+set_time_limit(180);
 
 $data         = json_decode(file_get_contents("php://input"), true);
 $platform     = strtolower(trim($data["platform"]     ?? ""));

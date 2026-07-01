@@ -72,14 +72,19 @@ function ig_publish_media($v, $ig_user_id, $access_token, $image_url, $caption, 
     }
 
     // The container starts out PENDING/IN_PROGRESS while Instagram downloads
-    // and processes the image; publishing before it reaches FINISHED fails
+    // and processes the media; publishing before it reaches FINISHED fails
     // with "Media ID is not available" (code 9007 / subcode 2207027). Poll
-    // status_code with a short backoff before attempting media_publish.
+    // status_code with a backoff before attempting media_publish.
+    // Videos/reels take much longer than images (30-90s vs 1-3s), so use
+    // longer intervals and more attempts for video media types.
+    $isVideo = ($media_type === 'REELS' || $media_type === 'STORIES_VIDEO');
+    $maxAttempts = $isVideo ? 30 : 12;
+    $pollMs      = $isVideo ? 4000 : 1500; // 4s per attempt for video → up to 120s
     $status_ep = "https://graph.instagram.com/{$v}/{$resp['id']}?" . http_build_query([
         'fields' => 'status_code', 'access_token' => $access_token,
     ]);
-    for ($i = 0; $i < 10; $i++) {
-        usleep(($i === 0 ? 500 : 1500) * 1000);
+    for ($i = 0; $i < $maxAttempts; $i++) {
+        usleep(($i === 0 ? ($isVideo ? 5000 : 500) : $pollMs) * 1000);
         [, $statusResp] = meta_curl_get($status_ep);
         $status = $statusResp['status_code'] ?? null;
         if ($status === 'FINISHED') break;
