@@ -81,6 +81,7 @@ foreach ($due as $post) {
     $design_assets = json_decode($post['design_assets'] ?? '[]', true) ?: [];
     $message       = trim(($post['caption'] ?? '') . "\n\n" . ($post['hashtags'] ?? ''));
     $image_url     = $design_urls[0] ?? ($design_assets[0]['url'] ?? '');
+    $cover_url     = $post['carousel_cover'] ?? '';
     // Tagged kind:"story" by the Ready Content "Also post as Instagram Story" option.
     $story_image_url = '';
     if ($platform === 'instagram') {
@@ -92,8 +93,27 @@ foreach ($due as $post) {
     if ($platform === 'linkedin') {
         [$code, $resp] = linkedin_publish($page_id, $access_token, $message, $image_url);
     } else {
-        [$code, $resp] = meta_publish($platform, $page_id, $access_token, $message, $image_url, null, $story_image_url ?: null, $post['post_type'] ?? null);
+        [$code, $resp] = meta_publish($platform, $page_id, $access_token, $message, $image_url, null, $story_image_url ?: null, $post['post_type'] ?? null, $cover_url ?: null);
     }
+
+    // Reels return 202 with a container_id; poll synchronously here since the
+    // cron job is not constrained by nginx timeouts.
+    if ($code === 202 && ($resp['status'] ?? '') === 'processing') {
+        $container_id = $resp['container_id'] ?? '';
+        $ig_user_id   = $resp['ig_user_id']   ?? $page_id;
+        $published = false;
+        for ($pi = 0; $pi < 30; $pi++) {
+            sleep(4);
+            [$code, $resp] = ig_poll_and_publish(META_GRAPH_VERSION, $ig_user_id, $access_token, $container_id);
+            if ($code === 200) { $published = true; break; }
+            if ($code !== 202) break;
+        }
+        if (!$published && $code !== 200) {
+            $code = 502;
+            $resp = ['error' => 'Reel processing timed out or failed during scheduled publish'];
+        }
+    }
+
     $ok = $code >= 200 && $code < 300;
 
     if ($ok) {

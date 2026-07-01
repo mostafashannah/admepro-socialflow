@@ -13,7 +13,10 @@ define('META_GRAPH_VERSION', 'v23.0');
 // to the regular feed post, using the same container → poll → media_publish flow
 // but with media_type=STORIES. Failure to publish the story does not fail the
 // whole request — it's reported back under the "story" key of the response.
-function meta_publish($platform, $page_id, $access_token, $message, $image_url, $scheduled_at = null, $story_image_url = null, $post_type = null) {
+// For REELS, returns [202, {status:"processing", container_id, ig_user_id}] so
+// the caller can hand the container_id back to the client for async polling
+// (avoids nginx gateway timeout on slow Meta video processing).
+function meta_publish($platform, $page_id, $access_token, $message, $image_url, $scheduled_at = null, $story_image_url = null, $post_type = null, $cover_url = null) {
     $v = META_GRAPH_VERSION;
 
     if ($platform === 'facebook') {
@@ -38,12 +41,24 @@ function meta_publish($platform, $page_id, $access_token, $message, $image_url, 
         $isReel = in_array($post_type, ['reel', 'video'], true);
         if (!$image_url) return [400, ['error' => 'Instagram requires image_url (or video_url for reels)']];
 
+        if ($isReel) {
+            // Reels: create the container only and return immediately so the
+            // HTTP response goes back to the client before nginx times out.
+            // The client polls /reel-status.php to check when Meta has finished
+            // processing the video and trigger the final media_publish step.
+            [$code, $resp] = ig_create_container($v, $page_id, $access_token, $image_url, $message, 'REELS', $cover_url);
+            if ($code !== 200 || empty($resp['id'])) {
+                return [$code ?: 502, ['error' => 'Failed to create reel container', 'detail' => $resp]];
+            }
+            return [202, ['status' => 'processing', 'container_id' => $resp['id'], 'ig_user_id' => $page_id]];
+        }
+
         // The Instagram "Connect" flow (meta-oauth-callback.php) uses Instagram API
         // with Instagram Login, which issues graph.instagram.com-scoped tokens and
         // account IDs — graph.facebook.com cannot parse those tokens at all (hence
         // the misleading "Cannot parse access token" error), so publishing must go
         // through graph.instagram.com too, not graph.facebook.com.
-        [$code, $resp] = ig_publish_media($v, $page_id, $access_token, $image_url, $message, $isReel ? 'REELS' : null);
+        [$code, $resp] = ig_publish_media($v, $page_id, $access_token, $image_url, $message, null);
         if ($code !== 200) return [$code, $resp];
 
         if ($story_image_url) {
@@ -56,35 +71,54 @@ function meta_publish($platform, $page_id, $access_token, $message, $image_url, 
     return [400, ['error' => 'Unsupported platform. Supported: facebook, instagram']];
 }
 
-// Creates an Instagram media container (feed post or, when $media_type is
-// 'STORIES', a Story), polls until processed, then publishes it.
-function ig_publish_media($v, $ig_user_id, $access_token, $image_url, $caption, $media_type) {
+// Creates an Instagram media container without polling or publishing.
+// Returns [http_code, response] — on success response contains 'id'.
+function ig_create_container($v, $ig_user_id, $access_token, $media_url, $caption, $media_type, $cover_url = null) {
     $container_ep = "https://graph.instagram.com/{$v}/{$ig_user_id}/media";
-    // Reels require video_url; images and stories use image_url.
     $url_key = ($media_type === 'REELS') ? 'video_url' : 'image_url';
-    $container_data = [$url_key => $image_url, 'access_token' => $access_token];
-    if ($caption) $container_data['caption'] = $caption;
+    $container_data = [$url_key => $media_url, 'access_token' => $access_token];
+    if ($caption)    $container_data['caption']    = $caption;
     if ($media_type) $container_data['media_type'] = $media_type;
+    if ($cover_url)  $container_data['cover_url']  = $cover_url;
+    return meta_curl($container_ep, $container_data);
+}
 
-    [$code, $resp] = meta_curl($container_ep, $container_data);
+// Polls a container's status_code once and, if FINISHED, calls media_publish.
+// Returns one of:
+//   [200, {id, ...}]            — published successfully
+//   [202, {status:"processing"}] — still processing, call again
+//   [502, {error, ...}]          — Meta reported ERROR or cURL failed
+function ig_poll_and_publish($v, $ig_user_id, $access_token, $container_id) {
+    $status_ep = "https://graph.instagram.com/{$v}/{$container_id}?" . http_build_query([
+        'fields' => 'status_code', 'access_token' => $access_token,
+    ]);
+    [, $statusResp] = meta_curl_get($status_ep);
+    $status = $statusResp['status_code'] ?? null;
+    if ($status === 'ERROR') {
+        return [502, ['error' => 'Instagram failed to process the media', 'detail' => $statusResp]];
+    }
+    if ($status !== 'FINISHED') {
+        return [202, ['status' => 'processing', 'container_status' => $status]];
+    }
+    $publish_ep = "https://graph.instagram.com/{$v}/{$ig_user_id}/media_publish";
+    return meta_curl($publish_ep, ['creation_id' => $container_id, 'access_token' => $access_token]);
+}
+
+// Creates an Instagram media container (feed post or story), polls until
+// processed, then publishes it. Used for images and stories (not reels —
+// reels use the async ig_create_container + ig_poll_and_publish pair to
+// avoid nginx gateway timeouts during slow video processing).
+function ig_publish_media($v, $ig_user_id, $access_token, $image_url, $caption, $media_type) {
+    [$code, $resp] = ig_create_container($v, $ig_user_id, $access_token, $image_url, $caption, $media_type);
     if ($code !== 200 || empty($resp['id'])) {
         return [$code ?: 502, ['error' => 'Failed to create media container', 'detail' => $resp]];
     }
 
-    // The container starts out PENDING/IN_PROGRESS while Instagram downloads
-    // and processes the media; publishing before it reaches FINISHED fails
-    // with "Media ID is not available" (code 9007 / subcode 2207027). Poll
-    // status_code with a backoff before attempting media_publish.
-    // Videos/reels take much longer than images (30-90s vs 1-3s), so use
-    // longer intervals and more attempts for video media types.
-    $isVideo = ($media_type === 'REELS' || $media_type === 'STORIES_VIDEO');
-    $maxAttempts = $isVideo ? 30 : 12;
-    $pollMs      = $isVideo ? 4000 : 1500; // 4s per attempt for video → up to 120s
     $status_ep = "https://graph.instagram.com/{$v}/{$resp['id']}?" . http_build_query([
         'fields' => 'status_code', 'access_token' => $access_token,
     ]);
-    for ($i = 0; $i < $maxAttempts; $i++) {
-        usleep(($i === 0 ? ($isVideo ? 5000 : 500) : $pollMs) * 1000);
+    for ($i = 0; $i < 12; $i++) {
+        usleep(($i === 0 ? 500 : 1500) * 1000);
         [, $statusResp] = meta_curl_get($status_ep);
         $status = $statusResp['status_code'] ?? null;
         if ($status === 'FINISHED') break;

@@ -421,7 +421,8 @@ async function de(entityName, id) {
 const AI_ENDPOINT = window.location.origin + "/ai-proxy.php";
 const MAIL_ENDPOINT = window.location.origin + "/mail.php";
 const WA_ENDPOINT = window.location.origin + "/whatsapp.php";
-const PUBLISH_ENDPOINT = window.location.origin + "/social-publish.php";
+const PUBLISH_ENDPOINT      = window.location.origin + "/social-publish.php";
+const REEL_STATUS_ENDPOINT  = window.location.origin + "/reel-status.php";
 const META_INSIGHTS_ENDPOINT = window.location.origin + "/meta-insights.php";
 const PUSH_ENDPOINT = window.location.origin + "/push-send.php";
 // Public VAPID key — safe to ship client-side (it's the public half of the keypair)
@@ -545,7 +546,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.29";
+const APP_VERSION = "beta 3.30";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -956,6 +957,8 @@ async function publishPost(post, integration) {
   // post as Instagram Story" option) requests a parallel Story publish alongside
   // the regular feed post — only meaningful for Instagram.
   const storyUrl = integration.app_key==="instagram" ? (designAssets.find(a=>a.kind==="story")?.url || "") : "";
+  // carousel_cover holds the reel cover image URL (set in AddPostModal/AddTaskModal).
+  const coverUrl = (post.post_type==="reel"||post.post_type==="video") ? (post.carousel_cover||"") : "";
   const r = await fetch(PUBLISH_ENDPOINT, {
     method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({
@@ -966,9 +969,28 @@ async function publishPost(post, integration) {
       image_url: imageUrl,
       story_image_url: storyUrl,
       post_type: post.post_type||"",
+      cover_url: coverUrl,
     }),
   });
   const d = await r.json();
+  // 202 = reel container created; Meta is still processing the video.
+  // Poll reel-status.php every 4 seconds until published or error.
+  if(r.status===202 && d.status==="processing") {
+    const {container_id, ig_user_id} = d;
+    const accessToken = creds.access_token||"";
+    for(let i=0; i<30; i++) {
+      await new Promise(res=>setTimeout(res, 4000));
+      const sr = await fetch(REEL_STATUS_ENDPOINT, {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({container_id, ig_user_id, access_token: accessToken}),
+      });
+      const sd = await sr.json();
+      if(sr.status===200) return sd; // published
+      if(sr.status===202) continue;  // still processing
+      throw new Error(sd.error||"Reel publish failed");
+    }
+    throw new Error("Reel processing timed out after 2 minutes — check Instagram to see if it published.");
+  }
   if(!r.ok) throw new Error(d.error||"Publish failed");
   return d;
 }
