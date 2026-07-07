@@ -587,7 +587,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.42";
+const APP_VERSION = "beta 3.43";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -2902,11 +2902,25 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
     setPublishing(false);
   };
 
+  const [commentAttachment, setCommentAttachment] = useState(null);
+  const [attaching, setAttaching] = useState(false);
+  const commentFileRef = useRef(null);
+
+  const handleCommentFile = async (file) => {
+    if(!file) return;
+    setAttaching(true);
+    try {
+      const url = await uploadToStorage(file, "comments");
+      setCommentAttachment({file_url:url, file_name:file.name, file_type:file.type.startsWith("video")?"video":file.type.startsWith("image")?"image":"file"});
+    } catch(e){ alert("File upload failed"); }
+    setAttaching(false);
+  };
+
   const sendComment = async () => {
-    if(!comment.trim()) return;
+    if(!comment.trim()&&!commentAttachment) return;
     setSending(true);
-    await onAddComment(post.id, comment.trim(), currentUser);
-    setComment(""); setSending(false);
+    await onAddComment(post.id, comment.trim()||"📎 Attachment", currentUser, commentAttachment);
+    setComment(""); setCommentAttachment(null); setSending(false);
   };
 
   return (
@@ -3265,14 +3279,37 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
                     <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date)}</span>
                   </div>
                   <p style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content)}</p>
+                  {c.file_url&&(
+                    c.file_type==="image" ? (
+                      <a href={c.file_url} target="_blank" rel="noreferrer" style={{display:"block",marginTop:8,maxWidth:220,borderRadius:8,overflow:"hidden",border:"1px solid var(--border)"}}>
+                        <img src={c.file_url} alt={c.file_name||""} style={{width:"100%",display:"block"}}/>
+                      </a>
+                    ) : c.file_type==="video" ? (
+                      <video src={c.file_url} controls playsInline preload="metadata" style={{marginTop:8,maxWidth:220,borderRadius:8,border:"1px solid var(--border)"}}/>
+                    ) : (
+                      <a href={c.file_url} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:8,padding:"6px 10px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border)",fontSize:12,color:"var(--accent)",fontWeight:600,textDecoration:"none"}}>
+                        <Ico d={Icons.upload} size={12} stroke="var(--accent)"/> {c.file_name||"Attachment"}
+                      </a>
+                    )
+                  )}
                 </div>
               </div>
             ))}
             {postComments.length===0&&<p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:16}}>No activity yet</p>}
           </div>
+          {commentAttachment&&(
+            <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border)",fontSize:12}}>
+              <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📎 {commentAttachment.file_name}</span>
+              <button onClick={()=>setCommentAttachment(null)} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontWeight:700}}>×</button>
+            </div>
+          )}
           <div style={{display:"flex",gap:8}}>
             <MentionInput value={comment} onChange={setComment} team={team} placeholder="Add a comment… (type @ to mention)" rows={2}/>
-            <Btn onClick={sendComment} disabled={sending||!comment.trim()} style={{alignSelf:"flex-end"}}>
+            <input ref={commentFileRef} type="file" style={{display:"none"}} onChange={e=>{handleCommentFile(e.target.files?.[0]); e.target.value="";}}/>
+            <button onClick={()=>commentFileRef.current?.click()} disabled={attaching} title="Attach a file" style={{alignSelf:"flex-end",width:36,height:36,borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:attaching?"default":"pointer"}}>
+              {attaching?<Spinner size={13}/>:<Ico d={Icons.upload} size={14}/>}
+            </button>
+            <Btn onClick={sendComment} disabled={sending||(!comment.trim()&&!commentAttachment)} style={{alignSelf:"flex-end"}}>
               <Ico d={Icons.send} size={14}/> Send
             </Btn>
           </div>
@@ -24265,8 +24302,9 @@ Return ONLY valid JSON (no markdown, no explanation):
     setToast(" Task deleted");
   };
 
-  const handleAddComment = async (postId,content,user) => {
-    const payload = {post_id:postId, content, author_name:user?.name||"User", author_email:user?.email, type:"comment"};
+  const handleAddComment = async (postId,content,user,attachment) => {
+    const payload = {post_id:postId, content, author_name:user?.name||"User", author_email:user?.email, type:"comment",
+      ...(attachment?{file_url:attachment.file_url, file_name:attachment.file_name, file_type:attachment.file_type}:{})};
     const local = {...payload, id:uid(), created_date:new Date().toISOString()};
     setData(d=>({...d,comments:[...d.comments,local]}));
     ce("Comment",[payload]).then(res=>{
