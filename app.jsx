@@ -587,7 +587,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.38";
+const APP_VERSION = "beta 3.39";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3062,6 +3062,30 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
             <p style={{fontSize:13}}>{post.rejection_reason}</p>
           </div>
         </div>}
+
+        {/* Attached Media — always visible regardless of stage (the editable
+            uploader below only renders during the "design" stage) */}
+        {(()=>{
+          const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
+          const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
+          const media = designAssets.length ? designAssets : designUrls.map(url=>({url}));
+          if(!media.length) return null;
+          return (
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(110px,1fr))",gap:8}}>
+              {media.map((asset,i)=>{
+                const url = asset.url||asset.file_url||asset.data||"";
+                const isVideo = (asset.type||"").startsWith("video")||url.match(/\.(mp4|mov|webm|m4v)/i);
+                return (
+                  <a key={i} href={url} target="_blank" rel="noreferrer" style={{aspectRatio:"1/1",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",overflow:"hidden",display:"block"}}>
+                    {isVideo
+                      ? <video src={url} muted preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                      : <img src={url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt={asset.name||post.title}/>}
+                  </a>
+                );
+              })}
+            </div>
+          );
+        })()}
 
         {/* Schedule */}
         {(post.scheduled_date||post.scheduled_time)&&<div style={{display:"flex",gap:10}}>
