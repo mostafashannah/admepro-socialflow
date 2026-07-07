@@ -587,7 +587,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.36";
+const APP_VERSION = "beta 3.37";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7470,19 +7470,69 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
 // ASSET CARD — shared thumbnail + rename/move-to-folder/delete editor,
 // used by both the global Assets Library and a client's Assets tab.
 // ════════════════════════════════════════════════════════════════
-function AssetCard({asset:a, proj, folders=[], onUpdate, onDelete}) {
+// Lets the user browse the FULL folder tree (not just the current folder) to
+// pick a destination — starts at the root showing every top-level folder,
+// and drilling into one reveals its subfolders, mirroring how FolderBrowser
+// itself navigates. allFolders is a flat list of every known folder path
+// (e.g. "2026-03", "2026-03/ProjectX") derived once by the caller.
+function FolderPickerModal({open, allFolders=[], initialPath="", onPick, onClose}) {
+  const [path, setPath] = useState(()=>initialPath?initialPath.split("/").filter(Boolean):[]);
+  useEffect(()=>{ if(open) setPath(initialPath?initialPath.split("/").filter(Boolean):[]); },[open, initialPath]);
+  if(!open) return null;
+
+  const currentPath = path.join("/");
+  const childFolders = [...new Set(
+    allFolders
+      .map(fp=>fp.split("/").filter(Boolean))
+      .filter(segs=>segs.length>path.length && path.every((p,i)=>segs[i]===p))
+      .map(segs=>segs[path.length])
+  )].sort();
+
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"var(--surface)",borderRadius:14,padding:20,width:420,maxHeight:"70vh",display:"flex",flexDirection:"column",border:"1px solid var(--border)"}}>
+        <h3 style={{fontWeight:700,fontSize:15,color:"var(--text)",marginBottom:12}}>Move to folder</h3>
+        <div style={{display:"flex",alignItems:"center",gap:4,flexWrap:"wrap",fontSize:12,marginBottom:10,paddingBottom:10,borderBottom:"1px solid var(--border)"}}>
+          <span onClick={()=>setPath([])} style={{cursor:"pointer",fontWeight:path.length===0?700:500,color:path.length===0?"var(--text1)":"var(--accent)"}}>All Files</span>
+          {path.map((seg,i)=>(
+            <React.Fragment key={i}>
+              <span style={{color:"var(--text3)"}}>/</span>
+              <span onClick={()=>setPath(path.slice(0,i+1))} style={{cursor:"pointer",fontWeight:i===path.length-1?700:500,color:i===path.length-1?"var(--text1)":"var(--accent)"}}>{seg}</span>
+            </React.Fragment>
+          ))}
+        </div>
+        <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:6,minHeight:80}}>
+          {childFolders.length===0&&<p style={{fontSize:12,color:"var(--text3)",textAlign:"center",padding:"16px 0"}}>No subfolders here</p>}
+          {childFolders.map(name=>(
+            <div key={name} onClick={()=>setPath([...path,name])} style={{display:"flex",alignItems:"center",gap:8,padding:"9px 10px",borderRadius:8,border:"1px solid var(--border)",cursor:"pointer",background:"var(--surface2)"}}>
+              <span style={{fontSize:16}}>📁</span>
+              <span style={{fontSize:13,fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
+              <Ico d={Icons.arrow} size={12} stroke="var(--text3)"/>
+            </div>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:8,marginTop:14}}>
+          <button onClick={onClose} style={{flex:1,fontSize:12,fontWeight:600,padding:"9px 0",borderRadius:8,border:"1px solid var(--border)",background:"var(--surface2)",color:"var(--text)",cursor:"pointer"}}>Cancel</button>
+          <button onClick={()=>{onPick(currentPath);onClose();}} style={{flex:2,fontSize:12,fontWeight:700,padding:"9px 0",borderRadius:8,border:"none",background:"var(--accent)",color:"#fff",cursor:"pointer"}}>
+            Move Here{currentPath?` (${currentPath})`:" (Root)"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AssetCard({asset:a, proj, allFolders=[], onUpdate, onDelete}) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(a.name||"");
-  const [folder, setFolder] = useState(a.category||"");
-  const [newFolder, setNewFolder] = useState("");
+  const [showPicker, setShowPicker] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const isImage = a.file_type==="image"||(a.file_url||"").match(/\.(jpg|jpeg|png|gif|webp|svg)/i);
   const isVideo = a.file_type==="video"||(a.file_url||"").match(/\.(mp4|mov|webm|m4v)/i);
 
-  const save = () => {
-    const cat = (newFolder.trim()||folder||a.category||"");
-    onUpdate && onUpdate(a.id, {name: name.trim()||a.name, category: cat});
-    setEditing(false); setNewFolder("");
+  const saveName = () => {
+    onUpdate && onUpdate(a.id, {name: name.trim()||a.name});
+    setEditing(false);
   };
 
   return (
@@ -7499,14 +7549,9 @@ function AssetCard({asset:a, proj, folders=[], onUpdate, onDelete}) {
         {editing ? (
           <div style={{display:"flex",flexDirection:"column",gap:6}}>
             <input value={name} onChange={e=>setName(e.target.value)} placeholder="File name" style={{fontSize:12,padding:"6px 8px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)"}}/>
-            <select value={folder} onChange={e=>setFolder(e.target.value)} style={{fontSize:12,padding:"6px 8px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)"}}>
-              <option value="">— No folder —</option>
-              {folders.map(f=><option key={f} value={f}>{f}</option>)}
-            </select>
-            <input value={newFolder} onChange={e=>setNewFolder(e.target.value)} placeholder="Or create new folder…" style={{fontSize:12,padding:"6px 8px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)"}}/>
             <div style={{display:"flex",gap:6,marginTop:2}}>
-              <button onClick={save} style={{flex:1,fontSize:11,fontWeight:700,padding:"6px 0",borderRadius:6,border:"none",background:"var(--accent)",color:"#fff",cursor:"pointer"}}>Save</button>
-              <button onClick={()=>{setEditing(false);setName(a.name||"");setFolder(a.category||"");setNewFolder("");}} style={{fontSize:11,fontWeight:600,padding:"6px 10px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",cursor:"pointer"}}>Cancel</button>
+              <button onClick={saveName} style={{flex:1,fontSize:11,fontWeight:700,padding:"6px 0",borderRadius:6,border:"none",background:"var(--accent)",color:"#fff",cursor:"pointer"}}>Save</button>
+              <button onClick={()=>{setEditing(false);setName(a.name||"");}} style={{fontSize:11,fontWeight:600,padding:"6px 10px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",cursor:"pointer"}}>Cancel</button>
             </div>
             {onDelete&&(confirmDel ? (
               <div style={{display:"flex",gap:6}}>
@@ -7524,11 +7569,14 @@ function AssetCard({asset:a, proj, folders=[], onUpdate, onDelete}) {
             {proj&&<p style={{fontSize:10,color:"var(--text3)",marginTop:4}}>{proj.client_name}</p>}
             <div style={{display:"flex",gap:8,marginTop:8}}>
               {a.file_url&&a.file_url!="#"&&<a href={a.file_url} target="_blank" rel="noreferrer" style={{fontSize:11,color:"var(--accent)",fontWeight:600,textDecoration:"none"}}>Open</a>}
-              {onUpdate&&<button onClick={()=>setEditing(true)} style={{fontSize:11,color:"var(--text3)",fontWeight:600,background:"none",border:"none",cursor:"pointer",padding:0}}>Rename / Move</button>}
+              {onUpdate&&<button onClick={()=>setEditing(true)} style={{fontSize:11,color:"var(--text3)",fontWeight:600,background:"none",border:"none",cursor:"pointer",padding:0}}>Rename</button>}
+              {onUpdate&&<button onClick={()=>setShowPicker(true)} style={{fontSize:11,color:"var(--text3)",fontWeight:600,background:"none",border:"none",cursor:"pointer",padding:0}}>Move</button>}
             </div>
           </>
         )}
       </div>
+      <FolderPickerModal open={showPicker} allFolders={allFolders} initialPath={a.category||""}
+        onPick={(newPath)=>onUpdate&&onUpdate(a.id,{category:newPath})} onClose={()=>setShowPicker(false)}/>
     </div>
   );
 }
@@ -7560,6 +7608,15 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
   // freshly-created project's folder shows up immediately, even if this
   // FolderBrowser instance was already mounted when the project was created.
   const projectFolders = projects.map(p=>monthProjectFolder(p.title, p.created_at?new Date(p.created_at):new Date()));
+
+  // Every known folder path across the whole library (not just the currently
+  // open one) — feeds FolderPickerModal's "Move" browser so it can start at
+  // the top level and let the user drill into any subfolder, not just move
+  // within the folder the card happens to be sitting in.
+  const allFolders = [...new Set([
+    ...assets.map(a=>a.category).filter(Boolean),
+    ...extraFolders, ...projectFolders,
+  ])];
 
   const childFolders = (() => {
     const set = new Set();
@@ -7674,7 +7731,7 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
           {filesHere.map(a=>(
             <div key={a.id} draggable onDragStart={e=>e.dataTransfer.setData("text/plain", a.id)}>
-              <AssetCard asset={a} proj={projects.find(p=>p.id===a.project_id)} folders={[currentPath]} onUpdate={onUpdateAsset} onDelete={isAdmin?onDeleteAsset:undefined}/>
+              <AssetCard asset={a} proj={projects.find(p=>p.id===a.project_id)} allFolders={allFolders} onUpdate={onUpdateAsset} onDelete={isAdmin?onDeleteAsset:undefined}/>
             </div>
           ))}
         </div>
