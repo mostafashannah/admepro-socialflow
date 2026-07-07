@@ -587,7 +587,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.37";
+const APP_VERSION = "beta 3.38";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1981,6 +1981,10 @@ function StagePipeline({post}) {
 function PostCard({post,project,team,onClick}) {
   const stage = STAGE_MAP[post.stage]||STAGES[0];
   const assignee = team?.find(t=>t.email===post.assigned_to);
+  const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
+  const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
+  const thumbUrl = designUrls[0] || designAssets[0]?.url || post.carousel_cover || "";
+  const thumbIsVideo = (designAssets[0]?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i);
   return (
     <div onClick={()=>onClick(post)} className="fade-in" style={{
       background:"var(--surface)",border:"1px solid var(--border)",
@@ -1992,6 +1996,13 @@ function PostCard({post,project,team,onClick}) {
     onMouseEnter={e=>{e.currentTarget.style.borderColor=stage.color+"aa";e.currentTarget.style.boxShadow=`0 8px 28px ${stage.color}28`;e.currentTarget.style.transform="translateY(-2px)";}}
     onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border)";e.currentTarget.style.boxShadow="0 2px 6px rgba(0,0,0,0.08)";e.currentTarget.style.transform="none";}}
     >
+      {thumbUrl&&(
+        <div style={{margin:"-14px -16px 0",height:100,background:"var(--surface2)",overflow:"hidden"}}>
+          {thumbIsVideo
+            ? <video src={thumbUrl} muted preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+            : <img src={thumbUrl} alt={post.title} style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
+        </div>
+      )}
       <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
         <p style={{fontWeight:700,fontSize:13,flex:1,lineHeight:1.3,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{post.title}</p>
         <PChip platform={post.platform} xs/>
@@ -2088,6 +2099,10 @@ function ListView({posts,projects,team,onPostClick}) {
       {posts.map((post,i)=>{
         const proj = projects?.find(p=>p.id===post.project_id);
         const stage = STAGE_MAP[post.stage]||STAGES[0];
+        const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
+        const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
+        const thumbUrl = designUrls[0] || designAssets[0]?.url || post.carousel_cover || "";
+        const thumbIsVideo = (designAssets[0]?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i);
         return (
           <div key={post.id} onClick={()=>onPostClick(post)} style={{
             display:"grid",gridTemplateColumns:"2fr 1fr 100px 100px 140px 110px",
@@ -2098,9 +2113,15 @@ function ListView({posts,projects,team,onPostClick}) {
           onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
           onMouseLeave={e=>e.currentTarget.style.background=""}
           >
-            <span style={{fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:8}}>
-              <Badge label={post.priority} color={PRI_COLOR[post.priority]||"#888"} xs/>
-              {post.title}
+            <span style={{fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:8,minWidth:0}}>
+              {thumbUrl ? (
+                <div style={{width:32,height:32,borderRadius:6,overflow:"hidden",flexShrink:0,background:"var(--surface2)"}}>
+                  {thumbIsVideo
+                    ? <video src={thumbUrl} muted preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                    : <img src={thumbUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
+                </div>
+              ) : <Badge label={post.priority} color={PRI_COLOR[post.priority]||"#888"} xs/>}
+              <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{post.title}</span>
             </span>
             <span style={{fontSize:12,color:"var(--text2)",display:"flex",alignItems:"center"}}>{proj?.client_name||"—"}</span>
             <span style={{display:"flex",alignItems:"center"}}><PChip platform={post.platform} xs/></span>
@@ -17103,12 +17124,23 @@ function MyTasksPage({posts,team,projects,currentUser,onStageChange,onPostClick}
             const stage = STAGE_MAP[post.stage];
             const project = projects.find(p => p.id === post.project_id);
             const nextStage = STAGES[STAGES.findIndex(s=>s.key===post.stage)+1];
+            const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
+            const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
+            const thumbUrl = designUrls[0] || designAssets[0]?.url || post.carousel_cover || "";
+            const thumbIsVideo = (designAssets[0]?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i);
 
             return (
               <div key={post.id} style={{background:"var(--surface)",border:`1px solid ${stage.color}44`,borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:isMobile?"column":"row",gap:14,alignItems:isMobile?"stretch":"flex-start",cursor:"pointer",transition:"border-color 0.15s"}}
                 onClick={()=>onPostClick&&onPostClick(post)}
                 onMouseEnter={e=>e.currentTarget.style.borderColor=stage.color}
                 onMouseLeave={e=>e.currentTarget.style.borderColor=stage.color+"44"}>
+                {thumbUrl&&(
+                  <div style={{width:isMobile?"100%":64,height:64,borderRadius:8,overflow:"hidden",flexShrink:0,background:"var(--surface2)"}}>
+                    {thumbIsVideo
+                      ? <video src={thumbUrl} muted preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                      : <img src={thumbUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
+                  </div>
+                )}
                 {/* Content */}
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
