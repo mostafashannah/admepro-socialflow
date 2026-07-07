@@ -587,7 +587,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.35";
+const APP_VERSION = "beta 3.36";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9979,9 +9979,19 @@ function AttendanceImportTab() {
 }
 
 function InviteUserModal({onClose, onSubmit, clients}) {
-  const [form, setForm] = useState({name:"",email:"",role:"content_creator",user_type:"internal",client_id:"",permissions:""});
+  const [form, setForm] = useState({name:"",email:"",role:"content_creator",user_type:"internal",client_id:"",permissions:"",whatsapp_number:"",salary:"",vacation_days_total:21,wfh_days_total:12,id_photo_url:""});
   const [loading, setLoading] = useState(false);
+  const [uploadingId, setUploadingId] = useState(false);
+  const idPhotoRef = useRef(null);
   const sf = (k,v)=>setForm(p=>({...p,[k]:v}));
+
+  const handleIdPhoto = async (file) => {
+    if(!file) return;
+    setUploadingId(true);
+    try { const url = await uploadToStorage(file, "team-id-photos"); sf("id_photo_url", url); }
+    catch(e){ alert("Photo upload failed"); }
+    setUploadingId(false);
+  };
 
   const handleSubmit = async () => {
     if(!form.email||!form.role) return;
@@ -10036,6 +10046,45 @@ function InviteUserModal({onClose, onSubmit, clients}) {
                 {(clients||[]).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
+          )}
+          {form.user_type==="internal"&&(
+            <>
+              <div>
+                <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Mobile / WhatsApp Number</label>
+                <input value={form.whatsapp_number} onChange={e=>sf("whatsapp_number",e.target.value)} placeholder="+20 100 000 0000" style={inputSt}/>
+                <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Pro will send a welcome WhatsApp message to this number to confirm it's correct.</p>
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                <div style={{flex:1}}>
+                  <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Salary</label>
+                  <input type="number" value={form.salary} onChange={e=>sf("salary",e.target.value)} placeholder="Monthly salary" style={inputSt}/>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                <div style={{flex:1}}>
+                  <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Vacation Days/Year</label>
+                  <input type="number" value={form.vacation_days_total} onChange={e=>sf("vacation_days_total",e.target.value)} style={inputSt}/>
+                </div>
+                <div style={{flex:1}}>
+                  <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>WFH Days/Year</label>
+                  <input type="number" value={form.wfh_days_total} onChange={e=>sf("wfh_days_total",e.target.value)} style={inputSt}/>
+                </div>
+              </div>
+              <div>
+                <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>ID Photo</label>
+                <input ref={idPhotoRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{handleIdPhoto(e.target.files?.[0]); e.target.value="";}}/>
+                {form.id_photo_url ? (
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <img src={form.id_photo_url} style={{width:56,height:56,borderRadius:8,objectFit:"cover",border:"1px solid var(--border)"}} alt="ID"/>
+                    <button onClick={()=>idPhotoRef.current?.click()} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,color:"var(--text)",fontWeight:600}}>Change</button>
+                  </div>
+                ) : (
+                  <button onClick={()=>idPhotoRef.current?.click()} disabled={uploadingId} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontSize:13,fontWeight:600,color:"var(--text2)",width:"100%"}}>
+                    <Ico d={Icons.upload} size={14} stroke="var(--text2)"/> {uploadingId?"Uploading…":"Upload ID Photo"}
+                  </button>
+                )}
+              </div>
+            </>
           )}
         </div>
         <div style={{display:"flex",gap:8,marginTop:20,justifyContent:"flex-end"}}>
@@ -10998,15 +11047,24 @@ function AcceptInvitationPage({token, onAccepted}) {
       email: invitation.email,
       role: invitation.role,
       status: "active",
-      mobile: form.mobile,
       avatar_url: form.photo_url,
       password: form.password,
     };
     try {
       if(invitation.user_type==="client") {
-        await ce("ClientUser",[{...memberPayload, client_id: invitation.client_id||"", client_name: invitation.client_name||""}]);
+        await ce("ClientUser",[{...memberPayload, mobile: form.mobile, client_id: invitation.client_id||"", client_name: invitation.client_name||""}]);
       } else {
-        await ce("TeamMember",[memberPayload]);
+        // team_members has no "mobile" column — whatsapp_number/salary/leave credits/ID
+        // photo were already set by the admin at invite time (see InviteUserModal), so
+        // carry those through instead of the old (broken) self-entered mobile field.
+        await ce("TeamMember",[{
+          ...memberPayload,
+          whatsapp_number: invitation.whatsapp_number || form.mobile || null,
+          salary: invitation.salary || null,
+          vacation_days_total: invitation.vacation_days_total || 21,
+          wfh_days_total: invitation.wfh_days_total || 12,
+          id_photo_url: invitation.id_photo_url || null,
+        }]);
       }
       await ue("UserInvitation", invitation.id, {status:"accepted"});
     } catch(e) { console.error("Setup error:",e); }
@@ -22930,8 +22988,19 @@ function App() {
     }).catch(()=>{});
     const inviteUrl = window.location.origin + "?invite=" + token;
     sendEmail(formData.email, `You've been invited to SocialFlow`, EMAIL_TEMPLATES.invitation(formData.name||formData.email, ROLES[formData.role]?.label||formData.role, inviteUrl)).catch(()=>{});
+    if(formData.whatsapp_number) {
+      // Sent immediately (not after they accept) so the admin gets instant confirmation
+      // the number is real/reachable — if it silently fails, the number was wrong.
+      fetch(window.location.origin+"/whatsapp.php", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          to: formData.whatsapp_number,
+          body: `Hi ${formData.name||"there"}! 👋 This is Pro, SocialFlow's AI assistant. You've been invited to join as ${ROLES[formData.role]?.label||formData.role} — check your email for the setup link. Once you're in, you can message me here anytime for approvals, task lookups, or questions about your profile. Welcome aboard!`,
+        }),
+      }).catch(()=>{});
+    }
     logActivity("User Invited","users",`Invited ${formData.name||formData.email} as ${ROLES[formData.role]?.label||formData.role}`,"success","",currentUser?.email||"admin");
-    setToast(`Invitation sent to ${formData.email}`);
+    setToast(`Invitation sent to ${formData.email}${formData.whatsapp_number?" — Pro is confirming their WhatsApp number now":""}`);
   };
 
   const cancelInvitation = async (invId) => {
