@@ -587,7 +587,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.40";
+const APP_VERSION = "beta 3.41";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1997,10 +1997,17 @@ function PostCard({post,project,team,onClick}) {
     onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border)";e.currentTarget.style.boxShadow="0 2px 6px rgba(0,0,0,0.08)";e.currentTarget.style.transform="none";}}
     >
       {thumbUrl&&(
-        <div style={{margin:"-14px -16px 0",height:100,background:"var(--surface2)",overflow:"hidden"}}>
+        <div style={{position:"relative",margin:"-14px -16px 0",height:100,background:"var(--surface2)",overflow:"hidden"}}>
           {thumbIsVideo
-            ? <video src={thumbUrl} muted preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+            ? <video src={thumbUrl+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
             : <img src={thumbUrl} alt={post.title} style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
+          {thumbIsVideo&&(
+            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.15)"}}>
+              <div style={{width:30,height:30,borderRadius:"50%",background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <Ico d={Icons.play} size={13} stroke="#fff"/>
+              </div>
+            </div>
+          )}
         </div>
       )}
       <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
@@ -2115,10 +2122,15 @@ function ListView({posts,projects,team,onPostClick}) {
           >
             <span style={{fontWeight:600,fontSize:13,display:"flex",alignItems:"center",gap:8,minWidth:0}}>
               {thumbUrl ? (
-                <div style={{width:32,height:32,borderRadius:6,overflow:"hidden",flexShrink:0,background:"var(--surface2)"}}>
+                <div style={{position:"relative",width:32,height:32,borderRadius:6,overflow:"hidden",flexShrink:0,background:"var(--surface2)"}}>
                   {thumbIsVideo
-                    ? <video src={thumbUrl} muted preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                    ? <video src={thumbUrl+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                     : <img src={thumbUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
+                  {thumbIsVideo&&(
+                    <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.15)"}}>
+                      <Ico d={Icons.play} size={10} stroke="#fff"/>
+                    </div>
+                  )}
                 </div>
               ) : <Badge label={post.priority} color={PRI_COLOR[post.priority]||"#888"} xs/>}
               <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{post.title}</span>
@@ -3070,16 +3082,23 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
           const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
           const media = designAssets.length ? designAssets : designUrls.map(url=>({url}));
           if(!media.length) return null;
+          // Match the real published shape instead of forcing every tile into a
+          // fixed box: Reels/Stories are vertical 9:16, everything else (feed
+          // image/carousel/video) is the standard square 1:1 Instagram/Facebook
+          // uses — objectFit:contain so nothing gets cropped either way.
+          const isVertical = ["reel","story"].includes(post.post_type);
+          const aspect = isVertical ? "9/16" : "1/1";
+          const colWidth = isVertical ? "150px" : "220px";
           return (
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:10}}>
+            <div style={{display:"grid",gridTemplateColumns:`repeat(auto-fill,minmax(${colWidth},1fr))`,gap:10}}>
               {media.map((asset,i)=>{
                 const url = asset.url||asset.file_url||asset.data||"";
                 const isVideo = (asset.type||"").startsWith("video")||url.match(/\.(mp4|mov|webm|m4v)/i);
                 return (
-                  <a key={i} href={url} target="_blank" rel="noreferrer" style={{position:"relative",aspectRatio:"16/9",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",overflow:"hidden",display:"block"}}>
+                  <a key={i} href={url} target="_blank" rel="noreferrer" style={{position:"relative",aspectRatio:aspect,maxWidth:isVertical?220:"none",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",overflow:"hidden",display:"block"}}>
                     {isVideo
-                      ? <video src={url+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                      : <img src={url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt={asset.name||post.title}/>}
+                      ? <video src={url+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
+                      : <img src={url} style={{width:"100%",height:"100%",objectFit:"contain"}} alt={asset.name||post.title}/>}
                     {isVideo&&(
                       <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.15)"}}>
                         <div style={{width:44,height:44,borderRadius:"50%",background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -17166,10 +17185,17 @@ function MyTasksPage({posts,team,projects,currentUser,onStageChange,onPostClick}
                 onMouseEnter={e=>e.currentTarget.style.borderColor=stage.color}
                 onMouseLeave={e=>e.currentTarget.style.borderColor=stage.color+"44"}>
                 {thumbUrl&&(
-                  <div style={{width:isMobile?"100%":64,height:64,borderRadius:8,overflow:"hidden",flexShrink:0,background:"var(--surface2)"}}>
+                  <div style={{position:"relative",width:isMobile?"100%":64,height:64,borderRadius:8,overflow:"hidden",flexShrink:0,background:"var(--surface2)"}}>
                     {thumbIsVideo
-                      ? <video src={thumbUrl} muted preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                      ? <video src={thumbUrl+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                       : <img src={thumbUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
+                    {thumbIsVideo&&(
+                      <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.15)"}}>
+                        <div style={{width:22,height:22,borderRadius:"50%",background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          <Ico d={Icons.play} size={10} stroke="#fff"/>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
                 {/* Content */}
