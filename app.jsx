@@ -587,7 +587,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.39";
+const APP_VERSION = "beta 3.40";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3071,15 +3071,22 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
           const media = designAssets.length ? designAssets : designUrls.map(url=>({url}));
           if(!media.length) return null;
           return (
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(110px,1fr))",gap:8}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:10}}>
               {media.map((asset,i)=>{
                 const url = asset.url||asset.file_url||asset.data||"";
                 const isVideo = (asset.type||"").startsWith("video")||url.match(/\.(mp4|mov|webm|m4v)/i);
                 return (
-                  <a key={i} href={url} target="_blank" rel="noreferrer" style={{aspectRatio:"1/1",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",overflow:"hidden",display:"block"}}>
+                  <a key={i} href={url} target="_blank" rel="noreferrer" style={{position:"relative",aspectRatio:"16/9",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",overflow:"hidden",display:"block"}}>
                     {isVideo
-                      ? <video src={url} muted preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                      ? <video src={url+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                       : <img src={url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt={asset.name||post.title}/>}
+                    {isVideo&&(
+                      <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.15)"}}>
+                        <div style={{width:44,height:44,borderRadius:"50%",background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          <Ico d={Icons.play} size={18} stroke="#fff"/>
+                        </div>
+                      </div>
+                    )}
                   </a>
                 );
               })}
