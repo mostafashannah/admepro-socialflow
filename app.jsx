@@ -586,7 +586,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.33";
+const APP_VERSION = "beta 3.34";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3079,9 +3079,16 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
                   <AssetPickerModal open={showPicker} assets={assets} multiple onClose={()=>setShowPicker_(false)}
                     onPick={async(picked)=>{
                       const mapped = await Promise.all(picked.map(async(a,i)=>{
-                        if(a.url) return a; // came from picker's own upload flow
-                        if(onAddAsset) onAddAsset({name:renameForTask(post.title,a.name,picked.length>1?String(i+1):""), file_url:a.file_url, file_type:a.file_type||"image", category:monthProjectFolder(project?.title), project_id:post.project_id, tags:[]}).catch(()=>{});
-                        return {name:a.name, type:a.file_type, url:a.file_url, uploaded_at:new Date().toISOString()};
+                        // a.url = freshly uploaded via the picker's own "Upload New" button (not yet
+                        // in the assets table); a.file_url = picked from the existing asset library.
+                        // Both cases need saving here — previously only the "picked from library" case
+                        // called onAddAsset, so files uploaded straight from a post silently never
+                        // showed up on the Assets page.
+                        const isNewUpload = !!a.url;
+                        const fileUrl = a.url || a.file_url;
+                        const name = renameForTask(post.title, a.name, picked.length>1?String(i+1):"");
+                        if(onAddAsset) onAddAsset({name, file_url:fileUrl, file_type:a.file_type||"image", category:monthProjectFolder(project?.title), project_id:post.project_id, tags:[]}).catch(()=>{});
+                        return isNewUpload ? {...a, name} : {name, type:a.file_type, url:a.file_url, uploaded_at:new Date().toISOString()};
                       }));
                       const newAssets = [...(post.design_assets||[]), ...mapped];
                       ue("Post", post.id, {design_assets: newAssets}).catch(()=>{});
@@ -3407,7 +3414,14 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
                     </div>
                   )}
                   <AssetPickerModal open={showMediaPicker} assets={assets} multiple onClose={()=>setShowMediaPicker(false)}
-                    onPick={(picked)=>{ s("media",[...f.media,...picked.map(a=>a.url?a:{name:a.name,type:a.file_type,url:a.file_url,uploaded_at:new Date().toISOString()})]); }}/>
+                    onPick={(picked)=>{
+                      // Save freshly-uploaded files to the asset library too — see the matching
+                      // comment in PostDetail's picker for why this was previously missing.
+                      picked.filter(a=>a.url).forEach(a=>{
+                        if(onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(selectableProjects.find(p=>p.id===f.project_id)?.title), project_id:f.project_id, tags:[]}).catch(()=>{});
+                      });
+                      s("media",[...f.media,...picked.map(a=>a.url?a:{name:a.name,type:a.file_type,url:a.file_url,uploaded_at:new Date().toISOString()})]);
+                    }}/>
                 </Field>
                 {f.platforms.includes("instagram")&&f.platform_types.instagram==="reel"&&(
                   <Field label="Reel Cover Image" required>
@@ -3416,7 +3430,7 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
                       <Ico d={Icons.upload} size={14} stroke="var(--text2)"/> Choose Cover Image…
                     </button>
                     <AssetPickerModal open={showCoverPicker} assets={assets.filter(a=>a.file_type==="image"||(a.file_url||"").match(/\.(jpg|jpeg|png|gif|webp)/i))} multiple={false} onClose={()=>setShowCoverPicker(false)}
-                      onPick={(picked)=>{ const a=picked[0]; s("cover",a.url?a:{name:a.name,type:a.file_type,url:a.file_url}); }}/>
+                      onPick={(picked)=>{ const a=picked[0]; if(a.url&&onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(selectableProjects.find(p=>p.id===f.project_id)?.title), project_id:f.project_id, tags:[]}).catch(()=>{}); s("cover",a.url?a:{name:a.name,type:a.file_type,url:a.file_url}); }}/>
                     {uploadingCover&&<div style={{fontSize:12,color:"var(--text3)",marginTop:6}}><Spinner size={12}/> Uploading…</div>}
                     {f.cover&&(
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,padding:"4px 8px",borderRadius:8,background:"var(--surface2)",fontSize:11,width:"fit-content"}}>
@@ -4457,7 +4471,14 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
                     </div>
                   )}
                   <AssetPickerModal open={showMediaPicker} assets={assets} multiple onClose={()=>setShowMediaPicker(false)}
-                    onPick={(picked)=>{ s("media",[...f.media,...picked.map(a=>a.url?a:{name:a.name,type:a.file_type,url:a.file_url,uploaded_at:new Date().toISOString()})]); }}/>
+                    onPick={(picked)=>{
+                      // Save freshly-uploaded files to the asset library too — see the matching
+                      // comment in PostDetail's picker for why this was previously missing.
+                      picked.filter(a=>a.url).forEach(a=>{
+                        if(onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(projects.find(p=>p.id===f.project_id)?.title), project_id:f.project_id, tags:[]}).catch(()=>{});
+                      });
+                      s("media",[...f.media,...picked.map(a=>a.url?a:{name:a.name,type:a.file_type,url:a.file_url,uploaded_at:new Date().toISOString()})]);
+                    }}/>
                 </Field>
                 {f.platforms.includes("instagram")&&f.platform_types.instagram==="reel"&&(
                   <Field label="Reel Cover Image" required>
@@ -4466,7 +4487,7 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
                       <Ico d={Icons.upload} size={14} stroke="var(--text2)"/> Choose Cover Image…
                     </button>
                     <AssetPickerModal open={showCoverPicker} assets={assets.filter(a=>a.file_type==="image"||(a.file_url||"").match(/\.(jpg|jpeg|png|gif|webp)/i))} multiple={false} onClose={()=>setShowCoverPicker(false)}
-                      onPick={(picked)=>{ const a=picked[0]; s("cover",a.url?a:{name:a.name,type:a.file_type,url:a.file_url}); }}/>
+                      onPick={(picked)=>{ const a=picked[0]; if(a.url&&onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(projects.find(p=>p.id===f.project_id)?.title), project_id:f.project_id, tags:[]}).catch(()=>{}); s("cover",a.url?a:{name:a.name,type:a.file_type,url:a.file_url}); }}/>
                     {uploadingCover&&<div style={{fontSize:12,color:"var(--text3)",marginTop:6}}><Spinner size={12}/> Uploading…</div>}
                     {f.cover&&(
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,padding:"4px 8px",borderRadius:8,background:"var(--surface2)",fontSize:11,width:"fit-content"}}>
