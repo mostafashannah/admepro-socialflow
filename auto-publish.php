@@ -80,7 +80,10 @@ foreach ($due as $post) {
     $design_urls   = json_decode($post['design_urls'] ?? '[]', true) ?: [];
     $design_assets = json_decode($post['design_assets'] ?? '[]', true) ?: [];
     $message       = trim(($post['caption'] ?? '') . "\n\n" . ($post['hashtags'] ?? ''));
-    $image_url     = $design_urls[0] ?? ($design_assets[0]['url'] ?? '');
+    // Use the LAST file added, not the first — matches publishPost() in app.jsx:
+    // when a task has multiple attachments (revisions/replacements), the most
+    // recently added one is the intended final version to actually publish.
+    $image_url     = end($design_urls) ?: ($design_assets ? (end($design_assets)['url'] ?? '') : '');
     $cover_url     = $post['carousel_cover'] ?? '';
     // Tagged kind:"story" by the Ready Content "Also post as Instagram Story" option.
     $story_image_url = '';

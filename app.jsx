@@ -587,7 +587,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.41";
+const APP_VERSION = "beta 3.42";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -993,7 +993,10 @@ async function publishPost(post, integration) {
   // photos are uploaded during the Design stage. Either can hold the image.
   const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
   const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
-  const imageUrl = designUrls[0] || designAssets[0]?.url || "";
+  // Use the LAST file added, not the first — when a task has multiple
+  // attachments (revisions/replacements), the most recently added one is
+  // the intended final version to actually publish.
+  const imageUrl = designUrls[designUrls.length-1] || designAssets[designAssets.length-1]?.url || "";
   // A design_assets entry tagged kind:"story" (set by the Ready Content "Also
   // post as Instagram Story" option) requests a parallel Story publish alongside
   // the regular feed post — only meaningful for Instagram.
@@ -1983,8 +1986,9 @@ function PostCard({post,project,team,onClick}) {
   const assignee = team?.find(t=>t.email===post.assigned_to);
   const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
   const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
-  const thumbUrl = designUrls[0] || designAssets[0]?.url || post.carousel_cover || "";
-  const thumbIsVideo = (designAssets[0]?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i);
+  const lastDesignAsset = designAssets[designAssets.length-1];
+  const thumbUrl = designUrls[designUrls.length-1] || lastDesignAsset?.url || post.carousel_cover || "";
+  const thumbIsVideo = (lastDesignAsset?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i);
   return (
     <div onClick={()=>onClick(post)} className="fade-in" style={{
       background:"var(--surface)",border:"1px solid var(--border)",
@@ -2108,8 +2112,9 @@ function ListView({posts,projects,team,onPostClick}) {
         const stage = STAGE_MAP[post.stage]||STAGES[0];
         const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
         const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
-        const thumbUrl = designUrls[0] || designAssets[0]?.url || post.carousel_cover || "";
-        const thumbIsVideo = (designAssets[0]?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i);
+        const lastDesignAsset = designAssets[designAssets.length-1];
+  const thumbUrl = designUrls[designUrls.length-1] || lastDesignAsset?.url || post.carousel_cover || "";
+        const thumbIsVideo = (lastDesignAsset?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i);
         return (
           <div key={post.id} onClick={()=>onPostClick(post)} style={{
             display:"grid",gridTemplateColumns:"2fr 1fr 100px 100px 140px 110px",
@@ -17176,8 +17181,9 @@ function MyTasksPage({posts,team,projects,currentUser,onStageChange,onPostClick}
             const nextStage = STAGES[STAGES.findIndex(s=>s.key===post.stage)+1];
             const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
             const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
-            const thumbUrl = designUrls[0] || designAssets[0]?.url || post.carousel_cover || "";
-            const thumbIsVideo = (designAssets[0]?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i);
+            const lastDesignAsset = designAssets[designAssets.length-1];
+  const thumbUrl = designUrls[designUrls.length-1] || lastDesignAsset?.url || post.carousel_cover || "";
+            const thumbIsVideo = (lastDesignAsset?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i);
 
             return (
               <div key={post.id} style={{background:"var(--surface)",border:`1px solid ${stage.color}44`,borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:isMobile?"column":"row",gap:14,alignItems:isMobile?"stretch":"flex-start",cursor:"pointer",transition:"border-color 0.15s"}}
