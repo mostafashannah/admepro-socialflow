@@ -60,15 +60,42 @@ if (function_exists('fastcgi_finish_request')) {
 $body    = json_decode($raw, true);
 $value   = $body['entry'][0]['changes'][0]['value'] ?? [];
 $message = $value['messages'][0] ?? null;
-if (!$message || ($message['type'] ?? '') !== 'text') {
-    exit; // ignore statuses, non-text messages, etc.
+$msgType = $message['type'] ?? '';
+if (!$message || !in_array($msgType, ['text', 'audio'], true)) {
+    exit; // ignore statuses, non-text/audio messages, etc.
 }
 
 $phoneNumberId = (string)($value['metadata']['phone_number_id'] ?? ''); // which of our numbers received it
 $from = preg_replace('/\D/', '', $message['from'] ?? ''); // digits only, no '+'
-$text = trim($message['text']['body'] ?? '');
-if (!$from || !$text) exit;
 $contactName = $value['contacts'][0]['profile']['name'] ?? null; // customer display name, if sent
+$isVoiceNote = false;
+
+if ($msgType === 'audio') {
+    // Voice notes only make sense on the Pro number (client inbox numbers
+    // don't run the transcription/HR pipeline) — resolved for real just
+    // below once $proPhoneId is known; bail early here if this is clearly
+    // not a Pro-bound audio message.
+    require_once __DIR__ . '/pro-lib.php';
+    $mediaId = $message['audio']['id'] ?? '';
+    if (!$from || !$mediaId) exit;
+    [$bytes, $mime] = downloadWhatsAppMedia($mediaId);
+    if (!$bytes) exit;
+    $transcript = transcribeAudio($bytes, $mime);
+    if (!$transcript) {
+        // Transcription unavailable (OPENAI_API_KEY not configured, or the
+        // API call failed) — tell the sender instead of silently dropping.
+        if (function_exists('sendWhatsAppReply')) {
+            sendWhatsAppReply($from, "Sorry, I couldn't transcribe that voice note right now — please type your message instead.");
+        }
+        exit;
+    }
+    $text = $transcript;
+    $isVoiceNote = true;
+} else {
+    $text = trim($message['text']['body'] ?? '');
+}
+
+if (!$from || !$text) exit;
 
 try {
     $pdo = new PDO(
@@ -110,7 +137,7 @@ try {
         try { maybeCreateLeadFromMessage($pdo, 'whatsapp', $from, $contactName, $text, $from); }
         catch (\Throwable $e) { error_log('[wa-webhook] lead-capture EXCEPTION: ' . $e->getMessage()); }
     }
-    $reply = askPro($pdo, $senderName, $senderRole, $contextBlock, $text, $senderId);
+    $reply = askPro($pdo, $senderName, $senderRole, $contextBlock, $text, $senderId, $isVoiceNote ? $text : null);
     if ($reply) sendWhatsAppReply($from, $reply);
 } catch (Throwable $e) {
     error_log('[wa-webhook] ' . $e->getMessage() . ' | ' . $e->getFile() . ':' . $e->getLine(), 3, '/var/www/socialflow/pro-error.log');

@@ -348,6 +348,7 @@ const SB_TABLE = {
   RolePermission:"role_permissions",
   LeaveRequest:"leave_requests",
   AttendanceRecord:"attendance_records",
+  ContactReport:"contact_reports",
 };
 
 function sbTable(entityName) {
@@ -586,7 +587,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.34";
+const APP_VERSION = "beta 3.35";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1048,6 +1049,22 @@ const ai = async (prompt, maxTokens=1000) => {
   }
   const d = await r.json();
   return d.content?.map(b=>b.text||"").join("") || "";
+};
+
+// Uploads a recorded/picked audio file to transcribe-audio.php (OpenAI Whisper
+// under the hood) and returns the transcribed text. Used by the mic button in
+// both Pro chat surfaces (the popover Chatbot and the full ProHomePage).
+const transcribeAudioFile = async (file) => {
+  const fd = new FormData();
+  fd.append("file", file);
+  const r = await fetch(window.location.origin+"/transcribe-audio.php", {
+    method: "POST",
+    headers: { "apikey": SB_KEY },
+    body: fd,
+  });
+  const d = await r.json();
+  if(!r.ok || !d.ok) throw new Error(d.error || "Transcription failed");
+  return d.text;
 };
 
 // ════════════════════════════════════════════════════════════════
@@ -1674,6 +1691,7 @@ const Ico = ({d,size=18,sw=1.6,fill="none",stroke="currentColor",fillRule}) => (
 );
 
 const Icons = {
+  mic: ["M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z","M19 10v2a7 7 0 0 1-14 0v-2","M12 19v4","M8 23h8"],
   home: ["M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z","M9 22V12h6v10"],
   clients: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75",
   projects:"M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z",
@@ -6661,7 +6679,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
   );
 }
 
-function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset}) {
+function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[]}) {
   const [tab,setTab] = usePersistentState(`sf_tab_client_${client?.id}`,"overview");
   const [showEdit,setShowEdit] = useState(false);
   const [confirmDelete,setConfirmDelete] = useState(false);
@@ -6691,7 +6709,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
     ["reports","Reports"],
     ...(isPriv?[["inbox",`Inbox${cMessagesNeedReplyCount?` (${cMessagesNeedReplyCount})`:""}`]]:[]),
     ...(isPriv?[["meta_insights","Meta Insights"]]:[]),
-    ...(isPriv?[["brain","Client Brain"],["briefs",`Briefs${pendingBriefCount?` (${pendingBriefCount} pending)`:""}`]]:[]),
+    ...(isPriv?[["brain","Client Brain"],["briefs",`Briefs${pendingBriefCount?` (${pendingBriefCount} pending)`:""}`],["contact_reports","Contact Reports"]]:[]),
   ];
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
@@ -6864,6 +6882,43 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
               </div>
             );
           })}
+        </div>
+      )}
+
+      {tab==="contact_reports"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:16}}>
+          <div>
+            <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:16}}>Contact Reports</h3>
+            <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Call/meeting debriefs — captured by Pro from voice notes and messages</p>
+          </div>
+          {(contactReports||[]).filter(r=>r.client_id===client.id).length===0&&(
+            <div style={{padding:"40px 0",textAlign:"center",color:"var(--text3)",fontSize:14}}>
+              No contact reports yet. Send Pro a voice note on WhatsApp after a client call and it'll show up here.
+            </div>
+          )}
+          {(contactReports||[]).filter(r=>r.client_id===client.id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).map(r=>(
+            <div key={r.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                <div>
+                  <p style={{fontWeight:700,fontSize:14}}>{r.created_by_name||"Unknown"}</p>
+                  <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>{r.created_at?new Date(r.created_at).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):""} · via {r.channel}</p>
+                </div>
+              </div>
+              {r.summary&&<p style={{fontSize:13,lineHeight:1.7,color:"var(--text)",marginBottom:10}}>{r.summary}</p>}
+              {r.key_points&&(
+                <div style={{marginBottom:10}}>
+                  <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:3}}>KEY POINTS</p>
+                  <p style={{fontSize:13,lineHeight:1.7,color:"var(--text)",whiteSpace:"pre-wrap"}}>{r.key_points}</p>
+                </div>
+              )}
+              {r.action_items&&(
+                <div>
+                  <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:3}}>ACTION ITEMS</p>
+                  <p style={{fontSize:13,lineHeight:1.7,color:"var(--text)",whiteSpace:"pre-wrap"}}>{r.action_items}</p>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
@@ -19085,6 +19140,15 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
   const {isMobile} = useResponsive();
   const [unread,setUnread] = useState(0);
   const [hasOpened,setHasOpened] = useState(false);
+  const [transcribing,setTranscribing] = useState(false);
+  const voiceInputRef = useRef(null);
+  const handleVoiceFile = async (file) => {
+    if(!file) return;
+    setTranscribing(true);
+    try { const text = await transcribeAudioFile(file); setInput(p=>p?`${p} ${text}`:text); }
+    catch(e){ alert(e.message||"Transcription failed"); }
+    setTranscribing(false);
+  };
   const [pendingActions,setPendingActions] = useState({}); // msgId → actionPayload
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -19762,6 +19826,12 @@ RULES:
                 rows={1}
                 style={{flex:1,fontSize:13,color:"var(--text)",lineHeight:1.5,minHeight:20,maxHeight:80,background:"none",resize:"none",border:"none",outline:"none"}}
               />
+              <input ref={voiceInputRef} type="file" accept="audio/*" style={{display:"none"}}
+                onChange={e=>{handleVoiceFile(e.target.files?.[0]); e.target.value="";}}/>
+              <button onClick={()=>voiceInputRef.current?.click()} disabled={transcribing} title="Send a voice note"
+                style={{width:30,height:30,borderRadius:8,flexShrink:0,background:"none",border:"none",color:transcribing?"var(--text3)":"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:transcribing?"default":"pointer"}}>
+                {transcribing?<Spinner size={13}/>:<Ico d={Icons.mic} size={15} stroke="currentColor"/>}
+              </button>
               <button onClick={()=>sendMessage()} disabled={!input.trim()||typing} style={{
                 width:30,height:30,borderRadius:8,flexShrink:0,
                 background:input.trim()&&!typing?"var(--accent)":"var(--border)",
@@ -20705,6 +20775,15 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
   const [input, setInput] = useState("");
   const [typing, setTyping] = useState(false);
   const [mode, setMode] = useState("action"); // default action on home
+  const [transcribing,setTranscribing] = useState(false);
+  const voiceInputRef = useRef(null);
+  const handleVoiceFile = async (file) => {
+    if(!file) return;
+    setTranscribing(true);
+    try { const text = await transcribeAudioFile(file); setInput(p=>p?`${p} ${text}`:text); }
+    catch(e){ alert(e.message||"Transcription failed"); }
+    setTranscribing(false);
+  };
   const [selectedClient, setSelectedClient] = useState(null);
   const [activeTempClient, setActiveTempClient] = useState(null); // {name, slug} — prospective client not yet created
   const [pendingActions, setPendingActions] = useState({});
@@ -21507,23 +21586,41 @@ RULES:
           rows={1}
           style={isMobile?{flex:1,fontSize:15,color:"var(--text)",lineHeight:1.5,minHeight:36,maxHeight:120,padding:"7px 0",background:"none",resize:"none",border:"none",outline:"none"}:{flex:1,fontSize:14,color:"var(--text)",lineHeight:1.5,minHeight:24,maxHeight:120,background:"none",resize:"none",border:"none",outline:"none",marginBottom:10}}
         />
+        <input ref={voiceInputRef} type="file" accept="audio/*" style={{display:"none"}}
+          onChange={e=>{handleVoiceFile(e.target.files?.[0]); e.target.value="";}}/>
         {isMobile ? (
-          <button onClick={()=>sendMessage()} disabled={(!input.trim()&&attachments.length===0)||typing} style={{
-            width:34,height:34,borderRadius:"50%",flexShrink:0,
-            background:(input.trim()||attachments.length)&&!typing?"var(--accent)":"var(--border)",
-            color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",
-            transition:"all 0.15s",border:"none",cursor:(input.trim()||attachments.length)&&!typing?"pointer":"default",marginBottom:2,
-          }}>
-            {typing?<Spinner size={14}/>:<Ico d={Icons.send} size={15} stroke="#fff"/>}
-          </button>
+          <>
+            <button onClick={()=>voiceInputRef.current?.click()} disabled={transcribing} title="Send a voice note" style={{
+              width:34,height:34,borderRadius:"50%",flexShrink:0,background:"transparent",border:"none",
+              color:transcribing?"var(--text3)":"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:transcribing?"default":"pointer",marginBottom:2,
+            }}>
+              {transcribing?<Spinner size={14}/>:<Ico d={Icons.mic} size={16} stroke="currentColor"/>}
+            </button>
+            <button onClick={()=>sendMessage()} disabled={(!input.trim()&&attachments.length===0)||typing} style={{
+              width:34,height:34,borderRadius:"50%",flexShrink:0,
+              background:(input.trim()||attachments.length)&&!typing?"var(--accent)":"var(--border)",
+              color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",
+              transition:"all 0.15s",border:"none",cursor:(input.trim()||attachments.length)&&!typing?"pointer":"default",marginBottom:2,
+            }}>
+              {typing?<Spinner size={14}/>:<Ico d={Icons.send} size={15} stroke="#fff"/>}
+            </button>
+          </>
         ) : (
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <button onClick={()=>fileInputRef.current?.click()} title="Attach a file or image" style={{
-              width:32,height:32,borderRadius:10,flexShrink:0,background:"transparent",border:"none",
-              color:"var(--text3)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",
-            }}>
-              <Ico d={Icons.paperclip} size={17}/>
-            </button>
+            <div style={{display:"flex",alignItems:"center",gap:2}}>
+              <button onClick={()=>fileInputRef.current?.click()} title="Attach a file or image" style={{
+                width:32,height:32,borderRadius:10,flexShrink:0,background:"transparent",border:"none",
+                color:"var(--text3)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",
+              }}>
+                <Ico d={Icons.paperclip} size={17}/>
+              </button>
+              <button onClick={()=>voiceInputRef.current?.click()} disabled={transcribing} title="Send a voice note" style={{
+                width:32,height:32,borderRadius:10,flexShrink:0,background:"transparent",border:"none",
+                color:transcribing?"var(--text3)":"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:transcribing?"default":"pointer",
+              }}>
+                {transcribing?<Spinner size={13}/>:<Ico d={Icons.mic} size={16} stroke="currentColor"/>}
+              </button>
+            </div>
             <button onClick={()=>sendMessage()} disabled={(!input.trim()&&attachments.length===0)||typing} style={{
               width:34,height:34,borderRadius:11,flexShrink:0,
               background:(input.trim()||attachments.length)&&!typing?"var(--accent)":"var(--border)",
@@ -22321,7 +22418,7 @@ function App() {
     timeEntries: [], schedules: [], scheduleOverrides: [],
     invitations: [], accessRequests: [], clientUsers: [],
     emailLogs: [], activityLogs: [], notifPrefs: [],
-    rolePermissions: [], leaveRequests: [], attendanceRecords: [],
+    rolePermissions: [], leaveRequests: [], attendanceRecords: [], contactReports: [],
   });
   const rolePermsMap = useMemo(()=>buildRolePermsMap(data.rolePermissions), [data.rolePermissions]);
   const [appSettings, setAppSettings] = useState(SEED.appSettings);
@@ -22438,6 +22535,7 @@ function App() {
         qe("RolePermission"), // 40
         qe("LeaveRequest",{},"-created_at",500), // 41
         qe("AttendanceRecord",{},"-work_date",1000), // 42
+        qe("ContactReport",{},"-created_at",500), // 43
       ]);
       if(wave2[13].status==="fulfilled" && wave2[13].value?.entities?.length) setEmailSettings(wave2[13].value.entities[0]);
 
@@ -22484,6 +22582,7 @@ function App() {
         rolePermissions: pick(wave2[40], d.rolePermissions||[]),
         leaveRequests: pick(wave2[41], d.leaveRequests||[]),
         attendanceRecords: pick(wave2[42], d.attendanceRecords||[]),
+        contactReports: pick(wave2[43], d.contactReports||[]),
       }));
     }
     loadAllDataRef.current = load;
@@ -24369,6 +24468,7 @@ Return ONLY valid JSON (no markdown, no explanation):
           );
           return (
             <ClientDetailPage client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} onAddAsset={addAsset} currentUser={currentUser}
+              contactReports={data.contactReports||[]}
               integrations={data.integrations||[]}
               invoices={data.invoices||[]}
               leads={data.leads||[]}

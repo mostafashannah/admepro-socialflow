@@ -1,6 +1,69 @@
 <?php
 // Shared "Pro" assistant logic used by wa-webhook.php and CLI test scripts.
 
+// Downloads a WhatsApp media object (voice note, etc) by its media id and
+// returns [bytes, mime_type] — or [null, null] on any failure. Two-step
+// Graph API dance: media id -> signed CDN URL -> raw bytes, both requests
+// authenticated with the WhatsApp access token.
+function downloadWhatsAppMedia(string $mediaId) {
+    if (!defined('WA_ACCESS_TOKEN') || !WA_ACCESS_TOKEN) return [null, null];
+    $ch = curl_init("https://graph.facebook.com/v19.0/{$mediaId}");
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . WA_ACCESS_TOKEN],
+        CURLOPT_TIMEOUT => 20,
+    ]);
+    $res = curl_exec($ch);
+    curl_close($ch);
+    $meta = json_decode($res, true);
+    $url = $meta['url'] ?? null;
+    $mime = $meta['mime_type'] ?? 'audio/ogg';
+    if (!$url) return [null, null];
+
+    $ch2 = curl_init($url);
+    curl_setopt_array($ch2, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . WA_ACCESS_TOKEN],
+        CURLOPT_TIMEOUT => 30,
+    ]);
+    $bytes = curl_exec($ch2);
+    curl_close($ch2);
+    return $bytes ? [$bytes, $mime] : [null, null];
+}
+
+// Transcribes audio bytes via OpenAI's Whisper endpoint. Requires
+// OPENAI_API_KEY in config.php — returns null (not an error) if that's not
+// configured, so the caller can tell the user voice notes aren't set up yet
+// instead of throwing.
+function transcribeAudio(string $bytes, string $mimeType) {
+    if (!defined('OPENAI_API_KEY') || !OPENAI_API_KEY) return null;
+    $extMap = ['ogg' => 'ogg', 'mp4' => 'm4a', 'webm' => 'webm', 'mpeg' => 'mp3', 'mp3' => 'mp3', 'wav' => 'wav'];
+    $ext = 'oga';
+    foreach ($extMap as $needle => $mapped) { if (str_contains($mimeType, $needle)) { $ext = $mapped; break; } }
+    $tmpFile = tempnam(sys_get_temp_dir(), 'wa_voice_') . '.' . $ext;
+    file_put_contents($tmpFile, $bytes);
+
+    $ch = curl_init('https://api.openai.com/v1/audio/transcriptions');
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 60,
+        CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . OPENAI_API_KEY],
+        CURLOPT_POSTFIELDS => [
+            'file' => new CURLFile($tmpFile, $mimeType, 'voice.' . $ext),
+            'model' => 'whisper-1',
+        ],
+    ]);
+    $res = curl_exec($ch);
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    @unlink($tmpFile);
+
+    if ($status < 200 || $status >= 300) return null;
+    $data = json_decode($res, true);
+    return trim($data['text'] ?? '') ?: null;
+}
+
 function identifySender(PDO $pdo, string $digits) {
     $like = '%' . substr($digits, -9) . '%';
 
@@ -130,6 +193,20 @@ function hrTools() {
             'description' => 'Get YOUR OWN salary, vacation/WFH day credits (total/used/remaining), manager, and department. Always scoped to the asker only — never returns a colleague\'s data.',
             'input_schema' => ['type' => 'object', 'properties' => new stdClass(), 'required' => []],
         ],
+        [
+            'name' => 'save_contact_report',
+            'description' => 'Save a structured contact/call report from a client interaction — typically after the user sends a voice note debriefing a call or meeting. Extract the client name, a short summary, key discussion points, and any action items from what they told you, then save it here so it shows up on that client\'s profile in the app. Confirm to the user once saved.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'client_name'  => ['type' => 'string', 'description' => 'The client this report is about — best-effort match, does not need to be exact'],
+                    'summary'      => ['type' => 'string', 'description' => '2-3 sentence summary of the interaction'],
+                    'key_points'   => ['type' => 'string', 'description' => 'Bullet-style key discussion points, one per line'],
+                    'action_items' => ['type' => 'string', 'description' => 'Bullet-style follow-up actions, one per line — empty if none'],
+                ],
+                'required' => ['summary'],
+            ],
+        ],
     ];
 }
 
@@ -231,6 +308,24 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
         return ['ok' => true, 'status' => $newStatus, 'message' => "Request {$newStatus}, and {$req['member_name']} has been notified over WhatsApp."];
     }
 
+    if ($name === 'save_contact_report') {
+        $clientId = null; $clientName = $input['client_name'] ?? null;
+        if ($clientName) {
+            $c = $pdo->prepare("SELECT id, name FROM clients WHERE name LIKE :n LIMIT 1");
+            $c->execute([':n' => '%' . $clientName . '%']);
+            if ($row = $c->fetch(PDO::FETCH_ASSOC)) { $clientId = $row['id']; $clientName = $row['name']; }
+        }
+        $ins = $pdo->prepare("INSERT INTO contact_reports (id, client_id, client_name, created_by_id, created_by_name, transcript, summary, key_points, action_items, channel) VALUES (:id, :cid, :cname, :bid, :bname, :transcript, :summary, :points, :actions, 'whatsapp')");
+        $reportId = generateProUuid();
+        $ins->execute([
+            ':id' => $reportId, ':cid' => $clientId, ':cname' => $clientName,
+            ':bid' => $senderId, ':bname' => $senderName,
+            ':transcript' => $input['_raw_transcript'] ?? null,
+            ':summary' => $input['summary'] ?? '', ':points' => $input['key_points'] ?? null, ':actions' => $input['action_items'] ?? null,
+        ]);
+        return ['ok' => true, 'message' => 'Contact report saved' . ($clientName ? " for {$clientName}" : '') . '.'];
+    }
+
     return ['error' => 'Unknown tool: ' . $name];
 }
 
@@ -307,7 +402,7 @@ function callClaude(array $payload) {
     return [$status, json_decode($res, true), $res];
 }
 
-function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $senderId = null) {
+function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $senderId = null, $voiceTranscript = null) {
     $isTeam  = $senderName && str_starts_with((string)$senderRole, 'team:');
     $isAdmin = $senderRole === 'team:admin';
     $isAM    = $senderRole === 'team:account_manager';
@@ -329,7 +424,14 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                 . "(get_my_hr_info), requesting vacation or work-from-home (request_time_off), and — if they "
                 . "manage other people — approving or rejecting requests waiting on them (decide_pending_request, "
                 . "see their pending approvals list above if any). These tools only ever touch the asker's own "
-                . "record or requests explicitly addressed to them.";
+                . "record or requests explicitly addressed to them."
+                . ($voiceTranscript
+                    ? "\n\nThis message is a transcript of a VOICE NOTE they just sent you — it may contain "
+                      . "transcription errors, use your judgement. If it sounds like a debrief of a client call/"
+                      . "meeting (mentions a client and what was discussed), extract and save it with "
+                      . "save_contact_report, then confirm briefly what you saved. If it's just a normal question "
+                      . "instead, answer it normally like any other message."
+                    : '');
 
         if ($isAdmin) {
             $tools = array_merge(proTools(), hrTools());
@@ -380,7 +482,9 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
         $toolResults = [];
         foreach ($content as $block) {
             if (($block['type'] ?? '') !== 'tool_use') continue;
-            $result = runProTool($pdo, $block['name'], (array)($block['input'] ?? []), (string)$senderRole, $senderId, $senderName);
+            $toolInput = (array)($block['input'] ?? []);
+            if ($block['name'] === 'save_contact_report' && $voiceTranscript) $toolInput['_raw_transcript'] = $voiceTranscript;
+            $result = runProTool($pdo, $block['name'], $toolInput, (string)$senderRole, $senderId, $senderName);
             $toolResults[] = [
                 'type' => 'tool_result',
                 'tool_use_id' => $block['id'],
