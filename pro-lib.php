@@ -11,7 +11,25 @@ function identifySender(PDO $pdo, string $digits) {
         $tasks->execute([':n' => $m['name']]);
         $rows = $tasks->fetchAll(PDO::FETCH_ASSOC);
         $list = $rows ? implode("\n", array_map(fn($r) => "- {$r['title']} ({$r['stage']})", $rows)) : 'No open posts assigned right now.';
-        return [$m['name'], 'team:' . $m['role'], "Their open assigned posts:\n$list", $m['id']];
+
+        // If this person manages others, surface any leave/WFH requests waiting
+        // on their approval so Claude can act on "approve Sara's request" without
+        // a separate lookup round-trip — decide_pending_request matches on the
+        // short id (last 8 chars of the UUID) shown here.
+        $pending = $pdo->prepare("SELECT id, member_name, type, start_date, end_date, days, reason FROM leave_requests WHERE manager_id = :mid AND status = 'pending' ORDER BY created_at ASC LIMIT 10");
+        $pending->execute([':mid' => $m['id']]);
+        $pendingRows = $pending->fetchAll(PDO::FETCH_ASSOC);
+        $approvalsBlock = '';
+        if ($pendingRows) {
+            $lines = array_map(function($r) {
+                $shortId = substr($r['id'], -8);
+                $range = $r['start_date'] === $r['end_date'] ? $r['start_date'] : "{$r['start_date']} to {$r['end_date']}";
+                return "- [{$shortId}] {$r['member_name']}: {$r['type']} on {$range} ({$r['days']} day(s))" . ($r['reason'] ? " — \"{$r['reason']}\"" : '');
+            }, $pendingRows);
+            $approvalsBlock = "\n\nPending leave/WFH requests waiting on YOUR approval:\n" . implode("\n", $lines);
+        }
+
+        return [$m['name'], 'team:' . $m['role'], "Their open assigned posts:\n$list" . $approvalsBlock, $m['id']];
     }
 
     $stmt = $pdo->prepare("SELECT up.id, up.display_name, up.user_email FROM user_profiles up INNER JOIN team_members tm ON tm.email = up.user_email AND tm.status = 'active' WHERE REPLACE(REPLACE(REPLACE(up.whatsapp_number,'+',''),' ',''),'-','') LIKE :p LIMIT 1");
@@ -75,7 +93,151 @@ function proTools() {
     ];
 }
 
+// Self-service HR tools — available to every team member regardless of role,
+// since these only ever touch the asker's own record (or, for approvals, a
+// request explicitly addressed to them as manager_id).
+function hrTools() {
+    return [
+        [
+            'name' => 'request_time_off',
+            'description' => 'Request vacation (paid day off) or WFH (work from home) for yourself. Creates a pending request and immediately notifies your manager over WhatsApp for approval — tell the user you have done this, you cannot approve your own request.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'leave_type'  => ['type' => 'string', 'enum' => ['vacation', 'wfh']],
+                    'start_date'  => ['type' => 'string', 'description' => 'YYYY-MM-DD'],
+                    'end_date'    => ['type' => 'string', 'description' => 'YYYY-MM-DD — same as start_date for a single day'],
+                    'reason'      => ['type' => 'string', 'description' => 'Short reason, optional'],
+                ],
+                'required' => ['leave_type', 'start_date'],
+            ],
+        ],
+        [
+            'name' => 'decide_pending_request',
+            'description' => 'Approve or reject a leave/WFH request that is waiting on YOUR approval (see the "Pending leave/WFH requests" list in your context above, if any). Only requests addressed to you as manager can be decided this way.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'request_id' => ['type' => 'string', 'description' => 'The short id shown in brackets in your pending approvals list, e.g. "a1b2c3d4"'],
+                    'decision'   => ['type' => 'string', 'enum' => ['approve', 'reject']],
+                    'note'       => ['type' => 'string', 'description' => 'Optional short note, e.g. reason for rejecting'],
+                ],
+                'required' => ['request_id', 'decision'],
+            ],
+        ],
+        [
+            'name' => 'get_my_hr_info',
+            'description' => 'Get YOUR OWN salary, vacation/WFH day credits (total/used/remaining), manager, and department. Always scoped to the asker only — never returns a colleague\'s data.',
+            'input_schema' => ['type' => 'object', 'properties' => new stdClass(), 'required' => []],
+        ],
+    ];
+}
+
+function generateProUuid() {
+    $data = random_bytes(16);
+    $data[6] = chr(ord($data[6]) & 0x0f | 0x40);
+    $data[8] = chr(ord($data[8]) & 0x3f | 0x80);
+    return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
+}
+
+function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?string $senderName) {
+    if (!$senderId) return ['error' => 'Could not identify your team member record — ask your admin to add your WhatsApp number to your profile.'];
+
+    if ($name === 'get_my_hr_info') {
+        $stmt = $pdo->prepare("SELECT tm.department, tm.salary, tm.vacation_days_total, tm.vacation_days_used, tm.wfh_days_total, tm.wfh_days_used, mgr.name AS manager_name FROM team_members tm LEFT JOIN team_members mgr ON mgr.id = tm.manager_id WHERE tm.id = :id");
+        $stmt->execute([':id' => $senderId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) return ['error' => 'Profile not found.'];
+        return [
+            'department' => $row['department'],
+            'manager' => $row['manager_name'],
+            'salary' => $row['salary'],
+            'vacation_days_remaining' => (float)$row['vacation_days_total'] - (float)$row['vacation_days_used'],
+            'vacation_days_total' => (float)$row['vacation_days_total'],
+            'wfh_days_remaining' => (float)$row['wfh_days_total'] - (float)$row['wfh_days_used'],
+            'wfh_days_total' => (float)$row['wfh_days_total'],
+        ];
+    }
+
+    if ($name === 'request_time_off') {
+        $type = $input['leave_type'] ?? '';
+        $start = trim($input['start_date'] ?? '');
+        $end = trim($input['end_date'] ?? '') ?: $start;
+        if (!in_array($type, ['vacation', 'wfh'], true) || !$start) {
+            return ['error' => 'Missing or invalid leave_type/start_date.'];
+        }
+        $days = max(1, (strtotime($end) - strtotime($start)) / 86400 + 1);
+
+        $mgrStmt = $pdo->prepare("SELECT tm.manager_id, mgr.name AS manager_name, mgr.whatsapp_number AS manager_phone FROM team_members tm LEFT JOIN team_members mgr ON mgr.id = tm.manager_id WHERE tm.id = :id");
+        $mgrStmt->execute([':id' => $senderId]);
+        $mgr = $mgrStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$mgr || !$mgr['manager_id']) {
+            return ['error' => 'You do not have a manager assigned in your profile — ask your admin to set one before requesting time off.'];
+        }
+
+        $reqId = generateProUuid();
+        $ins = $pdo->prepare("INSERT INTO leave_requests (id, team_member_id, member_name, type, start_date, end_date, days, reason, status, manager_id, manager_name, source) VALUES (:id, :tid, :tname, :type, :start, :end, :days, :reason, 'pending', :mid, :mname, 'whatsapp')");
+        $ins->execute([
+            ':id' => $reqId, ':tid' => $senderId, ':tname' => $senderName, ':type' => $type,
+            ':start' => $start, ':end' => $end, ':days' => $days, ':reason' => $input['reason'] ?? null,
+            ':mid' => $mgr['manager_id'], ':mname' => $mgr['manager_name'],
+        ]);
+
+        if (!empty($mgr['manager_phone'])) {
+            $shortId = substr($reqId, -8);
+            $range = $start === $end ? $start : "{$start} to {$end}";
+            $label = $type === 'vacation' ? 'vacation' : 'work-from-home';
+            $reasonLine = !empty($input['reason']) ? "\nReason: {$input['reason']}" : '';
+            sendWhatsAppReply($mgr['manager_phone'],
+                "🗓️ {$senderName} requested {$label} for {$range} ({$days} day(s)).{$reasonLine}\n\n" .
+                "Reply here to approve or reject it — just tell Pro, e.g. \"approve {$shortId}\" or \"reject {$shortId}\"."
+            );
+        }
+
+        return ['ok' => true, 'request_id' => substr($reqId, -8), 'message' => 'Request submitted and your manager has been notified over WhatsApp.'];
+    }
+
+    if ($name === 'decide_pending_request') {
+        $shortId = trim($input['request_id'] ?? '');
+        $decision = $input['decision'] ?? '';
+        if (!$shortId || !in_array($decision, ['approve', 'reject'], true)) {
+            return ['error' => 'Missing or invalid request_id/decision.'];
+        }
+        $stmt = $pdo->prepare("SELECT * FROM leave_requests WHERE manager_id = :mid AND status = 'pending' AND id LIKE :sid LIMIT 1");
+        $stmt->execute([':mid' => $senderId, ':sid' => '%' . $shortId]);
+        $req = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$req) return ['error' => 'No pending request with that id is waiting on your approval.'];
+
+        $newStatus = $decision === 'approve' ? 'approved' : 'rejected';
+        $upd = $pdo->prepare("UPDATE leave_requests SET status = :s, decision_note = :note, decided_at = NOW() WHERE id = :id");
+        $upd->execute([':s' => $newStatus, ':note' => $input['note'] ?? null, ':id' => $req['id']]);
+
+        if ($newStatus === 'approved') {
+            $col = $req['type'] === 'vacation' ? 'vacation_days_used' : 'wfh_days_used';
+            $pdo->prepare("UPDATE team_members SET {$col} = {$col} + :days WHERE id = :id")
+                ->execute([':days' => $req['days'], ':id' => $req['team_member_id']]);
+        }
+
+        $requester = $pdo->prepare("SELECT whatsapp_number FROM team_members WHERE id = :id");
+        $requester->execute([':id' => $req['team_member_id']]);
+        $phone = $requester->fetchColumn();
+        if ($phone) {
+            $verb = $newStatus === 'approved' ? 'approved ✅' : 'rejected ❌';
+            $label = $req['type'] === 'vacation' ? 'vacation' : 'WFH';
+            $noteLine = !empty($input['note']) ? "\nNote from {$senderName}: {$input['note']}" : '';
+            sendWhatsAppReply($phone, "Your {$label} request for {$req['start_date']} has been {$verb} by {$senderName}.{$noteLine}");
+        }
+
+        return ['ok' => true, 'status' => $newStatus, 'message' => "Request {$newStatus}, and {$req['member_name']} has been notified over WhatsApp."];
+    }
+
+    return ['error' => 'Unknown tool: ' . $name];
+}
+
 function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '', ?string $senderId = null, ?string $senderName = null) {
+    if (in_array($name, ['request_time_off', 'decide_pending_request', 'get_my_hr_info'], true)) {
+        return runHrTool($pdo, $name, $input, $senderId, $senderName);
+    }
     $isAdmin = $senderRole === 'team:admin';
     $isAM    = $senderRole === 'team:account_manager';
 
@@ -162,18 +324,23 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                 . "Only answer questions related to their SocialFlow work (clients, tasks, the agency). Politely "
                 . "decline anything unrelated (general trivia, unrelated requests) and steer back to SocialFlow. "
                 . "If asked to take an action you can't perform over WhatsApp (e.g. editing a post), tell them "
-                . "to open the SocialFlow app to do it, but still answer their question as best you can here.";
+                . "to open the SocialFlow app to do it, but still answer their question as best you can here.\n\n"
+                . "You can also handle HR requests: asking about their own salary/vacation/WFH credits "
+                . "(get_my_hr_info), requesting vacation or work-from-home (request_time_off), and — if they "
+                . "manage other people — approving or rejecting requests waiting on them (decide_pending_request, "
+                . "see their pending approvals list above if any). These tools only ever touch the asker's own "
+                . "record or requests explicitly addressed to them.";
 
         if ($isAdmin) {
-            $tools = proTools();
+            $tools = array_merge(proTools(), hrTools());
             $system .= "\n\nAs admin, you have full tools to look up any client and search any task across the "
                      . "whole agency — use them whenever the question needs current data instead of guessing.";
         } elseif ($isAM) {
-            $tools = proTools();
+            $tools = array_merge(proTools(), hrTools());
             $system .= "\n\nYou have tools to look up clients and tasks, but only for the clients you personally "
                      . "manage as account manager — results outside your own clients will not be shown.";
         } elseif ($isTeam) {
-            $tools = array_values(array_filter(proTools(), fn($t) => $t['name'] !== 'list_clients'));
+            $tools = array_merge(array_values(array_filter(proTools(), fn($t) => $t['name'] !== 'list_clients')), hrTools());
             $system .= "\n\nYou have a tool to search tasks, but only your own assigned tasks — you do not have "
                      . "permission to browse the full client list or other people's tasks.";
         } else {

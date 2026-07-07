@@ -41,6 +41,7 @@ const checkInlineImageSize = (file) => {
 
 const ROLES = {
   admin: { label: "Admin", color: "#d90b2c" },
+  hr: { label: "HR", color: "#059669" },
   account_manager: { label: "Account Manager", color: "#3b82f6" },
   content_creator: { label: "Content Creator", color: "#8b5cf6" },
   graphic_designer:{ label: "Graphic Designer",color: "#f59e0b" },
@@ -51,7 +52,43 @@ const ROLES = {
 };
 
 const CLIENT_ROLES = ["client_admin","client_member"];
-const INTERNAL_ROLES = ["admin","account_manager","content_creator","graphic_designer","accountant"];
+const INTERNAL_ROLES = ["admin","hr","account_manager","content_creator","graphic_designer","accountant"];
+
+// Granular permissions the Roles & Permissions settings page can toggle per
+// role. "admin" always implicitly has every permission regardless of what's
+// stored in role_permissions — it's the one role that can't be locked out.
+const HR_PERMISSIONS = [
+  { key: "hr.view_team",       label: "View team directory & profiles" },
+  { key: "hr.edit_team",       label: "Add / edit team members" },
+  { key: "hr.manage_roles",    label: "Manage roles & permissions" },
+  { key: "hr.view_salary",     label: "View salary" },
+  { key: "hr.edit_salary",     label: "Edit salary" },
+  { key: "hr.view_performance",label: "View performance logs" },
+  { key: "hr.approve_leave",   label: "Approve / reject leave & WFH requests" },
+  { key: "hr.upload_attendance",label:"Upload monthly attendance sheet" },
+];
+const DEFAULT_ROLE_PERMISSIONS = {
+  hr: ["hr.view_team","hr.edit_team","hr.manage_roles","hr.view_salary","hr.edit_salary","hr.view_performance","hr.approve_leave","hr.upload_attendance"],
+  account_manager: ["hr.view_team","hr.view_performance"],
+};
+// Converts the flat role_permissions rows fetched from the API into
+// {role: [permission_key,...]} for hasPerm() to consume.
+function buildRolePermsMap(rows) {
+  const map = {};
+  (rows||[]).forEach(r=>{
+    if(!r.allowed) return;
+    if(!map[r.role]) map[r.role]=[];
+    map[r.role].push(r.permission_key);
+  });
+  return map;
+}
+// rolePerms: {role: [permission_key,...]} loaded from role_permissions table.
+function hasPerm(currentUser, rolePerms, key) {
+  if (!currentUser) return false;
+  if (currentUser.role === "admin") return true;
+  const list = rolePerms && rolePerms[currentUser.role] ? rolePerms[currentUser.role] : (DEFAULT_ROLE_PERMISSIONS[currentUser.role]||[]);
+  return list.includes(key);
+}
 
 const PROJECT_TYPES = [
   { id:"social_calendar", label:"Social Media Calendar", icon:"", color:"#6366f1", hasPlatforms:true, hasPostingDates:true },
@@ -308,6 +345,9 @@ const SB_TABLE = {
   PushSubscription:"push_subscriptions",
   CustomerMessage:"customer_messages",
   ReplyBotSetting:"reply_bot_settings",
+  RolePermission:"role_permissions",
+  LeaveRequest:"leave_requests",
+  AttendanceRecord:"attendance_records",
 };
 
 function sbTable(entityName) {
@@ -546,7 +586,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.31";
+const APP_VERSION = "beta 3.32";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9412,21 +9452,30 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
 // ════════════════════════════════════════════════════════════════
 function UsersPage({currentUser, team, invitations, accessRequests, clientUsers, clients,
   onInviteUser, onCancelInvitation, onApproveRequest, onRejectRequest,
-  onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation}) {
+  onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation,
+  rolePerms, onUpdateTeamMember, onToggleRolePermission, leaveRequests, onDecideLeaveRequest}) {
   const [tab, setTab] = useState("team");
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showClientUserModal, setShowClientUserModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(null);
+  const [editingMember, setEditingMember] = useState(null);
   const [approvalRole, setApprovalRole] = useState("content_creator");
   const [approvingId, setApprovingId] = useState(null);
 
   const pendingRequests = (accessRequests||[]).filter(r=>r.status==="pending");
+  const canManageRoles = hasPerm(currentUser, rolePerms, "hr.manage_roles");
+  const canApproveLeave = hasPerm(currentUser, rolePerms, "hr.approve_leave");
+  const canUploadAttendance = hasPerm(currentUser, rolePerms, "hr.upload_attendance");
+  const pendingLeaveCount = (leaveRequests||[]).filter(r=>r.status==="pending").length;
 
   const tabs = [
     {id:"team", label:"Team Members", count: team?.length||0},
     {id:"invites", label:"Invitations", count: (invitations||[]).filter(i=>i.status==="pending").length},
     {id:"requests", label:"Access Requests", count: pendingRequests.length, badge:true},
     {id:"clients", label:"Client Users", count: clientUsers?.length||0},
+    {id:"leave", label:"Leave & WFH", count: pendingLeaveCount, badge:true},
+    ...(canManageRoles?[{id:"roles", label:"Roles & Permissions", count:0}]:[]),
+    ...(canUploadAttendance?[{id:"attendance", label:"Attendance", count:0}]:[]),
   ];
 
   return (
@@ -9480,10 +9529,23 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
                 color:m.status==="active"?"#10b981":"#f59e0b",
                 borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600
               }}>{m.status||"active"}</span>
+              {hasPerm(currentUser,rolePerms,"hr.edit_team")&&<button onClick={()=>setEditingMember(m)} style={{background:"var(--surface2)",border:"none",borderRadius:6,padding:"6px 12px",cursor:"pointer",fontSize:12,color:"var(--text)",fontWeight:600}}>Edit</button>}
             </div>
           ))}
           {(!team||team.length===0)&&<div style={{textAlign:"center",padding:40,color:"var(--text2)"}}>No team members yet. Invite your first user.</div>}
         </div>
+      )}
+
+      {tab==="leave"&&(
+        <LeaveRequestsTab requests={leaveRequests||[]} canDecide={canApproveLeave} onDecide={onDecideLeaveRequest}/>
+      )}
+
+      {tab==="roles"&&canManageRoles&&(
+        <RolesPermissionsTab rolePerms={rolePerms} onToggle={onToggleRolePermission}/>
+      )}
+
+      {tab==="attendance"&&canUploadAttendance&&(
+        <AttendanceImportTab/>
       )}
 
       {tab==="invites"&&(
@@ -9625,6 +9687,15 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
 
       {showInviteModal&&<InviteUserModal onClose={()=>setShowInviteModal(false)} onSubmit={onInviteUser} clients={clients}/>}
       {showClientUserModal&&<AddClientUserModal onClose={()=>setShowClientUserModal(false)} onSubmit={onAddClientUser} clients={clients}/>}
+      {editingMember&&(
+        <EditMemberModal
+          member={editingMember}
+          team={team}
+          canEditSalary={hasPerm(currentUser,rolePerms,"hr.edit_salary")}
+          onClose={()=>setEditingMember(null)}
+          onSave={(updates)=>{onUpdateTeamMember(editingMember.id, updates); setEditingMember(null);}}
+        />
+      )}
 
       {showRejectModal&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -9641,6 +9712,190 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
               }} style={{background:"#ef4444",color:"#fff",border:"none",borderRadius:8,padding:"9px 18px",cursor:"pointer",fontWeight:600}}>Reject</button>
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
+  const [f,setF] = useState({
+    name:member.name, email:member.email, role:member.role, department:member.department||"",
+    status:member.status||"active", manager_id:member.manager_id||"",
+    salary:member.salary??"", vacation_days_total:member.vacation_days_total??21, wfh_days_total:member.wfh_days_total??12,
+  });
+  const s = (k,v) => setF(p=>({...p,[k]:v}));
+  const managers = (team||[]).filter(t=>t.id!==member.id && t.role!=="client");
+  const vacUsed = Number(member.vacation_days_used||0), wfhUsed = Number(member.wfh_days_used||0);
+
+  const handleSave = () => {
+    const updates = {...f};
+    if(!canEditSalary) delete updates.salary; // don't send a stale/blanked salary if the field wasn't editable
+    if(updates.salary==="") updates.salary = null;
+    onSave(updates);
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{background:"var(--surface)",borderRadius:16,padding:28,width:460,border:"1px solid var(--border)",maxHeight:"90vh",overflowY:"auto"}}>
+        <h3 style={{fontWeight:700,fontSize:17,color:"var(--text)",marginBottom:20}}>Edit {member.name}</h3>
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <Field label="Full Name" required><input value={f.name} onChange={e=>s("name",e.target.value)} style={inputSt}/></Field>
+          <Field label="Email" required><input type="email" value={f.email} onChange={e=>s("email",e.target.value)} style={inputSt}/></Field>
+          <Field label="Role">
+            <select value={f.role} onChange={e=>s("role",e.target.value)} style={inputSt}>
+              {Object.entries(ROLES).filter(([k])=>!CLIENT_ROLES.includes(k)&&k!=="client").map(([k,v])=>(
+                <option key={k} value={k}>{v.label}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Department"><input value={f.department} onChange={e=>s("department",e.target.value)} placeholder="Creative" style={inputSt}/></Field>
+          <Field label="Manager">
+            <select value={f.manager_id} onChange={e=>s("manager_id",e.target.value)} style={inputSt}>
+              <option value="">No manager set</option>
+              {managers.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Status">
+            <select value={f.status} onChange={e=>s("status",e.target.value)} style={inputSt}>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </Field>
+          {canEditSalary&&(
+            <Field label="Salary"><input type="number" value={f.salary} onChange={e=>s("salary",e.target.value)} placeholder="Monthly salary" style={inputSt}/></Field>
+          )}
+          <div style={{display:"flex",gap:10}}>
+            <Field label={`Vacation Days/Year (used: ${vacUsed})`}><input type="number" value={f.vacation_days_total} onChange={e=>s("vacation_days_total",e.target.value)} style={inputSt}/></Field>
+            <Field label={`WFH Days/Year (used: ${wfhUsed})`}><input type="number" value={f.wfh_days_total} onChange={e=>s("wfh_days_total",e.target.value)} style={inputSt}/></Field>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:10,paddingTop:20}}>
+          <Btn variant="secondary" onClick={onClose} style={{flex:1}}>Cancel</Btn>
+          <Btn onClick={handleSave} disabled={!f.name||!f.email} style={{flex:2}}>Save Changes</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LeaveRequestsTab({requests, canDecide, onDecide}) {
+  const pending = requests.filter(r=>r.status==="pending").sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  const decided = requests.filter(r=>r.status!=="pending").sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,30);
+  const [noteFor, setNoteFor] = useState(null);
+
+  const Row = ({r}) => (
+    <div style={{background:"var(--surface)",borderRadius:12,padding:"14px 18px",border:"1px solid var(--border)",display:"flex",flexDirection:"column",gap:8}}>
+      <div style={{display:"flex",alignItems:"center",gap:12}}>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:600,fontSize:14,color:"var(--text)"}}>{r.member_name} — {r.type==="vacation"?"Vacation":"WFH"}</div>
+          <div style={{color:"var(--text2)",fontSize:12}}>{r.start_date===r.end_date?r.start_date:`${r.start_date} → ${r.end_date}`} · {r.days} day(s){r.manager_name?` · Manager: ${r.manager_name}`:""}</div>
+          {r.reason&&<div style={{color:"var(--text3)",fontSize:12,marginTop:2}}>"{r.reason}"</div>}
+        </div>
+        <span style={{
+          background:r.status==="approved"?"#10b98122":r.status==="rejected"?"#ef444422":"#f59e0b22",
+          color:r.status==="approved"?"#10b981":r.status==="rejected"?"#ef4444":"#f59e0b",
+          borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600,textTransform:"capitalize"
+        }}>{r.status}</span>
+      </div>
+      {r.status==="pending"&&canDecide&&(
+        <div style={{display:"flex",gap:8,paddingTop:8,borderTop:"1px solid var(--border)"}}>
+          <button onClick={()=>onDecide(r,"approve")} style={{background:"#10b981",color:"#fff",border:"none",borderRadius:7,padding:"7px 16px",cursor:"pointer",fontWeight:600,fontSize:13}}>Approve</button>
+          <button onClick={()=>setNoteFor(noteFor===r.id?null:r.id)} style={{background:"#ef444422",color:"#ef4444",border:"none",borderRadius:7,padding:"7px 16px",cursor:"pointer",fontWeight:600,fontSize:13}}>Reject</button>
+        </div>
+      )}
+      {noteFor===r.id&&(
+        <div style={{display:"flex",gap:8}}>
+          <input id={`reject-note-${r.id}`} placeholder="Reason (optional)" style={{...inputSt,flex:1}}/>
+          <button onClick={()=>{const note=document.getElementById(`reject-note-${r.id}`)?.value||"";onDecide(r,"reject",note);setNoteFor(null);}} style={{background:"#ef4444",color:"#fff",border:"none",borderRadius:7,padding:"7px 16px",cursor:"pointer",fontWeight:600,fontSize:13}}>Confirm Reject</button>
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      {pending.length===0&&decided.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--text2)"}}>No leave/WFH requests yet.</div>}
+      {pending.map(r=><Row key={r.id} r={r}/>)}
+      {decided.length>0&&(
+        <div style={{marginTop:pending.length?16:0}}>
+          {pending.length>0&&<div style={{fontWeight:600,fontSize:13,color:"var(--text2)",marginBottom:10}}>PREVIOUSLY DECIDED</div>}
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {decided.map(r=><Row key={r.id} r={r}/>)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RolesPermissionsTab({rolePerms, onToggle}) {
+  const editableRoles = INTERNAL_ROLES.filter(r=>r!=="admin"); // admin always has everything, nothing to toggle
+  const isChecked = (role,key) => (rolePerms?.[role]||[]).includes(key);
+  return (
+    <div style={{overflowX:"auto"}}>
+      <p style={{color:"var(--text2)",fontSize:13,marginBottom:16}}>Admin always has every permission. Toggle what each other role can access.</p>
+      <table style={{width:"100%",borderCollapse:"collapse",minWidth:640}}>
+        <thead>
+          <tr>
+            <th style={{textAlign:"left",padding:"8px 10px",fontSize:12,color:"var(--text2)",borderBottom:"1px solid var(--border)"}}>Permission</th>
+            {editableRoles.map(r=><th key={r} style={{padding:"8px 10px",fontSize:12,color:"var(--text2)",borderBottom:"1px solid var(--border)"}}>{ROLES[r]?.label||r}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {HR_PERMISSIONS.map(p=>(
+            <tr key={p.key}>
+              <td style={{padding:"10px",fontSize:13,color:"var(--text)",borderBottom:"1px solid var(--border)"}}>{p.label}</td>
+              {editableRoles.map(r=>(
+                <td key={r} style={{textAlign:"center",padding:"10px",borderBottom:"1px solid var(--border)"}}>
+                  <input type="checkbox" checked={isChecked(r,p.key)} onChange={e=>onToggle(r,p.key,e.target.checked)} style={{width:16,height:16,cursor:"pointer"}}/>
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function AttendanceImportTab() {
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult] = useState(null);
+  const fileRef = useRef(null);
+
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if(!file) return;
+    setUploading(true); setResult(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetch(window.location.origin+"/attendance-import.php", {method:"POST", body:fd});
+      const d = await r.json();
+      setResult(r.ok ? d : {error: d.error||"Upload failed"});
+    } catch(err) {
+      setResult({error: err.message});
+    }
+    setUploading(false);
+    if(fileRef.current) fileRef.current.value = "";
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16,maxWidth:520}}>
+      <p style={{color:"var(--text2)",fontSize:13}}>
+        Upload a monthly attendance CSV with columns <code>name, date, status</code> (status: present, absent, late, half_day, leave, wfh),
+        plus optional <code>check_in, check_out, note</code>. Rows are matched to team members by exact name.
+      </p>
+      <input ref={fileRef} type="file" accept=".csv" onChange={handleUpload} disabled={uploading} style={{fontSize:13}}/>
+      {uploading&&<p style={{color:"var(--text2)",fontSize:13}}>Uploading...</p>}
+      {result?.error&&<p style={{color:"#ef4444",fontSize:13}}>{result.error}</p>}
+      {result?.ok&&(
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,padding:16,fontSize:13,color:"var(--text)"}}>
+          <p>✅ Imported {result.imported} row(s){result.skipped?`, skipped ${result.skipped} invalid row(s)`:""}.</p>
+          {result.unmatched_names?.length>0&&(
+            <p style={{color:"#f59e0b",marginTop:8}}>Names not matched to a team member: {result.unmatched_names.join(", ")}</p>
+          )}
         </div>
       )}
     </div>
@@ -9683,6 +9938,7 @@ function InviteUserModal({onClose, onSubmit, clients}) {
               {form.user_type==="internal"?(
                 <>
                   <option value="admin">Admin</option>
+                  <option value="hr">HR</option>
                   <option value="account_manager">Account Manager</option>
                   <option value="content_creator">Content Creator</option>
                   <option value="graphic_designer">Graphic Designer</option>
@@ -17415,10 +17671,11 @@ function TeamMembersPage({team,posts,perfLogs,onMemberSelect}) {
 // ════════════════════════════════════════════════════════════════
 // SIDEBAR
 // ════════════════════════════════════════════════════════════════
-function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfile,onLogout,open,onClose,wallpaper,onWallpaperChange}) {
+function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfile,onLogout,open,onClose,wallpaper,onWallpaperChange,rolePerms}) {
   const {isMobile, isTablet} = useResponsive();
   const unread = notifications.filter(n=>n.recipient_email===currentUser?.email&&!n.is_read).length;
   const isAdmin = currentUser?.role==="admin";
+  const canViewTeamNav = isAdmin || hasPerm(currentUser, rolePerms, "hr.view_team");
   const isAccountant = currentUser?.role==="accountant";
   const canFinance = isAdmin||isAccountant;
   const canAgency = isAdmin||["account_manager","content_creator","graphic_designer"].includes(currentUser?.role);
@@ -17462,11 +17719,11 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
         {key:"subscriptions", label:"Subscriptions", ico:Icons.repeat},
       ]:[]),
     ]}] : []),
-    ...(isAdmin ? [{ group: "TEAM", icon: Icons.users, items: [
+    ...(canViewTeamNav ? [{ group: "TEAM", icon: Icons.users, items: [
       {key:"team_members", label:"Team Members", ico:Icons.users},
       {key:"users", label:"User Management", ico:Icons.users},
-      {key:"performance", label:"Performance", ico:Icons.award},
-      {key:"system_log", label:"System Log", ico:"M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z"},
+      ...(isAdmin?[{key:"performance", label:"Performance", ico:Icons.award}]:[]),
+      ...(isAdmin?[{key:"system_log", label:"System Log", ico:"M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z"}]:[]),
     ]}] : []),
     ...((canAgency||isAdmin) ? [{ group: "TOOLS", icon: Icons.wand, items: [
       ...(canAgency?[
@@ -22043,7 +22300,9 @@ function App() {
     timeEntries: [], schedules: [], scheduleOverrides: [],
     invitations: [], accessRequests: [], clientUsers: [],
     emailLogs: [], activityLogs: [], notifPrefs: [],
+    rolePermissions: [], leaveRequests: [], attendanceRecords: [],
   });
+  const rolePermsMap = useMemo(()=>buildRolePermsMap(data.rolePermissions), [data.rolePermissions]);
   const [appSettings, setAppSettings] = useState(SEED.appSettings);
   useEffect(()=>{
     const f = appSettings?.feature_flags;
@@ -22155,6 +22414,9 @@ function App() {
         qe("MonthlyBrief",{},"-created_at",200), // 37
         qe("CustomerMessage",{},"-created_at",500), // 38
         qe("ReplyBotSetting"), // 39
+        qe("RolePermission"), // 40
+        qe("LeaveRequest",{},"-created_at",500), // 41
+        qe("AttendanceRecord",{},"-work_date",1000), // 42
       ]);
       if(wave2[13].status==="fulfilled" && wave2[13].value?.entities?.length) setEmailSettings(wave2[13].value.entities[0]);
 
@@ -22198,6 +22460,9 @@ function App() {
         monthlyBriefs: pick(wave2[37], d.monthlyBriefs||[]),
         customerMessages: pick(wave2[38], d.customerMessages||[]),
         replyBotSettings: pick(wave2[39], d.replyBotSettings||[]),
+        rolePermissions: pick(wave2[40], d.rolePermissions||[]),
+        leaveRequests: pick(wave2[41], d.leaveRequests||[]),
+        attendanceRecords: pick(wave2[42], d.attendanceRecords||[]),
       }));
     }
     loadAllDataRef.current = load;
@@ -22485,6 +22750,48 @@ function App() {
     setData(d=>({...d, team:d.team.filter(m=>m.id!==id)}));
     de("TeamMember", id).catch(()=>{});
     logActivity("Team Member Removed","users",m?.name||id,"warning","",currentUser?.email||"admin");
+  };
+
+  // Roles & Permissions: one row per (role,key) in role_permissions. Toggling
+  // a checkbox either creates the row (checked) or patches an existing one —
+  // there's no bulk upsert-by-composite-key in the generic REST layer.
+  const toggleRolePermission = async (role, key, allowed) => {
+    const existing = (data.rolePermissions||[]).find(r=>r.role===role && r.permission_key===key);
+    if(existing) {
+      setData(d=>({...d, rolePermissions:d.rolePermissions.map(r=>r.id===existing.id?{...r,allowed}:r)}));
+      ue("RolePermission", existing.id, {allowed}).catch(()=>{});
+    } else {
+      const local = {id:uid(), role, permission_key:key, allowed};
+      setData(d=>({...d, rolePermissions:[...(d.rolePermissions||[]), local]}));
+      ce("RolePermission",[{role, permission_key:key, allowed}]).then(r=>{
+        const real = r.entities?.[0];
+        if(real?.id) setData(d=>({...d, rolePermissions:d.rolePermissions.map(x=>x.id===local.id?real:x)}));
+      }).catch(()=>{});
+    }
+  };
+
+  // Approve/reject a leave/WFH request from the web UI (mirrors the WhatsApp
+  // decide_pending_request flow in pro-lib.php) — deducts credit on approval
+  // and notifies the requester over WhatsApp via whatsapp.php.
+  const decideLeaveRequest = async (req, decision, note) => {
+    const status = decision==="approve" ? "approved" : "rejected";
+    setData(d=>({...d, leaveRequests:d.leaveRequests.map(r=>r.id===req.id?{...r,status,decision_note:note||null}:r)}));
+    await ue("LeaveRequest", req.id, {status, decision_note: note||null, decided_at: new Date().toISOString()}).catch(()=>{});
+    if(status==="approved") {
+      const col = req.type==="vacation" ? "vacation_days_used" : "wfh_days_used";
+      const member = data.team.find(t=>t.id===req.team_member_id);
+      if(member) await updateTeamMember(member.id, {[col]: (Number(member[col])||0) + Number(req.days||1)});
+    }
+    const requester = data.team.find(t=>t.id===req.team_member_id);
+    if(requester?.whatsapp_number) {
+      const verb = status==="approved" ? "approved ✅" : "rejected ❌";
+      const label = req.type==="vacation" ? "vacation" : "WFH";
+      fetch(window.location.origin+"/whatsapp.php", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({to:requester.whatsapp_number, body:`Your ${label} request for ${req.start_date} has been ${verb} by ${currentUser?.name||"your manager"}.${note?`\nNote: ${note}`:""}`}),
+      }).catch(()=>{});
+    }
+    logActivity("Leave Request "+(status==="approved"?"Approved":"Rejected"),"users",`${req.member_name} — ${req.type} (${req.start_date})`,"success","",currentUser?.email||"admin");
   };
 
   // ── User Management Handlers ──────────────────────────────────
@@ -23858,6 +24165,7 @@ Return ONLY valid JSON (no markdown, no explanation):
           open={true}
           wallpaper={wallpaper}
           onWallpaperChange={handleWallpaperChange}
+          rolePerms={rolePermsMap}
         />
       )}
 
@@ -23876,6 +24184,7 @@ Return ONLY valid JSON (no markdown, no explanation):
           onClose={()=>setSidebarOpen(false)}
           wallpaper={wallpaper}
           onWallpaperChange={handleWallpaperChange}
+          rolePerms={rolePermsMap}
         />
       )}
 
@@ -24133,7 +24442,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             onGenerateLink={generateSubLink}
           />
         )}
-        {page==="users"&&currentUser?.role==="admin"&&(
+        {page==="users"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.view_team"))&&(
           <UsersPage
             currentUser={currentUser}
             team={data.team}
@@ -24148,9 +24457,14 @@ Return ONLY valid JSON (no markdown, no explanation):
             onAddClientUser={addClientUser}
             onDeleteClientUser={deleteClientUser}
             onResendInvitation={(inv)=>setToast("Invitation link updated — copy it again")}
+            rolePerms={rolePermsMap}
+            onUpdateTeamMember={updateTeamMember}
+            onToggleRolePermission={toggleRolePermission}
+            leaveRequests={data.leaveRequests||[]}
+            onDecideLeaveRequest={decideLeaveRequest}
           />
         )}
-        {page==="team_members"&&currentUser?.role==="admin"&&(
+        {page==="team_members"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.view_team"))&&(
           <TeamMembersPage
             team={data.team}
             posts={data.posts}

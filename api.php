@@ -48,6 +48,7 @@ $ALLOWED_TABLES = [
     'generated_leads','lead_agent_configs','agent_configs','agent_logs',
     'agent_runs','system_sessions','monthly_briefs','push_subscriptions',
     'meta_insights_snapshots','customer_messages','reply_bot_settings',
+    'role_permissions','leave_requests','attendance_records',
 ];
 
 $table = $_GET['table'] ?? '';
