@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.47";
+const APP_VERSION = "beta 3.48";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7109,6 +7109,7 @@ const LEAD_CATEGORY_COLORS = {lead:"#10b981", service_provider:"#8b5cf6", hiring
 const LEAD_CATEGORIES = ["lead","service_provider","hiring"];
 function ClientLeadsTab({clientLeads=[], clientName, clientId, notifySettings=[], onSaveNotifySetting, canEditSettings=false}) {
   const [catF, setCatF] = useState("all");
+  const [savingCat, setSavingCat] = useState(null);
   const [numbers, setNumbers] = useState(()=>{
     const m = {}; LEAD_CATEGORIES.forEach(c=>{ m[c] = notifySettings.find(s=>s.category===c)?.whatsapp_number || ""; }); return m;
   });
@@ -7131,6 +7132,19 @@ function ClientLeadsTab({clientLeads=[], clientName, clientId, notifySettings=[]
     downloadCsv(`${(clientName||"client").replace(/[^a-z0-9]+/gi,"_")}_leads.csv`, rows, ["name","phone","category","brief","source","date"]);
   };
 
+  const handleSaveNotifyNumber = async (category) => {
+    const number = (numbers[category]||"").trim();
+    onSaveNotifySetting && onSaveNotifySetting(clientId, category, number);
+    if (!number) return;
+    setSavingCat(category);
+    try {
+      await fetch(WA_ENDPOINT, {
+        method: "POST", headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({to: number, body: `SocialFlow test message: this WhatsApp number will receive ${LEAD_CATEGORY_LABELS[category]} contacts captured on ${clientName||"this client"}'s Leads tab.`}),
+      });
+    } catch(e) {} finally { setSavingCat(null); }
+  };
+
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
@@ -7150,9 +7164,9 @@ function ClientLeadsTab({clientLeads=[], clientName, clientId, notifySettings=[]
               <span style={{width:130,fontSize:12,fontWeight:600,color:"var(--text2)"}}>{LEAD_CATEGORY_LABELS[c]}</span>
               <input value={numbers[c]} onChange={e=>setNumbers(n=>({...n,[c]:e.target.value}))}
                 placeholder="e.g. 201001234567" style={{flex:1,minWidth:180,padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontSize:13}}/>
-              <button onClick={()=>onSaveNotifySetting&&onSaveNotifySetting(clientId, c, numbers[c].trim())}
-                style={{padding:"7px 14px",borderRadius:8,border:"none",background:"var(--accent)",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                Save
+              <button onClick={()=>handleSaveNotifyNumber(c)} disabled={savingCat===c}
+                style={{padding:"7px 14px",borderRadius:8,border:"none",background:"var(--accent)",color:"#fff",fontSize:12,fontWeight:700,cursor:savingCat===c?"default":"pointer",opacity:savingCat===c?0.6:1}}>
+                {savingCat===c?"Sending test…":"Save"}
               </button>
             </div>
           ))}
