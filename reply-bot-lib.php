@@ -341,14 +341,21 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
 
         $brief = summarizeLeadInquiry($combinedText) ?: $combinedText;
 
+        // Classify what kind of contact this actually is (lead / service_provider /
+        // hiring) instead of always defaulting to "lead" — the brief text alone often
+        // makes clear this is a job applicant or an outbound pitch, not a real lead.
+        $classification = classifyClientContact($clientName ?: 'admepro', $combinedText);
+        $category = $classification['category'] ?? 'lead';
+
         $leadName = $customerName ?: 'Unknown (' . $channel . ')';
-        $stmt = $pdo->prepare("INSERT INTO leads (name, phone, source, status, platforms, notes, client_id, client_name) VALUES (:name, :phone, :source, 'new', :platforms, :notes, :cid, :cname)");
+        $stmt = $pdo->prepare("INSERT INTO leads (name, phone, source, status, platforms, notes, category, client_id, client_name) VALUES (:name, :phone, :source, 'new', :platforms, :notes, :category, :cid, :cname)");
         $stmt->execute([
             ':name' => $leadName,
             ':phone' => $phone,
             ':source' => $channel === 'whatsapp' ? 'whatsapp' : $channel,
             ':platforms' => json_encode([$channel]),
             ':notes' => "Auto-captured by SocialFlow from an inbound {$channel} conversation" . ($clientName ? " on {$clientName}'s account" : '') . " expressing interest in our services:\n{$brief}\n\n{$tag}",
+            ':category' => $category,
             ':cid' => $clientId,
             ':cname' => $clientName,
         ]);
