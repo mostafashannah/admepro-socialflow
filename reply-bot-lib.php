@@ -70,7 +70,7 @@ function buildReplyBotSystemPrompt(PDO $pdo, string $clientId, string $clientNam
     // The customer's name, when known, is passed as the first line of the user message
     // (not in this thread's text), so address them by it naturally — never claim you
     // don't have it or ask the customer to repeat it if it's already been given.
-    $parts[] = "If a customer name is provided to you, use it naturally to personalize your reply. If no name is provided, just don't bring up names at all — never say you don't know their name or ask them to share it.";
+    $parts[] = "If a customer name is provided to you, use it naturally to personalize your reply. If no name is provided, naturally ask for their name once, early in the conversation (e.g. \"By the way, who am I speaking with?\") woven into your reply — but check the conversation history first: if you can see you already asked for their name in an earlier message in this thread, do not ask again, just continue the conversation normally.";
 
     // Instagram story replies/mentions arrive tagged in the conversation text below
     // (e.g. "[Replied to your Instagram story] 🔥") since the bot has no way to see
@@ -539,7 +539,9 @@ function maybeAutoReply(PDO $pdo, string $clientId, string $clientName, string $
         // flagged needs_human either way so the team follows up.
         $fallback = trim((string)($settings['fallback_message'] ?? ''));
         if ($fallback === '') {
-            $fallback = "Thanks for reaching out! For a quick answer, please share your phone/WhatsApp number or contact us directly, and our team will get back to you shortly. 😊";
+            $fallback = $customerName
+                ? "Thanks for reaching out! For a quick answer, please share your phone/WhatsApp number or contact us directly, and our team will get back to you shortly. 😊"
+                : "Thanks for reaching out! Could you share your name and phone/WhatsApp number so our team can get back to you shortly? 😊";
         }
         $reply = $fallback;
         $usedFallback = true;
