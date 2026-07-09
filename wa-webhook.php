@@ -61,9 +61,6 @@ $body    = json_decode($raw, true);
 $value   = $body['entry'][0]['changes'][0]['value'] ?? [];
 $message = $value['messages'][0] ?? null;
 $msgType = $message['type'] ?? '';
-if (!empty($value['statuses'])) {
-    error_log('WA_STATUS: ' . json_encode($value['statuses']));
-}
 if (!$message || !in_array($msgType, ['text', 'audio'], true)) {
     exit; // ignore statuses, non-text/audio messages, etc.
 }
