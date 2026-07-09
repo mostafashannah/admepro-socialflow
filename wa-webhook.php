@@ -121,8 +121,10 @@ try {
             require_once __DIR__ . '/reply-bot-lib.php';
             $ins = $pdo->prepare("INSERT INTO customer_messages (client_id, client_name, channel, customer_id, customer_name, direction, message_text, sent_by, thread_status) VALUES (:cid,:cname,'whatsapp',:custid,:custname,'in',:txt,'customer','needs_human')");
             $ins->execute([':cid'=>$match['client_id'], ':cname'=>$match['client_name'], ':custid'=>$from, ':custname'=>$contactName, ':txt'=>$text]);
-            try { maybeAutoReply($pdo, $match['client_id'], $match['client_name'], 'whatsapp', $from, $contactName); }
-            catch (\Throwable $e) { error_log('[wa-webhook] reply-bot EXCEPTION: ' . $e->getMessage()); }
+            try {
+                maybeCaptureClientContact($pdo, 'whatsapp', $from, $contactName, $text, $match['client_id'], $match['client_name'], $from);
+                maybeAutoReply($pdo, $match['client_id'], $match['client_name'], 'whatsapp', $from, $contactName);
+            } catch (\Throwable $e) { error_log('[wa-webhook] reply-bot EXCEPTION: ' . $e->getMessage()); }
         }
         exit; // handled (or no matching client) — do not fall through to Pro
     }

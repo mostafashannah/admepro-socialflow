@@ -28,6 +28,24 @@ const uploadToStorage = async (file, folder="uploads") => {
   return `${SB_STORAGE_URL}/public/${SB_BUCKET}/${path}`;
 };
 
+// Downloads an array of flat objects as a CSV file — used by the client
+// Leads tab's "Download CSV" button (and reusable anywhere else needed).
+function downloadCsv(filename, rows, columns) {
+  if(!rows.length) return;
+  const cols = columns || Object.keys(rows[0]);
+  const esc = (v) => {
+    const s = v==null ? "" : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+  };
+  const lines = [cols.join(","), ...rows.map(r=>cols.map(c=>esc(r[c])).join(","))];
+  const blob = new Blob([lines.join("\n")], {type:"text/csv;charset=utf-8;"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // Photos/logos stored inline as base64 data URLs (not uploaded to storage) must
 // stay small enough to fit in a single API request body.
 const MAX_INLINE_IMAGE_MB = 2;
@@ -587,7 +605,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.44";
+const APP_VERSION = "beta 3.45";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6813,6 +6831,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
     cMessages.forEach(m=>{ const k=m.channel+"_"+m.customer_id; if(!byThread[k]||new Date(m.created_at)>new Date(byThread[k].created_at)) byThread[k]=m; });
     return Object.values(byThread).filter(m=>m.direction==="in").length;
   })();
+  const clientLeads = (leads||[]).filter(l=>l.client_id===client.id);
   const tabs = [
     ["overview","Overview"],
     ...(isPriv?[["projects","Projects"]]:[]),
@@ -6822,7 +6841,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
     ["reports","Reports"],
     ...(isPriv?[["inbox",`Inbox${cMessagesNeedReplyCount?` (${cMessagesNeedReplyCount})`:""}`]]:[]),
     ...(isPriv?[["meta_insights","Meta Insights"]]:[]),
-    ...(isPriv?[["brain","Client Brain"],["briefs",`Briefs${pendingBriefCount?` (${pendingBriefCount} pending)`:""}`],["contact_reports","Contact Reports"]]:[]),
+    ...(isPriv?[["brain","Client Brain"],["briefs",`Briefs${pendingBriefCount?` (${pendingBriefCount} pending)`:""}`],["contact_reports","Contact Reports"],["leads",`Leads${clientLeads.length?` (${clientLeads.length})`:""}`]]:[]),
   ];
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
@@ -7035,6 +7054,8 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
         </div>
       )}
 
+      {tab==="leads"&&<ClientLeadsTab clientLeads={clientLeads} clientName={client.name}/>}
+
       {/* Edit Client Modal */}
       <EditClientModal open={showEdit} client={client} onClose={()=>setShowEdit(false)}
         onSave={updates=>{ onUpdateClient&&onUpdateClient(client.id,updates); setShowEdit(false); }}/>
@@ -7078,6 +7099,71 @@ const ChannelIcon = ({channel, size=14, color}) => {
     ? <Ico d={m.icon} size={size} fill={c} stroke="none" fillRule="evenodd"/>
     : <Ico d={m.icon} size={size} stroke={c}/>;
 };
+// Contacts auto-captured from this client's inbox (Messenger/Instagram/WhatsApp/
+// comments) — anyone showing interest as a customer lead, a service provider
+// pitching to the client, or a job applicant. Shared between the main app's
+// ClientDetailPage and the client-facing ClientPortal.
+const LEAD_CATEGORY_LABELS = {lead:"Lead", service_provider:"Service Provider", hiring:"Hiring"};
+const LEAD_CATEGORY_COLORS = {lead:"#10b981", service_provider:"#8b5cf6", hiring:"#f59e0b"};
+function ClientLeadsTab({clientLeads=[], clientName}) {
+  const [catF, setCatF] = useState("all");
+  const filtered = catF==="all" ? clientLeads : clientLeads.filter(l=>l.category===catF);
+  const sorted = [...filtered].sort((a,b)=>new Date(b.created_date||b.created_at)-new Date(a.created_date||a.created_at));
+
+  const handleDownload = () => {
+    const rows = sorted.map(l=>({
+      name: l.name||"", phone: l.phone||"", category: LEAD_CATEGORY_LABELS[l.category]||l.category||"Lead",
+      brief: (l.notes||"").split("\n\nsrc_id:")[0].replace(/^Auto-captured by SocialFlow[^\n]*\n/,""),
+      source: l.source||"", date: l.created_date||l.created_at||"",
+    }));
+    downloadCsv(`${(clientName||"client").replace(/[^a-z0-9]+/gi,"_")}_leads.csv`, rows, ["name","phone","category","brief","source","date"]);
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+        <div>
+          <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:16}}>Leads</h3>
+          <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Contacts auto-captured from the inbox — customers, service providers, and job applicants</p>
+        </div>
+        <button onClick={handleDownload} disabled={!sorted.length} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",cursor:sorted.length?"pointer":"default",fontSize:12,fontWeight:700,color:"var(--text)",opacity:sorted.length?1:0.5}}>
+          <Ico d={Icons.upload} size={13} stroke="var(--text)" style={{transform:"rotate(180deg)"}}/> Download CSV
+        </button>
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {["all","lead","service_provider","hiring"].map(c=>(
+          <button key={c} onClick={()=>setCatF(c)} style={{padding:"5px 14px",borderRadius:99,fontSize:12,fontWeight:600,background:catF===c?"var(--accent)":"var(--surface2)",color:catF===c?"#fff":"var(--text2)",border:`1px solid ${catF===c?"var(--accent)":"var(--border2)"}`,cursor:"pointer"}}>
+            {c==="all"?"All":LEAD_CATEGORY_LABELS[c]}
+          </button>
+        ))}
+      </div>
+      {sorted.length===0&&(
+        <div style={{padding:"40px 0",textAlign:"center",color:"var(--text3)",fontSize:14}}>
+          No leads captured yet. When someone shares contact info or shows interest in your inbox, it'll show up here automatically.
+        </div>
+      )}
+      {sorted.map(l=>{
+        const brief = (l.notes||"").split("\n\nsrc_id:")[0].replace(/^Auto-captured by SocialFlow[^\n]*\n/,"");
+        return (
+          <div key={l.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:8}}>
+              <div>
+                <p style={{fontWeight:700,fontSize:14}}>{l.name||"Unknown"}</p>
+                {l.phone&&<p style={{fontSize:12,color:"var(--text2)",marginTop:2}}>{l.phone}</p>}
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                <Badge label={LEAD_CATEGORY_LABELS[l.category]||"Lead"} color={LEAD_CATEGORY_COLORS[l.category]||"#10b981"} xs/>
+                <span style={{fontSize:11,color:"var(--text3)"}}>{fmtDateTime(l.created_date||l.created_at)}</span>
+              </div>
+            </div>
+            {brief&&<p style={{fontSize:13,lineHeight:1.6,color:"var(--text)"}}>{brief}</p>}
+            <p style={{fontSize:11,color:"var(--text3)",marginTop:8,textTransform:"capitalize"}}>via {l.source||"inbox"}</p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botSettings, onSaveBotSettings, onApproveDraft, onDismissDraft, hideBotPanel=false}) {
   const [selThread, setSelThread] = useState(null); // {channel, customer_id}
   const [reply, setReply] = useState("");
@@ -10407,7 +10493,7 @@ function TemplatesPage({templates}) {
 // ════════════════════════════════════════════════════════════════
 // CLIENT PORTAL
 // ════════════════════════════════════════════════════════════════
-function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tasks=[],onAddTask,onUpdateTask,contract,wallpaper,onWallpaperChange,monthlyBriefs=[],onSubmitBrief,onSelfCreateBrief,messages=[],integrations=[],onSendReply,onApproveDraft,onDismissDraft,assets=[],onAddAsset,onUpdateAsset,onDeleteAsset}) {
+function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tasks=[],onAddTask,onUpdateTask,contract,wallpaper,onWallpaperChange,monthlyBriefs=[],onSubmitBrief,onSelfCreateBrief,messages=[],integrations=[],onSendReply,onApproveDraft,onDismissDraft,assets=[],onAddAsset,onUpdateAsset,onDeleteAsset,leads=[]}) {
   const {isMobile} = useResponsive();
   const [view,setView] = useState("dashboard");
   const [sel,setSel] = useState(null);
@@ -10445,6 +10531,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
   const pendingBrief = (monthlyBriefs||[]).find(b=>b.client_id===client?.id&&b.status==="pending");
   const cMessages = (messages||[]).filter(m=>m.client_id===client.id);
   const unreadCount = cMessages.filter(m=>m.direction==="in"&&m.draft_status!=="dismissed").length;
+  const clientLeads = (leads||[]).filter(l=>l.client_id===client.id);
   const navItems = [
     {key:"dashboard", label:"Dashboard", mLabel:"Home"},
     {key:"tasks", label:"Requests", mLabel:"Requests"},
@@ -10453,6 +10540,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
     {key:"inbox", label:`Inbox${unreadCount?` (${unreadCount})`:""}`, mLabel:"Inbox"},
     {key:"meta_insights", label:"Meta Insights", mLabel:"Insights"},
     {key:"assets", label:"Assets", mLabel:"Assets"},
+    {key:"leads", label:`Leads${clientLeads.length?` (${clientLeads.length})`:""}`, mLabel:"Leads"},
     ...(clientSubs.length>0?[{key:"subscriptions",label:"Subscriptions",mLabel:"Billing"}]:[]),
   ];
 
@@ -10767,6 +10855,9 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
               storagePrefix={`assets/client-${client.id}`} storageKey={`sf_extra_folders_${client.id}`} extraTags={[`client_${client.id}`]} currentUser={client}/>
           </div>
         )}
+
+        {/* LEADS VIEW */}
+        {view==="leads"&&<ClientLeadsTab clientLeads={clientLeads} clientName={client.name}/>}
 
         {/* TASKS VIEW */}
         {view==="tasks"&&(
@@ -24465,7 +24556,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   // Client portal
   if(currentUser?.isClient) {
     const clientRecord = data.clients.find(c=>c.email===currentUser.email)||currentUser;
-    return (<><GStyle wallpaper={wallpaper} accentColor={accentColor}/><ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset}/></>);
+    return (<><GStyle wallpaper={wallpaper} accentColor={accentColor}/><ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]}/></>);
   }
 
   // Accept invitation flow (URL has ?invite=TOKEN)

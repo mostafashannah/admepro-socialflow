@@ -383,6 +383,90 @@ function notifyAdminsOfNewLead(PDO $pdo, string $leadName, string $channel, ?str
     }
 }
 
+// Classifies an inbound message to a MANAGED CLIENT's own inbox (not admepro's) —
+// distinct from isInterestedInOurServices() above, which asks "does this person
+// want to hire admepro". Here the question is "is this person a customer lead,
+// a service provider pitching to the client, or a job applicant" for that
+// client's own business. Returns null for "other" (spam/support/small talk —
+// not worth capturing) or on any API failure.
+function classifyClientContact(string $clientName, string $combinedText) {
+    $payload = [
+        'model' => 'claude-sonnet-4-6',
+        'max_tokens' => 200,
+        'system' => "You classify inbound messages sent to {$clientName}'s social media / WhatsApp inbox. "
+                  . "Reply with EXACTLY this format and nothing else:\n"
+                  . "CATEGORY: lead|service_provider|hiring|other\n"
+                  . "BRIEF: <one short sentence summarizing what they want>\n\n"
+                  . "lead = a potential customer interested in {$clientName}'s own products/services (asking prices, availability, how to order/book).\n"
+                  . "service_provider = someone offering THEIR OWN service/product/collaboration TO {$clientName} (a supplier, freelancer, agency, influencer pitching).\n"
+                  . "hiring = someone applying for a job or asking about employment/vacancies at {$clientName}.\n"
+                  . "other = anything else not worth capturing as a contact (spam, random chat, an existing customer's support issue, etc).",
+        'messages' => [['role' => 'user', 'content' => $combinedText]],
+    ];
+    [$status, $data] = callClaude($payload);
+    if ($status < 200 || $status >= 300) return null;
+    $text = '';
+    foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $text .= $block['text']; }
+    if (!preg_match('/CATEGORY:\s*(\w+)/i', $text, $m1)) return null;
+    $category = strtolower(trim($m1[1]));
+    if (!in_array($category, ['lead', 'service_provider', 'hiring'], true)) return null;
+    $brief = null;
+    if (preg_match('/BRIEF:\s*(.+)/is', $text, $m2)) $brief = trim($m2[1]);
+    return ['category' => $category, 'brief' => $brief];
+}
+
+// Captures a contact from a MANAGED CLIENT's own inbox — called for every
+// client (unlike maybeCreateLeadFromMessage, which is admepro-own-inbox-only)
+// right after an inbound message is stored. Classifies the sender via
+// classifyClientContact() and, if it's a lead/service_provider/hiring
+// contact, saves it to the leads table tagged with this client_id so it
+// shows up on that client's "Leads" tab. Dedupes on the same src_id tag
+// pattern used by maybeCreateLeadFromMessage.
+function maybeCaptureClientContact(PDO $pdo, string $channel, string $customerId, ?string $customerName, string $text, string $clientId, string $clientName, ?string $phone = null) {
+    if (trim($text) === '') return;
+    try {
+        $stmt = $pdo->prepare("SELECT message_text FROM customer_messages WHERE client_id = :cid AND channel = :ch AND customer_id = :custid AND direction = 'in' ORDER BY created_at DESC LIMIT 12");
+        $stmt->execute([':cid' => $clientId, ':ch' => $channel, ':custid' => $customerId]);
+        $threadTexts = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [$text];
+        $combinedText = implode("\n", array_reverse($threadTexts));
+
+        if (!$phone && preg_match('/(\+?\d[\d\s\-\(\)]{7,}\d)/', $combinedText, $m)) {
+            $phone = preg_replace('/[^\d+]/', '', $m[1]);
+        }
+
+        $tag = "src_id:{$channel}:{$customerId}";
+        $dupe = $pdo->prepare("SELECT id, phone FROM leads WHERE client_id = :cid AND notes LIKE :tag LIMIT 1");
+        $dupe->execute([':cid' => $clientId, ':tag' => "%{$tag}%"]);
+        if ($existing = $dupe->fetch(PDO::FETCH_ASSOC)) {
+            if ($phone && empty($existing['phone'])) {
+                $pdo->prepare("UPDATE leads SET phone = :phone WHERE id = :id")->execute([':phone' => $phone, ':id' => $existing['id']]);
+            }
+            return;
+        }
+
+        $classification = classifyClientContact($clientName, $combinedText);
+        if (!$classification) return; // "other" or classification failed — not worth capturing
+
+        $brief = $classification['brief'] ?: $combinedText;
+        $leadName = $customerName ?: 'Unknown (' . $channel . ')';
+        $stmt = $pdo->prepare("INSERT INTO leads (name, phone, source, status, platforms, notes, client_id, client_name, category) VALUES (:name, :phone, :source, 'new', :platforms, :notes, :cid, :cname, :category)");
+        $stmt->execute([
+            ':name' => $leadName,
+            ':phone' => $phone,
+            ':source' => $channel === 'whatsapp' ? 'whatsapp' : $channel,
+            ':platforms' => json_encode([$channel]),
+            ':notes' => "Auto-captured by SocialFlow from {$clientName}'s {$channel} inbox:\n{$brief}\n\n{$tag}",
+            ':cid' => $clientId,
+            ':cname' => $clientName,
+            ':category' => $classification['category'],
+        ]);
+
+        notifyAdminsOfNewLead($pdo, $leadName, $channel, $phone, $brief, $clientName);
+    } catch (\Throwable $e) {
+        error_log('maybeCaptureClientContact EXCEPTION: ' . $e->getMessage());
+    }
+}
+
 // Entry point called from meta-inbox-webhook.php right after an inbound message is stored.
 // Looks up this client's reply-bot settings, and if enabled for this channel, drafts a
 // reply and either sends it immediately (mode=auto) or stores it as a pending draft

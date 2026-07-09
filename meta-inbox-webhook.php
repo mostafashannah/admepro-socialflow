@@ -198,6 +198,7 @@ try {
                 storeMessage($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName, $text);
                 try {
                     if ($client['is_own']) { maybeCreateLeadFromMessage($pdo, $channel, $senderId, $senderName, $text, null, $client['client_id']); }
+                    else { maybeCaptureClientContact($pdo, $channel, $senderId, $senderName, $text, $client['client_id'], $client['client_name']); }
                     maybeAutoReply($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName);
                 } catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
             }
@@ -224,6 +225,7 @@ try {
                     storeMessage($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName, $text);
                     try {
                         if ($client['is_own']) { maybeCreateLeadFromMessage($pdo, $channel, $senderId, $senderName, $text, null, $client['client_id']); }
+                        else { maybeCaptureClientContact($pdo, $channel, $senderId, $senderName, $text, $client['client_id'], $client['client_name']); }
                         maybeAutoReply($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName);
                     } catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
                 }
@@ -243,8 +245,10 @@ try {
                     $postId = $v['post_id'] ?? null;
                     $caption = fetchPostCaption('fb_comment', $client['access_token'], $postId);
                     storeMessage($pdo, $client['client_id'], $client['client_name'], 'fb_comment', $fromId, $fromName, $text, $commentId);
-                    try { maybeAutoReply($pdo, $client['client_id'], $client['client_name'], 'fb_comment', $fromId, $fromName, $commentId, $caption); }
-                    catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
+                    try {
+                        if (!$client['is_own']) { maybeCaptureClientContact($pdo, 'fb_comment', $fromId, $fromName, $text, $client['client_id'], $client['client_name']); }
+                        maybeAutoReply($pdo, $client['client_id'], $client['client_name'], 'fb_comment', $fromId, $fromName, $commentId, $caption);
+                    } catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
                 }
                 continue;
             }
@@ -260,8 +264,10 @@ try {
                     $mediaId = $v['media']['id'] ?? null;
                     $caption = fetchPostCaption('ig_comment', $client['access_token'], $mediaId);
                     storeMessage($pdo, $client['client_id'], $client['client_name'], 'ig_comment', $fromId, $fromName, $text, $commentId);
-                    try { maybeAutoReply($pdo, $client['client_id'], $client['client_name'], 'ig_comment', $fromId, $fromName, $commentId, $caption); }
-                    catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
+                    try {
+                        if (!$client['is_own']) { maybeCaptureClientContact($pdo, 'ig_comment', $fromId, $fromName, $text, $client['client_id'], $client['client_name']); }
+                        maybeAutoReply($pdo, $client['client_id'], $client['client_name'], 'ig_comment', $fromId, $fromName, $commentId, $caption);
+                    } catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
                 }
             }
         }
