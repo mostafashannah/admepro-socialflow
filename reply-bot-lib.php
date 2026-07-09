@@ -394,8 +394,12 @@ function notifyLeadCategorySubscriber(PDO $pdo, string $clientId, string $catego
     if (!function_exists('sendWhatsAppReply')) return;
     $stmt = $pdo->prepare("SELECT whatsapp_number FROM lead_notify_settings WHERE client_id = :cid AND category = :cat LIMIT 1");
     $stmt->execute([':cid' => $clientId, ':cat' => $category]);
-    $number = $stmt->fetchColumn();
-    if (!$number) return;
+    $raw = $stmt->fetchColumn();
+    if (!$raw) return;
+    // Multiple numbers for the same client+category are stored comma-separated
+    // in the one row (e.g. "201001234567,201009876543").
+    $numbers = array_filter(array_map('trim', explode(',', $raw)));
+    if (!$numbers) return;
     $snippet = mb_strlen($brief) > 400 ? mb_substr($brief, 0, 400) . '…' : $brief;
     $categoryLabel = ['lead' => 'Lead', 'service_provider' => 'Service Provider', 'hiring' => 'Hiring'][$category] ?? ucfirst($category);
     $body = "New {$categoryLabel} contact captured by SocialFlow!\n\n"
@@ -404,7 +408,9 @@ function notifyLeadCategorySubscriber(PDO $pdo, string $clientId, string $catego
           . "Channel: {$channel}" . ($phone ? " ({$phone})" : '') . "\n\n"
           . "Details:\n{$snippet}\n\n"
           . "View it on the CRM Leads page.";
-    sendWhatsAppReply($number, $body);
+    foreach ($numbers as $number) {
+        sendWhatsAppReply($number, $body);
+    }
 }
 
 // Classifies an inbound message to a MANAGED CLIENT's own inbox (not admepro's) —

@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.49";
+const APP_VERSION = "beta 3.50";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7110,13 +7110,14 @@ const LEAD_CATEGORIES = ["lead","service_provider","hiring"];
 function ClientLeadsTab({clientLeads=[], clientName, clientId, notifySettings=[], onSaveNotifySetting, canEditSettings=false}) {
   const [catF, setCatF] = useState("all");
   const [savingCat, setSavingCat] = useState(null);
+  const parseNums = (c) => { const raw = notifySettings.find(s=>s.category===c)?.whatsapp_number || ""; const list = raw.split(",").map(n=>n.trim()).filter(Boolean); return list.length ? list : [""]; };
   const [numbers, setNumbers] = useState(()=>{
-    const m = {}; LEAD_CATEGORIES.forEach(c=>{ m[c] = notifySettings.find(s=>s.category===c)?.whatsapp_number || ""; }); return m;
+    const m = {}; LEAD_CATEGORIES.forEach(c=>{ m[c] = parseNums(c); }); return m;
   });
   useEffect(()=>{
     setNumbers(m=>{
       const next = {...m};
-      LEAD_CATEGORIES.forEach(c=>{ next[c] = notifySettings.find(s=>s.category===c)?.whatsapp_number || ""; });
+      LEAD_CATEGORIES.forEach(c=>{ next[c] = parseNums(c); });
       return next;
     });
   }, [notifySettings.map(s=>s.category+":"+s.whatsapp_number).join(",")]);
@@ -7133,15 +7134,15 @@ function ClientLeadsTab({clientLeads=[], clientName, clientId, notifySettings=[]
   };
 
   const handleSaveNotifyNumber = async (category) => {
-    const number = (numbers[category]||"").trim();
-    onSaveNotifySetting && onSaveNotifySetting(clientId, category, number);
-    if (!number) return;
+    const list = (numbers[category]||[]).map(n=>n.trim()).filter(Boolean);
+    onSaveNotifySetting && onSaveNotifySetting(clientId, category, list.join(","));
+    if (!list.length) return;
     setSavingCat(category);
     try {
-      await fetch(WA_ENDPOINT, {
+      await Promise.all(list.map(number=>fetch(WA_ENDPOINT, {
         method: "POST", headers: {"Content-Type":"application/json"},
         body: JSON.stringify({to: number, body: `Welcome! This number is now set up on SocialFlow to receive ${LEAD_CATEGORY_LABELS[category]} contacts for ${clientName||"this client"} — whenever a new ${LEAD_CATEGORY_LABELS[category].toLowerCase()} contact is captured from the inbox, you'll get their full details here.`}),
-      });
+      })));
     } catch(e) {} finally { setSavingCat(null); }
   };
 
@@ -7160,14 +7161,30 @@ function ClientLeadsTab({clientLeads=[], clientName, clientId, notifySettings=[]
         <div style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"column",gap:10}}>
           <p style={{fontSize:12,fontWeight:700,color:"var(--text2)"}}>Notify by WhatsApp when a new contact is captured</p>
           {LEAD_CATEGORIES.map(c=>(
-            <div key={c} style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-              <span style={{width:130,fontSize:12,fontWeight:600,color:"var(--text2)"}}>{LEAD_CATEGORY_LABELS[c]}</span>
-              <input value={numbers[c]} onChange={e=>setNumbers(n=>({...n,[c]:e.target.value}))}
-                placeholder="e.g. 201001234567" style={{flex:1,minWidth:180,padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontSize:13}}/>
-              <button onClick={()=>handleSaveNotifyNumber(c)} disabled={savingCat===c}
-                style={{padding:"7px 14px",borderRadius:8,border:"none",background:"var(--accent)",color:"#fff",fontSize:12,fontWeight:700,cursor:savingCat===c?"default":"pointer",opacity:savingCat===c?0.6:1}}>
-                {savingCat===c?"Sending test…":"Save"}
-              </button>
+            <div key={c} style={{display:"flex",flexDirection:"column",gap:6}}>
+              <span style={{fontSize:12,fontWeight:600,color:"var(--text2)"}}>{LEAD_CATEGORY_LABELS[c]}</span>
+              {(numbers[c]||[""]).map((num,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                  <input value={num} onChange={e=>setNumbers(n=>({...n,[c]:n[c].map((v,vi)=>vi===i?e.target.value:v)}))}
+                    placeholder="e.g. 201001234567" style={{flex:1,minWidth:180,padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontSize:13}}/>
+                  {numbers[c].length>1&&(
+                    <button onClick={()=>setNumbers(n=>({...n,[c]:n[c].filter((_,vi)=>vi!==i)}))}
+                      style={{padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text3)",fontSize:12,cursor:"pointer"}}>
+                      Remove
+                    </button>
+                  )}
+                </div>
+              ))}
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>setNumbers(n=>({...n,[c]:[...(n[c]||[]),""]}))}
+                  style={{padding:"6px 12px",borderRadius:8,border:"1px dashed var(--border2)",background:"transparent",color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                  + Add number
+                </button>
+                <button onClick={()=>handleSaveNotifyNumber(c)} disabled={savingCat===c}
+                  style={{padding:"7px 14px",borderRadius:8,border:"none",background:"var(--accent)",color:"#fff",fontSize:12,fontWeight:700,cursor:savingCat===c?"default":"pointer",opacity:savingCat===c?0.6:1}}>
+                  {savingCat===c?"Sending test…":"Save"}
+                </button>
+              </div>
             </div>
           ))}
         </div>
