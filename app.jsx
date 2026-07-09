@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.51";
+const APP_VERSION = "beta 3.52";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -25110,7 +25110,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         )}
         {page==="leads"&&["admin","account_manager"].includes(currentUser?.role)&&(
           <LeadsPage
-            leads={data.leads}
+            leads={(data.leads||[]).filter(l=>!l.client_name || l.client_name.toLowerCase()==="admepro")}
             leadActivities={data.leadActivities}
             team={data.team}
             clients={data.clients}
