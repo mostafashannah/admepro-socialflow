@@ -360,36 +360,17 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
             ':cname' => $clientName,
         ]);
 
-        notifyAdminsOfNewLead($pdo, $leadName, $channel, $phone, $brief, $clientName);
         if ($clientId) notifyLeadCategorySubscriber($pdo, $clientId, $category, $leadName, $phone, $channel, $brief, $clientName);
     } catch (\Throwable $e) {
         error_log('maybeCreateLeadFromMessage EXCEPTION: ' . $e->getMessage());
     }
 }
 
-// WhatsApps every active admin team member with the new lead's details, sent from
-// the same "Pro" number/token used by wa-webhook.php and identifySender().
-function notifyAdminsOfNewLead(PDO $pdo, string $leadName, string $channel, ?string $phone, string $brief, ?string $clientName = null) {
-    if (!function_exists('sendWhatsAppReply')) return; // pro-lib.php not loaded
-    $admins = $pdo->query("SELECT whatsapp_number FROM team_members WHERE status = 'active' AND role = 'admin' AND whatsapp_number IS NOT NULL AND whatsapp_number != ''")->fetchAll(PDO::FETCH_COLUMN);
-    if (!$admins) return;
-    $snippet = mb_strlen($brief) > 400 ? mb_substr($brief, 0, 400) . '…' : $brief;
-    $body = "New lead captured by SocialFlow!\n\n"
-          . "Name: {$leadName}\n"
-          . ($clientName ? "Client: {$clientName}\n" : '')
-          . "Channel: {$channel}" . ($phone ? " ({$phone})" : '') . "\n\n"
-          . "What they're asking about:\n{$snippet}\n\n"
-          . "View it on the CRM Leads page.";
-    foreach ($admins as $number) {
-        sendWhatsAppReply($number, $body);
-    }
-}
-
 // WhatsApps whatever number is configured (per client + category) in the Leads
-// tab's notification settings, with the new contact's full details. Separate
-// from notifyAdminsOfNewLead(), which always goes to every admin regardless of
-// category/client — this lets each client route each category to a specific
-// number (e.g. hiring leads to HR, service_provider pitches to procurement).
+// tab's notification settings, with the new contact's full details — that's
+// the only routing now; there's no separate blanket "every admin" broadcast,
+// since that caused admins to get notified of every client's every category
+// regardless of what they'd actually configured.
 function notifyLeadCategorySubscriber(PDO $pdo, string $clientId, string $category, string $leadName, ?string $phone, string $channel, string $brief, ?string $clientName = null) {
     if (!function_exists('sendWhatsAppReply')) return;
     $stmt = $pdo->prepare("SELECT whatsapp_number FROM lead_notify_settings WHERE client_id = :cid AND category = :cat LIMIT 1");
@@ -499,7 +480,6 @@ function maybeCaptureClientContact(PDO $pdo, string $channel, string $customerId
             ':category' => $category,
         ]);
 
-        notifyAdminsOfNewLead($pdo, $leadName, $channel, $phone, $brief, $clientName);
         notifyLeadCategorySubscriber($pdo, $clientId, $category, $leadName, $phone, $channel, $brief, $clientName);
     } catch (\Throwable $e) {
         error_log('maybeCaptureClientContact EXCEPTION: ' . $e->getMessage());
