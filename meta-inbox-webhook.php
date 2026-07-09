@@ -161,6 +161,12 @@ function backfillCustomerName(PDO $pdo, $clientId, $channel, $customerId, $custo
     if (!$customerName) return;
     $stmt = $pdo->prepare("UPDATE customer_messages SET customer_name = :name WHERE client_id = :cid AND channel = :ch AND customer_id = :custid AND (customer_name IS NULL OR customer_name = '')");
     $stmt->execute([':name' => $customerName, ':cid' => $clientId, ':ch' => $channel, ':custid' => $customerId]);
+
+    // Same backfill for any lead already captured for this sender before their
+    // name resolved — matched via the src_id tag embedded in leads.notes.
+    $tag = "src_id:{$channel}:{$customerId}";
+    $stmt = $pdo->prepare("UPDATE leads SET name = :name WHERE notes LIKE :tag AND (name IS NULL OR name = '' OR name LIKE 'Unknown (%')");
+    $stmt->execute([':name' => $customerName, ':tag' => "%{$tag}%"]);
 }
 
 // Meta tells us the platform at the top level — Instagram DMs arrive under
