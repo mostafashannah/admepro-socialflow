@@ -478,10 +478,14 @@ function maybeCaptureClientContact(PDO $pdo, string $channel, string $customerId
             return;
         }
 
+        // A real phone number was shared — that alone is worth capturing even if
+        // there isn't enough context to classify it (a bare number with no
+        // message text, for instance). Default to "lead" in that case rather
+        // than silently dropping a real contact.
         $classification = classifyClientContact($clientName, $combinedText);
-        if (!$classification) return; // "other" or classification failed — not worth capturing
+        $category = $classification['category'] ?? 'lead';
+        $brief = $classification['brief'] ?? $combinedText;
 
-        $brief = $classification['brief'] ?: $combinedText;
         $leadName = $customerName ?: 'Unknown (' . $channel . ')';
         $stmt = $pdo->prepare("INSERT INTO leads (name, phone, source, status, platforms, notes, client_id, client_name, category) VALUES (:name, :phone, :source, 'new', :platforms, :notes, :cid, :cname, :category)");
         $stmt->execute([
@@ -492,11 +496,11 @@ function maybeCaptureClientContact(PDO $pdo, string $channel, string $customerId
             ':notes' => "Auto-captured by SocialFlow from {$clientName}'s {$channel} inbox:\n{$brief}\n\n{$tag}",
             ':cid' => $clientId,
             ':cname' => $clientName,
-            ':category' => $classification['category'],
+            ':category' => $category,
         ]);
 
         notifyAdminsOfNewLead($pdo, $leadName, $channel, $phone, $brief, $clientName);
-        notifyLeadCategorySubscriber($pdo, $clientId, $classification['category'], $leadName, $phone, $channel, $brief, $clientName);
+        notifyLeadCategorySubscriber($pdo, $clientId, $category, $leadName, $phone, $channel, $brief, $clientName);
     } catch (\Throwable $e) {
         error_log('maybeCaptureClientContact EXCEPTION: ' . $e->getMessage());
     }
