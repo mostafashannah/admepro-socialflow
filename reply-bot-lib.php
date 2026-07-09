@@ -543,6 +543,17 @@ function maybeAutoReply(PDO $pdo, string $clientId, string $clientName, string $
         }
         $reply = $fallback;
         $usedFallback = true;
+
+        // Don't repeat the exact same "please share your number" ask if the
+        // customer already gave one and our last message was this same fallback —
+        // that just loops. Acknowledge instead.
+        $lastOut = null;
+        foreach (array_reverse($thread) as $m) { if ($m['direction'] === 'out') { $lastOut = trim((string)$m['message_text']); break; } }
+        $inboundText = implode("\n", array_column(array_filter($thread, fn($m) => $m['direction'] === 'in'), 'message_text'));
+        $hasPhone = preg_match('/(\+?\d[\d\s\-\(\)]{7,}\d)/', $inboundText);
+        if ($hasPhone && $lastOut === trim($fallback)) {
+            $reply = "Thanks for sharing your number! Our team will reach out to you shortly. 😊";
+        }
         $log('generateBotReply returned empty (Claude opted out or API error) — using fallback message');
     }
 
