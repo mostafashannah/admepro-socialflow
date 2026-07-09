@@ -605,7 +605,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.45";
+const APP_VERSION = "beta 3.46";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7139,28 +7139,37 @@ function ClientLeadsTab({clientLeads=[], clientName}) {
       </div>
       {sorted.length===0&&(
         <div style={{padding:"40px 0",textAlign:"center",color:"var(--text3)",fontSize:14}}>
-          No leads captured yet. When someone shares contact info or shows interest in your inbox, it'll show up here automatically.
+          No leads captured yet. When someone shares a contact number in your inbox, it'll show up here automatically.
         </div>
       )}
-      {sorted.map(l=>{
-        const brief = (l.notes||"").split("\n\nsrc_id:")[0].replace(/^Auto-captured by SocialFlow[^\n]*\n/,"");
-        return (
-          <div key={l.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:8}}>
-              <div>
-                <p style={{fontWeight:700,fontSize:14}}>{l.name||"Unknown"}</p>
-                {l.phone&&<p style={{fontSize:12,color:"var(--text2)",marginTop:2}}>{l.phone}</p>}
-              </div>
-              <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-                <Badge label={LEAD_CATEGORY_LABELS[l.category]||"Lead"} color={LEAD_CATEGORY_COLORS[l.category]||"#10b981"} xs/>
-                <span style={{fontSize:11,color:"var(--text3)"}}>{fmtDateTime(l.created_date||l.created_at)}</span>
-              </div>
-            </div>
-            {brief&&<p style={{fontSize:13,lineHeight:1.6,color:"var(--text)"}}>{brief}</p>}
-            <p style={{fontSize:11,color:"var(--text3)",marginTop:8,textTransform:"capitalize"}}>via {l.source||"inbox"}</p>
-          </div>
-        );
-      })}
+      {sorted.length>0&&(
+        <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",minWidth:720}}>
+            <thead>
+              <tr style={{background:"var(--surface2)"}}>
+                {["Name","Phone","Category","Brief","Source","Date"].map(h=>(
+                  <th key={h} style={{textAlign:"left",padding:"10px 14px",fontSize:11,fontWeight:700,letterSpacing:"0.04em",textTransform:"uppercase",color:"var(--text3)",borderBottom:"1px solid var(--border)",whiteSpace:"nowrap"}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((l,i)=>{
+                const brief = (l.notes||"").split("\n\nsrc_id:")[0].replace(/^Auto-captured by SocialFlow[^\n]*\n/,"");
+                return (
+                  <tr key={l.id} style={{borderBottom:i<sorted.length-1?"1px solid var(--border)":"none",background:"var(--surface)"}}>
+                    <td style={{padding:"10px 14px",fontSize:13,fontWeight:700,color:"var(--text)",whiteSpace:"nowrap"}}>{l.name||"Unknown"}</td>
+                    <td style={{padding:"10px 14px",fontSize:13,color:"var(--text2)",whiteSpace:"nowrap"}}>{l.phone||"—"}</td>
+                    <td style={{padding:"10px 14px"}}><Badge label={LEAD_CATEGORY_LABELS[l.category]||"Lead"} color={LEAD_CATEGORY_COLORS[l.category]||"#10b981"} xs/></td>
+                    <td style={{padding:"10px 14px",fontSize:12,color:"var(--text)",maxWidth:320,minWidth:220}}>{brief||"—"}</td>
+                    <td style={{padding:"10px 14px",fontSize:12,color:"var(--text3)",textTransform:"capitalize",whiteSpace:"nowrap"}}>{l.source||"inbox"}</td>
+                    <td style={{padding:"10px 14px",fontSize:11,color:"var(--text3)",whiteSpace:"nowrap"}}>{fmtDateTime(l.created_date||l.created_at)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }

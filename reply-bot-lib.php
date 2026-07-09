@@ -317,18 +317,12 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
         $combinedText = implode("\n", array_reverse($threadTexts));
 
         // Try to pull a phone number out of the thread if the customer happened to
-        // share one, but — unlike WhatsApp, where Meta always gives us the sender's
-        // real number — a Facebook/Instagram DM customer often never types one at
-        // all (e.g. just agrees to a callback time). That's still a real lead; it
-        // just gets captured with no phone number.
+        // share one. A lead is only captured once a real contact number is found —
+        // no phone means no lead, regardless of how interested they otherwise sound.
         if (!$phone && preg_match('/(\+?\d[\d\s\-\(\)]{7,}\d)/', $combinedText, $m)) {
             $phone = preg_replace('/[^\d+]/', '', $m[1]);
         }
-
-        // A sender who voluntarily shares their phone number is showing strong
-        // buying intent on its own — don't let the AI "interest" classifier
-        // (tuned for chatty inquiries, not a bare phone number) veto that.
-        if (!$phone && !isInterestedInOurServices($combinedText)) return;
+        if (!$phone) return;
 
         $tag = "src_id:{$channel}:{$customerId}";
         $dupe = $pdo->prepare("SELECT id, phone FROM leads WHERE notes LIKE :tag LIMIT 1");
@@ -433,12 +427,16 @@ function maybeCaptureClientContact(PDO $pdo, string $channel, string $customerId
         if (!$phone && preg_match('/(\+?\d[\d\s\-\(\)]{7,}\d)/', $combinedText, $m)) {
             $phone = preg_replace('/[^\d+]/', '', $m[1]);
         }
+        // A lead must have a real contact number — no phone, no capture (also
+        // saves a Claude classification call for threads that could never
+        // qualify anyway).
+        if (!$phone) return;
 
         $tag = "src_id:{$channel}:{$customerId}";
         $dupe = $pdo->prepare("SELECT id, phone FROM leads WHERE client_id = :cid AND notes LIKE :tag LIMIT 1");
         $dupe->execute([':cid' => $clientId, ':tag' => "%{$tag}%"]);
         if ($existing = $dupe->fetch(PDO::FETCH_ASSOC)) {
-            if ($phone && empty($existing['phone'])) {
+            if (empty($existing['phone'])) {
                 $pdo->prepare("UPDATE leads SET phone = :phone WHERE id = :id")->execute([':phone' => $phone, ':id' => $existing['id']]);
             }
             return;
