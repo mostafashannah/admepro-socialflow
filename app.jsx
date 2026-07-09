@@ -362,7 +362,7 @@ const SB_SCHEMA = {
   clients: ["name","email","phone","industry","status","platforms","portal_password","address","website","contact_person","notes"],
   client_tasks: ["client_id","client_name","title","description","task_type","priority","stage","assigned_to","created_by","deliverable_note"],
   customer_messages: ["client_id","client_name","channel","customer_id","customer_name","direction","message_text","sent_by","thread_status","draft_status","external_id"],
-  reply_bot_settings: ["client_id","client_name","enabled","mode","channels","tone","brain","dont_do","updated_by"],
+  reply_bot_settings: ["client_id","client_name","enabled","mode","channels","tone","brain","dont_do","fallback_message","updated_by"],
 };
 function sbSanitize(tableName, payload) {
   const allowed = SB_SCHEMA[tableName];
@@ -587,7 +587,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.43";
+const APP_VERSION = "beta 3.44";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7221,6 +7221,14 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
                 placeholder="Things this bot must never do — e.g. never give refunds or discounts, never quote a price, never confirm an appointment, never mention competitors…"
                 style={{...inputSt,width:"100%",minHeight:70,resize:"vertical",fontFamily:"inherit",borderColor:"#ef444444"}}/>
               <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Treated as strict boundaries — takes priority over the brain instructions above if the two ever conflict.</p>
+            </div>
+
+            <div>
+              <p style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>Fallback message (when the bot can't confidently answer)</p>
+              <textarea defaultValue={bot.fallback_message||""} onBlur={e=>onSaveBotSettings&&onSaveBotSettings({fallback_message:e.target.value})}
+                placeholder="Sent instead of staying silent whenever the bot opts out (e.g. custom pricing, service availability it doesn't know) — e.g. 'Thanks for reaching out! Please share your number or call us on 01xxxxxxxxx and our team will help you directly.'"
+                style={{...inputSt,width:"100%",minHeight:60,resize:"vertical",fontFamily:"inherit"}}/>
+              <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Leave empty to use the default generic fallback. The thread still stays flagged "needs human" either way so your team follows up.</p>
             </div>
           </div>
         )}

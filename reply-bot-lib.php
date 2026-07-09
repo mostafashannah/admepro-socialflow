@@ -407,7 +407,21 @@ function maybeAutoReply(PDO $pdo, string $clientId, string $clientName, string $
     if (!$thread) { $log('empty thread'); return; }
 
     $reply = generateBotReply($pdo, $clientId, $clientName, (string)($settings['brain'] ?? ''), $thread, $isComment, (string)($settings['dont_do'] ?? ''), (string)($settings['tone'] ?? 'friendly'), $customerName, $postCaption);
-    if (!$reply) { $log('generateBotReply returned empty (Claude opted out or API error)'); return; }
+    $usedFallback = false;
+    if (!$reply) {
+        // Claude opted out (NEEDS_HUMAN) or the API call failed — rather than
+        // leaving the customer with silence, send a configurable fallback
+        // (set per-client in Reply Bot settings) so they at least know their
+        // message was received and how to reach a human. The thread is still
+        // flagged needs_human either way so the team follows up.
+        $fallback = trim((string)($settings['fallback_message'] ?? ''));
+        if ($fallback === '') {
+            $fallback = "Thanks for reaching out! For a quick answer, please share your phone/WhatsApp number or contact us directly, and our team will get back to you shortly. 😊";
+        }
+        $reply = $fallback;
+        $usedFallback = true;
+        $log('generateBotReply returned empty (Claude opted out or API error) — using fallback message');
+    }
 
     if ($settings['mode'] === 'auto') {
         // Resolve the channel to the integration app_key that holds the send credentials.
@@ -422,7 +436,10 @@ function maybeAutoReply(PDO $pdo, string $clientId, string $clientName, string $
             [$httpCode, $body] = sendMetaDM($channel, $creds['page_id'], $creds['access_token'], $customerId, $reply);
         }
         if ($httpCode < 200 || $httpCode >= 300) { $log("Graph API send failed, http {$httpCode}: " . json_encode($body)); return; } // send failed — don't record a phantom "sent" message
-        storeBotMessage($pdo, $clientId, $clientName, $channel, $customerId, $customerName, $reply, 'sent', 'bot_handled', $externalId);
+        // A fallback message doesn't actually resolve the customer's question —
+        // keep the thread flagged needs_human so the team still follows up,
+        // even though something was sent.
+        storeBotMessage($pdo, $clientId, $clientName, $channel, $customerId, $customerName, $reply, 'sent', $usedFallback ? 'needs_human' : 'bot_handled', $externalId);
     } else {
         storeBotMessage($pdo, $clientId, $clientName, $channel, $customerId, $customerName, $reply, 'pending_review', 'needs_human', $externalId);
     }
