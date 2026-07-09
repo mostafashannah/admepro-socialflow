@@ -4,13 +4,16 @@
 // classification (maybeCaptureClientContact / maybeCreateLeadFromMessage)
 // against every existing inbound conversation thread in customer_messages,
 // for every managed client (+ admepro's own inbox), going all the way back
-// to when each integration was first connected. Idempotent — safe to
-// re-run, skips threads already captured (same src_id-tag dedup used by
-// the live webhook path).
+// to when each integration was first connected.
 //
-// Processes at most `limit` NOT-yet-captured threads per call (default 15)
-// so each request finishes well within nginx's timeout — call it repeatedly
-// (same command) until "remaining" is 0.
+// A thread is marked "seen" in lead_backfill_seen once checked, regardless
+// of whether it turned out to be an actual lead — so re-running the script
+// never re-classifies (and re-bills Claude for) the same thread twice, even
+// ones correctly classified as "other" and not captured.
+//
+// Processes at most `limit` unseen threads per call (default 15) so each
+// request finishes well within nginx's timeout — call it repeatedly (same
+// command) until "remaining" is 0.
 //
 // Run: curl -X POST https://socialflow.admepro.com/backfill-leads.php -H "apikey: <API_KEY>"
 // Optional: ?client_id=<uuid> to backfill just one client, &limit=N to change batch size.
@@ -42,6 +45,8 @@ $limit = isset($_GET['limit']) ? max(1, (int)$_GET['limit']) : 15;
 // One row per distinct thread (client + channel + customer), with the most
 // recent inbound message's text/name — the capture functions pull the full
 // thread context themselves, this just needs to trigger them once per thread.
+// LEFT JOINs out anything already in lead_backfill_seen so the SQL itself
+// only ever returns work still left to do.
 $sql = "
     SELECT cm.client_id, cm.client_name, cm.channel, cm.customer_id, cm.customer_name, cm.message_text
     FROM customer_messages cm
@@ -53,38 +58,31 @@ $sql = "
         GROUP BY client_id, channel, customer_id
     ) latest ON latest.client_id = cm.client_id AND latest.channel = cm.channel
              AND latest.customer_id = cm.customer_id AND latest.max_created = cm.created_at
-    WHERE cm.direction = 'in'
+    LEFT JOIN lead_backfill_seen seen ON seen.client_id = cm.client_id
+             AND seen.channel = cm.channel AND seen.customer_id = cm.customer_id
+    WHERE cm.direction = 'in' AND seen.id IS NULL
     ORDER BY cm.client_id, cm.channel, cm.customer_id
 ";
 $stmt = $pdo->prepare($sql);
 $stmt->execute($onlyClientId ? [':cid' => $onlyClientId] : []);
 $threads = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-function alreadyCaptured(PDO $pdo, bool $isOwn, string $clientId, string $channel, string $customerId) {
-    $tag = '%src_id:' . $channel . ':' . $customerId . '%';
-    if ($isOwn) {
-        return (bool)$pdo->query("SELECT 1 FROM leads WHERE notes LIKE " . $pdo->quote($tag) . " LIMIT 1")->fetchColumn();
-    }
-    $stmt = $pdo->prepare("SELECT 1 FROM leads WHERE client_id = :cid AND notes LIKE :tag LIMIT 1");
-    $stmt->execute([':cid' => $clientId, ':tag' => $tag]);
-    return (bool)$stmt->fetchColumn();
-}
+$remainingTotal = count($threads);
+$batch = array_slice($threads, 0, $limit);
 
-$attempted = 0;
+$markSeen = $pdo->prepare("INSERT IGNORE INTO lead_backfill_seen (id, client_id, channel, customer_id) VALUES (UUID(), :cid, :ch, :custid)");
+$leadCountFor = function(string $clientId) use ($pdo) {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM leads WHERE client_id = :cid");
+    $stmt->execute([':cid' => $clientId]);
+    return (int)$stmt->fetchColumn();
+};
+
 $capturedNow = 0;
-$skippedAlready = 0;
 $results = [];
-$remaining = 0;
 
-foreach ($threads as $t) {
+foreach ($batch as $t) {
     $isOwn = strcasecmp((string)$t['client_name'], 'admepro') === 0;
-
-    if (alreadyCaptured($pdo, $isOwn, $t['client_id'], $t['channel'], $t['customer_id'])) {
-        $skippedAlready++;
-        continue;
-    }
-
-    if ($attempted >= $limit) { $remaining++; continue; } // count how many are left for the next call
+    $before = $leadCountFor($t['client_id']);
 
     $phone = $t['channel'] === 'whatsapp' ? $t['customer_id'] : null;
     try {
@@ -96,9 +94,10 @@ foreach ($threads as $t) {
     } catch (\Throwable $e) {
         error_log('backfill-leads EXCEPTION: ' . $e->getMessage());
     }
-    $attempted++;
 
-    if (alreadyCaptured($pdo, $isOwn, $t['client_id'], $t['channel'], $t['customer_id'])) {
+    $markSeen->execute([':cid' => $t['client_id'], ':ch' => $t['channel'], ':custid' => $t['customer_id']]);
+
+    if ($leadCountFor($t['client_id']) > $before) {
         $capturedNow++;
         $results[] = ['client_name' => $t['client_name'], 'channel' => $t['channel'], 'customer_name' => $t['customer_name']];
     }
@@ -106,9 +105,8 @@ foreach ($threads as $t) {
 
 echo json_encode([
     'ok' => true,
-    'threads_attempted_this_call' => $attempted,
+    'threads_attempted_this_call' => count($batch),
     'new_leads_captured_this_call' => $capturedNow,
-    'already_captured_skipped' => $skippedAlready,
-    'remaining' => $remaining,
+    'remaining' => max(0, $remainingTotal - count($batch)),
     'captured' => $results,
 ]);
