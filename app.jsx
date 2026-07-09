@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.53";
+const APP_VERSION = "beta 3.54";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6811,7 +6811,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
   );
 }
 
-function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],leadNotifySettings=[],onSaveLeadNotifySetting}) {
+function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead}) {
   const [tab,setTab] = usePersistentState(`sf_tab_client_${client?.id}`,"overview");
   const [showEdit,setShowEdit] = useState(false);
   const [confirmDelete,setConfirmDelete] = useState(false);
@@ -7055,7 +7055,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
         </div>
       )}
 
-      {tab==="leads"&&<ClientLeadsTab clientLeads={clientLeads} clientName={client.name} clientId={client.id} notifySettings={leadNotifySettings.filter(s=>s.client_id===client.id)} onSaveNotifySetting={onSaveLeadNotifySetting} canEditSettings/>}
+      {tab==="leads"&&<ClientLeadsTab clientLeads={clientLeads} clientName={client.name} clientId={client.id} notifySettings={leadNotifySettings.filter(s=>s.client_id===client.id)} onSaveNotifySetting={onSaveLeadNotifySetting} canEditSettings onDeleteLead={currentUser?.role==="admin"?onDeleteLead:null}/>}
 
       {/* Edit Client Modal */}
       <EditClientModal open={showEdit} client={client} onClose={()=>setShowEdit(false)}
@@ -7107,7 +7107,7 @@ const ChannelIcon = ({channel, size=14, color}) => {
 const LEAD_CATEGORY_LABELS = {lead:"Lead", service_provider:"Service Provider", hiring:"Hiring"};
 const LEAD_CATEGORY_COLORS = {lead:"#10b981", service_provider:"#8b5cf6", hiring:"#f59e0b"};
 const LEAD_CATEGORIES = ["lead","service_provider","hiring"];
-function ClientLeadsTab({clientLeads=[], clientName, clientId, notifySettings=[], onSaveNotifySetting, canEditSettings=false}) {
+function ClientLeadsTab({clientLeads=[], clientName, clientId, notifySettings=[], onSaveNotifySetting, canEditSettings=false, onDeleteLead}) {
   const [catF, setCatF] = useState("all");
   const [savingCat, setSavingCat] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -7222,8 +7222,8 @@ function ClientLeadsTab({clientLeads=[], clientName, clientId, notifySettings=[]
           <table style={{width:"100%",borderCollapse:"collapse",minWidth:720}}>
             <thead>
               <tr style={{background:"var(--surface2)"}}>
-                {["Name","Phone","Category","Brief","Source","Date"].map(h=>(
-                  <th key={h} style={{textAlign:"left",padding:"10px 14px",fontSize:11,fontWeight:700,letterSpacing:"0.04em",textTransform:"uppercase",color:"var(--text3)",borderBottom:"1px solid var(--border)",whiteSpace:"nowrap"}}>{h}</th>
+                {["Name","Phone","Category","Brief","Source","Date"].concat(onDeleteLead?[""]:[]).map((h,hi)=>(
+                  <th key={hi} style={{textAlign:"left",padding:"10px 14px",fontSize:11,fontWeight:700,letterSpacing:"0.04em",textTransform:"uppercase",color:"var(--text3)",borderBottom:"1px solid var(--border)",whiteSpace:"nowrap"}}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -7238,6 +7238,14 @@ function ClientLeadsTab({clientLeads=[], clientName, clientId, notifySettings=[]
                     <td style={{padding:"10px 14px",fontSize:12,color:"var(--text)",maxWidth:320,minWidth:220}}>{brief||"—"}</td>
                     <td style={{padding:"10px 14px",fontSize:12,color:"var(--text3)",textTransform:"capitalize",whiteSpace:"nowrap"}}>{l.source||"inbox"}</td>
                     <td style={{padding:"10px 14px",fontSize:11,color:"var(--text3)",whiteSpace:"nowrap"}}>{fmtDateTime(l.created_date||l.created_at)}</td>
+                    {onDeleteLead&&(
+                      <td style={{padding:"10px 14px",whiteSpace:"nowrap"}}>
+                        <button onClick={()=>{ if(window.confirm(`Delete lead "${l.name||"Unknown"}"?`)) onDeleteLead(l.id); }}
+                          style={{padding:"6px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"#ef4444",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                          Delete
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -23270,6 +23278,12 @@ function App() {
     setToast("Client deleted");
   };
 
+  const deleteLead = async (id) => {
+    setData(d=>({...d, leads:d.leads.filter(l=>l.id!==id)}));
+    await de("Lead", id).catch(()=>{});
+    setToast("Lead deleted");
+  };
+
   const toggleHideClient = async (id, currentStatus) => {
     const cl = data.clients.find(c=>c.id===id);
     const newStatus = currentStatus==="hidden" ? "active" : "hidden";
@@ -24961,6 +24975,7 @@ Return ONLY valid JSON (no markdown, no explanation):
               onDismissDraft={dismissDraftReply}
               leadNotifySettings={data.leadNotifySettings||[]}
               onSaveLeadNotifySetting={saveLeadNotifySetting}
+              onDeleteLead={deleteLead}
             />
           );
         })()}
