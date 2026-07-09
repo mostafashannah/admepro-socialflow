@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.50";
+const APP_VERSION = "beta 3.51";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7110,6 +7110,7 @@ const LEAD_CATEGORIES = ["lead","service_provider","hiring"];
 function ClientLeadsTab({clientLeads=[], clientName, clientId, notifySettings=[], onSaveNotifySetting, canEditSettings=false}) {
   const [catF, setCatF] = useState("all");
   const [savingCat, setSavingCat] = useState(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const parseNums = (c) => { const raw = notifySettings.find(s=>s.category===c)?.whatsapp_number || ""; const list = raw.split(",").map(n=>n.trim()).filter(Boolean); return list.length ? list : [""]; };
   const [numbers, setNumbers] = useState(()=>{
     const m = {}; LEAD_CATEGORIES.forEach(c=>{ m[c] = parseNums(c); }); return m;
@@ -7157,8 +7158,20 @@ function ClientLeadsTab({clientLeads=[], clientName, clientId, notifySettings=[]
           <Ico d={Icons.upload} size={13} stroke="var(--text)" style={{transform:"rotate(180deg)"}}/> Download CSV
         </button>
       </div>
-      {canEditSettings&&(
-        <div style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"column",gap:10}}>
+      {canEditSettings&&(()=>{
+        const totalNumbers = LEAD_CATEGORIES.reduce((sum,c)=>sum+(numbers[c]||[]).filter(n=>n.trim()).length,0);
+        return (
+        <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+          <div onClick={()=>setSettingsOpen(o=>!o)} style={{padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",background:"var(--surface2)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <Ico d={Icons.robot||Icons.chat} size={15} stroke="#6366f1"/>
+              <p style={{fontWeight:700,fontSize:13}}>Lead Notifications</p>
+              <Badge label={totalNumbers?`${totalNumbers} number${totalNumbers>1?"s":""}`:"Off"} color={totalNumbers?"#10b981":"#6b7280"} xs/>
+            </div>
+            <Ico d={Icons.chevD} size={14} stroke="var(--text3)" style={{transform:settingsOpen?"rotate(180deg)":"none",transition:"transform 0.2s"}}/>
+          </div>
+          {settingsOpen&&(
+          <div style={{padding:16,display:"flex",flexDirection:"column",gap:10,borderTop:"1px solid var(--border)"}}>
           <p style={{fontSize:12,fontWeight:700,color:"var(--text2)"}}>Notify by WhatsApp when a new contact is captured</p>
           {LEAD_CATEGORIES.map(c=>(
             <div key={c} style={{display:"flex",flexDirection:"column",gap:6}}>
@@ -7187,8 +7200,11 @@ function ClientLeadsTab({clientLeads=[], clientName, clientId, notifySettings=[]
               </div>
             </div>
           ))}
+          </div>
+          )}
         </div>
-      )}
+        );
+      })()}
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
         {["all","lead","service_provider","hiring"].map(c=>(
           <button key={c} onClick={()=>setCatF(c)} style={{padding:"5px 14px",borderRadius:99,fontSize:12,fontWeight:600,background:catF===c?"var(--accent)":"var(--surface2)",color:catF===c?"#fff":"var(--text2)",border:`1px solid ${catF===c?"var(--accent)":"var(--border2)"}`,cursor:"pointer"}}>
