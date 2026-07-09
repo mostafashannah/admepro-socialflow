@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.48";
+const APP_VERSION = "beta 3.49";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7140,7 +7140,7 @@ function ClientLeadsTab({clientLeads=[], clientName, clientId, notifySettings=[]
     try {
       await fetch(WA_ENDPOINT, {
         method: "POST", headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({to: number, body: `SocialFlow test message: this WhatsApp number will receive ${LEAD_CATEGORY_LABELS[category]} contacts captured on ${clientName||"this client"}'s Leads tab.`}),
+        body: JSON.stringify({to: number, body: `Welcome! This number is now set up on SocialFlow to receive ${LEAD_CATEGORY_LABELS[category]} contacts for ${clientName||"this client"} — whenever a new ${LEAD_CATEGORY_LABELS[category].toLowerCase()} contact is captured from the inbox, you'll get their full details here.`}),
       });
     } catch(e) {} finally { setSavingCat(null); }
   };
