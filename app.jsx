@@ -367,6 +367,7 @@ const SB_TABLE = {
   LeaveRequest:"leave_requests",
   AttendanceRecord:"attendance_records",
   ContactReport:"contact_reports",
+  LeadNotifySetting:"lead_notify_settings",
 };
 
 function sbTable(entityName) {
@@ -605,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.46";
+const APP_VERSION = "beta 3.47";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6810,7 +6811,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
   );
 }
 
-function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[]}) {
+function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],leadNotifySettings=[],onSaveLeadNotifySetting}) {
   const [tab,setTab] = usePersistentState(`sf_tab_client_${client?.id}`,"overview");
   const [showEdit,setShowEdit] = useState(false);
   const [confirmDelete,setConfirmDelete] = useState(false);
@@ -7054,7 +7055,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
         </div>
       )}
 
-      {tab==="leads"&&<ClientLeadsTab clientLeads={clientLeads} clientName={client.name}/>}
+      {tab==="leads"&&<ClientLeadsTab clientLeads={clientLeads} clientName={client.name} clientId={client.id} notifySettings={leadNotifySettings.filter(s=>s.client_id===client.id)} onSaveNotifySetting={onSaveLeadNotifySetting} canEditSettings/>}
 
       {/* Edit Client Modal */}
       <EditClientModal open={showEdit} client={client} onClose={()=>setShowEdit(false)}
@@ -7105,8 +7106,19 @@ const ChannelIcon = ({channel, size=14, color}) => {
 // ClientDetailPage and the client-facing ClientPortal.
 const LEAD_CATEGORY_LABELS = {lead:"Lead", service_provider:"Service Provider", hiring:"Hiring"};
 const LEAD_CATEGORY_COLORS = {lead:"#10b981", service_provider:"#8b5cf6", hiring:"#f59e0b"};
-function ClientLeadsTab({clientLeads=[], clientName}) {
+const LEAD_CATEGORIES = ["lead","service_provider","hiring"];
+function ClientLeadsTab({clientLeads=[], clientName, clientId, notifySettings=[], onSaveNotifySetting, canEditSettings=false}) {
   const [catF, setCatF] = useState("all");
+  const [numbers, setNumbers] = useState(()=>{
+    const m = {}; LEAD_CATEGORIES.forEach(c=>{ m[c] = notifySettings.find(s=>s.category===c)?.whatsapp_number || ""; }); return m;
+  });
+  useEffect(()=>{
+    setNumbers(m=>{
+      const next = {...m};
+      LEAD_CATEGORIES.forEach(c=>{ next[c] = notifySettings.find(s=>s.category===c)?.whatsapp_number || ""; });
+      return next;
+    });
+  }, [notifySettings.map(s=>s.category+":"+s.whatsapp_number).join(",")]);
   const filtered = catF==="all" ? clientLeads : clientLeads.filter(l=>l.category===catF);
   const sorted = [...filtered].sort((a,b)=>new Date(b.created_date||b.created_at)-new Date(a.created_date||a.created_at));
 
@@ -7130,6 +7142,22 @@ function ClientLeadsTab({clientLeads=[], clientName}) {
           <Ico d={Icons.upload} size={13} stroke="var(--text)" style={{transform:"rotate(180deg)"}}/> Download CSV
         </button>
       </div>
+      {canEditSettings&&(
+        <div style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"column",gap:10}}>
+          <p style={{fontSize:12,fontWeight:700,color:"var(--text2)"}}>Notify by WhatsApp when a new contact is captured</p>
+          {LEAD_CATEGORIES.map(c=>(
+            <div key={c} style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+              <span style={{width:130,fontSize:12,fontWeight:600,color:"var(--text2)"}}>{LEAD_CATEGORY_LABELS[c]}</span>
+              <input value={numbers[c]} onChange={e=>setNumbers(n=>({...n,[c]:e.target.value}))}
+                placeholder="e.g. 201001234567" style={{flex:1,minWidth:180,padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontSize:13}}/>
+              <button onClick={()=>onSaveNotifySetting&&onSaveNotifySetting(clientId, c, numbers[c].trim())}
+                style={{padding:"7px 14px",borderRadius:8,border:"none",background:"var(--accent)",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                Save
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
         {["all","lead","service_provider","hiring"].map(c=>(
           <button key={c} onClick={()=>setCatF(c)} style={{padding:"5px 14px",borderRadius:99,fontSize:12,fontWeight:600,background:catF===c?"var(--accent)":"var(--surface2)",color:catF===c?"#fff":"var(--text2)",border:`1px solid ${catF===c?"var(--accent)":"var(--border2)"}`,cursor:"pointer"}}>
@@ -22773,7 +22801,7 @@ function App() {
     timeEntries: [], schedules: [], scheduleOverrides: [],
     invitations: [], accessRequests: [], clientUsers: [],
     emailLogs: [], activityLogs: [], notifPrefs: [],
-    rolePermissions: [], leaveRequests: [], attendanceRecords: [], contactReports: [],
+    rolePermissions: [], leaveRequests: [], attendanceRecords: [], contactReports: [], leadNotifySettings: [],
   });
   const rolePermsMap = useMemo(()=>buildRolePermsMap(data.rolePermissions), [data.rolePermissions]);
   const [appSettings, setAppSettings] = useState(SEED.appSettings);
@@ -22891,6 +22919,7 @@ function App() {
         qe("LeaveRequest",{},"-created_at",500), // 41
         qe("AttendanceRecord",{},"-work_date",1000), // 42
         qe("ContactReport",{},"-created_at",500), // 43
+        qe("LeadNotifySetting"), // 44
       ]);
       if(wave2[13].status==="fulfilled" && wave2[13].value?.entities?.length) setEmailSettings(wave2[13].value.entities[0]);
 
@@ -22938,6 +22967,7 @@ function App() {
         leaveRequests: pick(wave2[41], d.leaveRequests||[]),
         attendanceRecords: pick(wave2[42], d.attendanceRecords||[]),
         contactReports: pick(wave2[43], d.contactReports||[]),
+        leadNotifySettings: pick(wave2[44], d.leadNotifySettings||[]),
       }));
     }
     loadAllDataRef.current = load;
@@ -23495,6 +23525,22 @@ function App() {
       setData(d=>({...d, replyBotSettings:[local,...(d.replyBotSettings||[])]}));
       ce("ReplyBotSetting",[{client_id:clientId, client_name:clientName, enabled:false, mode:"approve", channels:["instagram","messenger"], tone:"friendly", brain:"", dont_do:"", ...patch}])
         .then(r=>{ const real=r.entities?.[0]; if(real?.id) setData(d=>({...d,replyBotSettings:d.replyBotSettings.map(s=>s.id===local.id?{...s,...real}:s)})); })
+        .catch(()=>{});
+    }
+  };
+
+  // Create or update the WhatsApp number that gets notified when the Leads tab
+  // captures a new contact in a given category (lead/service_provider/hiring).
+  const saveLeadNotifySetting = async (clientId, category, whatsapp_number) => {
+    const existing = (data.leadNotifySettings||[]).find(s=>s.client_id===clientId && s.category===category);
+    if(existing) {
+      setData(d=>({...d, leadNotifySettings:d.leadNotifySettings.map(s=>s.id===existing.id?{...s,whatsapp_number}:s)}));
+      ue("LeadNotifySetting", existing.id, {whatsapp_number}).catch(()=>{});
+    } else {
+      const local = {id:uid(), client_id:clientId, category, whatsapp_number};
+      setData(d=>({...d, leadNotifySettings:[local,...(d.leadNotifySettings||[])]}));
+      ce("LeadNotifySetting",[{client_id:clientId, category, whatsapp_number}])
+        .then(r=>{ const real=r.entities?.[0]; if(real?.id) setData(d=>({...d,leadNotifySettings:d.leadNotifySettings.map(s=>s.id===local.id?{...s,...real}:s)})); })
         .catch(()=>{});
     }
   };
@@ -24866,6 +24912,8 @@ Return ONLY valid JSON (no markdown, no explanation):
               onSaveReplyBotSettings={saveReplyBotSettings}
               onApproveDraft={approveDraftReply}
               onDismissDraft={dismissDraftReply}
+              leadNotifySettings={data.leadNotifySettings||[]}
+              onSaveLeadNotifySetting={saveLeadNotifySetting}
             />
           );
         })()}

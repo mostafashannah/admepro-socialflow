@@ -361,6 +361,7 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
         ]);
 
         notifyAdminsOfNewLead($pdo, $leadName, $channel, $phone, $brief, $clientName);
+        if ($clientId) notifyLeadCategorySubscriber($pdo, $clientId, $category, $leadName, $phone, $channel, $brief, $clientName);
     } catch (\Throwable $e) {
         error_log('maybeCreateLeadFromMessage EXCEPTION: ' . $e->getMessage());
     }
@@ -382,6 +383,28 @@ function notifyAdminsOfNewLead(PDO $pdo, string $leadName, string $channel, ?str
     foreach ($admins as $number) {
         sendWhatsAppReply($number, $body);
     }
+}
+
+// WhatsApps whatever number is configured (per client + category) in the Leads
+// tab's notification settings, with the new contact's full details. Separate
+// from notifyAdminsOfNewLead(), which always goes to every admin regardless of
+// category/client — this lets each client route each category to a specific
+// number (e.g. hiring leads to HR, service_provider pitches to procurement).
+function notifyLeadCategorySubscriber(PDO $pdo, string $clientId, string $category, string $leadName, ?string $phone, string $channel, string $brief, ?string $clientName = null) {
+    if (!function_exists('sendWhatsAppReply')) return;
+    $stmt = $pdo->prepare("SELECT whatsapp_number FROM lead_notify_settings WHERE client_id = :cid AND category = :cat LIMIT 1");
+    $stmt->execute([':cid' => $clientId, ':cat' => $category]);
+    $number = $stmt->fetchColumn();
+    if (!$number) return;
+    $snippet = mb_strlen($brief) > 400 ? mb_substr($brief, 0, 400) . '…' : $brief;
+    $categoryLabel = ['lead' => 'Lead', 'service_provider' => 'Service Provider', 'hiring' => 'Hiring'][$category] ?? ucfirst($category);
+    $body = "New {$categoryLabel} contact captured by SocialFlow!\n\n"
+          . "Name: {$leadName}\n"
+          . ($clientName ? "Client: {$clientName}\n" : '')
+          . "Channel: {$channel}" . ($phone ? " ({$phone})" : '') . "\n\n"
+          . "Details:\n{$snippet}\n\n"
+          . "View it on the CRM Leads page.";
+    sendWhatsAppReply($number, $body);
 }
 
 // Classifies an inbound message to a MANAGED CLIENT's own inbox (not admepro's) —
@@ -467,6 +490,7 @@ function maybeCaptureClientContact(PDO $pdo, string $channel, string $customerId
         ]);
 
         notifyAdminsOfNewLead($pdo, $leadName, $channel, $phone, $brief, $clientName);
+        notifyLeadCategorySubscriber($pdo, $clientId, $classification['category'], $leadName, $phone, $channel, $brief, $clientName);
     } catch (\Throwable $e) {
         error_log('maybeCaptureClientContact EXCEPTION: ' . $e->getMessage());
     }
