@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.54";
+const APP_VERSION = "beta 3.55";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12366,7 +12366,7 @@ const isDueToday = (date) => date && new Date(date).toDateString() === new Date(
 const fmtFollowup = (d) => d ? (d.includes("T") ? fmtDateTime(d) : fmtDate(d)) : "";
 
 // Lead Detail Panel
-function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivity, onConvert, currentUser}) {
+function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivity, onConvert, currentUser, onDeleteLead}) {
   const [tab, setTab] = useState("overview");
   const [note, setNote] = useState("");
   const [noteType, setNoteType] = useState("note");
@@ -12412,7 +12412,15 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
                 {lead.value&&<Badge label={`$${lead.value.toLocaleString()}`} color="#10b981" xs/>}
               </div>
             </div>
-            <button onClick={onClose} style={{color:"var(--text3)",display:"flex",padding:4}}><Ico d={Icons.x} size={20}/></button>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              {onDeleteLead&&(
+                <button onClick={()=>{ if(window.confirm(`Delete lead "${lead.name||"Unknown"}"?`)) onDeleteLead(lead.id); }}
+                  style={{padding:"6px 12px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"#ef4444",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                  Delete
+                </button>
+              )}
+              <button onClick={onClose} style={{color:"var(--text3)",display:"flex",padding:4}}><Ico d={Icons.x} size={20}/></button>
+            </div>
           </div>
         </div>
 
@@ -12608,7 +12616,7 @@ function LeadCard({lead, onClick}) {
 }
 
 // Main Leads Page
-function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead, onUpdateLead, onAddActivity, onConvertLead}) {
+function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead, onUpdateLead, onAddActivity, onConvertLead, onDeleteLead}) {
   const [view, setView] = useState("kanban");
   const [selectedLead, setSelectedLead] = useState(null);
   const [showForm, setShowForm] = useState(false);
@@ -12759,6 +12767,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
           onUpdateLead={async l=>{await onUpdateLead(l);setSelectedLead(l);}}
           onAddActivity={onAddActivity}
           onConvert={async l=>{await onConvertLead(l);setSelectedLead(null);}}
+          onDeleteLead={currentUser?.role==="admin"?async id=>{await onDeleteLead(id);setSelectedLead(null);}:null}
         />
       )}
     </div>
@@ -25134,6 +25143,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             onUpdateLead={updateLead}
             onAddActivity={addLeadActivity}
             onConvertLead={convertLeadToClient}
+            onDeleteLead={deleteLead}
           />
         )}
         {page==="my_tasks"&&(
