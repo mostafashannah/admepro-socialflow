@@ -9,4 +9,4 @@ CREATE TABLE IF NOT EXISTS lead_backfill_seen (
   customer_id VARCHAR(100) NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uq_seen (client_id, channel, customer_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
