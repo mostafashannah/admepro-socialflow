@@ -57,20 +57,31 @@ $processed = 0;
 $results = [];
 
 foreach ($threads as $t) {
-    if (strcasecmp((string)$t['client_name'], 'admepro') === 0) continue; // skip admepro's own inbox
+    $isOwn = strcasecmp((string)$t['client_name'], 'admepro') === 0;
 
-    $before = $pdo->query("SELECT COUNT(*) FROM leads WHERE client_id = " . $pdo->quote($t['client_id']))->fetchColumn();
+    // admepro's own inbox uses a different classifier (isInterestedInOurServices,
+    // via maybeCreateLeadFromMessage) — "is this person interested in hiring US",
+    // not the lead/service_provider/hiring categorization used for managed clients.
+    $beforeCount = $isOwn
+        ? (int)$pdo->query("SELECT COUNT(*) FROM leads WHERE notes LIKE " . $pdo->quote('%src_id:' . $t['channel'] . ':' . $t['customer_id'] . '%'))->fetchColumn()
+        : (int)$pdo->query("SELECT COUNT(*) FROM leads WHERE client_id = " . $pdo->quote($t['client_id']))->fetchColumn();
 
     $phone = $t['channel'] === 'whatsapp' ? $t['customer_id'] : null;
     try {
-        maybeCaptureClientContact($pdo, $t['channel'], $t['customer_id'], $t['customer_name'], (string)$t['message_text'], $t['client_id'], $t['client_name'], $phone);
+        if ($isOwn) {
+            maybeCreateLeadFromMessage($pdo, $t['channel'], $t['customer_id'], $t['customer_name'], (string)$t['message_text'], $phone, $t['client_id']);
+        } else {
+            maybeCaptureClientContact($pdo, $t['channel'], $t['customer_id'], $t['customer_name'], (string)$t['message_text'], $t['client_id'], $t['client_name'], $phone);
+        }
     } catch (\Throwable $e) {
         error_log('backfill-leads EXCEPTION: ' . $e->getMessage());
     }
 
-    $after = $pdo->query("SELECT COUNT(*) FROM leads WHERE client_id = " . $pdo->quote($t['client_id']))->fetchColumn();
+    $afterCount = $isOwn
+        ? (int)$pdo->query("SELECT COUNT(*) FROM leads WHERE notes LIKE " . $pdo->quote('%src_id:' . $t['channel'] . ':' . $t['customer_id'] . '%'))->fetchColumn()
+        : (int)$pdo->query("SELECT COUNT(*) FROM leads WHERE client_id = " . $pdo->quote($t['client_id']))->fetchColumn();
     $processed++;
-    if ($after > $before) {
+    if ($afterCount > $beforeCount) {
         $results[] = ['client_name' => $t['client_name'], 'channel' => $t['channel'], 'customer_name' => $t['customer_name']];
     }
 }
