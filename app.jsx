@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.65";
+const APP_VERSION = "beta 3.66";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1475,7 +1475,7 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       --sidebar-w:220px;
       --top-bar-h:56px;
     }
-    html,body,#root{height:100vh;height:100dvh;overflow-x:hidden}
+    html,body,#root{height:100%;overflow-x:hidden}
     .app-shell{height:100vh;height:100dvh}
     /* iOS paints the safe-area strips (home-indicator inset, notch) using
        the <html> element's background, not <body>'s — without this the
@@ -1602,7 +1602,7 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
     .grid-4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
 
     /* ── MOBILE BOTTOM NAV ── */
-    .bottom-nav{display:none}
+    .bottom-nav-float{display:none}
 
     /* ── TOUCH TARGETS ── */
     .touch-target{min-height:44px;min-width:44px}
@@ -1628,18 +1628,20 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       pre,code{overflow-x:auto;white-space:pre-wrap}
       img{max-width:100%}
 
-      /* In-flow (not fixed): sits as the bottom row of the flex column so it
-         is always flush with the real bottom of the visible viewport. Mobile
-         Safari can auto-collapse its own toolbar while scrolling, and
-         position:fixed elements then anchor to the pre-collapse (larger)
-         viewport — leaving a gap exactly the height of Safari's toolbar
-         below the bar. Staying in-flow inside the 100dvh app-shell avoids
-         that entirely. */
-      .bottom-nav{
+      /* Floating rounded pill, like Instagram's — deliberately floats with
+         margin over content rather than sitting flush against the viewport
+         edge, so minor mobile-Safari dynamic-toolbar jitter is invisible
+         (there's already intentional space around it either way). */
+      .bottom-nav-float{
         display:flex;flex-shrink:0;
-        background:var(--surface);border-top:1px solid var(--border);
-        padding:8px 0 max(8px,env(safe-area-inset-bottom));
-        justify-content:space-around;align-items:center;
+        position:fixed;left:50%;transform:translateX(-50%);
+        bottom:calc(14px + env(safe-area-inset-bottom));
+        z-index:200;gap:4px;padding:6px;
+        border-radius:999px;
+        background:color-mix(in srgb, var(--surface) 88%, transparent);
+        backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+        border:1px solid var(--border2);
+        box-shadow:0 8px 24px rgba(0,0,0,0.18);
       }
       .main-content{
         padding:14px!important;
@@ -24888,7 +24890,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         {/* Page content */}
         <main id="main-content" className="main-content" ref={mainScrollRef}
           onTouchStart={onMainTouchStart} onTouchMove={onMainTouchMove} onTouchEnd={onMainTouchEnd}
-          style={{flex:1,padding:page==="home"?0:isMobile?"16px":"28px 32px",overflowY:page==="home"?"hidden":"auto",paddingBottom:page==="home"?0:isMobile?84:28,display:"flex",flexDirection:"column",minHeight:0}}>
+          style={{flex:1,padding:page==="home"?0:isMobile?"16px":"28px 32px",overflowY:page==="home"?"hidden":"auto",paddingBottom:page==="home"?0:isMobile?96:28,display:"flex",flexDirection:"column",minHeight:0}}>
           {isMobile&&page!=="home"&&(pullDistance>0||refreshing)&&(
             <div style={{display:"flex",justifyContent:"center",alignItems:"center",height:refreshing?40:pullDistance,overflow:"hidden",transition:refreshing||pullDistance===0?"height 0.18s":"none",flexShrink:0,marginBottom:refreshing?8:0}}>
               <Spinner size={20}/>
@@ -25248,23 +25250,25 @@ Return ONLY valid JSON (no markdown, no explanation):
         )}
       </main>
 
-      {/* Mobile bottom navigation bar — in-flow (last row of the flex column)
-          so it is always flush with the real bottom of the visible viewport.
-          Hidden while the sidebar drawer is open. */}
+      {/* Mobile bottom navigation — floating rounded pill (icon-only, active
+          item highlighted with a filled circle), matching the pattern used by
+          Instagram/most native apps. Floats with margin over content rather
+          than needing pixel-perfect flush alignment with the viewport edge —
+          sidesteps the mobile-Safari dynamic-toolbar edge-alignment issues
+          a flush full-width bar was prone to. Hidden while the sidebar drawer
+          is open. */}
       {isMobile&&!sidebarOpen&&(
-        <nav className="bottom-nav">
+        <nav className="bottom-nav-float">
           {mobileNavItems.map(({key,label,ico})=>{
             const active=page===key;
             return (
-              <button key={key} onClick={()=>{setPage(key);setSelectedClientId(null);}} style={{
-                display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,
-                padding:"4px 0",flex:1,color:active?"var(--text)":"var(--text3)",
-                fontSize:10,fontWeight:active?700:500,minHeight:44,background:"none",border:"none",
+              <button key={key} onClick={()=>{setPage(key);setSelectedClientId(null);}} aria-label={label} style={{
+                display:"flex",alignItems:"center",justifyContent:"center",
+                width:44,height:44,borderRadius:"50%",flexShrink:0,
+                background:active?"var(--accent)":"transparent",transition:"background 0.15s",
+                border:"none",
               }}>
-                <span style={{display:"flex",alignItems:"center",justifyContent:"center",width:44,height:26,borderRadius:14,background:active?"var(--accent)":"transparent",transition:"background 0.15s"}}>
-                  <Ico d={ico} size={18} stroke={active?"#fff":"var(--text3)"}/>
-                </span>
-                {label}
+                <Ico d={ico} size={20} stroke={active?"#fff":"var(--text2)"}/>
               </button>
             );
           })}
