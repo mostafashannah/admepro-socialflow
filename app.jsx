@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.64";
+const APP_VERSION = "beta 3.65";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23095,10 +23095,6 @@ function App() {
     if(!isMobile || page==="home" || refreshing) return;
     const el = mainScrollRef.current;
     if(el && el.scrollTop > 0) return;
-    // Only treat this as a pull-to-refresh attempt if the gesture starts near
-    // the top of the screen — swiping lower down the page (through cards,
-    // lists, kanban columns) shouldn't ever be mistaken for a pull.
-    if(e.touches[0].clientY > 160) return;
     if(hasScrolledNestedAncestor(e.target)) return;
     touchStartYRef.current = e.touches[0].clientY;
     pullingRef.current = true;
