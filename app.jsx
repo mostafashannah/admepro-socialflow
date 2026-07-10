@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.56";
+const APP_VERSION = "beta 3.57";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6879,12 +6879,13 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
         </div>
       </div>
       {/* Tabs */}
-      <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)"}}>
+      <div className="tab-nav" style={{display:"flex",flexWrap:"nowrap",gap:6,borderBottom:"1px solid var(--border)",overflowX:"auto",WebkitOverflowScrolling:"touch",paddingBottom:2}}>
         {tabs.map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)} style={{
-            padding:"10px 18px",fontSize:13,fontWeight:600,flexShrink:0,whiteSpace:"nowrap",
-            borderBottom:`2px solid ${tab===k?"var(--accent)":"transparent"}`,
-            color:tab===k?"var(--accent)":"var(--text2)",transition:"all 0.15s",
+            padding:"8px 16px",fontSize:13,fontWeight:600,flexShrink:0,whiteSpace:"nowrap",
+            borderRadius:99,border:`1px solid ${tab===k?"var(--accent)":"var(--border2)"}`,
+            background:tab===k?"var(--accent)":"var(--surface2)",
+            color:tab===k?"#fff":"var(--text2)",transition:"all 0.15s",
           }}>{l}</button>
         ))}
       </div>
