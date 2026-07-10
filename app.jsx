@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.58";
+const APP_VERSION = "beta 3.59";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6848,7 +6848,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
     ...(isPriv?[["brain","Client Brain"],["briefs",`Briefs${pendingBriefCount?` (${pendingBriefCount} pending)`:""}`],["contact_reports","Contact Reports"],["leads",`Leads${clientLeads.length?` (${clientLeads.length})`:""}`]]:[]),
   ];
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:"100%",overflowX:"hidden"}} className="fade-in">
+    <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:"100%"}} className="fade-in">
       <div style={{display:"flex",alignItems:"center",gap:8}}>
         <button onClick={onBack} style={{fontSize:13,color:"var(--text2)",display:"flex",alignItems:"center",gap:4}}>
           <Ico d={Icons.chevL} size={14}/> Clients
@@ -6882,7 +6882,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
         </div>
       </div>
       {/* Tabs */}
-      <div className="tab-nav" style={{display:"flex",flexWrap:"nowrap",gap:6,borderBottom:"1px solid var(--border)",overflowX:"auto",WebkitOverflowScrolling:"touch",paddingBottom:2,maxWidth:"100%"}}>
+      <div className="tab-nav" style={{display:"flex",flexWrap:"nowrap",flexShrink:0,gap:6,borderBottom:"1px solid var(--border)",overflowX:"auto",WebkitOverflowScrolling:"touch",paddingTop:2,paddingBottom:2,maxWidth:"100%",minHeight:38}}>
         {tabs.map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)} style={{
             padding:"8px 16px",fontSize:13,fontWeight:600,flexShrink:0,whiteSpace:"nowrap",
