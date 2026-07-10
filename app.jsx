@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.55";
+const APP_VERSION = "beta 3.56";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -4992,7 +4992,7 @@ No markdown, no explanation.`;
       {isAdmin&&(
         <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)"}}>
           {dashTabs.map(t=>(
-            <button key={t.k} onClick={()=>setTab(t.k)} style={{padding:"9px 18px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${tab===t.k?"var(--accent)":"transparent"}`,color:tab===t.k?"var(--accent)":"var(--text2)",transition:"all 0.15s"}}>{t.l}</button>
+            <button key={t.k} onClick={()=>setTab(t.k)} style={{padding:"9px 18px",fontSize:13,fontWeight:600,flexShrink:0,whiteSpace:"nowrap",borderBottom:`2px solid ${tab===t.k?"var(--accent)":"transparent"}`,color:tab===t.k?"var(--accent)":"var(--text2)",transition:"all 0.15s"}}>{t.l}</button>
           ))}
         </div>
       )}
@@ -6882,7 +6882,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
       <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)"}}>
         {tabs.map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)} style={{
-            padding:"10px 18px",fontSize:13,fontWeight:600,
+            padding:"10px 18px",fontSize:13,fontWeight:600,flexShrink:0,whiteSpace:"nowrap",
             borderBottom:`2px solid ${tab===k?"var(--accent)":"transparent"}`,
             color:tab===k?"var(--accent)":"var(--text2)",transition:"all 0.15s",
           }}>{l}</button>
@@ -15383,7 +15383,7 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
       <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)"}}>
         {tabs.map(t=>(
           <button key={t.key} onClick={()=>setTab(t.key)} style={{
-            display:"flex",alignItems:"center",gap:7,padding:"10px 18px",fontSize:13,fontWeight:600,
+            display:"flex",alignItems:"center",gap:7,padding:"10px 18px",fontSize:13,fontWeight:600,flexShrink:0,whiteSpace:"nowrap",
             borderBottom:`2px solid ${tab===t.key?"var(--accent)":"transparent"}`,
             color:tab===t.key?"var(--accent)":"var(--text2)",transition:"all 0.15s",
           }}>
