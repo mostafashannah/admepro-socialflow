@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.61";
+const APP_VERSION = "beta 3.62";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -24822,7 +24822,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       )}
 
       {/* Main content area */}
-      <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0,overflowX:"hidden",maxWidth:"100vw"}}>
+      <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0,maxWidth:"100vw"}}>
 
         {/* ── STICKY TOP BAR (all breakpoints) ── */}
         {(()=>{
