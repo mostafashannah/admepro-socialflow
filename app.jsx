@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.57";
+const APP_VERSION = "beta 3.58";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1628,13 +1628,15 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       pre,code{overflow-x:auto;white-space:pre-wrap}
       img{max-width:100%}
 
-      /* In-flow (not fixed): sits as the bottom row of the flex column so it
-         is always flush with the real bottom of the visible viewport — avoids
-         the iOS standalone-PWA dead-space gap that position:fixed leaves. */
+      /* Fixed to the viewport like a native app's tab bar — always pinned to
+         the bottom edge regardless of page scroll position or content height,
+         instead of relying on in-flow flex layout (which could drift if any
+         ancestor's height didn't perfectly track the visual viewport). */
       .bottom-nav{
         display:flex;flex-shrink:0;
+        position:fixed;left:0;right:0;bottom:0;z-index:200;
         background:var(--surface);border-top:1px solid var(--border);
-        padding:8px 0 max(6px,calc(env(safe-area-inset-bottom) - 16px));
+        padding:8px 0 max(8px,env(safe-area-inset-bottom));
         justify-content:space-around;align-items:center;
       }
       .main-content{
@@ -6812,6 +6814,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
 }
 
 function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead}) {
+  const {isMobile} = useResponsive();
   const [tab,setTab] = usePersistentState(`sf_tab_client_${client?.id}`,"overview");
   const [showEdit,setShowEdit] = useState(false);
   const [confirmDelete,setConfirmDelete] = useState(false);
@@ -6845,7 +6848,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
     ...(isPriv?[["brain","Client Brain"],["briefs",`Briefs${pendingBriefCount?` (${pendingBriefCount} pending)`:""}`],["contact_reports","Contact Reports"],["leads",`Leads${clientLeads.length?` (${clientLeads.length})`:""}`]]:[]),
   ];
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
+    <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:"100%",overflowX:"hidden"}} className="fade-in">
       <div style={{display:"flex",alignItems:"center",gap:8}}>
         <button onClick={onBack} style={{fontSize:13,color:"var(--text2)",display:"flex",alignItems:"center",gap:4}}>
           <Ico d={Icons.chevL} size={14}/> Clients
@@ -6854,32 +6857,32 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
         <span style={{fontSize:13,fontWeight:700}}>{client.name}</span>
       </div>
       {/* Header */}
-      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:24,display:"flex",alignItems:"flex-start",gap:20}}>
-        <Avatar name={client.name} size={56}/>
-        <div style={{flex:1}}>
-          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
-            <div>
-              <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:24,fontWeight:800}}>{client.name}</h2>
-              <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{client.industry} · {client.email}</p>
-            </div>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              {isPriv&&<Btn variant="secondary" size="sm" onClick={()=>setShowEdit(true)}><Ico d={Icons.edit} size={13}/>Edit</Btn>}
-              {isAdmin&&<Btn variant="secondary" size="sm" onClick={()=>onToggleHide&&onToggleHide(client.id,client.status)} style={{color:client.status==="hidden"?"#10b981":"var(--text2)"}}>
-                <Ico d={client.status==="hidden"?Icons.eye:"M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24M1 1l22 22"} size={13}/>
-                {client.status==="hidden"?"Restore":"Hide"}
-              </Btn>}
-              {isAdmin&&<Btn variant="secondary" size="sm" onClick={()=>setConfirmDelete(true)} style={{color:"var(--accent)"}}><Ico d={Icons.trash} size={13}/>Delete</Btn>}
-              <Btn variant="secondary" size="sm" onClick={onAddProject}><Ico d={Icons.plus} size={13}/>Project</Btn>
-              <Btn size="sm" onClick={onAddPost}><Ico d={Icons.plus} size={13}/>Post</Btn>
-            </div>
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:isMobile?16:24,display:"flex",flexDirection:isMobile?"column":"row",alignItems:isMobile?"stretch":"flex-start",gap:isMobile?14:20,maxWidth:"100%",boxSizing:"border-box"}}>
+        <div style={{display:"flex",alignItems:"center",gap:14}}>
+          <Avatar name={client.name} size={isMobile?44:56}/>
+          <div style={{minWidth:0}}>
+            <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?18:24,fontWeight:800,overflowWrap:"anywhere"}}>{client.name}</h2>
+            <p style={{fontSize:12,color:"var(--text2)",marginTop:2,overflowWrap:"anywhere"}}>{client.industry} · {client.email}</p>
           </div>
-          <div style={{display:"flex",gap:6,marginTop:12,flexWrap:"wrap"}}>
+        </div>
+        <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {isPriv&&<Btn variant="secondary" size="sm" onClick={()=>setShowEdit(true)}><Ico d={Icons.edit} size={13}/>Edit</Btn>}
+            {isAdmin&&<Btn variant="secondary" size="sm" onClick={()=>onToggleHide&&onToggleHide(client.id,client.status)} style={{color:client.status==="hidden"?"#10b981":"var(--text2)"}}>
+              <Ico d={client.status==="hidden"?Icons.eye:"M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24M1 1l22 22"} size={13}/>
+              {client.status==="hidden"?"Restore":"Hide"}
+            </Btn>}
+            {isAdmin&&<Btn variant="secondary" size="sm" onClick={()=>setConfirmDelete(true)} style={{color:"var(--accent)"}}><Ico d={Icons.trash} size={13}/>Delete</Btn>}
+            <Btn variant="secondary" size="sm" onClick={onAddProject}><Ico d={Icons.plus} size={13}/>Project</Btn>
+            <Btn size="sm" onClick={onAddPost}><Ico d={Icons.plus} size={13}/>Post</Btn>
+          </div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
             {(client.platforms||[]).map(p=><PChip key={p} platform={p}/>)}
           </div>
         </div>
       </div>
       {/* Tabs */}
-      <div className="tab-nav" style={{display:"flex",flexWrap:"nowrap",gap:6,borderBottom:"1px solid var(--border)",overflowX:"auto",WebkitOverflowScrolling:"touch",paddingBottom:2}}>
+      <div className="tab-nav" style={{display:"flex",flexWrap:"nowrap",gap:6,borderBottom:"1px solid var(--border)",overflowX:"auto",WebkitOverflowScrolling:"touch",paddingBottom:2,maxWidth:"100%"}}>
         {tabs.map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)} style={{
             padding:"8px 16px",fontSize:13,fontWeight:600,flexShrink:0,whiteSpace:"nowrap",
