@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.63";
+const APP_VERSION = "beta 3.64";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23072,7 +23072,7 @@ function App() {
     }
     finally { setRefreshing(false); setPullDistance(0); }
   };
-  const PULL_THRESHOLD = 70;
+  const PULL_THRESHOLD = 110;
   // Walks up from the touched element to mainScrollRef, looking for any nested
   // scrollable ancestor (a Kanban column, a message list, etc) that isn't
   // itself scrolled to the top — if one exists, this gesture is scrolling
@@ -23108,7 +23108,10 @@ function App() {
     const el = mainScrollRef.current;
     if(el && el.scrollTop > 0) { pullingRef.current=false; touchStartYRef.current=null; setPullDistance(0); return; }
     const dy = e.touches[0].clientY - touchStartYRef.current;
-    if(dy>0) setPullDistance(Math.min(dy*0.5, 90));
+    // Requires a firm, deliberate pull (~300px of raw finger travel) before it
+    // even visually engages — a normal scroll gesture never drags this far
+    // down from a standing start, so this won't fire from casual scrolling.
+    if(dy>40) setPullDistance(Math.min((dy-40)*0.4, 120));
     else { pullingRef.current=false; touchStartYRef.current=null; setPullDistance(0); }
   };
   const onMainTouchEnd = () => {
