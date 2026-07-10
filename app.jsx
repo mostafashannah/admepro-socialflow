@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.62";
+const APP_VERSION = "beta 3.63";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1475,7 +1475,7 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       --sidebar-w:220px;
       --top-bar-h:56px;
     }
-    html,body,#root{height:100%;overflow-x:hidden}
+    html,body,#root{height:100vh;height:100dvh;overflow-x:hidden}
     .app-shell{height:100vh;height:100dvh}
     /* iOS paints the safe-area strips (home-indicator inset, notch) using
        the <html> element's background, not <body>'s — without this the
