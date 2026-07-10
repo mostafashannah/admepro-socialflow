@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.59";
+const APP_VERSION = "beta 3.60";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23070,11 +23070,34 @@ function App() {
     }
     finally { setRefreshing(false); setPullDistance(0); }
   };
-  const PULL_THRESHOLD = 60;
+  const PULL_THRESHOLD = 70;
+  // Walks up from the touched element to mainScrollRef, looking for any nested
+  // scrollable ancestor (a Kanban column, a message list, etc) that isn't
+  // itself scrolled to the top — if one exists, this gesture is scrolling
+  // that inner list, not pulling the page down, so don't treat it as a
+  // pull-to-refresh.
+  const hasScrolledNestedAncestor = (target) => {
+    const root = mainScrollRef.current;
+    let node = target;
+    while (node && node !== root && node !== document.body) {
+      if (node instanceof HTMLElement) {
+        const style = window.getComputedStyle(node);
+        const scrollable = /(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight;
+        if (scrollable && node.scrollTop > 0) return true;
+      }
+      node = node.parentElement;
+    }
+    return false;
+  };
   const onMainTouchStart = (e) => {
     if(!isMobile || page==="home" || refreshing) return;
     const el = mainScrollRef.current;
     if(el && el.scrollTop > 0) return;
+    // Only treat this as a pull-to-refresh attempt if the gesture starts near
+    // the top of the screen — swiping lower down the page (through cards,
+    // lists, kanban columns) shouldn't ever be mistaken for a pull.
+    if(e.touches[0].clientY > 160) return;
+    if(hasScrolledNestedAncestor(e.target)) return;
     touchStartYRef.current = e.touches[0].clientY;
     pullingRef.current = true;
   };
@@ -23084,6 +23107,7 @@ function App() {
     if(el && el.scrollTop > 0) { pullingRef.current=false; touchStartYRef.current=null; setPullDistance(0); return; }
     const dy = e.touches[0].clientY - touchStartYRef.current;
     if(dy>0) setPullDistance(Math.min(dy*0.5, 90));
+    else { pullingRef.current=false; touchStartYRef.current=null; setPullDistance(0); }
   };
   const onMainTouchEnd = () => {
     if(!pullingRef.current) return;
