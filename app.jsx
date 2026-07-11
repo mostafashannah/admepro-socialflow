@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.07";
+const APP_VERSION = "beta 4.08";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -2141,7 +2141,7 @@ function KanbanView({posts,project,team,onPostClick}) {
           vertical swipe on it falls through to the page's own scroll
           instead of getting stuck deciding between the two axes. */}
       {isMobile ? (
-        <div style={{display:"flex",gap:10,overflowX:"auto",paddingBottom:12,alignItems:"flex-start",touchAction:"pan-x",WebkitOverflowScrolling:"touch"}}>
+        <div style={{display:"flex",gap:10,overflowX:"auto",paddingBottom:12,alignItems:"flex-start",WebkitOverflowScrolling:"touch"}}>
           {visibleStages.map(stage=>{
             const sp = posts.filter(p=>p.stage===stage.key);
             return (
@@ -17567,7 +17567,7 @@ function MyTasksPage({posts,team,projects,currentUser,onStageChange,onPostClick}
           <button onClick={()=>setFilterStage(null)} style={{padding:"7px 14px",borderRadius:99,border:`1px solid ${!filterStage?"var(--accent)":"var(--border2)"}`,background:!filterStage?"var(--accent)":"var(--surface2)",color:!filterStage?"#fff":"var(--text2)",fontSize:12,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>
             All ({myPosts.length})
           </button>
-          {STAGES.map(s=>(
+          {STAGES.filter(s=>byStage[s.key].length>0).map(s=>(
             <button key={s.key} onClick={()=>setFilterStage(s.key)} style={{padding:"7px 14px",borderRadius:99,border:`1px solid ${filterStage===s.key?s.color:"var(--border2)"}`,background:filterStage===s.key?s.color:"var(--surface2)",color:filterStage===s.key?"#fff":"var(--text2)",fontSize:12,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>
               {s.label} ({byStage[s.key].length})
             </button>
