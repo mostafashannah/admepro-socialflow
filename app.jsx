@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.71";
+const APP_VERSION = "beta 3.72";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1629,16 +1629,19 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       img{max-width:100%}
 
       /* Transparent floating overlay — sits on top of content (page content
-         fills the full screen underneath it, not pushed up/reserved for it),
-         positioned near the true bottom edge. */
+         fills the full screen underneath it, not pushed up/reserved for it).
+         bottom:0 with no env()/calc() dependency — its own background
+         physically touches the true bottom edge every time, with the
+         safe-area handled as internal padding instead of an external offset
+         (which kept miscalculating and leaving a visible gap). */
       .bottom-nav-float{
         display:flex;flex-shrink:0;
-        position:fixed;left:50%;
+        position:fixed;left:50%;bottom:0;
         transform:translateX(-50%) scale(1);
         transform-origin:center bottom;
         transition:transform 0.2s ease;
-        bottom:max(6px,env(safe-area-inset-bottom));
-        z-index:200;gap:4px;padding:6px;
+        z-index:200;gap:4px;
+        padding:6px 6px max(6px,env(safe-area-inset-bottom));
         border-radius:999px;
         background:rgba(255,255,255,0.16);
         background:color-mix(in srgb, var(--surface) 16%, transparent);
