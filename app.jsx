@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.03";
+const APP_VERSION = "beta 4.04";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7754,6 +7754,7 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
   const [search,setSearch] = useState("");
   const [showAdd,setShowAdd] = useState(false);
   const [taskSection,setTaskSection] = useState("expanded");
+  const [selectedClientTask,setSelectedClientTask] = useState(null);
   const [showMoreFilters,setShowMoreFilters] = useState(false);
 
   // Derived filter options
@@ -7792,7 +7793,7 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
           {taskSection==="expanded"&&(
             <div style={{display:"flex",flexDirection:"column",gap:0}}>
               {clientTasks.map((t,i)=>(
-                <div key={t.id} style={{padding:"12px 18px",borderBottom:i<clientTasks.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                <div key={t.id} onClick={()=>setSelectedClientTask(t)} style={{padding:"12px 18px",borderBottom:i<clientTasks.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",cursor:"pointer"}}>
                   <span style={{fontSize:20,flexShrink:0}}>{TASK_TYPE_MAP[t.task_type]?.icon||""}</span>
                   <div style={{flex:1,minWidth:160}}>
                     <p style={{fontWeight:600,fontSize:13}}>{t.title}</p>
@@ -7885,6 +7886,47 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
       {view==="list"&&<ListView posts={filtered} projects={projects} team={team} onPostClick={onPostClick}/>}
       {view==="calendar"&&<CalendarView posts={filtered} onPostClick={onPostClick}/>}
       {showAdd&&<AddPostModal open onClose={()=>setShowAdd(false)} projects={projects} team={team} onAdd={async d=>{onAdd(d);setShowAdd(false);}} onAddReady={onAddReady ? async (list,opts)=>{await onAddReady(list,opts);setShowAdd(false);} : undefined} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset}/>}
+      {selectedClientTask&&(
+        <div onClick={()=>setSelectedClientTask(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"var(--surface)",borderRadius:"var(--r)",border:"1px solid var(--border)",width:"min(480px,100%)",maxHeight:"85vh",overflowY:"auto",padding:22,display:"flex",flexDirection:"column",gap:14}}>
+            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:24}}>{TASK_TYPE_MAP[selectedClientTask.task_type]?.icon||""}</span>
+                <div>
+                  <h3 style={{fontWeight:800,fontSize:16}}>{selectedClientTask.title}</h3>
+                  <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>{selectedClientTask.client_name} · {TASK_TYPE_MAP[selectedClientTask.task_type]?.label}</p>
+                </div>
+              </div>
+              <button onClick={()=>setSelectedClientTask(null)} style={{color:"var(--text3)",display:"flex",padding:4,flexShrink:0}}><Ico d={Icons.x} size={18}/></button>
+            </div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {selectedClientTask.priority&&<Badge label={selectedClientTask.priority} color={PRI_COLOR[selectedClientTask.priority]||"#888"} xs/>}
+              {selectedClientTask.assigned_to&&<span style={{fontSize:11,color:"var(--text3)",background:"var(--surface2)",padding:"3px 8px",borderRadius:99,border:"1px solid var(--border)"}}>{selectedClientTask.assigned_to.split("@")[0]}</span>}
+              {selectedClientTask.created_date&&<span style={{fontSize:11,color:"var(--text3)"}}>{fmtDate(selectedClientTask.created_date)}</span>}
+            </div>
+            {selectedClientTask.description&&(
+              <div style={{padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
+                <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Description</p>
+                <p style={{fontSize:13,color:"var(--text)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{selectedClientTask.description}</p>
+              </div>
+            )}
+            {selectedClientTask.deliverable_note&&(
+              <div style={{padding:14,background:"var(--accentbg)",borderRadius:"var(--rs)",border:"1px solid var(--accent)44"}}>
+                <p style={{fontSize:11,fontWeight:700,color:"var(--accent)",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Deliverable Note</p>
+                <p style={{fontSize:13,color:"var(--text)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{selectedClientTask.deliverable_note}</p>
+              </div>
+            )}
+            <div>
+              <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>Stage</p>
+              <select value={selectedClientTask.stage} onChange={e=>{ onUpdateTask&&onUpdateTask(selectedClientTask.id,{stage:e.target.value}); setSelectedClientTask(t=>t?{...t,stage:e.target.value}:t); }} style={{...inputSt,color:TASK_WORKFLOW_MAP[selectedClientTask.stage]?.color||"var(--text)",borderColor:TASK_WORKFLOW_MAP[selectedClientTask.stage]?.color||"var(--border2)"}}>
+                {TASK_WORKFLOW.map(w=>(
+                  <option key={w.key} value={w.key}>{w.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
