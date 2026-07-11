@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.80";
+const APP_VERSION = "beta 3.81";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22756,6 +22756,17 @@ function App() {
     try{ window.history.pushState({sfPage:p},"","#"+p); }catch(e){}
   };
   // Browser back/forward support
+  React.useEffect(()=>{
+    // Mobile Safari's 100dvh viewport calculation doesn't fully settle until
+    // the first scroll/resize event fires — on a fresh load, that leaves a
+    // brief gap below fixed-position elements sized against the pre-settle
+    // (toolbar-still-expanded) viewport, which then self-corrects the moment
+    // the user scrolls. Nudging a resize event immediately forces it to
+    // settle right away instead of waiting for a real user interaction.
+    const t = setTimeout(()=>{ try{ window.dispatchEvent(new Event("resize")); }catch(e){} }, 50);
+    return ()=>clearTimeout(t);
+  // eslint-disable-next-line
+  },[]);
   React.useEffect(()=>{
     const onPop = (e) => {
       const p = e.state?.sfPage || (window.location.hash.replace("#",""))||"home";
