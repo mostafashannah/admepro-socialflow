@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.97";
+const APP_VERSION = "beta 3.98";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1672,8 +1672,9 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
         padding:14px!important;
         padding-bottom:14px!important;
         overflow-x:hidden!important;
-        overscroll-behavior-y:contain;
+        scrollbar-width:none;-ms-overflow-style:none;
       }
+      .main-content::-webkit-scrollbar{display:none}
       .card-mobile{border-radius:var(--rs)!important;padding:14px!important}
       .page-title{font-size:20px!important}
       .stat-card{padding:14px!important}
@@ -22884,13 +22885,9 @@ function App() {
   // eslint-disable-next-line
   },[]);
   const [loading,setLoading] = useState(true);
-  const [refreshing,setRefreshing] = useState(false);
-  const [pullDistance,setPullDistance] = useState(0);
   const [keyboardOpen,setKeyboardOpen] = useState(false);
   const loadAllDataRef = React.useRef(null);
   const mainScrollRef = React.useRef(null);
-  const touchStartYRef = React.useRef(null);
-  const pullingRef = React.useRef(false);
   const oauthRequestSaved = React.useRef(false);
   // Check for invite token in URL
   const [inviteToken] = useState(()=>{
@@ -23166,64 +23163,6 @@ function App() {
     loadAllDataRef.current = load;
     load(false);
   },[]);
-
-  // ── Pull-to-refresh (mobile) ───────────────────────────────────
-  const handlePullRefresh = async () => {
-    if(refreshing) return;
-    setRefreshing(true);
-    try {
-      // Just refetch data — no version-check/reload here. A full reload on
-      // every pull felt "crazy" (unpredictable page reset) versus a simple,
-      // fast data refresh, which is what a pull gesture should mean.
-      await loadAllDataRef.current?.(true);
-    }
-    finally { setRefreshing(false); setPullDistance(0); }
-  };
-  const PULL_THRESHOLD = 100;
-  const pullDistanceRef = React.useRef(0);
-  const touchStartTimeRef = React.useRef(0);
-  // A normal scroll swipe and a pull-to-refresh gesture start with the exact
-  // same finger motion whenever the list is already scrolled to the very
-  // top — distance alone can't tell them apart. Two extra signals that
-  // actually do: (1) a page with nothing to scroll (content fits on one
-  // screen) should never treat drags as pulls at all, since there's no real
-  // "already at the top of a list" state to pull from; (2) a genuine pull is
-  // a slow, sustained press-and-drag, while a scroll is a quick flick — so
-  // require a minimum elapsed time, not just distance.
-  const MIN_PULL_MS = 220;
-  const onMainTouchStart = (e) => {
-    if(!isMobile || refreshing) return;
-    const el = mainScrollRef.current;
-    if(!el || el.scrollTop > 0) return;
-    if(el.scrollHeight <= el.clientHeight + 4) return;
-    touchStartYRef.current = e.touches[0].clientY;
-    touchStartTimeRef.current = Date.now();
-    pullingRef.current = true;
-  };
-  const onMainTouchMove = (e) => {
-    if(!pullingRef.current || touchStartYRef.current==null) return;
-    const el = mainScrollRef.current;
-    if(el && el.scrollTop > 0) { pullingRef.current=false; touchStartYRef.current=null; pullDistanceRef.current=0; setPullDistance(0); return; }
-    const dy = e.touches[0].clientY - touchStartYRef.current;
-    const elapsed = Date.now() - touchStartTimeRef.current;
-    // Moving faster than this is a scroll flick, not a deliberate pull —
-    // stop tracking it as a pull attempt entirely for the rest of this touch.
-    if(dy > 0 && elapsed > 0 && (dy / elapsed) > 1.2) {
-      pullingRef.current = false; touchStartYRef.current=null; pullDistanceRef.current=0; setPullDistance(0); return;
-    }
-    const d = dy>0 ? Math.min(dy*0.5, 120) : 0;
-    pullDistanceRef.current = d;
-    setPullDistance(d);
-  };
-  const onMainTouchEnd = () => {
-    if(!pullingRef.current) return;
-    pullingRef.current = false;
-    touchStartYRef.current = null;
-    const elapsed = Date.now() - touchStartTimeRef.current;
-    if(pullDistanceRef.current > PULL_THRESHOLD && elapsed >= MIN_PULL_MS) handlePullRefresh();
-    else setPullDistance(0);
-    pullDistanceRef.current = 0;
-  };
 
   // ── Helpers ──────────────────────────────────────────────────
   // Creates a record optimistically, then replaces local temp ID with real Supabase UUID
@@ -24994,13 +24933,7 @@ Return ONLY valid JSON (no markdown, no explanation):
 
         {/* Page content */}
         <main id="main-content" className="main-content" ref={mainScrollRef}
-          onTouchStart={onMainTouchStart} onTouchMove={onMainTouchMove} onTouchEnd={onMainTouchEnd}
           style={{flex:1,padding:page==="home"?0:isMobile?"16px":"28px 32px",overflowY:page==="home"?"hidden":"auto",paddingBottom:page==="home"?0:isMobile?84:28,display:"flex",flexDirection:"column",minHeight:0}}>
-          {isMobile&&page!=="home"&&(pullDistance>20||refreshing)&&(
-            <div style={{display:"flex",justifyContent:"center",alignItems:"center",height:refreshing?40:pullDistance,overflow:"hidden",transition:refreshing||pullDistance===0?"height 0.18s":"none",flexShrink:0,marginBottom:refreshing?8:0}}>
-              <Spinner size={20}/>
-            </div>
-          )}
           {page==="home"&&<ProHomePage
               currentUser={currentUser} data={data}
               setPage={setPage}
