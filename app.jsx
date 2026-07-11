@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.81";
+const APP_VERSION = "beta 3.82";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5540,7 +5540,11 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
               </div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
                 <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                  {(client.platforms||[]).slice(0,4).map(p=><PChip key={p} platform={p} xs/>)}
+                  {(client.platforms||[]).slice(0,4).map(p=>(
+                    <span key={p} style={{fontSize:9,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",color:"var(--text3)",background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:6,padding:"2px 6px"}}>
+                      {PLT_ICON[p]||p}
+                    </span>
+                  ))}
                 </div>
                 <p style={{fontSize:11,color:"var(--text3)",whiteSpace:"nowrap",flexShrink:0}}>
                   <b style={{color:"var(--text)"}}>{cProjects.length}</b> proj · <b style={{color:"var(--text)"}}>{cPosts.length}</b> posts · <b style={{color:"var(--text)"}}>{cPosts.filter(p=>p.stage==="published").length}</b> pub
@@ -22758,12 +22762,21 @@ function App() {
   // Browser back/forward support
   React.useEffect(()=>{
     // Mobile Safari's 100dvh viewport calculation doesn't fully settle until
-    // the first scroll/resize event fires — on a fresh load, that leaves a
-    // brief gap below fixed-position elements sized against the pre-settle
-    // (toolbar-still-expanded) viewport, which then self-corrects the moment
-    // the user scrolls. Nudging a resize event immediately forces it to
-    // settle right away instead of waiting for a real user interaction.
-    const t = setTimeout(()=>{ try{ window.dispatchEvent(new Event("resize")); }catch(e){} }, 50);
+    // a REAL scroll happens — a synthetic 'resize' event doesn't touch the
+    // browser's actual toolbar/viewport measurement at all, only JS resize
+    // listeners, so it did nothing. A genuine (even 1px) scroll is what
+    // actually forces Safari to collapse its toolbar and settle dvh
+    // immediately instead of waiting for the user's first real scroll.
+    const t = setTimeout(()=>{
+      try{
+        window.scrollTo(0,1);
+        requestAnimationFrame(()=>window.scrollTo(0,0));
+        if(mainScrollRef.current){
+          mainScrollRef.current.scrollTop = 1;
+          requestAnimationFrame(()=>{ if(mainScrollRef.current) mainScrollRef.current.scrollTop = 0; });
+        }
+      }catch(e){}
+    }, 50);
     return ()=>clearTimeout(t);
   // eslint-disable-next-line
   },[]);
