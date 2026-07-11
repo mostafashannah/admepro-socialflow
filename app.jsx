@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.05";
+const APP_VERSION = "beta 4.06";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17533,6 +17533,7 @@ function TeamPerformancePage({currentUser, perfLogs, aiInsights, team}) {
 function MyTasksPage({posts,team,projects,currentUser,onStageChange,onPostClick}) {
   const {isMobile} = useResponsive();
   const [filterStage, setFilterStage] = useState(null);
+  const [myView, setMyView] = usePersistentState("sf_my_tasks_view","list");
 
   // Get only posts assigned to current user
   const myPosts = posts.filter(p => p.assigned_to === currentUser?.email);
@@ -17552,6 +17553,15 @@ function MyTasksPage({posts,team,projects,currentUser,onStageChange,onPostClick}
           <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>My Tasks</h1>
         </div>
 
+        {/* View toggle */}
+        <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)",margin:"0 16px 12px"}}>
+          {[["list",Icons.list],["kanban",Icons.grid],["calendar",Icons.calendar]].map(([v,ico])=>(
+            <button key={v} onClick={()=>setMyView(v)} style={{flex:1,padding:"7px 0",borderRadius:"var(--rxs)",fontSize:12,fontWeight:700,background:myView===v?"var(--accent)":"none",color:myView===v?"#fff":"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+              <Ico d={ico} size={13}/>{v.charAt(0).toUpperCase()+v.slice(1)}
+            </button>
+          ))}
+        </div>
+
         {/* Filter pills (doubles as the counter row) */}
         <div style={{display:"flex",gap:8,overflowX:"auto",padding:"0 16px 12px",WebkitOverflowScrolling:"touch"}}>
           <button onClick={()=>setFilterStage(null)} style={{padding:"7px 14px",borderRadius:99,border:`1px solid ${!filterStage?"var(--accent)":"var(--border2)"}`,background:!filterStage?"var(--accent)":"var(--surface2)",color:!filterStage?"#fff":"var(--text2)",fontSize:12,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>
@@ -17564,39 +17574,56 @@ function MyTasksPage({posts,team,projects,currentUser,onStageChange,onPostClick}
           ))}
         </div>
 
-        {/* Section header — small counter above the list, Asana-style */}
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",borderTop:"1px solid var(--border)",borderBottom:"1px solid var(--border)",background:"var(--surface2)"}}>
-          <span style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>{filterStage ? STAGE_MAP[filterStage].label : "All tasks"}</span>
-          <span style={{fontSize:12,fontWeight:700,color:"var(--text3)"}}>{filteredPosts.length}</span>
-        </div>
+        {myView==="kanban" && (
+          <div style={{padding:"0 16px 16px"}}>
+            <KanbanView posts={filteredPosts} project={null} team={team} onPostClick={onPostClick}/>
+          </div>
+        )}
+        {myView==="calendar" && (
+          <div style={{padding:"0 16px 16px"}}>
+            <CalendarView posts={filteredPosts} onPostClick={onPostClick}/>
+          </div>
+        )}
+        {myView==="list" && (
+          <>
+            {/* Section header — small counter above the list, Asana-style */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",borderTop:"1px solid var(--border)",borderBottom:"1px solid var(--border)",background:"var(--surface2)"}}>
+              <span style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>{filterStage ? STAGE_MAP[filterStage].label : "All tasks"}</span>
+              <span style={{fontSize:12,fontWeight:700,color:"var(--text3)"}}>{filteredPosts.length}</span>
+            </div>
 
-        {/* Compact list */}
-        {filteredPosts.length === 0 ? (
-          <div style={{textAlign:"center",padding:"60px 20px",color:"var(--text3)"}}>
-            <p style={{fontSize:15,fontWeight:700,color:"var(--text2)"}}>No tasks</p>
-            <p style={{fontSize:13,marginTop:4}}>{filterStage ? `No tasks in ${STAGE_MAP[filterStage].label}` : "You have no assigned tasks"}</p>
-          </div>
-        ) : (
-          <div>
-            {filteredPosts.map(post=>{
-              const stage = STAGE_MAP[post.stage];
-              const project = projects.find(p => p.id === post.project_id);
-              return (
-                <div key={post.id} onClick={()=>onPostClick&&onPostClick(post)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderBottom:"1px solid var(--border)",cursor:"pointer"}}>
-                  <span style={{width:22,height:22,borderRadius:"50%",border:`2px solid ${stage.color}`,flexShrink:0}}/>
-                  <div style={{flex:1,minWidth:0}}>
-                    <p style={{fontSize:14,fontWeight:600,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{post.title}</p>
-                    {project && <p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>{project.title}</p>}
-                  </div>
-                  {post.scheduled_date && (()=>{ const dc = dueDateColor(post.scheduled_date); return (
-                    <span style={{fontSize:11,fontWeight:700,color:dc,background:dc+"1a",borderRadius:99,padding:"4px 9px",whiteSpace:"nowrap",flexShrink:0}}>
-                      {fmtDate(post.scheduled_date)}
-                    </span>
-                  ); })()}
-                </div>
-              );
-            })}
-          </div>
+            {/* Compact list */}
+            {filteredPosts.length === 0 ? (
+              <div style={{textAlign:"center",padding:"60px 20px",color:"var(--text3)"}}>
+                <p style={{fontSize:15,fontWeight:700,color:"var(--text2)"}}>No tasks</p>
+                <p style={{fontSize:13,marginTop:4}}>{filterStage ? `No tasks in ${STAGE_MAP[filterStage].label}` : "You have no assigned tasks"}</p>
+              </div>
+            ) : (
+              <div>
+                {filteredPosts.map(post=>{
+                  const stage = STAGE_MAP[post.stage];
+                  const isDone = post.stage==="published";
+                  const project = projects.find(p => p.id === post.project_id);
+                  return (
+                    <div key={post.id} onClick={()=>onPostClick&&onPostClick(post)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderBottom:"1px solid var(--border)",cursor:"pointer"}}>
+                      <span style={{width:22,height:22,borderRadius:"50%",border:`2px solid ${stage.color}`,background:isDone?stage.color:"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        {isDone&&<Ico d={Icons.check||"M20 6L9 17l-5-5"} size={12} stroke="#fff"/>}
+                      </span>
+                      <div style={{flex:1,minWidth:0}}>
+                        <p style={{fontSize:14,fontWeight:600,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{post.title}</p>
+                        {project && <p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>{project.title}</p>}
+                      </div>
+                      {post.scheduled_date && (()=>{ const dc = dueDateColor(post.scheduled_date); return (
+                        <span style={{fontSize:11,fontWeight:700,color:dc,background:dc+"1a",borderRadius:99,padding:"4px 9px",whiteSpace:"nowrap",flexShrink:0}}>
+                          {fmtDate(post.scheduled_date)}
+                        </span>
+                      ); })()}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </>
         )}
       </div>
     );
