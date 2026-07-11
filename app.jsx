@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.04";
+const APP_VERSION = "beta 4.05";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1317,6 +1317,16 @@ const SEED = {
 // ════════════════════════════════════════════════════════════════
 const uid = () => "local_" + Date.now() + "_" + Math.random().toString(36).slice(2,7);
 const fmtDate = d => d ? new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric"}) : "";
+// Due-date urgency color for a task's date badge: red once the date has
+// passed, yellow if it's today, green if there's still time.
+const dueDateColor = (dateStr) => {
+  if (!dateStr) return "#6b7280";
+  const due = new Date(dateStr); due.setHours(0,0,0,0);
+  const today = new Date(); today.setHours(0,0,0,0);
+  if (due.getTime() < today.getTime()) return "#ef4444";
+  if (due.getTime() === today.getTime()) return "#f59e0b";
+  return "#10b981";
+};
 const fmtDateTime = d => d ? new Date(d).toLocaleString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
 const initials = n => (n||"").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
 const clr = (name,arr=["#d90b2c","#3b82f6","#8b5cf6","#10b981","#f59e0b","#ec4899"]) =>
@@ -17578,11 +17588,11 @@ function MyTasksPage({posts,team,projects,currentUser,onStageChange,onPostClick}
                     <p style={{fontSize:14,fontWeight:600,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{post.title}</p>
                     {project && <p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>{project.title}</p>}
                   </div>
-                  {post.scheduled_date && (
-                    <span style={{fontSize:11,fontWeight:700,color:stage.color,background:stage.color+"1a",borderRadius:99,padding:"4px 9px",whiteSpace:"nowrap",flexShrink:0}}>
+                  {post.scheduled_date && (()=>{ const dc = dueDateColor(post.scheduled_date); return (
+                    <span style={{fontSize:11,fontWeight:700,color:dc,background:dc+"1a",borderRadius:99,padding:"4px 9px",whiteSpace:"nowrap",flexShrink:0}}>
                       {fmtDate(post.scheduled_date)}
                     </span>
-                  )}
+                  ); })()}
                 </div>
               );
             })}
@@ -17675,7 +17685,7 @@ function MyTasksPage({posts,team,projects,currentUser,onStageChange,onPostClick}
                   <h4 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:14,marginBottom:4}}>{post.title}</h4>
                   {project && <p style={{fontSize:11,color:"var(--text3)",marginBottom:4}}> {project.title}</p>}
                   {post.scheduled_date && (
-                    <p style={{fontSize:12,color:"var(--text2)"}}> {fmtDate(post.scheduled_date)}{post.scheduled_time && ` at ${post.scheduled_time}`}</p>
+                    <p style={{fontSize:12,color:dueDateColor(post.scheduled_date),fontWeight:600}}> {fmtDate(post.scheduled_date)}{post.scheduled_time && ` at ${post.scheduled_time}`}</p>
                   )}
                 </div>
 
