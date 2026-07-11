@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.85";
+const APP_VERSION = "beta 3.86";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1623,6 +1623,11 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       .hide-mobile{display:none!important}
       .show-mobile{display:flex!important}
 
+      /* iOS Safari auto-zooms the whole page on focus of any text input whose
+         font-size is under 16px — force a safe minimum everywhere so tapping
+         a search box or field never triggers that zoom. */
+      input,select,textarea{font-size:16px!important}
+
       /* Prevent horizontal scroll without breaking layouts */
       table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%}
       pre,code{overflow-x:auto;white-space:pre-wrap}
@@ -1653,14 +1658,12 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
         backdrop-filter:blur(18px) saturate(160%);-webkit-backdrop-filter:blur(18px) saturate(160%);
         border:1px solid rgba(255,255,255,0.22);
         box-shadow:0 6px 20px rgba(0,0,0,0.15);
-        transform:scale(1);
-        transition:transform 0.2s ease;
       }
-      .bottom-nav-pill.nav-grow{transform:scale(1.2)}
       .main-content{
         padding:14px!important;
         padding-bottom:14px!important;
         overflow-x:hidden!important;
+        overscroll-behavior-y:contain;
       }
       .card-mobile{border-radius:var(--rs)!important;padding:14px!important}
       .page-title{font-size:20px!important}
@@ -1915,7 +1918,7 @@ function Btn({children,onClick,variant="primary",size="md",disabled,style:sx}) {
 const inputSt = {
   background:"var(--surface2)",border:"1.5px solid var(--border2)",
   borderRadius:10,padding:"10px 13px",color:"var(--text1)",
-  fontSize:14,width:"100%",minHeight:44,transition:"border-color 0.15s,box-shadow 0.15s",
+  fontSize:16,width:"100%",minHeight:44,transition:"border-color 0.15s,box-shadow 0.15s",
   outline:"none",
 };
 
@@ -22800,14 +22803,6 @@ function App() {
   const [loading,setLoading] = useState(true);
   const [refreshing,setRefreshing] = useState(false);
   const [pullDistance,setPullDistance] = useState(0);
-  const [navGrow,setNavGrow] = useState(false);
-  const navGrowTimerRef = React.useRef(null);
-  const onMainScroll = () => {
-    if(!isMobile) return;
-    setNavGrow(true);
-    if(navGrowTimerRef.current) clearTimeout(navGrowTimerRef.current);
-    navGrowTimerRef.current = setTimeout(()=>setNavGrow(false), 400);
-  };
   const loadAllDataRef = React.useRef(null);
   const mainScrollRef = React.useRef(null);
   const touchStartYRef = React.useRef(null);
@@ -23138,7 +23133,7 @@ function App() {
   const onMainTouchStart = (e) => {
     if(!isMobile || page==="home" || refreshing) return;
     const el = mainScrollRef.current;
-    if(el && el.scrollTop > 0) return;
+    if(el && el.scrollTop > 4) return;
     if(hasScrolledNestedAncestor(e.target)) return;
     touchStartYRef.current = e.touches[0].clientY;
     pullingRef.current = true;
@@ -24932,7 +24927,7 @@ Return ONLY valid JSON (no markdown, no explanation):
 
         {/* Page content */}
         <main id="main-content" className="main-content" ref={mainScrollRef}
-          onTouchStart={onMainTouchStart} onTouchMove={onMainTouchMove} onTouchEnd={onMainTouchEnd} onScroll={onMainScroll}
+          onTouchStart={onMainTouchStart} onTouchMove={onMainTouchMove} onTouchEnd={onMainTouchEnd}
           style={{flex:1,padding:page==="home"?0:isMobile?"16px":"28px 32px",overflowY:page==="home"?"hidden":"auto",paddingBottom:page==="home"?0:isMobile?84:28,display:"flex",flexDirection:"column",minHeight:0}}>
           {isMobile&&page!=="home"&&(pullDistance>0||refreshing)&&(
             <div style={{display:"flex",justifyContent:"center",alignItems:"center",height:refreshing?40:pullDistance,overflow:"hidden",transition:refreshing||pullDistance===0?"height 0.18s":"none",flexShrink:0,marginBottom:refreshing?8:0}}>
@@ -25303,7 +25298,7 @@ Return ONLY valid JSON (no markdown, no explanation):
           chain entirely. Hidden while the sidebar drawer is open. */}
       {isMobile&&!sidebarOpen&&ReactDOM.createPortal(
         <nav className="bottom-nav-float">
-          <div className={`bottom-nav-pill${navGrow?" nav-grow":""}`}>
+          <div className="bottom-nav-pill">
             {mobileNavItems.map(({key,label,ico})=>{
               const active=page===key;
               return (
