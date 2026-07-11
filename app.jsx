@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.87";
+const APP_VERSION = "beta 3.88";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23123,51 +23123,31 @@ function App() {
     }
     finally { setRefreshing(false); setPullDistance(0); }
   };
-  const PULL_THRESHOLD = 70;
-  // Walks up from the touched element to mainScrollRef, looking for any nested
-  // scrollable ancestor (a Kanban column, a message list, etc) that isn't
-  // itself scrolled to the top — if one exists, this gesture is scrolling
-  // that inner list, not pulling the page down, so don't treat it as a
-  // pull-to-refresh.
-  const hasScrolledNestedAncestor = (target) => {
-    const root = mainScrollRef.current;
-    let node = target;
-    while (node && node !== root && node !== document.body) {
-      if (node instanceof HTMLElement) {
-        const style = window.getComputedStyle(node);
-        const scrollable = /(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight;
-        if (scrollable && node.scrollTop > 0) return true;
-      }
-      node = node.parentElement;
-    }
-    return false;
-  };
+  const PULL_THRESHOLD = 50;
+  const pullDistanceRef = React.useRef(0);
   const onMainTouchStart = (e) => {
-    if(!isMobile || page==="home" || refreshing) return;
+    if(!isMobile || refreshing) return;
     const el = mainScrollRef.current;
     if(el && el.scrollTop > 4) return;
-    if(hasScrolledNestedAncestor(e.target)) return;
     touchStartYRef.current = e.touches[0].clientY;
     pullingRef.current = true;
   };
   const onMainTouchMove = (e) => {
     if(!pullingRef.current || touchStartYRef.current==null) return;
     const el = mainScrollRef.current;
-    if(el && el.scrollTop > 0) { pullingRef.current=false; touchStartYRef.current=null; setPullDistance(0); return; }
+    if(el && el.scrollTop > 4) { pullingRef.current=false; touchStartYRef.current=null; pullDistanceRef.current=0; setPullDistance(0); return; }
     const dy = e.touches[0].clientY - touchStartYRef.current;
-    // Requires a firm, deliberate pull (~175px of raw finger travel) before
-    // it triggers — a normal scroll gesture never drags this far down from a
-    // standing start, so this won't fire from casual scrolling, but it's
-    // still an easily reachable distance for an intentional pull.
-    if(dy>30) setPullDistance(Math.min((dy-30)*0.5, 120));
-    else { pullingRef.current=false; touchStartYRef.current=null; setPullDistance(0); }
+    const d = dy>0 ? Math.min(dy*0.5, 120) : 0;
+    pullDistanceRef.current = d;
+    setPullDistance(d);
   };
   const onMainTouchEnd = () => {
     if(!pullingRef.current) return;
     pullingRef.current = false;
     touchStartYRef.current = null;
-    if(pullDistance > PULL_THRESHOLD) handlePullRefresh();
+    if(pullDistanceRef.current > PULL_THRESHOLD) handlePullRefresh();
     else setPullDistance(0);
+    pullDistanceRef.current = 0;
   };
 
   // ── Helpers ──────────────────────────────────────────────────
