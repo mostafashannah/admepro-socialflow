@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.88";
+const APP_VERSION = "beta 3.89";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1578,6 +1578,7 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       outline:none;border-color:var(--accent)!important;
       box-shadow:0 0 0 3px var(--accent-glow,rgba(217,11,44,0.15));
     }
+    .composer-textarea:focus{outline:none!important;border:none!important;box-shadow:none!important}
     /* ── Select arrow ── */
     select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px!important}
     @media(max-width:640px){
