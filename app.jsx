@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.10";
+const APP_VERSION = "beta 4.11";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -4977,6 +4977,7 @@ function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAdd
   const payments = data.payments||[];
   const subscriptions = data.subscriptions||[];
   const isAdmin = currentUser?.role==="admin";
+  const {isMobile} = useResponsive();
 
   const [tab,setTab] = usePersistentState("sf_tab_dashboard","overview");
   const [dateRange,setDateRange] = useState("all");
@@ -5080,10 +5081,10 @@ No markdown, no explanation.`;
   const INSIGHT_ICONS={bottleneck:"",performance:"",workload:"",timing:"",quality:"",general:""};
 
   const dashTabs=[
-    {k:"overview",l:"Overview"},
-    {k:"team",l:"Team Performance"},
-    {k:"analytics",l:"Analytics"},
-    {k:"insights",l:"AI Insights"},
+    {k:"overview",l:"Overview",ml:"Overview"},
+    {k:"team",l:"Team Performance",ml:"Team"},
+    {k:"analytics",l:"Analytics",ml:"Analytics"},
+    {k:"insights",l:"AI Insights",ml:"AI"},
   ];
 
   return (
@@ -5123,7 +5124,7 @@ No markdown, no explanation.`;
       {isAdmin&&(
         <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)"}}>
           {dashTabs.map(t=>(
-            <button key={t.k} onClick={()=>setTab(t.k)} style={{padding:"9px 18px",fontSize:13,fontWeight:600,flexShrink:0,whiteSpace:"nowrap",borderBottom:`2px solid ${tab===t.k?"var(--accent)":"transparent"}`,color:tab===t.k?"var(--accent)":"var(--text2)",transition:"all 0.15s"}}>{t.l}</button>
+            <button key={t.k} onClick={()=>setTab(t.k)} style={{padding:isMobile?"9px 10px":"9px 18px",fontSize:isMobile?12:13,fontWeight:600,flex:isMobile?1:"none",flexShrink:0,whiteSpace:"nowrap",textAlign:"center",borderBottom:`2px solid ${tab===t.k?"var(--accent)":"transparent"}`,color:tab===t.k?"var(--accent)":"var(--text2)",transition:"all 0.15s"}}>{isMobile?t.ml:t.l}</button>
           ))}
         </div>
       )}
@@ -5132,20 +5133,36 @@ No markdown, no explanation.`;
       {(tab==="overview"||!isAdmin)&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           {/* KPI Cards */}
-          <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
-            {[
-              {label:"Active Projects",value:projects.filter(p=>p.status==="active").length,color:"#3b82f6",sub:`${filteredPosts.length} posts`},
-              {label:"Completed Posts",value:filteredPosts.filter(p=>p.stage==="published").length,color:"#10b981",sub:`${filteredPosts.length?Math.round(filteredPosts.filter(p=>p.stage==="published").length/filteredPosts.length*100):0}% rate`},
-              {label:"Pending Approval",value:pendingApproval,color:"#ec4899",sub:"awaiting client"},
-              {label:"Avg Quality Score",value:avgQualityAll+"%",color:"#8b5cf6",sub:`${approvedPosts} approved`},
-            ].map(s=>(
-              <div key={s.label} style={{padding:"18px 20px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)"}}>
-                <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>{s.label}</p>
-                <p style={{fontSize:30,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1}}>{s.value}</p>
-                <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>{s.sub}</p>
-              </div>
-            ))}
-          </div>
+          {isMobile ? (
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+              {[
+                {label:"Projects",value:projects.filter(p=>p.status==="active").length,color:"#3b82f6"},
+                {label:"Completed",value:filteredPosts.filter(p=>p.stage==="published").length,color:"#10b981"},
+                {label:"Pending",value:pendingApproval,color:"#ec4899"},
+                {label:"Quality",value:avgQualityAll+"%",color:"#8b5cf6"},
+              ].map(s=>(
+                <div key={s.label} style={{padding:"10px 6px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--rs)",textAlign:"center"}}>
+                  <p style={{fontSize:18,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1}}>{s.value}</p>
+                  <p style={{fontSize:9,fontWeight:700,color:"var(--text3)",letterSpacing:"0.03em",textTransform:"uppercase",marginTop:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.label}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
+              {[
+                {label:"Active Projects",value:projects.filter(p=>p.status==="active").length,color:"#3b82f6",sub:`${filteredPosts.length} posts`},
+                {label:"Completed Posts",value:filteredPosts.filter(p=>p.stage==="published").length,color:"#10b981",sub:`${filteredPosts.length?Math.round(filteredPosts.filter(p=>p.stage==="published").length/filteredPosts.length*100):0}% rate`},
+                {label:"Pending Approval",value:pendingApproval,color:"#ec4899",sub:"awaiting client"},
+                {label:"Avg Quality Score",value:avgQualityAll+"%",color:"#8b5cf6",sub:`${approvedPosts} approved`},
+              ].map(s=>(
+                <div key={s.label} style={{padding:"18px 20px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)"}}>
+                  <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>{s.label}</p>
+                  <p style={{fontSize:30,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1}}>{s.value}</p>
+                  <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>{s.sub}</p>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Finance Snapshot — compact strip, admin/accountant only */}
           {isAdmin&&invoices.length>0&&(()=>{
