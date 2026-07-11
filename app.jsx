@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.06";
+const APP_VERSION = "beta 4.07";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -2136,17 +2136,16 @@ function KanbanView({posts,project,team,onPostClick}) {
           </button>
         </div>
       )}
-      {/* Mobile: stack stages vertically instead of a horizontal-scroll row —
-          a horizontal-scroll container on mobile fights with the page's own
-          vertical scroll (the browser can't always tell which axis you mean
-          to scroll), which made the whole page feel like it wasn't
-          scrolling at all. Stacking removes that conflict entirely. */}
+      {/* Horizontal-scroll columns on both mobile and desktop. touchAction:"pan-x"
+          tells the browser this row only handles horizontal swipes, so a
+          vertical swipe on it falls through to the page's own scroll
+          instead of getting stuck deciding between the two axes. */}
       {isMobile ? (
-        <div style={{display:"flex",flexDirection:"column",gap:16}}>
+        <div style={{display:"flex",gap:10,overflowX:"auto",paddingBottom:12,alignItems:"flex-start",touchAction:"pan-x",WebkitOverflowScrolling:"touch"}}>
           {visibleStages.map(stage=>{
             const sp = posts.filter(p=>p.stage===stage.key);
             return (
-              <div key={stage.key} style={{display:"flex",flexDirection:"column",gap:8}}>
+              <div key={stage.key} style={{width:230,minWidth:230,maxWidth:230,flexShrink:0,display:"flex",flexDirection:"column",gap:8}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 2px"}}>
                   <div style={{display:"flex",alignItems:"center",gap:7}}>
                     <div style={{width:8,height:8,borderRadius:"50%",background:stage.color}}/>
@@ -2154,7 +2153,7 @@ function KanbanView({posts,project,team,onPostClick}) {
                   </div>
                   <span style={{fontSize:11,color:"var(--text3)",background:"var(--surface2)",padding:"2px 8px",borderRadius:99,border:"1px solid var(--border)"}}>{sp.length}</span>
                 </div>
-                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                <div style={{display:"flex",flexDirection:"column",gap:8,minHeight:60}}>
                   {sp.map(p=><PostCard key={p.id} post={p} project={project} team={team} onClick={onPostClick}/>)}
                   {sp.length===0&&showEmpty&&(
                     <div style={{border:"1px dashed var(--border)",borderRadius:"var(--r)",padding:"20px 16px",textAlign:"center",color:"var(--text3)",fontSize:12,opacity:0.6}}>
@@ -17562,8 +17561,9 @@ function MyTasksPage({posts,team,projects,currentUser,onStageChange,onPostClick}
           ))}
         </div>
 
-        {/* Filter pills (doubles as the counter row) */}
-        <div style={{display:"flex",gap:8,overflowX:"auto",padding:"0 16px 12px",WebkitOverflowScrolling:"touch"}}>
+        {/* Filter pills (doubles as the counter row) — wraps instead of
+            scrolling so pills never look cut off with hidden scrollbars */}
+        <div style={{display:"flex",flexWrap:"wrap",gap:8,padding:"0 16px 12px"}}>
           <button onClick={()=>setFilterStage(null)} style={{padding:"7px 14px",borderRadius:99,border:`1px solid ${!filterStage?"var(--accent)":"var(--border2)"}`,background:!filterStage?"var(--accent)":"var(--surface2)",color:!filterStage?"#fff":"var(--text2)",fontSize:12,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>
             All ({myPosts.length})
           </button>
