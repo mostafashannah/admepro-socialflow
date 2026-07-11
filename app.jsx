@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.70";
+const APP_VERSION = "beta 3.71";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -25264,12 +25264,13 @@ Return ONLY valid JSON (no markdown, no explanation):
 
       {/* Mobile bottom navigation — floating rounded pill (icon-only, active
           item highlighted with a filled circle), matching the pattern used by
-          Instagram/most native apps. Floats with margin over content rather
-          than needing pixel-perfect flush alignment with the viewport edge —
-          sidesteps the mobile-Safari dynamic-toolbar edge-alignment issues
-          a flush full-width bar was prone to. Hidden while the sidebar drawer
-          is open. */}
-      {isMobile&&!sidebarOpen&&(
+          Instagram/most native apps. Portaled straight to document.body: the
+          app-shell ancestor has position:relative + overflow:hidden, and
+          WebKit has a longstanding bug where position:fixed descendants of
+          such an ancestor get visually clipped/confined to that ancestor's
+          box instead of the true viewport — portaling escapes that ancestor
+          chain entirely. Hidden while the sidebar drawer is open. */}
+      {isMobile&&!sidebarOpen&&ReactDOM.createPortal(
         <nav className={`bottom-nav-float${navCompact?" nav-compact":""}`}>
           {mobileNavItems.map(({key,label,ico})=>{
             const active=page===key;
@@ -25284,7 +25285,8 @@ Return ONLY valid JSON (no markdown, no explanation):
               </button>
             );
           })}
-        </nav>
+        </nav>,
+        document.body
       )}
       </div>{/* end flex content area */}
     </div>
