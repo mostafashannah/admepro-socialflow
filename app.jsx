@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.67";
+const APP_VERSION = "beta 3.68";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1638,13 +1638,15 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
         transform:translateX(-50%) scale(1);
         transform-origin:center bottom;
         transition:transform 0.2s ease;
-        bottom:calc(14px + env(safe-area-inset-bottom));
+        bottom:env(safe-area-inset-bottom, 0px);
         z-index:200;gap:4px;padding:6px;
         border-radius:999px;
-        background:color-mix(in srgb, var(--surface) 62%, transparent);
-        backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);
-        border:1px solid color-mix(in srgb, var(--border2) 70%, transparent);
-        box-shadow:0 8px 28px rgba(0,0,0,0.22);
+        background:rgba(255,255,255,0.45);
+        background:color-mix(in srgb, var(--surface) 45%, transparent);
+        backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);
+        border:1px solid rgba(255,255,255,0.35);
+        border-top-color:rgba(255,255,255,0.55);
+        box-shadow:0 8px 28px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.4);
       }
       .bottom-nav-float.nav-compact{transform:translateX(-50%) scale(0.9)}
       .main-content{
@@ -22238,7 +22240,7 @@ RULES:
 
       {/* ── Input area (pinned bottom, once the conversation has started) ── */}
       {!isEmpty && (
-        <div style={{padding:isMobile?"12px 16px calc(96px + env(safe-area-inset-bottom))":"16px 20%",borderTop:"1px solid var(--border)",background:"var(--surface)",flexShrink:0}}>
+        <div style={{padding:isMobile?"12px 16px calc(84px + env(safe-area-inset-bottom))":"16px 20%",borderTop:"1px solid var(--border)",background:"var(--surface)",flexShrink:0}}>
           {Composer}
           <p style={{fontSize:11,color:"var(--text3)",marginTop:8,textAlign:"center"}}>Pro can make mistakes. Double-check important info.</p>
         </div>
@@ -24902,7 +24904,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         {/* Page content */}
         <main id="main-content" className="main-content" ref={mainScrollRef}
           onTouchStart={onMainTouchStart} onTouchMove={onMainTouchMove} onTouchEnd={onMainTouchEnd} onScroll={onMainScroll}
-          style={{flex:1,padding:page==="home"?0:isMobile?"16px":"28px 32px",overflowY:page==="home"?"hidden":"auto",paddingBottom:page==="home"?0:isMobile?96:28,display:"flex",flexDirection:"column",minHeight:0}}>
+          style={{flex:1,padding:page==="home"?0:isMobile?"16px":"28px 32px",overflowY:page==="home"?"hidden":"auto",paddingBottom:page==="home"?0:isMobile?84:28,display:"flex",flexDirection:"column",minHeight:0}}>
           {isMobile&&page!=="home"&&(pullDistance>0||refreshing)&&(
             <div style={{display:"flex",justifyContent:"center",alignItems:"center",height:refreshing?40:pullDistance,overflow:"hidden",transition:refreshing||pullDistance===0?"height 0.18s":"none",flexShrink:0,marginBottom:refreshing?8:0}}>
               <Spinner size={20}/>
