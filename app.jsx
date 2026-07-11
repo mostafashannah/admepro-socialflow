@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.69";
+const APP_VERSION = "beta 3.70";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1628,27 +1628,23 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       pre,code{overflow-x:auto;white-space:pre-wrap}
       img{max-width:100%}
 
-      /* Floating rounded pill, like Instagram's — deliberately floats with
-         margin over content rather than sitting flush against the viewport
-         edge, so minor mobile-Safari dynamic-toolbar jitter is invisible
-         (there's already intentional space around it either way). */
-      /* In-flow (not position:fixed) — the last row of the app's own flex
-         column, so it always sits exactly where the real content ends, with
-         zero dependency on viewport/toolbar quirks. Still styled and sized
-         like a floating rounded pill via its own padding/border-radius. */
+      /* Transparent floating overlay — sits on top of content (page content
+         fills the full screen underneath it, not pushed up/reserved for it),
+         positioned near the true bottom edge. */
       .bottom-nav-float{
-        display:flex;flex-shrink:0;align-self:center;
-        transform:scale(1);
+        display:flex;flex-shrink:0;
+        position:fixed;left:50%;
+        transform:translateX(-50%) scale(1);
+        transform-origin:center bottom;
         transition:transform 0.2s ease;
-        margin:0 0 max(8px,env(safe-area-inset-bottom));
+        bottom:max(6px,env(safe-area-inset-bottom));
         z-index:200;gap:4px;padding:6px;
         border-radius:999px;
-        background:rgba(255,255,255,0.45);
-        background:color-mix(in srgb, var(--surface) 45%, transparent);
-        backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);
-        border:1px solid rgba(255,255,255,0.35);
-        border-top-color:rgba(255,255,255,0.55);
-        box-shadow:0 8px 28px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.4);
+        background:rgba(255,255,255,0.16);
+        background:color-mix(in srgb, var(--surface) 16%, transparent);
+        backdrop-filter:blur(18px) saturate(160%);-webkit-backdrop-filter:blur(18px) saturate(160%);
+        border:1px solid rgba(255,255,255,0.22);
+        box-shadow:0 6px 20px rgba(0,0,0,0.15);
       }
       .bottom-nav-float.nav-compact{transform:scale(0.9)}
       .main-content{
