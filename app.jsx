@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.91";
+const APP_VERSION = "beta 3.92";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1596,6 +1596,14 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       .modal-handle-bar{display:block;width:40px;height:4px;border-radius:2px;background:var(--border2);margin:10px auto 4px}
       .modal-footer{padding-bottom:max(14px,env(safe-area-inset-bottom))}
     }
+
+    /* ── GLOBAL CARD SHADOW ── */
+    /* Every content "card" in the app uses the shared var(--r) border-radius
+       token inline — matching on that (rather than a class, since cards
+       aren't a single shared component) gives every one of them the same
+       drop shadow as the client cards, without touching hundreds of
+       individual call sites. */
+    [style*="border-radius:var(--r)"]{box-shadow:0 2px 10px rgba(0,0,0,0.06)}
 
     /* ── RESPONSIVE GRID HELPERS ── */
     .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}

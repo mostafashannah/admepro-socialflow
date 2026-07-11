@@ -77,7 +77,7 @@ function speedTokens(speed,base){if(speed==="low")return Math.max(300,Math.round
 function logActivity(action,category,details="",status="success",errorMsg="",user="system"){const entry={action,category,details,status,error_message:errorMsg,performed_by:user,performed_at:new Date().toISOString()};ce("ActivityLog",[entry]).then(({entities})=>{const saved=entities===null||entities===void 0?void 0:entities[0];// Push the freshly-saved row (with real id) into the live UI immediately,
 // otherwise System Log only reflects what was loaded at page load.
 if(saved&&!saved._saveError)window.dispatchEvent(new CustomEvent("sf:activitylog",{detail:saved}));}).catch(()=>{});}// ── Email HTML templates ─────────────────────────────────────────
-const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 3.91";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 3.92";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
 <tr><td align="center">
@@ -484,6 +484,14 @@ const isLight=wallpaper==="light";const shadowSm=isLight?"0 1px 3px rgba(0,0,0,0
       .modal-handle-bar{display:block;width:40px;height:4px;border-radius:2px;background:var(--border2);margin:10px auto 4px}
       .modal-footer{padding-bottom:max(14px,env(safe-area-inset-bottom))}
     }
+
+    /* ── GLOBAL CARD SHADOW ── */
+    /* Every content "card" in the app uses the shared var(--r) border-radius
+       token inline — matching on that (rather than a class, since cards
+       aren't a single shared component) gives every one of them the same
+       drop shadow as the client cards, without touching hundreds of
+       individual call sites. */
+    [style*="border-radius:var(--r)"]{box-shadow:0 2px 10px rgba(0,0,0,0.06)}
 
     /* ── RESPONSIVE GRID HELPERS ── */
     .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
