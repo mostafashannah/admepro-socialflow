@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.96";
+const APP_VERSION = "beta 3.97";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17402,16 +17402,74 @@ function MyTasksPage({posts,team,projects,currentUser,onStageChange,onPostClick}
     byStage[s.key] = myPosts.filter(p => p.stage === s.key);
   });
 
+  if (isMobile) {
+    return (
+      <div style={{display:"flex",flexDirection:"column",maxWidth:"100%"}}>
+        {/* Header */}
+        <div style={{padding:"16px 16px 10px"}}>
+          <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>My Tasks</h1>
+        </div>
+
+        {/* Filter pills (doubles as the counter row) */}
+        <div style={{display:"flex",gap:8,overflowX:"auto",padding:"0 16px 12px",WebkitOverflowScrolling:"touch"}}>
+          <button onClick={()=>setFilterStage(null)} style={{padding:"7px 14px",borderRadius:99,border:`1px solid ${!filterStage?"var(--accent)":"var(--border2)"}`,background:!filterStage?"var(--accent)":"var(--surface2)",color:!filterStage?"#fff":"var(--text2)",fontSize:12,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>
+            All ({myPosts.length})
+          </button>
+          {STAGES.map(s=>(
+            <button key={s.key} onClick={()=>setFilterStage(s.key)} style={{padding:"7px 14px",borderRadius:99,border:`1px solid ${filterStage===s.key?s.color:"var(--border2)"}`,background:filterStage===s.key?s.color:"var(--surface2)",color:filterStage===s.key?"#fff":"var(--text2)",fontSize:12,fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>
+              {s.label} ({byStage[s.key].length})
+            </button>
+          ))}
+        </div>
+
+        {/* Section header — small counter above the list, Asana-style */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",borderTop:"1px solid var(--border)",borderBottom:"1px solid var(--border)",background:"var(--surface2)"}}>
+          <span style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>{filterStage ? STAGE_MAP[filterStage].label : "All tasks"}</span>
+          <span style={{fontSize:12,fontWeight:700,color:"var(--text3)"}}>{filteredPosts.length}</span>
+        </div>
+
+        {/* Compact list */}
+        {filteredPosts.length === 0 ? (
+          <div style={{textAlign:"center",padding:"60px 20px",color:"var(--text3)"}}>
+            <p style={{fontSize:15,fontWeight:700,color:"var(--text2)"}}>No tasks</p>
+            <p style={{fontSize:13,marginTop:4}}>{filterStage ? `No tasks in ${STAGE_MAP[filterStage].label}` : "You have no assigned tasks"}</p>
+          </div>
+        ) : (
+          <div>
+            {filteredPosts.map(post=>{
+              const stage = STAGE_MAP[post.stage];
+              const project = projects.find(p => p.id === post.project_id);
+              return (
+                <div key={post.id} onClick={()=>onPostClick&&onPostClick(post)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderBottom:"1px solid var(--border)",cursor:"pointer"}}>
+                  <span style={{width:22,height:22,borderRadius:"50%",border:`2px solid ${stage.color}`,flexShrink:0}}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <p style={{fontSize:14,fontWeight:600,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{post.title}</p>
+                    {project && <p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>{project.title}</p>}
+                  </div>
+                  {post.scheduled_date && (
+                    <span style={{fontSize:11,fontWeight:700,color:stage.color,background:stage.color+"1a",borderRadius:99,padding:"4px 9px",whiteSpace:"nowrap",flexShrink:0}}>
+                      {fmtDate(post.scheduled_date)}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:24,maxWidth:1200,margin:"0 auto",padding:isMobile?"16px":"32px 24px"}}>
+    <div style={{display:"flex",flexDirection:"column",gap:24,maxWidth:1200,margin:"0 auto",padding:"32px 24px"}}>
       {/* Header */}
       <div>
-        <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?24:32,fontWeight:800,marginBottom:6}}>My Tasks</h1>
+        <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:32,fontWeight:800,marginBottom:6}}>My Tasks</h1>
         <p style={{fontSize:13,color:"var(--text2)"}}>All posts assigned to you across the workflow</p>
       </div>
 
       {/* Stats Row */}
-      <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(4,1fr)",gap:12}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
         {[
           {label:"Total", count:myPosts.length, color:"#6366f1"},
           {label:"In Progress", count:myPosts.filter(p=>!["published","scheduled","rejected"].includes(p.stage)).length, color:"#3b82f6"},
@@ -17453,16 +17511,16 @@ function MyTasksPage({posts,team,projects,currentUser,onStageChange,onPostClick}
             const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
             const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
             const lastDesignAsset = designAssets[designAssets.length-1];
-  const thumbUrl = designUrls[designUrls.length-1] || lastDesignAsset?.url || post.carousel_cover || "";
+            const thumbUrl = designUrls[designUrls.length-1] || lastDesignAsset?.url || post.carousel_cover || "";
             const thumbIsVideo = (lastDesignAsset?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i);
 
             return (
-              <div key={post.id} style={{background:"var(--surface)",border:`1px solid ${stage.color}44`,borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:isMobile?"column":"row",gap:14,alignItems:isMobile?"stretch":"flex-start",cursor:"pointer",transition:"border-color 0.15s"}}
+              <div key={post.id} style={{background:"var(--surface)",border:`1px solid ${stage.color}44`,borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"row",gap:14,alignItems:"flex-start",cursor:"pointer",transition:"border-color 0.15s"}}
                 onClick={()=>onPostClick&&onPostClick(post)}
                 onMouseEnter={e=>e.currentTarget.style.borderColor=stage.color}
                 onMouseLeave={e=>e.currentTarget.style.borderColor=stage.color+"44"}>
                 {thumbUrl&&(
-                  <div style={{position:"relative",width:isMobile?"100%":64,height:64,borderRadius:8,overflow:"hidden",flexShrink:0,background:"var(--surface2)"}}>
+                  <div style={{position:"relative",width:64,height:64,borderRadius:8,overflow:"hidden",flexShrink:0,background:"var(--surface2)"}}>
                     {thumbIsVideo
                       ? <video src={thumbUrl+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                       : <img src={thumbUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
