@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.11";
+const APP_VERSION = "beta 4.12";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5122,9 +5122,9 @@ No markdown, no explanation.`;
 
       {/* ── TAB NAV ── */}
       {isAdmin&&(
-        <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)"}}>
+        <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",flexShrink:0,minHeight:38,width:"100%"}}>
           {dashTabs.map(t=>(
-            <button key={t.k} onClick={()=>setTab(t.k)} style={{padding:isMobile?"9px 10px":"9px 18px",fontSize:isMobile?12:13,fontWeight:600,flex:isMobile?1:"none",flexShrink:0,whiteSpace:"nowrap",textAlign:"center",borderBottom:`2px solid ${tab===t.k?"var(--accent)":"transparent"}`,color:tab===t.k?"var(--accent)":"var(--text2)",transition:"all 0.15s"}}>{isMobile?t.ml:t.l}</button>
+            <button key={t.k} onClick={()=>setTab(t.k)} style={{padding:isMobile?"9px 10px":"9px 18px",fontSize:isMobile?12:13,fontWeight:600,flex:isMobile?"1 1 0":"none",flexShrink:0,whiteSpace:"nowrap",textAlign:"center",borderBottom:`2px solid ${tab===t.k?"var(--accent)":"transparent"}`,color:tab===t.k?"var(--accent)":"var(--text2)",transition:"all 0.15s"}}>{isMobile?t.ml:t.l}</button>
           ))}
         </div>
       )}
