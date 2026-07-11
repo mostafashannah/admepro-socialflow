@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.90";
+const APP_VERSION = "beta 3.91";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23113,14 +23113,14 @@ function App() {
   const onMainTouchStart = (e) => {
     if(!isMobile || refreshing) return;
     const el = mainScrollRef.current;
-    if(el && el.scrollTop > 4) return;
+    if(el && el.scrollTop > 0) return;
     touchStartYRef.current = e.touches[0].clientY;
     pullingRef.current = true;
   };
   const onMainTouchMove = (e) => {
     if(!pullingRef.current || touchStartYRef.current==null) return;
     const el = mainScrollRef.current;
-    if(el && el.scrollTop > 4) { pullingRef.current=false; touchStartYRef.current=null; pullDistanceRef.current=0; setPullDistance(0); return; }
+    if(el && el.scrollTop > 0) { pullingRef.current=false; touchStartYRef.current=null; pullDistanceRef.current=0; setPullDistance(0); return; }
     const dy = e.touches[0].clientY - touchStartYRef.current;
     const d = dy>0 ? Math.min(dy*0.5, 120) : 0;
     pullDistanceRef.current = d;
