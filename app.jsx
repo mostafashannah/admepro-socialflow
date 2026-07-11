@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.79";
+const APP_VERSION = "beta 3.80";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5505,50 +5505,46 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
         <div style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"var(--text3)"}}><Ico d={Icons.search} size={15}/></div>
         <input value={search} onChange={e=>setSearch(e.target.value)} aria-label="Search clients" placeholder="Search clients…" style={{...inputSt,paddingLeft:36}}/>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:14}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:10}}>
         {filtered.map(client=>{
           const isHidden = client.status==="hidden";
           const cProjects = projects.filter(p=>p.client_id===client.id||p.client_name===client.name);
           const cPosts = posts.filter(p=>cProjects.some(pr=>pr.id===p.project_id));
           return (
             <div key={client.id} style={{
-              background:"var(--surface)",border:`1px solid ${isHidden?"var(--border)":"var(--border)"}`,
-              borderRadius:"var(--r)",padding:20,cursor:"pointer",
-              transition:"all 0.18s",display:"flex",flexDirection:"column",gap:14,
+              background:"var(--surface2)",border:"1px solid var(--border2)",
+              borderRadius:"var(--rs)",padding:14,cursor:"pointer",
+              transition:"all 0.15s",display:"flex",flexDirection:"column",gap:8,
               opacity:isHidden?0.5:1,position:"relative",
             }}
             onClick={()=>!isHidden&&onSelect(client)}
-            onMouseEnter={e=>{if(!isHidden){e.currentTarget.style.borderColor="var(--accent)";e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 8px 32px var(--shadow)";}}}
-            onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border)";e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="";}}
+            onMouseEnter={e=>{if(!isHidden){e.currentTarget.style.borderColor="var(--accent)";}}}
+            onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border2)";}}
             >
-              {isHidden&&<div style={{position:"absolute",top:10,right:10,fontSize:10,fontWeight:700,color:"#6b7280",background:"var(--surface2)",borderRadius:6,padding:"2px 8px",letterSpacing:"0.05em"}}>HIDDEN</div>}
-              <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
-                <Avatar name={client.name} size={40}/>
-                <div style={{flex:1}}>
-                  <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:15,fontWeight:700}}>{client.name}</h3>
-                  <p style={{fontSize:12,color:"var(--text2)"}}>{client.industry}</p>
-                </div>
-                <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                  {!isHidden&&<Badge label={client.status} color={client.status==="active"?"#10b981":"#6b7280"} xs/>}
-                  {isAdmin&&onToggleHide&&(
-                    <button onClick={e=>{e.stopPropagation();onToggleHide(client.id,client.status);}} title={isHidden?"Restore client":"Hide client"}
-                      style={{background:"none",border:"none",cursor:"pointer",padding:4,color:"var(--text3)",borderRadius:6,display:"flex",alignItems:"center"}}>
-                      <Ico d={isHidden?Icons.eye:"M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24M1 1l22 22"} size={14}/>
-                    </button>
-                  )}
-                </div>
-              </div>
-              <p style={{fontSize:12,color:"var(--text2)"}}>{client.email}</p>
-              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                {(client.platforms||[]).map(p=><PChip key={p} platform={p} xs/>)}
-              </div>
-              <div style={{display:"flex",gap:16,paddingTop:12,borderTop:"1px solid var(--border)"}}>
-                {[{l:"Projects",v:cProjects.length},{l:"Posts",v:cPosts.length},{l:"Published",v:cPosts.filter(p=>p.stage==="published").length}].map(s=>(
-                  <div key={s.l} style={{textAlign:"center",flex:1}}>
-                    <p style={{fontSize:22,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif"}}>{s.v}</p>
-                    <p style={{fontSize:11,color:"var(--text3)",fontWeight:600,marginTop:3}}>{s.l}</p>
+              {isHidden&&<div style={{position:"absolute",top:8,right:8,fontSize:9,fontWeight:700,color:"#6b7280",background:"var(--surface)",borderRadius:6,padding:"2px 7px",letterSpacing:"0.05em"}}>HIDDEN</div>}
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <Avatar name={client.name} size={32}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:14,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{client.name}</h3>
+                    {!isHidden&&<span style={{width:6,height:6,borderRadius:"50%",background:client.status==="active"?"#10b981":"#6b7280",flexShrink:0}}/>}
                   </div>
-                ))}
+                  <p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{client.industry||client.email}</p>
+                </div>
+                {isAdmin&&onToggleHide&&(
+                  <button onClick={e=>{e.stopPropagation();onToggleHide(client.id,client.status);}} title={isHidden?"Restore client":"Hide client"}
+                    style={{background:"none",border:"none",cursor:"pointer",padding:4,color:"var(--text3)",borderRadius:6,display:"flex",alignItems:"center",flexShrink:0}}>
+                    <Ico d={isHidden?Icons.eye:"M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24M1 1l22 22"} size={13}/>
+                  </button>
+                )}
+              </div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                  {(client.platforms||[]).slice(0,4).map(p=><PChip key={p} platform={p} xs/>)}
+                </div>
+                <p style={{fontSize:11,color:"var(--text3)",whiteSpace:"nowrap",flexShrink:0}}>
+                  <b style={{color:"var(--text)"}}>{cProjects.length}</b> proj · <b style={{color:"var(--text)"}}>{cPosts.length}</b> posts · <b style={{color:"var(--text)"}}>{cPosts.filter(p=>p.stage==="published").length}</b> pub
+                </p>
               </div>
             </div>
           );
