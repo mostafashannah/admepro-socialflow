@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.77";
+const APP_VERSION = "beta 3.78";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1628,18 +1628,25 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       pre,code{overflow-x:auto;white-space:pre-wrap}
       img{max-width:100%}
 
-      /* Transparent floating overlay — sits on top of content (page content
-         fills the full screen underneath it, not pushed up/reserved for it).
-         bottom:0 with no env()/calc() dependency — its own background
-         physically touches the true bottom edge every time, with the
-         safe-area handled as internal padding instead of an external offset
-         (which kept miscalculating and leaving a visible gap). */
+      /* Outer wrapper — invisible, reaches the true bottom edge (bottom:0,
+         no gap possible), its own padding-bottom absorbing the safe-area so
+         the wrapper's box extends into it. Purely structural, no visible
+         background of its own. */
       .bottom-nav-float{
-        display:flex;flex-shrink:0;
+        display:flex;flex-shrink:0;justify-content:center;
         position:fixed;left:50%;bottom:0;
         transform:translateX(-50%);
-        z-index:200;gap:4px;
-        padding:5px 5px calc(5px + env(safe-area-inset-bottom));
+        width:max-content;
+        padding-bottom:env(safe-area-inset-bottom);
+        z-index:200;
+      }
+      /* Inner pill — the actual visible, compact floating bar. Sits with a
+         small fixed margin above the safe-area padding reserved by the
+         wrapper, so its own blurred background never stretches down into
+         that zone. */
+      .bottom-nav-pill{
+        display:flex;gap:4px;padding:5px;
+        margin-bottom:6px;
         border-radius:999px;
         background:rgba(255,255,255,0.16);
         background:color-mix(in srgb, var(--surface) 16%, transparent);
@@ -25264,19 +25271,21 @@ Return ONLY valid JSON (no markdown, no explanation):
           chain entirely. Hidden while the sidebar drawer is open. */}
       {isMobile&&!sidebarOpen&&ReactDOM.createPortal(
         <nav className="bottom-nav-float">
-          {mobileNavItems.map(({key,label,ico})=>{
-            const active=page===key;
-            return (
-              <button key={key} onClick={()=>{setPage(key);setSelectedClientId(null);}} aria-label={label} style={{
-                display:"flex",alignItems:"center",justifyContent:"center",
-                width:40,height:40,borderRadius:"50%",flexShrink:0,
-                background:active?"var(--accent)":"transparent",transition:"background 0.15s",
-                border:"none",
-              }}>
-                <Ico d={ico} size={18} stroke={active?"#fff":"var(--text2)"}/>
-              </button>
-            );
-          })}
+          <div className="bottom-nav-pill">
+            {mobileNavItems.map(({key,label,ico})=>{
+              const active=page===key;
+              return (
+                <button key={key} onClick={()=>{setPage(key);setSelectedClientId(null);}} aria-label={label} style={{
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  width:40,height:40,borderRadius:"50%",flexShrink:0,
+                  background:active?"var(--accent)":"transparent",transition:"background 0.15s",
+                  border:"none",
+                }}>
+                  <Ico d={ico} size={18} stroke={active?"#fff":"var(--text2)"}/>
+                </button>
+              );
+            })}
+          </div>
         </nav>,
         document.body
       )}
