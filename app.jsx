@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.08";
+const APP_VERSION = "beta 4.09";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17553,10 +17553,10 @@ function MyTasksPage({posts,team,projects,currentUser,onStageChange,onPostClick}
         </div>
 
         {/* View toggle */}
-        <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)",margin:"0 16px 12px"}}>
+        <div style={{display:"inline-flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",margin:"0 16px 12px"}}>
           {[["list",Icons.list],["kanban",Icons.grid],["calendar",Icons.calendar]].map(([v,ico])=>(
-            <button key={v} onClick={()=>setMyView(v)} style={{flex:1,padding:"7px 0",borderRadius:"var(--rxs)",fontSize:12,fontWeight:700,background:myView===v?"var(--accent)":"none",color:myView===v?"#fff":"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
-              <Ico d={ico} size={13}/>{v.charAt(0).toUpperCase()+v.slice(1)}
+            <button key={v} onClick={()=>setMyView(v)} style={{width:30,height:30,borderRadius:99,background:myView===v?"var(--accent)":"none",color:myView===v?"#fff":"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <Ico d={ico} size={14}/>
             </button>
           ))}
         </div>
