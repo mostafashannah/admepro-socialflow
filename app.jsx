@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.93";
+const APP_VERSION = "beta 3.94";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -24914,7 +24914,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         <main id="main-content" className="main-content" ref={mainScrollRef}
           onTouchStart={onMainTouchStart} onTouchMove={onMainTouchMove} onTouchEnd={onMainTouchEnd}
           style={{flex:1,padding:page==="home"?0:isMobile?"16px":"28px 32px",overflowY:page==="home"?"hidden":"auto",paddingBottom:page==="home"?0:isMobile?84:28,display:"flex",flexDirection:"column",minHeight:0}}>
-          {isMobile&&page!=="home"&&(pullDistance>0||refreshing)&&(
+          {isMobile&&page!=="home"&&(pullDistance>20||refreshing)&&(
             <div style={{display:"flex",justifyContent:"center",alignItems:"center",height:refreshing?40:pullDistance,overflow:"hidden",transition:refreshing||pullDistance===0?"height 0.18s":"none",flexShrink:0,marginBottom:refreshing?8:0}}>
               <Spinner size={20}/>
             </div>
