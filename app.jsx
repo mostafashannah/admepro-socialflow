@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.76";
+const APP_VERSION = "beta 3.77";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1639,7 +1639,7 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
         position:fixed;left:50%;bottom:0;
         transform:translateX(-50%);
         z-index:200;gap:4px;
-        padding:6px 6px max(6px,env(safe-area-inset-bottom));
+        padding:5px 5px calc(5px + env(safe-area-inset-bottom));
         border-radius:999px;
         background:rgba(255,255,255,0.16);
         background:color-mix(in srgb, var(--surface) 16%, transparent);
@@ -25269,11 +25269,11 @@ Return ONLY valid JSON (no markdown, no explanation):
             return (
               <button key={key} onClick={()=>{setPage(key);setSelectedClientId(null);}} aria-label={label} style={{
                 display:"flex",alignItems:"center",justifyContent:"center",
-                width:44,height:44,borderRadius:"50%",flexShrink:0,
+                width:40,height:40,borderRadius:"50%",flexShrink:0,
                 background:active?"var(--accent)":"transparent",transition:"background 0.15s",
                 border:"none",
               }}>
-                <Ico d={ico} size={20} stroke={active?"#fff":"var(--text2)"}/>
+                <Ico d={ico} size={18} stroke={active?"#fff":"var(--text2)"}/>
               </button>
             );
           })}
