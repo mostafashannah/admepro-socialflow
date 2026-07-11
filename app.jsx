@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.01";
+const APP_VERSION = "beta 4.02";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -2193,7 +2193,7 @@ function ListView({posts,projects,team,onPostClick}) {
   const {isMobile} = useResponsive();
   if (isMobile) {
     return (
-      <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+      <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"visible"}}>
         {posts.map((post,i)=>{
           const proj = projects?.find(p=>p.id===post.project_id);
           const stage = STAGE_MAP[post.stage]||STAGES[0];
