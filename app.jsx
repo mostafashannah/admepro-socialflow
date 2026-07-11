@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.78";
+const APP_VERSION = "beta 3.79";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1653,7 +1653,10 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
         backdrop-filter:blur(18px) saturate(160%);-webkit-backdrop-filter:blur(18px) saturate(160%);
         border:1px solid rgba(255,255,255,0.22);
         box-shadow:0 6px 20px rgba(0,0,0,0.15);
+        transform:scale(1);
+        transition:transform 0.2s ease;
       }
+      .bottom-nav-pill.nav-grow{transform:scale(1.2)}
       .main-content{
         padding:14px!important;
         padding-bottom:14px!important;
@@ -22777,6 +22780,14 @@ function App() {
   const [loading,setLoading] = useState(true);
   const [refreshing,setRefreshing] = useState(false);
   const [pullDistance,setPullDistance] = useState(0);
+  const [navGrow,setNavGrow] = useState(false);
+  const navGrowTimerRef = React.useRef(null);
+  const onMainScroll = () => {
+    if(!isMobile) return;
+    setNavGrow(true);
+    if(navGrowTimerRef.current) clearTimeout(navGrowTimerRef.current);
+    navGrowTimerRef.current = setTimeout(()=>setNavGrow(false), 400);
+  };
   const loadAllDataRef = React.useRef(null);
   const mainScrollRef = React.useRef(null);
   const touchStartYRef = React.useRef(null);
@@ -24900,7 +24911,7 @@ Return ONLY valid JSON (no markdown, no explanation):
 
         {/* Page content */}
         <main id="main-content" className="main-content" ref={mainScrollRef}
-          onTouchStart={onMainTouchStart} onTouchMove={onMainTouchMove} onTouchEnd={onMainTouchEnd}
+          onTouchStart={onMainTouchStart} onTouchMove={onMainTouchMove} onTouchEnd={onMainTouchEnd} onScroll={onMainScroll}
           style={{flex:1,padding:page==="home"?0:isMobile?"16px":"28px 32px",overflowY:page==="home"?"hidden":"auto",paddingBottom:page==="home"?0:isMobile?84:28,display:"flex",flexDirection:"column",minHeight:0}}>
           {isMobile&&page!=="home"&&(pullDistance>0||refreshing)&&(
             <div style={{display:"flex",justifyContent:"center",alignItems:"center",height:refreshing?40:pullDistance,overflow:"hidden",transition:refreshing||pullDistance===0?"height 0.18s":"none",flexShrink:0,marginBottom:refreshing?8:0}}>
@@ -25271,7 +25282,7 @@ Return ONLY valid JSON (no markdown, no explanation):
           chain entirely. Hidden while the sidebar drawer is open. */}
       {isMobile&&!sidebarOpen&&ReactDOM.createPortal(
         <nav className="bottom-nav-float">
-          <div className="bottom-nav-pill">
+          <div className={`bottom-nav-pill${navGrow?" nav-grow":""}`}>
             {mobileNavItems.map(({key,label,ico})=>{
               const active=page===key;
               return (
