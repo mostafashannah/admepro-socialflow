@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.89";
+const APP_VERSION = "beta 3.90";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23097,34 +23097,18 @@ function App() {
   },[]);
 
   // ── Pull-to-refresh (mobile) ───────────────────────────────────
-  // Also checks whether a newer build has been deployed — pull-to-refresh
-  // only re-fetches data otherwise, so a stale bundle can stick around in
-  // memory indefinitely even after the server has a new app.js.
-  const checkForNewVersion = async () => {
-    try {
-      const res = await fetch(window.location.origin + "/?_=" + Date.now(), {cache:"no-store"});
-      const html = await res.text();
-      const m = html.match(/app\.js\?v=([\d.]+)/);
-      const liveVer = m && m[1];
-      const currentVer = (APP_VERSION.match(/[\d.]+/) || [])[0];
-      if(liveVer && currentVer && liveVer !== currentVer){
-        window.location.reload();
-        return true;
-      }
-    } catch(e) {}
-    return false;
-  };
   const handlePullRefresh = async () => {
     if(refreshing) return;
     setRefreshing(true);
     try {
-      const reloading = await checkForNewVersion();
-      if(reloading) return;
+      // Just refetch data — no version-check/reload here. A full reload on
+      // every pull felt "crazy" (unpredictable page reset) versus a simple,
+      // fast data refresh, which is what a pull gesture should mean.
       await loadAllDataRef.current?.(true);
     }
     finally { setRefreshing(false); setPullDistance(0); }
   };
-  const PULL_THRESHOLD = 50;
+  const PULL_THRESHOLD = 100;
   const pullDistanceRef = React.useRef(0);
   const onMainTouchStart = (e) => {
     if(!isMobile || refreshing) return;
