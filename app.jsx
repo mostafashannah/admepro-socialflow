@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.82";
+const APP_VERSION = "beta 3.83";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5512,24 +5512,24 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
           const cPosts = posts.filter(p=>cProjects.some(pr=>pr.id===p.project_id));
           return (
             <div key={client.id} style={{
-              background:"var(--surface2)",border:"1px solid var(--border2)",
-              borderRadius:"var(--rs)",padding:14,cursor:"pointer",
-              transition:"all 0.15s",display:"flex",flexDirection:"column",gap:8,
+              background:"var(--surface)",border:"1px solid var(--text)",
+              borderRadius:"var(--rs)",padding:18,cursor:"pointer",
+              boxShadow:"0 2px 8px rgba(0,0,0,0.06)",
+              transition:"all 0.15s",display:"flex",flexDirection:"column",gap:10,
               opacity:isHidden?0.5:1,position:"relative",
             }}
             onClick={()=>!isHidden&&onSelect(client)}
-            onMouseEnter={e=>{if(!isHidden){e.currentTarget.style.borderColor="var(--accent)";}}}
-            onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border2)";}}
+            onMouseEnter={e=>{if(!isHidden){e.currentTarget.style.borderColor="var(--accent)";e.currentTarget.style.boxShadow="0 4px 14px rgba(0,0,0,0.1)";}}}
+            onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--text)";e.currentTarget.style.boxShadow="0 2px 8px rgba(0,0,0,0.06)";}}
             >
-              {isHidden&&<div style={{position:"absolute",top:8,right:8,fontSize:9,fontWeight:700,color:"#6b7280",background:"var(--surface)",borderRadius:6,padding:"2px 7px",letterSpacing:"0.05em"}}>HIDDEN</div>}
+              {isHidden&&<div style={{position:"absolute",top:8,right:8,fontSize:9,fontWeight:700,color:"#6b7280",background:"var(--surface2)",borderRadius:6,padding:"2px 7px",letterSpacing:"0.05em"}}>HIDDEN</div>}
               <div style={{display:"flex",alignItems:"center",gap:10}}>
-                <Avatar name={client.name} size={32}/>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:14,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{client.name}</h3>
-                    {!isHidden&&<span style={{width:6,height:6,borderRadius:"50%",background:client.status==="active"?"#10b981":"#6b7280",flexShrink:0}}/>}
+                  <div style={{display:"flex",alignItems:"center",gap:7}}>
+                    <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:18,fontWeight:800,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{client.name}</h3>
+                    {!isHidden&&<span style={{width:7,height:7,borderRadius:"50%",background:client.status==="active"?"#10b981":"#6b7280",flexShrink:0}}/>}
                   </div>
-                  <p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{client.industry||client.email}</p>
+                  <p style={{fontSize:12,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:2}}>{client.industry||client.email}</p>
                 </div>
                 {isAdmin&&onToggleHide&&(
                   <button onClick={e=>{e.stopPropagation();onToggleHide(client.id,client.status);}} title={isHidden?"Restore client":"Hide client"}
