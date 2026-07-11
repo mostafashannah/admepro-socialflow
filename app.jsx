@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.02";
+const APP_VERSION = "beta 4.03";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23022,7 +23022,7 @@ function App() {
   const mobileNavItems = [
     {key:"home", label:"Pro", ico:Icons.robot},
     {key:"dashboard",label:"Dashboard",ico:Icons.home},
-    {key:"tasks", label:"Tasks", ico:Icons.tasks},
+    {key:"my_tasks", label:"My Tasks", ico:Icons.tasks},
     {key:"clients", label:"Clients", ico:Icons.clients},
     {key:"calendar", label:"Calendar", ico:Icons.calendar},
   ];
