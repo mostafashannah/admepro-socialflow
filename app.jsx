@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.92";
+const APP_VERSION = "beta 3.93";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1487,7 +1487,7 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       background:${bg?bg:"var(--bg)"};
       background-attachment:fixed;
       color:var(--text);
-      font-family:'Plus Jakarta Sans',sans-serif;
+      font-family:'Montserrat',sans-serif;
       font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;
       transition:background 0.5s,color 0.3s;
       overflow-x:hidden;
@@ -1516,13 +1516,13 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
     .card-flat{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow-sm)}
     .stat-card{padding:24px 26px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow-sm);transition:all 0.2s}
     .stat-card:hover{box-shadow:var(--shadow-md);transform:translateY(-1px)}
-    .stat-card-value{font-size:32px;font-weight:800;font-family:'Bricolage Grotesque',sans-serif;line-height:1.1;margin:6px 0}
+    .stat-card-value{font-size:32px;font-weight:800;font-family:'Montserrat',sans-serif;line-height:1.1;margin:6px 0}
     .stat-card-label{font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px}
     .stat-card-sub{font-size:12px;color:var(--text3);margin-top:6px;line-height:1.4}
 
     /* ── PAGE HEADER ── */
     .page-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:24px}
-    .page-title{font-family:'Bricolage Grotesque',sans-serif;font-size:clamp(20px,4vw,26px);font-weight:800;line-height:1.2}
+    .page-title{font-family:'Montserrat',sans-serif;font-size:clamp(20px,4vw,26px);font-weight:800;line-height:1.2}
     .page-subtitle{font-size:13px;color:var(--text2);margin-top:3px}
 
     /* ── SECTION HEADERS ── */
@@ -1561,7 +1561,7 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       display:flex;align-items:center;justify-content:space-between;
       padding:18px 24px 14px;border-bottom:1px solid var(--border);flex-shrink:0;
     }
-    .modal-title{font-family:'Bricolage Grotesque',sans-serif;font-size:17px;font-weight:800;color:var(--text1)}
+    .modal-title{font-family:'Montserrat',sans-serif;font-size:17px;font-weight:800;color:var(--text1)}
     .modal-subtitle{font-size:12px;color:var(--text3);margin-top:2px}
     .modal-close{width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);
       display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text3);
@@ -1866,7 +1866,7 @@ function Avatar({name,size=32,role}) {
       width:size,height:size,borderRadius:"50%",background:c+"28",
       border:`2px solid ${c}6a`,display:"flex",alignItems:"center",justifyContent:"center",
       fontSize:size*0.38,fontWeight:700,color:c,flexShrink:0,
-      fontFamily:"'Bricolage Grotesque',sans-serif",letterSpacing:"-0.02em",
+      fontFamily:"'Montserrat',sans-serif",letterSpacing:"-0.02em",
       boxShadow:`0 2px 8px ${c}20`
     }}>{initials(name)}</div>
   );
@@ -2228,7 +2228,7 @@ function CalendarView({posts,onPostClick}) {
   return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:20,fontWeight:700}}>{mn}</h3>
+        <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:20,fontWeight:700}}>{mn}</h3>
         <div style={{display:"flex",gap:6}}>
           <Btn variant="secondary" size="sm" onClick={()=>setMo(m=>{const d=new Date(m.y,m.m-1);return{y:d.getFullYear(),m:d.getMonth()};})}>‹ Prev</Btn>
           <Btn variant="secondary" size="sm" onClick={()=>setMo({y:today.getFullYear(),m:today.getMonth()})}>Today</Btn>
@@ -2825,7 +2825,7 @@ function AssetPickerModal({open, assets=[], onPick, onClose, multiple=true}) {
       <div onClick={e=>e.stopPropagation()} style={{background:"var(--surface)",borderRadius:"var(--r)",width:"100%",maxWidth:640,maxHeight:"80vh",display:"flex",flexDirection:"column",boxShadow:"0 24px 80px rgba(0,0,0,0.5)"}}>
         {/* Header */}
         <div style={{padding:"16px 20px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:12}}>
-          <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,fontSize:16,flex:1}}>Choose Media</h3>
+          <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:16,flex:1}}>Choose Media</h3>
           <button onClick={()=>{setUploading(false);onClose();}} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text3)",fontSize:20,lineHeight:1}}>×</button>
         </div>
         {/* Search + Upload */}
@@ -2988,7 +2988,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
             {assignee&&<div style={{display:"flex",alignItems:"center",gap:6,marginLeft:"auto"}}><Avatar name={assignee.name} size={24} role={assignee.role}/><span style={{fontSize:12,color:"var(--text2)"}}>{assignee.name}</span></div>}
           </div>
           <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
-            <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:22,fontWeight:700,lineHeight:1.2,flex:1}}>{post.title}</h2>
+            <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:22,fontWeight:700,lineHeight:1.2,flex:1}}>{post.title}</h2>
             {isManager&&(
               <div style={{display:"flex",gap:6,flexShrink:0}}>
                 <button onClick={openEdit} title="Edit task" style={{display:"flex",alignItems:"center",gap:5,padding:"5px 11px",borderRadius:7,fontSize:12,fontWeight:600,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text2)",transition:"all 0.12s"}}
@@ -3198,7 +3198,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
           <div style={{display:"flex",flexDirection:"column",gap:12,padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid #8b5cf6aa"}}>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <span style={{fontSize:16}}></span>
-              <h4 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,fontSize:14}}>Design Assets</h4>
+              <h4 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:14}}>Design Assets</h4>
               {assignee&&<span style={{fontSize:11,color:"var(--text3)",marginLeft:"auto"}}>Assigned to {assignee.name}</span>}
             </div>
 
@@ -3918,7 +3918,7 @@ function StatCard({label,value,color,sub}) {
   return (
     <div style={{padding:"20px 22px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",display:"flex",flexDirection:"column",gap:6}}>
       <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase"}}>{label}</p>
-      <p style={{fontSize:32,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif",color:color||"var(--text)",lineHeight:1}}>{value}</p>
+      <p style={{fontSize:32,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:color||"var(--text)",lineHeight:1}}>{value}</p>
       {sub&&<p style={{fontSize:11,color:"var(--text3)"}}>{sub}</p>}
     </div>
   );
@@ -4107,7 +4107,7 @@ function AddClientWorkflowModal({open,onClose,onAdd,onGoToCalendar}) {
             <Ico d={Icons.success} size={36} stroke="#10b981"/>
           </div>
           <div>
-            <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:20,fontWeight:800}}>{newClient.name}</h3>
+            <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:20,fontWeight:800}}>{newClient.name}</h3>
             <p style={{fontSize:13,color:"var(--text2)",marginTop:4}}>Client folder created successfully!</p>
           </div>
           <div style={{width:"100%",padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",textAlign:"left"}}>
@@ -4352,7 +4352,7 @@ No markdown, no explanation, just the JSON array.`);
             </div>
           </div>
           <div style={{textAlign:"center"}}>
-            <p style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:18,fontWeight:700}}>AI is building your calendar…</p>
+            <p style={{fontFamily:"'Montserrat',sans-serif",fontSize:18,fontWeight:700}}>AI is building your calendar…</p>
             <p style={{fontSize:13,color:"var(--text2)",marginTop:6}}>Generating {f.num_posts} post ideas with captions</p>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:6,width:"100%",maxWidth:300}}>
@@ -4405,7 +4405,7 @@ No markdown, no explanation, just the JSON array.`);
             <Ico d={Icons.success} size={36} stroke="#10b981"/>
           </div>
           <div>
-            <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:20,fontWeight:800}}>Calendar Plan Created!</h3>
+            <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:20,fontWeight:800}}>Calendar Plan Created!</h3>
             <p style={{fontSize:13,color:"var(--text2)",marginTop:4}}>{generated.length} posts added to {selectedClient?.name}'s calendar</p>
           </div>
           <Btn onClick={()=>{reset();onClose();}} style={{width:"100%"}}>View in Calendar</Btn>
@@ -4758,7 +4758,7 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
             <Ico d={Icons.success} size={30} stroke="#10b981"/>
           </div>
           <div>
-            <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:18,fontWeight:800}}>{f.title}</h3>
+            <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:18,fontWeight:800}}>{f.title}</h3>
             <p style={{fontSize:13,color:"var(--text2)",marginTop:4}}>Task created and added to calendar</p>
             {f.assigned_to&&<p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Assigned to {team.find(t=>t.email===f.assigned_to)?.name||f.assigned_to}</p>}
           </div>
@@ -4804,7 +4804,7 @@ function ScoreRing({score,size=64,strokeWidth=6,color="#10b981"}) {
         strokeLinecap="round" transform={`rotate(-90 ${size/2} ${size/2})`}
         style={{transition:"stroke-dashoffset 0.8s ease"}}/>
       <text x={size/2} y={size/2+1} textAnchor="middle" dominantBaseline="middle"
-        style={{fontSize:size*0.22,fontWeight:800,fill:color,fontFamily:"'Bricolage Grotesque',sans-serif"}}>{score}</text>
+        style={{fontSize:size*0.22,fontWeight:800,fill:color,fontFamily:"'Montserrat',sans-serif"}}>{score}</text>
     </svg>
   );
 }
@@ -4994,7 +4994,7 @@ No markdown, no explanation.`;
       <div style={{display:"flex",flexDirection:"column",gap:12}}>
         <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
           <div style={{minWidth:0}}>
-            <h1 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:"clamp(20px,5vw,28px)",fontWeight:800,lineHeight:1.2}}>
+            <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:"clamp(20px,5vw,28px)",fontWeight:800,lineHeight:1.2}}>
               {isAdmin?"Analytics Dashboard":"Dashboard"} 
             </h1>
             <p style={{color:"var(--text2)",marginTop:4,fontSize:14}}>Welcome back, {currentUser.name.split(" ")[0]}</p>
@@ -5042,7 +5042,7 @@ No markdown, no explanation.`;
             ].map(s=>(
               <div key={s.label} style={{padding:"18px 20px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)"}}>
                 <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>{s.label}</p>
-                <p style={{fontSize:30,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif",color:s.color,lineHeight:1}}>{s.value}</p>
+                <p style={{fontSize:30,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1}}>{s.value}</p>
                 <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>{s.sub}</p>
               </div>
             ))}
@@ -5193,7 +5193,7 @@ No markdown, no explanation.`;
               </div>
               <div style={{flex:1}}>
                 <p style={{fontSize:11,fontWeight:700,color:"#10b981",textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:3}}>Top Performer This Period</p>
-                <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:20,fontWeight:800}}>{topPerformer.name}</h3>
+                <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:20,fontWeight:800}}>{topPerformer.name}</h3>
                 <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{ROLES[topPerformer.role]?.label} · {topPerformer.completed} tasks · {topPerformer.totalHrs}h worked · {topPerformer.avgQuality}% avg quality</p>
               </div>
               <ScoreRing score={topPerformer.perfScore} size={72} color="#10b981"/>
@@ -5378,7 +5378,7 @@ No markdown, no explanation.`;
                 ].map(s=>(
                   <div key={s.label} style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
                     <p style={{fontSize:9,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{s.label}</p>
-                    <p style={{fontSize:22,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif",color:s.color}}>{s.value}</p>
+                    <p style={{fontSize:22,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color}}>{s.value}</p>
                   </div>
                 ))}
               </div>
@@ -5415,7 +5415,7 @@ No markdown, no explanation.`;
         <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
             <div>
-              <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:18,fontWeight:800}}>AI-Powered Insights</h3>
+              <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:18,fontWeight:800}}>AI-Powered Insights</h3>
               <p style={{fontSize:13,color:"var(--text2)",marginTop:3}}>Automated analysis of team performance, bottlenecks, and recommendations</p>
             </div>
             <Btn onClick={handleGenInsights} disabled={genInsights}>
@@ -5433,7 +5433,7 @@ No markdown, no explanation.`;
             ].map(s=>(
               <div key={s.label} style={{padding:"14px 16px",background:"var(--surface)",border:`1px solid ${s.color}33`,borderRadius:"var(--r)"}}>
                 <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{s.label}</p>
-                <p style={{fontSize:20,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif",color:s.color,lineHeight:1}}>{s.value}</p>
+                <p style={{fontSize:20,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1}}>{s.value}</p>
                 <p style={{fontSize:10,color:"var(--text3)",marginTop:4}}>{s.sub}</p>
               </div>
             ))}
@@ -5501,7 +5501,7 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
     <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
         <div>
-          <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:24,fontWeight:800}}>Clients</h2>
+          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Clients</h2>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{visible.filter(c=>c.status!=="hidden").length} active clients{hiddenCount>0&&isAdmin?` · ${hiddenCount} hidden`:""}</p>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
@@ -5538,7 +5538,7 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:7}}>
-                    <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:18,fontWeight:800,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{client.name}</h3>
+                    <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:18,fontWeight:800,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{client.name}</h3>
                     {!isHidden&&<span style={{width:7,height:7,borderRadius:"50%",background:client.status==="active"?"#10b981":"#6b7280",flexShrink:0}}/>}
                   </div>
                   <p style={{fontSize:12,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:2}}>{client.industry||client.email}</p>
@@ -6220,7 +6220,7 @@ function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUs
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
         <div>
-          <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:16,fontWeight:700}}>Client Memory</h3>
+          <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:16,fontWeight:700}}>Client Memory</h3>
           <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Preferences, guidelines and learned behaviors — injected into every AI action for this client.</p>
         </div>
         <Btn size="sm" onClick={()=>{setAdding(v=>!v);setEditingId(null);setForm({key:"brand_tone",customKey:"",value:""});}}>
@@ -6279,7 +6279,7 @@ function EditClientModal({open,client,onClose,onSave}) {
     <div className="modal-backdrop" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
       <div className="modal-box" style={{background:"var(--surface)",borderRadius:"var(--r)",width:"100%",maxWidth:480,boxShadow:"0 24px 80px rgba(0,0,0,0.4)"}}>
         <div className="modal-header" style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"18px 24px",borderBottom:"1px solid var(--border)"}}>
-          <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:18,fontWeight:700}}>Edit Client</h3>
+          <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:18,fontWeight:700}}>Edit Client</h3>
           <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text3)",fontSize:20,lineHeight:1}}>×</button>
         </div>
         <div className="modal-body" style={{padding:"20px 24px",display:"flex",flexDirection:"column",gap:14}}>
@@ -6566,7 +6566,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
       {/* Header */}
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
         <div>
-          <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:18,fontWeight:800}}> Brand Training Chat</h3>
+          <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:18,fontWeight:800}}> Brand Training Chat</h3>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Teach Pro about {client.name}'s content style. Everything you share gets saved to their memory and used in all future content generation.</p>
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -6595,7 +6595,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
             {/* Modal header */}
             <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
               <div>
-                <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:20,fontWeight:800,marginBottom:4}}>
+                <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:20,fontWeight:800,marginBottom:4}}>
                    Import External Chat
                 </h3>
                 <p style={{fontSize:13,color:"var(--text2)"}}>Paste any conversation from <strong>ChatGPT, Claude, WhatsApp, email, notes</strong> — Pro will analyze it and extract all brand insights for <strong>{client.name}</strong>.</p>
@@ -6760,7 +6760,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
         ].map(s=>(
           <div key={s.label} title={s.tip} style={{padding:"12px 14px",background:"var(--surface2)",border:`1px solid ${s.color}33`,borderRadius:"var(--rs)",cursor:"help"}}>
             <p style={{fontSize:9,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{s.label}</p>
-            <p style={{fontSize:22,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif",color:s.color}}>{s.val}</p>
+            <p style={{fontSize:22,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color}}>{s.val}</p>
           </div>
         ))}
       </div>
@@ -6891,7 +6891,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
         <div style={{display:"flex",alignItems:"center",gap:14}}>
           <Avatar name={client.name} size={isMobile?44:56}/>
           <div style={{minWidth:0}}>
-            <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?18:24,fontWeight:800,overflowWrap:"anywhere"}}>{client.name}</h2>
+            <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?18:24,fontWeight:800,overflowWrap:"anywhere"}}>{client.name}</h2>
             <p style={{fontSize:12,color:"var(--text2)",marginTop:2,overflowWrap:"anywhere"}}>{client.industry} · {client.email}</p>
           </div>
         </div>
@@ -6968,7 +6968,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
             ].map(s=>(
               <div key={s.label} style={{padding:"16px 20px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)"}}>
                 <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>{s.label}</p>
-                <p style={{fontSize:28,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif",color:s.color,lineHeight:1}}>{s.value}</p>
+                <p style={{fontSize:28,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1}}>{s.value}</p>
               </div>
             ))}
           </div>
@@ -7023,7 +7023,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div>
-              <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:16}}>Monthly Briefs</h3>
+              <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:16}}>Monthly Briefs</h3>
               <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Questionnaires sent to {client.name} for content planning</p>
             </div>
             {isPriv&&<Btn onClick={()=>onCreateBrief&&onCreateBrief(client)}><Ico d={Icons.plus} size={14}/> Send Brief</Btn>}
@@ -7055,7 +7055,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
       {tab==="contact_reports"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           <div>
-            <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:16}}>Contact Reports</h3>
+            <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:16}}>Contact Reports</h3>
             <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Call/meeting debriefs — captured by Pro from voice notes and messages</p>
           </div>
           {(contactReports||[]).filter(r=>r.client_id===client.id).length===0&&(
@@ -7102,7 +7102,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
             <div style={{width:48,height:48,borderRadius:"50%",background:"#fee2e2",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"}}>
               <Ico d={Icons.trash} size={22} stroke="#d90b2c"/>
             </div>
-            <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:18,fontWeight:700,textAlign:"center",marginBottom:8}}>Delete "{client.name}"?</h3>
+            <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:18,fontWeight:700,textAlign:"center",marginBottom:8}}>Delete "{client.name}"?</h3>
             <p style={{fontSize:13,color:"var(--text3)",textAlign:"center",marginBottom:20}}>This will permanently delete the client and cannot be undone. Projects and posts linked to this client will remain.</p>
             <div style={{display:"flex",gap:10}}>
               <Btn variant="secondary" onClick={()=>setConfirmDelete(false)} style={{flex:1}}>Cancel</Btn>
@@ -7185,7 +7185,7 @@ function ClientLeadsTab({clientLeads=[], clientName, clientId, notifySettings=[]
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
         <div>
-          <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:16}}>Leads</h3>
+          <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:16}}>Leads</h3>
           <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Contacts auto-captured from the inbox — customers, service providers, and job applicants</p>
         </div>
         <button onClick={handleDownload} disabled={!sorted.length} style={{display:"flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",cursor:sorted.length?"pointer":"default",fontSize:12,fontWeight:700,color:"var(--text)",opacity:sorted.length?1:0.5}}>
@@ -7725,7 +7725,7 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
       )}
 
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div><h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:24,fontWeight:800}}>All Posts & Tasks</h2>
+        <div><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>All Posts & Tasks</h2>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{posts.length} total</p></div>
         <Btn onClick={()=>setShowAdd(true)}><Ico d={Icons.plus} size={15}/>New Post</Btn>
       </div>
@@ -8157,7 +8157,7 @@ function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset,curr
     <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
         <div>
-          <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:24,fontWeight:800}}>Assets Library</h2>
+          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Assets Library</h2>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{assets.length} files · stored in Supabase Storage</p>
         </div>
         <label style={{display:"flex",alignItems:"center",gap:7,padding:"9px 18px",borderRadius:"var(--rs)",background:"var(--accent)",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
@@ -8654,7 +8654,7 @@ Rules: Max 60 words per section. Specific and actionable — no generic advice. 
       {/* Header bar */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
         <div>
-          <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:16,fontWeight:800}}>Client Context File</h3>
+          <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:16,fontWeight:800}}>Client Context File</h3>
           <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Admin-only · auto-updated from AI analysis · always summarized</p>
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -8706,7 +8706,7 @@ Rules: Max 60 words per section. Specific and actionable — no generic advice. 
           value={text}
           onChange={e=>setText(e.target.value)}
           rows={24}
-          style={{width:"100%",padding:"14px 16px",borderRadius:"var(--r)",border:"1px solid var(--accent)66",background:"var(--surface)",fontSize:13,lineHeight:1.8,color:"var(--text)",fontFamily:"'Plus Jakarta Sans',monospace",resize:"vertical"}}
+          style={{width:"100%",padding:"14px 16px",borderRadius:"var(--r)",border:"1px solid var(--accent)66",background:"var(--surface)",fontSize:13,lineHeight:1.8,color:"var(--text)",fontFamily:"'Montserrat',monospace",resize:"vertical"}}
           placeholder="Write or paste client context here…"
         />
       )}
@@ -9142,7 +9142,7 @@ No markdown, no explanation, just the JSON array.`;
     <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
         <div>
-          <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:18,fontWeight:800}}>Meta Insights</h3>
+          <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:18,fontWeight:800}}>Meta Insights</h3>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:3}}>Live Facebook/Instagram/Ads performance for {client.name}, with AI-generated do's and don'ts</p>
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
@@ -9212,7 +9212,7 @@ No markdown, no explanation, just the JSON array.`;
               ))}
             </div>
             <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:8}}>
-              <span style={{fontSize:32,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif"}}>{curTotal.toLocaleString()}</span>
+              <span style={{fontSize:32,fontWeight:800,fontFamily:"'Montserrat',sans-serif"}}>{curTotal.toLocaleString()}</span>
               <span style={{fontSize:13,fontWeight:700,color:pct>=0?"#10b981":"#ef4444"}}>{pct>=0?"↗":"↘"}{Math.abs(pct)}%</span>
               <span style={{fontSize:12,color:"var(--text3)"}}>vs previous period</span>
             </div>
@@ -9247,7 +9247,7 @@ No markdown, no explanation, just the JSON array.`;
               {rows.length?rows.map((m,i)=>(
                 <div key={i} style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
                   <p style={{fontSize:9,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{INSIGHTS_METRIC_LABELS[m.name]||(m.name||m.title||"").replace(/_/g," ")}</p>
-                  <p style={{fontSize:20,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif"}}>{m.values?.[m.values.length-1]?.value ?? "—"}</p>
+                  <p style={{fontSize:20,fontWeight:800,fontFamily:"'Montserrat',sans-serif"}}>{m.values?.[m.values.length-1]?.value ?? "—"}</p>
                 </div>
               )):<p style={{fontSize:12,color:"var(--text3)"}}>No page metrics returned.</p>}
             </div>
@@ -9256,7 +9256,7 @@ No markdown, no explanation, just the JSON array.`;
                 {["spend","impressions","clicks","ctr","cpc","cpm","reach"].map(k=>(
                   <div key={k} style={{padding:"10px 12px",background:"#1877F211",borderRadius:"var(--rs)",border:"1px solid #1877F233"}}>
                     <p style={{fontSize:9,fontWeight:700,color:"#1877F2",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{k}</p>
-                    <p style={{fontSize:18,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif"}}>{ads[0]?.[k] ?? "—"}</p>
+                    <p style={{fontSize:18,fontWeight:800,fontFamily:"'Montserrat',sans-serif"}}>{ads[0]?.[k] ?? "—"}</p>
                   </div>
                 ))}
               </div>
@@ -10580,7 +10580,7 @@ function TemplatesPage({templates}) {
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <div><h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:24,fontWeight:800}}>Content Templates</h2>
+        <div><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Content Templates</h2>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{templates.length} templates</p></div>
         <Btn><Ico d={Icons.plus} size={15}/>New Template</Btn>
       </div>
@@ -10695,7 +10695,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
   });
 
   return (
-    <div style={{minHeight:"100vh",background:"var(--bg)",fontFamily:"'Plus Jakarta Sans',sans-serif"}}>
+    <div style={{minHeight:"100vh",background:"var(--bg)",fontFamily:"'Montserrat',sans-serif"}}>
 
       {/* Header */}
       <div style={{background:"var(--surface)",borderBottom:"1px solid var(--border)",padding:`0 ${isMobile?16:24}px`,position:"sticky",top:0,zIndex:100}}>
@@ -10703,7 +10703,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <img src="/favicon.svg" width={32} height={32} style={{borderRadius:8,flexShrink:0}} alt="logo"/>
             <div>
-              <p style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:isMobile?13:16,lineHeight:1}}>Client Portal</p>
+              <p style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:isMobile?13:16,lineHeight:1}}>Client Portal</p>
               <p style={{fontSize:11,color:"var(--text2)",marginTop:1}}>{client.name}</p>
             </div>
           </div>
@@ -10771,7 +10771,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                   <span style={{fontSize:18}}>{TASK_TYPE_MAP[selTask.task_type]?.icon||""}</span>
                   <span style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>{TASK_TYPE_MAP[selTask.task_type]?.label||selTask.task_type}</span>
                 </div>
-                <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,fontSize:isMobile?15:17,lineHeight:1.3}}>{selTask.title}</h3>
+                <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:isMobile?15:17,lineHeight:1.3}}>{selTask.title}</h3>
               </div>
               <button onClick={()=>{setSelTask(null);setReason("");}} style={{color:"var(--text3)",display:"flex",background:"none",border:"none",cursor:"pointer",padding:4,flexShrink:0}}><Ico d={Icons.x} size={18}/></button>
             </div>
@@ -10828,7 +10828,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:200,display:"flex",alignItems:isMobile?"flex-end":"center",justifyContent:"center",backdropFilter:"blur(4px)",padding:isMobile?0:20}}>
           <div onClick={e=>e.stopPropagation()} style={modalCard(isMobile)}>
             <div style={{padding:`${isMobile?16:20}px ${isMobile?16:24}px`,borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
-              <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,fontSize:isMobile?15:17,flex:1,minWidth:0}}>{sel.title}</h3>
+              <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:isMobile?15:17,flex:1,minWidth:0}}>{sel.title}</h3>
               <button onClick={()=>{setSel(null);setReason("");}} style={{color:"var(--text3)",display:"flex",background:"none",border:"none",cursor:"pointer",flexShrink:0}}><Ico d={Icons.x} size={18}/></button>
             </div>
             <div style={{padding:isMobile?16:24,display:"flex",flexDirection:"column",gap:14}}>
@@ -10880,7 +10880,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:200,display:"flex",alignItems:isMobile?"flex-end":"center",justifyContent:"center",backdropFilter:"blur(4px)",padding:isMobile?0:20}}>
           <div onClick={e=>e.stopPropagation()} style={modalCard(isMobile)}>
             <div style={{padding:`${isMobile?16:20}px ${isMobile?16:24}px`,borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
-              <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,fontSize:isMobile?15:17}}>Calendar Brief</h3>
+              <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:isMobile?15:17}}>Calendar Brief</h3>
               <button onClick={()=>setShowBrief(false)} style={{color:"var(--text3)",display:"flex",background:"none",border:"none",cursor:"pointer",flexShrink:0}}><Ico d={Icons.x} size={18}/></button>
             </div>
             <div style={{padding:isMobile?16:24}}>
@@ -10896,7 +10896,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
         {view==="dashboard"&&(
           <div style={{display:"flex",flexDirection:"column",gap:20}}>
             <div>
-              <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?20:22,fontWeight:800}}>Welcome back, {client.username||client.name}</h2>
+              <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?20:22,fontWeight:800}}>Welcome back, {client.username||client.name}</h2>
               <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Here's how your account is looking right now.</p>
             </div>
 
@@ -10957,7 +10957,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
         {view==="inbox"&&(
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
             <div>
-              <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?20:22,fontWeight:800}}>Inbox</h2>
+              <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?20:22,fontWeight:800}}>Inbox</h2>
               <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Conversations with your customers on Instagram & Facebook.</p>
             </div>
             <ClientInboxTab client={client} messages={cMessages} integrations={integrations} onSendReply={onSendReply}
@@ -10974,7 +10974,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
         {view==="assets"&&(
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
             <div>
-              <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?20:22,fontWeight:800}}>Assets</h2>
+              <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?20:22,fontWeight:800}}>Assets</h2>
               <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Your project files, organized by month.</p>
             </div>
             <FolderBrowser assets={cAssets} projects={cProjects} onUpdateAsset={onUpdateAsset} onDeleteAsset={onDeleteAsset}
@@ -10990,7 +10990,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
             <div style={{display:"flex",alignItems:isMobile?"flex-start":"center",justifyContent:"space-between",flexDirection:isMobile?"column":"row",gap:10}}>
               <div>
-                <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?20:22,fontWeight:800}}>My Requests</h2>
+                <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?20:22,fontWeight:800}}>My Requests</h2>
                 <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{tasks.length} total · {tasks.filter(t=>t.stage==="ready_for_client_approval").length} awaiting approval</p>
               </div>
               <div style={{display:"flex",gap:8,flexDirection:isMobile?"column":"row",width:isMobile?"100%":"auto"}}>
@@ -11085,7 +11085,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
         {view==="posts"&&(
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
             <div>
-              <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?20:22,fontWeight:800}}>Your Content</h2>
+              <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?20:22,fontWeight:800}}>Your Content</h2>
               <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{cPosts.filter(p=>p.stage==="client_approval").length} awaiting your approval</p>
             </div>
             {cPosts.filter(p=>p.stage==="client_approval").length>0&&(
@@ -11174,7 +11174,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
           <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
             {/* Settings Header */}
             <div>
-              <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?20:24,fontWeight:800}}>Account Settings</h2>
+              <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?20:24,fontWeight:800}}>Account Settings</h2>
               <p style={{fontSize:13,color:"var(--text2)",marginTop:4}}>Manage your profile and preferences</p>
             </div>
 
@@ -11183,7 +11183,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
               <div style={{display:"flex",alignItems:"flex-start",gap:16,marginBottom:20}}>
                 <div style={{width:80,height:80,borderRadius:12,background:clr(client.name),display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,fontWeight:800,color:"#fff",flexShrink:0}}>{initials(client.username||client.name)}</div>
                 <div style={{flex:1}}>
-                  <p style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?18:20,fontWeight:800,marginBottom:2}}>{client.username||client.name}</p>
+                  <p style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?18:20,fontWeight:800,marginBottom:2}}>{client.username||client.name}</p>
                   <p style={{fontSize:13,color:"var(--text2)",marginBottom:8}}>{client.industry}</p>
                   <Badge label="Active Client" color="#10b981" xs/>
                 </div>
@@ -11206,7 +11206,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
 
             {/* Theme Settings */}
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:isMobile?16:24}}>
-              <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:16,fontWeight:800,marginBottom:16}}>Appearance</h3>
+              <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:16,fontWeight:800,marginBottom:16}}>Appearance</h3>
               <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(2,1fr)",gap:12}}>
                 {WALLPAPERS.map(w=>(
                   <button key={w.key} onClick={()=>onWallpaperChange(w.key)} style={{
@@ -11235,7 +11235,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
             {/* Platforms */}
             {client.platforms&&client.platforms.length>0&&(
               <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:isMobile?16:24}}>
-                <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:16,fontWeight:800,marginBottom:14}}>Connected Platforms</h3>
+                <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:16,fontWeight:800,marginBottom:14}}>Connected Platforms</h3>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                   {client.platforms.map(p=><PChip key={p} platform={p}/>)}
                 </div>
@@ -11253,7 +11253,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
 
         {view==="subscriptions"&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}} className="fade-in">
-            <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?18:20,fontWeight:800}}>Your Subscriptions</h3>
+            <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?18:20,fontWeight:800}}>Your Subscriptions</h3>
             {clientSubs.length===0?(
               <div style={{padding:"40px 20px",textAlign:"center",color:"var(--text3)",background:"var(--surface)",borderRadius:"var(--r)",border:"1px solid var(--border)"}}>
                 <Ico d={Icons.repeat} size={32} stroke="var(--text3)"/>
@@ -11268,14 +11268,14 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                     <div key={sub.id} style={{background:"var(--surface)",border:`1.5px solid ${sub.status==="overdue"?"#ef444444":"var(--border)"}`,borderRadius:"var(--r)",padding:isMobile?14:20,display:"flex",flexDirection:"column",gap:12}}>
                       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
                         <div>
-                          <p style={{fontWeight:800,fontSize:isMobile?14:15,fontFamily:"'Bricolage Grotesque',sans-serif"}}>{sub.service_name}</p>
+                          <p style={{fontWeight:800,fontSize:isMobile?14:15,fontFamily:"'Montserrat',sans-serif"}}>{sub.service_name}</p>
                           <p style={{fontSize:12,color:"var(--text2)",marginTop:2}}>{BILLING_PERIODS[sub.billing_period]?.label||sub.billing_period}</p>
                         </div>
                         <Badge label={st.label} color={st.color} xs/>
                       </div>
                       <div style={{padding:"10px 14px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                         <div>
-                          <p style={{fontSize:isMobile?18:22,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif",color:"var(--accent)",lineHeight:1}}>{sub.currency} {sub.amount?.toLocaleString()}</p>
+                          <p style={{fontSize:isMobile?18:22,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:"var(--accent)",lineHeight:1}}>{sub.currency} {sub.amount?.toLocaleString()}</p>
                           <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>per {BILLING_PERIODS[sub.billing_period]?.label?.toLowerCase()}</p>
                         </div>
                         <div style={{textAlign:"right"}}>
@@ -11336,7 +11336,7 @@ function ClientAddTaskModal({allowedTypes,limitsEnabled,taskLimits,client,onClos
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:300,display:"flex",alignItems:isMobile?"flex-end":"center",justifyContent:"center",backdropFilter:"blur(4px)",padding:isMobile?0:20}}>
       <div onClick={e=>e.stopPropagation()} style={{background:"var(--surface)",borderRadius:isMobile?"20px 20px 0 0":20,maxWidth:isMobile?"100%":560,width:"100%",maxHeight:isMobile?"92vh":"90vh",overflow:"auto",border:"1px solid var(--border2)"}}>
         <div style={{padding:`${isMobile?16:20}px ${isMobile?16:24}px`,borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,background:"var(--surface)",zIndex:1}}>
-          <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,fontSize:isMobile?16:18}}>New Request</h3>
+          <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:isMobile?16:18}}>New Request</h3>
           <button onClick={onClose} style={{color:"var(--text3)",display:"flex",background:"none",border:"none",cursor:"pointer",padding:4}}><Ico d={Icons.x} size={18}/></button>
         </div>
         <div style={{padding:isMobile?16:24,display:"flex",flexDirection:"column",gap:16}}>
@@ -11612,7 +11612,7 @@ function RequestAccessPage({onBack}) {
           ← Back to sign in
         </button>
         {/* Header */}
-        <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:22,color:"var(--text1)",marginBottom:4}}>Request Access</h2>
+        <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:22,color:"var(--text1)",marginBottom:4}}>Request Access</h2>
         <p style={{color:"var(--text3)",fontSize:13,marginBottom:24}}>Choose how you'd like to sign up. An admin will approve your account.</p>
 
         {/* User type tabs */}
@@ -11742,7 +11742,7 @@ function LoginScreen({onLogin,clients}) {
         {/* Logo */}
         <div style={{textAlign:"center",marginBottom:36}}>
           <img src="/favicon.svg" width={52} height={52} style={{borderRadius:14,display:"block",margin:"0 auto 16px"}} alt="logo"/>
-          <h1 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:28,fontWeight:800,lineHeight:1}}>SocialFlow</h1>
+          <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:28,fontWeight:800,lineHeight:1}}>SocialFlow</h1>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:6}}>Social media agency platform</p>
         </div>
         {/* Toggle */}
@@ -12234,7 +12234,7 @@ function QuotesPage({quotes,clients,currentUser,onAdd,onEdit,onDuplicate,onDelet
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div>
-          <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:24,fontWeight:800}}>Quotes</h2>
+          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Quotes</h2>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{quotes.length} quotations · {fmtMoney(approvedValue,"USD")} approved</p>
         </div>
         {canEdit&&<Btn onClick={()=>{setEditQuote(null);setShowForm(true);}}>
@@ -12253,7 +12253,7 @@ function QuotesPage({quotes,clients,currentUser,onAdd,onEdit,onDuplicate,onDelet
         ].map(s=>(
           <div key={s.label} style={{padding:"16px 20px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)"}}>
             <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>{s.label}</p>
-            <p style={{fontSize:typeof s.val==="string"?18:28,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif",color:s.color,lineHeight:1}}>{s.val}</p>
+            <p style={{fontSize:typeof s.val==="string"?18:28,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1}}>{s.val}</p>
           </div>
         ))}
       </div>
@@ -12436,7 +12436,7 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
                 <div style={{width:44,height:44,borderRadius:"50%",background:status.color+"22",border:`2px solid ${status.color}66`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>{status.emoji}</div>
                 <div>
-                  <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:18,fontWeight:800}}>{lead.name}</h2>
+                  <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:18,fontWeight:800}}>{lead.name}</h2>
                   {lead.company&&<p style={{fontSize:12,color:"var(--text2)"}}>{lead.company}</p>}
                 </div>
               </div>
@@ -12674,7 +12674,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div>
-          <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:24,fontWeight:800}}>Leads & CRM</h2>
+          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Leads & CRM</h2>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{leads.length} leads · ${pipelineValue.toLocaleString()} pipeline</p>
         </div>
         <div style={{display:"flex",gap:8}}>
@@ -12699,7 +12699,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
         ].map(s=>(
           <div key={s.label} style={{padding:"16px 20px",background:"var(--surface)",border:`1px solid ${s.label==="Overdue"&&overdueCount>0?"#ef444444":"var(--border)"}`,borderRadius:"var(--r)"}}>
             <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>{s.label}</p>
-            <p style={{fontSize:typeof s.val==="string"?20:28,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif",color:s.color,lineHeight:1}}>{s.val}</p>
+            <p style={{fontSize:typeof s.val==="string"?20:28,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1}}>{s.val}</p>
           </div>
         ))}
       </div>
@@ -13124,7 +13124,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
           {step===1&&(
             <div style={{display:"flex",flexDirection:"column",gap:18}}>
               <div>
-                <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:17,fontWeight:800,marginBottom:4}}>Choose an App</h3>
+                <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:17,fontWeight:800,marginBottom:4}}>Choose an App</h3>
                 <p style={{fontSize:13,color:"var(--text2)"}}>Select the external app you want to connect to SocialFlow</p>
               </div>
               {/* Quick templates */}
@@ -13183,7 +13183,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                     : <Ico d={selectedApp.icon} size={28} stroke={selectedApp.color}/>}
                 </div>
                 <div>
-                  <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:17,fontWeight:800}}>Connect {selectedApp.label}</h3>
+                  <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:17,fontWeight:800}}>Connect {selectedApp.label}</h3>
                   <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{selectedApp.description}</p>
                 </div>
               </div>
@@ -13327,7 +13327,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
           {step===3&&(
             <div style={{display:"flex",flexDirection:"column",gap:14}}>
               <div>
-                <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:17,fontWeight:800,marginBottom:4}}>Choose Trigger</h3>
+                <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:17,fontWeight:800,marginBottom:4}}>Choose Trigger</h3>
                 <p style={{fontSize:13,color:"var(--text2)"}}>What event in SocialFlow should activate this integration?</p>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -13357,7 +13357,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
           {step===4&&selectedApp&&(
             <div style={{display:"flex",flexDirection:"column",gap:16}}>
               <div>
-                <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:17,fontWeight:800,marginBottom:4}}>Configure Action</h3>
+                <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:17,fontWeight:800,marginBottom:4}}>Configure Action</h3>
                 <p style={{fontSize:13,color:"var(--text2)"}}>What should {selectedApp.label} do when triggered?</p>
               </div>
               <Field label="Action">
@@ -13416,7 +13416,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
           {step===5&&(
             <div style={{display:"flex",flexDirection:"column",gap:16}}>
               <div>
-                <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:17,fontWeight:800,marginBottom:4}}>Review & Activate</h3>
+                <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:17,fontWeight:800,marginBottom:4}}>Review & Activate</h3>
                 <p style={{fontSize:13,color:"var(--text2)"}}>Confirm your integration details before going live</p>
               </div>
               {/* Summary card — social publish variant */}
@@ -13525,7 +13525,7 @@ function IntegrationsPage({integrations, integrationLogs, currentUser, clients=[
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div>
           <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:4}}>Integrations</p>
-          <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:22,fontWeight:800,lineHeight:1}}>Connected Apps</h2>
+          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:22,fontWeight:800,lineHeight:1}}>Connected Apps</h2>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:4}}>{integrations.filter(i=>i.status==="active").length} active · {totalRuns} total runs · {successRate}% success rate</p>
         </div>
         <Btn onClick={()=>{setEditIntegration(null);setShowWizard(true);}}>
@@ -13543,7 +13543,7 @@ function IntegrationsPage({integrations, integrationLogs, currentUser, clients=[
         ].map(s=>(
           <div key={s.label} style={{padding:"12px 16px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
             <p style={{fontSize:9,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{s.label}</p>
-            <p style={{fontSize:22,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif",color:s.color,lineHeight:1}}>{s.value}</p>
+            <p style={{fontSize:22,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1}}>{s.value}</p>
           </div>
         ))}
       </div>
@@ -13951,7 +13951,7 @@ function DailyEmailSettings({emailSettings, onSave, team, posts, timelogs, perfL
           ].map(s=>(
             <div key={s.label} style={{padding:"12px 16px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
               <p style={{fontSize:9,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{s.label}</p>
-              <p style={{fontSize:18,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif",color:s.color}}>{s.value}</p>
+              <p style={{fontSize:18,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color}}>{s.value}</p>
             </div>
           ))}
         </div>
@@ -14129,7 +14129,7 @@ function DailyEmailSettings({emailSettings, onSave, team, posts, timelogs, perfL
             ].map(s=>(
               <div key={s.label} style={{padding:"12px 14px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",textAlign:"center"}}>
                 <p style={{fontSize:9,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{s.label}</p>
-                <p style={{fontSize:22,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif",color:s.color}}>{s.val}</p>
+                <p style={{fontSize:22,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color}}>{s.val}</p>
               </div>
             ))}
           </div>
@@ -14357,7 +14357,7 @@ function BrandingSettingsTab({brandingAssets, onSave, wallpaper, accentColor}) {
               }
             </div>
             <div>
-              <p style={{fontWeight:800,fontSize:15,color:b.primary_color||"#d90b2c",fontFamily:"'Bricolage Grotesque',sans-serif"}}>{b.app_name||"SocialFlow"}</p>
+              <p style={{fontWeight:800,fontSize:15,color:b.primary_color||"#d90b2c",fontFamily:"'Montserrat',sans-serif"}}>{b.app_name||"SocialFlow"}</p>
               <p style={{fontSize:10,color:"var(--text3)",marginTop:1}}>{b.agency_tagline||"Social Media Agency"}</p>
             </div>
           </div>
@@ -14393,7 +14393,7 @@ function BrandingSettingsTab({brandingAssets, onSave, wallpaper, accentColor}) {
               }
             </div>
             <div>
-              <p style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:22,color:b.primary_color||"#d90b2c"}}>{b.app_name||"SocialFlow"}</p>
+              <p style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:22,color:b.primary_color||"#d90b2c"}}>{b.app_name||"SocialFlow"}</p>
               <p style={{fontSize:12,color:"var(--text3)"}}>{b.agency_tagline||"Social Media Agency"}</p>
             </div>
             <div style={{padding:"8px 20px",borderRadius:"var(--rs)",background:b.primary_color||"#d90b2c",color:"#fff",fontSize:13,fontWeight:700,marginTop:4}}>Sign In</div>
@@ -14542,7 +14542,7 @@ function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh}) {
     <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
         <div>
-          <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:22,fontWeight:800}}>System Log</h2>
+          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:22,fontWeight:800}}>System Log</h2>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Full audit trail — login sessions, device info, IP geolocation, and all actions</p>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -14568,7 +14568,7 @@ function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh}) {
         ].map(s=>(
           <div key={s.label} style={{padding:"12px 14px",background:"var(--surface2)",border:`1px solid ${s.color}33`,borderRadius:"var(--rs)",textAlign:"center"}}>
             <p style={{fontSize:9,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{s.label}</p>
-            <p style={{fontSize:22,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif",color:s.color}}>{s.val}</p>
+            <p style={{fontSize:22,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color}}>{s.val}</p>
           </div>
         ))}
       </div>
@@ -14787,7 +14787,7 @@ function SystemLogPanel({activityLogs, onRefresh}) {
     <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
         <div>
-          <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:18,fontWeight:800}}>System Activity Log</h3>
+          <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:18,fontWeight:800}}>System Activity Log</h3>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Full audit trail of all actions performed in SocialFlow — errors are highlighted for easy debugging</p>
         </div>
         <button onClick={doRefresh} disabled={refreshing} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:"var(--rs)",border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:12,fontWeight:700,cursor:refreshing?"default":"pointer",opacity:refreshing?0.6:1}}>
@@ -14805,7 +14805,7 @@ function SystemLogPanel({activityLogs, onRefresh}) {
         ].map(s=>(
           <div key={s.label} style={{padding:"12px 14px",background:"var(--surface2)",border:`1px solid ${s.color}33`,borderRadius:"var(--rs)",textAlign:"center"}}>
             <p style={{fontSize:9,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{s.label}</p>
-            <p style={{fontSize:22,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif",color:s.color}}>{s.val}</p>
+            <p style={{fontSize:22,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color}}>{s.val}</p>
           </div>
         ))}
       </div>
@@ -14927,7 +14927,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
     <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:"min(900px,100%)"}} className="fade-in">
       {/* Page header */}
       <div>
-        <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:24,fontWeight:800,display:"flex",alignItems:"center",gap:10}}>
+        <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800,display:"flex",alignItems:"center",gap:10}}>
           System Settings
           <span style={{fontSize:11,fontWeight:700,color:"var(--text3)",background:"var(--surface2)",padding:"3px 9px",borderRadius:99}}>{APP_VERSION}</span>
         </h2>
@@ -15027,7 +15027,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
               <img src="/favicon.svg" width={18} height={18} style={{objectFit:"contain"}} alt="logo"/>}
           </div>
           <div>
-            <p style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:16,color:f.primary_color}}>{f.app_name}</p>
+            <p style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:16,color:f.primary_color}}>{f.app_name}</p>
             <p style={{fontSize:11,color:"var(--text3)"}}>{f.agency_tagline}</p>
           </div>
           <div style={{marginLeft:"auto",padding:"5px 14px",borderRadius:99,background:f.primary_color,color:"#fff",fontSize:12,fontWeight:700}}>Button</div>
@@ -15405,7 +15405,7 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
       <div style={{display:"flex",alignItems:"center",gap:20}}>
         <ProfilePhoto photoUrl={photo} name={currentUser?.name} role={currentUser?.role} size={72}/>
         <div>
-          <h1 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:26,fontWeight:800,lineHeight:1.1}}>
+          <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:26,fontWeight:800,lineHeight:1.1}}>
             {form.display_name || currentUser?.name}
           </h1>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:3}}>{currentUser?.email}</p>
@@ -15926,7 +15926,7 @@ function SubDetailPanel({sub, payments, clients, currentUser, appSettings, onClo
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
                 <div style={{width:40,height:40,borderRadius:"50%",background:st.color+"22",border:`2px solid ${st.color}55`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}></div>
                 <div>
-                  <p style={{fontWeight:800,fontSize:16,fontFamily:"'Bricolage Grotesque',sans-serif"}}>{sub.service_name}</p>
+                  <p style={{fontWeight:800,fontSize:16,fontFamily:"'Montserrat',sans-serif"}}>{sub.service_name}</p>
                   <p style={{fontSize:13,color:"var(--text2)"}}>{sub.client_name}</p>
                 </div>
               </div>
@@ -15950,7 +15950,7 @@ function SubDetailPanel({sub, payments, clients, currentUser, appSettings, onClo
             ].map(s=>(
               <div key={s.label} style={{padding:"12px 14px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",textAlign:"center"}}>
                 <p style={{fontSize:9,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:5}}>{s.label}</p>
-                <p style={{fontSize:16,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif",color:s.color,lineHeight:1}}>{s.val}</p>
+                <p style={{fontSize:16,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1}}>{s.val}</p>
               </div>
             ))}
           </div>
@@ -15963,7 +15963,7 @@ function SubDetailPanel({sub, payments, clients, currentUser, appSettings, onClo
                 <p style={{fontSize:16,fontWeight:800,color:days!==null&&days<0?"#ef4444":days!==null&&days<=3?"#f59e0b":"var(--text)",marginTop:3}}>{fmtDate(sub.next_payment_date)}</p>
               </div>
               <div style={{textAlign:"right"}}>
-                <p style={{fontSize:22,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif",color:days!==null&&days<0?"#ef4444":days!==null&&days<=3?"#f59e0b":"var(--text)"}}>
+                <p style={{fontSize:22,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:days!==null&&days<0?"#ef4444":days!==null&&days<=3?"#f59e0b":"var(--text)"}}>
                   {days===null?"—":days<0?`${Math.abs(days)}d overdue`:days===0?"Today!":days===1?"Tomorrow":`${days} days`}
                 </p>
               </div>
@@ -16166,7 +16166,7 @@ function CreateSubModal({open,onClose,clients,existingSubs,onSave,currentUser,ap
         {f.amount&&(
           <div style={{padding:12,background:"var(--surface2)",borderRadius:"var(--rxs)",border:"1px solid var(--border)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <span style={{fontSize:12,color:"var(--text2)"}}>Annual value of this retainer</span>
-            <span style={{fontSize:18,fontWeight:800,color:"#10b981",fontFamily:"'Bricolage Grotesque',sans-serif"}}>{f.currency} {annualValue.toLocaleString()}</span>
+            <span style={{fontSize:18,fontWeight:800,color:"#10b981",fontFamily:"'Montserrat',sans-serif"}}>{f.currency} {annualValue.toLocaleString()}</span>
           </div>
         )}
 
@@ -16225,7 +16225,7 @@ function SubscriptionsPage({subscriptions, subscriptionPayments, clients, curren
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div>
-          <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:24,fontWeight:800}}>Subscriptions</h2>
+          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Subscriptions</h2>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{subscriptions.length} retainers · EGP {mrr.toLocaleString()} MRR</p>
         </div>
         {canManage&&<Btn onClick={()=>setShowCreate(true)}><Ico d={Icons.plus} size={15}/> New Subscription</Btn>}
@@ -16242,7 +16242,7 @@ function SubscriptionsPage({subscriptions, subscriptionPayments, clients, curren
           ].map(s=>(
             <div key={s.label} style={{padding:"18px 20px",background:"var(--surface)",border:`1px solid ${s.label==="Overdue"&&overdueCount>0?"#ef444444":"var(--border)"}`,borderRadius:"var(--r)"}}>
               <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>{s.label}</p>
-              <p style={{fontSize:typeof s.value==="string"?18:28,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif",color:s.color,lineHeight:1}}>{s.value}</p>
+              <p style={{fontSize:typeof s.value==="string"?18:28,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1}}>{s.value}</p>
               <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>{s.sub}</p>
             </div>
           ))}
@@ -16325,7 +16325,7 @@ function SubscriptionsPage({subscriptions, subscriptionPayments, clients, curren
               {/* Amount + period */}
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
                 <div>
-                  <p style={{fontSize:20,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif",color:"var(--accent)",lineHeight:1}}>{sub.currency} {sub.amount?.toLocaleString()}</p>
+                  <p style={{fontSize:20,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:"var(--accent)",lineHeight:1}}>{sub.currency} {sub.amount?.toLocaleString()}</p>
                   <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>per {BILLING_PERIODS[sub.billing_period]?.label?.toLowerCase()||sub.billing_period}</p>
                 </div>
                 <div style={{textAlign:"right"}}>
@@ -16584,7 +16584,7 @@ function ConfirmPaymentModal({open,onClose,invoice,onConfirm,currentUser}) {
           </div>
           <div style={{textAlign:"right"}}>
             <p style={{fontSize:11,color:"var(--text3)"}}>Balance Due</p>
-            <p style={{fontSize:22,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif",color:"#ef4444"}}>{fmtMoney(balance,invoice.currency)}</p>
+            <p style={{fontSize:22,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:"#ef4444"}}>{fmtMoney(balance,invoice.currency)}</p>
           </div>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(260px,100%),1fr))",gap:12}}>
@@ -16636,7 +16636,7 @@ function InvoiceDetailPanel({invoice,payments,appSettings,brandingAssets,current
           <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between"}}>
             <div>
               <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:4}}>{invoice.invoice_number}</p>
-              <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:18,fontWeight:800}}>{invoice.client_name}</h2>
+              <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:18,fontWeight:800}}>{invoice.client_name}</h2>
               <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{invoice.title}</p>
             </div>
             <button onClick={onClose} style={{color:"var(--text3)",display:"flex",padding:4}}><Ico d={Icons.x} size={18}/></button>
@@ -16658,7 +16658,7 @@ function InvoiceDetailPanel({invoice,payments,appSettings,brandingAssets,current
             ].map(s=>(
               <div key={s.label} style={{padding:"12px 14px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",textAlign:"center"}}>
                 <p style={{fontSize:9,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>{s.label}</p>
-                <p style={{fontSize:16,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif",color:s.color}}>{s.value}</p>
+                <p style={{fontSize:16,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color}}>{s.value}</p>
               </div>
             ))}
           </div>
@@ -16949,7 +16949,7 @@ function InvoicesPage({invoices,payments,clients,quotes,currentUser,appSettings,
     <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div>
-          <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:24,fontWeight:800}}>Invoices</h2>
+          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Invoices</h2>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{invoices.length} invoices · {fmtMoney(collected,"USD")} collected</p>
         </div>
         {canManage&&<Btn onClick={()=>{setSourceQuote(null);setShowCreate(true);}}><Ico d={Icons.plus} size={15}/> New Invoice</Btn>}
@@ -16965,7 +16965,7 @@ function InvoicesPage({invoices,payments,clients,quotes,currentUser,appSettings,
         ].map(s=>(
           <div key={s.label} style={{padding:"16px 20px",background:"var(--surface)",border:`1px solid ${s.label==="Overdue"&&overdue>0?"#ef444444":"var(--border)"}`,borderRadius:"var(--r)"}}>
             <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>{s.label}</p>
-            <p style={{fontSize:typeof s.value==="string"&&s.value.length>8?16:24,fontWeight:800,fontFamily:"'Bricolage Grotesque',sans-serif",color:s.color,lineHeight:1}}>{s.value}</p>
+            <p style={{fontSize:typeof s.value==="string"&&s.value.length>8?16:24,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1}}>{s.value}</p>
           </div>
         ))}
       </div>
@@ -17152,7 +17152,7 @@ Give 3 specific, actionable recommendations to improve their performance. Be con
     <div className="fade-in" style={{maxWidth:900}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24,flexWrap:"wrap",gap:12}}>
         <div>
-          <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:22,fontWeight:800,margin:0}}>My Performance Report</h2>
+          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:22,fontWeight:800,margin:0}}>My Performance Report</h2>
           <p style={{color:"var(--text3)",fontSize:13,margin:"4px 0 0"}}>{periodLabel} summary · {currentUser?.name}</p>
         </div>
         <Badge color="#6366f1">{ROLES[currentUser?.role]?.label||currentUser?.role}</Badge>
@@ -17262,7 +17262,7 @@ function TeamPerformancePage({currentUser, perfLogs, aiInsights, team}) {
     <div className="fade-in" style={{maxWidth:960}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24,flexWrap:"wrap",gap:12}}>
         <div>
-          <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:22,fontWeight:800,margin:0}}>Team Performance</h2>
+          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:22,fontWeight:800,margin:0}}>Team Performance</h2>
           <p style={{color:"var(--text3)",fontSize:13,margin:"4px 0 0"}}>Weekly overview · {ranked.length} team members</p>
         </div>
         <div style={{display:"flex",gap:10,alignItems:"center"}}>
@@ -17406,7 +17406,7 @@ function MyTasksPage({posts,team,projects,currentUser,onStageChange,onPostClick}
     <div style={{display:"flex",flexDirection:"column",gap:24,maxWidth:1200,margin:"0 auto",padding:isMobile?"16px":"32px 24px"}}>
       {/* Header */}
       <div>
-        <h1 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?24:32,fontWeight:800,marginBottom:6}}>My Tasks</h1>
+        <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?24:32,fontWeight:800,marginBottom:6}}>My Tasks</h1>
         <p style={{fontSize:13,color:"var(--text2)"}}>All posts assigned to you across the workflow</p>
       </div>
 
@@ -17482,7 +17482,7 @@ function MyTasksPage({posts,team,projects,currentUser,onStageChange,onPostClick}
                     <Badge label={stage.label} color={stage.color}/>
                     <Badge label={post.priority} color={PRI_COLOR[post.priority]} xs/>
                   </div>
-                  <h4 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,fontSize:14,marginBottom:4}}>{post.title}</h4>
+                  <h4 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:14,marginBottom:4}}>{post.title}</h4>
                   {project && <p style={{fontSize:11,color:"var(--text3)",marginBottom:4}}> {project.title}</p>}
                   {post.scheduled_date && (
                     <p style={{fontSize:12,color:"var(--text2)"}}> {fmtDate(post.scheduled_date)}{post.scheduled_time && ` at ${post.scheduled_time}`}</p>
@@ -17543,7 +17543,7 @@ function MyCalendarPage({posts,currentUser,team}) {
     <div style={{display:"flex",flexDirection:"column",gap:24,maxWidth:1200,margin:"0 auto",padding:isMobile?"16px":"32px 24px"}}>
       {/* Header */}
       <div>
-        <h1 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?24:32,fontWeight:800,marginBottom:6}}>My Calendar</h1>
+        <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?24:32,fontWeight:800,marginBottom:6}}>My Calendar</h1>
         <p style={{fontSize:13,color:"var(--text2)"}}>Your scheduled posts and deadlines</p>
       </div>
 
@@ -17554,7 +17554,7 @@ function MyCalendarPage({posts,currentUser,team}) {
           {/* Month Navigation */}
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
             <button onClick={()=>setCurrentDate(new Date(year, month-1, 1))} style={{padding:8,borderRadius:"var(--rs)",background:"var(--surface2)",border:"1px solid var(--border)",cursor:"pointer"}}>←</button>
-            <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,fontSize:16}}>{monthName}</h3>
+            <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:16}}>{monthName}</h3>
             <button onClick={()=>setCurrentDate(new Date(year, month+1, 1))} style={{padding:8,borderRadius:"var(--rs)",background:"var(--surface2)",border:"1px solid var(--border)",cursor:"pointer"}}>→</button>
           </div>
 
@@ -17609,7 +17609,7 @@ function MyCalendarPage({posts,currentUser,team}) {
 
         {/* Upcoming Posts Sidebar */}
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:14}}>
-          <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,fontSize:16}}> Upcoming Posts</h3>
+          <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:16}}> Upcoming Posts</h3>
           {myPosts.length === 0 ? (
             <p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:20}}>No scheduled posts</p>
           ) : (
@@ -17708,7 +17708,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
         <div>
-          <h1 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?22:28,fontWeight:800,marginBottom:4}}>
+          <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?22:28,fontWeight:800,marginBottom:4}}>
             {isAM && viewUser ? `${viewUser.name.split(" ")[0]}'s Schedule` : "My Daily Schedule"}
           </h1>
           <p style={{fontSize:13,color:"var(--text2)"}}>{viewDate.toLocaleDateString(undefined,{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</p>
@@ -17869,7 +17869,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
       {overrideTarget && (
         <div onClick={()=>setOverrideTarget(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2000,backdropFilter:"blur(4px)"}}>
           <div onClick={e=>e.stopPropagation()} style={{background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:"var(--r)",padding:24,width:340,display:"flex",flexDirection:"column",gap:16}}>
-            <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:16,fontWeight:800}}>Override Schedule</h3>
+            <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:16,fontWeight:800}}>Override Schedule</h3>
             <p style={{fontSize:13,color:"var(--text2)"}}>
               <strong>{overrideTarget.post.title}</strong><br/>
               <span style={{fontSize:11,color:"var(--text3)"}}>Current: {overrideTarget.slot.start_time}–{overrideTarget.slot.end_time}</span>
@@ -17964,7 +17964,7 @@ function MyPerformancePage({currentUser, posts, timeEntries, perfLogs}) {
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
         <div>
-          <h1 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?22:28,fontWeight:800,marginBottom:4}}>My Performance</h1>
+          <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?22:28,fontWeight:800,marginBottom:4}}>My Performance</h1>
           <p style={{fontSize:13,color:"var(--text2)"}}>Personal productivity &amp; time tracking analytics</p>
         </div>
         <div style={{display:"flex",gap:6}}>
@@ -18087,7 +18087,7 @@ function TeamMembersPage({team,posts,perfLogs,onMemberSelect}) {
     <div style={{display:"flex",flexDirection:"column",gap:24,maxWidth:1400,margin:"0 auto",padding:isMobile?"16px":"32px 24px"}}>
       {/* Page Header */}
       <div>
-        <h1 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:isMobile?24:32,fontWeight:800,marginBottom:6}}>Team Members</h1>
+        <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?24:32,fontWeight:800,marginBottom:6}}>Team Members</h1>
         <p style={{fontSize:13,color:"var(--text2)"}}>View each team member's assigned tasks and personal calendar</p>
       </div>
 
@@ -18109,7 +18109,7 @@ function TeamMembersPage({team,posts,perfLogs,onMemberSelect}) {
                 <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
                   <Avatar name={member.name} size={48}/>
                   <div style={{flex:1,minWidth:0}}>
-                    <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,fontSize:15,marginBottom:2}}>{member.name}</h3>
+                    <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:15,marginBottom:2}}>{member.name}</h3>
                     <p style={{fontSize:11,color:"var(--accent)",fontWeight:600}}>{ROLES[member.role]?.label||member.role}</p>
                     <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{member.department||"No dept"}</p>
                   </div>
@@ -18162,7 +18162,7 @@ function TeamMembersPage({team,posts,perfLogs,onMemberSelect}) {
           <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:24,display:"flex",alignItems:"center",gap:16}}>
             <Avatar name={selectedMember.name} size={80}/>
             <div style={{flex:1}}>
-              <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,fontSize:24,marginBottom:4}}>{selectedMember.name}</h2>
+              <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:24,marginBottom:4}}>{selectedMember.name}</h2>
               <p style={{fontSize:13,color:"var(--accent)",fontWeight:700,marginBottom:8}}>{ROLES[selectedMember.role]?.label}</p>
               <p style={{fontSize:12,color:"var(--text2)"}}>{selectedMember.email}</p>
             </div>
@@ -18172,7 +18172,7 @@ function TeamMembersPage({team,posts,perfLogs,onMemberSelect}) {
           <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:20}}>
             {/* Assigned Tasks */}
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:14}}>
-              <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:18}}> My Tasks</h3>
+              <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:18}}> My Tasks</h3>
               {getTeamMemberTasks(selectedMember.email).length === 0 ? (
                 <p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:20}}>No tasks assigned</p>
               ) : (
@@ -18194,7 +18194,7 @@ function TeamMembersPage({team,posts,perfLogs,onMemberSelect}) {
 
             {/* Calendar View */}
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:14}}>
-              <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:18}}> Scheduled</h3>
+              <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:18}}> Scheduled</h3>
               {getTeamMemberTasks(selectedMember.email).filter(p=>p.scheduled_date).length === 0 ? (
                 <p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:20}}>No scheduled items</p>
               ) : (
@@ -18594,7 +18594,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
       <div style={{display:"flex",alignItems:"center",gap:compact?0:10}}>
         <img src="/favicon.svg" width={32} height={32} style={{borderRadius:8,flexShrink:0}} alt="logo"/>
         {!compact && <div>
-          <p style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:15,lineHeight:1}}>SocialFlow</p>
+          <p style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:15,lineHeight:1}}>SocialFlow</p>
           <p style={{fontSize:9.5,color:"var(--text3)",marginTop:1,letterSpacing:"0.04em"}}>admepro</p>
         </div>}
       </div>
@@ -19347,7 +19347,7 @@ Rules:
         <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:10}}>
           <div style={{width:32,height:32,borderRadius:8,background:"var(--accentbg)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}></div>
           <div style={{flex:1}}>
-            <p style={{fontWeight:800,fontSize:15,fontFamily:"'Bricolage Grotesque',sans-serif"}}>Paste &amp; Learn</p>
+            <p style={{fontWeight:800,fontSize:15,fontFamily:"'Montserrat',sans-serif"}}>Paste &amp; Learn</p>
             <p style={{fontSize:11,color:"var(--text3)"}}>Paste a chat, email, or note — Pro extracts memory for the client</p>
           </div>
           <button onClick={onClose} style={{padding:6,color:"var(--text3)"}} aria-label="Close"><Ico d={Icons.x} size={16}/></button>
@@ -20160,7 +20160,7 @@ RULES:
           <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",background:"var(--surface)",display:"flex",alignItems:"center",gap:10}}>
             <img src="/favicon.svg" width={28} height={28} style={{borderRadius:8,flexShrink:0}} alt="logo"/>
             <div style={{flex:1,minWidth:0}}>
-              <p style={{fontWeight:800,fontSize:13,fontFamily:"'Bricolage Grotesque',sans-serif"}}>Pro</p>
+              <p style={{fontWeight:800,fontSize:13,fontFamily:"'Montserrat',sans-serif"}}>Pro</p>
               <div style={{display:"flex",alignItems:"center",gap:5}}>
                 <div style={{width:5,height:5,borderRadius:"50%",background:"#10b981"}}/>
                 <p style={{fontSize:10,color:"var(--text3)"}}>Online · {pageLabels[currentPage]||currentPage}</p>
@@ -20614,7 +20614,7 @@ function AgentsPage({agentConfigs, agentLogs, agentRuns, data, currentUser, onSt
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24,flexWrap:"wrap",gap:12}}>
         <div>
-          <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:22,fontWeight:800,color:"var(--text)",display:"flex",alignItems:"center",gap:10}}>
+          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:22,fontWeight:800,color:"var(--text)",display:"flex",alignItems:"center",gap:10}}>
             <span style={{fontSize:24}}></span> Agents Control Center
           </h2>
           <p style={{fontSize:13,color:"var(--text3)",marginTop:2}}>Monitor and control all AI agents in your workspace</p>
@@ -20948,7 +20948,7 @@ function LeadGenerationPage({generatedLeads,leadAgentConfig,existingLeads,curren
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24,flexWrap:"wrap",gap:12}}>
         <div>
-          <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:22,fontWeight:800,color:"var(--text)"}}>Lead Generation Agent</h2>
+          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:22,fontWeight:800,color:"var(--text)"}}>Lead Generation Agent</h2>
           <p style={{fontSize:13,color:"var(--text3)",marginTop:2}}>AI-powered lead discovery with approval workflow</p>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
@@ -22124,7 +22124,7 @@ RULES:
         {!isMobile && (
           <div style={{display:"flex",alignItems:"center",gap:7,flex:1}}>
             <img src="/favicon.svg" width={20} height={20} style={{borderRadius:6,flexShrink:0}} alt="Pro"/>
-            <span style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:14,color:"var(--text)"}}>Pro</span>
+            <span style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:14,color:"var(--text)"}}>Pro</span>
           </div>
         )}
         {isMobile && <div style={{flex:1}}/>}
@@ -22219,7 +22219,7 @@ RULES:
       <div style={{flex:1,overflowY:"auto",padding:isMobile?"16px":"24px 20%",display:"flex",flexDirection:"column",justifyContent:isEmpty?"center":"flex-start"}}>
         {isEmpty ? (
           <div style={{textAlign:"center",maxWidth:640,width:"100%",margin:"0 auto"}}>
-            <h2 style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12,fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:600,fontSize:isMobile?22:32,color:"var(--text)",marginBottom:28}}>
+            <h2 style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12,fontFamily:"'Montserrat',sans-serif",fontWeight:600,fontSize:isMobile?22:32,color:"var(--text)",marginBottom:28}}>
               <Ico d={Icons.sparkle} size={isMobile?22:28} stroke="var(--accent)"/>
               {greetWord}, {currentUser?.name||name}
             </h2>
@@ -22291,7 +22291,7 @@ RULES:
               <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:10}}>
                 <div style={{width:32,height:32,borderRadius:8,background:"var(--accentbg)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}></div>
                 <div style={{flex:1}}>
-                  <p style={{fontWeight:800,fontSize:15,fontFamily:"'Bricolage Grotesque',sans-serif"}}>Pro's Brain — {selectedClient.name}</p>
+                  <p style={{fontWeight:800,fontSize:15,fontFamily:"'Montserrat',sans-serif"}}>Pro's Brain — {selectedClient.name}</p>
                   <p style={{fontSize:11,color:"var(--text3)"}}>Everything Pro can see. {mem.length} memory · {ckEntries.length} profile · {ciEntries.length} intelligence.</p>
                 </div>
                 <button onClick={()=>setBrainOpen(false)} style={{padding:6,color:"var(--text3)",fontSize:18}} aria-label="Close">×</button>
@@ -22437,7 +22437,7 @@ function MonthlyBriefTab({client, monthlyBriefs, onSubmit, onSelfCreate}) {
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:26}}></span>
           <div>
-            <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:isMobile?17:21}}>Monthly Content Briefs</h2>
+            <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:isMobile?17:21}}>Monthly Content Briefs</h2>
             <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>ملخصات المحتوى الشهرية</p>
           </div>
         </div>
@@ -22601,7 +22601,7 @@ function CreateBriefModal({open, onClose, clients, onCreate}) {
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
       <div style={{background:"var(--surface)",borderRadius:"var(--r)",padding:28,maxWidth:480,width:"100%",border:"1px solid var(--border2)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-          <h3 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:800,fontSize:18}}> Send Monthly Brief</h3>
+          <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:18}}> Send Monthly Brief</h3>
           <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text3)"}}><Ico d={Icons.x} size={18}/></button>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -22664,7 +22664,7 @@ function NotificationsPage({notifications, currentUser, onMarkRead, onNavigate, 
     <div style={{maxWidth:720,margin:"0 auto"}} className="fade-in">
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24}}>
         <div>
-          <h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:24,fontWeight:800}}>Notifications</h2>
+          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Notifications</h2>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{unread.length} unread · {myNotifs.length} total</p>
         </div>
         <div style={{display:"flex",gap:8}}>
@@ -24878,7 +24878,7 @@ Return ONLY valid JSON (no markdown, no explanation):
               {/* Page title (mobile, non-home pages) */}
               {isMobile&&page!=="home"&&(
                 <div style={{flex:1,minWidth:0}}>
-                  <p style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,fontSize:15,color:"var(--text)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                  <p style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:15,color:"var(--text)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                     {PAGE_NAMES[page]||"SocialFlow"}
                   </p>
                 </div>
@@ -24888,7 +24888,7 @@ Return ONLY valid JSON (no markdown, no explanation):
               {/* Page title (desktop/tablet) */}
               {!isMobile&&(
                 <div style={{flex:1,minWidth:0}}>
-                  <p style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontWeight:700,fontSize:15,color:"var(--text)"}}>
+                  <p style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:15,color:"var(--text)"}}>
                     {PAGE_NAMES[page]||"SocialFlow"}
                   </p>
                 </div>
@@ -25056,7 +25056,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   onClearInitialProject={()=>setSelectedProjectId(null)}
 />}
         {page==="tasks"&&<TasksPage posts={data.posts} projects={data.projects} team={data.team} onPostClick={setSelectedPost} onAdd={addPost} clientTasks={(data.tasks||[])} onUpdateTask={updateClientTask} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset}/>}
-        {page==="calendar"&&<div className="fade-in"><h2 style={{fontFamily:"'Bricolage Grotesque',sans-serif",fontSize:24,fontWeight:800,marginBottom:24}}>Content Calendar</h2><CalendarView posts={data.posts} onPostClick={setSelectedPost}/></div>}
+        {page==="calendar"&&<div className="fade-in"><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800,marginBottom:24}}>Content Calendar</h2><CalendarView posts={data.posts} onPostClick={setSelectedPost}/></div>}
         {page==="assets"&&<AssetsPage assets={data.assets} projects={data.projects} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} currentUser={currentUser}/>}
         {page==="templates"&&<TemplatesPage templates={data.templates}/>}
         {page==="quotes"&&["admin","account_manager","accountant"].includes(currentUser?.role)&&(
