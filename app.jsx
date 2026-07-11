@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.98";
+const APP_VERSION = "beta 3.99";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1675,6 +1675,11 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
         scrollbar-width:none;-ms-overflow-style:none;
       }
       .main-content::-webkit-scrollbar{display:none}
+      /* Hide scrollbars everywhere on mobile, not just the main page scroll —
+         any nested scrollable container (tables, modals, kanban columns)
+         should behave the same way. */
+      *{scrollbar-width:none;-ms-overflow-style:none}
+      *::-webkit-scrollbar{display:none}
       .card-mobile{border-radius:var(--rs)!important;padding:14px!important}
       .page-title{font-size:20px!important}
       .stat-card{padding:14px!important}
@@ -2152,6 +2157,57 @@ function KanbanView({posts,project,team,onPostClick}) {
 // LIST VIEW
 // ════════════════════════════════════════════════════════════════
 function ListView({posts,projects,team,onPostClick}) {
+  const {isMobile} = useResponsive();
+  if (isMobile) {
+    return (
+      <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+        {posts.map((post,i)=>{
+          const proj = projects?.find(p=>p.id===post.project_id);
+          const stage = STAGE_MAP[post.stage]||STAGES[0];
+          const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
+          const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
+          const lastDesignAsset = designAssets[designAssets.length-1];
+          const thumbUrl = designUrls[designUrls.length-1] || lastDesignAsset?.url || post.carousel_cover || "";
+          const thumbIsVideo = (lastDesignAsset?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i);
+          return (
+            <div key={post.id} onClick={()=>onPostClick(post)} style={{
+              display:"flex",alignItems:"center",gap:10,padding:"11px 14px",cursor:"pointer",
+              borderBottom:i<posts.length-1?"1px solid var(--border)":"none",
+            }}>
+              {thumbUrl ? (
+                <div style={{position:"relative",width:40,height:40,borderRadius:8,overflow:"hidden",flexShrink:0,background:"var(--surface2)"}}>
+                  {thumbIsVideo
+                    ? <video src={thumbUrl+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                    : <img src={thumbUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
+                  {thumbIsVideo&&(
+                    <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.15)"}}>
+                      <Ico d={Icons.play} size={11} stroke="#fff"/>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{width:40,height:40,borderRadius:8,background:"var(--surface2)",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <PChip platform={post.platform} xs/>
+                </div>
+              )}
+              <div style={{flex:1,minWidth:0}}>
+                <p style={{fontSize:13,fontWeight:600,color:"var(--text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{post.title}</p>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}>
+                  {proj?.client_name && <span style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{proj.client_name}</span>}
+                  {thumbUrl && <PChip platform={post.platform} xs/>}
+                </div>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3,flexShrink:0}}>
+                <span style={{fontSize:10,fontWeight:700,color:stage.color,background:stage.color+"1a",borderRadius:99,padding:"3px 8px",whiteSpace:"nowrap"}}>{stage.label}</span>
+                {post.scheduled_date && <span style={{fontSize:10,color:"var(--text3)"}}>{fmtDate(post.scheduled_date)}</span>}
+              </div>
+            </div>
+          );
+        })}
+        {posts.length===0&&<div style={{padding:"40px",textAlign:"center",color:"var(--text3)"}}>No posts found</div>}
+      </div>
+    );
+  }
   return (
     <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
       <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 100px 100px 140px 110px",padding:"9px 16px",background:"var(--surface2)",borderBottom:"1px solid var(--border)"}}>
