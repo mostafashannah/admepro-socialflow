@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.95";
+const APP_VERSION = "beta 3.96";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22779,7 +22779,7 @@ function App() {
     // listeners, so it did nothing. A genuine (even 1px) scroll is what
     // actually forces Safari to collapse its toolbar and settle dvh
     // immediately instead of waiting for the user's first real scroll.
-    const t = setTimeout(()=>{
+    const nudge = () => {
       try{
         window.scrollTo(0,1);
         requestAnimationFrame(()=>window.scrollTo(0,0));
@@ -22788,8 +22788,13 @@ function App() {
           requestAnimationFrame(()=>{ if(mainScrollRef.current) mainScrollRef.current.scrollTop = 0; });
         }
       }catch(e){}
-    }, 50);
-    return ()=>clearTimeout(t);
+    };
+    // A single early attempt isn't reliable — the page may not be fully laid
+    // out yet (data still loading, fonts/images still shifting content
+    // height). Repeat the nudge at a few points to catch whichever moment
+    // Safari's toolbar/viewport has actually settled.
+    const timers = [50, 300, 800, 1500].map(ms => setTimeout(nudge, ms));
+    return ()=>timers.forEach(clearTimeout);
   // eslint-disable-next-line
   },[]);
   React.useEffect(()=>{

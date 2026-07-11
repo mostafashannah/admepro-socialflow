@@ -77,7 +77,7 @@ function speedTokens(speed,base){if(speed==="low")return Math.max(300,Math.round
 function logActivity(action,category,details="",status="success",errorMsg="",user="system"){const entry={action,category,details,status,error_message:errorMsg,performed_by:user,performed_at:new Date().toISOString()};ce("ActivityLog",[entry]).then(({entities})=>{const saved=entities===null||entities===void 0?void 0:entities[0];// Push the freshly-saved row (with real id) into the live UI immediately,
 // otherwise System Log only reflects what was loaded at page load.
 if(saved&&!saved._saveError)window.dispatchEvent(new CustomEvent("sf:activitylog",{detail:saved}));}).catch(()=>{});}// ── Email HTML templates ─────────────────────────────────────────
-const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 3.95";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 3.96";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
 <tr><td align="center">
@@ -2155,7 +2155,11 @@ React.useEffect(()=>{// Mobile Safari's 100dvh viewport calculation doesn't full
 // listeners, so it did nothing. A genuine (even 1px) scroll is what
 // actually forces Safari to collapse its toolbar and settle dvh
 // immediately instead of waiting for the user's first real scroll.
-const t=setTimeout(()=>{try{window.scrollTo(0,1);requestAnimationFrame(()=>window.scrollTo(0,0));if(mainScrollRef.current){mainScrollRef.current.scrollTop=1;requestAnimationFrame(()=>{if(mainScrollRef.current)mainScrollRef.current.scrollTop=0;});}}catch(e){}},50);return()=>clearTimeout(t);// eslint-disable-next-line
+const nudge=()=>{try{window.scrollTo(0,1);requestAnimationFrame(()=>window.scrollTo(0,0));if(mainScrollRef.current){mainScrollRef.current.scrollTop=1;requestAnimationFrame(()=>{if(mainScrollRef.current)mainScrollRef.current.scrollTop=0;});}}catch(e){}};// A single early attempt isn't reliable — the page may not be fully laid
+// out yet (data still loading, fonts/images still shifting content
+// height). Repeat the nudge at a few points to catch whichever moment
+// Safari's toolbar/viewport has actually settled.
+const timers=[50,300,800,1500].map(ms=>setTimeout(nudge,ms));return()=>timers.forEach(clearTimeout);// eslint-disable-next-line
 },[]);React.useEffect(()=>{// Hide the floating bottom nav whenever a text input/textarea is
 // focused (keyboard open) anywhere in the app — e.g. the Pro chat
 // composer — so it doesn't float awkwardly above/behind the keyboard.
