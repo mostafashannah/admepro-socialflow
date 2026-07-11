@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.00";
+const APP_VERSION = "beta 4.01";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1476,7 +1476,7 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       --top-bar-h:56px;
     }
     html,body,#root{height:100vh;height:100dvh;min-height:100vh;min-height:100dvh;overflow-x:hidden}
-    .app-shell{height:100vh;height:100dvh;min-height:100vh;min-height:100dvh}
+    .app-shell{height:100vh;height:100dvh;min-height:100vh;min-height:100dvh;height:var(--app-height,100dvh)}
     /* iOS paints the safe-area strips (home-indicator inset, notch) using
        the <html> element's background, not <body>'s — without this the
        safe-area area stays the default white/gray even when body matches
@@ -7753,7 +7753,7 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
   const [assigneeF,setAssigneeF] = useState("all");
   const [search,setSearch] = useState("");
   const [showAdd,setShowAdd] = useState(false);
-  const [taskSection,setTaskSection] = useState("collapsed");
+  const [taskSection,setTaskSection] = useState("expanded");
   const [showMoreFilters,setShowMoreFilters] = useState(false);
 
   // Derived filter options
@@ -22921,29 +22921,28 @@ function App() {
   };
   // Browser back/forward support
   React.useEffect(()=>{
-    // Mobile Safari's 100dvh viewport calculation doesn't fully settle until
-    // a REAL scroll happens — a synthetic 'resize' event doesn't touch the
-    // browser's actual toolbar/viewport measurement at all, only JS resize
-    // listeners, so it did nothing. A genuine (even 1px) scroll is what
-    // actually forces Safari to collapse its toolbar and settle dvh
-    // immediately instead of waiting for the user's first real scroll.
-    const nudge = () => {
-      try{
-        window.scrollTo(0,1);
-        requestAnimationFrame(()=>window.scrollTo(0,0));
-        if(mainScrollRef.current){
-          mainScrollRef.current.scrollTop = 1;
-          requestAnimationFrame(()=>{ if(mainScrollRef.current) mainScrollRef.current.scrollTop = 0; });
-        }
-      }catch(e){}
+    // The CSS 100dvh unit doesn't reliably settle immediately on some mobile
+    // browsers/devices — scroll-nudge tricks to force it were unreliable.
+    // window.visualViewport is the actual, live, authoritative source for
+    // the real visible screen height (it fires its own resize/scroll events
+    // whenever Safari's toolbar shows/hides), so drive --app-height from it
+    // directly instead of depending on dvh settling correctly at all.
+    const vv = window.visualViewport;
+    const setAppHeight = () => {
+      const h = vv ? vv.height : window.innerHeight;
+      document.documentElement.style.setProperty("--app-height", h + "px");
     };
-    // A single early attempt isn't reliable — the page may not be fully laid
-    // out yet (data still loading, fonts/images still shifting content
-    // height). Repeat the nudge at a few points to catch whichever moment
-    // Safari's toolbar/viewport has actually settled.
-    const timers = [50, 300, 800, 1500].map(ms => setTimeout(nudge, ms));
-    return ()=>timers.forEach(clearTimeout);
-  // eslint-disable-next-line
+    setAppHeight();
+    if (vv) {
+      vv.addEventListener("resize", setAppHeight);
+      vv.addEventListener("scroll", setAppHeight);
+    } else {
+      window.addEventListener("resize", setAppHeight);
+    }
+    return () => {
+      if (vv) { vv.removeEventListener("resize", setAppHeight); vv.removeEventListener("scroll", setAppHeight); }
+      else { window.removeEventListener("resize", setAppHeight); }
+    };
   },[]);
   React.useEffect(()=>{
     // Hide the floating bottom nav whenever a text input/textarea is
