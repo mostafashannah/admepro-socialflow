@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.72";
+const APP_VERSION = "beta 3.73";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1637,9 +1637,7 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
       .bottom-nav-float{
         display:flex;flex-shrink:0;
         position:fixed;left:50%;bottom:0;
-        transform:translateX(-50%) scale(1);
-        transform-origin:center bottom;
-        transition:transform 0.2s ease;
+        transform:translateX(-50%);
         z-index:200;gap:4px;
         padding:6px 6px max(6px,env(safe-area-inset-bottom));
         border-radius:999px;
@@ -1649,7 +1647,6 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
         border:1px solid rgba(255,255,255,0.22);
         box-shadow:0 6px 20px rgba(0,0,0,0.15);
       }
-      .bottom-nav-float.nav-compact{transform:scale(0.9)}
       .main-content{
         padding:14px!important;
         padding-bottom:14px!important;
@@ -22773,14 +22770,6 @@ function App() {
   const [loading,setLoading] = useState(true);
   const [refreshing,setRefreshing] = useState(false);
   const [pullDistance,setPullDistance] = useState(0);
-  const [navCompact,setNavCompact] = useState(false);
-  const navCompactTimerRef = React.useRef(null);
-  const onMainScroll = () => {
-    if(!isMobile) return;
-    setNavCompact(true);
-    if(navCompactTimerRef.current) clearTimeout(navCompactTimerRef.current);
-    navCompactTimerRef.current = setTimeout(()=>setNavCompact(false), 400);
-  };
   const loadAllDataRef = React.useRef(null);
   const mainScrollRef = React.useRef(null);
   const touchStartYRef = React.useRef(null);
@@ -24904,7 +24893,7 @@ Return ONLY valid JSON (no markdown, no explanation):
 
         {/* Page content */}
         <main id="main-content" className="main-content" ref={mainScrollRef}
-          onTouchStart={onMainTouchStart} onTouchMove={onMainTouchMove} onTouchEnd={onMainTouchEnd} onScroll={onMainScroll}
+          onTouchStart={onMainTouchStart} onTouchMove={onMainTouchMove} onTouchEnd={onMainTouchEnd}
           style={{flex:1,padding:page==="home"?0:isMobile?"16px":"28px 32px",overflowY:page==="home"?"hidden":"auto",paddingBottom:page==="home"?0:isMobile?84:28,display:"flex",flexDirection:"column",minHeight:0}}>
           {isMobile&&page!=="home"&&(pullDistance>0||refreshing)&&(
             <div style={{display:"flex",justifyContent:"center",alignItems:"center",height:refreshing?40:pullDistance,overflow:"hidden",transition:refreshing||pullDistance===0?"height 0.18s":"none",flexShrink:0,marginBottom:refreshing?8:0}}>
@@ -25274,7 +25263,7 @@ Return ONLY valid JSON (no markdown, no explanation):
           box instead of the true viewport — portaling escapes that ancestor
           chain entirely. Hidden while the sidebar drawer is open. */}
       {isMobile&&!sidebarOpen&&ReactDOM.createPortal(
-        <nav className={`bottom-nav-float${navCompact?" nav-compact":""}`}>
+        <nav className="bottom-nav-float">
           {mobileNavItems.map(({key,label,ico})=>{
             const active=page===key;
             return (
