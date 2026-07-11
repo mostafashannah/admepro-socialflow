@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.86";
+const APP_VERSION = "beta 3.87";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22784,6 +22784,17 @@ function App() {
   // eslint-disable-next-line
   },[]);
   React.useEffect(()=>{
+    // Hide the floating bottom nav whenever a text input/textarea is
+    // focused (keyboard open) anywhere in the app — e.g. the Pro chat
+    // composer — so it doesn't float awkwardly above/behind the keyboard.
+    const isTextField = (el) => el && (el.tagName === "TEXTAREA" || (el.tagName === "INPUT" && !["checkbox","radio","button","submit"].includes(el.type)));
+    const onFocusIn = (e) => { if(isTextField(e.target)) setKeyboardOpen(true); };
+    const onFocusOut = (e) => { if(isTextField(e.target)) setKeyboardOpen(false); };
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("focusout", onFocusOut);
+    return () => { document.removeEventListener("focusin", onFocusIn); document.removeEventListener("focusout", onFocusOut); };
+  },[]);
+  React.useEffect(()=>{
     const onPop = (e) => {
       const p = e.state?.sfPage || (window.location.hash.replace("#",""))||"home";
       if(VALID_PAGES.includes(p)){
@@ -22803,6 +22814,7 @@ function App() {
   const [loading,setLoading] = useState(true);
   const [refreshing,setRefreshing] = useState(false);
   const [pullDistance,setPullDistance] = useState(0);
+  const [keyboardOpen,setKeyboardOpen] = useState(false);
   const loadAllDataRef = React.useRef(null);
   const mainScrollRef = React.useRef(null);
   const touchStartYRef = React.useRef(null);
@@ -25296,7 +25308,7 @@ Return ONLY valid JSON (no markdown, no explanation):
           such an ancestor get visually clipped/confined to that ancestor's
           box instead of the true viewport — portaling escapes that ancestor
           chain entirely. Hidden while the sidebar drawer is open. */}
-      {isMobile&&!sidebarOpen&&ReactDOM.createPortal(
+      {isMobile&&!sidebarOpen&&!keyboardOpen&&ReactDOM.createPortal(
         <nav className="bottom-nav-float">
           <div className="bottom-nav-pill">
             {mobileNavItems.map(({key,label,ico})=>{
