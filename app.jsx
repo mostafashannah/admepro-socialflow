@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.09";
+const APP_VERSION = "beta 4.10";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17547,18 +17547,16 @@ function MyTasksPage({posts,team,projects,currentUser,onStageChange,onPostClick}
   if (isMobile) {
     return (
       <div style={{display:"flex",flexDirection:"column",maxWidth:"100%"}}>
-        {/* Header */}
-        <div style={{padding:"16px 16px 10px"}}>
+        {/* Header + view toggle */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 16px 12px"}}>
           <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>My Tasks</h1>
-        </div>
-
-        {/* View toggle */}
-        <div style={{display:"inline-flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",margin:"0 16px 12px"}}>
-          {[["list",Icons.list],["kanban",Icons.grid],["calendar",Icons.calendar]].map(([v,ico])=>(
-            <button key={v} onClick={()=>setMyView(v)} style={{width:30,height:30,borderRadius:99,background:myView===v?"var(--accent)":"none",color:myView===v?"#fff":"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <Ico d={ico} size={14}/>
-            </button>
-          ))}
+          <div style={{display:"inline-flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",flexShrink:0}}>
+            {[["list",Icons.list],["kanban",Icons.grid],["calendar",Icons.calendar]].map(([v,ico])=>(
+              <button key={v} onClick={()=>setMyView(v)} style={{width:28,height:28,borderRadius:99,background:myView===v?"var(--accent)":"none",color:myView===v?"#fff":"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <Ico d={ico} size={13}/>
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Filter pills (doubles as the counter row) — wraps instead of
