@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.94";
+const APP_VERSION = "beta 3.95";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23118,11 +23118,23 @@ function App() {
   };
   const PULL_THRESHOLD = 100;
   const pullDistanceRef = React.useRef(0);
+  const touchStartTimeRef = React.useRef(0);
+  // A normal scroll swipe and a pull-to-refresh gesture start with the exact
+  // same finger motion whenever the list is already scrolled to the very
+  // top — distance alone can't tell them apart. Two extra signals that
+  // actually do: (1) a page with nothing to scroll (content fits on one
+  // screen) should never treat drags as pulls at all, since there's no real
+  // "already at the top of a list" state to pull from; (2) a genuine pull is
+  // a slow, sustained press-and-drag, while a scroll is a quick flick — so
+  // require a minimum elapsed time, not just distance.
+  const MIN_PULL_MS = 220;
   const onMainTouchStart = (e) => {
     if(!isMobile || refreshing) return;
     const el = mainScrollRef.current;
-    if(el && el.scrollTop > 0) return;
+    if(!el || el.scrollTop > 0) return;
+    if(el.scrollHeight <= el.clientHeight + 4) return;
     touchStartYRef.current = e.touches[0].clientY;
+    touchStartTimeRef.current = Date.now();
     pullingRef.current = true;
   };
   const onMainTouchMove = (e) => {
@@ -23130,6 +23142,12 @@ function App() {
     const el = mainScrollRef.current;
     if(el && el.scrollTop > 0) { pullingRef.current=false; touchStartYRef.current=null; pullDistanceRef.current=0; setPullDistance(0); return; }
     const dy = e.touches[0].clientY - touchStartYRef.current;
+    const elapsed = Date.now() - touchStartTimeRef.current;
+    // Moving faster than this is a scroll flick, not a deliberate pull —
+    // stop tracking it as a pull attempt entirely for the rest of this touch.
+    if(dy > 0 && elapsed > 0 && (dy / elapsed) > 1.2) {
+      pullingRef.current = false; touchStartYRef.current=null; pullDistanceRef.current=0; setPullDistance(0); return;
+    }
     const d = dy>0 ? Math.min(dy*0.5, 120) : 0;
     pullDistanceRef.current = d;
     setPullDistance(d);
@@ -23138,7 +23156,8 @@ function App() {
     if(!pullingRef.current) return;
     pullingRef.current = false;
     touchStartYRef.current = null;
-    if(pullDistanceRef.current > PULL_THRESHOLD) handlePullRefresh();
+    const elapsed = Date.now() - touchStartTimeRef.current;
+    if(pullDistanceRef.current > PULL_THRESHOLD && elapsed >= MIN_PULL_MS) handlePullRefresh();
     else setPullDistance(0);
     pullDistanceRef.current = 0;
   };
