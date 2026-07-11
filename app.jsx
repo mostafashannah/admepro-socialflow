@@ -606,7 +606,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 3.84";
+const APP_VERSION = "beta 3.85";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5512,15 +5512,15 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
           const cPosts = posts.filter(p=>cProjects.some(pr=>pr.id===p.project_id));
           return (
             <div key={client.id} style={{
-              background:"var(--surface)",border:"1px solid var(--text)",
-              borderRadius:"var(--rs)",padding:18,cursor:"pointer",
-              boxShadow:"0 2px 8px rgba(0,0,0,0.06)",
-              transition:"all 0.15s",display:"flex",flexDirection:"column",gap:10,
+              background:"var(--surface)",border:"1px solid var(--border2)",
+              borderRadius:"var(--rs)",padding:24,cursor:"pointer",
+              boxShadow:"0 4px 16px rgba(0,0,0,0.08)",
+              transition:"all 0.15s",display:"flex",flexDirection:"column",gap:12,
               opacity:isHidden?0.5:1,position:"relative",
             }}
             onClick={()=>!isHidden&&onSelect(client)}
-            onMouseEnter={e=>{if(!isHidden){e.currentTarget.style.borderColor="var(--accent)";e.currentTarget.style.boxShadow="0 4px 14px rgba(0,0,0,0.1)";}}}
-            onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--text)";e.currentTarget.style.boxShadow="0 2px 8px rgba(0,0,0,0.06)";}}
+            onMouseEnter={e=>{if(!isHidden){e.currentTarget.style.borderColor="var(--accent)";e.currentTarget.style.boxShadow="0 6px 22px rgba(0,0,0,0.12)";}}}
+            onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border2)";e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.08)";}}
             >
               {isHidden&&<div style={{position:"absolute",top:8,right:8,fontSize:9,fontWeight:700,color:"#6b7280",background:"var(--surface2)",borderRadius:6,padding:"2px 7px",letterSpacing:"0.05em"}}>HIDDEN</div>}
               <div style={{display:"flex",alignItems:"center",gap:10}}>
