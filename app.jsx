@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.59";
+const APP_VERSION = "beta 4.60";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17111,14 +17111,14 @@ function buildFinanceMonthOptions(dates) {
 // -webkit-appearance:none, an explicit font shorthand, and
 // -webkit-text-size-adjust:100% all failed to fix it), so filters that need
 // to visually match sibling pill buttons use this instead.
-function PillDropdown({value,options,onChange,placeholder,maxWidth=150}) {
+function PillDropdown({value,options,onChange,placeholder,maxWidth=150,active=false}) {
   const [open,setOpen] = useState(false);
   const selected = options.find(o=>o.value===value);
   return (
     <div style={{position:"relative"}}>
-      <button type="button" onClick={()=>setOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:4,maxWidth,padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)",cursor:"pointer"}}>
+      <button type="button" onClick={()=>setOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:4,maxWidth,padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,background:active?"var(--accent)":"var(--surface2)",color:active?"#fff":"var(--text2)",border:`1px solid ${active?"var(--accent)":"var(--border2)"}`,cursor:"pointer"}}>
         <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{selected?selected.label:placeholder}</span>
-        <Ico d={Icons.chevD||Icons.chevR} size={11} stroke="var(--text2)"/>
+        <Ico d={Icons.chevD||Icons.chevR} size={11} stroke={active?"#fff":"var(--text2)"}/>
       </button>
       {open&&(
         <>
@@ -17141,10 +17141,14 @@ function FinanceRangeFilter({range,setRange,customStart,setCustomStart,customEnd
         <button key={k} onClick={()=>setRange(k)} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:range===k?"var(--accent)":"var(--surface2)",color:range===k?"#fff":"var(--text2)",border:`1px solid ${range===k?"var(--accent)":"var(--border2)"}`}}>{l}</button>
       ))}
       {monthOptions.length>0&&(
-        <select value={range==="specific_month"?selectedMonth:""} onChange={e=>{setSelectedMonth(e.target.value);setRange("specific_month");}} style={{maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:range==="specific_month"?"var(--accent)":"var(--surface2)",color:range==="specific_month"?"#fff":"var(--text2)",border:`1px solid ${range==="specific_month"?"var(--accent)":"var(--border2)"}`,WebkitAppearance:"none",appearance:"none",backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='${range==="specific_month"?"%23fff":"%23888"}' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,backgroundRepeat:"no-repeat",backgroundPosition:"right 10px center",paddingRight:28}}>
-          <option value="" disabled>Pick a month…</option>
-          {monthOptions.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
+        <PillDropdown
+          value={range==="specific_month"?selectedMonth:""}
+          onChange={v=>{setSelectedMonth(v);setRange("specific_month");}}
+          placeholder="Pick a month…"
+          active={range==="specific_month"}
+          maxWidth={150}
+          options={monthOptions}
+        />
       )}
       <button onClick={()=>setRange("custom")} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:range==="custom"?"var(--accent)":"var(--surface2)",color:range==="custom"?"#fff":"var(--text2)",border:`1px solid ${range==="custom"?"var(--accent)":"var(--border2)"}`}}>Custom</button>
       {range==="custom"&&(
