@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.43";
+const APP_VERSION = "beta 4.44";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19796,7 +19796,17 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
   const isClientRole = currentUser?.role === "client";
 
   // ── Nav structure ─────────────────────────────────────────────
-  const rawGroups = isClientRole ? [
+  // Accountants get a stripped-down nav — only the financial pages, no Pro,
+  // no task/agency workspace, no client list.
+  const accountantOnly = isAccountant && !isAdmin;
+  const rawGroups = accountantOnly ? [
+    { group: "FINANCE", icon: Icons.wallet, items: [
+      {key:"quotes", label:"Quotes", ico:Icons.receipt},
+      {key:"invoices", label:"Invoices", ico:Icons.invoice},
+      {key:"subscriptions", label:"Subscriptions", ico:Icons.repeat},
+      {key:"finance", label:"Finance", ico:Icons.wallet},
+    ]},
+  ] : isClientRole ? [
     { group: null, icon: null, items: [{key:"home", label:"Pro", ico:Icons.robot}] },
     { group: "PORTAL", icon: Icons.globe, items: [
       {key:"dashboard", label:"Dashboard", ico:Icons.home},
@@ -24329,6 +24339,13 @@ function App() {
     try{ localStorage.setItem("sf_page",p); }catch(e){}
     try{ window.history.pushState({sfPage:p},"","#"+p); }catch(e){}
   };
+  // Accountants only get the financial pages — bounce them off anything else
+  // (e.g. a stale "home"/tasks page restored from localStorage on login).
+  React.useEffect(()=>{
+    if(currentUser?.role==="accountant" && !["quotes","invoices","subscriptions","finance"].includes(page)) {
+      setPage("finance");
+    }
+  },[currentUser?.role]);
   // Browser back/forward support
   React.useEffect(()=>{
     // The CSS 100dvh unit doesn't reliably settle immediately on some mobile
