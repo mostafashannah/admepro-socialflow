@@ -607,7 +607,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.22";
+const APP_VERSION = "beta 4.23";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16824,6 +16824,8 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const {isMobile} = useResponsive();
   const [showAdd,setShowAdd] = useState(false);
   const [range,setRange] = useState("all");
+  const [customStart,setCustomStart] = useState("");
+  const [customEnd,setCustomEnd] = useState("");
   const [selectedId,setSelectedId] = useState(null);
   const [typeFilter,setTypeFilter] = useState("all");
   const [refreshing,setRefreshing] = useState(false);
@@ -16839,6 +16841,11 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const inRange = (dateStr) => {
     if(range==="all"||!dateStr) return true;
     const d = new Date(dateStr);
+    if(range==="custom") {
+      if(customStart&&d<new Date(customStart)) return false;
+      if(customEnd&&d>new Date(customEnd)) return false;
+      return true;
+    }
     const ago = new Date();
     if(range==="month") ago.setMonth(ago.getMonth()-1);
     if(range==="week") ago.setDate(ago.getDate()-7);
@@ -16938,10 +16945,17 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
       </div>
 
       {/* Range filter */}
-      <div style={{display:"flex",gap:6}}>
-        {[["all","All Time"],["month","This Month"],["week","This Week"]].map(([k,l])=>(
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+        {[["all","All Time"],["month","This Month"],["week","This Week"],["custom","Custom"]].map(([k,l])=>(
           <button key={k} onClick={()=>setRange(k)} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:range===k?"var(--accent)":"var(--surface2)",color:range===k?"#fff":"var(--text2)",border:`1px solid ${range===k?"var(--accent)":"var(--border2)"}`}}>{l}</button>
         ))}
+        {range==="custom"&&(
+          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+            <input type="date" value={customStart} onChange={e=>setCustomStart(e.target.value)} style={{...inputSt,width:"auto",padding:"6px 10px",fontSize:12}}/>
+            <span style={{fontSize:12,color:"var(--text3)"}}>to</span>
+            <input type="date" value={customEnd} onChange={e=>setCustomEnd(e.target.value)} style={{...inputSt,width:"auto",padding:"6px 10px",fontSize:12}}/>
+          </div>
+        )}
       </div>
 
       {/* KPI tiles */}
@@ -17031,11 +17045,22 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         )}
       </div>
 
-      {/* Type filter */}
-      <div style={{display:"flex",gap:6}}>
-        {[["all","All"],["in","In"],["out","Out"]].map(([k,l])=>(
-          <button key={k} onClick={()=>setTypeFilter(k)} style={{padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,background:typeFilter===k?(k==="in"?"#10b981":k==="out"?"#ef4444":"var(--accent)"):"var(--surface2)",color:typeFilter===k?"#fff":"var(--text2)",border:`1px solid ${typeFilter===k?"transparent":"var(--border2)"}`}}>{l}</button>
-        ))}
+      {/* Type filter + Export */}
+      <div style={{display:"flex",gap:6,alignItems:"center",justifyContent:"space-between",flexWrap:"wrap"}}>
+        <div style={{display:"flex",gap:6}}>
+          {[["all","All"],["in","In"],["out","Out"]].map(([k,l])=>(
+            <button key={k} onClick={()=>setTypeFilter(k)} style={{padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,background:typeFilter===k?(k==="in"?"#10b981":k==="out"?"#ef4444":"var(--accent)"):"var(--surface2)",color:typeFilter===k?"#fff":"var(--text2)",border:`1px solid ${typeFilter===k?"transparent":"var(--border2)"}`}}>{l}</button>
+          ))}
+        </div>
+        <button onClick={()=>{
+          const filteredLedger = typeFilter==="all" ? ledger : ledger.filter(l=>l.type===typeFilter);
+          downloadCsv(`finance_${range}_${typeFilter}_${new Date().toISOString().split("T")[0]}.csv`,
+            filteredLedger.map(l=>({date:l.date,type:l.type==="in"?"In":"Out",category:l.label,description:l.sub||"",amount:l.amount,currency:l.currency,source:l.source,reference:l.ref||"",check_no:l.checkNo||""})),
+            ["date","type","category","description","amount","currency","source","reference","check_no"]
+          );
+        }} disabled={ledger.length===0} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)",opacity:ledger.length===0?0.5:1}}>
+          <Ico d={Icons.download||Icons.arrowDown} size={13} stroke="var(--text2)"/> Export CSV
+        </button>
       </div>
 
       {/* Ledger */}
