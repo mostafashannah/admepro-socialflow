@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.46";
+const APP_VERSION = "beta 4.47";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1330,6 +1330,15 @@ const dueDateColor = (dateStr) => {
   return "#10b981";
 };
 const fmtDateTime = d => d ? new Date(d).toLocaleString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
+// Finance ledger entries: "date" is a DATE column (no time-of-day), so the
+// clock time shown alongside it comes from when the row was actually
+// recorded (created_at) instead.
+const fmtTxnDateTime = (l) => {
+  const base = fmtDate(l.date);
+  if(!l?.createdAt) return base;
+  const t = new Date(l.createdAt).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"});
+  return `${base} · ${t}`;
+};
 const initials = n => (n||"").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
 const clr = (name,arr=["#d90b2c","#3b82f6","#8b5cf6","#10b981","#f59e0b","#ec4899"]) =>
   arr[(name||"").charCodeAt(0)%arr.length];
@@ -16907,7 +16916,7 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
         <div style={{marginTop:10}}>
           {row("Category", txn.label)}
           {txn.sub && row("Description", txn.sub)}
-          {row("Date", fmtDate(txn.date))}
+          {row("Date", fmtTxnDateTime(txn))}
           {row("Source", txn.source)}
           {txn.ref && row("Reference", txn.ref)}
           {txn.method && row("Payment Method", txn.method)}
@@ -17196,7 +17205,7 @@ function ClientPaymentDetail({clientName,ledger,note,canManage,onBack,onOpenTran
             </div>
             <div style={{flex:1,minWidth:0}}>
               <p style={{fontSize:13,fontWeight:600}}>{l.source}{l.method?` · ${l.method}`:""}</p>
-              <p style={{fontSize:11,color:"var(--text3)"}}>{fmtDate(l.date)}</p>
+              <p style={{fontSize:11,color:"var(--text3)"}}>{fmtTxnDateTime(l)}</p>
             </div>
             <p style={{fontSize:13,fontWeight:800,color:"#10b981"}}>+{l.currency} {Math.round(l.amount).toLocaleString()}</p>
             <Ico d={Icons.chevR} size={14} stroke="var(--text3)"/>
@@ -17310,7 +17319,7 @@ function PartnerDetail({partnerKey,partnerInKey,partnerName,ledger,onBack,onOpen
             </div>
             <div style={{flex:1,minWidth:0}}>
               <p style={{fontSize:13,fontWeight:600}}>{l.sub}{l.method?` · ${l.method}`:""}</p>
-              <p style={{fontSize:11,color:"var(--text3)"}}>{fmtDate(l.date)}</p>
+              <p style={{fontSize:11,color:"var(--text3)"}}>{fmtTxnDateTime(l)}</p>
             </div>
             <p style={{fontSize:13,fontWeight:800,color:l.type==="in"?"#10b981":"#ef4444"}}>{l.type==="in"?"+":"−"}{l.currency} {Math.round(l.amount).toLocaleString()}</p>
             <Ico d={Icons.chevR} size={14} stroke="var(--text3)"/>
@@ -17420,12 +17429,12 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   // Unified ledger of every money-in / money-out event
   const ledger = [
     ...payments.filter(p=>inRange(p.payment_date)).map(p=>({
-      id:"pay_"+p.id, type:"in", date:p.payment_date, amount:num(p.amount), currency:"USD",
+      id:"pay_"+p.id, type:"in", date:p.payment_date, createdAt:p.created_at, amount:num(p.amount), currency:"USD",
       label:`Invoice ${p.invoice_number||""}`, sub:p.notes||p.method||"", source:"Invoice payment",
       category:"client_payment", clientName: invoiceClientMap[p.invoice_number]||null,
     })),
     ...subscriptionPayments.filter(p=>inRange(p.payment_date)).map(p=>({
-      id:"sp_"+p.id, type:"in", date:p.payment_date, amount:num(p.amount), currency:p.currency||"EGP",
+      id:"sp_"+p.id, type:"in", date:p.payment_date, createdAt:p.created_at, amount:num(p.amount), currency:p.currency||"EGP",
       label:p.subscription_name||"Subscription", sub:p.client_name||"", source:"Subscription payment",
       category:"client_payment", clientName: p.client_name||null,
     })),
@@ -17433,7 +17442,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
       const isOut = (e.type||"out")==="out";
       const catMap = isOut ? EXPENSE_CAT_MAP : INCOME_CAT_MAP;
       return {
-        id:"exp_"+e.id, type:isOut?"out":"in", date:e.date, amount:num(e.amount), currency:e.currency||"EGP",
+        id:"exp_"+e.id, type:isOut?"out":"in", date:e.date, createdAt:e.created_at, amount:num(e.amount), currency:e.currency||"EGP",
         label:catMap[e.category]?.l||e.category, sub:e.description, raw:e,
         source: isOut?"Manual expense":"Manual income", category:e.category, createdBy:e.created_by,
         checkNo:e.check_no, ref:e.ref, attachments:parseJ(e.attachments,[]), method:e.method,
@@ -17858,7 +17867,7 @@ No markdown, no explanation.`;
                   </div>
                   <div style={{textAlign:"right",flexShrink:0}}>
                     <p style={{fontSize:13,fontWeight:800,color:l.type==="in"?"#10b981":"#ef4444"}}>{l.type==="in"?"+":"−"}{l.currency} {Math.round(l.amount).toLocaleString()}</p>
-                    <p style={{fontSize:10,color:"var(--text3)"}}>{fmtDate(l.date)}</p>
+                    <p style={{fontSize:10,color:"var(--text3)"}}>{fmtTxnDateTime(l)}</p>
                   </div>
                   <Ico d={Icons.chevR} size={14} stroke="var(--text3)"/>
                 </div>
