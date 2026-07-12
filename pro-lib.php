@@ -337,14 +337,15 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
         $date = !empty($input['date']) ? $input['date'] : date('Y-m-d');
 
         $id = generateProUuid();
-        $ins = $pdo->prepare("INSERT INTO expenses (id, type, category, description, amount, currency, date, created_by) VALUES (:id, :type, :cat, :desc, :amt, :cur, :date, :by)");
+        $ref = 'TXN-' . strtoupper(substr($id, 0, 8));
+        $ins = $pdo->prepare("INSERT INTO expenses (id, type, category, description, amount, currency, date, created_by, ref) VALUES (:id, :type, :cat, :desc, :amt, :cur, :date, :by, :ref)");
         $ins->execute([
             ':id' => $id, ':type' => $type, ':cat' => $category, ':desc' => $description,
-            ':amt' => $amount, ':cur' => $currency, ':date' => $date, ':by' => $senderName,
+            ':amt' => $amount, ':cur' => $currency, ':date' => $date, ':by' => $senderName, ':ref' => $ref,
         ]);
         return [
             'ok' => true, 'type' => $type, 'category' => $category, 'description' => $description,
-            'amount' => (float)$amount, 'currency' => $currency, 'date' => $date,
+            'amount' => (float)$amount, 'currency' => $currency, 'date' => $date, 'reference' => $ref,
             'message' => 'Saved to the Finance page.',
         ];
     }

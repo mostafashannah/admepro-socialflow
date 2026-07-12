@@ -607,7 +607,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.19";
+const APP_VERSION = "beta 4.20";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16587,6 +16587,9 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial}) {
   const [amount,setAmount] = useState(initial?.amount!=null?String(initial.amount):"");
   const [currency,setCurrency] = useState(initial?.currency||"EGP");
   const [date,setDate] = useState(initial?.date||new Date().toISOString().split("T")[0]);
+  const [checkNo,setCheckNo] = useState(initial?.checkNo||"");
+  const [attachments,setAttachments] = useState(initial?.attachments||[]);
+  const [uploading,setUploading] = useState(false);
   const [saving,setSaving] = useState(false);
   const cats = type==="out" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
 
@@ -16595,18 +16598,30 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial}) {
     setType(initial?.type||"out"); setCategory(initial?.category||"other");
     setDescription(initial?.description||""); setAmount(initial?.amount!=null?String(initial.amount):"");
     setCurrency(initial?.currency||"EGP"); setDate(initial?.date||new Date().toISOString().split("T")[0]);
+    setCheckNo(initial?.checkNo||""); setAttachments(initial?.attachments||[]);
   },[open,initial]);
 
-  const reset = () => { setType("out"); setCategory("other"); setDescription(""); setAmount(""); setDate(new Date().toISOString().split("T")[0]); };
+  const reset = () => { setType("out"); setCategory("other"); setDescription(""); setAmount(""); setDate(new Date().toISOString().split("T")[0]); setCheckNo(""); setAttachments([]); };
   const submit = async () => {
     if(!amount||Number(amount)<=0||!description.trim()) return;
     setSaving(true);
-    const payload = {type,category,description:description.trim(),amount:Number(amount),currency,date};
+    const payload = {type,category,description:description.trim(),amount:Number(amount),currency,date,check_no:checkNo.trim()||null,attachments:JSON.stringify(attachments)};
     if(isEdit) await onSave(initial.id,payload);
     else await onAdd(payload);
     setSaving(false);
     reset();
     onClose();
+  };
+
+  const handleFiles = async (files) => {
+    setUploading(true);
+    for(const file of Array.from(files)) {
+      try {
+        const url = await uploadToStorage(file, "finance-docs");
+        setAttachments(prev=>[...prev,{url,name:file.name}]);
+      } catch(e) { console.error("Attachment upload failed:", e); }
+    }
+    setUploading(false);
   };
 
   return (
@@ -16643,6 +16658,32 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial}) {
         </div>
         <Field label="Date">
           <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={inputSt}/>
+        </Field>
+        <Field label="Check No." hint="Optional">
+          <input value={checkNo} onChange={e=>setCheckNo(e.target.value)} placeholder="e.g. 004521" style={inputSt}/>
+        </Field>
+        <Field label="Reference" hint={isEdit?"System-generated":"Generated automatically on save"}>
+          <div style={{...inputSt,color:"var(--text3)",display:"flex",alignItems:"center"}}>{initial?.ref||"—"}</div>
+        </Field>
+        <Field label="Attachments" hint="Invoice, quotation, or transfer screenshot">
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {attachments.length>0&&(
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {attachments.map((a,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border2)"}}>
+                    <Ico d={Icons.file||Icons.assets||Icons.receipt} size={14} stroke="var(--text3)"/>
+                    <a href={a.url} target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:"var(--accent)",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</a>
+                    <button onClick={()=>setAttachments(prev=>prev.filter((_,j)=>j!==i))}><Ico d={Icons.x} size={13} stroke="var(--text3)"/></button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"10px",border:"1px dashed var(--border2)",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,color:"var(--text2)"}}>
+              {uploading?<Spinner size={14}/>:<Ico d={Icons.plus} size={14} stroke="var(--text2)"/>}
+              {uploading?"Uploading…":"Upload document or screenshot"}
+              <input type="file" accept="image/*,.pdf" multiple hidden disabled={uploading} onChange={e=>{if(e.target.files.length) handleFiles(e.target.files); e.target.value="";}}/>
+            </label>
+          </div>
         </Field>
       </div>
     </Modal>
@@ -16700,8 +16741,25 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
           {txn.sub && row("Description", txn.sub)}
           {row("Date", fmtDate(txn.date))}
           {row("Source", txn.source)}
+          {txn.ref && row("Reference", txn.ref)}
+          {txn.checkNo && row("Check No.", txn.checkNo)}
           {txn.createdBy && row("Added by", txn.createdBy)}
         </div>
+
+        {txn.attachments&&txn.attachments.length>0&&(
+          <div style={{marginTop:16}}>
+            <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",marginBottom:8}}>Attachments</p>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {txn.attachments.map((a,i)=>(
+                <a key={i} href={a.url} target="_blank" rel="noopener noreferrer" style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border2)"}}>
+                  <Ico d={Icons.receipt} size={14} stroke="var(--accent)"/>
+                  <span style={{fontSize:12,color:"var(--accent)",fontWeight:600,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</span>
+                  <Ico d={Icons.chevR} size={13} stroke="var(--text3)"/>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Comments */}
@@ -16739,7 +16797,7 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
         open={showEdit}
         onClose={()=>setShowEdit(false)}
         onSave={onEdit}
-        initial={txn.raw ? {id:txn.raw.id,type:txn.type,category:txn.category,description:txn.sub,amount:txn.amount,currency:txn.currency,date:txn.date} : null}
+        initial={txn.raw ? {id:txn.raw.id,type:txn.type,category:txn.category,description:txn.sub,amount:txn.amount,currency:txn.currency,date:txn.date,checkNo:txn.checkNo,ref:txn.ref,attachments:txn.attachments} : null}
       />
     </div>
   );
@@ -16786,6 +16844,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         id:"exp_"+e.id, type:isOut?"out":"in", date:e.date, amount:num(e.amount), currency:e.currency||"EGP",
         label:catMap[e.category]?.l||e.category, sub:e.description, raw:e,
         source: isOut?"Manual expense":"Manual income", category:e.category, createdBy:e.created_by,
+        checkNo:e.check_no, ref:e.ref, attachments:parseJ(e.attachments,[]),
       };
     }),
   ].sort((a,b)=>new Date(b.date)-new Date(a.date));
@@ -24884,7 +24943,12 @@ Return ONLY the JSON array, no markdown.`;
     const local = {...expData,id:uid(),created_date:new Date().toISOString()};
     setData(d=>({...d,expenses:[local,...d.expenses]}));
     ce("Expense",[expData]).then(res=>{
-      const real=res.entities?.[0]; if(real?.id) setData(d=>({...d,expenses:d.expenses.map(e=>e.id===local.id?{...e,...real}:e)}));
+      const real=res.entities?.[0];
+      if(real?.id) {
+        const ref = "TXN-"+real.id.slice(0,8).toUpperCase();
+        setData(d=>({...d,expenses:d.expenses.map(e=>e.id===local.id?{...e,...real,ref}:e)}));
+        ue("Expense", real.id, {ref}).catch(()=>{});
+      }
     }).catch(()=>{});
     logActivity("Expense Added","finance",`${expData.currency||"EGP"} ${expData.amount} — ${expData.description}`,"success","",currentUser?.email||"admin");
     setToast("Expense added");
