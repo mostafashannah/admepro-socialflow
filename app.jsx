@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.35";
+const APP_VERSION = "beta 4.36";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17258,7 +17258,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
       <>
       {/* Range filter */}
       <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-        {[["all","All Time"],["month","This Month"],["week","This Week"],["custom","Custom"]].map(([k,l])=>(
+        {[["all","All Time"],["month","This Month"],["week","This Week"]].map(([k,l])=>(
           <button key={k} onClick={()=>setRange(k)} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:range===k?"var(--accent)":"var(--surface2)",color:range===k?"#fff":"var(--text2)",border:`1px solid ${range===k?"var(--accent)":"var(--border2)"}`}}>{l}</button>
         ))}
         {monthOptions.length>0&&(
@@ -17267,11 +17267,12 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
             {monthOptions.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         )}
+        <button onClick={()=>setRange("custom")} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:range==="custom"?"var(--accent)":"var(--surface2)",color:range==="custom"?"#fff":"var(--text2)",border:`1px solid ${range==="custom"?"var(--accent)":"var(--border2)"}`}}>Custom</button>
         {range==="custom"&&(
           <div style={{display:"flex",gap:6,alignItems:"center"}}>
-            <input type="date" value={customStart} onChange={e=>setCustomStart(e.target.value)} style={{...inputSt,width:"auto",padding:"6px 10px",fontSize:12}}/>
+            <input type="date" value={customStart} onChange={e=>setCustomStart(e.target.value)} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)"}}/>
             <span style={{fontSize:12,color:"var(--text3)"}}>to</span>
-            <input type="date" value={customEnd} onChange={e=>setCustomEnd(e.target.value)} style={{...inputSt,width:"auto",padding:"6px 10px",fontSize:12}}/>
+            <input type="date" value={customEnd} onChange={e=>setCustomEnd(e.target.value)} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)"}}/>
           </div>
         )}
       </div>
