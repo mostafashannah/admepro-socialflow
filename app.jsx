@@ -607,7 +607,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.24";
+const APP_VERSION = "beta 4.25";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16887,6 +16887,12 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
       if(customEnd&&d>new Date(customEnd)) return false;
       return true;
     }
+    if(range==="last_month") {
+      const n = new Date();
+      const start = new Date(n.getFullYear(), n.getMonth()-1, 1);
+      const end = new Date(n.getFullYear(), n.getMonth(), 1);
+      return d>=start && d<end;
+    }
     const ago = new Date();
     if(range==="month") ago.setMonth(ago.getMonth()-1);
     if(range==="week") ago.setDate(ago.getDate()-7);
@@ -16987,7 +16993,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
 
       {/* Range filter */}
       <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-        {[["all","All Time"],["month","This Month"],["week","This Week"],["custom","Custom"]].map(([k,l])=>(
+        {[["all","All Time"],["month","This Month"],["last_month","Last Month"],["week","This Week"],["custom","Custom"]].map(([k,l])=>(
           <button key={k} onClick={()=>setRange(k)} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:range===k?"var(--accent)":"var(--surface2)",color:range===k?"#fff":"var(--text2)",border:`1px solid ${range===k?"var(--accent)":"var(--border2)"}`}}>{l}</button>
         ))}
         {range==="custom"&&(
