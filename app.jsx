@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.50";
+const APP_VERSION = "beta 4.51";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17622,9 +17622,9 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
       </div>
 
       {/* View tabs */}
-      <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",flexWrap:"nowrap",width:"100%"}}>
-        {[["overview","Overview"],["clients","Clients"],["partners","Partners"],["ai","AI"]].map(([k,l])=>(
-          <button key={k} onClick={()=>{ if(k==="clients") openClientsTab(); else if(k==="partners") openPartnersTab(); else if(k==="ai") openAiTab(); else openOverviewTab(); }} style={{padding:isMobile?"9px 12px":"9px 18px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${view===k?"var(--accent)":"transparent"}`,color:view===k?"var(--accent)":"var(--text2)",background:"none",border:"none",borderBottomWidth:2,borderBottomStyle:"solid",borderBottomColor:view===k?"var(--accent)":"transparent",flexShrink:0,whiteSpace:"nowrap",cursor:"pointer"}}>{l}</button>
+      <div style={{display:"flex",flexDirection:"row",flexWrap:"nowrap",gap:6,width:"100%",minHeight:36,overflowX:"auto",WebkitOverflowScrolling:"touch",paddingBottom:2}}>
+        {[["overview","Overview",openOverviewTab],["clients","Clients",openClientsTab],["partners","Partners",openPartnersTab],["ai","AI",openAiTab]].map(([k,l,fn])=>(
+          <button key={k} type="button" onClick={fn} style={{display:"inline-block",flexShrink:0,whiteSpace:"nowrap",padding:isMobile?"8px 14px":"8px 16px",borderRadius:99,fontSize:13,fontWeight:700,background:view===k?"var(--accent, #d90b2c)":"var(--surface2, #eceef1)",color:view===k?"#ffffff":"var(--text2, #4b5563)",border:"1px solid "+(view===k?"var(--accent, #d90b2c)":"var(--border2, #dcdfe4)"),cursor:"pointer"}}>{l}</button>
         ))}
       </div>
 
