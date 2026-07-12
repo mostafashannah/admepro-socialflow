@@ -607,7 +607,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.25";
+const APP_VERSION = "beta 4.26";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16731,7 +16731,7 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
           {txn.raw&&(canManage||isAdmin)&&(
             <div style={{display:"flex",gap:8}}>
               {canManage&&<Btn size="sm" variant="secondary" onClick={()=>setShowEdit(true)}>Edit</Btn>}
-              {isAdmin&&<Btn size="sm" variant="danger" onClick={()=>{onDelete(txn.raw.id);onBack();}}>Delete</Btn>}
+              {isAdmin&&<Btn size="sm" variant="danger" onClick={()=>{ if(window.confirm(`Delete this ${txn.type==="in"?"income":"expense"} transaction of ${txn.currency} ${Math.round(txn.amount).toLocaleString()}? This cannot be undone.`)) { onDelete(txn.raw.id); onBack(); } }}>Delete</Btn>}
             </div>
           )}
         </div>
