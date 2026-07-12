@@ -197,7 +197,7 @@ function financeTools() {
                 'type' => 'object',
                 'properties' => [
                     'type'        => ['type' => 'string', 'enum' => ['in', 'out'], 'description' => '"in" = income/money received, "out" = expense/money spent'],
-                    'category'    => ['type' => 'string', 'description' => 'For expenses (type=out): salaries, tools, rent, ads, freelancers, general (general/office expenses), debt_repayment, partner_mostafa (Mostafa\'s partner withdrawal), partner_radwa (Radwa\'s partner withdrawal), or other. For income (type=in): client_payment or other_income.'],
+                    'category'    => ['type' => 'string', 'description' => 'For expenses (type=out): salaries, tools, rent (rent & utilities incl. electricity), ads, freelancers, general (general expenses), office_supplies (coffee, water, snacks, pantry items), debt_repayment, partner_mostafa (Mostafa\'s partner withdrawal), partner_radwa (Radwa\'s partner withdrawal), or other. For income (type=in): client_payment or other_income.'],
                     'description' => ['type' => 'string', 'description' => 'Short description, e.g. "April office rent" or "Bank transfer — Acme Co."'],
                     'amount'      => ['type' => 'number'],
                     'currency'    => ['type' => 'string', 'description' => 'Defaults to EGP'],
@@ -238,7 +238,7 @@ function financeTools() {
 }
 
 function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderName) {
-    $expenseCats = ['salaries', 'tools', 'rent', 'ads', 'freelancers', 'general', 'debt_repayment', 'partner_mostafa', 'partner_radwa', 'other'];
+    $expenseCats = ['salaries', 'tools', 'rent', 'ads', 'freelancers', 'general', 'office_supplies', 'debt_repayment', 'partner_mostafa', 'partner_radwa', 'other'];
     $incomeCats  = ['client_payment', 'other_income'];
 
     if ($name === 'get_finance_summary') {

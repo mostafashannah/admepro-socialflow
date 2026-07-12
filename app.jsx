@@ -607,7 +607,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.18";
+const APP_VERSION = "beta 4.19";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16566,6 +16566,7 @@ const EXPENSE_CATEGORIES = [
   {k:"ads", l:"Ad Spend", color:"#ec4899"},
   {k:"freelancers", l:"Freelancers", color:"#06b6d4"},
   {k:"general", l:"General Expenses", color:"#14b8a6"},
+  {k:"office_supplies", l:"Office Supplies", color:"#f97316"},
   {k:"debt_repayment", l:"Debt Repayment", color:"#dc2626"},
   {k:"partner_mostafa", l:"Partner Withdrawal — Mostafa", color:"#a855f7"},
   {k:"partner_radwa", l:"Partner Withdrawal — Radwa", color:"#d946ef"},
