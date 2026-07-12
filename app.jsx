@@ -607,7 +607,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.27";
+const APP_VERSION = "beta 4.28";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16579,7 +16579,7 @@ const INCOME_CATEGORIES = [
 ];
 const INCOME_CAT_MAP = Object.fromEntries(INCOME_CATEGORIES.map(c=>[c.k,c]));
 
-function AddExpenseModal({open,onClose,onAdd,onSave,initial,clients=[]}) {
+function AddExpenseModal({open,onClose,onAdd,onSave,initial,clientNames=[]}) {
   const isEdit = !!initial;
   const [type,setType] = useState(initial?.type||"out");
   const [category,setCategory] = useState(initial?.category||"other");
@@ -16588,7 +16588,7 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial,clients=[]}) {
   const [currency,setCurrency] = useState(initial?.currency||"EGP");
   const [date,setDate] = useState(initial?.date||new Date().toISOString().split("T")[0]);
   const [saving,setSaving] = useState(false);
-  const isClientMatch = (d) => clients.some(c=>c.name===d);
+  const isClientMatch = (d) => clientNames.includes(d);
   const [clientMode,setClientMode] = useState(initial?.description&&!isClientMatch(initial.description) ? "manual" : "select");
   const cats = type==="out" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
   const isClientPayment = category==="client_payment";
@@ -16633,14 +16633,14 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial,clients=[]}) {
           </select>
         </Field>
         {isClientPayment ? (
-          <Field label="Client" required hint={clientMode==="select"?"Pick from existing clients":"Not in the list? Type it manually"}>
+          <Field label="Client" required hint={clientMode==="select"?"From payment history":"Not in the list? Type it manually"}>
             {clientMode==="select" ? (
-              <select value={clients.some(c=>c.name===description)?description:""} onChange={e=>{
+              <select value={clientNames.includes(description)?description:""} onChange={e=>{
                 if(e.target.value==="__other__") { setClientMode("manual"); setDescription(""); }
                 else setDescription(e.target.value);
               }} style={inputSt}>
                 <option value="" disabled>Select a client…</option>
-                {clients.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=><option key={c.id} value={c.name}>{c.name}</option>)}
+                {clientNames.slice().sort((a,b)=>a.localeCompare(b)).map(name=><option key={name} value={name}>{name}</option>)}
                 <option value="__other__">Other (type manually)…</option>
               </select>
             ) : (
@@ -16673,7 +16673,7 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial,clients=[]}) {
   );
 }
 
-function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,onDelete,onAddComment,clients=[]}) {
+function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,onDelete,onAddComment,clientNames=[]}) {
   const {isMobile} = useResponsive();
   const [showEdit,setShowEdit] = useState(false);
   const [comment,setComment] = useState("");
@@ -16845,7 +16845,7 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
         onClose={()=>setShowEdit(false)}
         onSave={onEdit}
         initial={txn.raw ? {id:txn.raw.id,type:txn.type,category:txn.category,description:txn.sub,amount:txn.amount,currency:txn.currency,date:txn.date} : null}
-        clients={clients}
+        clientNames={clientNames}
       />
     </div>
 
@@ -16894,6 +16894,9 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const [customEnd,setCustomEnd] = useState("");
   const [selectedId,setSelectedId] = useState(null);
   const [typeFilter,setTypeFilter] = useState("all");
+  const [categoryFilter,setCategoryFilter] = useState("all");
+  const [clientFilter,setClientFilter] = useState("all");
+  const [view,setView] = useState("overview"); // overview | clients
   const [refreshing,setRefreshing] = useState(false);
   const isAdmin = currentUser?.role==="admin";
   const canManage = ["admin","accountant"].includes(currentUser?.role);
@@ -16929,15 +16932,21 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
     return d.getMonth()===n.getMonth() && d.getFullYear()===n.getFullYear();
   };
 
+  // Map invoice_number -> client_name so invoice payments can be attributed to a client
+  const invoiceClientMap = {};
+  invoices.forEach(inv=>{ if(inv.invoice_number) invoiceClientMap[inv.invoice_number]=inv.client_name; });
+
   // Unified ledger of every money-in / money-out event
   const ledger = [
     ...payments.filter(p=>inRange(p.payment_date)).map(p=>({
       id:"pay_"+p.id, type:"in", date:p.payment_date, amount:num(p.amount), currency:"USD",
       label:`Invoice ${p.invoice_number||""}`, sub:p.notes||p.method||"", source:"Invoice payment",
+      category:"client_payment", clientName: invoiceClientMap[p.invoice_number]||null,
     })),
     ...subscriptionPayments.filter(p=>inRange(p.payment_date)).map(p=>({
       id:"sp_"+p.id, type:"in", date:p.payment_date, amount:num(p.amount), currency:p.currency||"EGP",
       label:p.subscription_name||"Subscription", sub:p.client_name||"", source:"Subscription payment",
+      category:"client_payment", clientName: p.client_name||null,
     })),
     ...expenses.filter(e=>inRange(e.date)).map(e=>{
       const isOut = (e.type||"out")==="out";
@@ -16947,9 +16956,22 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         label:catMap[e.category]?.l||e.category, sub:e.description, raw:e,
         source: isOut?"Manual expense":"Manual income", category:e.category, createdBy:e.created_by,
         checkNo:e.check_no, ref:e.ref, attachments:parseJ(e.attachments,[]),
+        clientName: (!isOut&&e.category==="client_payment") ? e.description : null,
       };
     }),
   ].sort((a,b)=>new Date(b.date)-new Date(a.date));
+
+  // Clients derived from actual payment history (not the Clients module) —
+  // this is what the client dropdown/filter/tab are built from.
+  const clientTotals = {};
+  ledger.filter(l=>l.type==="in"&&l.clientName).forEach(l=>{
+    if(!clientTotals[l.clientName]) clientTotals[l.clientName] = {name:l.clientName, total:0, count:0, lastDate:null};
+    const c = clientTotals[l.clientName];
+    c.total += l.amount; c.count += 1;
+    if(!c.lastDate || new Date(l.date)>new Date(c.lastDate)) c.lastDate = l.date;
+  });
+  const paymentClients = Object.values(clientTotals).sort((a,b)=>b.total-a.total);
+  const clientNames = paymentClients.map(c=>c.name);
 
   const totalIn = ledger.filter(l=>l.type==="in").reduce((a,l)=>a+l.amount,0);
   const totalOut = ledger.filter(l=>l.type==="out").reduce((a,l)=>a+l.amount,0);
@@ -16997,7 +17019,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         onEdit={onEditExpense}
         onDelete={onDeleteExpense}
         onAddComment={onAddExpenseComment}
-        clients={clients}
+        clientNames={clientNames}
       />
     );
   }
@@ -17017,6 +17039,41 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         </div>
       </div>
 
+      {/* View tabs */}
+      <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)"}}>
+        {[["overview","Overview"],["clients","Clients"]].map(([k,l])=>(
+          <button key={k} onClick={()=>setView(k)} style={{padding:"9px 18px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${view===k?"var(--accent)":"transparent"}`,color:view===k?"var(--accent)":"var(--text2)"}}>{l}</button>
+        ))}
+      </div>
+
+      {view==="clients" ? (
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+          <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
+            <h3 style={{fontWeight:700,fontSize:14}}>Clients — from payment history</h3>
+            <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>{paymentClients.length} client{paymentClients.length!==1?"s":""} · built from actual payments, not the Clients module</p>
+          </div>
+          {paymentClients.length===0 ? (
+            <EmptyState icon={Icons.wallet} title="No client payments yet" sub="Client payments will show up here once recorded."/>
+          ) : (
+            <div>
+              {paymentClients.map((c,i)=>(
+                <div key={c.name} onClick={()=>{setClientFilter(c.name);setView("overview");}} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 18px",borderBottom:i<paymentClients.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
+                  onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
+                  onMouseLeave={e=>e.currentTarget.style.background=""}>
+                  <Avatar name={c.name} size={34}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <p style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.name}</p>
+                    <p style={{fontSize:11,color:"var(--text3)"}}>{c.count} payment{c.count!==1?"s":""} · last {fmtDate(c.lastDate)}</p>
+                  </div>
+                  <p style={{fontSize:14,fontWeight:800,color:"#10b981",flexShrink:0}}>EGP {Math.round(c.total).toLocaleString()}</p>
+                  <Ico d={Icons.chevR} size={14} stroke="var(--text3)"/>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+      <>
       {/* Range filter */}
       <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
         {[["all","All Time"],["month","This Month"],["last_month","Last Month"],["week","This Week"],["custom","Custom"]].map(([k,l])=>(
@@ -17118,15 +17175,26 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         )}
       </div>
 
-      {/* Type filter + Export */}
+      {/* Type / Category / Client filters + Export */}
       <div style={{display:"flex",gap:6,alignItems:"center",justifyContent:"space-between",flexWrap:"wrap"}}>
-        <div style={{display:"flex",gap:6}}>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
           {[["all","All"],["in","In"],["out","Out"]].map(([k,l])=>(
             <button key={k} onClick={()=>setTypeFilter(k)} style={{padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,background:typeFilter===k?(k==="in"?"#10b981":k==="out"?"#ef4444":"var(--accent)"):"var(--surface2)",color:typeFilter===k?"#fff":"var(--text2)",border:`1px solid ${typeFilter===k?"transparent":"var(--border2)"}`}}>{l}</button>
           ))}
+          <select value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)} style={{...inputSt,width:"auto",padding:"6px 10px",fontSize:12}}>
+            <option value="all">All Categories</option>
+            {[...EXPENSE_CATEGORIES,...INCOME_CATEGORIES].map(c=><option key={c.k} value={c.k}>{c.l}</option>)}
+          </select>
+          <select value={clientFilter} onChange={e=>setClientFilter(e.target.value)} style={{...inputSt,width:"auto",padding:"6px 10px",fontSize:12}}>
+            <option value="all">All Clients</option>
+            {clientNames.map(n=><option key={n} value={n}>{n}</option>)}
+          </select>
+          {(categoryFilter!=="all"||clientFilter!=="all")&&(
+            <button onClick={()=>{setCategoryFilter("all");setClientFilter("all");}} style={{fontSize:12,fontWeight:700,color:"var(--accent)"}}>Clear</button>
+          )}
         </div>
         <button onClick={()=>{
-          const filteredLedger = typeFilter==="all" ? ledger : ledger.filter(l=>l.type===typeFilter);
+          const filteredLedger = ledger.filter(l=>(typeFilter==="all"||l.type===typeFilter)&&(categoryFilter==="all"||l.category===categoryFilter)&&(clientFilter==="all"||l.clientName===clientFilter));
           downloadCsv(`finance_${range}_${typeFilter}_${new Date().toISOString().split("T")[0]}.csv`,
             filteredLedger.map(l=>({date:l.date,type:l.type==="in"?"In":"Out",category:l.label,description:l.sub||"",amount:l.amount,currency:l.currency,source:l.source,reference:l.ref||"",check_no:l.checkNo||""})),
             ["date","type","category","description","amount","currency","source","reference","check_no"]
@@ -17142,7 +17210,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
           <h3 style={{fontWeight:700,fontSize:14}}>Transactions</h3>
         </div>
         {(()=>{
-          const filteredLedger = typeFilter==="all" ? ledger : ledger.filter(l=>l.type===typeFilter);
+          const filteredLedger = ledger.filter(l=>(typeFilter==="all"||l.type===typeFilter)&&(categoryFilter==="all"||l.category===categoryFilter)&&(clientFilter==="all"||l.clientName===clientFilter));
           return filteredLedger.length===0 ? (
             <EmptyState icon={Icons.wallet} title="No transactions" sub="Payments, subscription income, and expenses will show up here."/>
           ) : (
@@ -17169,8 +17237,10 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
           );
         })()}
       </div>
+      </>
+      )}
 
-      <AddExpenseModal open={showAdd} onClose={()=>setShowAdd(false)} onAdd={onAddExpense} clients={clients}/>
+      <AddExpenseModal open={showAdd} onClose={()=>setShowAdd(false)} onAdd={onAddExpense} clientNames={clientNames}/>
     </div>
   );
 }
