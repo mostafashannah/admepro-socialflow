@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.63";
+const APP_VERSION = "beta 4.64";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7068,13 +7068,13 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
         </div>
       </div>
       {/* Tabs */}
-      <div className="tab-nav" style={{display:"flex",flexWrap:"nowrap",flexShrink:0,gap:6,borderBottom:"1px solid var(--border)",overflowX:"auto",WebkitOverflowScrolling:"touch",paddingTop:2,paddingBottom:2,maxWidth:"100%",minHeight:38}}>
+      <div style={{display:"flex",flexWrap:"wrap",flexShrink:0,gap:2,borderBottom:"1px solid var(--border, #e5e7eb)",paddingTop:2,paddingBottom:2,maxWidth:"100%",minHeight:38}}>
         {tabs.map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)} style={{
-            padding:"8px 16px",fontSize:13,fontWeight:600,flexShrink:0,whiteSpace:"nowrap",
-            borderRadius:99,border:`1px solid ${tab===k?"var(--accent)":"var(--border2)"}`,
-            background:tab===k?"var(--accent)":"var(--surface2)",
-            color:tab===k?"#fff":"var(--text2)",transition:"all 0.15s",
+            padding:"9px 18px",fontSize:13,fontWeight:600,flexShrink:0,whiteSpace:"nowrap",
+            background:"transparent",borderWidth:"0 0 2px 0",borderStyle:"solid",
+            borderColor:tab===k?"var(--accent, #d90b2c)":"transparent",
+            color:tab===k?"var(--accent, #d90b2c)":"var(--text2, #6b7280)",cursor:"pointer",
           }}>{l}</button>
         ))}
       </div>
@@ -19844,7 +19844,7 @@ function TeamMembersPage({team,posts,perfLogs,onMemberSelect}) {
   };
 
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:24,maxWidth:1400,margin:"0 auto",padding:isMobile?"16px":"32px 24px"}}>
+    <div style={{display:"flex",flexDirection:"column",gap:24,width:"100%",padding:isMobile?"16px":"32px 24px"}}>
       {/* Page Header */}
       <div>
         <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?24:32,fontWeight:800,marginBottom:6}}>Team Members</h1>
@@ -19852,7 +19852,7 @@ function TeamMembersPage({team,posts,perfLogs,onMemberSelect}) {
       </div>
 
       {!selectedMember ? (
-        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fill,minmax(280px,1fr))",gap:isMobile?12:16}}>
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fill,minmax(300px,1fr))",gap:isMobile?12:16,width:"100%"}}>
           {team.filter(m=>m.role!=="client").map(member=>{
             const stats = getTeamMemberStats(member.email);
             const perf = perfLogs.filter(p=>p.user_email===member.email);
