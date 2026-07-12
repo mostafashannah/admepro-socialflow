@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.60";
+const APP_VERSION = "beta 4.61";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10117,7 +10117,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
 function UsersPage({currentUser, team, invitations, accessRequests, clientUsers, clients,
   onInviteUser, onCancelInvitation, onApproveRequest, onRejectRequest,
   onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation,
-  rolePerms, onUpdateTeamMember, onToggleRolePermission, leaveRequests, onDecideLeaveRequest}) {
+  rolePerms, onUpdateTeamMember, onToggleRolePermission, leaveRequests, onDecideLeaveRequest, attendanceRecords}) {
   const [tab, setTab] = useState("team");
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showClientUserModal, setShowClientUserModal] = useState(false);
@@ -10125,6 +10125,23 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   const [editingMember, setEditingMember] = useState(null);
   const [approvalRole, setApprovalRole] = useState("content_creator");
   const [approvingId, setApprovingId] = useState(null);
+  const [viewingMember, setViewingMember] = useState(null);
+
+  if(viewingMember) {
+    const live = (team||[]).find(t=>t.id===viewingMember.id) || viewingMember;
+    return (
+      <TeamMemberDetailPage
+        member={live}
+        team={team}
+        leaveRequests={leaveRequests||[]}
+        attendanceRecords={attendanceRecords||[]}
+        canEdit={hasPerm(currentUser,rolePerms,"hr.edit_team")}
+        canEditSalary={hasPerm(currentUser,rolePerms,"hr.edit_salary")}
+        onBack={()=>setViewingMember(null)}
+        onEdit={()=>setEditingMember(live)}
+      />
+    );
+  }
 
   const pendingRequests = (accessRequests||[]).filter(r=>r.status==="pending");
   const canManageRoles = hasPerm(currentUser, rolePerms, "hr.manage_roles");
@@ -10177,7 +10194,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
       {tab==="team"&&(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {(team||[]).map(m=>(
-            <div key={m.id} style={{background:"var(--surface)",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:14,border:"1px solid var(--border)"}}>
+            <div key={m.id} onClick={()=>setViewingMember(m)} data-clickable style={{background:"var(--surface)",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:14,border:"1px solid var(--border)",cursor:"pointer"}}>
               <div style={{width:40,height:40,borderRadius:"50%",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:15,flexShrink:0,overflow:"hidden"}}>
                 {m.avatar_url?<img src={m.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:m.name?.[0]?.toUpperCase()||"?"}
               </div>
@@ -10193,7 +10210,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
                 color:m.status==="active"?"#10b981":"#f59e0b",
                 borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600
               }}>{m.status||"active"}</span>
-              {hasPerm(currentUser,rolePerms,"hr.edit_team")&&<button onClick={()=>setEditingMember(m)} style={{background:"var(--surface2)",border:"none",borderRadius:6,padding:"6px 12px",cursor:"pointer",fontSize:12,color:"var(--text)",fontWeight:600}}>Edit</button>}
+              {hasPerm(currentUser,rolePerms,"hr.edit_team")&&<button onClick={(e)=>{e.stopPropagation();setEditingMember(m);}} style={{background:"var(--surface2)",border:"none",borderRadius:6,padding:"6px 12px",cursor:"pointer",fontSize:12,color:"var(--text)",fontWeight:600}}>Edit</button>}
             </div>
           ))}
           {(!team||team.length===0)&&<div style={{textAlign:"center",padding:40,color:"var(--text2)"}}>No team members yet. Invite your first user.</div>}
@@ -10349,7 +10366,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
         </div>
       )}
 
-      {showInviteModal&&<InviteUserModal onClose={()=>setShowInviteModal(false)} onSubmit={onInviteUser} clients={clients}/>}
+      {showInviteModal&&<InviteUserModal onClose={()=>setShowInviteModal(false)} onSubmit={onInviteUser} clients={clients} team={team}/>}
       {showClientUserModal&&<AddClientUserModal onClose={()=>setShowClientUserModal(false)} onSubmit={onAddClientUser} clients={clients}/>}
       {editingMember&&(
         <EditMemberModal
@@ -10382,10 +10399,102 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   );
 }
 
+function TeamMemberDetailPage({member, team, leaveRequests, attendanceRecords, canEdit, canEditSalary, onBack, onEdit}) {
+  const manager = (team||[]).find(t=>t.id===member.manager_id);
+  const myLeave = (leaveRequests||[]).filter(r=>r.team_member_id===member.id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  const myAttendance = (attendanceRecords||[]).filter(a=>a.team_member_id===member.id || a.member_name===member.name).sort((a,b)=>new Date(b.work_date)-new Date(a.work_date)).slice(0,30);
+  const docs = [member.id_photo_front_url&&{label:"ID Photo — Front", url:member.id_photo_front_url}, member.id_photo_back_url&&{label:"ID Photo — Back", url:member.id_photo_back_url}].filter(Boolean);
+  const row = (label,value) => value==null||value===""?null:(
+    <div style={{display:"flex",justifyContent:"space-between",padding:"9px 0",borderBottom:"1px solid var(--border)"}}>
+      <span style={{fontSize:12,color:"var(--text2)"}}>{label}</span>
+      <span style={{fontSize:13,fontWeight:600,color:"var(--text)"}}>{value}</span>
+    </div>
+  );
+
+  return (
+    <div style={{padding:"24px",maxWidth:900,margin:"0 auto",display:"flex",flexDirection:"column",gap:16}} className="fade-in">
+      <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:700,color:"var(--text2)",background:"none",border:"none",cursor:"pointer",width:"fit-content"}}>
+        <Ico d={Icons.chevL} size={15} stroke="var(--text2)"/> Back to Team Members
+      </button>
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20,display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+        <div style={{width:56,height:56,borderRadius:"50%",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:20,flexShrink:0,overflow:"hidden"}}>
+          {member.avatar_url?<img src={member.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:member.name?.[0]?.toUpperCase()||"?"}
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:20,fontWeight:800}}>{member.name}</h2>
+          <p style={{fontSize:13,color:"var(--text2)"}}>{member.email}</p>
+        </div>
+        <span style={{background:ROLES[member.role]?.color+"22",color:ROLES[member.role]?.color,borderRadius:6,padding:"4px 12px",fontSize:12,fontWeight:600}}>{ROLES[member.role]?.label||member.role}</span>
+        <span style={{background:member.status==="active"?"#10b98122":"#f59e0b22",color:member.status==="active"?"#10b981":"#f59e0b",borderRadius:6,padding:"4px 12px",fontSize:12,fontWeight:600}}>{member.status||"active"}</span>
+        {canEdit&&<Btn size="sm" onClick={onEdit}>Edit</Btn>}
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
+          <h3 style={{fontWeight:700,fontSize:14,marginBottom:8}}>Details</h3>
+          {row("Department", member.department)}
+          {row("Manager", manager?.name)}
+          {row("Mobile / WhatsApp", member.whatsapp_number)}
+          {canEditSalary&&row("Salary", member.salary?`EGP ${Number(member.salary).toLocaleString()}`:null)}
+          {row("Joined", member.created_at?fmtDate(member.created_at):null)}
+        </div>
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
+          <h3 style={{fontWeight:700,fontSize:14,marginBottom:8}}>Leave & WFH Credits</h3>
+          {row("Vacation Days", `${Number(member.vacation_days_used||0)} used / ${Number(member.vacation_days_total??21)} total`)}
+          {row("WFH Days", `${Number(member.wfh_days_used||0)} used / ${Number(member.wfh_days_total??12)} total`)}
+        </div>
+      </div>
+
+      {docs.length>0&&(
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
+          <h3 style={{fontWeight:700,fontSize:14,marginBottom:12}}>Documents</h3>
+          <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
+            {docs.map(d=>(
+              <a key={d.label} href={d.url} target="_blank" rel="noreferrer" style={{display:"block",width:140}}>
+                <img src={d.url} alt={d.label} style={{width:140,height:100,objectFit:"cover",borderRadius:8,border:"1px solid var(--border)"}}/>
+                <p style={{fontSize:11,color:"var(--text2)",marginTop:4,textAlign:"center"}}>{d.label}</p>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
+        <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}><h3 style={{fontWeight:700,fontSize:14}}>Leave & WFH History</h3></div>
+        {myLeave.length===0?(
+          <div style={{padding:20,textAlign:"center",color:"var(--text2)",fontSize:13}}>No leave or WFH requests.</div>
+        ):myLeave.map((r,i)=>(
+          <div key={r.id} style={{padding:"12px 18px",borderBottom:i<myLeave.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12}}>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:600,fontSize:13}}>{r.type==="vacation"?"Vacation":"WFH"} — {r.start_date===r.end_date?r.start_date:`${r.start_date} → ${r.end_date}`}</div>
+              <div style={{fontSize:11,color:"var(--text3)"}}>{r.days} day(s){r.reason?` · "${r.reason}"`:""}</div>
+            </div>
+            <span style={{background:r.status==="approved"?"#10b98122":r.status==="rejected"?"#ef444422":"#f59e0b22",color:r.status==="approved"?"#10b981":r.status==="rejected"?"#ef4444":"#f59e0b",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:600,textTransform:"capitalize"}}>{r.status}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
+        <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}><h3 style={{fontWeight:700,fontSize:14}}>Recent Attendance</h3></div>
+        {myAttendance.length===0?(
+          <div style={{padding:20,textAlign:"center",color:"var(--text2)",fontSize:13}}>No attendance records imported yet.</div>
+        ):myAttendance.map((a,i)=>(
+          <div key={a.id} style={{padding:"10px 18px",borderBottom:i<myAttendance.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12}}>
+            <span style={{fontSize:13,flex:1}}>{fmtDate(a.work_date)}</span>
+            {a.check_in&&<span style={{fontSize:12,color:"var(--text3)"}}>{a.check_in}{a.check_out?` – ${a.check_out}`:""}</span>}
+            <span style={{textTransform:"capitalize",fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:6,background:"var(--surface2)",color:"var(--text2)"}}>{a.status}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
   const [f,setF] = useState({
     name:member.name, email:member.email, role:member.role, department:member.department||"",
-    status:member.status||"active", manager_id:member.manager_id||"",
+    status:member.status||"active", manager_id:member.manager_id||"", whatsapp_number:member.whatsapp_number||"",
     salary:member.salary??"", vacation_days_total:member.vacation_days_total??21, wfh_days_total:member.wfh_days_total??12,
   });
   const s = (k,v) => setF(p=>({...p,[k]:v}));
@@ -10414,6 +10523,7 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
             </select>
           </Field>
           <Field label="Department"><input value={f.department} onChange={e=>s("department",e.target.value)} placeholder="Creative" style={inputSt}/></Field>
+          <Field label="Mobile Number"><input value={f.whatsapp_number} onChange={e=>s("whatsapp_number",e.target.value)} placeholder="+20 100 000 0000" style={inputSt}/></Field>
           <Field label="Manager">
             <select value={f.manager_id} onChange={e=>s("manager_id",e.target.value)} style={inputSt}>
               <option value="">No manager set</option>
@@ -10566,8 +10676,8 @@ function AttendanceImportTab() {
   );
 }
 
-function InviteUserModal({onClose, onSubmit, clients}) {
-  const [form, setForm] = useState({name:"",email:"",role:"content_creator",user_type:"internal",client_id:"",permissions:"",whatsapp_number:"",salary:"",vacation_days_total:21,wfh_days_total:12,id_photo_front_url:"",id_photo_back_url:""});
+function InviteUserModal({onClose, onSubmit, clients, team}) {
+  const [form, setForm] = useState({name:"",email:"",role:"content_creator",user_type:"internal",client_id:"",permissions:"",whatsapp_number:"",manager_id:"",salary:"",vacation_days_total:21,wfh_days_total:12,id_photo_front_url:"",id_photo_back_url:""});
   const [loading, setLoading] = useState(false);
   const [uploadingIdFront, setUploadingIdFront] = useState(false);
   const [uploadingIdBack, setUploadingIdBack] = useState(false);
@@ -10644,6 +10754,13 @@ function InviteUserModal({onClose, onSubmit, clients}) {
                 <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Mobile / WhatsApp Number</label>
                 <input value={form.whatsapp_number} onChange={e=>sf("whatsapp_number",e.target.value)} placeholder="+20 100 000 0000" style={inputSt}/>
                 <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Pro will send a welcome WhatsApp message to this number to confirm it's correct.</p>
+              </div>
+              <div>
+                <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Manager</label>
+                <select value={form.manager_id} onChange={e=>sf("manager_id",e.target.value)} style={inputSt}>
+                  <option value="">No manager set</option>
+                  {(team||[]).filter(t=>t.role!=="client").map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
               </div>
               <div style={{display:"flex",gap:10}}>
                 <div style={{flex:1}}>
@@ -11672,6 +11789,7 @@ function AcceptInvitationPage({token, onAccepted}) {
         await ce("TeamMember",[{
           ...memberPayload,
           whatsapp_number: invitation.whatsapp_number || form.mobile || null,
+          manager_id: invitation.manager_id || null,
           salary: invitation.salary || null,
           vacation_days_total: invitation.vacation_days_total || 21,
           wfh_days_total: invitation.wfh_days_total || 12,
@@ -26832,6 +26950,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             onToggleRolePermission={toggleRolePermission}
             leaveRequests={data.leaveRequests||[]}
             onDecideLeaveRequest={decideLeaveRequest}
+            attendanceRecords={data.attendanceRecords||[]}
           />
         )}
         {page==="team_members"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.view_team"))&&(
