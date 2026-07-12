@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.42";
+const APP_VERSION = "beta 4.43";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17031,6 +17031,73 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
   );
 }
 
+// Shared date-range filter logic + UI for Finance's Overview, Client detail,
+// and Partner detail pages — kept as one function/component so the three
+// pages can't drift out of sync on what "This Month"/"specific month" means.
+function dateInFinanceRange(dateStr, {range, customStart, customEnd, selectedMonth}) {
+  if(range==="all"||!dateStr) return true;
+  const d = new Date(dateStr);
+  if(range==="custom") {
+    if(customStart&&d<new Date(customStart)) return false;
+    if(customEnd&&d>new Date(customEnd)) return false;
+    return true;
+  }
+  if(range==="month") {
+    const n = new Date();
+    const start = new Date(n.getFullYear(), n.getMonth(), 1);
+    return d>=start;
+  }
+  if(range==="specific_month"&&selectedMonth) {
+    const [y,m] = selectedMonth.split("-").map(Number);
+    const start = new Date(y, m-1, 1);
+    const end = new Date(y, m, 1);
+    return d>=start && d<end;
+  }
+  const ago = new Date();
+  if(range==="week") ago.setDate(ago.getDate()-7);
+  return d>=ago;
+}
+
+function buildFinanceMonthOptions(dates) {
+  const monthOptions = [];
+  const valid = dates.filter(Boolean).map(d=>new Date(d));
+  if(!valid.length) return monthOptions;
+  const earliest = new Date(Math.max(Math.min(...valid), new Date(2026,0,1).getTime()));
+  const now = new Date();
+  let y = now.getFullYear(), m = now.getMonth();
+  while(y>earliest.getFullYear() || (y===earliest.getFullYear() && m>=earliest.getMonth())) {
+    const value = `${y}-${String(m+1).padStart(2,"0")}`;
+    const label = new Date(y,m,1).toLocaleDateString("en-US",{month:"short",year:"numeric"});
+    monthOptions.push({value,label});
+    m--; if(m<0){m=11;y--;}
+  }
+  return monthOptions;
+}
+
+function FinanceRangeFilter({range,setRange,customStart,setCustomStart,customEnd,setCustomEnd,selectedMonth,setSelectedMonth,monthOptions}) {
+  return (
+    <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+      {[["all","All Time"],["month","This Month"],["week","This Week"]].map(([k,l])=>(
+        <button key={k} onClick={()=>setRange(k)} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:range===k?"var(--accent)":"var(--surface2)",color:range===k?"#fff":"var(--text2)",border:`1px solid ${range===k?"var(--accent)":"var(--border2)"}`}}>{l}</button>
+      ))}
+      {monthOptions.length>0&&(
+        <select value={range==="specific_month"?selectedMonth:""} onChange={e=>{setSelectedMonth(e.target.value);setRange("specific_month");}} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:range==="specific_month"?"var(--accent)":"var(--surface2)",color:range==="specific_month"?"#fff":"var(--text2)",border:`1px solid ${range==="specific_month"?"var(--accent)":"var(--border2)"}`,WebkitAppearance:"none",appearance:"none",backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='${range==="specific_month"?"%23fff":"%23888"}' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,backgroundRepeat:"no-repeat",backgroundPosition:"right 10px center",paddingRight:28}}>
+          <option value="" disabled>Pick a month…</option>
+          {monthOptions.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      )}
+      <button onClick={()=>setRange("custom")} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:range==="custom"?"var(--accent)":"var(--surface2)",color:range==="custom"?"#fff":"var(--text2)",border:`1px solid ${range==="custom"?"var(--accent)":"var(--border2)"}`}}>Custom</button>
+      {range==="custom"&&(
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          <input type="date" value={customStart} onChange={e=>setCustomStart(e.target.value)} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)"}}/>
+          <span style={{fontSize:12,color:"var(--text3)"}}>to</span>
+          <input type="date" value={customEnd} onChange={e=>setCustomEnd(e.target.value)} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)"}}/>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ClientPaymentDetail({clientName,ledger,note,canManage,onBack,onOpenTransaction,onRename,onSaveNote}) {
   const {isMobile} = useResponsive();
   const [editing,setEditing] = useState(false);
@@ -17038,10 +17105,15 @@ function ClientPaymentDetail({clientName,ledger,note,canManage,onBack,onOpenTran
   const [phone,setPhone] = useState(note?.phone||"");
   const [notes,setNotes] = useState(note?.notes||"");
   const [saving,setSaving] = useState(false);
+  const [range,setRange] = useState("all");
+  const [customStart,setCustomStart] = useState("");
+  const [customEnd,setCustomEnd] = useState("");
+  const [selectedMonth,setSelectedMonth] = useState("");
+  const monthOptions = buildFinanceMonthOptions(ledger.map(l=>l.date));
 
   React.useEffect(()=>{ setNameInput(clientName); setPhone(note?.phone||""); setNotes(note?.notes||""); },[clientName, note?.phone, note?.notes]);
 
-  const clientTxns = ledger.filter(l=>l.type==="in"&&l.clientName===clientName).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const clientTxns = ledger.filter(l=>l.type==="in"&&l.clientName===clientName&&dateInFinanceRange(l.date,{range,customStart,customEnd,selectedMonth})).sort((a,b)=>new Date(b.date)-new Date(a.date));
   const clientTotal = clientTxns.reduce((a,l)=>a+l.amount,0);
 
   // Monthly totals for the bar graph — last 12 calendar months that have activity, chronological
@@ -17065,6 +17137,8 @@ function ClientPaymentDetail({clientName,ledger,note,canManage,onBack,onOpenTran
       <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:700,color:"var(--text2)"}}>
         <Ico d={Icons.chevL} size={15} stroke="var(--text2)"/> Back to Clients
       </button>
+
+      <FinanceRangeFilter range={range} setRange={setRange} customStart={customStart} setCustomStart={setCustomStart} customEnd={customEnd} setCustomEnd={setCustomEnd} selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} monthOptions={monthOptions}/>
 
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
         {editing ? (
@@ -17135,8 +17209,14 @@ function ClientPaymentDetail({clientName,ledger,note,canManage,onBack,onOpenTran
 
 function PartnerDetail({partnerKey,partnerInKey,partnerName,ledger,onBack,onOpenTransaction}) {
   const {isMobile} = useResponsive();
-  const withdrawals = ledger.filter(l=>l.type==="out"&&l.category===partnerKey);
-  const contributions = partnerInKey ? ledger.filter(l=>l.type==="in"&&l.category===partnerInKey) : [];
+  const [range,setRange] = useState("all");
+  const [customStart,setCustomStart] = useState("");
+  const [customEnd,setCustomEnd] = useState("");
+  const [selectedMonth,setSelectedMonth] = useState("");
+  const monthOptions = buildFinanceMonthOptions(ledger.map(l=>l.date));
+  const inRange = (dateStr) => dateInFinanceRange(dateStr,{range,customStart,customEnd,selectedMonth});
+  const withdrawals = ledger.filter(l=>l.type==="out"&&l.category===partnerKey&&inRange(l.date));
+  const contributions = partnerInKey ? ledger.filter(l=>l.type==="in"&&l.category===partnerInKey&&inRange(l.date)) : [];
   const allTxns = [...withdrawals,...contributions].sort((a,b)=>new Date(b.date)-new Date(a.date));
   const totalOut = withdrawals.reduce((a,l)=>a+l.amount,0);
   const totalIn = contributions.reduce((a,l)=>a+l.amount,0);
@@ -17165,6 +17245,8 @@ function PartnerDetail({partnerKey,partnerInKey,partnerName,ledger,onBack,onOpen
       <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:700,color:"var(--text2)"}}>
         <Ico d={Icons.chevL} size={15} stroke="var(--text2)"/> Back to Partners
       </button>
+
+      <FinanceRangeFilter range={range} setRange={setRange} customStart={customStart} setCustomStart={setCustomStart} customEnd={customEnd} setCustomEnd={setCustomEnd} selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} monthOptions={monthOptions}/>
 
       <div style={{display:"flex",alignItems:"center",gap:14,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,flexWrap:"wrap"}}>
         <Avatar name={partnerName} size={48}/>
@@ -17401,20 +17483,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   // Month picker options — every calendar month from the earliest transaction
   // through the current month, newest first, e.g. {value:"2026-07",label:"Jul 2026"}.
   const allDates = [...payments.map(p=>p.payment_date),...subscriptionPayments.map(p=>p.payment_date),...expenses.map(e=>e.date)].filter(Boolean).map(d=>new Date(d));
-  const monthOptions = [];
-  if(allDates.length) {
-    // Floor at Jan 2026 (the first real record) so stray/demo dates outside
-    // the actual bookkeeping history can't stretch the list further back.
-    const earliest = new Date(Math.max(Math.min(...allDates), new Date(2026,0,1).getTime()));
-    const now = new Date();
-    let y = now.getFullYear(), m = now.getMonth();
-    while(y>earliest.getFullYear() || (y===earliest.getFullYear() && m>=earliest.getMonth())) {
-      const value = `${y}-${String(m+1).padStart(2,"0")}`;
-      const label = new Date(y,m,1).toLocaleDateString("en-US",{month:"short",year:"numeric"});
-      monthOptions.push({value,label});
-      m--; if(m<0){ m=11; y--; }
-    }
-  }
+  const monthOptions = buildFinanceMonthOptions(allDates);
 
   const totalIn = ledger.filter(l=>l.type==="in").reduce((a,l)=>a+l.amount,0);
   const totalOut = ledger.filter(l=>l.type==="out").reduce((a,l)=>a+l.amount,0);
@@ -17647,25 +17716,7 @@ No markdown, no explanation.`;
       ) : (
       <>
       {/* Range filter */}
-      <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-        {[["all","All Time"],["month","This Month"],["week","This Week"]].map(([k,l])=>(
-          <button key={k} onClick={()=>setRange(k)} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:range===k?"var(--accent)":"var(--surface2)",color:range===k?"#fff":"var(--text2)",border:`1px solid ${range===k?"var(--accent)":"var(--border2)"}`}}>{l}</button>
-        ))}
-        {monthOptions.length>0&&(
-          <select value={range==="specific_month"?selectedMonth:""} onChange={e=>{setSelectedMonth(e.target.value);setRange("specific_month");}} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:range==="specific_month"?"var(--accent)":"var(--surface2)",color:range==="specific_month"?"#fff":"var(--text2)",border:`1px solid ${range==="specific_month"?"var(--accent)":"var(--border2)"}`,WebkitAppearance:"none",appearance:"none",backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='${range==="specific_month"?"%23fff":"%23888"}' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,backgroundRepeat:"no-repeat",backgroundPosition:"right 10px center",paddingRight:28}}>
-            <option value="" disabled>Pick a month…</option>
-            {monthOptions.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-        )}
-        <button onClick={()=>setRange("custom")} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:range==="custom"?"var(--accent)":"var(--surface2)",color:range==="custom"?"#fff":"var(--text2)",border:`1px solid ${range==="custom"?"var(--accent)":"var(--border2)"}`}}>Custom</button>
-        {range==="custom"&&(
-          <div style={{display:"flex",gap:6,alignItems:"center"}}>
-            <input type="date" value={customStart} onChange={e=>setCustomStart(e.target.value)} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)"}}/>
-            <span style={{fontSize:12,color:"var(--text3)"}}>to</span>
-            <input type="date" value={customEnd} onChange={e=>setCustomEnd(e.target.value)} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)"}}/>
-          </div>
-        )}
-      </div>
+      <FinanceRangeFilter range={range} setRange={setRange} customStart={customStart} setCustomStart={setCustomStart} customEnd={customEnd} setCustomEnd={setCustomEnd} selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} monthOptions={monthOptions}/>
 
       {/* KPI tiles */}
       {isMobile ? (
