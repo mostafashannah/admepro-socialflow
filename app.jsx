@@ -607,7 +607,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.28";
+const APP_VERSION = "beta 4.29";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16766,6 +16766,7 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
           {row("Date", fmtDate(txn.date))}
           {row("Source", txn.source)}
           {txn.ref && row("Reference", txn.ref)}
+          {txn.method && row("Payment Method", txn.method)}
           {txn.createdBy && row("Added by", txn.createdBy)}
         </div>
 
@@ -16955,7 +16956,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         id:"exp_"+e.id, type:isOut?"out":"in", date:e.date, amount:num(e.amount), currency:e.currency||"EGP",
         label:catMap[e.category]?.l||e.category, sub:e.description, raw:e,
         source: isOut?"Manual expense":"Manual income", category:e.category, createdBy:e.created_by,
-        checkNo:e.check_no, ref:e.ref, attachments:parseJ(e.attachments,[]),
+        checkNo:e.check_no, ref:e.ref, attachments:parseJ(e.attachments,[]), method:e.method,
         clientName: (!isOut&&e.category==="client_payment") ? e.description : null,
       };
     }),
@@ -17224,7 +17225,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
                   </div>
                   <div style={{flex:1,minWidth:0}}>
                     <p style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.label}</p>
-                    {l.sub&&<p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>{l.sub}</p>}
+                    {l.sub&&<p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>{l.sub}{l.method?` · ${l.method}`:""}</p>}
                   </div>
                   <div style={{textAlign:"right",flexShrink:0}}>
                     <p style={{fontSize:13,fontWeight:800,color:l.type==="in"?"#10b981":"#ef4444"}}>{l.type==="in"?"+":"−"}{l.currency} {Math.round(l.amount).toLocaleString()}</p>
