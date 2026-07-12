@@ -156,6 +156,134 @@ function proTools() {
     ];
 }
 
+// Finance tools — admin/accountant only. Reads/writes the same `expenses`
+// table the Finance page in the app uses (type='in'|'out'), so anything Pro
+// adds here shows up in that page's ledger immediately, and vice versa.
+function financeTools() {
+    return [
+        [
+            'name' => 'get_finance_summary',
+            'description' => 'Get financial totals (money in, money out, balance) and a breakdown by category, optionally filtered by date range and/or category. Use this for any question about income, expenses, spending, or balance.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'start_date' => ['type' => 'string', 'description' => 'YYYY-MM-DD — omit for all time'],
+                    'end_date'   => ['type' => 'string', 'description' => 'YYYY-MM-DD — omit for all time (defaults to today if start_date given)'],
+                    'category'   => ['type' => 'string', 'description' => 'Filter to one category, e.g. salaries, tools, rent, ads, freelancers, other, client_payment, other_income — omit for all categories'],
+                    'type'       => ['type' => 'string', 'enum' => ['in', 'out'], 'description' => 'Filter to only income or only expenses — omit for both'],
+                ],
+                'required' => [],
+            ],
+        ],
+        [
+            'name' => 'search_transactions',
+            'description' => 'Search/list individual finance transactions (income or expenses) by keyword, category, or date range. Use this when asked to find/show a specific transaction or recent transactions, not just totals.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'query'      => ['type' => 'string', 'description' => 'Keyword to match in the description'],
+                    'category'   => ['type' => 'string'],
+                    'type'       => ['type' => 'string', 'enum' => ['in', 'out']],
+                    'start_date' => ['type' => 'string', 'description' => 'YYYY-MM-DD'],
+                    'end_date'   => ['type' => 'string', 'description' => 'YYYY-MM-DD'],
+                ],
+                'required' => [],
+            ],
+        ],
+        [
+            'name' => 'add_transaction',
+            'description' => 'Record a new income or expense transaction. Before calling this, make sure you have all required fields from the user — if anything is missing or ambiguous (especially amount or whether it is money in or out), ASK the user instead of guessing. Once saved, confirm back to the user exactly what was recorded (type, amount, category, description, date).',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'type'        => ['type' => 'string', 'enum' => ['in', 'out'], 'description' => '"in" = income/money received, "out" = expense/money spent'],
+                    'category'    => ['type' => 'string', 'description' => 'For expenses (type=out): salaries, tools, rent, ads, freelancers, or other. For income (type=in): client_payment or other_income.'],
+                    'description' => ['type' => 'string', 'description' => 'Short description, e.g. "April office rent" or "Bank transfer — Acme Co."'],
+                    'amount'      => ['type' => 'number'],
+                    'currency'    => ['type' => 'string', 'description' => 'Defaults to EGP'],
+                    'date'        => ['type' => 'string', 'description' => 'YYYY-MM-DD — defaults to today if omitted'],
+                ],
+                'required' => ['type', 'category', 'description', 'amount'],
+            ],
+        ],
+    ];
+}
+
+function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderName) {
+    $expenseCats = ['salaries', 'tools', 'rent', 'ads', 'freelancers', 'other'];
+    $incomeCats  = ['client_payment', 'other_income'];
+
+    if ($name === 'get_finance_summary') {
+        $sql = "SELECT type, category, SUM(amount) AS total, COUNT(*) AS cnt FROM expenses WHERE 1=1";
+        $params = [];
+        if (!empty($input['start_date'])) { $sql .= " AND date >= :sd"; $params[':sd'] = $input['start_date']; }
+        if (!empty($input['end_date']))   { $sql .= " AND date <= :ed"; $params[':ed'] = $input['end_date']; }
+        elseif (!empty($input['start_date'])) { $sql .= " AND date <= :ed"; $params[':ed'] = date('Y-m-d'); }
+        if (!empty($input['category'])) { $sql .= " AND category = :c"; $params[':c'] = $input['category']; }
+        if (!empty($input['type']))     { $sql .= " AND type = :t"; $params[':t'] = $input['type']; }
+        $sql .= " GROUP BY type, category";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $totalIn = 0; $totalOut = 0; $byCategory = [];
+        foreach ($rows as $r) {
+            if ($r['type'] === 'in') $totalIn += (float)$r['total'];
+            else $totalOut += (float)$r['total'];
+            $byCategory[] = ['type' => $r['type'], 'category' => $r['category'], 'total' => (float)$r['total'], 'count' => (int)$r['cnt']];
+        }
+        return [
+            'total_in' => round($totalIn, 2),
+            'total_out' => round($totalOut, 2),
+            'balance' => round($totalIn - $totalOut, 2),
+            'currency' => 'EGP',
+            'by_category' => $byCategory,
+        ];
+    }
+
+    if ($name === 'search_transactions') {
+        $sql = "SELECT type, category, description, amount, currency, date FROM expenses WHERE 1=1";
+        $params = [];
+        if (!empty($input['query']))      { $sql .= " AND description LIKE :q"; $params[':q'] = '%' . $input['query'] . '%'; }
+        if (!empty($input['category']))   { $sql .= " AND category = :c"; $params[':c'] = $input['category']; }
+        if (!empty($input['type']))       { $sql .= " AND type = :t"; $params[':t'] = $input['type']; }
+        if (!empty($input['start_date'])) { $sql .= " AND date >= :sd"; $params[':sd'] = $input['start_date']; }
+        if (!empty($input['end_date']))   { $sql .= " AND date <= :ed"; $params[':ed'] = $input['end_date']; }
+        $sql .= " ORDER BY date DESC LIMIT 20";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    if ($name === 'add_transaction') {
+        $type = $input['type'] ?? '';
+        $category = $input['category'] ?? '';
+        $description = trim($input['description'] ?? '');
+        $amount = $input['amount'] ?? null;
+        if (!in_array($type, ['in', 'out'], true) || !$description || !is_numeric($amount) || (float)$amount <= 0) {
+            return ['error' => 'Missing or invalid type/description/amount — ask the user for whatever is missing.'];
+        }
+        $validCats = $type === 'out' ? $expenseCats : $incomeCats;
+        if (!in_array($category, $validCats, true)) $category = 'other';
+        $currency = $input['currency'] ?? 'EGP';
+        $date = !empty($input['date']) ? $input['date'] : date('Y-m-d');
+
+        $id = generateProUuid();
+        $ins = $pdo->prepare("INSERT INTO expenses (id, type, category, description, amount, currency, date, created_by) VALUES (:id, :type, :cat, :desc, :amt, :cur, :date, :by)");
+        $ins->execute([
+            ':id' => $id, ':type' => $type, ':cat' => $category, ':desc' => $description,
+            ':amt' => $amount, ':cur' => $currency, ':date' => $date, ':by' => $senderName,
+        ]);
+        return [
+            'ok' => true, 'type' => $type, 'category' => $category, 'description' => $description,
+            'amount' => (float)$amount, 'currency' => $currency, 'date' => $date,
+            'message' => 'Saved to the Finance page.',
+        ];
+    }
+
+    return ['error' => 'Unknown tool: ' . $name];
+}
+
 // Self-service HR tools — available to every team member regardless of role,
 // since these only ever touch the asker's own record (or, for approvals, a
 // request explicitly addressed to them as manager_id).
@@ -333,6 +461,12 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
     if (in_array($name, ['request_time_off', 'decide_pending_request', 'get_my_hr_info'], true)) {
         return runHrTool($pdo, $name, $input, $senderId, $senderName);
     }
+    if (in_array($name, ['get_finance_summary', 'search_transactions', 'add_transaction'], true)) {
+        if (!in_array($senderRole, ['team:admin', 'team:accountant'], true)) {
+            return ['error' => 'You do not have permission to access financial data.'];
+        }
+        return runFinanceTool($pdo, $name, $input, $senderName);
+    }
     $isAdmin = $senderRole === 'team:admin';
     $isAM    = $senderRole === 'team:account_manager';
 
@@ -403,9 +537,10 @@ function callClaude(array $payload) {
 }
 
 function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $senderId = null, $voiceTranscript = null) {
-    $isTeam  = $senderName && str_starts_with((string)$senderRole, 'team:');
-    $isAdmin = $senderRole === 'team:admin';
-    $isAM    = $senderRole === 'team:account_manager';
+    $isTeam       = $senderName && str_starts_with((string)$senderRole, 'team:');
+    $isAdmin      = $senderRole === 'team:admin';
+    $isAM         = $senderRole === 'team:account_manager';
+    $isAccountant = $senderRole === 'team:accountant';
 
     if (!$senderName) {
         $system = "You are Pro, the AI assistant for SocialFlow (a social media agency management app). "
@@ -434,19 +569,34 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                     : '');
 
         if ($isAdmin) {
-            $tools = array_merge(proTools(), hrTools());
+            $tools = array_merge(proTools(), hrTools(), financeTools());
             $system .= "\n\nAs admin, you have full tools to look up any client and search any task across the "
                      . "whole agency — use them whenever the question needs current data instead of guessing.";
         } elseif ($isAM) {
             $tools = array_merge(proTools(), hrTools());
             $system .= "\n\nYou have tools to look up clients and tasks, but only for the clients you personally "
                      . "manage as account manager — results outside your own clients will not be shown.";
+        } elseif ($isAccountant) {
+            $tools = array_merge(array_values(array_filter(proTools(), fn($t) => $t['name'] !== 'list_clients')), hrTools(), financeTools());
+            $system .= "\n\nYou have tools to search your own tasks and to view/add financial data (income, "
+                     . "expenses, balance) — this is the same data shown on the Finance page in the app.";
         } elseif ($isTeam) {
             $tools = array_merge(array_values(array_filter(proTools(), fn($t) => $t['name'] !== 'list_clients')), hrTools());
             $system .= "\n\nYou have a tool to search tasks, but only your own assigned tasks — you do not have "
                      . "permission to browse the full client list or other people's tasks.";
         } else {
             $tools = [];
+        }
+        if ($isAdmin || $isAccountant) {
+            $system .= "\n\nFinancial data: you can answer any question about money in, money out, balance, or "
+                     . "spending by category using get_finance_summary and search_transactions — always use "
+                     . "these tools rather than guessing numbers. To record a new income or expense with "
+                     . "add_transaction, you need: whether it's money IN or OUT, an amount, a short description, "
+                     . "and (ideally) a category. If the user's message is missing any of these or is ambiguous "
+                     . "(e.g. they just say \"add 500 for coffee\" without saying in/out — assume OUT for an "
+                     . "expense-sounding request, but ask if genuinely unclear), ask a short follow-up question "
+                     . "instead of guessing. After successfully saving, always confirm back to the user exactly "
+                     . "what was recorded (amount, type, category, description, date) in one short line.";
         }
     }
 
