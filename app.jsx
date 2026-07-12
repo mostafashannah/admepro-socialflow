@@ -607,7 +607,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.16";
+const APP_VERSION = "beta 4.17";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16745,6 +16745,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const [showAdd,setShowAdd] = useState(false);
   const [range,setRange] = useState("all");
   const [selectedId,setSelectedId] = useState(null);
+  const [typeFilter,setTypeFilter] = useState("all");
   const isAdmin = currentUser?.role==="admin";
   const canManage = ["admin","accountant"].includes(currentUser?.role);
   const num = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
@@ -16938,35 +16939,45 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         )}
       </div>
 
+      {/* Type filter */}
+      <div style={{display:"flex",gap:6}}>
+        {[["all","All"],["in","In"],["out","Out"]].map(([k,l])=>(
+          <button key={k} onClick={()=>setTypeFilter(k)} style={{padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,background:typeFilter===k?(k==="in"?"#10b981":k==="out"?"#ef4444":"var(--accent)"):"var(--surface2)",color:typeFilter===k?"#fff":"var(--text2)",border:`1px solid ${typeFilter===k?"transparent":"var(--border2)"}`}}>{l}</button>
+        ))}
+      </div>
+
       {/* Ledger */}
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
         <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
           <h3 style={{fontWeight:700,fontSize:14}}>Transactions</h3>
         </div>
-        {ledger.length===0 ? (
-          <EmptyState icon={Icons.wallet} title="No transactions" sub="Payments, subscription income, and expenses will show up here."/>
-        ) : (
-          <div>
-            {ledger.map((l,i)=>(
-              <div key={l.id} onClick={()=>setSelectedId(l.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:i<ledger.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
-                onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
-                onMouseLeave={e=>e.currentTarget.style.background=""}>
-                <div style={{width:30,height:30,borderRadius:8,background:l.type==="in"?"#10b98122":"#ef444422",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                  <Ico d={l.type==="in"?Icons.arrowDown||Icons.chevD:Icons.arrowUp||Icons.chevR} size={14} stroke={l.type==="in"?"#10b981":"#ef4444"}/>
+        {(()=>{
+          const filteredLedger = typeFilter==="all" ? ledger : ledger.filter(l=>l.type===typeFilter);
+          return filteredLedger.length===0 ? (
+            <EmptyState icon={Icons.wallet} title="No transactions" sub="Payments, subscription income, and expenses will show up here."/>
+          ) : (
+            <div>
+              {filteredLedger.map((l,i)=>(
+                <div key={l.id} onClick={()=>setSelectedId(l.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:i<filteredLedger.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
+                  onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
+                  onMouseLeave={e=>e.currentTarget.style.background=""}>
+                  <div style={{width:30,height:30,borderRadius:8,background:l.type==="in"?"#10b98122":"#ef444422",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    <Ico d={l.type==="in"?Icons.arrowDown||Icons.chevD:Icons.arrowUp||Icons.chevR} size={14} stroke={l.type==="in"?"#10b981":"#ef4444"}/>
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <p style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.label}</p>
+                    {l.sub&&<p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>{l.sub}</p>}
+                  </div>
+                  <div style={{textAlign:"right",flexShrink:0}}>
+                    <p style={{fontSize:13,fontWeight:800,color:l.type==="in"?"#10b981":"#ef4444"}}>{l.type==="in"?"+":"−"}{l.currency} {Math.round(l.amount).toLocaleString()}</p>
+                    <p style={{fontSize:10,color:"var(--text3)"}}>{fmtDate(l.date)}</p>
+                  </div>
+                  <Ico d={Icons.chevR} size={14} stroke="var(--text3)"/>
                 </div>
-                <div style={{flex:1,minWidth:0}}>
-                  <p style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.label}</p>
-                  {l.sub&&<p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>{l.sub}</p>}
-                </div>
-                <div style={{textAlign:"right",flexShrink:0}}>
-                  <p style={{fontSize:13,fontWeight:800,color:l.type==="in"?"#10b981":"#ef4444"}}>{l.type==="in"?"+":"−"}{l.currency} {Math.round(l.amount).toLocaleString()}</p>
-                  <p style={{fontSize:10,color:"var(--text3)"}}>{fmtDate(l.date)}</p>
-                </div>
-                <Ico d={Icons.chevR} size={14} stroke="var(--text3)"/>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          );
+        })()}
       </div>
 
       <AddExpenseModal open={showAdd} onClose={()=>setShowAdd(false)} onAdd={onAddExpense}/>
