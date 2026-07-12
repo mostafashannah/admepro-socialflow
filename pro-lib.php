@@ -208,7 +208,7 @@ function financeTools() {
                 'type' => 'object',
                 'properties' => [
                     'type'        => ['type' => 'string', 'enum' => ['in', 'out'], 'description' => '"in" = income/money received, "out" = expense/money spent'],
-                    'category'    => ['type' => 'string', 'description' => 'For expenses (type=out): salaries, tools, rent (rent & utilities incl. electricity), ads, freelancers, general (general expenses), office_supplies (coffee, water, snacks, pantry items), debt_repayment, partner_mostafa (Mostafa\'s partner withdrawal), partner_radwa (Radwa\'s partner withdrawal), or other. For income (type=in): client_payment or other_income.'],
+                    'category'    => ['type' => 'string', 'description' => 'For expenses (type=out): salaries, tools, rent (rent & utilities incl. electricity), ads, freelancers, general (general expenses), office_supplies (coffee, water, snacks, pantry items), debt_repayment, partner_mostafa (Mostafa\'s partner withdrawal), partner_radwa (Radwa\'s partner withdrawal), or other. For income (type=in): client_payment, partner_contribution_mostafa (Mostafa injecting cash into the company), partner_contribution_radwa (Radwa injecting cash into the company), or other_income.'],
                     'description' => ['type' => 'string', 'description' => 'Short description, e.g. "April office rent" or "Bank transfer — Acme Co."'],
                     'amount'      => ['type' => 'number'],
                     'currency'    => ['type' => 'string', 'description' => 'Defaults to EGP'],
@@ -252,7 +252,7 @@ function financeTools() {
 
 function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderName) {
     $expenseCats = ['salaries', 'tools', 'rent', 'ads', 'freelancers', 'general', 'office_supplies', 'debt_repayment', 'partner_mostafa', 'partner_radwa', 'other'];
-    $incomeCats  = ['client_payment', 'other_income'];
+    $incomeCats  = ['client_payment', 'partner_contribution_mostafa', 'partner_contribution_radwa', 'other_income'];
 
     if ($name === 'find_client') {
         $query = trim($input['query'] ?? '');

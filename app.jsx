@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.38";
+const APP_VERSION = "beta 4.39";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16576,6 +16576,8 @@ const EXPENSE_CATEGORIES = [
 const EXPENSE_CAT_MAP = Object.fromEntries(EXPENSE_CATEGORIES.map(c=>[c.k,c]));
 const INCOME_CATEGORIES = [
   {k:"client_payment", l:"Client Payment", color:"#10b981"},
+  {k:"partner_contribution_mostafa", l:"Partner Contribution — Mostafa", color:"#a855f7"},
+  {k:"partner_contribution_radwa", l:"Partner Contribution — Radwa", color:"#d946ef"},
   {k:"other_income", l:"Other Income", color:"#06b6d4"},
 ];
 const INCOME_CAT_MAP = Object.fromEntries(INCOME_CATEGORIES.map(c=>[c.k,c]));
@@ -17001,29 +17003,32 @@ function ClientPaymentDetail({clientName,ledger,note,canManage,onBack,onOpenTran
   );
 }
 
-function PartnerDetail({partnerKey,partnerName,ledger,onBack,onOpenTransaction}) {
+function PartnerDetail({partnerKey,partnerInKey,partnerName,ledger,onBack,onOpenTransaction}) {
   const {isMobile} = useResponsive();
-  const txns = ledger.filter(l=>l.type==="out"&&l.category===partnerKey).sort((a,b)=>new Date(b.date)-new Date(a.date));
-  const total = txns.reduce((a,l)=>a+l.amount,0);
+  const withdrawals = ledger.filter(l=>l.type==="out"&&l.category===partnerKey);
+  const contributions = partnerInKey ? ledger.filter(l=>l.type==="in"&&l.category===partnerInKey) : [];
+  const allTxns = [...withdrawals,...contributions].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const totalOut = withdrawals.reduce((a,l)=>a+l.amount,0);
+  const totalIn = contributions.reduce((a,l)=>a+l.amount,0);
+  const netBalance = totalIn - totalOut;
 
   const monthKey = (d) => { const dt=new Date(d); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}`; };
   const monthLabel = (k) => { const [y,m]=k.split("-"); return new Date(Number(y),Number(m)-1,1).toLocaleDateString("en-US",{month:"short",year:"2-digit"}); };
-  const monthTotals = {};
-  txns.forEach(l=>{ const k=monthKey(l.date); monthTotals[k]=(monthTotals[k]||0)+l.amount; });
-  const months = Object.keys(monthTotals).sort().slice(-12);
-  const maxMonth = Math.max(...months.map(k=>monthTotals[k]),1);
+  const monthNet = {};
+  allTxns.forEach(l=>{ const k=monthKey(l.date); monthNet[k]=(monthNet[k]||0)+(l.type==="in"?l.amount:-l.amount); });
+  const months = Object.keys(monthNet).sort().slice(-12);
+  const maxAbsMonth = Math.max(...months.map(k=>Math.abs(monthNet[k])),1);
 
-  // Average per month — total spread over every calendar month from the first
-  // withdrawal through the current month (not just months that had activity),
-  // so a quiet month still pulls the average down.
-  const allMonthKeys = Object.keys(monthTotals);
+  // Average per month — withdrawals spread over every calendar month since the
+  // first transaction through the current month, so a quiet month pulls it down.
+  const allMonthKeys = Object.keys(monthNet);
   const elapsedMonths = allMonthKeys.length ? (()=>{
     const sorted = allMonthKeys.sort();
     const [fy,fm] = sorted[0].split("-").map(Number);
     const now = new Date();
     return Math.max(1,(now.getFullYear()-fy)*12 + (now.getMonth()+1-fm) + 1);
   })() : 1;
-  const avgPerMonth = total/elapsedMonths;
+  const avgPerMonth = totalOut/elapsedMonths;
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
@@ -17035,45 +17040,67 @@ function PartnerDetail({partnerKey,partnerName,ledger,onBack,onOpenTransaction})
         <Avatar name={partnerName} size={48}/>
         <div style={{flex:1,minWidth:0}}>
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:20,fontWeight:800}}>{partnerName}</h2>
-          <p style={{fontSize:12,color:"var(--text3)"}}>{txns.length} withdrawal{txns.length!==1?"s":""}</p>
+          <p style={{fontSize:12,color:"var(--text3)"}}>{withdrawals.length} withdrawal{withdrawals.length!==1?"s":""} · {contributions.length} contribution{contributions.length!==1?"s":""}</p>
         </div>
         <div style={{textAlign:"right"}}>
-          <p style={{fontSize:22,fontWeight:800,color:"#ef4444"}}>EGP {Math.round(total).toLocaleString()}</p>
-          <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>EGP {Math.round(avgPerMonth).toLocaleString()} avg / month</p>
+          <p style={{fontSize:22,fontWeight:800,color:netBalance>=0?"#10b981":"#ef4444"}}>Net {netBalance>=0?"+":"−"}EGP {Math.round(Math.abs(netBalance)).toLocaleString()}</p>
+          <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>EGP {Math.round(avgPerMonth).toLocaleString()} avg withdrawn / month</p>
+        </div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:14,textAlign:"center"}}>
+          <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Contributed In</p>
+          <p style={{fontSize:18,fontWeight:800,color:"#10b981",marginTop:4}}>EGP {Math.round(totalIn).toLocaleString()}</p>
+        </div>
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:14,textAlign:"center"}}>
+          <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Withdrawn Out</p>
+          <p style={{fontSize:18,fontWeight:800,color:"#ef4444",marginTop:4}}>EGP {Math.round(totalOut).toLocaleString()}</p>
         </div>
       </div>
 
       {months.length>0&&(
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:isMobile?16:20}}>
-          <h3 style={{fontWeight:700,fontSize:14,marginBottom:16}}>Withdrawals by Month</h3>
-          <div style={{display:"flex",alignItems:"flex-end",gap:isMobile?4:10,height:140}}>
-            {months.map(k=>(
-              <div key={k} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:6,height:"100%",justifyContent:"flex-end"}}>
-                <span style={{fontSize:9,fontWeight:700,color:"var(--text3)"}}>{monthTotals[k]>=1000?Math.round(monthTotals[k]/1000)+"k":Math.round(monthTotals[k])}</span>
-                <div style={{width:"100%",maxWidth:32,height:Math.max(4,(monthTotals[k]/maxMonth)*90),background:"#ef4444",borderRadius:"4px 4px 0 0"}}/>
-                <span style={{fontSize:9,color:"var(--text3)",whiteSpace:"nowrap"}}>{monthLabel(k)}</span>
-              </div>
-            ))}
+          <h3 style={{fontWeight:700,fontSize:14,marginBottom:16}}>Net by Month <span style={{fontWeight:400,color:"var(--text3)",fontSize:11}}>(contributions − withdrawals)</span></h3>
+          <div style={{display:"flex",alignItems:"center",gap:isMobile?4:10,height:150}}>
+            {months.map(k=>{
+              const v = monthNet[k];
+              const isPos = v>=0;
+              return (
+                <div key={k} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,height:"100%",justifyContent:"center"}}>
+                  {isPos&&<span style={{fontSize:9,fontWeight:700,color:"var(--text3)"}}>{Math.abs(v)>=1000?Math.round(Math.abs(v)/1000)+"k":Math.round(Math.abs(v))}</span>}
+                  <div style={{display:"flex",flexDirection:"column",justifyContent:"flex-end",height:60}}>
+                    {isPos&&<div style={{width:"100%",maxWidth:28,height:Math.max(4,(Math.abs(v)/maxAbsMonth)*56),background:"#10b981",borderRadius:"3px 3px 0 0"}}/>}
+                  </div>
+                  <div style={{width:"100%",height:1,background:"var(--border)"}}/>
+                  <div style={{display:"flex",flexDirection:"column",height:60}}>
+                    {!isPos&&<div style={{width:"100%",maxWidth:28,height:Math.max(4,(Math.abs(v)/maxAbsMonth)*56),background:"#ef4444",borderRadius:"0 0 3px 3px"}}/>}
+                  </div>
+                  {!isPos&&<span style={{fontSize:9,fontWeight:700,color:"var(--text3)"}}>{Math.abs(v)>=1000?Math.round(Math.abs(v)/1000)+"k":Math.round(Math.abs(v))}</span>}
+                  <span style={{fontSize:9,color:"var(--text3)",whiteSpace:"nowrap"}}>{monthLabel(k)}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
 
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
         <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
-          <h3 style={{fontWeight:700,fontSize:14}}>Withdrawal History</h3>
+          <h3 style={{fontWeight:700,fontSize:14}}>Transaction History</h3>
         </div>
-        {txns.map((l,i)=>(
-          <div key={l.id} onClick={()=>onOpenTransaction(l.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:i<txns.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
+        {allTxns.map((l,i)=>(
+          <div key={l.id} onClick={()=>onOpenTransaction(l.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:i<allTxns.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
             onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
             onMouseLeave={e=>e.currentTarget.style.background=""}>
-            <div style={{width:30,height:30,borderRadius:8,background:"#ef444422",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-              <Ico d={Icons.arrowUp||Icons.chevR} size={14} stroke="#ef4444"/>
+            <div style={{width:30,height:30,borderRadius:8,background:l.type==="in"?"#10b98122":"#ef444422",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <Ico d={l.type==="in"?Icons.arrowDown||Icons.chevD:Icons.arrowUp||Icons.chevR} size={14} stroke={l.type==="in"?"#10b981":"#ef4444"}/>
             </div>
             <div style={{flex:1,minWidth:0}}>
               <p style={{fontSize:13,fontWeight:600}}>{l.sub}{l.method?` · ${l.method}`:""}</p>
               <p style={{fontSize:11,color:"var(--text3)"}}>{fmtDate(l.date)}</p>
             </div>
-            <p style={{fontSize:13,fontWeight:800,color:"#ef4444"}}>−{l.currency} {Math.round(l.amount).toLocaleString()}</p>
+            <p style={{fontSize:13,fontWeight:800,color:l.type==="in"?"#10b981":"#ef4444"}}>{l.type==="in"?"+":"−"}{l.currency} {Math.round(l.amount).toLocaleString()}</p>
             <Ico d={Icons.chevR} size={14} stroke="var(--text3)"/>
           </div>
         ))}
@@ -17211,22 +17238,30 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const clientNames = paymentClients.map(c=>c.name);
 
   // Partners — the two fixed partner-withdrawal categories, aggregated like clients
-  const PARTNER_KEYS = ["partner_mostafa","partner_radwa"];
-  const partnerTotals = PARTNER_KEYS.map(k=>{
-    const txns = ledger.filter(l=>l.type==="out"&&l.category===k);
-    const total = txns.reduce((a,l)=>a+l.amount,0);
-    const firstDate = txns.reduce((min,l)=>(!min||new Date(l.date)<new Date(min))?l.date:min,null);
+  const PARTNERS = [
+    {name:"Mostafa", outKey:"partner_mostafa", inKey:"partner_contribution_mostafa"},
+    {name:"Radwa", outKey:"partner_radwa", inKey:"partner_contribution_radwa"},
+  ];
+  const partnerTotals = PARTNERS.map(({name,outKey,inKey})=>{
+    const withdrawalTxns = ledger.filter(l=>l.type==="out"&&l.category===outKey);
+    const contributionTxns = ledger.filter(l=>l.type==="in"&&l.category===inKey);
+    const allTxns = [...withdrawalTxns,...contributionTxns];
+    const total = withdrawalTxns.reduce((a,l)=>a+l.amount,0); // gross withdrawn, kept for backward-compat display
+    const contributions = contributionTxns.reduce((a,l)=>a+l.amount,0);
+    const netBalance = contributions - total; // >0 = partner has put in more than taken out
+    const firstDate = allTxns.reduce((min,l)=>(!min||new Date(l.date)<new Date(min))?l.date:min,null);
     let elapsedMonths = 1;
     if(firstDate) {
       const f = new Date(firstDate), n = new Date();
       elapsedMonths = Math.max(1,(n.getFullYear()-f.getFullYear())*12 + (n.getMonth()-f.getMonth()) + 1);
     }
     return {
-      key:k, name: EXPENSE_CAT_MAP[k]?.l.replace("Partner Withdrawal — ","")||k,
-      total, count: txns.length, avgPerMonth: total/elapsedMonths,
-      lastDate: txns.reduce((max,l)=>(!max||new Date(l.date)>new Date(max))?l.date:max,null),
+      key:outKey, inKey, name, total, contributions, netBalance,
+      count: withdrawalTxns.length, contributionCount: contributionTxns.length,
+      avgPerMonth: total/elapsedMonths,
+      lastDate: allTxns.reduce((max,l)=>(!max||new Date(l.date)>new Date(max))?l.date:max,null),
     };
-  }).filter(p=>p.count>0).sort((a,b)=>b.total-a.total);
+  }).filter(p=>p.count>0||p.contributionCount>0).sort((a,b)=>b.total-a.total);
 
   // Month picker options — every calendar month from the earliest transaction
   // through the current month, newest first, e.g. {value:"2026-07",label:"Jul 2026"}.
@@ -17313,10 +17348,11 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   }
 
   if(selectedPartner) {
-    const partnerInfo = partnerTotals.find(p=>p.key===selectedPartner) || {key:selectedPartner, name:EXPENSE_CAT_MAP[selectedPartner]?.l.replace("Partner Withdrawal — ","")||selectedPartner};
+    const partnerInfo = partnerTotals.find(p=>p.key===selectedPartner) || PARTNERS.find(p=>p.outKey===selectedPartner) || {name:EXPENSE_CAT_MAP[selectedPartner]?.l.replace("Partner Withdrawal — ","")||selectedPartner};
     return (
       <PartnerDetail
         partnerKey={selectedPartner}
+        partnerInKey={partnerInfo.inKey}
         partnerName={partnerInfo.name}
         ledger={ledger}
         onBack={()=>window.history.back()}
@@ -17427,7 +17463,10 @@ No markdown, no explanation.`;
                     <p style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</p>
                     <p style={{fontSize:11,color:"var(--text3)"}}>{p.count} withdrawal{p.count!==1?"s":""} · EGP {Math.round(p.avgPerMonth).toLocaleString()} avg/mo · last {fmtDate(p.lastDate)}</p>
                   </div>
-                  <p style={{fontSize:14,fontWeight:800,color:"#ef4444",flexShrink:0}}>EGP {Math.round(p.total).toLocaleString()}</p>
+                  <div style={{textAlign:"right",flexShrink:0}}>
+                    <p style={{fontSize:14,fontWeight:800,color:"#ef4444"}}>−EGP {Math.round(p.total).toLocaleString()}</p>
+                    <p style={{fontSize:11,fontWeight:700,color:p.netBalance>=0?"#10b981":"#ef4444"}}>Net {p.netBalance>=0?"+":"−"}EGP {Math.round(Math.abs(p.netBalance)).toLocaleString()}</p>
+                  </div>
                   <Ico d={Icons.chevR} size={14} stroke="var(--text3)"/>
                 </div>
               ))}
