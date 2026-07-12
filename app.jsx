@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.45";
+const APP_VERSION = "beta 4.46";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17576,7 +17576,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   }
 
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:isMobile?14:20,overflowX:"hidden",maxWidth:"100%"}} className="fade-in">
+    <div style={{display:"flex",flexDirection:"column",gap:isMobile?14:20,maxWidth:"100%"}} className="fade-in">
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
         <div>
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?20:24,fontWeight:800}}>Finance</h2>
