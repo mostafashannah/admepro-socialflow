@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.58";
+const APP_VERSION = "beta 4.59";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17105,6 +17105,35 @@ function buildFinanceMonthOptions(dates) {
   return monthOptions;
 }
 
+// Custom pill dropdown — a plain button + list, not a native <select>.
+// iOS Safari ignores author font-size/appearance overrides on <select>
+// closed-state text in some cases (confirmed on-device even after
+// -webkit-appearance:none, an explicit font shorthand, and
+// -webkit-text-size-adjust:100% all failed to fix it), so filters that need
+// to visually match sibling pill buttons use this instead.
+function PillDropdown({value,options,onChange,placeholder,maxWidth=150}) {
+  const [open,setOpen] = useState(false);
+  const selected = options.find(o=>o.value===value);
+  return (
+    <div style={{position:"relative"}}>
+      <button type="button" onClick={()=>setOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:4,maxWidth,padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)",cursor:"pointer"}}>
+        <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{selected?selected.label:placeholder}</span>
+        <Ico d={Icons.chevD||Icons.chevR} size={11} stroke="var(--text2)"/>
+      </button>
+      {open&&(
+        <>
+          <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:60}}/>
+          <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,zIndex:61,background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:10,boxShadow:"0 6px 20px rgba(0,0,0,0.15)",maxHeight:260,overflowY:"auto",minWidth:180}}>
+            {options.map(o=>(
+              <button key={o.value} type="button" onClick={()=>{onChange(o.value);setOpen(false);}} style={{display:"block",width:"100%",textAlign:"left",padding:"9px 14px",fontSize:13,fontWeight:o.value===value?700:500,background:o.value===value?"var(--surface2)":"transparent",color:o.value===value?"var(--accent)":"var(--text1)",border:"none",cursor:"pointer",whiteSpace:"nowrap"}}>{o.label}</button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function FinanceRangeFilter({range,setRange,customStart,setCustomStart,customEnd,setCustomEnd,selectedMonth,setSelectedMonth,monthOptions}) {
   return (
     <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
@@ -17844,14 +17873,18 @@ No markdown, no explanation.`;
           {[["all","All"],["in","In"],["out","Out"]].map(([k,l])=>(
             <button key={k} onClick={()=>setTypeFilter(k)} style={{padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,background:typeFilter===k?(k==="in"?"#10b981":k==="out"?"#ef4444":"var(--accent)"):"var(--surface2)",color:typeFilter===k?"#fff":"var(--text2)",border:`1px solid ${typeFilter===k?"transparent":"var(--border2)"}`}}>{l}</button>
           ))}
-          <select value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)} style={{WebkitAppearance:"none",MozAppearance:"none",appearance:"none",WebkitTextSizeAdjust:"100%",textSizeAdjust:"100%",maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",width:"auto",padding:"6px 14px",borderRadius:99,font:"700 12px 'Montserrat',sans-serif",fontSize:12,fontWeight:700,fontFamily:"'Montserrat',sans-serif",lineHeight:"normal",background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)",minHeight:0,outline:"none"}}>
-            <option value="all">All Categories</option>
-            {[...EXPENSE_CATEGORIES,...INCOME_CATEGORIES].map(c=><option key={c.k} value={c.k}>{c.l}</option>)}
-          </select>
-          <select value={clientFilter} onChange={e=>setClientFilter(e.target.value)} style={{WebkitAppearance:"none",MozAppearance:"none",appearance:"none",WebkitTextSizeAdjust:"100%",textSizeAdjust:"100%",maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",width:"auto",padding:"6px 14px",borderRadius:99,font:"700 12px 'Montserrat',sans-serif",fontSize:12,fontWeight:700,fontFamily:"'Montserrat',sans-serif",lineHeight:"normal",background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)",minHeight:0,outline:"none"}}>
-            <option value="all">All Clients</option>
-            {clientNames.map(n=><option key={n} value={n}>{n}</option>)}
-          </select>
+          <PillDropdown
+            value={categoryFilter}
+            onChange={setCategoryFilter}
+            placeholder="All Categories"
+            options={[{value:"all",label:"All Categories"},...[...EXPENSE_CATEGORIES,...INCOME_CATEGORIES].map(c=>({value:c.k,label:c.l}))]}
+          />
+          <PillDropdown
+            value={clientFilter}
+            onChange={setClientFilter}
+            placeholder="All Clients"
+            options={[{value:"all",label:"All Clients"},...clientNames.map(n=>({value:n,label:n}))]}
+          />
           {(categoryFilter!=="all"||clientFilter!=="all")&&(
             <button onClick={()=>{setCategoryFilter("all");setClientFilter("all");}} style={{padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,background:"var(--surface2)",color:"var(--accent)",border:"1px solid var(--border2)"}}>Clear</button>
           )}
