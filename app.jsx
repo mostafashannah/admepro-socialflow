@@ -607,7 +607,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.29";
+const APP_VERSION = "beta 4.30";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16894,6 +16894,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const [customStart,setCustomStart] = useState("");
   const [customEnd,setCustomEnd] = useState("");
   const [selectedId,setSelectedId] = useState(null);
+  const [selectedClient,setSelectedClient] = useState(null);
   const [typeFilter,setTypeFilter] = useState("all");
   const [categoryFilter,setCategoryFilter] = useState("all");
   const [clientFilter,setClientFilter] = useState("all");
@@ -17025,6 +17026,46 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
     );
   }
 
+  if(selectedClient) {
+    const clientTxns = ledger.filter(l=>l.type==="in"&&l.clientName===selectedClient).sort((a,b)=>new Date(b.date)-new Date(a.date));
+    const clientTotal = clientTxns.reduce((a,l)=>a+l.amount,0);
+    return (
+      <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
+        <button onClick={()=>setSelectedClient(null)} style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:700,color:"var(--text2)"}}>
+          <Ico d={Icons.chevL} size={15} stroke="var(--text2)"/> Back to Clients
+        </button>
+        <div style={{display:"flex",alignItems:"center",gap:14,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
+          <Avatar name={selectedClient} size={48}/>
+          <div style={{flex:1,minWidth:0}}>
+            <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:20,fontWeight:800}}>{selectedClient}</h2>
+            <p style={{fontSize:12,color:"var(--text3)"}}>{clientTxns.length} payment{clientTxns.length!==1?"s":""}</p>
+          </div>
+          <p style={{fontSize:22,fontWeight:800,color:"#10b981"}}>EGP {Math.round(clientTotal).toLocaleString()}</p>
+        </div>
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+          <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
+            <h3 style={{fontWeight:700,fontSize:14}}>Payment History</h3>
+          </div>
+          {clientTxns.map((l,i)=>(
+            <div key={l.id} onClick={()=>setSelectedId(l.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:i<clientTxns.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
+              onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
+              onMouseLeave={e=>e.currentTarget.style.background=""}>
+              <div style={{width:30,height:30,borderRadius:8,background:"#10b98122",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <Ico d={Icons.arrowDown||Icons.chevD} size={14} stroke="#10b981"/>
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <p style={{fontSize:13,fontWeight:600}}>{l.source}{l.method?` · ${l.method}`:""}</p>
+                <p style={{fontSize:11,color:"var(--text3)"}}>{fmtDate(l.date)}</p>
+              </div>
+              <p style={{fontSize:13,fontWeight:800,color:"#10b981"}}>+{l.currency} {Math.round(l.amount).toLocaleString()}</p>
+              <Ico d={Icons.chevR} size={14} stroke="var(--text3)"/>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{display:"flex",flexDirection:"column",gap:isMobile?14:20}} className="fade-in">
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
@@ -17058,7 +17099,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
           ) : (
             <div>
               {paymentClients.map((c,i)=>(
-                <div key={c.name} onClick={()=>{setClientFilter(c.name);setView("overview");}} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 18px",borderBottom:i<paymentClients.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
+                <div key={c.name} onClick={()=>setSelectedClient(c.name)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 18px",borderBottom:i<paymentClients.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
                   onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
                   onMouseLeave={e=>e.currentTarget.style.background=""}>
                   <Avatar name={c.name} size={34}/>
