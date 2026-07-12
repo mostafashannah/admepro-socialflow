@@ -213,6 +213,7 @@ function financeTools() {
                     'amount'      => ['type' => 'number'],
                     'currency'    => ['type' => 'string', 'description' => 'Defaults to EGP'],
                     'date'        => ['type' => 'string', 'description' => 'YYYY-MM-DD — defaults to today if omitted'],
+                    'method'      => ['type' => 'string', 'enum' => ['Cash', 'Bank transfer', 'Card', 'Other'], 'description' => 'How the money moved, if the user says (e.g. "cash", "bank transfer") — omit if not mentioned.'],
                 ],
                 'required' => ['type', 'category', 'description', 'amount'],
             ],
@@ -230,6 +231,7 @@ function financeTools() {
                     'amount'      => ['type' => 'number'],
                     'currency'    => ['type' => 'string'],
                     'date'        => ['type' => 'string', 'description' => 'YYYY-MM-DD'],
+                    'method'      => ['type' => 'string', 'enum' => ['Cash', 'Bank transfer', 'Card', 'Other']],
                 ],
                 'required' => ['short_id'],
             ],
@@ -290,7 +292,7 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
     }
 
     if ($name === 'search_transactions') {
-        $sql = "SELECT id, type, category, description, amount, currency, date FROM expenses WHERE 1=1";
+        $sql = "SELECT id, type, category, description, amount, currency, date, method FROM expenses WHERE 1=1";
         $params = [];
         if (!empty($input['query']))      { $sql .= " AND description LIKE :q"; $params[':q'] = '%' . $input['query'] . '%'; }
         if (!empty($input['category']))   { $sql .= " AND category = :c"; $params[':c'] = $input['category']; }
@@ -317,7 +319,7 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
         if (!$row) return ['error' => 'No transaction found with that short_id.'];
 
         $sets = []; $bind = [':id' => $row['id']];
-        foreach (['type', 'category', 'description', 'amount', 'currency', 'date'] as $field) {
+        foreach (['type', 'category', 'description', 'amount', 'currency', 'date', 'method'] as $field) {
             if (array_key_exists($field, $input) && $input[$field] !== null && $input[$field] !== '') {
                 $sets[] = "$field = :$field";
                 $bind[":$field"] = $input[$field];
@@ -326,7 +328,7 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
         if (!$sets) return ['error' => 'No fields to update were provided.'];
         $pdo->prepare("UPDATE expenses SET " . implode(', ', $sets) . " WHERE id = :id")->execute($bind);
 
-        $stmt = $pdo->prepare("SELECT type, category, description, amount, currency, date FROM expenses WHERE id = :id");
+        $stmt = $pdo->prepare("SELECT type, category, description, amount, currency, date, method FROM expenses WHERE id = :id");
         $stmt->execute([':id' => $row['id']]);
         $updated = $stmt->fetch(PDO::FETCH_ASSOC);
         return ['ok' => true, 'message' => 'Transaction updated.'] + $updated;
@@ -358,14 +360,15 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
 
         $id = generateProUuid();
         $ref = 'TXN-' . strtoupper(substr($id, 0, 8));
-        $ins = $pdo->prepare("INSERT INTO expenses (id, type, category, description, amount, currency, date, created_by, ref) VALUES (:id, :type, :cat, :desc, :amt, :cur, :date, :by, :ref)");
+        $method = in_array($input['method'] ?? '', ['Cash', 'Bank transfer', 'Card', 'Other'], true) ? $input['method'] : null;
+        $ins = $pdo->prepare("INSERT INTO expenses (id, type, category, description, amount, currency, date, created_by, ref, method) VALUES (:id, :type, :cat, :desc, :amt, :cur, :date, :by, :ref, :method)");
         $ins->execute([
             ':id' => $id, ':type' => $type, ':cat' => $category, ':desc' => $description,
-            ':amt' => $amount, ':cur' => $currency, ':date' => $date, ':by' => $senderName, ':ref' => $ref,
+            ':amt' => $amount, ':cur' => $currency, ':date' => $date, ':by' => $senderName, ':ref' => $ref, ':method' => $method,
         ]);
         return [
             'ok' => true, 'type' => $type, 'category' => $category, 'description' => $description,
-            'amount' => (float)$amount, 'currency' => $currency, 'date' => $date, 'reference' => $ref,
+            'amount' => (float)$amount, 'currency' => $currency, 'date' => $date, 'reference' => $ref, 'method' => $method,
             'message' => 'Saved to the Finance page.',
         ];
     }
@@ -718,8 +721,10 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                      . "and (ideally) a category. If the user's message is missing any of these or is ambiguous "
                      . "(e.g. they just say \"add 500 for coffee\" without saying in/out — assume OUT for an "
                      . "expense-sounding request, but ask if genuinely unclear), ask a short follow-up question "
-                     . "instead of guessing. After successfully saving, always confirm back to the user exactly "
-                     . "what was recorded (amount, type, category, description, date) in one short line.\n\n"
+                     . "instead of guessing. If they mention how the money moved (cash, bank transfer, card), pass "
+                     . "it as method — don't ask for it separately, just capture it when given. After successfully "
+                     . "saving, always confirm back to the user exactly what was recorded (amount, type, category, "
+                     . "description, date, method if given) in one short line.\n\n"
                      . "Whenever the category is client_payment (money IN from a client), ALWAYS call find_client "
                      . "with the client name mentioned BEFORE saving — do not skip this. If it returns a close "
                      . "match, use that client's exact name from the system in the description. If it returns no "

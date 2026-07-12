@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.31";
+const APP_VERSION = "beta 4.32";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16588,6 +16588,7 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial,clientNames=[]}) {
   const [amount,setAmount] = useState(initial?.amount!=null?String(initial.amount):"");
   const [currency,setCurrency] = useState(initial?.currency||"EGP");
   const [date,setDate] = useState(initial?.date||new Date().toISOString().split("T")[0]);
+  const [method,setMethod] = useState(initial?.method||"");
   const [saving,setSaving] = useState(false);
   const isClientMatch = (d) => clientNames.includes(d);
   const [clientMode,setClientMode] = useState(initial?.description&&!isClientMatch(initial.description) ? "manual" : "select");
@@ -16599,14 +16600,15 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial,clientNames=[]}) {
     setType(initial?.type||"out"); setCategory(initial?.category||"other");
     setDescription(initial?.description||""); setAmount(initial?.amount!=null?String(initial.amount):"");
     setCurrency(initial?.currency||"EGP"); setDate(initial?.date||new Date().toISOString().split("T")[0]);
+    setMethod(initial?.method||"");
     setClientMode(initial?.description&&!isClientMatch(initial.description) ? "manual" : "select");
   },[open,initial]);
 
-  const reset = () => { setType("out"); setCategory("other"); setDescription(""); setAmount(""); setDate(new Date().toISOString().split("T")[0]); setClientMode("select"); };
+  const reset = () => { setType("out"); setCategory("other"); setDescription(""); setAmount(""); setDate(new Date().toISOString().split("T")[0]); setMethod(""); setClientMode("select"); };
   const submit = async () => {
     if(!amount||Number(amount)<=0||!description.trim()) return;
     setSaving(true);
-    const payload = {type,category,description:description.trim(),amount:Number(amount),currency,date};
+    const payload = {type,category,description:description.trim(),amount:Number(amount),currency,date,method:method||null};
     if(isEdit) await onSave(initial.id,payload);
     else await onAdd(payload);
     setSaving(false);
@@ -16668,6 +16670,15 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial,clientNames=[]}) {
         </div>
         <Field label="Date">
           <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={inputSt}/>
+        </Field>
+        <Field label="Payment Method" hint="Optional">
+          <select value={method} onChange={e=>setMethod(e.target.value)} style={inputSt}>
+            <option value="">—</option>
+            <option value="Cash">Cash</option>
+            <option value="Bank transfer">Bank transfer</option>
+            <option value="Card">Card</option>
+            <option value="Other">Other</option>
+          </select>
         </Field>
       </div>
     </Modal>
@@ -16846,7 +16857,7 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
         open={showEdit}
         onClose={()=>setShowEdit(false)}
         onSave={onEdit}
-        initial={txn.raw ? {id:txn.raw.id,type:txn.type,category:txn.category,description:txn.sub,amount:txn.amount,currency:txn.currency,date:txn.date} : null}
+        initial={txn.raw ? {id:txn.raw.id,type:txn.type,category:txn.category,description:txn.sub,amount:txn.amount,currency:txn.currency,date:txn.date,method:txn.method} : null}
         clientNames={clientNames}
       />
     </div>
