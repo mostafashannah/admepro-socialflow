@@ -162,6 +162,17 @@ function proTools() {
 function financeTools() {
     return [
         [
+            'name' => 'find_client',
+            'description' => 'Look up existing agency clients by name — use this BEFORE recording a client_payment income transaction, to check whether the client mentioned already exists in the system rather than guessing. Returns close name matches, if any.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'query' => ['type' => 'string', 'description' => 'Client name or partial name to search for, e.g. "Almousa"'],
+                ],
+                'required' => ['query'],
+            ],
+        ],
+        [
             'name' => 'get_finance_summary',
             'description' => 'Get financial totals (money in, money out, balance) and a breakdown by category, optionally filtered by date range and/or category. Use this for any question about income, expenses, spending, or balance.',
             'input_schema' => [
@@ -240,6 +251,15 @@ function financeTools() {
 function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderName) {
     $expenseCats = ['salaries', 'tools', 'rent', 'ads', 'freelancers', 'general', 'office_supplies', 'debt_repayment', 'partner_mostafa', 'partner_radwa', 'other'];
     $incomeCats  = ['client_payment', 'other_income'];
+
+    if ($name === 'find_client') {
+        $query = trim($input['query'] ?? '');
+        if (!$query) return ['error' => 'Missing query.'];
+        $stmt = $pdo->prepare("SELECT name, status FROM clients WHERE name LIKE :q ORDER BY name ASC LIMIT 8");
+        $stmt->execute([':q' => '%' . $query . '%']);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return ['matches' => $rows, 'count' => count($rows)];
+    }
 
     if ($name === 'get_finance_summary') {
         $sql = "SELECT type, category, SUM(amount) AS total, COUNT(*) AS cnt FROM expenses WHERE 1=1";
@@ -530,7 +550,7 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
     if (in_array($name, ['request_time_off', 'decide_pending_request', 'get_my_hr_info'], true)) {
         return runHrTool($pdo, $name, $input, $senderId, $senderName);
     }
-    if (in_array($name, ['get_finance_summary', 'search_transactions', 'add_transaction', 'edit_transaction', 'delete_transaction'], true)) {
+    if (in_array($name, ['find_client', 'get_finance_summary', 'search_transactions', 'add_transaction', 'edit_transaction', 'delete_transaction'], true)) {
         if ($name === 'delete_transaction' && $senderRole !== 'team:admin') {
             return ['error' => 'Only an admin can delete financial transactions.'];
         }
@@ -700,6 +720,16 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                      . "expense-sounding request, but ask if genuinely unclear), ask a short follow-up question "
                      . "instead of guessing. After successfully saving, always confirm back to the user exactly "
                      . "what was recorded (amount, type, category, description, date) in one short line.\n\n"
+                     . "Whenever the category is client_payment (money IN from a client), ALWAYS call find_client "
+                     . "with the client name mentioned BEFORE saving — do not skip this. If it returns a close "
+                     . "match, use that client's exact name from the system in the description. If it returns no "
+                     . "match, you MUST stop and ask the user to confirm before saving — e.g. \"I don't see a "
+                     . "client called '{name}' in the system — should I record this payment anyway?\" — and only "
+                     . "call add_transaction after they confirm. Never silently record a payment for an unknown "
+                     . "client without asking first.\n\n"
+                     . "Descriptions and any free text you save (transaction descriptions, comments, etc.) must "
+                     . "always be in English — if the user writes in Arabic or any other language, translate it "
+                     . "to English yourself before saving, even though you understood their message fine as-is.\n\n"
                      . "To change something already recorded, use search_transactions to find it and get its "
                      . "short_id, then edit_transaction with only the fields being changed. "
                      . ($isAdmin
