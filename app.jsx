@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.34";
+const APP_VERSION = "beta 4.35";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17127,7 +17127,9 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const allDates = [...payments.map(p=>p.payment_date),...subscriptionPayments.map(p=>p.payment_date),...expenses.map(e=>e.date)].filter(Boolean).map(d=>new Date(d));
   const monthOptions = [];
   if(allDates.length) {
-    const earliest = new Date(Math.min(...allDates));
+    // Floor at Jan 2026 (the first real record) so stray/demo dates outside
+    // the actual bookkeeping history can't stretch the list further back.
+    const earliest = new Date(Math.max(Math.min(...allDates), new Date(2026,0,1).getTime()));
     const now = new Date();
     let y = now.getFullYear(), m = now.getMonth();
     while(y>earliest.getFullYear() || (y===earliest.getFullYear() && m>=earliest.getMonth())) {
@@ -17260,7 +17262,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
           <button key={k} onClick={()=>setRange(k)} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:range===k?"var(--accent)":"var(--surface2)",color:range===k?"#fff":"var(--text2)",border:`1px solid ${range===k?"var(--accent)":"var(--border2)"}`}}>{l}</button>
         ))}
         {monthOptions.length>0&&(
-          <select value={range==="specific_month"?selectedMonth:""} onChange={e=>{setSelectedMonth(e.target.value);setRange("specific_month");}} style={{...inputSt,width:"auto",padding:"6px 10px",fontSize:12,fontWeight:700,color:range==="specific_month"?"var(--accent)":"var(--text2)",borderColor:range==="specific_month"?"var(--accent)":"var(--border2)"}}>
+          <select value={range==="specific_month"?selectedMonth:""} onChange={e=>{setSelectedMonth(e.target.value);setRange("specific_month");}} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:range==="specific_month"?"var(--accent)":"var(--surface2)",color:range==="specific_month"?"#fff":"var(--text2)",border:`1px solid ${range==="specific_month"?"var(--accent)":"var(--border2)"}`,WebkitAppearance:"none",appearance:"none",backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='${range==="specific_month"?"%23fff":"%23888"}' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,backgroundRepeat:"no-repeat",backgroundPosition:"right 10px center",paddingRight:28}}>
             <option value="" disabled>Pick a month…</option>
             {monthOptions.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
