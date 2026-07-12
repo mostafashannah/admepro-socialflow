@@ -139,7 +139,7 @@ try {
         try { maybeCreateLeadFromMessage($pdo, 'whatsapp', $from, $contactName, $text, $from); }
         catch (\Throwable $e) { error_log('[wa-webhook] lead-capture EXCEPTION: ' . $e->getMessage()); }
     }
-    $reply = askPro($pdo, $senderName, $senderRole, $contextBlock, $text, $senderId, $isVoiceNote ? $text : null);
+    $reply = askPro($pdo, $senderName, $senderRole, $contextBlock, $text, $senderId, $isVoiceNote ? $text : null, $from);
     if ($reply) sendWhatsAppReply($from, $reply);
 } catch (Throwable $e) {
     error_log('[wa-webhook] ' . $e->getMessage() . ' | ' . $e->getFile() . ':' . $e->getLine(), 3, '/var/www/socialflow/pro-error.log');

@@ -607,7 +607,26 @@ function callClaude(array $payload) {
     return [$status, json_decode($res, true), $res];
 }
 
-function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $senderId = null, $voiceTranscript = null) {
+// Pro is otherwise stateless per incoming webhook call (each PHP-FPM request
+// starts fresh) — these give it short-term memory of the last few messages in
+// a WhatsApp chat, so multi-step exchanges (e.g. "add a transaction" where the
+// amount and description arrive in separate messages) don't loop forever
+// re-asking for info the user already gave a message or two ago.
+function loadRecentProMessages(PDO $pdo, string $phone, int $limit = 10): array {
+    $stmt = $pdo->prepare("SELECT role, content FROM pro_messages WHERE phone = :p ORDER BY created_at DESC LIMIT :lim");
+    $stmt->bindValue(':p', $phone, PDO::PARAM_STR);
+    $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+    $stmt->execute();
+    $rows = array_reverse($stmt->fetchAll(PDO::FETCH_ASSOC));
+    return array_map(fn($r) => ['role' => $r['role'], 'content' => $r['content']], $rows);
+}
+
+function saveProMessage(PDO $pdo, string $phone, string $role, string $content) {
+    $stmt = $pdo->prepare("INSERT INTO pro_messages (id, phone, role, content) VALUES (:id, :phone, :role, :content)");
+    $stmt->execute([':id' => generateProUuid(), ':phone' => $phone, ':role' => $role, ':content' => $content]);
+}
+
+function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $senderId = null, $voiceTranscript = null, $fromPhone = null) {
     $isTeam       = $senderName && str_starts_with((string)$senderRole, 'team:');
     $isAdmin      = $senderRole === 'team:admin';
     $isAM         = $senderRole === 'team:account_manager';
@@ -678,8 +697,10 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
         }
     }
 
-    $messages = [['role' => 'user', 'content' => $userText]];
+    $history = ($fromPhone && $senderName) ? loadRecentProMessages($pdo, $fromPhone) : [];
+    $messages = array_merge($history, [['role' => 'user', 'content' => $userText]]);
 
+    $reply = null;
     for ($turn = 0; $turn < 4; $turn++) {
         $payload = ['model' => 'claude-sonnet-4-6', 'max_tokens' => 500, 'system' => $system, 'messages' => $messages];
         if ($tools) $payload['tools'] = $tools;
@@ -697,7 +718,8 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
             foreach ($content as $block) {
                 if (($block['type'] ?? '') === 'text') $textOut .= $block['text'];
             }
-            return trim($textOut) ?: null;
+            $reply = trim($textOut) ?: null;
+            break;
         }
 
         foreach ($content as &$block) {
@@ -722,7 +744,14 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
         $messages[] = ['role' => 'user', 'content' => $toolResults];
     }
 
-    return "Sorry, that took too long to look up — try asking again, or check the app directly.";
+    if ($reply === null) $reply = "Sorry, that took too long to look up — try asking again, or check the app directly.";
+
+    if ($fromPhone && $senderName) {
+        saveProMessage($pdo, $fromPhone, 'user', $userText);
+        saveProMessage($pdo, $fromPhone, 'assistant', $reply);
+    }
+
+    return $reply;
 }
 
 function sendWhatsAppReply($to, $body) {
