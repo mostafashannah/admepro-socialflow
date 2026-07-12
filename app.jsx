@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.65";
+const APP_VERSION = "beta 4.66";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7068,7 +7068,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
         </div>
       </div>
       {/* Tabs */}
-      <div style={{display:"flex",flexWrap:"wrap",flexShrink:0,gap:2,borderBottom:"1px solid var(--border, #e5e7eb)",paddingTop:2,paddingBottom:2,maxWidth:"100%",minHeight:38}}>
+      <div style={{display:"flex",flexWrap:"nowrap",flexShrink:0,gap:2,borderBottom:"1px solid var(--border, #e5e7eb)",overflowX:"auto",paddingTop:2,paddingBottom:2,maxWidth:"100%",minHeight:38}}>
         {tabs.map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)} style={{
             padding:"9px 18px",fontSize:13,fontWeight:600,flexShrink:0,whiteSpace:"nowrap",
