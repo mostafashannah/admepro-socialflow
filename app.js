@@ -77,7 +77,7 @@ function speedTokens(speed,base){if(speed==="low")return Math.max(300,Math.round
 function logActivity(action,category,details="",status="success",errorMsg="",user="system"){const entry={action,category,details,status,error_message:errorMsg,performed_by:user,performed_at:new Date().toISOString()};ce("ActivityLog",[entry]).then(({entities})=>{const saved=entities===null||entities===void 0?void 0:entities[0];// Push the freshly-saved row (with real id) into the live UI immediately,
 // otherwise System Log only reflects what was loaded at page load.
 if(saved&&!saved._saveError)window.dispatchEvent(new CustomEvent("sf:activitylog",{detail:saved}));}).catch(()=>{});}// ── Email HTML templates ─────────────────────────────────────────
-const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 4.47";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 4.48";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
 <tr><td align="center">
@@ -332,10 +332,17 @@ const SEED={clients:[{id:"c1",name:"TechStart Co.",email:"contact@techstartco.co
 // ════════════════════════════════════════════════════════════════
 const uid=()=>"local_"+Date.now()+"_"+Math.random().toString(36).slice(2,7);const fmtDate=d=>d?new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric"}):"";// Due-date urgency color for a task's date badge: red once the date has
 // passed, yellow if it's today, green if there's still time.
-const dueDateColor=dateStr=>{if(!dateStr)return"#6b7280";const due=new Date(dateStr);due.setHours(0,0,0,0);const today=new Date();today.setHours(0,0,0,0);if(due.getTime()<today.getTime())return"#ef4444";if(due.getTime()===today.getTime())return"#f59e0b";return"#10b981";};const fmtDateTime=d=>d?new Date(d).toLocaleString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}):"";// Finance ledger entries: "date" is a DATE column (no time-of-day), so the
+const dueDateColor=dateStr=>{if(!dateStr)return"#6b7280";const due=new Date(dateStr);due.setHours(0,0,0,0);const today=new Date();today.setHours(0,0,0,0);if(due.getTime()<today.getTime())return"#ef4444";if(due.getTime()===today.getTime())return"#f59e0b";return"#10b981";};// MySQL TIMESTAMP columns come back over the API as a naive "YYYY-MM-DD HH:MM:SS"
+// string with no timezone marker, but they're stored in UTC (CURRENT_TIMESTAMP on
+// a UTC server clock). `new Date("2026-07-12 18:37:05")` gets parsed inconsistently
+// across browsers (often as if it were already local time), which silently shifts
+// every displayed time by the local UTC offset — e.g. showing hours behind for
+// Cairo (UTC+2/+3). Force it to be read as UTC, then let toLocaleString/
+// toLocaleTimeString convert to the viewer's actual local timezone.
+const parseSqlUtc=v=>{if(!v)return null;if(typeof v==="string"&&/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(v))return new Date(v.replace(" ","T")+"Z");return new Date(v);};const fmtDateTime=d=>d?parseSqlUtc(d).toLocaleString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}):"";// Finance ledger entries: "date" is a DATE column (no time-of-day), so the
 // clock time shown alongside it comes from when the row was actually
 // recorded (created_at) instead.
-const fmtTxnDateTime=l=>{const base=fmtDate(l.date);if(!(l!==null&&l!==void 0&&l.createdAt))return base;const t=new Date(l.createdAt).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"});return`${base} · ${t}`;};const initials=n=>(n||"").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);const clr=(name,arr=["#d90b2c","#3b82f6","#8b5cf6","#10b981","#f59e0b","#ec4899"])=>arr[(name||"").charCodeAt(0)%arr.length];// Auto-organizes uploaded assets into "<Month Year>/<Project Name>" folders
+const fmtTxnDateTime=l=>{const base=fmtDate(l.date);if(!(l!==null&&l!==void 0&&l.createdAt))return base;const t=parseSqlUtc(l.createdAt).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"});return`${base} · ${t}`;};const initials=n=>(n||"").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);const clr=(name,arr=["#d90b2c","#3b82f6","#8b5cf6","#10b981","#f59e0b","#ec4899"])=>arr[(name||"").charCodeAt(0)%arr.length];// Auto-organizes uploaded assets into "<Month Year>/<Project Name>" folders
 // (category is reused as a "/"-joined folder path — no schema change needed).
 const monthProjectFolder=(projectName,date=new Date())=>`${date.toLocaleDateString("en-US",{month:"long",year:"numeric"})}/${projectName||"Unsorted"}`;// Names an uploaded file after its task/post title, keeping the original extension.
 const renameForTask=(taskTitle,originalName,suffix="")=>{const ext=(originalName||"").includes(".")?originalName.slice(originalName.lastIndexOf(".")):"";const base=(taskTitle||"").trim()||(originalName||"file").replace(/\.[^.]+$/,"");return`${base}${suffix?` ${suffix}`:""}${ext}`;};// Pre-creates a project's "<Month Year>/<Project Name>" folder (in both the

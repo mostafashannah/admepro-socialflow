@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.47";
+const APP_VERSION = "beta 4.48";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1329,14 +1329,26 @@ const dueDateColor = (dateStr) => {
   if (due.getTime() === today.getTime()) return "#f59e0b";
   return "#10b981";
 };
-const fmtDateTime = d => d ? new Date(d).toLocaleString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
+// MySQL TIMESTAMP columns come back over the API as a naive "YYYY-MM-DD HH:MM:SS"
+// string with no timezone marker, but they're stored in UTC (CURRENT_TIMESTAMP on
+// a UTC server clock). `new Date("2026-07-12 18:37:05")` gets parsed inconsistently
+// across browsers (often as if it were already local time), which silently shifts
+// every displayed time by the local UTC offset — e.g. showing hours behind for
+// Cairo (UTC+2/+3). Force it to be read as UTC, then let toLocaleString/
+// toLocaleTimeString convert to the viewer's actual local timezone.
+const parseSqlUtc = (v) => {
+  if(!v) return null;
+  if(typeof v==="string" && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(v)) return new Date(v.replace(" ","T")+"Z");
+  return new Date(v);
+};
+const fmtDateTime = d => d ? parseSqlUtc(d).toLocaleString("en-US",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
 // Finance ledger entries: "date" is a DATE column (no time-of-day), so the
 // clock time shown alongside it comes from when the row was actually
 // recorded (created_at) instead.
 const fmtTxnDateTime = (l) => {
   const base = fmtDate(l.date);
   if(!l?.createdAt) return base;
-  const t = new Date(l.createdAt).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"});
+  const t = parseSqlUtc(l.createdAt).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"});
   return `${base} · ${t}`;
 };
 const initials = n => (n||"").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
