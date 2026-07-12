@@ -607,7 +607,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.15";
+const APP_VERSION = "beta 4.16";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16644,11 +16644,107 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial}) {
   );
 }
 
-function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,currentUser,onAddExpense,onDeleteExpense,onEditExpense}) {
+function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,onDelete,onAddComment}) {
+  const {isMobile} = useResponsive();
+  const [showEdit,setShowEdit] = useState(false);
+  const [comment,setComment] = useState("");
+  const [posting,setPosting] = useState(false);
+  const comments = parseJ(txn.raw?.comments, []);
+
+  const submitComment = async () => {
+    if(!comment.trim()) return;
+    setPosting(true);
+    await onAddComment(txn.raw.id, {text:comment.trim(), by:currentUser?.name||currentUser?.email||"Someone", at:new Date().toISOString()});
+    setComment("");
+    setPosting(false);
+  };
+
+  const row = (label,value) => (
+    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,padding:"10px 0",borderBottom:"1px solid var(--border)"}}>
+      <span style={{fontSize:12,color:"var(--text3)",flexShrink:0}}>{label}</span>
+      <span style={{fontSize:13,fontWeight:600,textAlign:"right"}}>{value}</span>
+    </div>
+  );
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16,maxWidth:640}} className="fade-in">
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:700,color:"var(--text2)"}}>
+          <Ico d={Icons.chevL} size={15} stroke="var(--text2)"/> Back to Finance
+        </button>
+      </div>
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:isMobile?16:24}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10,marginBottom:6}}>
+          <div>
+            <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>{txn.type==="in"?"Income":"Expense"}</p>
+            <p style={{fontSize:isMobile?22:28,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:txn.type==="in"?"#10b981":"#ef4444"}}>
+              {txn.type==="in"?"+":"−"}{txn.currency} {Math.round(txn.amount).toLocaleString()}
+            </p>
+          </div>
+          {txn.raw&&(canManage||isAdmin)&&(
+            <div style={{display:"flex",gap:8}}>
+              {canManage&&<Btn size="sm" variant="secondary" onClick={()=>setShowEdit(true)}>Edit</Btn>}
+              {isAdmin&&<Btn size="sm" variant="danger" onClick={()=>{onDelete(txn.raw.id);onBack();}}>Delete</Btn>}
+            </div>
+          )}
+        </div>
+
+        <div style={{marginTop:10}}>
+          {row("Category", txn.label)}
+          {txn.sub && row("Description", txn.sub)}
+          {row("Date", fmtDate(txn.date))}
+          {row("Source", txn.source)}
+          {txn.createdBy && row("Added by", txn.createdBy)}
+        </div>
+      </div>
+
+      {/* Comments */}
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:isMobile?16:24}}>
+        <h3 style={{fontWeight:700,fontSize:14,marginBottom:14}}>Comments</h3>
+        {comments.length===0 ? (
+          <p style={{fontSize:13,color:"var(--text3)"}}>No comments yet.</p>
+        ) : (
+          <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
+            {comments.map((c,i)=>(
+              <div key={i} style={{display:"flex",gap:10}}>
+                <Avatar name={c.by} size={30}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:13,fontWeight:700}}>{c.by}</span>
+                    <span style={{fontSize:11,color:"var(--text3)"}}>{fmtDateTime?fmtDateTime(c.at):new Date(c.at).toLocaleString()}</span>
+                  </div>
+                  <p style={{fontSize:13,color:"var(--text2)",marginTop:2,whiteSpace:"pre-wrap"}}>{c.text}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {txn.raw ? (
+          <div style={{display:"flex",gap:8}}>
+            <input value={comment} onChange={e=>setComment(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submitComment()} placeholder="Add a comment…" style={{...inputSt,flex:1}}/>
+            <Btn onClick={submitComment} disabled={posting||!comment.trim()}>{posting?<Spinner size={14}/>:"Post"}</Btn>
+          </div>
+        ) : (
+          <p style={{fontSize:12,color:"var(--text3)"}}>Comments are only available on manually-added transactions.</p>
+        )}
+      </div>
+
+      <AddExpenseModal
+        open={showEdit}
+        onClose={()=>setShowEdit(false)}
+        onSave={onEdit}
+        initial={txn.raw ? {id:txn.raw.id,type:txn.type,category:txn.category,description:txn.sub,amount:txn.amount,currency:txn.currency,date:txn.date} : null}
+      />
+    </div>
+  );
+}
+
+function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,currentUser,onAddExpense,onDeleteExpense,onEditExpense,onAddExpenseComment}) {
   const {isMobile} = useResponsive();
   const [showAdd,setShowAdd] = useState(false);
   const [range,setRange] = useState("all");
-  const [detail,setDetail] = useState(null);
+  const [selectedId,setSelectedId] = useState(null);
   const isAdmin = currentUser?.role==="admin";
   const canManage = ["admin","accountant"].includes(currentUser?.role);
   const num = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
@@ -16721,6 +16817,22 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
     {label:"This Month Net",value:`EGP ${Math.round(monthIn-monthOut).toLocaleString()}`,color:(monthIn-monthOut)>=0?"#3b82f6":"#ef4444"},
     {label:"Avg Transaction",value:`EGP ${Math.round(avgTxn).toLocaleString()}`,color:"#8b5cf6"},
   ];
+
+  const selected = selectedId ? ledger.find(l=>l.id===selectedId) : null;
+  if(selected) {
+    return (
+      <TransactionDetailPage
+        txn={selected}
+        currentUser={currentUser}
+        canManage={canManage}
+        isAdmin={isAdmin}
+        onBack={()=>setSelectedId(null)}
+        onEdit={onEditExpense}
+        onDelete={onDeleteExpense}
+        onAddComment={onAddExpenseComment}
+      />
+    );
+  }
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:isMobile?14:20}} className="fade-in">
@@ -16836,7 +16948,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         ) : (
           <div>
             {ledger.map((l,i)=>(
-              <div key={l.id} onClick={()=>setDetail(l)} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:i<ledger.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
+              <div key={l.id} onClick={()=>setSelectedId(l.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:i<ledger.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
                 onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
                 onMouseLeave={e=>e.currentTarget.style.background=""}>
                 <div style={{width:30,height:30,borderRadius:8,background:l.type==="in"?"#10b98122":"#ef444422",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -16857,57 +16969,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         )}
       </div>
 
-      {/* Detail modal — full info + edit/delete for manual entries */}
-      <Modal open={!!detail} onClose={()=>setDetail(null)} title="Transaction Details" width={420}
-        footer={detail?.raw ? <>
-          {canManage&&<Btn variant="secondary" onClick={()=>{setShowAdd(true);}}>Edit</Btn>}
-          {isAdmin&&<Btn variant="danger" onClick={()=>{onDeleteExpense(detail.raw.id);setDetail(null);}}>Delete</Btn>}
-        </> : null}>
-        {detail&&(
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:12,color:"var(--text3)"}}>Amount</span>
-              <span style={{fontSize:18,fontWeight:800,color:detail.type==="in"?"#10b981":"#ef4444"}}>{detail.type==="in"?"+":"−"}{detail.currency} {Math.round(detail.amount).toLocaleString()}</span>
-            </div>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:12,color:"var(--text3)"}}>Type</span>
-              <Badge label={detail.type==="in"?"Income":"Expense"} color={detail.type==="in"?"#10b981":"#ef4444"} xs/>
-            </div>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:12,color:"var(--text3)"}}>Category</span>
-              <span style={{fontSize:13,fontWeight:600}}>{detail.label}</span>
-            </div>
-            {detail.sub&&(
-              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
-                <span style={{fontSize:12,color:"var(--text3)",flexShrink:0}}>Description</span>
-                <span style={{fontSize:13,fontWeight:600,textAlign:"right"}}>{detail.sub}</span>
-              </div>
-            )}
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:12,color:"var(--text3)"}}>Date</span>
-              <span style={{fontSize:13,fontWeight:600}}>{fmtDate(detail.date)}</span>
-            </div>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <span style={{fontSize:12,color:"var(--text3)"}}>Source</span>
-              <span style={{fontSize:13,fontWeight:600}}>{detail.source}</span>
-            </div>
-            {detail.createdBy&&(
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                <span style={{fontSize:12,color:"var(--text3)"}}>Added by</span>
-                <span style={{fontSize:13,fontWeight:600}}>{detail.createdBy}</span>
-              </div>
-            )}
-          </div>
-        )}
-      </Modal>
-
-      <AddExpenseModal
-        open={showAdd}
-        onClose={()=>{setShowAdd(false);setDetail(null);}}
-        onAdd={onAddExpense}
-        onSave={onEditExpense}
-        initial={showAdd&&detail?.raw ? {id:detail.raw.id,type:detail.type,category:detail.category,description:detail.sub,amount:detail.amount,currency:detail.currency,date:detail.date} : null}
-      />
+      <AddExpenseModal open={showAdd} onClose={()=>setShowAdd(false)} onAdd={onAddExpense}/>
     </div>
   );
 }
@@ -24824,6 +24886,16 @@ Return ONLY the JSON array, no markdown.`;
     setToast("Transaction updated");
   };
 
+  const addExpenseComment = async (id, comment) => {
+    const target = data.expenses.find(e=>e.id===id);
+    if(!target) return;
+    const existing = parseJ(target.comments, []);
+    const updatedComments = [...existing, comment];
+    const commentsStr = JSON.stringify(updatedComments);
+    setData(d=>({...d,expenses:d.expenses.map(e=>e.id===id?{...e,comments:commentsStr}:e)}));
+    ue("Expense", id, {comments:commentsStr}).catch(()=>{});
+  };
+
   const addIntegration = async (integData) => {
     const local = {...integData, id:uid(), created_date:new Date().toISOString(), run_count:0, error_count:0, last_run_status:"never"};
     setData(d=>({...d, integrations:[local,...d.integrations]}));
@@ -25691,6 +25763,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             onAddExpense={addExpense}
             onDeleteExpense={deleteExpense}
             onEditExpense={editExpense}
+            onAddExpenseComment={addExpenseComment}
           />
         )}
         {page==="users"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.view_team"))&&(

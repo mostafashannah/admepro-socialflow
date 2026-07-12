@@ -177,7 +177,7 @@ function financeTools() {
         ],
         [
             'name' => 'search_transactions',
-            'description' => 'Search/list individual finance transactions (income or expenses) by keyword, category, or date range. Use this when asked to find/show a specific transaction or recent transactions, not just totals.',
+            'description' => 'Search/list individual finance transactions (income or expenses) by keyword, category, or date range. Use this when asked to find/show a specific transaction or recent transactions, not just totals. Each result includes a short_id — use it with edit_transaction/delete_transaction.',
             'input_schema' => [
                 'type' => 'object',
                 'properties' => [
@@ -204,6 +204,34 @@ function financeTools() {
                     'date'        => ['type' => 'string', 'description' => 'YYYY-MM-DD — defaults to today if omitted'],
                 ],
                 'required' => ['type', 'category', 'description', 'amount'],
+            ],
+        ],
+        [
+            'name' => 'edit_transaction',
+            'description' => 'Edit an existing income or expense transaction. Find its short_id first with search_transactions if you do not already have it. Only include the fields being changed. Confirm back to the user what was changed once saved.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'short_id'    => ['type' => 'string', 'description' => 'The short id from search_transactions, e.g. "a1b2c3d4"'],
+                    'type'        => ['type' => 'string', 'enum' => ['in', 'out']],
+                    'category'    => ['type' => 'string'],
+                    'description' => ['type' => 'string'],
+                    'amount'      => ['type' => 'number'],
+                    'currency'    => ['type' => 'string'],
+                    'date'        => ['type' => 'string', 'description' => 'YYYY-MM-DD'],
+                ],
+                'required' => ['short_id'],
+            ],
+        ],
+        [
+            'name' => 'delete_transaction',
+            'description' => 'Permanently delete a transaction. Admin only. Find its short_id first with search_transactions and confirm with the user before deleting, since this cannot be undone.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'short_id' => ['type' => 'string', 'description' => 'The short id from search_transactions, e.g. "a1b2c3d4"'],
+                ],
+                'required' => ['short_id'],
             ],
         ],
     ];
@@ -242,7 +270,7 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
     }
 
     if ($name === 'search_transactions') {
-        $sql = "SELECT type, category, description, amount, currency, date FROM expenses WHERE 1=1";
+        $sql = "SELECT id, type, category, description, amount, currency, date FROM expenses WHERE 1=1";
         $params = [];
         if (!empty($input['query']))      { $sql .= " AND description LIKE :q"; $params[':q'] = '%' . $input['query'] . '%'; }
         if (!empty($input['category']))   { $sql .= " AND category = :c"; $params[':c'] = $input['category']; }
@@ -252,7 +280,47 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
         $sql .= " ORDER BY date DESC LIMIT 20";
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return array_map(function($r) {
+            $r['short_id'] = substr($r['id'], -8);
+            unset($r['id']);
+            return $r;
+        }, $rows);
+    }
+
+    if ($name === 'edit_transaction') {
+        $shortId = trim($input['short_id'] ?? '');
+        if (!$shortId) return ['error' => 'Missing short_id — use search_transactions to find it first.'];
+        $stmt = $pdo->prepare("SELECT * FROM expenses WHERE id LIKE :sid LIMIT 1");
+        $stmt->execute([':sid' => '%' . $shortId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) return ['error' => 'No transaction found with that short_id.'];
+
+        $sets = []; $bind = [':id' => $row['id']];
+        foreach (['type', 'category', 'description', 'amount', 'currency', 'date'] as $field) {
+            if (array_key_exists($field, $input) && $input[$field] !== null && $input[$field] !== '') {
+                $sets[] = "$field = :$field";
+                $bind[":$field"] = $input[$field];
+            }
+        }
+        if (!$sets) return ['error' => 'No fields to update were provided.'];
+        $pdo->prepare("UPDATE expenses SET " . implode(', ', $sets) . " WHERE id = :id")->execute($bind);
+
+        $stmt = $pdo->prepare("SELECT type, category, description, amount, currency, date FROM expenses WHERE id = :id");
+        $stmt->execute([':id' => $row['id']]);
+        $updated = $stmt->fetch(PDO::FETCH_ASSOC);
+        return ['ok' => true, 'message' => 'Transaction updated.'] + $updated;
+    }
+
+    if ($name === 'delete_transaction') {
+        $shortId = trim($input['short_id'] ?? '');
+        if (!$shortId) return ['error' => 'Missing short_id — use search_transactions to find it first.'];
+        $stmt = $pdo->prepare("SELECT id, description, amount, type FROM expenses WHERE id LIKE :sid LIMIT 1");
+        $stmt->execute([':sid' => '%' . $shortId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) return ['error' => 'No transaction found with that short_id.'];
+        $pdo->prepare("DELETE FROM expenses WHERE id = :id")->execute([':id' => $row['id']]);
+        return ['ok' => true, 'message' => "Deleted: {$row['description']} ({$row['amount']})."];
     }
 
     if ($name === 'add_transaction') {
@@ -461,7 +529,10 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
     if (in_array($name, ['request_time_off', 'decide_pending_request', 'get_my_hr_info'], true)) {
         return runHrTool($pdo, $name, $input, $senderId, $senderName);
     }
-    if (in_array($name, ['get_finance_summary', 'search_transactions', 'add_transaction'], true)) {
+    if (in_array($name, ['get_finance_summary', 'search_transactions', 'add_transaction', 'edit_transaction', 'delete_transaction'], true)) {
+        if ($name === 'delete_transaction' && $senderRole !== 'team:admin') {
+            return ['error' => 'Only an admin can delete financial transactions.'];
+        }
         if (!in_array($senderRole, ['team:admin', 'team:accountant'], true)) {
             return ['error' => 'You do not have permission to access financial data.'];
         }
@@ -596,7 +667,14 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                      . "(e.g. they just say \"add 500 for coffee\" without saying in/out — assume OUT for an "
                      . "expense-sounding request, but ask if genuinely unclear), ask a short follow-up question "
                      . "instead of guessing. After successfully saving, always confirm back to the user exactly "
-                     . "what was recorded (amount, type, category, description, date) in one short line.";
+                     . "what was recorded (amount, type, category, description, date) in one short line.\n\n"
+                     . "To change something already recorded, use search_transactions to find it and get its "
+                     . "short_id, then edit_transaction with only the fields being changed. "
+                     . ($isAdmin
+                        ? "As admin you can also delete_transaction — always confirm with the user before "
+                          . "deleting, since it cannot be undone."
+                        : "You cannot delete transactions — that requires an admin; tell the user to ask one if "
+                          . "they need something removed.");
         }
     }
 
