@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.48";
+const APP_VERSION = "beta 4.49";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1350,6 +1350,16 @@ const fmtTxnDateTime = (l) => {
   if(!l?.createdAt) return base;
   const t = parseSqlUtc(l.createdAt).toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"});
   return `${base} · ${t}`;
+};
+// Sort ledger entries most-recent-first. "date" alone (day granularity) leaves
+// same-day transactions tied, so fall back to createdAt (actual record time)
+// to break ties instead of silently landing in insertion order.
+const sortTxnsRecent = (a,b) => {
+  const d = new Date(b.date) - new Date(a.date);
+  if(d) return d;
+  const ca = a.createdAt ? parseSqlUtc(a.createdAt).getTime() : 0;
+  const cb = b.createdAt ? parseSqlUtc(b.createdAt).getTime() : 0;
+  return cb - ca;
 };
 const initials = n => (n||"").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
 const clr = (name,arr=["#d90b2c","#3b82f6","#8b5cf6","#10b981","#f59e0b","#ec4899"]) =>
@@ -17134,7 +17144,7 @@ function ClientPaymentDetail({clientName,ledger,note,canManage,onBack,onOpenTran
 
   React.useEffect(()=>{ setNameInput(clientName); setPhone(note?.phone||""); setNotes(note?.notes||""); },[clientName, note?.phone, note?.notes]);
 
-  const clientTxns = ledger.filter(l=>l.type==="in"&&l.clientName===clientName&&dateInFinanceRange(l.date,{range,customStart,customEnd,selectedMonth})).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const clientTxns = ledger.filter(l=>l.type==="in"&&l.clientName===clientName&&dateInFinanceRange(l.date,{range,customStart,customEnd,selectedMonth})).sort(sortTxnsRecent);
   const clientTotal = clientTxns.reduce((a,l)=>a+l.amount,0);
 
   // Monthly totals for the bar graph — last 12 calendar months that have activity, chronological
@@ -17238,7 +17248,7 @@ function PartnerDetail({partnerKey,partnerInKey,partnerName,ledger,onBack,onOpen
   const inRange = (dateStr) => dateInFinanceRange(dateStr,{range,customStart,customEnd,selectedMonth});
   const withdrawals = ledger.filter(l=>l.type==="out"&&l.category===partnerKey&&inRange(l.date));
   const contributions = partnerInKey ? ledger.filter(l=>l.type==="in"&&l.category===partnerInKey&&inRange(l.date)) : [];
-  const allTxns = [...withdrawals,...contributions].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const allTxns = [...withdrawals,...contributions].sort(sortTxnsRecent);
   const totalOut = withdrawals.reduce((a,l)=>a+l.amount,0);
   const totalIn = contributions.reduce((a,l)=>a+l.amount,0);
   const netBalance = totalIn - totalOut;
@@ -17461,7 +17471,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         clientName: (!isOut&&e.category==="client_payment") ? e.description : null,
       };
     }),
-  ].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  ].sort(sortTxnsRecent);
 
   // Clients derived from actual payment history (not the Clients module) —
   // this is what the client dropdown/filter/tab are built from.
