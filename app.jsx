@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.57";
+const APP_VERSION = "beta 4.58";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17844,11 +17844,11 @@ No markdown, no explanation.`;
           {[["all","All"],["in","In"],["out","Out"]].map(([k,l])=>(
             <button key={k} onClick={()=>setTypeFilter(k)} style={{padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,background:typeFilter===k?(k==="in"?"#10b981":k==="out"?"#ef4444":"var(--accent)"):"var(--surface2)",color:typeFilter===k?"#fff":"var(--text2)",border:`1px solid ${typeFilter===k?"transparent":"var(--border2)"}`}}>{l}</button>
           ))}
-          <select value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)} style={{WebkitAppearance:"none",appearance:"none",maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",width:"auto",padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,lineHeight:"normal",background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)",minHeight:0,outline:"none"}}>
+          <select value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)} style={{WebkitAppearance:"none",MozAppearance:"none",appearance:"none",WebkitTextSizeAdjust:"100%",textSizeAdjust:"100%",maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",width:"auto",padding:"6px 14px",borderRadius:99,font:"700 12px 'Montserrat',sans-serif",fontSize:12,fontWeight:700,fontFamily:"'Montserrat',sans-serif",lineHeight:"normal",background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)",minHeight:0,outline:"none"}}>
             <option value="all">All Categories</option>
             {[...EXPENSE_CATEGORIES,...INCOME_CATEGORIES].map(c=><option key={c.k} value={c.k}>{c.l}</option>)}
           </select>
-          <select value={clientFilter} onChange={e=>setClientFilter(e.target.value)} style={{WebkitAppearance:"none",appearance:"none",maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",width:"auto",padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,lineHeight:"normal",background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)",minHeight:0,outline:"none"}}>
+          <select value={clientFilter} onChange={e=>setClientFilter(e.target.value)} style={{WebkitAppearance:"none",MozAppearance:"none",appearance:"none",WebkitTextSizeAdjust:"100%",textSizeAdjust:"100%",maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",width:"auto",padding:"6px 14px",borderRadius:99,font:"700 12px 'Montserrat',sans-serif",fontSize:12,fontWeight:700,fontFamily:"'Montserrat',sans-serif",lineHeight:"normal",background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)",minHeight:0,outline:"none"}}>
             <option value="all">All Clients</option>
             {clientNames.map(n=><option key={n} value={n}>{n}</option>)}
           </select>
