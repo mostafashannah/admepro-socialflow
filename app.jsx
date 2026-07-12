@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.52";
+const APP_VERSION = "beta 4.53";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17622,9 +17622,9 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
       </div>
 
       {/* View tabs */}
-      <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",flexWrap:"wrap"}}>
+      <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border, #e5e7eb)",flexWrap:"wrap"}}>
         {[["overview","Overview",openOverviewTab],["clients","Clients",openClientsTab],["partners","Partners",openPartnersTab],["ai","AI",openAiTab]].map(([k,l,fn])=>(
-          <button key={k} onClick={fn} style={{padding:"9px 18px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${view===k?"var(--accent)":"transparent"}`,color:view===k?"var(--accent)":"var(--text2)",transition:"all 0.15s"}}>{l}</button>
+          <button key={k} onClick={fn} style={{padding:"9px 18px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${view===k?"var(--accent, #d90b2c)":"transparent"}`,color:view===k?"var(--accent, #d90b2c)":"var(--text2, #6b7280)",transition:"all 0.15s"}}>{l}</button>
         ))}
       </div>
 
