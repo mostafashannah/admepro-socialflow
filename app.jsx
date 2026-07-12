@@ -607,7 +607,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.13";
+const APP_VERSION = "beta 4.14";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16568,39 +16568,53 @@ const EXPENSE_CATEGORIES = [
   {k:"other", l:"Other", color:"#6b7280"},
 ];
 const EXPENSE_CAT_MAP = Object.fromEntries(EXPENSE_CATEGORIES.map(c=>[c.k,c]));
+const INCOME_CATEGORIES = [
+  {k:"client_payment", l:"Client Payment", color:"#10b981"},
+  {k:"other_income", l:"Other Income", color:"#06b6d4"},
+];
+const INCOME_CAT_MAP = Object.fromEntries(INCOME_CATEGORIES.map(c=>[c.k,c]));
 
 function AddExpenseModal({open,onClose,onAdd}) {
+  const [type,setType] = useState("out");
   const [category,setCategory] = useState("other");
   const [description,setDescription] = useState("");
   const [amount,setAmount] = useState("");
   const [currency,setCurrency] = useState("EGP");
   const [date,setDate] = useState(new Date().toISOString().split("T")[0]);
   const [saving,setSaving] = useState(false);
+  const cats = type==="out" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
 
-  const reset = () => { setCategory("other"); setDescription(""); setAmount(""); setDate(new Date().toISOString().split("T")[0]); };
+  const reset = () => { setType("out"); setCategory("other"); setDescription(""); setAmount(""); setDate(new Date().toISOString().split("T")[0]); };
   const submit = async () => {
     if(!amount||Number(amount)<=0||!description.trim()) return;
     setSaving(true);
-    await onAdd({category,description:description.trim(),amount:Number(amount),currency,date});
+    await onAdd({type,category,description:description.trim(),amount:Number(amount),currency,date});
     setSaving(false);
     reset();
     onClose();
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Add Expense" width={440}
+    <Modal open={open} onClose={onClose} title="Add Transaction" width={440}
       footer={<>
         <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
-        <Btn onClick={submit} disabled={saving||!amount||!description.trim()}>{saving?<Spinner size={14}/>:"Add Expense"}</Btn>
+        <Btn onClick={submit} disabled={saving||!amount||!description.trim()}>{saving?<Spinner size={14}/>:"Add"}</Btn>
       </>}>
       <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <Field label="Type" required>
+          <div style={{display:"flex",gap:8}}>
+            {[["out","Expense (Out)"],["in","Income (In)"]].map(([v,l])=>(
+              <button key={v} onClick={()=>{setType(v);setCategory(v==="out"?"other":"client_payment");}} style={{flex:1,padding:"9px 10px",borderRadius:8,border:`1px solid ${type===v?"var(--accent)":"var(--border)"}`,background:type===v?"var(--accentbg)":"transparent",color:type===v?"var(--accent)":"var(--text2)",fontSize:12,fontWeight:700}}>{l}</button>
+            ))}
+          </div>
+        </Field>
         <Field label="Category" required>
           <select value={category} onChange={e=>setCategory(e.target.value)} style={inputSt}>
-            {EXPENSE_CATEGORIES.map(c=><option key={c.k} value={c.k}>{c.l}</option>)}
+            {cats.map(c=><option key={c.k} value={c.k}>{c.l}</option>)}
           </select>
         </Field>
         <Field label="Description" required>
-          <input value={description} onChange={e=>setDescription(e.target.value)} placeholder="e.g. April office rent" style={inputSt}/>
+          <input value={description} onChange={e=>setDescription(e.target.value)} placeholder={type==="out"?"e.g. April office rent":"e.g. Bank transfer — Client X"} style={inputSt}/>
         </Field>
         <div style={{display:"flex",gap:10}}>
           <Field label="Amount" required>
@@ -16645,10 +16659,14 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
       id:"sp_"+p.id, type:"in", date:p.payment_date, amount:p.amount, currency:p.currency||"EGP",
       label:p.subscription_name||"Subscription", sub:p.client_name||"",
     })),
-    ...expenses.filter(e=>inRange(e.date)).map(e=>({
-      id:"exp_"+e.id, type:"out", date:e.date, amount:e.amount, currency:e.currency||"EGP",
-      label:EXPENSE_CAT_MAP[e.category]?.l||e.category, sub:e.description, raw:e,
-    })),
+    ...expenses.filter(e=>inRange(e.date)).map(e=>{
+      const isOut = (e.type||"out")==="out";
+      const catMap = isOut ? EXPENSE_CAT_MAP : INCOME_CAT_MAP;
+      return {
+        id:"exp_"+e.id, type:isOut?"out":"in", date:e.date, amount:e.amount, currency:e.currency||"EGP",
+        label:catMap[e.category]?.l||e.category, sub:e.description, raw:e,
+      };
+    }),
   ].sort((a,b)=>new Date(b.date)-new Date(a.date));
 
   const totalIn = ledger.filter(l=>l.type==="in").reduce((a,l)=>a+(l.amount||0),0);
@@ -16656,7 +16674,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const balance = totalIn-totalOut;
 
   const byCategory = EXPENSE_CATEGORIES.map(c=>({
-    ...c, total: expenses.filter(e=>e.category===c.k&&inRange(e.date)).reduce((a,e)=>a+(e.amount||0),0),
+    ...c, total: expenses.filter(e=>(e.type||"out")==="out"&&e.category===c.k&&inRange(e.date)).reduce((a,e)=>a+(e.amount||0),0),
   })).filter(c=>c.total>0);
   const maxCat = Math.max(...byCategory.map(c=>c.total),1);
 
@@ -16674,7 +16692,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?20:24,fontWeight:800}}>Finance</h2>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Full money in / out and running balance</p>
         </div>
-        {canManage&&<Btn onClick={()=>setShowAdd(true)}><Ico d={Icons.plus} size={15}/> Add Expense</Btn>}
+        {canManage&&<Btn onClick={()=>setShowAdd(true)}><Ico d={Icons.plus} size={15}/> Add Transaction</Btn>}
       </div>
 
       {/* Range filter */}
