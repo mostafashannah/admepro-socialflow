@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.41";
+const APP_VERSION = "beta 4.42";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10536,18 +10536,21 @@ function AttendanceImportTab() {
 }
 
 function InviteUserModal({onClose, onSubmit, clients}) {
-  const [form, setForm] = useState({name:"",email:"",role:"content_creator",user_type:"internal",client_id:"",permissions:"",whatsapp_number:"",salary:"",vacation_days_total:21,wfh_days_total:12,id_photo_url:""});
+  const [form, setForm] = useState({name:"",email:"",role:"content_creator",user_type:"internal",client_id:"",permissions:"",whatsapp_number:"",salary:"",vacation_days_total:21,wfh_days_total:12,id_photo_front_url:"",id_photo_back_url:""});
   const [loading, setLoading] = useState(false);
-  const [uploadingId, setUploadingId] = useState(false);
-  const idPhotoRef = useRef(null);
+  const [uploadingIdFront, setUploadingIdFront] = useState(false);
+  const [uploadingIdBack, setUploadingIdBack] = useState(false);
+  const idPhotoFrontRef = useRef(null);
+  const idPhotoBackRef = useRef(null);
   const sf = (k,v)=>setForm(p=>({...p,[k]:v}));
 
-  const handleIdPhoto = async (file) => {
+  const handleIdPhoto = async (file, side) => {
     if(!file) return;
-    setUploadingId(true);
-    try { const url = await uploadToStorage(file, "team-id-photos"); sf("id_photo_url", url); }
+    const setUploading = side==="front" ? setUploadingIdFront : setUploadingIdBack;
+    setUploading(true);
+    try { const url = await uploadToStorage(file, "team-id-photos"); sf(side==="front"?"id_photo_front_url":"id_photo_back_url", url); }
     catch(e){ alert("Photo upload failed"); }
-    setUploadingId(false);
+    setUploading(false);
   };
 
   const handleSubmit = async () => {
@@ -10627,19 +10630,35 @@ function InviteUserModal({onClose, onSubmit, clients}) {
                   <input type="number" value={form.wfh_days_total} onChange={e=>sf("wfh_days_total",e.target.value)} style={inputSt}/>
                 </div>
               </div>
-              <div>
-                <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>ID Photo</label>
-                <input ref={idPhotoRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{handleIdPhoto(e.target.files?.[0]); e.target.value="";}}/>
-                {form.id_photo_url ? (
-                  <div style={{display:"flex",alignItems:"center",gap:10}}>
-                    <img src={form.id_photo_url} style={{width:56,height:56,borderRadius:8,objectFit:"cover",border:"1px solid var(--border)"}} alt="ID"/>
-                    <button onClick={()=>idPhotoRef.current?.click()} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,color:"var(--text)",fontWeight:600}}>Change</button>
-                  </div>
-                ) : (
-                  <button onClick={()=>idPhotoRef.current?.click()} disabled={uploadingId} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontSize:13,fontWeight:600,color:"var(--text2)",width:"100%"}}>
-                    <Ico d={Icons.upload} size={14} stroke="var(--text2)"/> {uploadingId?"Uploading…":"Upload ID Photo"}
-                  </button>
-                )}
+              <div style={{display:"flex",gap:10}}>
+                <div style={{flex:1}}>
+                  <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>ID Photo — Front</label>
+                  <input ref={idPhotoFrontRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{handleIdPhoto(e.target.files?.[0],"front"); e.target.value="";}}/>
+                  {form.id_photo_front_url ? (
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <img src={form.id_photo_front_url} style={{width:56,height:56,borderRadius:8,objectFit:"cover",border:"1px solid var(--border)"}} alt="ID front"/>
+                      <button onClick={()=>idPhotoFrontRef.current?.click()} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,color:"var(--text)",fontWeight:600}}>Change</button>
+                    </div>
+                  ) : (
+                    <button onClick={()=>idPhotoFrontRef.current?.click()} disabled={uploadingIdFront} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontSize:13,fontWeight:600,color:"var(--text2)",width:"100%"}}>
+                      <Ico d={Icons.upload} size={14} stroke="var(--text2)"/> {uploadingIdFront?"Uploading…":"Upload Front"}
+                    </button>
+                  )}
+                </div>
+                <div style={{flex:1}}>
+                  <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>ID Photo — Back</label>
+                  <input ref={idPhotoBackRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>{handleIdPhoto(e.target.files?.[0],"back"); e.target.value="";}}/>
+                  {form.id_photo_back_url ? (
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <img src={form.id_photo_back_url} style={{width:56,height:56,borderRadius:8,objectFit:"cover",border:"1px solid var(--border)"}} alt="ID back"/>
+                      <button onClick={()=>idPhotoBackRef.current?.click()} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,color:"var(--text)",fontWeight:600}}>Change</button>
+                    </div>
+                  ) : (
+                    <button onClick={()=>idPhotoBackRef.current?.click()} disabled={uploadingIdBack} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontSize:13,fontWeight:600,color:"var(--text2)",width:"100%"}}>
+                      <Ico d={Icons.upload} size={14} stroke="var(--text2)"/> {uploadingIdBack?"Uploading…":"Upload Back"}
+                    </button>
+                  )}
+                </div>
               </div>
             </>
           )}
@@ -11625,7 +11644,8 @@ function AcceptInvitationPage({token, onAccepted}) {
           salary: invitation.salary || null,
           vacation_days_total: invitation.vacation_days_total || 21,
           wfh_days_total: invitation.wfh_days_total || 12,
-          id_photo_url: invitation.id_photo_url || null,
+          id_photo_front_url: invitation.id_photo_front_url || null,
+          id_photo_back_url: invitation.id_photo_back_url || null,
         }]);
       }
       await ue("UserInvitation", invitation.id, {status:"accepted"});
@@ -24930,7 +24950,13 @@ function App() {
     const payload = {...formData, token, expires_at:expiresAt, status:"pending", invited_by:currentUser?.email};
     setData(d=>({...d, invitations:[local,...(d.invitations||[])]}));
     ce("UserInvitation",[payload]).then(res=>{
-      const real=res.entities?.[0]; if(real?.id) setData(d=>({...d,invitations:d.invitations.map(i=>i.id===local.id?{...i,...real}:i)}));
+      const real=res.entities?.[0];
+      if(real?._saveError) {
+        console.error("Invite save failed:", real._detail);
+        setToast(`Invitation shown here but failed to save (will disappear on refresh): ${real._detail||real._status}`);
+        return;
+      }
+      if(real?.id) setData(d=>({...d,invitations:d.invitations.map(i=>i.id===local.id?{...i,...real}:i)}));
     }).catch(()=>{});
     const inviteUrl = window.location.origin + "?invite=" + token;
     sendEmail(formData.email, `You've been invited to SocialFlow`, EMAIL_TEMPLATES.invitation(formData.name||formData.email, ROLES[formData.role]?.label||formData.role, inviteUrl)).catch(()=>{});
