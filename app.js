@@ -77,7 +77,7 @@ function speedTokens(speed,base){if(speed==="low")return Math.max(300,Math.round
 function logActivity(action,category,details="",status="success",errorMsg="",user="system"){const entry={action,category,details,status,error_message:errorMsg,performed_by:user,performed_at:new Date().toISOString()};ce("ActivityLog",[entry]).then(({entities})=>{const saved=entities===null||entities===void 0?void 0:entities[0];// Push the freshly-saved row (with real id) into the live UI immediately,
 // otherwise System Log only reflects what was loaded at page load.
 if(saved&&!saved._saveError)window.dispatchEvent(new CustomEvent("sf:activitylog",{detail:saved}));}).catch(()=>{});}// ── Email HTML templates ─────────────────────────────────────────
-const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 4.67";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 4.68";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
 <tr><td align="center">
@@ -2240,7 +2240,15 @@ function App(){const[dark,setDark]=useState(false);const[currentUser,setCurrentU
 const hash=window.location.hash.replace("#","");// Only use hash/localStorage if it's a top-level list page (not a detail context)
 const SAFE_PAGES=["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","team_members","reports","account"];if(hash&&SAFE_PAGES.includes(hash))return hash;const stored=localStorage.getItem("sf_page");return stored&&SAFE_PAGES.includes(stored)?stored:"home";}catch(e){return"home";}});// Web Push: subscribe this device once logged in, and re-subscribe whenever
 // the app gets installed to the home screen (task-assignment alerts need this).
-React.useEffect(()=>{if(!(currentUser!==null&&currentUser!==void 0&&currentUser.email))return;setupPushSubscription(currentUser.email);const onInstalled=()=>setupPushSubscription(currentUser.email);window.addEventListener("appinstalled",onInstalled);return()=>window.removeEventListener("appinstalled",onInstalled);},[currentUser===null||currentUser===void 0?void 0:currentUser.email]);const setPage=p=>{setPage_(p);try{localStorage.setItem("sf_page",p);}catch(e){}try{window.history.pushState({sfPage:p},"","#"+p);}catch(e){}};// Accountants only get the financial pages — bounce them off anything else
+React.useEffect(()=>{if(!(currentUser!==null&&currentUser!==void 0&&currentUser.email))return;setupPushSubscription(currentUser.email);const onInstalled=()=>setupPushSubscription(currentUser.email);window.addEventListener("appinstalled",onInstalled);return()=>window.removeEventListener("appinstalled",onInstalled);},[currentUser===null||currentUser===void 0?void 0:currentUser.email]);// The app manages all of its own navigation state via pushState (both here
+// and, much more heavily, inside Finance's internal tab/detail navigation)
+// without ever doing a real page reload. Left on the browser default
+// ("auto"), Safari tries to save/restore a scroll position per history
+// entry — and since Finance generates a new entry for every tab click
+// (Overview/Clients/Partners/AI, transaction detail, Add Transaction),
+// that automatic restoration can fight with the page's real scrolling and
+// make it feel stuck, specifically on the page that pushes history the most.
+React.useEffect(()=>{try{if("scrollRestoration"in window.history)window.history.scrollRestoration="manual";}catch(e){}},[]);const setPage=p=>{setPage_(p);try{localStorage.setItem("sf_page",p);}catch(e){}try{window.history.pushState({sfPage:p},"","#"+p);}catch(e){}};// Accountants only get the financial pages — bounce them off anything else
 // (e.g. a stale "home"/tasks page restored from localStorage on login).
 React.useEffect(()=>{if((currentUser===null||currentUser===void 0?void 0:currentUser.role)==="accountant"&&!["quotes","invoices","subscriptions","finance"].includes(page)){setPage("finance");}},[currentUser===null||currentUser===void 0?void 0:currentUser.role]);// Browser back/forward support
 React.useEffect(()=>{// The CSS 100dvh unit doesn't reliably settle immediately on some mobile

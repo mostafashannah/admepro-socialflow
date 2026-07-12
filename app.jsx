@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.67";
+const APP_VERSION = "beta 4.68";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -24543,6 +24543,18 @@ function App() {
     window.addEventListener("appinstalled", onInstalled);
     return () => window.removeEventListener("appinstalled", onInstalled);
   },[currentUser?.email]);
+
+  // The app manages all of its own navigation state via pushState (both here
+  // and, much more heavily, inside Finance's internal tab/detail navigation)
+  // without ever doing a real page reload. Left on the browser default
+  // ("auto"), Safari tries to save/restore a scroll position per history
+  // entry — and since Finance generates a new entry for every tab click
+  // (Overview/Clients/Partners/AI, transaction detail, Add Transaction),
+  // that automatic restoration can fight with the page's real scrolling and
+  // make it feel stuck, specifically on the page that pushes history the most.
+  React.useEffect(()=>{
+    try{ if("scrollRestoration" in window.history) window.history.scrollRestoration = "manual"; }catch(e){}
+  },[]);
 
   const setPage = (p) => {
     setPage_(p);
