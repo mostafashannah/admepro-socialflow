@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.44";
+const APP_VERSION = "beta 4.45";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17576,7 +17576,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   }
 
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:isMobile?14:20}} className="fade-in">
+    <div style={{display:"flex",flexDirection:"column",gap:isMobile?14:20,overflowX:"hidden",maxWidth:"100%"}} className="fade-in">
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
         <div>
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?20:24,fontWeight:800}}>Finance</h2>
@@ -17591,9 +17591,9 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
       </div>
 
       {/* View tabs */}
-      <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)"}}>
+      <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",flexWrap:"nowrap",width:"100%"}}>
         {[["overview","Overview"],["clients","Clients"],["partners","Partners"],["ai","AI"]].map(([k,l])=>(
-          <button key={k} onClick={()=>{ if(k==="clients") openClientsTab(); else if(k==="partners") openPartnersTab(); else if(k==="ai") openAiTab(); else openOverviewTab(); }} style={{padding:"9px 18px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${view===k?"var(--accent)":"transparent"}`,color:view===k?"var(--accent)":"var(--text2)"}}>{l}</button>
+          <button key={k} onClick={()=>{ if(k==="clients") openClientsTab(); else if(k==="partners") openPartnersTab(); else if(k==="ai") openAiTab(); else openOverviewTab(); }} style={{padding:isMobile?"9px 12px":"9px 18px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${view===k?"var(--accent)":"transparent"}`,color:view===k?"var(--accent)":"var(--text2)",background:"none",border:"none",borderBottomWidth:2,borderBottomStyle:"solid",borderBottomColor:view===k?"var(--accent)":"transparent",flexShrink:0,whiteSpace:"nowrap",cursor:"pointer"}}>{l}</button>
         ))}
       </div>
 
@@ -17720,9 +17720,9 @@ No markdown, no explanation.`;
 
       {/* KPI tiles */}
       {isMobile ? (
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:6,width:"100%"}}>
           {kpis.map(s=>(
-            <div key={s.label} style={{padding:"10px 6px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--rs)",textAlign:"center"}}>
+            <div key={s.label} style={{minWidth:0,padding:"10px 6px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--rs)",textAlign:"center"}}>
               <p style={{fontSize:14,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.value}</p>
               <p style={{fontSize:9,fontWeight:700,color:"var(--text3)",letterSpacing:"0.03em",textTransform:"uppercase",marginTop:4}}>{s.label}</p>
             </div>
@@ -17741,9 +17741,9 @@ No markdown, no explanation.`;
 
       {/* Insights row */}
       {isMobile ? (
-        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:6,width:"100%"}}>
           {insights.map(s=>(
-            <div key={s.label} style={{padding:"10px 6px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--rs)",textAlign:"center"}}>
+            <div key={s.label} style={{minWidth:0,padding:"10px 6px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--rs)",textAlign:"center"}}>
               <p style={{fontSize:13,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.value}</p>
               <p style={{fontSize:8,fontWeight:700,color:"var(--text3)",letterSpacing:"0.02em",textTransform:"uppercase",marginTop:4}}>{s.label}</p>
             </div>
@@ -17767,19 +17767,19 @@ No markdown, no explanation.`;
         </div>
       )}
 
-      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14}}>
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"minmax(0,1fr)":"minmax(0,1fr) minmax(0,1fr)",gap:14,width:"100%"}}>
         {/* Expenses by category */}
         {byCategory.length>0&&(
-          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+          <div style={{minWidth:0,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
             <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
               <h3 style={{fontWeight:700,fontSize:14}}>Spending by Category</h3>
             </div>
             <div style={{padding:"12px 16px",display:"flex",flexDirection:"column",gap:8}}>
               {byCategory.map(c=>(
-                <div key={c.k} style={{display:"flex",alignItems:"center",gap:10}}>
-                  <span style={{fontSize:12,color:"var(--text2)",width:110,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.l}</span>
-                  <div style={{flex:1}}><ProgressBar value={c.total} max={maxCat} color={c.color} height={5}/></div>
-                  <span style={{fontSize:11,fontWeight:700,color:c.color,flexShrink:0}}>EGP {Math.round(c.total).toLocaleString()}</span>
+                <div key={c.k} style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
+                  <span style={{fontSize:12,color:"var(--text2)",width:isMobile?70:110,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.l}</span>
+                  <div style={{flex:1,minWidth:0}}><ProgressBar value={c.total} max={maxCat} color={c.color} height={5}/></div>
+                  <span style={{fontSize:11,fontWeight:700,color:c.color,flexShrink:0,whiteSpace:"nowrap"}}>{isMobile?`${Math.round(c.total/1000)}k`:`EGP ${Math.round(c.total).toLocaleString()}`}</span>
                 </div>
               ))}
             </div>
@@ -17788,16 +17788,16 @@ No markdown, no explanation.`;
 
         {/* Income by source */}
         {topSources.length>0&&(
-          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+          <div style={{minWidth:0,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
             <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
               <h3 style={{fontWeight:700,fontSize:14}}>Top Income Sources</h3>
             </div>
             <div style={{padding:"12px 16px",display:"flex",flexDirection:"column",gap:8}}>
               {topSources.map(([name,total])=>(
-                <div key={name} style={{display:"flex",alignItems:"center",gap:10}}>
-                  <span style={{fontSize:12,color:"var(--text2)",width:110,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
-                  <div style={{flex:1}}><ProgressBar value={total} max={maxSource} color="#10b981" height={5}/></div>
-                  <span style={{fontSize:11,fontWeight:700,color:"#10b981",flexShrink:0}}>EGP {Math.round(total).toLocaleString()}</span>
+                <div key={name} style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
+                  <span style={{fontSize:12,color:"var(--text2)",width:isMobile?70:110,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
+                  <div style={{flex:1,minWidth:0}}><ProgressBar value={total} max={maxSource} color="#10b981" height={5}/></div>
+                  <span style={{fontSize:11,fontWeight:700,color:"#10b981",flexShrink:0,whiteSpace:"nowrap"}}>{isMobile?`${Math.round(total/1000)}k`:`EGP ${Math.round(total).toLocaleString()}`}</span>
                 </div>
               ))}
             </div>
