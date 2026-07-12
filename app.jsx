@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.33";
+const APP_VERSION = "beta 4.34";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17007,6 +17007,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const [range,setRange] = useState("all");
   const [customStart,setCustomStart] = useState("");
   const [customEnd,setCustomEnd] = useState("");
+  const [selectedMonth,setSelectedMonth] = useState("");
   const [selectedId,setSelectedId] = useState(null);
   const [selectedClient,setSelectedClient] = useState(null);
   const [typeFilter,setTypeFilter] = useState("all");
@@ -17058,14 +17059,19 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
       if(customEnd&&d>new Date(customEnd)) return false;
       return true;
     }
-    if(range==="last_month") {
+    if(range==="month") {
+      // Calendar month-to-date: from the 1st of this month through today, not a rolling 30 days.
       const n = new Date();
-      const start = new Date(n.getFullYear(), n.getMonth()-1, 1);
-      const end = new Date(n.getFullYear(), n.getMonth(), 1);
+      const start = new Date(n.getFullYear(), n.getMonth(), 1);
+      return d>=start;
+    }
+    if(range==="specific_month"&&selectedMonth) {
+      const [y,m] = selectedMonth.split("-").map(Number);
+      const start = new Date(y, m-1, 1);
+      const end = new Date(y, m, 1);
       return d>=start && d<end;
     }
     const ago = new Date();
-    if(range==="month") ago.setMonth(ago.getMonth()-1);
     if(range==="week") ago.setDate(ago.getDate()-7);
     return d>=ago;
   };
@@ -17115,6 +17121,22 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   });
   const paymentClients = Object.values(clientTotals).sort((a,b)=>b.total-a.total);
   const clientNames = paymentClients.map(c=>c.name);
+
+  // Month picker options — every calendar month from the earliest transaction
+  // through the current month, newest first, e.g. {value:"2026-07",label:"Jul 2026"}.
+  const allDates = [...payments.map(p=>p.payment_date),...subscriptionPayments.map(p=>p.payment_date),...expenses.map(e=>e.date)].filter(Boolean).map(d=>new Date(d));
+  const monthOptions = [];
+  if(allDates.length) {
+    const earliest = new Date(Math.min(...allDates));
+    const now = new Date();
+    let y = now.getFullYear(), m = now.getMonth();
+    while(y>earliest.getFullYear() || (y===earliest.getFullYear() && m>=earliest.getMonth())) {
+      const value = `${y}-${String(m+1).padStart(2,"0")}`;
+      const label = new Date(y,m,1).toLocaleDateString("en-US",{month:"short",year:"numeric"});
+      monthOptions.push({value,label});
+      m--; if(m<0){ m=11; y--; }
+    }
+  }
 
   const totalIn = ledger.filter(l=>l.type==="in").reduce((a,l)=>a+l.amount,0);
   const totalOut = ledger.filter(l=>l.type==="out").reduce((a,l)=>a+l.amount,0);
@@ -17234,9 +17256,15 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
       <>
       {/* Range filter */}
       <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-        {[["all","All Time"],["month","This Month"],["last_month","Last Month"],["week","This Week"],["custom","Custom"]].map(([k,l])=>(
+        {[["all","All Time"],["month","This Month"],["week","This Week"],["custom","Custom"]].map(([k,l])=>(
           <button key={k} onClick={()=>setRange(k)} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:range===k?"var(--accent)":"var(--surface2)",color:range===k?"#fff":"var(--text2)",border:`1px solid ${range===k?"var(--accent)":"var(--border2)"}`}}>{l}</button>
         ))}
+        {monthOptions.length>0&&(
+          <select value={range==="specific_month"?selectedMonth:""} onChange={e=>{setSelectedMonth(e.target.value);setRange("specific_month");}} style={{...inputSt,width:"auto",padding:"6px 10px",fontSize:12,fontWeight:700,color:range==="specific_month"?"var(--accent)":"var(--text2)",borderColor:range==="specific_month"?"var(--accent)":"var(--border2)"}}>
+            <option value="" disabled>Pick a month…</option>
+            {monthOptions.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        )}
         {range==="custom"&&(
           <div style={{display:"flex",gap:6,alignItems:"center"}}>
             <input type="date" value={customStart} onChange={e=>setCustomStart(e.target.value)} style={{...inputSt,width:"auto",padding:"6px 10px",fontSize:12}}/>
