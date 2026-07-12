@@ -607,7 +607,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.26";
+const APP_VERSION = "beta 4.27";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16579,7 +16579,7 @@ const INCOME_CATEGORIES = [
 ];
 const INCOME_CAT_MAP = Object.fromEntries(INCOME_CATEGORIES.map(c=>[c.k,c]));
 
-function AddExpenseModal({open,onClose,onAdd,onSave,initial}) {
+function AddExpenseModal({open,onClose,onAdd,onSave,initial,clients=[]}) {
   const isEdit = !!initial;
   const [type,setType] = useState(initial?.type||"out");
   const [category,setCategory] = useState(initial?.category||"other");
@@ -16588,16 +16588,20 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial}) {
   const [currency,setCurrency] = useState(initial?.currency||"EGP");
   const [date,setDate] = useState(initial?.date||new Date().toISOString().split("T")[0]);
   const [saving,setSaving] = useState(false);
+  const isClientMatch = (d) => clients.some(c=>c.name===d);
+  const [clientMode,setClientMode] = useState(initial?.description&&!isClientMatch(initial.description) ? "manual" : "select");
   const cats = type==="out" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+  const isClientPayment = category==="client_payment";
 
   React.useEffect(()=>{
     if(!open) return;
     setType(initial?.type||"out"); setCategory(initial?.category||"other");
     setDescription(initial?.description||""); setAmount(initial?.amount!=null?String(initial.amount):"");
     setCurrency(initial?.currency||"EGP"); setDate(initial?.date||new Date().toISOString().split("T")[0]);
+    setClientMode(initial?.description&&!isClientMatch(initial.description) ? "manual" : "select");
   },[open,initial]);
 
-  const reset = () => { setType("out"); setCategory("other"); setDescription(""); setAmount(""); setDate(new Date().toISOString().split("T")[0]); };
+  const reset = () => { setType("out"); setCategory("other"); setDescription(""); setAmount(""); setDate(new Date().toISOString().split("T")[0]); setClientMode("select"); };
   const submit = async () => {
     if(!amount||Number(amount)<=0||!description.trim()) return;
     setSaving(true);
@@ -16628,9 +16632,29 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial}) {
             {cats.map(c=><option key={c.k} value={c.k}>{c.l}</option>)}
           </select>
         </Field>
-        <Field label="Description" required>
-          <input value={description} onChange={e=>setDescription(e.target.value)} placeholder={type==="out"?"e.g. April office rent":"e.g. Bank transfer — Client X"} style={inputSt}/>
-        </Field>
+        {isClientPayment ? (
+          <Field label="Client" required hint={clientMode==="select"?"Pick from existing clients":"Not in the list? Type it manually"}>
+            {clientMode==="select" ? (
+              <select value={clients.some(c=>c.name===description)?description:""} onChange={e=>{
+                if(e.target.value==="__other__") { setClientMode("manual"); setDescription(""); }
+                else setDescription(e.target.value);
+              }} style={inputSt}>
+                <option value="" disabled>Select a client…</option>
+                {clients.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=><option key={c.id} value={c.name}>{c.name}</option>)}
+                <option value="__other__">Other (type manually)…</option>
+              </select>
+            ) : (
+              <div style={{display:"flex",gap:8}}>
+                <input value={description} onChange={e=>setDescription(e.target.value)} placeholder="Client name" style={{...inputSt,flex:1}}/>
+                <button onClick={()=>{setClientMode("select");setDescription("");}} style={{fontSize:12,fontWeight:700,color:"var(--accent)",flexShrink:0}}>Pick from list</button>
+              </div>
+            )}
+          </Field>
+        ) : (
+          <Field label="Description" required>
+            <input value={description} onChange={e=>setDescription(e.target.value)} placeholder={type==="out"?"e.g. April office rent":"e.g. Bank transfer — Client X"} style={inputSt}/>
+          </Field>
+        )}
         <div style={{display:"flex",gap:10}}>
           <Field label="Amount" required>
             <input type="number" min="0" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0" style={inputSt}/>
@@ -16649,7 +16673,7 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial}) {
   );
 }
 
-function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,onDelete,onAddComment}) {
+function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,onDelete,onAddComment,clients=[]}) {
   const {isMobile} = useResponsive();
   const [showEdit,setShowEdit] = useState(false);
   const [comment,setComment] = useState("");
@@ -16821,6 +16845,7 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
         onClose={()=>setShowEdit(false)}
         onSave={onEdit}
         initial={txn.raw ? {id:txn.raw.id,type:txn.type,category:txn.category,description:txn.sub,amount:txn.amount,currency:txn.currency,date:txn.date} : null}
+        clients={clients}
       />
     </div>
 
@@ -16861,7 +16886,7 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
   );
 }
 
-function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,currentUser,onAddExpense,onDeleteExpense,onEditExpense,onAddExpenseComment,onRefresh}) {
+function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,clients=[],currentUser,onAddExpense,onDeleteExpense,onEditExpense,onAddExpenseComment,onRefresh}) {
   const {isMobile} = useResponsive();
   const [showAdd,setShowAdd] = useState(false);
   const [range,setRange] = useState("all");
@@ -16972,6 +16997,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         onEdit={onEditExpense}
         onDelete={onDeleteExpense}
         onAddComment={onAddExpenseComment}
+        clients={clients}
       />
     );
   }
@@ -17144,7 +17170,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         })()}
       </div>
 
-      <AddExpenseModal open={showAdd} onClose={()=>setShowAdd(false)} onAdd={onAddExpense}/>
+      <AddExpenseModal open={showAdd} onClose={()=>setShowAdd(false)} onAdd={onAddExpense} clients={clients}/>
     </div>
   );
 }
@@ -25954,6 +25980,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             subscriptions={data.subscriptions}
             subscriptionPayments={data.subscriptionPayments}
             expenses={data.expenses||[]}
+            clients={data.clients||[]}
             currentUser={currentUser}
             onAddExpense={addExpense}
             onDeleteExpense={deleteExpense}
