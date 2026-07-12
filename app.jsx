@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.40";
+const APP_VERSION = "beta 4.41";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16694,6 +16694,109 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial,clientNames=[]}) {
   );
 }
 
+// Full-page version of the Add Transaction form — used for the top-level
+// "Add Transaction" entry point instead of a popup. (A near-identical popup
+// modal for transaction details mysteriously failed to render for some users
+// earlier; converting that to a full page fixed it for good, so the same
+// pattern is used here rather than risk the same unexplained failure.)
+function AddTransactionPage({onBack,onAdd,clientNames=[]}) {
+  const {isMobile} = useResponsive();
+  const [type,setType] = useState("out");
+  const [category,setCategory] = useState("other");
+  const [description,setDescription] = useState("");
+  const [amount,setAmount] = useState("");
+  const [currency,setCurrency] = useState("EGP");
+  const [date,setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [method,setMethod] = useState("");
+  const [saving,setSaving] = useState(false);
+  const [clientMode,setClientMode] = useState("select");
+  const cats = type==="out" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+  const isClientPayment = category==="client_payment";
+
+  const submit = async () => {
+    if(!amount||Number(amount)<=0||!description.trim()) return;
+    setSaving(true);
+    await onAdd({type,category,description:description.trim(),amount:Number(amount),currency,date,method:method||null});
+    setSaving(false);
+    onBack();
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16,maxWidth:520}} className="fade-in">
+      <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:700,color:"var(--text2)"}}>
+        <Ico d={Icons.chevL} size={15} stroke="var(--text2)"/> Back to Finance
+      </button>
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:isMobile?16:24,display:"flex",flexDirection:"column",gap:14}}>
+        <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?18:20,fontWeight:800,marginBottom:2}}>Add Transaction</h2>
+
+        <Field label="Type" required>
+          <div style={{display:"flex",gap:8}}>
+            {[["out","Expense (Out)"],["in","Income (In)"]].map(([v,l])=>(
+              <button key={v} onClick={()=>{setType(v);setCategory(v==="out"?"other":"client_payment");}} style={{flex:1,padding:"9px 10px",borderRadius:8,border:`1px solid ${type===v?"var(--accent)":"var(--border)"}`,background:type===v?"var(--accentbg)":"transparent",color:type===v?"var(--accent)":"var(--text2)",fontSize:12,fontWeight:700}}>{l}</button>
+            ))}
+          </div>
+        </Field>
+        <Field label="Category" required>
+          <select value={category} onChange={e=>setCategory(e.target.value)} style={inputSt}>
+            {cats.map(c=><option key={c.k} value={c.k}>{c.l}</option>)}
+          </select>
+        </Field>
+        {isClientPayment ? (
+          <Field label="Client" required hint={clientMode==="select"?"From payment history":"Not in the list? Type it manually"}>
+            {clientMode==="select" ? (
+              <select value={clientNames.includes(description)?description:""} onChange={e=>{
+                if(e.target.value==="__other__") { setClientMode("manual"); setDescription(""); }
+                else setDescription(e.target.value);
+              }} style={inputSt}>
+                <option value="" disabled>Select a client…</option>
+                {clientNames.slice().sort((a,b)=>a.localeCompare(b)).map(name=><option key={name} value={name}>{name}</option>)}
+                <option value="__other__">Other (type manually)…</option>
+              </select>
+            ) : (
+              <div style={{display:"flex",gap:8}}>
+                <input value={description} onChange={e=>setDescription(e.target.value)} placeholder="Client name" style={{...inputSt,flex:1}}/>
+                <button onClick={()=>{setClientMode("select");setDescription("");}} style={{fontSize:12,fontWeight:700,color:"var(--accent)",flexShrink:0}}>Pick from list</button>
+              </div>
+            )}
+          </Field>
+        ) : (
+          <Field label="Description" required>
+            <input value={description} onChange={e=>setDescription(e.target.value)} placeholder={type==="out"?"e.g. April office rent":"e.g. Bank transfer — Client X"} style={inputSt}/>
+          </Field>
+        )}
+        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+          <Field label="Amount" required>
+            <input type="number" min="0" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0" style={inputSt}/>
+          </Field>
+          <Field label="Currency">
+            <select value={currency} onChange={e=>setCurrency(e.target.value)} style={{...inputSt,width:90}}>
+              <option value="EGP">EGP</option><option value="USD">USD</option>
+            </select>
+          </Field>
+        </div>
+        <Field label="Date">
+          <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={inputSt}/>
+        </Field>
+        <Field label="Payment Method" hint="Optional">
+          <select value={method} onChange={e=>setMethod(e.target.value)} style={inputSt}>
+            <option value="">—</option>
+            <option value="Cash">Cash</option>
+            <option value="Bank transfer">Bank transfer</option>
+            <option value="Card">Card</option>
+            <option value="Other">Other</option>
+          </select>
+        </Field>
+
+        <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:6}}>
+          <Btn variant="secondary" onClick={onBack}>Cancel</Btn>
+          <Btn onClick={submit} disabled={saving||!amount||!description.trim()}>{saving?<Spinner size={14}/>:"Add Transaction"}</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,onDelete,onAddComment,clientNames=[]}) {
   const {isMobile} = useResponsive();
   const [showEdit,setShowEdit] = useState(false);
@@ -17129,7 +17232,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const [typeFilter,setTypeFilter] = useState("all");
   const [categoryFilter,setCategoryFilter] = useState("all");
   const [clientFilter,setClientFilter] = useState("all");
-  const [view,setView] = useState("overview"); // overview | clients | partners
+  const [view,setView] = usePersistentState("sf_finance_view","overview"); // overview | clients | partners | ai
   const [refreshing,setRefreshing] = useState(false);
   const [financeInsights,setFinanceInsights] = useState([]);
   const [genFinanceInsights,setGenFinanceInsights] = useState(false);
@@ -17153,6 +17256,10 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const openPartnersTab = () => { pushFinanceHistory({view:"partners"}); setView("partners"); };
   const openAiTab = () => { pushFinanceHistory({view:"ai"}); setView("ai"); };
   const openOverviewTab = () => { pushFinanceHistory({view:"overview"}); setView("overview"); };
+  const openAddTransaction = () => {
+    if(!applyingHistory.current) { try{ window.history.pushState({sfPage:"finance", sfView:view, sfClient:selectedClient, sfPartner:selectedPartner, sfSelectedId:selectedId, sfAdd:true},""); }catch(e){} }
+    setShowAdd(true);
+  };
   React.useEffect(()=>{
     const onPop = (e) => {
       if(e.state?.sfPage!=="finance") return;
@@ -17161,6 +17268,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
       setSelectedClient(e.state.sfClient||null);
       setSelectedPartner(e.state.sfPartner||null);
       setSelectedId(e.state.sfSelectedId||null);
+      setShowAdd(!!e.state.sfAdd);
       applyingHistory.current = false;
     };
     window.addEventListener("popstate", onPop);
@@ -17322,6 +17430,16 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
     {label:"Avg Transaction",value:`EGP ${Math.round(avgTxn).toLocaleString()}`,color:"#8b5cf6"},
   ];
 
+  if(showAdd) {
+    return (
+      <AddTransactionPage
+        onBack={()=>{ setShowAdd(false); window.history.back(); }}
+        onAdd={async(payload)=>{ await onAddExpense(payload); setShowAdd(false); }}
+        clientNames={clientNames}
+      />
+    );
+  }
+
   const selected = selectedId ? ledger.find(l=>l.id===selectedId) : null;
   if(selected) {
     return (
@@ -17379,7 +17497,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
           <button onClick={handleRefresh} disabled={refreshing} aria-label="Refresh" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
             {refreshing?<Spinner size={15}/>:<Ico d={Icons.refresh||Icons.repeat} size={15} stroke="var(--text2)"/>}
           </button>
-          {canManage&&<Btn onClick={()=>setShowAdd(true)}><Ico d={Icons.plus} size={15}/> Add Transaction</Btn>}
+          {canManage&&<Btn onClick={openAddTransaction}><Ico d={Icons.plus} size={15}/> Add Transaction</Btn>}
         </div>
       </div>
 
@@ -17680,8 +17798,6 @@ No markdown, no explanation.`;
       </div>
       </>
       )}
-
-      <AddExpenseModal open={showAdd} onClose={()=>setShowAdd(false)} onAdd={onAddExpense} clientNames={clientNames}/>
     </div>
   );
 }
