@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.39";
+const APP_VERSION = "beta 4.40";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1692,6 +1692,13 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
          should behave the same way. */
       *{scrollbar-width:none;-ms-overflow-style:none}
       *::-webkit-scrollbar{display:none}
+      /* ...except modals — with a hidden scrollbar and a footer pinned below
+         the visible content, a tall form (many fields) gives no visual hint
+         that scrolling further down reveals more fields, which reads as the
+         form being "stuck"/broken. Give modal bodies a thin visible scrollbar. */
+      .modal-body{scrollbar-width:thin!important}
+      .modal-body::-webkit-scrollbar{display:block!important;width:4px}
+      .modal-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:99px}
       .card-mobile{border-radius:var(--rs)!important;padding:14px!important}
       .page-title{font-size:20px!important}
       .stat-card{padding:14px!important}

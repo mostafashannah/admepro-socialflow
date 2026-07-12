@@ -77,7 +77,7 @@ function speedTokens(speed,base){if(speed==="low")return Math.max(300,Math.round
 function logActivity(action,category,details="",status="success",errorMsg="",user="system"){const entry={action,category,details,status,error_message:errorMsg,performed_by:user,performed_at:new Date().toISOString()};ce("ActivityLog",[entry]).then(({entities})=>{const saved=entities===null||entities===void 0?void 0:entities[0];// Push the freshly-saved row (with real id) into the live UI immediately,
 // otherwise System Log only reflects what was loaded at page load.
 if(saved&&!saved._saveError)window.dispatchEvent(new CustomEvent("sf:activitylog",{detail:saved}));}).catch(()=>{});}// ── Email HTML templates ─────────────────────────────────────────
-const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 4.39";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 4.40";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
 <tr><td align="center">
@@ -570,6 +570,13 @@ const isLight=wallpaper==="light";const shadowSm=isLight?"0 1px 3px rgba(0,0,0,0
          should behave the same way. */
       *{scrollbar-width:none;-ms-overflow-style:none}
       *::-webkit-scrollbar{display:none}
+      /* ...except modals — with a hidden scrollbar and a footer pinned below
+         the visible content, a tall form (many fields) gives no visual hint
+         that scrolling further down reveals more fields, which reads as the
+         form being "stuck"/broken. Give modal bodies a thin visible scrollbar. */
+      .modal-body{scrollbar-width:thin!important}
+      .modal-body::-webkit-scrollbar{display:block!important;width:4px}
+      .modal-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:99px}
       .card-mobile{border-radius:var(--rs)!important;padding:14px!important}
       .page-title{font-size:20px!important}
       .stat-card{padding:14px!important}
