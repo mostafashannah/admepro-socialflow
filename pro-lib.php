@@ -197,7 +197,7 @@ function financeTools() {
                 'type' => 'object',
                 'properties' => [
                     'type'        => ['type' => 'string', 'enum' => ['in', 'out'], 'description' => '"in" = income/money received, "out" = expense/money spent'],
-                    'category'    => ['type' => 'string', 'description' => 'For expenses (type=out): salaries, tools, rent, ads, freelancers, or other. For income (type=in): client_payment or other_income.'],
+                    'category'    => ['type' => 'string', 'description' => 'For expenses (type=out): salaries, tools, rent, ads, freelancers, general (general/office expenses), debt_repayment, partner_mostafa (Mostafa\'s partner withdrawal), partner_radwa (Radwa\'s partner withdrawal), or other. For income (type=in): client_payment or other_income.'],
                     'description' => ['type' => 'string', 'description' => 'Short description, e.g. "April office rent" or "Bank transfer — Acme Co."'],
                     'amount'      => ['type' => 'number'],
                     'currency'    => ['type' => 'string', 'description' => 'Defaults to EGP'],
@@ -238,7 +238,7 @@ function financeTools() {
 }
 
 function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderName) {
-    $expenseCats = ['salaries', 'tools', 'rent', 'ads', 'freelancers', 'other'];
+    $expenseCats = ['salaries', 'tools', 'rent', 'ads', 'freelancers', 'general', 'debt_repayment', 'partner_mostafa', 'partner_radwa', 'other'];
     $incomeCats  = ['client_payment', 'other_income'];
 
     if ($name === 'get_finance_summary') {
@@ -612,18 +612,30 @@ function callClaude(array $payload) {
 // a WhatsApp chat, so multi-step exchanges (e.g. "add a transaction" where the
 // amount and description arrive in separate messages) don't loop forever
 // re-asking for info the user already gave a message or two ago.
+// Both wrapped in try/catch so a missing/broken pro_messages table (e.g. the
+// migration hasn't been run yet) degrades to stateless behavior instead of
+// silently killing the whole reply.
 function loadRecentProMessages(PDO $pdo, string $phone, int $limit = 10): array {
-    $stmt = $pdo->prepare("SELECT role, content FROM pro_messages WHERE phone = :p ORDER BY created_at DESC LIMIT :lim");
-    $stmt->bindValue(':p', $phone, PDO::PARAM_STR);
-    $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
-    $stmt->execute();
-    $rows = array_reverse($stmt->fetchAll(PDO::FETCH_ASSOC));
-    return array_map(fn($r) => ['role' => $r['role'], 'content' => $r['content']], $rows);
+    try {
+        $stmt = $pdo->prepare("SELECT role, content FROM pro_messages WHERE phone = :p ORDER BY created_at DESC LIMIT :lim");
+        $stmt->bindValue(':p', $phone, PDO::PARAM_STR);
+        $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        $rows = array_reverse($stmt->fetchAll(PDO::FETCH_ASSOC));
+        return array_map(fn($r) => ['role' => $r['role'], 'content' => $r['content']], $rows);
+    } catch (Throwable $e) {
+        error_log('[pro-lib] loadRecentProMessages failed: ' . $e->getMessage());
+        return [];
+    }
 }
 
 function saveProMessage(PDO $pdo, string $phone, string $role, string $content) {
-    $stmt = $pdo->prepare("INSERT INTO pro_messages (id, phone, role, content) VALUES (:id, :phone, :role, :content)");
-    $stmt->execute([':id' => generateProUuid(), ':phone' => $phone, ':role' => $role, ':content' => $content]);
+    try {
+        $stmt = $pdo->prepare("INSERT INTO pro_messages (id, phone, role, content) VALUES (:id, :phone, :role, :content)");
+        $stmt->execute([':id' => generateProUuid(), ':phone' => $phone, ':role' => $role, ':content' => $content]);
+    } catch (Throwable $e) {
+        error_log('[pro-lib] saveProMessage failed: ' . $e->getMessage());
+    }
 }
 
 function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $senderId = null, $voiceTranscript = null, $fromPhone = null) {
