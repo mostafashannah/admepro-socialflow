@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.55";
+const APP_VERSION = "beta 4.56";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17617,7 +17617,9 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
           <button onClick={handleRefresh} disabled={refreshing} aria-label="Refresh" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
             {refreshing?<Spinner size={15}/>:<Ico d={Icons.refresh||Icons.repeat} size={15} stroke="var(--text2)"/>}
           </button>
-          {canManage&&<Btn onClick={openAddTransaction}><Ico d={Icons.plus} size={15}/> Add Transaction</Btn>}
+          {canManage&&<button onClick={openAddTransaction} aria-label="Add Transaction" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            <Ico d={Icons.plus} size={15} stroke="#fff"/>
+          </button>}
         </div>
       </div>
 
