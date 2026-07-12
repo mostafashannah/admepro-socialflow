@@ -607,7 +607,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.23";
+const APP_VERSION = "beta 4.24";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16699,6 +16699,11 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
   const checkNoDirty = checkNo !== (txn.checkNo||"");
   const attachDirty = JSON.stringify(attachments) !== JSON.stringify(txn.attachments||[]);
 
+  const [previewIdx,setPreviewIdx] = useState(0);
+  React.useEffect(()=>{ setPreviewIdx(0); },[txn.id]);
+  React.useEffect(()=>{ if(previewIdx>=attachments.length) setPreviewIdx(Math.max(0,attachments.length-1)); },[attachments.length]);
+  const isImageAttachment = (a) => /\.(png|jpe?g|gif|webp|svg)$/i.test(a?.name||a?.url||"");
+
   const row = (label,value) => (
     <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,padding:"10px 0",borderBottom:"1px solid var(--border)"}}>
       <span style={{fontSize:12,color:"var(--text3)",flexShrink:0}}>{label}</span>
@@ -16707,7 +16712,8 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
   );
 
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:16,maxWidth:640}} className="fade-in">
+    <div style={{display:"flex",gap:20,alignItems:"flex-start"}} className="fade-in">
+    <div style={{display:"flex",flexDirection:"column",gap:16,maxWidth:640,flex:1,minWidth:0}}>
       <div style={{display:"flex",alignItems:"center",gap:10}}>
         <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:700,color:"var(--text2)"}}>
           <Ico d={Icons.chevL} size={15} stroke="var(--text2)"/> Back to Finance
@@ -16758,10 +16764,10 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
             <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",marginBottom:8}}>Attachments</p>
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {attachments.length>0&&attachments.map((a,i)=>(
-                <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border2)"}}>
+                <div key={i} onClick={()=>setPreviewIdx(i)} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:i===previewIdx?"var(--accentbg)":"var(--surface2)",borderRadius:8,border:`1px solid ${i===previewIdx?"var(--accent)":"var(--border2)"}`,cursor:"pointer"}}>
                   <Ico d={Icons.receipt} size={14} stroke="var(--accent)"/>
-                  <a href={a.url} target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:"var(--accent)",fontWeight:600,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</a>
-                  {canManage&&<button onClick={()=>setAttachments(prev=>prev.filter((_,j)=>j!==i))}><Ico d={Icons.x} size={13} stroke="var(--text3)"/></button>}
+                  <span style={{fontSize:12,color:"var(--accent)",fontWeight:600,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</span>
+                  {canManage&&<button onClick={e=>{e.stopPropagation();setAttachments(prev=>prev.filter((_,j)=>j!==i));}}><Ico d={Icons.x} size={13} stroke="var(--text3)"/></button>}
                 </div>
               ))}
               {canManage&&(
@@ -16816,6 +16822,41 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
         onSave={onEdit}
         initial={txn.raw ? {id:txn.raw.id,type:txn.type,category:txn.category,description:txn.sub,amount:txn.amount,currency:txn.currency,date:txn.date} : null}
       />
+    </div>
+
+    {/* Attachment preview — always visible in the side space on desktop */}
+    {!isMobile&&attachments.length>0&&(()=>{
+      const a = attachments[previewIdx];
+      const isImg = isImageAttachment(a);
+      return (
+        <div style={{position:"sticky",top:20,flex:1,minWidth:0,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+          <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <span style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</span>
+            {attachments.length>1&&<span style={{fontSize:11,color:"var(--text3)",flexShrink:0,marginLeft:10}}>{previewIdx+1} / {attachments.length}</span>}
+          </div>
+          <div style={{position:"relative",flex:1,minHeight:360,display:"flex",alignItems:"center",justifyContent:"center",background:"var(--surface2)"}}>
+            {attachments.length>1&&(
+              <button onClick={()=>setPreviewIdx(i=>(i-1+attachments.length)%attachments.length)} aria-label="Previous document" style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",width:34,height:34,borderRadius:"50%",background:"var(--surface)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.12)"}}>
+                <Ico d={Icons.chevL} size={16} stroke="var(--text2)"/>
+              </button>
+            )}
+            {isImg ? (
+              <img src={a.url} alt={a.name} style={{maxWidth:"100%",maxHeight:520,objectFit:"contain"}}/>
+            ) : (
+              <iframe src={a.url} title={a.name} style={{width:"100%",height:520,border:"none",background:"#fff"}}/>
+            )}
+            {attachments.length>1&&(
+              <button onClick={()=>setPreviewIdx(i=>(i+1)%attachments.length)} aria-label="Next document" style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",width:34,height:34,borderRadius:"50%",background:"var(--surface)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.12)"}}>
+                <Ico d={Icons.chevR} size={16} stroke="var(--text2)"/>
+              </button>
+            )}
+          </div>
+          <div style={{padding:"10px 16px",borderTop:"1px solid var(--border)"}}>
+            <a href={a.url} target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:"var(--accent)",fontWeight:700}}>Open in new tab</a>
+          </div>
+        </div>
+      );
+    })()}
     </div>
   );
 }
