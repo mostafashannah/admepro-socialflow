@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.66";
+const APP_VERSION = "beta 4.67";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1745,8 +1745,15 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
         white-space:normal!important;word-break:normal!important;overflow-wrap:break-word!important;
       }
 
-      /* Main layout container must not overflow */
-      .main-content > *{overflow-x:hidden}
+      /* Main layout container must not overflow. overflow-y is pinned to
+         visible explicitly — setting overflow-x alone without it causes the
+         CSS spec's "other axis becomes auto" rule to silently turn every
+         page's root div into its own vertical scroll container nested
+         inside .main-content's real one, which is exactly the kind of
+         nested-scroll-container setup that causes intermittent/glitchy
+         scrolling on iOS Safari (a swipe sometimes gets captured by the
+         inner accidental container instead of the outer real one). */
+      .main-content > *{overflow-x:hidden;overflow-y:visible}
 
       /* Complex table rows — horizontal scroll */
       .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
