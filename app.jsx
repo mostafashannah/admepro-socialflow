@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.32";
+const APP_VERSION = "beta 4.33";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17126,7 +17126,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
 
   const byCategory = EXPENSE_CATEGORIES.map(c=>({
     ...c, total: expenses.filter(e=>(e.type||"out")==="out"&&e.category===c.k&&inRange(e.date)).reduce((a,e)=>a+num(e.amount),0),
-  })).filter(c=>c.total>0);
+  })).filter(c=>c.total>0).sort((a,b)=>b.total-a.total);
   const maxCat = Math.max(...byCategory.map(c=>c.total),1);
 
   const bySource = ledger.filter(l=>l.type==="in").reduce((acc,l)=>{
