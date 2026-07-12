@@ -369,6 +369,7 @@ const SB_TABLE = {
   ContactReport:"contact_reports",
   LeadNotifySetting:"lead_notify_settings",
   Expense:"expenses",
+  FinanceClientNote:"finance_client_notes",
 };
 
 function sbTable(entityName) {
@@ -607,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.30";
+const APP_VERSION = "beta 4.31";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16887,7 +16888,109 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
   );
 }
 
-function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,clients=[],currentUser,onAddExpense,onDeleteExpense,onEditExpense,onAddExpenseComment,onRefresh}) {
+function ClientPaymentDetail({clientName,ledger,note,canManage,onBack,onOpenTransaction,onRename,onSaveNote}) {
+  const {isMobile} = useResponsive();
+  const [editing,setEditing] = useState(false);
+  const [nameInput,setNameInput] = useState(clientName);
+  const [phone,setPhone] = useState(note?.phone||"");
+  const [notes,setNotes] = useState(note?.notes||"");
+  const [saving,setSaving] = useState(false);
+
+  React.useEffect(()=>{ setNameInput(clientName); setPhone(note?.phone||""); setNotes(note?.notes||""); },[clientName, note?.phone, note?.notes]);
+
+  const clientTxns = ledger.filter(l=>l.type==="in"&&l.clientName===clientName).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const clientTotal = clientTxns.reduce((a,l)=>a+l.amount,0);
+
+  // Monthly totals for the bar graph — last 12 calendar months that have activity, chronological
+  const monthKey = (d) => { const dt=new Date(d); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}`; };
+  const monthLabel = (k) => { const [y,m]=k.split("-"); return new Date(Number(y),Number(m)-1,1).toLocaleDateString("en-US",{month:"short",year:"2-digit"}); };
+  const monthTotals = {};
+  clientTxns.forEach(l=>{ const k=monthKey(l.date); monthTotals[k]=(monthTotals[k]||0)+l.amount; });
+  const months = Object.keys(monthTotals).sort().slice(-12);
+  const maxMonth = Math.max(...months.map(k=>monthTotals[k]),1);
+
+  const save = async () => {
+    setSaving(true);
+    if(nameInput.trim() && nameInput.trim()!==clientName) await onRename(nameInput.trim());
+    await onSaveNote({phone:phone.trim()||null, notes:notes.trim()||null});
+    setSaving(false);
+    setEditing(false);
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
+      <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:700,color:"var(--text2)"}}>
+        <Ico d={Icons.chevL} size={15} stroke="var(--text2)"/> Back to Clients
+      </button>
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
+        {editing ? (
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <Field label="Client Name"><input value={nameInput} onChange={e=>setNameInput(e.target.value)} style={inputSt}/></Field>
+            <Field label="Phone" hint="Optional"><input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="e.g. +20 100 123 4567" style={inputSt}/></Field>
+            <Field label="Notes" hint="Optional"><textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={3} style={{...inputSt,resize:"vertical",fontFamily:"inherit"}}/></Field>
+            <div style={{display:"flex",gap:8}}>
+              <Btn size="sm" onClick={save} disabled={saving||!nameInput.trim()}>{saving?<Spinner size={13}/>:"Save"}</Btn>
+              <Btn size="sm" variant="secondary" onClick={()=>{setEditing(false);setNameInput(clientName);setPhone(note?.phone||"");setNotes(note?.notes||"");}}>Cancel</Btn>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div style={{display:"flex",alignItems:"center",gap:14}}>
+              <Avatar name={clientName} size={48}/>
+              <div style={{flex:1,minWidth:0}}>
+                <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:20,fontWeight:800}}>{clientName}</h2>
+                <p style={{fontSize:12,color:"var(--text3)"}}>{clientTxns.length} payment{clientTxns.length!==1?"s":""}{note?.phone?` · ${note.phone}`:""}</p>
+              </div>
+              <p style={{fontSize:22,fontWeight:800,color:"#10b981"}}>EGP {Math.round(clientTotal).toLocaleString()}</p>
+              {canManage&&<button onClick={()=>setEditing(true)} style={{marginLeft:8,flexShrink:0}}><Ico d={Icons.edit||Icons.pencil} size={16} stroke="var(--text3)"/></button>}
+            </div>
+            {note?.notes&&<p style={{fontSize:13,color:"var(--text2)",marginTop:14,paddingTop:14,borderTop:"1px solid var(--border)",whiteSpace:"pre-wrap"}}>{note.notes}</p>}
+          </>
+        )}
+      </div>
+
+      {/* Monthly payments graph */}
+      {months.length>0&&(
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:isMobile?16:20}}>
+          <h3 style={{fontWeight:700,fontSize:14,marginBottom:16}}>Payments by Month</h3>
+          <div style={{display:"flex",alignItems:"flex-end",gap:isMobile?4:10,height:140}}>
+            {months.map(k=>(
+              <div key={k} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:6,height:"100%",justifyContent:"flex-end"}}>
+                <span style={{fontSize:9,fontWeight:700,color:"var(--text3)"}}>{monthTotals[k]>=1000?Math.round(monthTotals[k]/1000)+"k":Math.round(monthTotals[k])}</span>
+                <div style={{width:"100%",maxWidth:32,height:Math.max(4,(monthTotals[k]/maxMonth)*90),background:"#10b981",borderRadius:"4px 4px 0 0"}}/>
+                <span style={{fontSize:9,color:"var(--text3)",whiteSpace:"nowrap"}}>{monthLabel(k)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+        <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
+          <h3 style={{fontWeight:700,fontSize:14}}>Payment History</h3>
+        </div>
+        {clientTxns.map((l,i)=>(
+          <div key={l.id} onClick={()=>onOpenTransaction(l.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:i<clientTxns.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
+            onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
+            onMouseLeave={e=>e.currentTarget.style.background=""}>
+            <div style={{width:30,height:30,borderRadius:8,background:"#10b98122",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <Ico d={Icons.arrowDown||Icons.chevD} size={14} stroke="#10b981"/>
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <p style={{fontSize:13,fontWeight:600}}>{l.source}{l.method?` · ${l.method}`:""}</p>
+              <p style={{fontSize:11,color:"var(--text3)"}}>{fmtDate(l.date)}</p>
+            </div>
+            <p style={{fontSize:13,fontWeight:800,color:"#10b981"}}>+{l.currency} {Math.round(l.amount).toLocaleString()}</p>
+            <Ico d={Icons.chevR} size={14} stroke="var(--text3)"/>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,clients=[],financeClientNotes=[],currentUser,onAddExpense,onDeleteExpense,onEditExpense,onAddExpenseComment,onRefresh,onRenameClient,onSaveClientNote}) {
   const {isMobile} = useResponsive();
   const [showAdd,setShowAdd] = useState(false);
   const [range,setRange] = useState("all");
@@ -16902,6 +17005,33 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const [refreshing,setRefreshing] = useState(false);
   const isAdmin = currentUser?.role==="admin";
   const canManage = ["admin","accountant"].includes(currentUser?.role);
+
+  // Browser back/forward support for in-page navigation (client list ->
+  // client detail -> transaction detail) — each step pushes a history entry
+  // so the OS/browser back button steps back one level instead of leaving
+  // the Finance page (or the whole app) entirely.
+  const applyingHistory = React.useRef(false);
+  const pushFinanceHistory = (patch) => {
+    if(applyingHistory.current) return;
+    const state = {sfPage:"finance", sfView: "view" in patch?patch.view:view, sfClient: "selectedClient" in patch?patch.selectedClient:selectedClient, sfSelectedId: "selectedId" in patch?patch.selectedId:selectedId};
+    try{ window.history.pushState(state,""); }catch(e){}
+  };
+  const openTransaction = (id) => { pushFinanceHistory({selectedId:id}); setSelectedId(id); };
+  const openClient = (name) => { pushFinanceHistory({selectedClient:name}); setSelectedClient(name); };
+  const openClientsTab = () => { pushFinanceHistory({view:"clients"}); setView("clients"); };
+  const openOverviewTab = () => { pushFinanceHistory({view:"overview"}); setView("overview"); };
+  React.useEffect(()=>{
+    const onPop = (e) => {
+      if(e.state?.sfPage!=="finance") return;
+      applyingHistory.current = true;
+      setView(e.state.sfView||"overview");
+      setSelectedClient(e.state.sfClient||null);
+      setSelectedId(e.state.sfSelectedId||null);
+      applyingHistory.current = false;
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  },[]);
   const num = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
 
   // Transactions can be added from outside this session (WhatsApp Pro) — pull
@@ -17017,7 +17147,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         currentUser={currentUser}
         canManage={canManage}
         isAdmin={isAdmin}
-        onBack={()=>setSelectedId(null)}
+        onBack={()=>window.history.back()}
         onEdit={onEditExpense}
         onDelete={onDeleteExpense}
         onAddComment={onAddExpenseComment}
@@ -17027,42 +17157,17 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   }
 
   if(selectedClient) {
-    const clientTxns = ledger.filter(l=>l.type==="in"&&l.clientName===selectedClient).sort((a,b)=>new Date(b.date)-new Date(a.date));
-    const clientTotal = clientTxns.reduce((a,l)=>a+l.amount,0);
     return (
-      <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
-        <button onClick={()=>setSelectedClient(null)} style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:700,color:"var(--text2)"}}>
-          <Ico d={Icons.chevL} size={15} stroke="var(--text2)"/> Back to Clients
-        </button>
-        <div style={{display:"flex",alignItems:"center",gap:14,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
-          <Avatar name={selectedClient} size={48}/>
-          <div style={{flex:1,minWidth:0}}>
-            <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:20,fontWeight:800}}>{selectedClient}</h2>
-            <p style={{fontSize:12,color:"var(--text3)"}}>{clientTxns.length} payment{clientTxns.length!==1?"s":""}</p>
-          </div>
-          <p style={{fontSize:22,fontWeight:800,color:"#10b981"}}>EGP {Math.round(clientTotal).toLocaleString()}</p>
-        </div>
-        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
-          <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
-            <h3 style={{fontWeight:700,fontSize:14}}>Payment History</h3>
-          </div>
-          {clientTxns.map((l,i)=>(
-            <div key={l.id} onClick={()=>setSelectedId(l.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:i<clientTxns.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
-              onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
-              onMouseLeave={e=>e.currentTarget.style.background=""}>
-              <div style={{width:30,height:30,borderRadius:8,background:"#10b98122",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                <Ico d={Icons.arrowDown||Icons.chevD} size={14} stroke="#10b981"/>
-              </div>
-              <div style={{flex:1,minWidth:0}}>
-                <p style={{fontSize:13,fontWeight:600}}>{l.source}{l.method?` · ${l.method}`:""}</p>
-                <p style={{fontSize:11,color:"var(--text3)"}}>{fmtDate(l.date)}</p>
-              </div>
-              <p style={{fontSize:13,fontWeight:800,color:"#10b981"}}>+{l.currency} {Math.round(l.amount).toLocaleString()}</p>
-              <Ico d={Icons.chevR} size={14} stroke="var(--text3)"/>
-            </div>
-          ))}
-        </div>
-      </div>
+      <ClientPaymentDetail
+        clientName={selectedClient}
+        ledger={ledger}
+        note={financeClientNotes.find(n=>n.client_name===selectedClient)}
+        canManage={canManage}
+        onBack={()=>window.history.back()}
+        onOpenTransaction={openTransaction}
+        onRename={async(newName)=>{ await onRenameClient?.(selectedClient,newName); setSelectedClient(newName); }}
+        onSaveNote={(updates)=>onSaveClientNote?.(selectedClient,updates)}
+      />
     );
   }
 
@@ -17084,7 +17189,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
       {/* View tabs */}
       <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)"}}>
         {[["overview","Overview"],["clients","Clients"]].map(([k,l])=>(
-          <button key={k} onClick={()=>setView(k)} style={{padding:"9px 18px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${view===k?"var(--accent)":"transparent"}`,color:view===k?"var(--accent)":"var(--text2)"}}>{l}</button>
+          <button key={k} onClick={()=>k==="clients"?openClientsTab():openOverviewTab()} style={{padding:"9px 18px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${view===k?"var(--accent)":"transparent"}`,color:view===k?"var(--accent)":"var(--text2)"}}>{l}</button>
         ))}
       </div>
 
@@ -17099,7 +17204,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
           ) : (
             <div>
               {paymentClients.map((c,i)=>(
-                <div key={c.name} onClick={()=>setSelectedClient(c.name)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 18px",borderBottom:i<paymentClients.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
+                <div key={c.name} onClick={()=>openClient(c.name)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 18px",borderBottom:i<paymentClients.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
                   onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
                   onMouseLeave={e=>e.currentTarget.style.background=""}>
                   <Avatar name={c.name} size={34}/>
@@ -17258,7 +17363,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
           ) : (
             <div>
               {filteredLedger.map((l,i)=>(
-                <div key={l.id} onClick={()=>setSelectedId(l.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:i<filteredLedger.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
+                <div key={l.id} onClick={()=>openTransaction(l.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:i<filteredLedger.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
                   onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
                   onMouseLeave={e=>e.currentTarget.style.background=""}>
                   <div style={{width:30,height:30,borderRadius:8,background:l.type==="in"?"#10b98122":"#ef444422",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -23904,7 +24009,7 @@ function App() {
     invitations: [], accessRequests: [], clientUsers: [],
     emailLogs: [], activityLogs: [], notifPrefs: [],
     rolePermissions: [], leaveRequests: [], attendanceRecords: [], contactReports: [], leadNotifySettings: [],
-    expenses: [],
+    expenses: [], financeClientNotes: [],
   });
   const rolePermsMap = useMemo(()=>buildRolePermsMap(data.rolePermissions), [data.rolePermissions]);
   const [appSettings, setAppSettings] = useState(SEED.appSettings);
@@ -23941,16 +24046,43 @@ function App() {
   // fresh rows whenever the Finance page is opened instead of relying on the
   // one-time load at app startup.
   const refreshFinance = async () => {
-    const [expR,payR,subPayR] = await Promise.all([
+    const [expR,payR,subPayR,noteR] = await Promise.all([
       qe("Expense",{},"-date",1000).catch(()=>({entities:[]})),
       qe("Payment",{},"payment_date").catch(()=>({entities:[]})),
       qe("SubscriptionPayment",{},"-payment_date").catch(()=>({entities:[]})),
+      qe("FinanceClientNote").catch(()=>({entities:[]})),
     ]);
     setData(d=>({...d,
       expenses: expR?.entities||d.expenses||[],
       payments: payR?.entities||d.payments||[],
       subscriptionPayments: subPayR?.entities||d.subscriptionPayments||[],
+      financeClientNotes: noteR?.entities||d.financeClientNotes||[],
     }));
+  };
+
+  // Renames a payment-history client across every manual client_payment
+  // expense row that used the old name (invoice/subscription-linked income
+  // is managed via their own modules, not here).
+  const renameFinanceClient = async (oldName, newName) => {
+    const matches = data.expenses.filter(e=>(e.type||"out")==="in"&&e.category==="client_payment"&&e.description===oldName);
+    setData(d=>({...d,expenses:d.expenses.map(e=>matches.some(m=>m.id===e.id)?{...e,description:newName}:e)}));
+    await Promise.all(matches.map(e=>ue("Expense", e.id, {description:newName}).catch(()=>{})));
+    setToast(`Renamed "${oldName}" to "${newName}" on ${matches.length} transaction${matches.length!==1?"s":""}`);
+  };
+
+  const saveFinanceClientNote = async (clientName, updates) => {
+    const existing = data.financeClientNotes.find(n=>n.client_name===clientName);
+    if(existing) {
+      setData(d=>({...d,financeClientNotes:d.financeClientNotes.map(n=>n.client_name===clientName?{...n,...updates}:n)}));
+      ue("FinanceClientNote", existing.id, updates).catch(()=>{});
+    } else {
+      const local = {...updates, client_name:clientName, id:uid()};
+      setData(d=>({...d,financeClientNotes:[...d.financeClientNotes,local]}));
+      ce("FinanceClientNote",[{...updates,client_name:clientName}]).then(res=>{
+        const real=res.entities?.[0]; if(real?.id) setData(d=>({...d,financeClientNotes:d.financeClientNotes.map(n=>n.client_name===clientName?{...n,...real}:n)}));
+      }).catch(()=>{});
+    }
+    setToast("Client info saved");
   };
 
   // ── Load from Supabase — 2-wave for fast startup ──────────────
@@ -24039,6 +24171,7 @@ function App() {
         qe("ContactReport",{},"-created_at",500), // 43
         qe("LeadNotifySetting"), // 44
         qe("Expense",{},"-date",1000), // 45
+        qe("FinanceClientNote"), // 46
       ]);
       if(wave2[13].status==="fulfilled" && wave2[13].value?.entities?.length) setEmailSettings(wave2[13].value.entities[0]);
 
@@ -24088,6 +24221,7 @@ function App() {
         contactReports: pick(wave2[43], d.contactReports||[]),
         leadNotifySettings: pick(wave2[44], d.leadNotifySettings||[]),
         expenses: pick(wave2[45], d.expenses||[]),
+        financeClientNotes: pick(wave2[46], d.financeClientNotes||[]),
       }));
     }
     loadAllDataRef.current = load;
@@ -26093,12 +26227,15 @@ Return ONLY valid JSON (no markdown, no explanation):
             subscriptionPayments={data.subscriptionPayments}
             expenses={data.expenses||[]}
             clients={data.clients||[]}
+            financeClientNotes={data.financeClientNotes||[]}
             currentUser={currentUser}
             onAddExpense={addExpense}
             onDeleteExpense={deleteExpense}
             onEditExpense={editExpense}
             onAddExpenseComment={addExpenseComment}
             onRefresh={refreshFinance}
+            onRenameClient={renameFinanceClient}
+            onSaveClientNote={saveFinanceClientNote}
           />
         )}
         {page==="users"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.view_team"))&&(
