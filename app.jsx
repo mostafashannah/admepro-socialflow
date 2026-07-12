@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.53";
+const APP_VERSION = "beta 4.54";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17112,7 +17112,7 @@ function FinanceRangeFilter({range,setRange,customStart,setCustomStart,customEnd
         <button key={k} onClick={()=>setRange(k)} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:range===k?"var(--accent)":"var(--surface2)",color:range===k?"#fff":"var(--text2)",border:`1px solid ${range===k?"var(--accent)":"var(--border2)"}`}}>{l}</button>
       ))}
       {monthOptions.length>0&&(
-        <select value={range==="specific_month"?selectedMonth:""} onChange={e=>{setSelectedMonth(e.target.value);setRange("specific_month");}} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:range==="specific_month"?"var(--accent)":"var(--surface2)",color:range==="specific_month"?"#fff":"var(--text2)",border:`1px solid ${range==="specific_month"?"var(--accent)":"var(--border2)"}`,WebkitAppearance:"none",appearance:"none",backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='${range==="specific_month"?"%23fff":"%23888"}' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,backgroundRepeat:"no-repeat",backgroundPosition:"right 10px center",paddingRight:28}}>
+        <select value={range==="specific_month"?selectedMonth:""} onChange={e=>{setSelectedMonth(e.target.value);setRange("specific_month");}} style={{maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:range==="specific_month"?"var(--accent)":"var(--surface2)",color:range==="specific_month"?"#fff":"var(--text2)",border:`1px solid ${range==="specific_month"?"var(--accent)":"var(--border2)"}`,WebkitAppearance:"none",appearance:"none",backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='${range==="specific_month"?"%23fff":"%23888"}' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,backgroundRepeat:"no-repeat",backgroundPosition:"right 10px center",paddingRight:28}}>
           <option value="" disabled>Pick a month…</option>
           {monthOptions.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
@@ -17622,9 +17622,9 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
       </div>
 
       {/* View tabs */}
-      <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border, #e5e7eb)",flexWrap:"wrap"}}>
+      <div style={{display:"flex",flexDirection:"row",flexWrap:"nowrap",gap:6,width:"100%",minHeight:36,overflowX:"auto",WebkitOverflowScrolling:"touch",paddingBottom:2,borderBottom:"1px solid var(--border, #e5e7eb)"}}>
         {[["overview","Overview",openOverviewTab],["clients","Clients",openClientsTab],["partners","Partners",openPartnersTab],["ai","AI",openAiTab]].map(([k,l,fn])=>(
-          <button key={k} onClick={fn} style={{padding:"9px 18px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${view===k?"var(--accent, #d90b2c)":"transparent"}`,color:view===k?"var(--accent, #d90b2c)":"var(--text2, #6b7280)",transition:"all 0.15s"}}>{l}</button>
+          <button key={k} type="button" onClick={fn} style={{display:"inline-block",flexShrink:0,whiteSpace:"nowrap",padding:"9px 18px",fontSize:13,fontWeight:600,background:"transparent",borderWidth:"0 0 2px 0",borderStyle:"solid",borderColor:view===k?"var(--accent, #d90b2c)":"transparent",color:view===k?"var(--accent, #d90b2c)":"var(--text2, #6b7280)",cursor:"pointer"}}>{l}</button>
         ))}
       </div>
 
