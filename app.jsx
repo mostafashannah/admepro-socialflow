@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.54";
+const APP_VERSION = "beta 4.55";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17622,7 +17622,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
       </div>
 
       {/* View tabs */}
-      <div style={{display:"flex",flexDirection:"row",flexWrap:"nowrap",gap:6,width:"100%",minHeight:36,overflowX:"auto",WebkitOverflowScrolling:"touch",paddingBottom:2,borderBottom:"1px solid var(--border, #e5e7eb)"}}>
+      <div style={{display:"flex",flexDirection:"row",flexWrap:"wrap",gap:6,width:"100%",minHeight:36,paddingBottom:2,borderBottom:"1px solid var(--border, #e5e7eb)"}}>
         {[["overview","Overview",openOverviewTab],["clients","Clients",openClientsTab],["partners","Partners",openPartnersTab],["ai","AI",openAiTab]].map(([k,l,fn])=>(
           <button key={k} type="button" onClick={fn} style={{display:"inline-block",flexShrink:0,whiteSpace:"nowrap",padding:"9px 18px",fontSize:13,fontWeight:600,background:"transparent",borderWidth:"0 0 2px 0",borderStyle:"solid",borderColor:view===k?"var(--accent, #d90b2c)":"transparent",color:view===k?"var(--accent, #d90b2c)":"var(--text2, #6b7280)",cursor:"pointer"}}>{l}</button>
         ))}
