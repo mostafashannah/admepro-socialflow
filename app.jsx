@@ -607,7 +607,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.21";
+const APP_VERSION = "beta 4.22";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16587,9 +16587,6 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial}) {
   const [amount,setAmount] = useState(initial?.amount!=null?String(initial.amount):"");
   const [currency,setCurrency] = useState(initial?.currency||"EGP");
   const [date,setDate] = useState(initial?.date||new Date().toISOString().split("T")[0]);
-  const [checkNo,setCheckNo] = useState(initial?.checkNo||"");
-  const [attachments,setAttachments] = useState(initial?.attachments||[]);
-  const [uploading,setUploading] = useState(false);
   const [saving,setSaving] = useState(false);
   const cats = type==="out" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
 
@@ -16598,30 +16595,18 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial}) {
     setType(initial?.type||"out"); setCategory(initial?.category||"other");
     setDescription(initial?.description||""); setAmount(initial?.amount!=null?String(initial.amount):"");
     setCurrency(initial?.currency||"EGP"); setDate(initial?.date||new Date().toISOString().split("T")[0]);
-    setCheckNo(initial?.checkNo||""); setAttachments(initial?.attachments||[]);
   },[open,initial]);
 
-  const reset = () => { setType("out"); setCategory("other"); setDescription(""); setAmount(""); setDate(new Date().toISOString().split("T")[0]); setCheckNo(""); setAttachments([]); };
+  const reset = () => { setType("out"); setCategory("other"); setDescription(""); setAmount(""); setDate(new Date().toISOString().split("T")[0]); };
   const submit = async () => {
     if(!amount||Number(amount)<=0||!description.trim()) return;
     setSaving(true);
-    const payload = {type,category,description:description.trim(),amount:Number(amount),currency,date,check_no:checkNo.trim()||null,attachments:JSON.stringify(attachments)};
+    const payload = {type,category,description:description.trim(),amount:Number(amount),currency,date};
     if(isEdit) await onSave(initial.id,payload);
     else await onAdd(payload);
     setSaving(false);
     reset();
     onClose();
-  };
-
-  const handleFiles = async (files) => {
-    setUploading(true);
-    for(const file of Array.from(files)) {
-      try {
-        const url = await uploadToStorage(file, "finance-docs");
-        setAttachments(prev=>[...prev,{url,name:file.name}]);
-      } catch(e) { console.error("Attachment upload failed:", e); }
-    }
-    setUploading(false);
   };
 
   return (
@@ -16659,32 +16644,6 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial}) {
         <Field label="Date">
           <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={inputSt}/>
         </Field>
-        <Field label="Check No." hint="Optional">
-          <input value={checkNo} onChange={e=>setCheckNo(e.target.value)} placeholder="e.g. 004521" style={inputSt}/>
-        </Field>
-        <Field label="Reference" hint={isEdit?"System-generated":"Generated automatically on save"}>
-          <div style={{...inputSt,color:"var(--text3)",display:"flex",alignItems:"center"}}>{initial?.ref||"—"}</div>
-        </Field>
-        <Field label="Attachments" hint="Invoice, quotation, or transfer screenshot">
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {attachments.length>0&&(
-              <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                {attachments.map((a,i)=>(
-                  <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border2)"}}>
-                    <Ico d={Icons.file||Icons.assets||Icons.receipt} size={14} stroke="var(--text3)"/>
-                    <a href={a.url} target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:"var(--accent)",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</a>
-                    <button onClick={()=>setAttachments(prev=>prev.filter((_,j)=>j!==i))}><Ico d={Icons.x} size={13} stroke="var(--text3)"/></button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"10px",border:"1px dashed var(--border2)",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,color:"var(--text2)"}}>
-              {uploading?<Spinner size={14}/>:<Ico d={Icons.plus} size={14} stroke="var(--text2)"/>}
-              {uploading?"Uploading…":"Upload document or screenshot"}
-              <input type="file" accept="image/*,.pdf" multiple hidden disabled={uploading} onChange={e=>{if(e.target.files.length) handleFiles(e.target.files); e.target.value="";}}/>
-            </label>
-          </div>
-        </Field>
       </div>
     </Modal>
   );
@@ -16695,7 +16654,14 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
   const [showEdit,setShowEdit] = useState(false);
   const [comment,setComment] = useState("");
   const [posting,setPosting] = useState(false);
+  const [checkNo,setCheckNo] = useState(txn.checkNo||"");
+  const [savingCheckNo,setSavingCheckNo] = useState(false);
+  const [attachments,setAttachments] = useState(txn.attachments||[]);
+  const [uploading,setUploading] = useState(false);
+  const [savingAttach,setSavingAttach] = useState(false);
   const comments = parseJ(txn.raw?.comments, []);
+
+  React.useEffect(()=>{ setCheckNo(txn.checkNo||""); setAttachments(txn.attachments||[]); },[txn.id]);
 
   const submitComment = async () => {
     if(!comment.trim()) return;
@@ -16704,6 +16670,34 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
     setComment("");
     setPosting(false);
   };
+
+  const saveCheckNo = async () => {
+    setSavingCheckNo(true);
+    await onEdit(txn.raw.id, {check_no:checkNo.trim()||null});
+    setSavingCheckNo(false);
+  };
+
+  const handleFiles = async (files) => {
+    setUploading(true);
+    const added = [];
+    for(const file of Array.from(files)) {
+      try {
+        const url = await uploadToStorage(file, "finance-docs");
+        added.push({url,name:file.name});
+      } catch(e) { console.error("Attachment upload failed:", e); }
+    }
+    if(added.length) setAttachments(prev=>[...prev,...added]);
+    setUploading(false);
+  };
+
+  const saveAttachments = async () => {
+    setSavingAttach(true);
+    await onEdit(txn.raw.id, {attachments:JSON.stringify(attachments)});
+    setSavingAttach(false);
+  };
+
+  const checkNoDirty = checkNo !== (txn.checkNo||"");
+  const attachDirty = JSON.stringify(attachments) !== JSON.stringify(txn.attachments||[]);
 
   const row = (label,value) => (
     <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,padding:"10px 0",borderBottom:"1px solid var(--border)"}}>
@@ -16742,21 +16736,44 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
           {row("Date", fmtDate(txn.date))}
           {row("Source", txn.source)}
           {txn.ref && row("Reference", txn.ref)}
-          {txn.checkNo && row("Check No.", txn.checkNo)}
           {txn.createdBy && row("Added by", txn.createdBy)}
         </div>
 
-        {txn.attachments&&txn.attachments.length>0&&(
-          <div style={{marginTop:16}}>
+        {/* Check No. — inline editable */}
+        {txn.raw&&(
+          <div style={{marginTop:16,paddingTop:16,borderTop:"1px solid var(--border)"}}>
+            <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",marginBottom:8}}>Check No. <span style={{fontWeight:400,color:"var(--text3)"}}>(optional)</span></p>
+            <div style={{display:"flex",gap:8}}>
+              <input value={checkNo} onChange={e=>setCheckNo(e.target.value)} placeholder="e.g. 004521" disabled={!canManage} style={{...inputSt,flex:1}}/>
+              {checkNoDirty&&canManage&&(
+                <Btn size="sm" onClick={saveCheckNo} disabled={savingCheckNo}>{savingCheckNo?<Spinner size={13}/>:"Save"}</Btn>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Attachments — inline upload */}
+        {txn.raw&&(
+          <div style={{marginTop:16,paddingTop:16,borderTop:"1px solid var(--border)"}}>
             <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",marginBottom:8}}>Attachments</p>
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              {txn.attachments.map((a,i)=>(
-                <a key={i} href={a.url} target="_blank" rel="noopener noreferrer" style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border2)"}}>
+              {attachments.length>0&&attachments.map((a,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border2)"}}>
                   <Ico d={Icons.receipt} size={14} stroke="var(--accent)"/>
-                  <span style={{fontSize:12,color:"var(--accent)",fontWeight:600,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</span>
-                  <Ico d={Icons.chevR} size={13} stroke="var(--text3)"/>
-                </a>
+                  <a href={a.url} target="_blank" rel="noopener noreferrer" style={{fontSize:12,color:"var(--accent)",fontWeight:600,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</a>
+                  {canManage&&<button onClick={()=>setAttachments(prev=>prev.filter((_,j)=>j!==i))}><Ico d={Icons.x} size={13} stroke="var(--text3)"/></button>}
+                </div>
               ))}
+              {canManage&&(
+                <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"10px",border:"1px dashed var(--border2)",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,color:"var(--text2)"}}>
+                  {uploading?<Spinner size={14}/>:<Ico d={Icons.plus} size={14} stroke="var(--text2)"/>}
+                  {uploading?"Uploading…":"Upload invoice, quotation, or transfer screenshot"}
+                  <input type="file" accept="image/*,.pdf" multiple hidden disabled={uploading} onChange={e=>{if(e.target.files.length) handleFiles(e.target.files); e.target.value="";}}/>
+                </label>
+              )}
+              {attachDirty&&canManage&&(
+                <Btn size="sm" onClick={saveAttachments} disabled={savingAttach||uploading}>{savingAttach?<Spinner size={13}/>:"Save Attachments"}</Btn>
+              )}
             </div>
           </div>
         )}
@@ -16797,7 +16814,7 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
         open={showEdit}
         onClose={()=>setShowEdit(false)}
         onSave={onEdit}
-        initial={txn.raw ? {id:txn.raw.id,type:txn.type,category:txn.category,description:txn.sub,amount:txn.amount,currency:txn.currency,date:txn.date,checkNo:txn.checkNo,ref:txn.ref,attachments:txn.attachments} : null}
+        initial={txn.raw ? {id:txn.raw.id,type:txn.type,category:txn.category,description:txn.sub,amount:txn.amount,currency:txn.currency,date:txn.date} : null}
       />
     </div>
   );
