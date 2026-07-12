@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.64";
+const APP_VERSION = "beta 4.65";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10412,7 +10412,7 @@ function TeamMemberDetailPage({member, team, leaveRequests, attendanceRecords, c
   );
 
   return (
-    <div style={{padding:"24px",maxWidth:1400,margin:"0 auto",display:"flex",flexDirection:"column",gap:16}} className="fade-in">
+    <div style={{padding:"24px",width:"100%",display:"flex",flexDirection:"column",gap:16}} className="fade-in">
       <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:700,color:"var(--text2)",background:"none",border:"none",cursor:"pointer",width:"fit-content"}}>
         <Ico d={Icons.chevL} size={15} stroke="var(--text2)"/> Back to Team Members
       </button>
