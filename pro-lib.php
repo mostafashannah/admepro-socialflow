@@ -257,10 +257,24 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
     if ($name === 'find_client') {
         $query = trim($input['query'] ?? '');
         if (!$query) return ['error' => 'Missing query.'];
-        $stmt = $pdo->prepare("SELECT name, status FROM clients WHERE name LIKE :q ORDER BY name ASC LIMIT 8");
-        $stmt->execute([':q' => '%' . $query . '%']);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        return ['matches' => $rows, 'count' => count($rows)];
+        // Normalized (lowercase, spaces stripped) fuzzy match, e.g. "Almousa" must
+        // find "Al Mousa Group" — plain LIKE on the raw name misses that.
+        $bind = [':q' => '%' . mb_strtolower($query) . '%'];
+
+        // 1) CRM clients table
+        $stmt = $pdo->prepare("SELECT name FROM clients WHERE REPLACE(LOWER(name),' ','') LIKE REPLACE(:q,' ','') ORDER BY name ASC LIMIT 8");
+        $stmt->execute($bind);
+        $crmMatches = array_map(fn($r) => $r['name'], $stmt->fetchAll(PDO::FETCH_ASSOC));
+
+        // 2) Actual payment-history "clients" — distinct descriptions of client_payment income rows.
+        //    This is what the Finance > Clients tab in the app is built from, and is usually the
+        //    right place to look since most real clients here aren't in the CRM clients table.
+        $stmt = $pdo->prepare("SELECT DISTINCT description AS name, SUM(amount) AS total, COUNT(*) AS payment_count FROM expenses WHERE type='in' AND category='client_payment' AND REPLACE(LOWER(description),' ','') LIKE REPLACE(:q,' ','') GROUP BY description ORDER BY total DESC LIMIT 8");
+        $stmt->execute($bind);
+        $paymentMatches = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $all = array_values(array_unique(array_merge($crmMatches, array_column($paymentMatches, 'name'))));
+        return ['matches' => $all, 'count' => count($all), 'payment_history_details' => $paymentMatches];
     }
 
     if ($name === 'get_finance_summary') {
@@ -676,7 +690,11 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
     } else {
         $system = "You are Pro, the AI assistant built into SocialFlow. You are replying over WhatsApp to "
                 . "{$senderName} (role: {$senderRole}). Keep replies short — a few sentences max, WhatsApp-style, "
-                . "no markdown headers. You can see this context about them:\n\n{$contextBlock}\n\n"
+                . "no markdown headers. ALWAYS reply in the same language the user just wrote in — if their message "
+                . "is in English, reply in English; if Arabic, reply in Arabic; if mixed/Arabizi, match their style. "
+                . "Never switch languages on them mid-conversation just because an earlier message in the thread "
+                . "was in a different language — always mirror the CURRENT message. You can see this context about "
+                . "them:\n\n{$contextBlock}\n\n"
                 . "Only answer questions related to their SocialFlow work (clients, tasks, the agency). Politely "
                 . "decline anything unrelated (general trivia, unrelated requests) and steer back to SocialFlow. "
                 . "If asked to take an action you can't perform over WhatsApp (e.g. editing a post), tell them "
@@ -726,12 +744,23 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                      . "saving, always confirm back to the user exactly what was recorded (amount, type, category, "
                      . "description, date, method if given) in one short line.\n\n"
                      . "Whenever the category is client_payment (money IN from a client), ALWAYS call find_client "
-                     . "with the client name mentioned BEFORE saving — do not skip this. If it returns a close "
-                     . "match, use that client's exact name from the system in the description. If it returns no "
-                     . "match, you MUST stop and ask the user to confirm before saving — e.g. \"I don't see a "
-                     . "client called '{name}' in the system — should I record this payment anyway?\" — and only "
-                     . "call add_transaction after they confirm. Never silently record a payment for an unknown "
-                     . "client without asking first.\n\n"
+                     . "with the client name mentioned BEFORE saving — do not skip this, and use it any time a "
+                     . "client name comes up, not just when adding a transaction (e.g. \"how much did X pay\" — "
+                     . "look X up first, don't assume you know the exact name they use in the system). find_client "
+                     . "matches loosely (case/spacing insensitive) and searches actual payment history, not just "
+                     . "the CRM client list, so \"Almousa\" WILL find \"Al Mousa Group\" — trust its matches, don't "
+                     . "second-guess a close match as \"not found\". If it returns a close match, always use that "
+                     . "exact name from the system (not the user's spelling) in the description or when calling "
+                     . "search_transactions/get_finance_summary. If it returns genuinely no match at all, stop and "
+                     . "ask the user to confirm before saving — e.g. \"I don't see a client called '{name}' in the "
+                     . "system — should I record this payment anyway?\" — and only call add_transaction after they "
+                     . "confirm. Never silently record a payment for an unknown client without asking first.\n\n"
+                     . "For questions about a client's payments: call find_client first to resolve the exact name. "
+                     . "Its result includes an ALL-TIME total and payment_count per matching payer, which is enough "
+                     . "if the question has no time period (e.g. \"how much has X paid overall\"). If the question "
+                     . "is scoped to a period (e.g. \"this year\", \"last month\", \"in 2026\"), do NOT use those "
+                     . "all-time numbers — instead call search_transactions with the exact name and the matching "
+                     . "start_date/end_date, then sum the amounts yourself from the results.\n\n"
                      . "Descriptions and any free text you save (transaction descriptions, comments, etc.) must "
                      . "always be in English — if the user writes in Arabic or any other language, translate it "
                      . "to English yourself before saving, even though you understood their message fine as-is.\n\n"
