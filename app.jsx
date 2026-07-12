@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.36";
+const APP_VERSION = "beta 4.37";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17001,6 +17001,72 @@ function ClientPaymentDetail({clientName,ledger,note,canManage,onBack,onOpenTran
   );
 }
 
+function PartnerDetail({partnerKey,partnerName,ledger,onBack,onOpenTransaction}) {
+  const {isMobile} = useResponsive();
+  const txns = ledger.filter(l=>l.type==="out"&&l.category===partnerKey).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const total = txns.reduce((a,l)=>a+l.amount,0);
+
+  const monthKey = (d) => { const dt=new Date(d); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}`; };
+  const monthLabel = (k) => { const [y,m]=k.split("-"); return new Date(Number(y),Number(m)-1,1).toLocaleDateString("en-US",{month:"short",year:"2-digit"}); };
+  const monthTotals = {};
+  txns.forEach(l=>{ const k=monthKey(l.date); monthTotals[k]=(monthTotals[k]||0)+l.amount; });
+  const months = Object.keys(monthTotals).sort().slice(-12);
+  const maxMonth = Math.max(...months.map(k=>monthTotals[k]),1);
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
+      <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:700,color:"var(--text2)"}}>
+        <Ico d={Icons.chevL} size={15} stroke="var(--text2)"/> Back to Partners
+      </button>
+
+      <div style={{display:"flex",alignItems:"center",gap:14,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
+        <Avatar name={partnerName} size={48}/>
+        <div style={{flex:1,minWidth:0}}>
+          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:20,fontWeight:800}}>{partnerName}</h2>
+          <p style={{fontSize:12,color:"var(--text3)"}}>{txns.length} withdrawal{txns.length!==1?"s":""}</p>
+        </div>
+        <p style={{fontSize:22,fontWeight:800,color:"#ef4444"}}>EGP {Math.round(total).toLocaleString()}</p>
+      </div>
+
+      {months.length>0&&(
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:isMobile?16:20}}>
+          <h3 style={{fontWeight:700,fontSize:14,marginBottom:16}}>Withdrawals by Month</h3>
+          <div style={{display:"flex",alignItems:"flex-end",gap:isMobile?4:10,height:140}}>
+            {months.map(k=>(
+              <div key={k} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:6,height:"100%",justifyContent:"flex-end"}}>
+                <span style={{fontSize:9,fontWeight:700,color:"var(--text3)"}}>{monthTotals[k]>=1000?Math.round(monthTotals[k]/1000)+"k":Math.round(monthTotals[k])}</span>
+                <div style={{width:"100%",maxWidth:32,height:Math.max(4,(monthTotals[k]/maxMonth)*90),background:"#ef4444",borderRadius:"4px 4px 0 0"}}/>
+                <span style={{fontSize:9,color:"var(--text3)",whiteSpace:"nowrap"}}>{monthLabel(k)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+        <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
+          <h3 style={{fontWeight:700,fontSize:14}}>Withdrawal History</h3>
+        </div>
+        {txns.map((l,i)=>(
+          <div key={l.id} onClick={()=>onOpenTransaction(l.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:i<txns.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
+            onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
+            onMouseLeave={e=>e.currentTarget.style.background=""}>
+            <div style={{width:30,height:30,borderRadius:8,background:"#ef444422",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <Ico d={Icons.arrowUp||Icons.chevR} size={14} stroke="#ef4444"/>
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <p style={{fontSize:13,fontWeight:600}}>{l.sub}{l.method?` · ${l.method}`:""}</p>
+              <p style={{fontSize:11,color:"var(--text3)"}}>{fmtDate(l.date)}</p>
+            </div>
+            <p style={{fontSize:13,fontWeight:800,color:"#ef4444"}}>−{l.currency} {Math.round(l.amount).toLocaleString()}</p>
+            <Ico d={Icons.chevR} size={14} stroke="var(--text3)"/>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,clients=[],financeClientNotes=[],currentUser,onAddExpense,onDeleteExpense,onEditExpense,onAddExpenseComment,onRefresh,onRenameClient,onSaveClientNote}) {
   const {isMobile} = useResponsive();
   const [showAdd,setShowAdd] = useState(false);
@@ -17010,11 +17076,14 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const [selectedMonth,setSelectedMonth] = useState("");
   const [selectedId,setSelectedId] = useState(null);
   const [selectedClient,setSelectedClient] = useState(null);
+  const [selectedPartner,setSelectedPartner] = useState(null);
   const [typeFilter,setTypeFilter] = useState("all");
   const [categoryFilter,setCategoryFilter] = useState("all");
   const [clientFilter,setClientFilter] = useState("all");
-  const [view,setView] = useState("overview"); // overview | clients
+  const [view,setView] = useState("overview"); // overview | clients | partners
   const [refreshing,setRefreshing] = useState(false);
+  const [financeInsights,setFinanceInsights] = useState([]);
+  const [genFinanceInsights,setGenFinanceInsights] = useState(false);
   const isAdmin = currentUser?.role==="admin";
   const canManage = ["admin","accountant"].includes(currentUser?.role);
 
@@ -17025,12 +17094,15 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const applyingHistory = React.useRef(false);
   const pushFinanceHistory = (patch) => {
     if(applyingHistory.current) return;
-    const state = {sfPage:"finance", sfView: "view" in patch?patch.view:view, sfClient: "selectedClient" in patch?patch.selectedClient:selectedClient, sfSelectedId: "selectedId" in patch?patch.selectedId:selectedId};
+    const state = {sfPage:"finance", sfView: "view" in patch?patch.view:view, sfClient: "selectedClient" in patch?patch.selectedClient:selectedClient, sfPartner: "selectedPartner" in patch?patch.selectedPartner:selectedPartner, sfSelectedId: "selectedId" in patch?patch.selectedId:selectedId};
     try{ window.history.pushState(state,""); }catch(e){}
   };
   const openTransaction = (id) => { pushFinanceHistory({selectedId:id}); setSelectedId(id); };
   const openClient = (name) => { pushFinanceHistory({selectedClient:name}); setSelectedClient(name); };
+  const openPartner = (key) => { pushFinanceHistory({selectedPartner:key}); setSelectedPartner(key); };
   const openClientsTab = () => { pushFinanceHistory({view:"clients"}); setView("clients"); };
+  const openPartnersTab = () => { pushFinanceHistory({view:"partners"}); setView("partners"); };
+  const openAiTab = () => { pushFinanceHistory({view:"ai"}); setView("ai"); };
   const openOverviewTab = () => { pushFinanceHistory({view:"overview"}); setView("overview"); };
   React.useEffect(()=>{
     const onPop = (e) => {
@@ -17038,6 +17110,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
       applyingHistory.current = true;
       setView(e.state.sfView||"overview");
       setSelectedClient(e.state.sfClient||null);
+      setSelectedPartner(e.state.sfPartner||null);
       setSelectedId(e.state.sfSelectedId||null);
       applyingHistory.current = false;
     };
@@ -17121,6 +17194,17 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   });
   const paymentClients = Object.values(clientTotals).sort((a,b)=>b.total-a.total);
   const clientNames = paymentClients.map(c=>c.name);
+
+  // Partners — the two fixed partner-withdrawal categories, aggregated like clients
+  const PARTNER_KEYS = ["partner_mostafa","partner_radwa"];
+  const partnerTotals = PARTNER_KEYS.map(k=>{
+    const txns = ledger.filter(l=>l.type==="out"&&l.category===k);
+    return {
+      key:k, name: EXPENSE_CAT_MAP[k]?.l.replace("Partner Withdrawal — ","")||k,
+      total: txns.reduce((a,l)=>a+l.amount,0), count: txns.length,
+      lastDate: txns.reduce((max,l)=>(!max||new Date(l.date)>new Date(max))?l.date:max,null),
+    };
+  }).filter(p=>p.count>0).sort((a,b)=>b.total-a.total);
 
   // Month picker options — every calendar month from the earliest transaction
   // through the current month, newest first, e.g. {value:"2026-07",label:"Jul 2026"}.
@@ -17206,6 +17290,19 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
     );
   }
 
+  if(selectedPartner) {
+    const partnerInfo = partnerTotals.find(p=>p.key===selectedPartner) || {key:selectedPartner, name:EXPENSE_CAT_MAP[selectedPartner]?.l.replace("Partner Withdrawal — ","")||selectedPartner};
+    return (
+      <PartnerDetail
+        partnerKey={selectedPartner}
+        partnerName={partnerInfo.name}
+        ledger={ledger}
+        onBack={()=>window.history.back()}
+        onOpenTransaction={openTransaction}
+      />
+    );
+  }
+
   return (
     <div style={{display:"flex",flexDirection:"column",gap:isMobile?14:20}} className="fade-in">
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
@@ -17223,12 +17320,99 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
 
       {/* View tabs */}
       <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)"}}>
-        {[["overview","Overview"],["clients","Clients"]].map(([k,l])=>(
-          <button key={k} onClick={()=>k==="clients"?openClientsTab():openOverviewTab()} style={{padding:"9px 18px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${view===k?"var(--accent)":"transparent"}`,color:view===k?"var(--accent)":"var(--text2)"}}>{l}</button>
+        {[["overview","Overview"],["clients","Clients"],["partners","Partners"],["ai","AI"]].map(([k,l])=>(
+          <button key={k} onClick={()=>{ if(k==="clients") openClientsTab(); else if(k==="partners") openPartnersTab(); else if(k==="ai") openAiTab(); else openOverviewTab(); }} style={{padding:"9px 18px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${view===k?"var(--accent)":"transparent"}`,color:view===k?"var(--accent)":"var(--text2)"}}>{l}</button>
         ))}
       </div>
 
-      {view==="clients" ? (
+      {view==="ai" ? (
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+            <div>
+              <h3 style={{fontWeight:700,fontSize:15}}>AI Financial Analysis</h3>
+              <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Insights and suggestions based on your current income, spending, clients, and partner withdrawals</p>
+            </div>
+            <Btn onClick={async()=>{
+              setGenFinanceInsights(true);
+              try {
+                const prompt = `You are a financial analyst for a social media agency. Analyze this data and give 4-6 specific, actionable insights and suggestions for improving the financial model — cash flow, spending discipline, client concentration risk, partner withdrawal patterns, anything notable.
+
+Totals (all time): Money In EGP ${Math.round(totalIn).toLocaleString()}, Money Out EGP ${Math.round(totalOut).toLocaleString()}, Balance EGP ${Math.round(balance).toLocaleString()}.
+This month: In EGP ${Math.round(monthIn).toLocaleString()}, Out EGP ${Math.round(monthOut).toLocaleString()}, Net EGP ${Math.round(monthIn-monthOut).toLocaleString()}.
+
+Spending by category:
+${byCategory.map(c=>`- ${c.l}: EGP ${Math.round(c.total).toLocaleString()}`).join("\n")}
+
+Top clients by total paid:
+${paymentClients.slice(0,8).map(c=>`- ${c.name}: EGP ${Math.round(c.total).toLocaleString()} across ${c.count} payment(s), last ${c.lastDate}`).join("\n")}
+
+Partner withdrawals:
+${partnerTotals.map(p=>`- ${p.name}: EGP ${Math.round(p.total).toLocaleString()} across ${p.count} withdrawal(s)`).join("\n")||"- none recorded"}
+
+Return ONLY a JSON array of 4-6 objects:
+[{"title":"...","insight":"2 sentences describing the finding","action":"1 sentence recommendation","category":"cash_flow|spending|client_risk|partner|growth|general","priority":"high|medium|low"}]
+No markdown, no explanation.`;
+                const r = await fetch(AI_ENDPOINT,{
+                  method:"POST",headers:{"Content-Type":"application/json"},
+                  body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,messages:[{role:"user",content:prompt}]})
+                });
+                const d = await r.json();
+                const raw=(d.content||[]).map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
+                setFinanceInsights(JSON.parse(raw));
+              } catch(e) { setFinanceInsights([{title:"Error",insight:"Could not generate insights. Check API connection.",action:"",category:"general",priority:"low"}]); }
+              setGenFinanceInsights(false);
+            }} disabled={genFinanceInsights}>
+              {genFinanceInsights?<Spinner size={14}/>:<Ico d={Icons.zap||Icons.zap2} size={15}/>} {financeInsights.length?"Regenerate":"Generate Insights"}
+            </Btn>
+          </div>
+
+          {financeInsights.length===0 ? (
+            <EmptyState icon={Icons.zap2||Icons.wallet} title="No analysis yet" sub="Click Generate Insights to get AI-powered suggestions on your financial model."/>
+          ) : (
+            <div className="grid-2" style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12}}>
+              {financeInsights.map((ins,i)=>{
+                const c={cash_flow:"#3b82f6",spending:"#ef4444",client_risk:"#f59e0b",partner:"#a855f7",growth:"#10b981",general:"#6b7280"}[ins.category]||"#6b7280";
+                return (
+                  <div key={i} style={{padding:16,background:"var(--surface)",border:`1px solid ${c}33`,borderRadius:"var(--r)",borderLeft:`3px solid ${c}`}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                      <span style={{fontSize:13,fontWeight:700,color:c}}>{ins.title}</span>
+                      <Badge label={ins.priority} color={ins.priority==="high"?"#ef4444":ins.priority==="medium"?"#f59e0b":"#6b7280"} xs/>
+                    </div>
+                    <p style={{fontSize:12,color:"var(--text2)",lineHeight:1.5}}>{ins.insight}</p>
+                    {ins.action&&<p style={{fontSize:12,color:"var(--text)",fontWeight:600,marginTop:8,paddingTop:8,borderTop:"1px solid var(--border)"}}> {ins.action}</p>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : view==="partners" ? (
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+          <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
+            <h3 style={{fontWeight:700,fontSize:14}}>Partners</h3>
+            <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Partner withdrawals — {partnerTotals.length} partner{partnerTotals.length!==1?"s":""}</p>
+          </div>
+          {partnerTotals.length===0 ? (
+            <EmptyState icon={Icons.wallet} title="No partner withdrawals yet" sub="Partner withdrawal transactions will show up here once recorded."/>
+          ) : (
+            <div>
+              {partnerTotals.map((p,i)=>(
+                <div key={p.key} onClick={()=>openPartner(p.key)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 18px",borderBottom:i<partnerTotals.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
+                  onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
+                  onMouseLeave={e=>e.currentTarget.style.background=""}>
+                  <Avatar name={p.name} size={34}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <p style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</p>
+                    <p style={{fontSize:11,color:"var(--text3)"}}>{p.count} withdrawal{p.count!==1?"s":""} · last {fmtDate(p.lastDate)}</p>
+                  </div>
+                  <p style={{fontSize:14,fontWeight:800,color:"#ef4444",flexShrink:0}}>EGP {Math.round(p.total).toLocaleString()}</p>
+                  <Ico d={Icons.chevR} size={14} stroke="var(--text3)"/>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : view==="clients" ? (
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
           <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
             <h3 style={{fontWeight:700,fontSize:14}}>Clients — from payment history</h3>
