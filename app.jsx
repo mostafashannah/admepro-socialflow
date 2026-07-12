@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.37";
+const APP_VERSION = "beta 4.38";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17013,19 +17013,34 @@ function PartnerDetail({partnerKey,partnerName,ledger,onBack,onOpenTransaction})
   const months = Object.keys(monthTotals).sort().slice(-12);
   const maxMonth = Math.max(...months.map(k=>monthTotals[k]),1);
 
+  // Average per month — total spread over every calendar month from the first
+  // withdrawal through the current month (not just months that had activity),
+  // so a quiet month still pulls the average down.
+  const allMonthKeys = Object.keys(monthTotals);
+  const elapsedMonths = allMonthKeys.length ? (()=>{
+    const sorted = allMonthKeys.sort();
+    const [fy,fm] = sorted[0].split("-").map(Number);
+    const now = new Date();
+    return Math.max(1,(now.getFullYear()-fy)*12 + (now.getMonth()+1-fm) + 1);
+  })() : 1;
+  const avgPerMonth = total/elapsedMonths;
+
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
       <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:700,color:"var(--text2)"}}>
         <Ico d={Icons.chevL} size={15} stroke="var(--text2)"/> Back to Partners
       </button>
 
-      <div style={{display:"flex",alignItems:"center",gap:14,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
+      <div style={{display:"flex",alignItems:"center",gap:14,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,flexWrap:"wrap"}}>
         <Avatar name={partnerName} size={48}/>
         <div style={{flex:1,minWidth:0}}>
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:20,fontWeight:800}}>{partnerName}</h2>
           <p style={{fontSize:12,color:"var(--text3)"}}>{txns.length} withdrawal{txns.length!==1?"s":""}</p>
         </div>
-        <p style={{fontSize:22,fontWeight:800,color:"#ef4444"}}>EGP {Math.round(total).toLocaleString()}</p>
+        <div style={{textAlign:"right"}}>
+          <p style={{fontSize:22,fontWeight:800,color:"#ef4444"}}>EGP {Math.round(total).toLocaleString()}</p>
+          <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>EGP {Math.round(avgPerMonth).toLocaleString()} avg / month</p>
+        </div>
       </div>
 
       {months.length>0&&(
@@ -17199,9 +17214,16 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const PARTNER_KEYS = ["partner_mostafa","partner_radwa"];
   const partnerTotals = PARTNER_KEYS.map(k=>{
     const txns = ledger.filter(l=>l.type==="out"&&l.category===k);
+    const total = txns.reduce((a,l)=>a+l.amount,0);
+    const firstDate = txns.reduce((min,l)=>(!min||new Date(l.date)<new Date(min))?l.date:min,null);
+    let elapsedMonths = 1;
+    if(firstDate) {
+      const f = new Date(firstDate), n = new Date();
+      elapsedMonths = Math.max(1,(n.getFullYear()-f.getFullYear())*12 + (n.getMonth()-f.getMonth()) + 1);
+    }
     return {
       key:k, name: EXPENSE_CAT_MAP[k]?.l.replace("Partner Withdrawal — ","")||k,
-      total: txns.reduce((a,l)=>a+l.amount,0), count: txns.length,
+      total, count: txns.length, avgPerMonth: total/elapsedMonths,
       lastDate: txns.reduce((max,l)=>(!max||new Date(l.date)>new Date(max))?l.date:max,null),
     };
   }).filter(p=>p.count>0).sort((a,b)=>b.total-a.total);
@@ -17403,7 +17425,7 @@ No markdown, no explanation.`;
                   <Avatar name={p.name} size={34}/>
                   <div style={{flex:1,minWidth:0}}>
                     <p style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</p>
-                    <p style={{fontSize:11,color:"var(--text3)"}}>{p.count} withdrawal{p.count!==1?"s":""} · last {fmtDate(p.lastDate)}</p>
+                    <p style={{fontSize:11,color:"var(--text3)"}}>{p.count} withdrawal{p.count!==1?"s":""} · EGP {Math.round(p.avgPerMonth).toLocaleString()} avg/mo · last {fmtDate(p.lastDate)}</p>
                   </div>
                   <p style={{fontSize:14,fontWeight:800,color:"#ef4444",flexShrink:0}}>EGP {Math.round(p.total).toLocaleString()}</p>
                   <Ico d={Icons.chevR} size={14} stroke="var(--text3)"/>
