@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.62";
+const APP_VERSION = "beta 4.63";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17231,22 +17231,37 @@ function buildFinanceMonthOptions(dates) {
 // to visually match sibling pill buttons use this instead.
 function PillDropdown({value,options,onChange,placeholder,maxWidth=150,active=false}) {
   const [open,setOpen] = useState(false);
+  const wrapRef = useRef(null);
   const selected = options.find(o=>o.value===value);
+
+  // Close on any outside pointer interaction. A full-screen fixed backdrop
+  // relying only on onClick was found to occasionally not fire on iOS touch
+  // (a swipe/scroll gesture doesn't always register as a click), leaving an
+  // invisible full-viewport div stuck open and silently blocking all further
+  // page scrolling — this document-listener approach can't leave that trap.
+  React.useEffect(()=>{
+    if(!open) return;
+    const onOutside = (e) => { if(wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("pointerdown", onOutside, true);
+    document.addEventListener("touchstart", onOutside, true);
+    return () => {
+      document.removeEventListener("pointerdown", onOutside, true);
+      document.removeEventListener("touchstart", onOutside, true);
+    };
+  },[open]);
+
   return (
-    <div style={{position:"relative"}}>
+    <div ref={wrapRef} style={{position:"relative"}}>
       <button type="button" onClick={()=>setOpen(o=>!o)} style={{display:"flex",alignItems:"center",gap:4,maxWidth,padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,background:active?"var(--accent)":"var(--surface2)",color:active?"#fff":"var(--text2)",border:`1px solid ${active?"var(--accent)":"var(--border2)"}`,cursor:"pointer"}}>
         <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{selected?selected.label:placeholder}</span>
         <Ico d={Icons.chevD||Icons.chevR} size={11} stroke={active?"#fff":"var(--text2)"}/>
       </button>
       {open&&(
-        <>
-          <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:60}}/>
-          <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,zIndex:61,background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:10,boxShadow:"0 6px 20px rgba(0,0,0,0.15)",maxHeight:260,overflowY:"auto",minWidth:180}}>
-            {options.map(o=>(
-              <button key={o.value} type="button" onClick={()=>{onChange(o.value);setOpen(false);}} style={{display:"block",width:"100%",textAlign:"left",padding:"9px 14px",fontSize:13,fontWeight:o.value===value?700:500,background:o.value===value?"var(--surface2)":"transparent",color:o.value===value?"var(--accent)":"var(--text1)",border:"none",cursor:"pointer",whiteSpace:"nowrap"}}>{o.label}</button>
-            ))}
-          </div>
-        </>
+        <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,zIndex:61,background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:10,boxShadow:"0 6px 20px rgba(0,0,0,0.15)",maxHeight:260,overflowY:"auto",minWidth:180}}>
+          {options.map(o=>(
+            <button key={o.value} type="button" onClick={()=>{onChange(o.value);setOpen(false);}} style={{display:"block",width:"100%",textAlign:"left",padding:"9px 14px",fontSize:13,fontWeight:o.value===value?700:500,background:o.value===value?"var(--surface2)":"transparent",color:o.value===value?"var(--accent)":"var(--text1)",border:"none",cursor:"pointer",whiteSpace:"nowrap"}}>{o.label}</button>
+          ))}
+        </div>
       )}
     </div>
   );
