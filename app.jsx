@@ -607,7 +607,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.14";
+const APP_VERSION = "beta 4.15";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16574,31 +16574,41 @@ const INCOME_CATEGORIES = [
 ];
 const INCOME_CAT_MAP = Object.fromEntries(INCOME_CATEGORIES.map(c=>[c.k,c]));
 
-function AddExpenseModal({open,onClose,onAdd}) {
-  const [type,setType] = useState("out");
-  const [category,setCategory] = useState("other");
-  const [description,setDescription] = useState("");
-  const [amount,setAmount] = useState("");
-  const [currency,setCurrency] = useState("EGP");
-  const [date,setDate] = useState(new Date().toISOString().split("T")[0]);
+function AddExpenseModal({open,onClose,onAdd,onSave,initial}) {
+  const isEdit = !!initial;
+  const [type,setType] = useState(initial?.type||"out");
+  const [category,setCategory] = useState(initial?.category||"other");
+  const [description,setDescription] = useState(initial?.description||"");
+  const [amount,setAmount] = useState(initial?.amount!=null?String(initial.amount):"");
+  const [currency,setCurrency] = useState(initial?.currency||"EGP");
+  const [date,setDate] = useState(initial?.date||new Date().toISOString().split("T")[0]);
   const [saving,setSaving] = useState(false);
   const cats = type==="out" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
+
+  React.useEffect(()=>{
+    if(!open) return;
+    setType(initial?.type||"out"); setCategory(initial?.category||"other");
+    setDescription(initial?.description||""); setAmount(initial?.amount!=null?String(initial.amount):"");
+    setCurrency(initial?.currency||"EGP"); setDate(initial?.date||new Date().toISOString().split("T")[0]);
+  },[open,initial]);
 
   const reset = () => { setType("out"); setCategory("other"); setDescription(""); setAmount(""); setDate(new Date().toISOString().split("T")[0]); };
   const submit = async () => {
     if(!amount||Number(amount)<=0||!description.trim()) return;
     setSaving(true);
-    await onAdd({type,category,description:description.trim(),amount:Number(amount),currency,date});
+    const payload = {type,category,description:description.trim(),amount:Number(amount),currency,date};
+    if(isEdit) await onSave(initial.id,payload);
+    else await onAdd(payload);
     setSaving(false);
     reset();
     onClose();
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Add Transaction" width={440}
+    <Modal open={open} onClose={onClose} title={isEdit?"Edit Transaction":"Add Transaction"} width={440}
       footer={<>
         <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
-        <Btn onClick={submit} disabled={saving||!amount||!description.trim()}>{saving?<Spinner size={14}/>:"Add"}</Btn>
+        <Btn onClick={submit} disabled={saving||!amount||!description.trim()}>{saving?<Spinner size={14}/>:isEdit?"Save Changes":"Add"}</Btn>
       </>}>
       <div style={{display:"flex",flexDirection:"column",gap:14}}>
         <Field label="Type" required>
@@ -16634,11 +16644,14 @@ function AddExpenseModal({open,onClose,onAdd}) {
   );
 }
 
-function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,currentUser,onAddExpense,onDeleteExpense}) {
+function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,currentUser,onAddExpense,onDeleteExpense,onEditExpense}) {
   const {isMobile} = useResponsive();
   const [showAdd,setShowAdd] = useState(false);
   const [range,setRange] = useState("all");
+  const [detail,setDetail] = useState(null);
+  const isAdmin = currentUser?.role==="admin";
   const canManage = ["admin","accountant"].includes(currentUser?.role);
+  const num = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
 
   const inRange = (dateStr) => {
     if(range==="all"||!dateStr) return true;
@@ -16648,41 +16661,65 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
     if(range==="week") ago.setDate(ago.getDate()-7);
     return d>=ago;
   };
+  const inThisMonth = (dateStr) => {
+    if(!dateStr) return false;
+    const d = new Date(dateStr), n = new Date();
+    return d.getMonth()===n.getMonth() && d.getFullYear()===n.getFullYear();
+  };
 
   // Unified ledger of every money-in / money-out event
   const ledger = [
     ...payments.filter(p=>inRange(p.payment_date)).map(p=>({
-      id:"pay_"+p.id, type:"in", date:p.payment_date, amount:p.amount, currency:"USD",
-      label:`Invoice ${p.invoice_number||""}`, sub:p.notes||p.method||"",
+      id:"pay_"+p.id, type:"in", date:p.payment_date, amount:num(p.amount), currency:"USD",
+      label:`Invoice ${p.invoice_number||""}`, sub:p.notes||p.method||"", source:"Invoice payment",
     })),
     ...subscriptionPayments.filter(p=>inRange(p.payment_date)).map(p=>({
-      id:"sp_"+p.id, type:"in", date:p.payment_date, amount:p.amount, currency:p.currency||"EGP",
-      label:p.subscription_name||"Subscription", sub:p.client_name||"",
+      id:"sp_"+p.id, type:"in", date:p.payment_date, amount:num(p.amount), currency:p.currency||"EGP",
+      label:p.subscription_name||"Subscription", sub:p.client_name||"", source:"Subscription payment",
     })),
     ...expenses.filter(e=>inRange(e.date)).map(e=>{
       const isOut = (e.type||"out")==="out";
       const catMap = isOut ? EXPENSE_CAT_MAP : INCOME_CAT_MAP;
       return {
-        id:"exp_"+e.id, type:isOut?"out":"in", date:e.date, amount:e.amount, currency:e.currency||"EGP",
+        id:"exp_"+e.id, type:isOut?"out":"in", date:e.date, amount:num(e.amount), currency:e.currency||"EGP",
         label:catMap[e.category]?.l||e.category, sub:e.description, raw:e,
+        source: isOut?"Manual expense":"Manual income", category:e.category, createdBy:e.created_by,
       };
     }),
   ].sort((a,b)=>new Date(b.date)-new Date(a.date));
 
-  const totalIn = ledger.filter(l=>l.type==="in").reduce((a,l)=>a+(l.amount||0),0);
-  const totalOut = ledger.filter(l=>l.type==="out").reduce((a,l)=>a+(l.amount||0),0);
+  const totalIn = ledger.filter(l=>l.type==="in").reduce((a,l)=>a+l.amount,0);
+  const totalOut = ledger.filter(l=>l.type==="out").reduce((a,l)=>a+l.amount,0);
   const balance = totalIn-totalOut;
+  const monthIn = ledger.filter(l=>l.type==="in"&&inThisMonth(l.date)).reduce((a,l)=>a+l.amount,0);
+  const monthOut = ledger.filter(l=>l.type==="out"&&inThisMonth(l.date)).reduce((a,l)=>a+l.amount,0);
+  const avgTxn = ledger.length ? (totalIn+totalOut)/ledger.length : 0;
+  const biggestExpense = ledger.filter(l=>l.type==="out").sort((a,b)=>b.amount-a.amount)[0];
 
   const byCategory = EXPENSE_CATEGORIES.map(c=>({
-    ...c, total: expenses.filter(e=>(e.type||"out")==="out"&&e.category===c.k&&inRange(e.date)).reduce((a,e)=>a+(e.amount||0),0),
+    ...c, total: expenses.filter(e=>(e.type||"out")==="out"&&e.category===c.k&&inRange(e.date)).reduce((a,e)=>a+num(e.amount),0),
   })).filter(c=>c.total>0);
   const maxCat = Math.max(...byCategory.map(c=>c.total),1);
+
+  const bySource = ledger.filter(l=>l.type==="in").reduce((acc,l)=>{
+    const key = l.sub || l.label;
+    acc[key] = (acc[key]||0)+l.amount;
+    return acc;
+  },{});
+  const topSources = Object.entries(bySource).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const maxSource = Math.max(...topSources.map(s=>s[1]),1);
 
   const kpis = [
     {label:"Money In",value:`EGP ${Math.round(totalIn).toLocaleString()}`,color:"#10b981"},
     {label:"Money Out",value:`EGP ${Math.round(totalOut).toLocaleString()}`,color:"#ef4444"},
     {label:"Balance",value:`EGP ${Math.round(balance).toLocaleString()}`,color:balance>=0?"#3b82f6":"#ef4444"},
     {label:"Transactions",value:ledger.length,color:"#8b5cf6"},
+  ];
+  const insights = [
+    {label:"This Month In",value:`EGP ${Math.round(monthIn).toLocaleString()}`,color:"#10b981"},
+    {label:"This Month Out",value:`EGP ${Math.round(monthOut).toLocaleString()}`,color:"#ef4444"},
+    {label:"This Month Net",value:`EGP ${Math.round(monthIn-monthOut).toLocaleString()}`,color:(monthIn-monthOut)>=0?"#3b82f6":"#ef4444"},
+    {label:"Avg Transaction",value:`EGP ${Math.round(avgTxn).toLocaleString()}`,color:"#8b5cf6"},
   ];
 
   return (
@@ -16723,23 +16760,71 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         </div>
       )}
 
-      {/* Expenses by category */}
-      {byCategory.length>0&&(
-        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
-          <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
-            <h3 style={{fontWeight:700,fontSize:14}}>Spending by Category</h3>
-          </div>
-          <div style={{padding:"12px 16px",display:"flex",flexDirection:"column",gap:8}}>
-            {byCategory.map(c=>(
-              <div key={c.k} style={{display:"flex",alignItems:"center",gap:10}}>
-                <span style={{fontSize:12,color:"var(--text2)",width:110,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.l}</span>
-                <div style={{flex:1}}><ProgressBar value={c.total} max={maxCat} color={c.color} height={5}/></div>
-                <span style={{fontSize:11,fontWeight:700,color:c.color,flexShrink:0}}>EGP {Math.round(c.total).toLocaleString()}</span>
-              </div>
-            ))}
-          </div>
+      {/* Insights row */}
+      {isMobile ? (
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+          {insights.map(s=>(
+            <div key={s.label} style={{padding:"10px 6px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--rs)",textAlign:"center"}}>
+              <p style={{fontSize:13,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.value}</p>
+              <p style={{fontSize:8,fontWeight:700,color:"var(--text3)",letterSpacing:"0.02em",textTransform:"uppercase",marginTop:4}}>{s.label}</p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
+          {insights.map(s=>(
+            <div key={s.label} style={{padding:"16px 20px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)"}}>
+              <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>{s.label}</p>
+              <p style={{fontSize:20,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1}}>{s.value}</p>
+            </div>
+          ))}
         </div>
       )}
+
+      {biggestExpense&&(
+        <div style={{padding:"10px 16px",background:"#ef444411",border:"1px solid #ef444433",borderRadius:"var(--rs)",fontSize:12,color:"var(--text2)",display:"flex",alignItems:"center",gap:8}}>
+          <Ico d={Icons.alert||Icons.wallet} size={14} stroke="#ef4444"/>
+          Biggest expense: <strong>{biggestExpense.sub||biggestExpense.label}</strong> — EGP {Math.round(biggestExpense.amount).toLocaleString()} on {fmtDate(biggestExpense.date)}
+        </div>
+      )}
+
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14}}>
+        {/* Expenses by category */}
+        {byCategory.length>0&&(
+          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+            <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
+              <h3 style={{fontWeight:700,fontSize:14}}>Spending by Category</h3>
+            </div>
+            <div style={{padding:"12px 16px",display:"flex",flexDirection:"column",gap:8}}>
+              {byCategory.map(c=>(
+                <div key={c.k} style={{display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:12,color:"var(--text2)",width:110,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.l}</span>
+                  <div style={{flex:1}}><ProgressBar value={c.total} max={maxCat} color={c.color} height={5}/></div>
+                  <span style={{fontSize:11,fontWeight:700,color:c.color,flexShrink:0}}>EGP {Math.round(c.total).toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Income by source */}
+        {topSources.length>0&&(
+          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+            <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
+              <h3 style={{fontWeight:700,fontSize:14}}>Top Income Sources</h3>
+            </div>
+            <div style={{padding:"12px 16px",display:"flex",flexDirection:"column",gap:8}}>
+              {topSources.map(([name,total])=>(
+                <div key={name} style={{display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:12,color:"var(--text2)",width:110,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
+                  <div style={{flex:1}}><ProgressBar value={total} max={maxSource} color="#10b981" height={5}/></div>
+                  <span style={{fontSize:11,fontWeight:700,color:"#10b981",flexShrink:0}}>EGP {Math.round(total).toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Ledger */}
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
@@ -16751,7 +16836,9 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         ) : (
           <div>
             {ledger.map((l,i)=>(
-              <div key={l.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:i<ledger.length-1?"1px solid var(--border)":"none"}}>
+              <div key={l.id} onClick={()=>setDetail(l)} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:i<ledger.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
+                onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
+                onMouseLeave={e=>e.currentTarget.style.background=""}>
                 <div style={{width:30,height:30,borderRadius:8,background:l.type==="in"?"#10b98122":"#ef444422",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                   <Ico d={l.type==="in"?Icons.arrowDown||Icons.chevD:Icons.arrowUp||Icons.chevR} size={14} stroke={l.type==="in"?"#10b981":"#ef4444"}/>
                 </div>
@@ -16763,18 +16850,64 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
                   <p style={{fontSize:13,fontWeight:800,color:l.type==="in"?"#10b981":"#ef4444"}}>{l.type==="in"?"+":"−"}{l.currency} {Math.round(l.amount).toLocaleString()}</p>
                   <p style={{fontSize:10,color:"var(--text3)"}}>{fmtDate(l.date)}</p>
                 </div>
-                {canManage&&l.raw&&(
-                  <button onClick={()=>onDeleteExpense(l.raw.id)} style={{color:"var(--text3)",flexShrink:0}}>
-                    <Ico d={Icons.trash} size={14} stroke="var(--text3)"/>
-                  </button>
-                )}
+                <Ico d={Icons.chevR} size={14} stroke="var(--text3)"/>
               </div>
             ))}
           </div>
         )}
       </div>
 
-      <AddExpenseModal open={showAdd} onClose={()=>setShowAdd(false)} onAdd={onAddExpense}/>
+      {/* Detail modal — full info + edit/delete for manual entries */}
+      <Modal open={!!detail} onClose={()=>setDetail(null)} title="Transaction Details" width={420}
+        footer={detail?.raw ? <>
+          {canManage&&<Btn variant="secondary" onClick={()=>{setShowAdd(true);}}>Edit</Btn>}
+          {isAdmin&&<Btn variant="danger" onClick={()=>{onDeleteExpense(detail.raw.id);setDetail(null);}}>Delete</Btn>}
+        </> : null}>
+        {detail&&(
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <span style={{fontSize:12,color:"var(--text3)"}}>Amount</span>
+              <span style={{fontSize:18,fontWeight:800,color:detail.type==="in"?"#10b981":"#ef4444"}}>{detail.type==="in"?"+":"−"}{detail.currency} {Math.round(detail.amount).toLocaleString()}</span>
+            </div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <span style={{fontSize:12,color:"var(--text3)"}}>Type</span>
+              <Badge label={detail.type==="in"?"Income":"Expense"} color={detail.type==="in"?"#10b981":"#ef4444"} xs/>
+            </div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <span style={{fontSize:12,color:"var(--text3)"}}>Category</span>
+              <span style={{fontSize:13,fontWeight:600}}>{detail.label}</span>
+            </div>
+            {detail.sub&&(
+              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
+                <span style={{fontSize:12,color:"var(--text3)",flexShrink:0}}>Description</span>
+                <span style={{fontSize:13,fontWeight:600,textAlign:"right"}}>{detail.sub}</span>
+              </div>
+            )}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <span style={{fontSize:12,color:"var(--text3)"}}>Date</span>
+              <span style={{fontSize:13,fontWeight:600}}>{fmtDate(detail.date)}</span>
+            </div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <span style={{fontSize:12,color:"var(--text3)"}}>Source</span>
+              <span style={{fontSize:13,fontWeight:600}}>{detail.source}</span>
+            </div>
+            {detail.createdBy&&(
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <span style={{fontSize:12,color:"var(--text3)"}}>Added by</span>
+                <span style={{fontSize:13,fontWeight:600}}>{detail.createdBy}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      <AddExpenseModal
+        open={showAdd}
+        onClose={()=>{setShowAdd(false);setDetail(null);}}
+        onAdd={onAddExpense}
+        onSave={onEditExpense}
+        initial={showAdd&&detail?.raw ? {id:detail.raw.id,type:detail.type,category:detail.category,description:detail.sub,amount:detail.amount,currency:detail.currency,date:detail.date} : null}
+      />
     </div>
   );
 }
@@ -24685,6 +24818,12 @@ Return ONLY the JSON array, no markdown.`;
     setToast("Expense deleted");
   };
 
+  const editExpense = async (id, updates) => {
+    setData(d=>({...d,expenses:d.expenses.map(e=>e.id===id?{...e,...updates}:e)}));
+    ue("Expense", id, updates).catch(()=>{});
+    setToast("Transaction updated");
+  };
+
   const addIntegration = async (integData) => {
     const local = {...integData, id:uid(), created_date:new Date().toISOString(), run_count:0, error_count:0, last_run_status:"never"};
     setData(d=>({...d, integrations:[local,...d.integrations]}));
@@ -25551,6 +25690,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             currentUser={currentUser}
             onAddExpense={addExpense}
             onDeleteExpense={deleteExpense}
+            onEditExpense={editExpense}
           />
         )}
         {page==="users"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.view_team"))&&(
