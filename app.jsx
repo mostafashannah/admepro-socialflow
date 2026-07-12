@@ -607,7 +607,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.20";
+const APP_VERSION = "beta 4.21";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16803,15 +16803,21 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
   );
 }
 
-function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,currentUser,onAddExpense,onDeleteExpense,onEditExpense,onAddExpenseComment}) {
+function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,currentUser,onAddExpense,onDeleteExpense,onEditExpense,onAddExpenseComment,onRefresh}) {
   const {isMobile} = useResponsive();
   const [showAdd,setShowAdd] = useState(false);
   const [range,setRange] = useState("all");
   const [selectedId,setSelectedId] = useState(null);
   const [typeFilter,setTypeFilter] = useState("all");
+  const [refreshing,setRefreshing] = useState(false);
   const isAdmin = currentUser?.role==="admin";
   const canManage = ["admin","accountant"].includes(currentUser?.role);
   const num = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
+
+  // Transactions can be added from outside this session (WhatsApp Pro) — pull
+  // fresh data whenever this page is opened, not just on app startup.
+  React.useEffect(()=>{ onRefresh&&onRefresh(); },[]);
+  const handleRefresh = async () => { setRefreshing(true); await onRefresh?.(); setRefreshing(false); };
 
   const inRange = (dateStr) => {
     if(range==="all"||!dateStr) return true;
@@ -16906,7 +16912,12 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?20:24,fontWeight:800}}>Finance</h2>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Full money in / out and running balance</p>
         </div>
-        {canManage&&<Btn onClick={()=>setShowAdd(true)}><Ico d={Icons.plus} size={15}/> Add Transaction</Btn>}
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={handleRefresh} disabled={refreshing} aria-label="Refresh" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            {refreshing?<Spinner size={15}/>:<Ico d={Icons.refresh||Icons.repeat} size={15} stroke="var(--text2)"/>}
+          </button>
+          {canManage&&<Btn onClick={()=>setShowAdd(true)}><Ico d={Icons.plus} size={15}/> Add Transaction</Btn>}
+        </div>
       </div>
 
       {/* Range filter */}
@@ -23699,6 +23710,21 @@ function App() {
     const res = await qe("SystemSession",{},"-login_at",500).catch(()=>({entities:[]}));
     setData(d=>({...d, systemSessions: res?.entities||d.systemSessions||[]}));
   };
+  // Finance data can be added from outside this session (WhatsApp Pro) — pull
+  // fresh rows whenever the Finance page is opened instead of relying on the
+  // one-time load at app startup.
+  const refreshFinance = async () => {
+    const [expR,payR,subPayR] = await Promise.all([
+      qe("Expense",{},"-date",1000).catch(()=>({entities:[]})),
+      qe("Payment",{},"payment_date").catch(()=>({entities:[]})),
+      qe("SubscriptionPayment",{},"-payment_date").catch(()=>({entities:[]})),
+    ]);
+    setData(d=>({...d,
+      expenses: expR?.entities||d.expenses||[],
+      payments: payR?.entities||d.payments||[],
+      subscriptionPayments: subPayR?.entities||d.subscriptionPayments||[],
+    }));
+  };
 
   // ── Load from Supabase — 2-wave for fast startup ──────────────
   useEffect(()=>{
@@ -25844,6 +25870,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             onDeleteExpense={deleteExpense}
             onEditExpense={editExpense}
             onAddExpenseComment={addExpenseComment}
+            onRefresh={refreshFinance}
           />
         )}
         {page==="users"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.view_team"))&&(
