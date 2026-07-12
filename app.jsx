@@ -368,6 +368,7 @@ const SB_TABLE = {
   AttendanceRecord:"attendance_records",
   ContactReport:"contact_reports",
   LeadNotifySetting:"lead_notify_settings",
+  Expense:"expenses",
 };
 
 function sbTable(entityName) {
@@ -606,7 +607,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.12";
+const APP_VERSION = "beta 4.13";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16558,6 +16559,208 @@ function SubscriptionsPage({subscriptions, subscriptionPayments, clients, curren
 // INVOICE & PAYMENT MODULE
 // ════════════════════════════════════════════════════════════════
 
+const EXPENSE_CATEGORIES = [
+  {k:"salaries", l:"Salaries & Payroll", color:"#3b82f6"},
+  {k:"tools", l:"Tools & Software", color:"#8b5cf6"},
+  {k:"rent", l:"Rent & Utilities", color:"#f59e0b"},
+  {k:"ads", l:"Ad Spend", color:"#ec4899"},
+  {k:"freelancers", l:"Freelancers", color:"#06b6d4"},
+  {k:"other", l:"Other", color:"#6b7280"},
+];
+const EXPENSE_CAT_MAP = Object.fromEntries(EXPENSE_CATEGORIES.map(c=>[c.k,c]));
+
+function AddExpenseModal({open,onClose,onAdd}) {
+  const [category,setCategory] = useState("other");
+  const [description,setDescription] = useState("");
+  const [amount,setAmount] = useState("");
+  const [currency,setCurrency] = useState("EGP");
+  const [date,setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [saving,setSaving] = useState(false);
+
+  const reset = () => { setCategory("other"); setDescription(""); setAmount(""); setDate(new Date().toISOString().split("T")[0]); };
+  const submit = async () => {
+    if(!amount||Number(amount)<=0||!description.trim()) return;
+    setSaving(true);
+    await onAdd({category,description:description.trim(),amount:Number(amount),currency,date});
+    setSaving(false);
+    reset();
+    onClose();
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="Add Expense" width={440}
+      footer={<>
+        <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+        <Btn onClick={submit} disabled={saving||!amount||!description.trim()}>{saving?<Spinner size={14}/>:"Add Expense"}</Btn>
+      </>}>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <Field label="Category" required>
+          <select value={category} onChange={e=>setCategory(e.target.value)} style={inputSt}>
+            {EXPENSE_CATEGORIES.map(c=><option key={c.k} value={c.k}>{c.l}</option>)}
+          </select>
+        </Field>
+        <Field label="Description" required>
+          <input value={description} onChange={e=>setDescription(e.target.value)} placeholder="e.g. April office rent" style={inputSt}/>
+        </Field>
+        <div style={{display:"flex",gap:10}}>
+          <Field label="Amount" required>
+            <input type="number" min="0" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0" style={inputSt}/>
+          </Field>
+          <Field label="Currency">
+            <select value={currency} onChange={e=>setCurrency(e.target.value)} style={{...inputSt,width:90}}>
+              <option value="EGP">EGP</option><option value="USD">USD</option>
+            </select>
+          </Field>
+        </div>
+        <Field label="Date">
+          <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={inputSt}/>
+        </Field>
+      </div>
+    </Modal>
+  );
+}
+
+function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,currentUser,onAddExpense,onDeleteExpense}) {
+  const {isMobile} = useResponsive();
+  const [showAdd,setShowAdd] = useState(false);
+  const [range,setRange] = useState("all");
+  const canManage = ["admin","accountant"].includes(currentUser?.role);
+
+  const inRange = (dateStr) => {
+    if(range==="all"||!dateStr) return true;
+    const d = new Date(dateStr);
+    const ago = new Date();
+    if(range==="month") ago.setMonth(ago.getMonth()-1);
+    if(range==="week") ago.setDate(ago.getDate()-7);
+    return d>=ago;
+  };
+
+  // Unified ledger of every money-in / money-out event
+  const ledger = [
+    ...payments.filter(p=>inRange(p.payment_date)).map(p=>({
+      id:"pay_"+p.id, type:"in", date:p.payment_date, amount:p.amount, currency:"USD",
+      label:`Invoice ${p.invoice_number||""}`, sub:p.notes||p.method||"",
+    })),
+    ...subscriptionPayments.filter(p=>inRange(p.payment_date)).map(p=>({
+      id:"sp_"+p.id, type:"in", date:p.payment_date, amount:p.amount, currency:p.currency||"EGP",
+      label:p.subscription_name||"Subscription", sub:p.client_name||"",
+    })),
+    ...expenses.filter(e=>inRange(e.date)).map(e=>({
+      id:"exp_"+e.id, type:"out", date:e.date, amount:e.amount, currency:e.currency||"EGP",
+      label:EXPENSE_CAT_MAP[e.category]?.l||e.category, sub:e.description, raw:e,
+    })),
+  ].sort((a,b)=>new Date(b.date)-new Date(a.date));
+
+  const totalIn = ledger.filter(l=>l.type==="in").reduce((a,l)=>a+(l.amount||0),0);
+  const totalOut = ledger.filter(l=>l.type==="out").reduce((a,l)=>a+(l.amount||0),0);
+  const balance = totalIn-totalOut;
+
+  const byCategory = EXPENSE_CATEGORIES.map(c=>({
+    ...c, total: expenses.filter(e=>e.category===c.k&&inRange(e.date)).reduce((a,e)=>a+(e.amount||0),0),
+  })).filter(c=>c.total>0);
+  const maxCat = Math.max(...byCategory.map(c=>c.total),1);
+
+  const kpis = [
+    {label:"Money In",value:`EGP ${Math.round(totalIn).toLocaleString()}`,color:"#10b981"},
+    {label:"Money Out",value:`EGP ${Math.round(totalOut).toLocaleString()}`,color:"#ef4444"},
+    {label:"Balance",value:`EGP ${Math.round(balance).toLocaleString()}`,color:balance>=0?"#3b82f6":"#ef4444"},
+    {label:"Transactions",value:ledger.length,color:"#8b5cf6"},
+  ];
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:isMobile?14:20}} className="fade-in">
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+        <div>
+          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?20:24,fontWeight:800}}>Finance</h2>
+          <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Full money in / out and running balance</p>
+        </div>
+        {canManage&&<Btn onClick={()=>setShowAdd(true)}><Ico d={Icons.plus} size={15}/> Add Expense</Btn>}
+      </div>
+
+      {/* Range filter */}
+      <div style={{display:"flex",gap:6}}>
+        {[["all","All Time"],["month","This Month"],["week","This Week"]].map(([k,l])=>(
+          <button key={k} onClick={()=>setRange(k)} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,background:range===k?"var(--accent)":"var(--surface2)",color:range===k?"#fff":"var(--text2)",border:`1px solid ${range===k?"var(--accent)":"var(--border2)"}`}}>{l}</button>
+        ))}
+      </div>
+
+      {/* KPI tiles */}
+      {isMobile ? (
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
+          {kpis.map(s=>(
+            <div key={s.label} style={{padding:"10px 6px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--rs)",textAlign:"center"}}>
+              <p style={{fontSize:14,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.value}</p>
+              <p style={{fontSize:9,fontWeight:700,color:"var(--text3)",letterSpacing:"0.03em",textTransform:"uppercase",marginTop:4}}>{s.label}</p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
+          {kpis.map(s=>(
+            <div key={s.label} style={{padding:"18px 20px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)"}}>
+              <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>{s.label}</p>
+              <p style={{fontSize:24,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1}}>{s.value}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Expenses by category */}
+      {byCategory.length>0&&(
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+          <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
+            <h3 style={{fontWeight:700,fontSize:14}}>Spending by Category</h3>
+          </div>
+          <div style={{padding:"12px 16px",display:"flex",flexDirection:"column",gap:8}}>
+            {byCategory.map(c=>(
+              <div key={c.k} style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:12,color:"var(--text2)",width:110,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.l}</span>
+                <div style={{flex:1}}><ProgressBar value={c.total} max={maxCat} color={c.color} height={5}/></div>
+                <span style={{fontSize:11,fontWeight:700,color:c.color,flexShrink:0}}>EGP {Math.round(c.total).toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Ledger */}
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+        <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
+          <h3 style={{fontWeight:700,fontSize:14}}>Transactions</h3>
+        </div>
+        {ledger.length===0 ? (
+          <EmptyState icon={Icons.wallet} title="No transactions" sub="Payments, subscription income, and expenses will show up here."/>
+        ) : (
+          <div>
+            {ledger.map((l,i)=>(
+              <div key={l.id} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:i<ledger.length-1?"1px solid var(--border)":"none"}}>
+                <div style={{width:30,height:30,borderRadius:8,background:l.type==="in"?"#10b98122":"#ef444422",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  <Ico d={l.type==="in"?Icons.arrowDown||Icons.chevD:Icons.arrowUp||Icons.chevR} size={14} stroke={l.type==="in"?"#10b981":"#ef4444"}/>
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <p style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.label}</p>
+                  {l.sub&&<p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>{l.sub}</p>}
+                </div>
+                <div style={{textAlign:"right",flexShrink:0}}>
+                  <p style={{fontSize:13,fontWeight:800,color:l.type==="in"?"#10b981":"#ef4444"}}>{l.type==="in"?"+":"−"}{l.currency} {Math.round(l.amount).toLocaleString()}</p>
+                  <p style={{fontSize:10,color:"var(--text3)"}}>{fmtDate(l.date)}</p>
+                </div>
+                {canManage&&l.raw&&(
+                  <button onClick={()=>onDeleteExpense(l.raw.id)} style={{color:"var(--text3)",flexShrink:0}}>
+                    <Ico d={Icons.trash} size={14} stroke="var(--text3)"/>
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <AddExpenseModal open={showAdd} onClose={()=>setShowAdd(false)} onAdd={onAddExpense}/>
+    </div>
+  );
+}
+
 const INV_STATUS = {
   unpaid: {label:"Unpaid", color:"#ef4444"},
   partially_paid: {label:"Partially Paid", color:"#f59e0b"},
@@ -18516,6 +18719,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
       ...(canFinance?[
         {key:"invoices", label:"Invoices", ico:Icons.invoice},
         {key:"subscriptions", label:"Subscriptions", ico:Icons.repeat},
+        {key:"finance", label:"Finance", ico:Icons.wallet},
       ]:[]),
     ]}] : []),
     ...(canViewTeamNav ? [{ group: "TEAM", icon: Icons.users, items: [
@@ -22984,14 +23188,14 @@ function App() {
   const [currentUser,setCurrentUser] = useState(()=>{
     try { const s=localStorage.getItem("sf_user"); return s?JSON.parse(s):null; } catch(e){return null;}
   });
-  const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","team_members","reports","account","system_log"];
+  const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","team_members","reports","account","system_log"];
   const [page,setPage_] = useState(()=>{
     try{
       // URL hash takes priority (direct link) — but always reset to home on fresh load
       // to avoid getting stuck on a detail page that hasn't loaded data yet
       const hash = window.location.hash.replace("#","");
       // Only use hash/localStorage if it's a top-level list page (not a detail context)
-      const SAFE_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","team_members","reports","account"];
+      const SAFE_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","team_members","reports","account"];
       if(hash && SAFE_PAGES.includes(hash)) return hash;
       const stored = localStorage.getItem("sf_page");
       return (stored && SAFE_PAGES.includes(stored)) ? stored : "home";
@@ -23174,6 +23378,7 @@ function App() {
     invitations: [], accessRequests: [], clientUsers: [],
     emailLogs: [], activityLogs: [], notifPrefs: [],
     rolePermissions: [], leaveRequests: [], attendanceRecords: [], contactReports: [], leadNotifySettings: [],
+    expenses: [],
   });
   const rolePermsMap = useMemo(()=>buildRolePermsMap(data.rolePermissions), [data.rolePermissions]);
   const [appSettings, setAppSettings] = useState(SEED.appSettings);
@@ -23292,6 +23497,7 @@ function App() {
         qe("AttendanceRecord",{},"-work_date",1000), // 42
         qe("ContactReport",{},"-created_at",500), // 43
         qe("LeadNotifySetting"), // 44
+        qe("Expense",{},"-date",1000), // 45
       ]);
       if(wave2[13].status==="fulfilled" && wave2[13].value?.entities?.length) setEmailSettings(wave2[13].value.entities[0]);
 
@@ -23340,6 +23546,7 @@ function App() {
         attendanceRecords: pick(wave2[42], d.attendanceRecords||[]),
         contactReports: pick(wave2[43], d.contactReports||[]),
         leadNotifySettings: pick(wave2[44], d.leadNotifySettings||[]),
+        expenses: pick(wave2[45], d.expenses||[]),
       }));
     }
     loadAllDataRef.current = load;
@@ -24444,6 +24651,22 @@ Return ONLY the JSON array, no markdown.`;
     setToast(`Duplicated as ${newNum}`);
   };
 
+  const addExpense = async (expData) => {
+    const local = {...expData,id:uid(),created_date:new Date().toISOString()};
+    setData(d=>({...d,expenses:[local,...d.expenses]}));
+    ce("Expense",[expData]).then(res=>{
+      const real=res.entities?.[0]; if(real?.id) setData(d=>({...d,expenses:d.expenses.map(e=>e.id===local.id?{...e,...real}:e)}));
+    }).catch(()=>{});
+    logActivity("Expense Added","finance",`${expData.currency||"EGP"} ${expData.amount} — ${expData.description}`,"success","",currentUser?.email||"admin");
+    setToast("Expense added");
+  };
+
+  const deleteExpense = async (id) => {
+    setData(d=>({...d,expenses:d.expenses.filter(e=>e.id!==id)}));
+    de("Expense", id).catch(()=>{});
+    setToast("Expense deleted");
+  };
+
   const addIntegration = async (integData) => {
     const local = {...integData, id:uid(), created_date:new Date().toISOString(), run_count:0, error_count:0, last_run_status:"never"};
     setData(d=>({...d, integrations:[local,...d.integrations]}));
@@ -25298,6 +25521,18 @@ Return ONLY valid JSON (no markdown, no explanation):
             onUpdateStatus={updateSubStatus}
             onRecordPayment={recordSubPayment}
             onGenerateLink={generateSubLink}
+          />
+        )}
+        {page==="finance"&&["admin","accountant"].includes(currentUser?.role)&&(
+          <FinancePage
+            invoices={data.invoices}
+            payments={data.payments}
+            subscriptions={data.subscriptions}
+            subscriptionPayments={data.subscriptionPayments}
+            expenses={data.expenses||[]}
+            currentUser={currentUser}
+            onAddExpense={addExpense}
+            onDeleteExpense={deleteExpense}
           />
         )}
         {page==="users"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.view_team"))&&(
