@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.78";
+const APP_VERSION = "beta 4.79";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7822,7 +7822,7 @@ function ProjectsPage({projects, posts, clients, team, assets, clientIntelligenc
 // ════════════════════════════════════════════════════════════════
 // ALL TASKS PAGE (Posts)
 // ════════════════════════════════════════════════════════════════
-function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdateTask,onAddReady,onAddAsset,onUpdateAsset}) {
+function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdateTask,onAddReady,onAddAsset,onUpdateAsset,currentUser,clients=[]}) {
   const [view,setView] = usePersistentState("sf_tasks_view","kanban");
   const [stageF,setStageF] = useState("all");
   const [platF,setPlatF] = useState("all");
@@ -7848,20 +7848,25 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
     if(search&&!p.title.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
   });
-  const newClientTasks = clientTasks.filter(t=>t.stage==="new_request");
-  const pendingClientTasks = clientTasks.filter(t=>!["completed","approved"].includes(t.stage));
+  // Client Requests are only relevant to admin (sees everything) or the
+  // account manager responsible for that client — not the rest of the team.
+  const canSeeClientRequests = ["admin","account_manager"].includes(currentUser?.role);
+  const myClientNames = currentUser?.role==="account_manager" ? new Set((clients||[]).filter(c=>c.account_manager_id===currentUser?.id).map(c=>c.name)) : null;
+  const visibleClientTasks = !canSeeClientRequests ? [] : (currentUser?.role==="admin" ? clientTasks : clientTasks.filter(t=>myClientNames.has(t.client_name)));
+  const newClientTasks = visibleClientTasks.filter(t=>t.stage==="new_request");
+  const pendingClientTasks = visibleClientTasks.filter(t=>!["completed","approved"].includes(t.stage));
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
 
       {/* Client Requests Section */}
-      {clientTasks.length>0&&(
+      {visibleClientTasks.length>0&&(
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
           <div onClick={()=>setTaskSection(s=>s==="expanded"?"collapsed":"expanded")} style={{padding:"14px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",borderBottom:taskSection==="expanded"?"1px solid var(--border)":"none"}}>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
               <span style={{fontSize:18}}></span>
               <div>
                 <p style={{fontWeight:700,fontSize:14}}>Client Requests</p>
-                <p style={{fontSize:12,color:"var(--text3)"}}>{clientTasks.length} total · {newClientTasks.length} new</p>
+                <p style={{fontSize:12,color:"var(--text3)"}}>{visibleClientTasks.length} total · {newClientTasks.length} new</p>
               </div>
               {newClientTasks.length>0&&<span style={{background:"#6366f1",color:"#fff",fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:99}}>{newClientTasks.length} New</span>}
             </div>
@@ -7869,8 +7874,8 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
           </div>
           {taskSection==="expanded"&&(
             <div style={{display:"flex",flexDirection:"column",gap:0}}>
-              {clientTasks.map((t,i)=>(
-                <div key={t.id} onClick={()=>setSelectedClientTask(t)} style={{padding:"12px 18px",borderBottom:i<clientTasks.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",cursor:"pointer"}}>
+              {visibleClientTasks.map((t,i)=>(
+                <div key={t.id} onClick={()=>setSelectedClientTask(t)} style={{padding:"12px 18px",borderBottom:i<visibleClientTasks.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",cursor:"pointer"}}>
                   <span style={{fontSize:20,flexShrink:0}}>{TASK_TYPE_MAP[t.task_type]?.icon||""}</span>
                   <div style={{flex:1,minWidth:160}}>
                     <p style={{fontWeight:600,fontSize:13}}>{t.title}</p>
@@ -15264,126 +15269,11 @@ function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh}) {
   );
 }
 
-function SystemLogPanel({activityLogs, onRefresh}) {
-  const [logFilter, setLogFilter] = useState("all");
-  const [logSearch, setLogSearch] = useState("");
-  const [refreshing, setRefreshing] = useState(false);
-  const CATEGORIES = ["all","clients","finance","tasks","users","leads","system"];
-  const STATUS_COLORS = {success:"#10b981",warning:"#f59e0b",error:"#ef4444",info:"#3b82f6"};
-  const CAT_COLORS = {clients:"#6366f1",finance:"#10b981",tasks:"#f59e0b",users:"#3b82f6",leads:"#8b5cf6",system:"#6b7280"};
-  const logs = (activityLogs||[]).filter(a=>{
-    if(logFilter!=="all" && a.category!==logFilter) return false;
-    if(logSearch && !`${a.action} ${a.details} ${a.performed_by}`.toLowerCase().includes(logSearch.toLowerCase())) return false;
-    return true;
-  });
-  const doRefresh = async () => {
-    if(!onRefresh || refreshing) return;
-    setRefreshing(true);
-    try { await onRefresh(); } finally { setRefreshing(false); }
-  };
-  // Pull fresh rows from Supabase whenever this tab is opened, and poll
-  // periodically — covers actions logged in other tabs/sessions.
-  useEffect(()=>{
-    doRefresh();
-    const id = setInterval(doRefresh, 20000);
-    return () => clearInterval(id);
-  },[]);
-  return (
-    <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
-      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
-        <div>
-          <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:18,fontWeight:800}}>System Activity Log</h3>
-          <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Full audit trail of all actions performed in SocialFlow — errors are highlighted for easy debugging</p>
-        </div>
-        <button onClick={doRefresh} disabled={refreshing} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:"var(--rs)",border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:12,fontWeight:700,cursor:refreshing?"default":"pointer",opacity:refreshing?0.6:1}}>
-          <Ico d={Icons.refresh||Icons.activity} size={14} stroke="currentColor"/>
-          {refreshing?"Refreshing…":"Refresh"}
-        </button>
-      </div>
-      {/* Summary cards */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))",gap:10}}>
-        {[
-          {label:"Total Events",val:(activityLogs||[]).length,color:"#3b82f6"},
-          {label:"Success",val:(activityLogs||[]).filter(a=>a.status==="success").length,color:"#10b981"},
-          {label:"Warnings",val:(activityLogs||[]).filter(a=>a.status==="warning").length,color:"#f59e0b"},
-          {label:"Errors",val:(activityLogs||[]).filter(a=>a.status==="error").length,color:"#ef4444"},
-        ].map(s=>(
-          <div key={s.label} style={{padding:"12px 14px",background:"var(--surface2)",border:`1px solid ${s.color}33`,borderRadius:"var(--rs)",textAlign:"center"}}>
-            <p style={{fontSize:9,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>{s.label}</p>
-            <p style={{fontSize:22,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color}}>{s.val}</p>
-          </div>
-        ))}
-      </div>
-      {/* Search + filters */}
-      <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
-        <input value={logSearch} onChange={e=>setLogSearch(e.target.value)} placeholder="Search actions, details, user..."
-          style={{padding:"8px 12px",borderRadius:"var(--rs)",border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontSize:13,flex:"1 1 200px",minWidth:180}}/>
-        <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-          {CATEGORIES.map(c=>(
-            <button key={c} onClick={()=>setLogFilter(c)} style={{
-              padding:"6px 12px",borderRadius:99,fontSize:11,fontWeight:700,
-              background:logFilter===c?(CAT_COLORS[c]||"var(--accent)"):"var(--surface2)",
-              color:logFilter===c?"#fff":"var(--text2)",
-              border:`1px solid ${logFilter===c?(CAT_COLORS[c]||"var(--accent)"):"var(--border2)"}`,
-              textTransform:"capitalize",transition:"all 0.15s",
-            }}>{c}</button>
-          ))}
-        </div>
-      </div>
-      {/* Log table */}
-      <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
-        <div style={{display:"grid",gridTemplateColumns:"140px 1fr 100px 90px",padding:"10px 16px",background:"var(--surface2)",borderBottom:"1px solid var(--border)",gap:12}}>
-          {["Time","Action / Details","User","Status"].map(h=>(
-            <p key={h} style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>{h}</p>
-          ))}
-        </div>
-        <div style={{maxHeight:520,overflowY:"auto"}}>
-          {logs.length===0?(
-            <div style={{padding:"48px",textAlign:"center",color:"var(--text3)"}}>
-              <Ico d={Icons.sparkle} size={36} stroke="var(--text3)"/>
-              <p style={{marginTop:12,fontSize:14,fontWeight:600}}>No activity yet</p>
-              <p style={{fontSize:12,marginTop:4}}>Actions like creating clients, approving posts, and sending invoices will appear here</p>
-            </div>
-          ):logs.map((log,i)=>{
-            const sc=STATUS_COLORS[log.status]||"#6b7280";
-            const cc=CAT_COLORS[log.category]||"#6b7280";
-            const isError=log.status==="error";
-            return (
-              <div key={log.id||i} style={{display:"flex",flexDirection:"column",borderBottom:"1px solid var(--border)",background:isError?"#ef444408":log.status==="warning"?"#f59e0b06":"transparent"}}>
-                <div style={{display:"grid",gridTemplateColumns:"140px 1fr 100px 90px",padding:"12px 16px",gap:12,alignItems:"start"}}>
-                  <p style={{fontSize:11,fontWeight:600,color:"var(--text2)"}}>
-                    {log.performed_at?new Date(log.performed_at).toLocaleString("en-GB",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}):"—"}
-                  </p>
-                  <div style={{display:"flex",flexDirection:"column",gap:3}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                      <span style={{fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:99,background:cc+"22",color:cc,textTransform:"uppercase",letterSpacing:"0.05em"}}>{log.category||"system"}</span>
-                      <p style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>{log.action}</p>
-                    </div>
-                    {log.details&&<p style={{fontSize:12,color:"var(--text2)"}}>{log.details}</p>}
-                    {isError&&log.error_message&&(
-                      <div style={{marginTop:4,padding:"6px 10px",background:"#ef444411",border:"1px solid #ef444433",borderRadius:4,fontSize:11,color:"#ef4444",fontFamily:"monospace"}}>{log.error_message}</div>
-                    )}
-                  </div>
-                  <p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{log.performed_by||"system"}</p>
-                  <div style={{display:"flex",alignItems:"center",gap:5}}>
-                    <div style={{width:7,height:7,borderRadius:"50%",background:sc,flexShrink:0}}/>
-                    <span style={{fontSize:11,fontWeight:700,color:sc,textTransform:"capitalize"}}>{log.status||"info"}</span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      <p style={{fontSize:11,color:"var(--text3)",textAlign:"center"}}>Showing {logs.length} of {(activityLogs||[]).length} total events</p>
-    </div>
-  );
-}
 
 // ════════════════════════════════════════════════════════════════
 // SETTINGS PAGE
 // ════════════════════════════════════════════════════════════════
-function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, integrationLogs, onAddIntegration, onUpdateIntegration, onDeleteIntegration, onRetryIntegration, emailSettings, onSaveEmailSettings, team, posts, clients, timelogs, perfLogs, accentColor, brandingAssets, onSaveBrandingAssets, wallpaper, emailLogs, activityLogs, onRefreshLogs}) {
+function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, integrationLogs, onAddIntegration, onUpdateIntegration, onDeleteIntegration, onRetryIntegration, emailSettings, onSaveEmailSettings, team, posts, clients, timelogs, perfLogs, accentColor, brandingAssets, onSaveBrandingAssets, wallpaper, emailLogs, activityLogs, onRefreshLogs, systemSessions, onRefreshSessions}) {
   const [settingsTab, setSettingsTab] = usePersistentState("sf_tab_settings","branding");
   const [f,setF] = useState({
     app_name: appSettings?.app_name||"SocialFlow",
@@ -15590,7 +15480,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
       )}
 
       {/* ── SYSTEM LOG TAB ── */}
-      {settingsTab==="syslog"&&<SystemLogPanel activityLogs={activityLogs} onRefresh={onRefreshLogs}/>}
+      {settingsTab==="syslog"&&<SystemLogPage activityLogs={activityLogs} systemSessions={systemSessions} currentUser={currentUser} onRefresh={()=>{ onRefreshLogs&&onRefreshLogs(); onRefreshSessions&&onRefreshSessions(); }}/>}
 
       {/* ── AI & TOKENS TAB ── */}
       {settingsTab==="ai_model"&&(
@@ -16174,14 +16064,16 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
               ].map(r=><Row key={r.k} {...r} disabled={prefs.all_disabled||prefs.mentions_only}/>)}
             </div>
 
-            {/* Client notifications */}
-            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:0}}>
-              <SectionHead title="Client & Approval Notifications" color="#f59e0b"/>
-              {[
-                {k:"post_approved", label:"Post approved by client", desc:"Email when a client approves your work"},
-                {k:"post_rejected", label:"Post needs revision", desc:"Email when a client requests changes"},
-              ].map(r=><Row key={r.k} {...r} disabled={prefs.all_disabled||prefs.mentions_only}/>)}
-            </div>
+            {/* Client notifications — admin/account_manager only */}
+            {["admin","account_manager"].includes(currentUser?.role)&&(
+              <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:0}}>
+                <SectionHead title="Client & Approval Notifications" color="#f59e0b"/>
+                {[
+                  {k:"post_approved", label:"Post approved by client", desc:"Email when a client approves your work"},
+                  {k:"post_rejected", label:"Post needs revision", desc:"Email when a client requests changes"},
+                ].map(r=><Row key={r.k} {...r} disabled={prefs.all_disabled||prefs.mentions_only}/>)}
+              </div>
+            )}
 
             {/* Finance notifications — only relevant to roles that actually
                 touch invoices/payments/subscriptions */}
@@ -20066,7 +19958,6 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     ...(canViewTeamNav ? [{ group: "TEAM", icon: Icons.users, items: [
       {key:"users", label:"User Management", ico:Icons.users},
       ...(isAdmin?[{key:"performance", label:"Performance", ico:Icons.award}]:[]),
-      ...(isAdmin?[{key:"system_log", label:"System Log", ico:"M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z"}]:[]),
     ]}] : []),
     ...((canAgency||isAdmin) ? [{ group: "TOOLS", icon: Icons.wand, items: [
       ...(canAgency?[
@@ -20116,8 +20007,8 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
   // ── Pro (Home) recent-sessions flyout ───────────────────────────
   const [proOpen, setProOpen] = useState(false);
   const [proShowAll, setProShowAll] = useState(false);
-  const [proSessions, setProSessions] = useState(()=>loadProSessions());
-  const [proActiveId, setProActiveId] = useState(()=>loadActiveChatId());
+  const [proSessions, setProSessions] = useState(()=>loadProSessions(currentUser?.email));
+  const [proActiveId, setProActiveId] = useState(()=>loadActiveChatId(currentUser?.email));
 
   // Keep the flyout's list + active highlight live while it's open, so a
   // title that finishes deriving (or a session switch from the chat itself)
@@ -20126,12 +20017,12 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     if(!proOpen) return;
     const sync = () => {
       try{
-        const raw = localStorage.getItem(PRO_CHAT_SESSIONS_KEY);
+        const raw = localStorage.getItem(PRO_CHAT_SESSIONS_KEY(currentUser?.email));
         if(raw){
           const parsed = JSON.parse(raw);
           setProSessions(prev => JSON.stringify(parsed)!==JSON.stringify(prev) ? parsed : prev);
         }
-        const aid = localStorage.getItem(PRO_CHAT_ACTIVE_KEY)||"";
+        const aid = localStorage.getItem(PRO_CHAT_ACTIVE_KEY(currentUser?.email))||"";
         setProActiveId(prev => aid!==prev ? aid : prev);
       }catch{}
     };
@@ -20144,8 +20035,8 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     setProOpen(o => {
       const next = !o;
       if(next){
-        setProSessions(loadProSessions());
-        setProActiveId(loadActiveChatId());
+        setProSessions(loadProSessions(currentUser?.email));
+        setProActiveId(loadActiveChatId(currentUser?.email));
         setOpenGroups(new Set()); // collapse other groups to make room
       } else {
         setProShowAll(false);
@@ -20155,10 +20046,10 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
   };
 
   const openProSession = (s) => {
-    saveActiveChatId(s.id);
+    saveActiveChatId(s.id, currentUser?.email);
     setProActiveId(s.id);
-    const next = loadProSessions().map(x=>x.id===s.id?{...x,updated_at:new Date().toISOString()}:x);
-    saveProSessions(next);
+    const next = loadProSessions(currentUser?.email).map(x=>x.id===s.id?{...x,updated_at:new Date().toISOString()}:x);
+    saveProSessions(next, currentUser?.email);
     setProSessions(next);
     handleNav("home");
   };
@@ -20174,27 +20065,27 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     if(editingProId){
       const title = editingProTitle.trim();
       if(title){
-        const next = loadProSessions().map(s=>s.id===editingProId?{...s,title}:s);
-        saveProSessions(next);
+        const next = loadProSessions(currentUser?.email).map(s=>s.id===editingProId?{...s,title}:s);
+        saveProSessions(next, currentUser?.email);
         setProSessions(next);
       }
     }
     setEditingProId(null);
   };
   const deleteProSession = (id) => {
-    const next = loadProSessions().filter(s=>s.id!==id);
-    saveProSessions(next);
+    const next = loadProSessions(currentUser?.email).filter(s=>s.id!==id);
+    saveProSessions(next, currentUser?.email);
     setProSessions(next);
-    if(id===proActiveId){ saveActiveChatId(""); setProActiveId(""); }
+    if(id===proActiveId){ saveActiveChatId("", currentUser?.email); setProActiveId(""); }
   };
 
   const startProChatFromSidebar = () => {
     const fresh = makeChatSession({user_id:currentUser?.email||""});
     const firstName = currentUser?.name?.split(" ")[0] || "there";
     fresh.messages = [{role:"bot", content:`Hi ${firstName} I'm **Pro** — your AI workspace inside SocialFlow. Tell me what you want to do and I'll handle it.`, id:uid(), type:"welcome", chat_id:fresh.id, sender:"pro", created_at:new Date().toISOString()}];
-    const next = [fresh, ...loadProSessions()];
-    saveProSessions(next);
-    saveActiveChatId(fresh.id);
+    const next = [fresh, ...loadProSessions(currentUser?.email)];
+    saveProSessions(next, currentUser?.email);
+    saveActiveChatId(fresh.id, currentUser?.email);
     setProSessions(next);
     setProActiveId(fresh.id);
     handleNav("home");
@@ -21199,15 +21090,19 @@ Rules:
   );
 }
 
-const PRO_CHAT_SESSIONS_KEY = "sf_pro_chat_sessions_v2";
-const PRO_CHAT_ACTIVE_KEY = "sf_pro_chat_active_v2";
+// Scoped per-user (by email) so switching who's logged in on the same
+// browser — including an admin using "Access Account" to view as someone
+// else — never shows one person's Pro chat history to another.
+const proChatEmailSuffix = (email) => email ? "_"+email.toLowerCase() : "";
+const PRO_CHAT_SESSIONS_KEY = (email) => "sf_pro_chat_sessions_v2"+proChatEmailSuffix(email);
+const PRO_CHAT_ACTIVE_KEY = (email) => "sf_pro_chat_active_v2"+proChatEmailSuffix(email);
 const PRO_CHAT_OPEN_KEY = "sf_pro_floating_open";
 const PRO_CHAT_SUGG_KEY = "sf_pro_floating_suggested";
 
-function loadProSessions(){ try{ return JSON.parse(localStorage.getItem(PRO_CHAT_SESSIONS_KEY)||"[]"); }catch(e){ return []; } }
-function saveProSessions(s){ try{ localStorage.setItem(PRO_CHAT_SESSIONS_KEY, JSON.stringify((s||[]).slice(-50))); }catch(e){} }
-function loadActiveChatId(){ try{ return localStorage.getItem(PRO_CHAT_ACTIVE_KEY)||""; }catch(e){ return ""; } }
-function saveActiveChatId(id){ try{ localStorage.setItem(PRO_CHAT_ACTIVE_KEY, id||""); }catch(e){} }
+function loadProSessions(email){ try{ return JSON.parse(localStorage.getItem(PRO_CHAT_SESSIONS_KEY(email))||"[]"); }catch(e){ return []; } }
+function saveProSessions(s,email){ try{ localStorage.setItem(PRO_CHAT_SESSIONS_KEY(email), JSON.stringify((s||[]).slice(-50))); }catch(e){} }
+function loadActiveChatId(email){ try{ return localStorage.getItem(PRO_CHAT_ACTIVE_KEY(email))||""; }catch(e){ return ""; } }
+function saveActiveChatId(id,email){ try{ localStorage.setItem(PRO_CHAT_ACTIVE_KEY(email), id||""); }catch(e){} }
 
 // Every real page load (hard refresh, new tab/window) should land on a brand
 // new Pro conversation rather than silently resuming the last one — but
@@ -21282,8 +21177,8 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
   const [open,setOpen] = useState(()=>{ try{ return localStorage.getItem(PRO_CHAT_OPEN_KEY)==="1"; }catch(e){ return false; } });
 
   // ── Session-based persistent chat storage ──
-  const [sessions, setSessions] = useState(()=>loadProSessions());
-  const [activeChatId, setActiveChatId] = useState(()=>loadActiveChatId());
+  const [sessions, setSessions] = useState(()=>loadProSessions(currentUser?.email));
+  const [activeChatId, setActiveChatId] = useState(()=>loadActiveChatId(currentUser?.email));
   // A freshly-opened conversation that hasn't received a real user message yet.
   // Kept OUT of `sessions` (and therefore out of localStorage) until the first
   // message is sent, so opening/refreshing Pro never litters saved history.
@@ -21317,7 +21212,7 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
         curList = [fresh, ...prev];
         curId = fresh.id;
         // schedule activeChatId update for next tick (safe inside updater)
-        setTimeout(()=>{ setActiveChatId(curId); saveActiveChatId(curId); },0);
+        setTimeout(()=>{ setActiveChatId(curId); saveActiveChatId(curId, currentUser?.email); },0);
       }
       return curList.map(s=>{
         if(s.id!==curId) return s;
@@ -21337,10 +21232,10 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
   // at an unsaved draft (pendingSession) — otherwise navigating away and back
   // without sending a message leaves localStorage pointing at an id that no
   // longer exists anywhere, which renders as a blank "new" chat.
-  useEffect(()=>{ saveProSessions(sessions); },[sessions]);
+  useEffect(()=>{ saveProSessions(sessions, currentUser?.email); },[sessions]);
   useEffect(()=>{
     if(pendingSession && pendingSession.id===activeChatId) return;
-    saveActiveChatId(activeChatId);
+    saveActiveChatId(activeChatId, currentUser?.email);
   },[activeChatId, pendingSession]);
 
   // Ensure we always have an active session when user is logged in.
@@ -22964,8 +22859,8 @@ function sessionTitle(msgs) {
 function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUpsertMemory, onDeleteMemory}) {
   // ── SHARED session storage with the floating Chatbot ──
   // Same keys: PRO_CHAT_SESSIONS_KEY + PRO_CHAT_ACTIVE_KEY → continues whatever chat is open in floating bubble
-  const [chatSessions, setChatSessions] = useState(()=>loadProSessions());
-  const [activeChatId, setActiveChatId] = useState(()=>loadActiveChatId());
+  const [chatSessions, setChatSessions] = useState(()=>loadProSessions(currentUser?.email));
+  const [activeChatId, setActiveChatId] = useState(()=>loadActiveChatId(currentUser?.email));
   // A freshly-opened conversation (incl. its welcome message) that hasn't received
   // a real user message yet — kept out of chatSessions/localStorage until then.
   const [pendingSession, setPendingSession] = useState(null);
@@ -22993,7 +22888,7 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
         const fresh = makeChatSession({user_id:currentUser?.email||""});
         curList = [fresh, ...prev];
         curId = fresh.id;
-        setTimeout(()=>{ setActiveChatId(curId); saveActiveChatId(curId); },0);
+        setTimeout(()=>{ setActiveChatId(curId); saveActiveChatId(curId, currentUser?.email); },0);
       }
       return curList.map(s=>{
         if(s.id!==curId) return s;
@@ -23009,16 +22904,16 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
       });
     });
   };
-  useEffect(()=>{ saveProSessions(chatSessions); },[chatSessions]);
+  useEffect(()=>{ saveProSessions(chatSessions, currentUser?.email); },[chatSessions]);
   useEffect(()=>{
     if(pendingSession && pendingSession.id===activeChatId) return;
-    saveActiveChatId(activeChatId);
+    saveActiveChatId(activeChatId, currentUser?.email);
   },[activeChatId, pendingSession]);
   // Cross-tab / cross-surface sync (floating bubble writes → home re-reads)
   useEffect(()=>{
     const onStorage = (e) => {
-      if(e.key===PRO_CHAT_SESSIONS_KEY){ try{ setChatSessions(JSON.parse(e.newValue||"[]")); }catch{} }
-      if(e.key===PRO_CHAT_ACTIVE_KEY){ setActiveChatId(e.newValue||""); }
+      if(e.key===PRO_CHAT_SESSIONS_KEY(currentUser?.email)){ try{ setChatSessions(JSON.parse(e.newValue||"[]")); }catch{} }
+      if(e.key===PRO_CHAT_ACTIVE_KEY(currentUser?.email)){ setActiveChatId(e.newValue||""); }
     };
     window.addEventListener("storage", onStorage);
     return ()=>window.removeEventListener("storage", onStorage);
@@ -23027,12 +22922,12 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
   useEffect(()=>{
     const t = setInterval(()=>{
       try{
-        const raw = localStorage.getItem(PRO_CHAT_SESSIONS_KEY);
+        const raw = localStorage.getItem(PRO_CHAT_SESSIONS_KEY(currentUser?.email));
         if(raw){
           const parsed = JSON.parse(raw);
           if(JSON.stringify(parsed)!==JSON.stringify(chatSessions)) setChatSessions(parsed);
         }
-        const aid = localStorage.getItem(PRO_CHAT_ACTIVE_KEY)||"";
+        const aid = localStorage.getItem(PRO_CHAT_ACTIVE_KEY(currentUser?.email))||"";
         if(aid!==activeChatId) setActiveChatId(aid);
       }catch{}
     }, 1500);
@@ -24551,7 +24446,7 @@ function App() {
     setImpersonatorUser(null);
     setPage("dashboard");
   };
-  const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","system_log"];
+  const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account"];
   const [page,setPage_] = useState(()=>{
     try{
       // URL hash takes priority (direct link) — but always reset to home on fresh load
@@ -26946,7 +26841,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   initialProjectId={selectedProjectId}
   onClearInitialProject={()=>setSelectedProjectId(null)}
 />}
-        {page==="tasks"&&<TasksPage posts={data.posts} projects={data.projects} team={data.team} onPostClick={setSelectedPost} onAdd={addPost} clientTasks={(data.tasks||[])} onUpdateTask={updateClientTask} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset}/>}
+        {page==="tasks"&&<TasksPage posts={data.posts} projects={data.projects} team={data.team} onPostClick={setSelectedPost} onAdd={addPost} clientTasks={(data.tasks||[])} onUpdateTask={updateClientTask} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} currentUser={currentUser} clients={data.clients}/>}
         {page==="calendar"&&<div className="fade-in"><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800,marginBottom:24}}>Content Calendar</h2><CalendarView posts={data.posts} onPostClick={setSelectedPost}/></div>}
         {page==="assets"&&<AssetsPage assets={data.assets} projects={data.projects} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} currentUser={currentUser}/>}
         {page==="templates"&&<TemplatesPage templates={data.templates}/>}
@@ -27054,14 +26949,6 @@ Return ONLY valid JSON (no markdown, no explanation):
             team={data.team}
           />
         )}
-        {page==="system_log"&&currentUser?.role==="admin"&&(
-          <SystemLogPage
-            activityLogs={data.activityLogs||[]}
-            systemSessions={data.systemSessions||[]}
-            currentUser={currentUser}
-            onRefresh={()=>{ refreshActivityLogs(); refreshSystemSessions(); }}
-          />
-        )}
         {page==="agents"&&currentUser?.role==="admin"&&(
           <AgentsPage
             agentConfigs={data.agentConfigs||[]}
@@ -27160,6 +27047,8 @@ Return ONLY valid JSON (no markdown, no explanation):
             emailLogs={data.emailLogs||[]}
             activityLogs={data.activityLogs||[]}
             onRefreshLogs={refreshActivityLogs}
+            systemSessions={data.systemSessions||[]}
+            onRefreshSessions={refreshSystemSessions}
           />
         )}
         {page==="notifications"&&(
