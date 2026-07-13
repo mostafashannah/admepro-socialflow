@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.75";
+const APP_VERSION = "beta 4.76";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10152,6 +10152,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
         canEditSalary={hasPerm(currentUser,rolePerms,"hr.edit_salary")}
         onBack={()=>setViewingMember(null)}
         onEdit={()=>setEditingMember(live)}
+        onSelectMember={(m)=>setViewingMember(m)}
       />
     );
   }
@@ -10452,8 +10453,9 @@ function calcExtraHours(records, threshold=9) {
   return {total, perMonth};
 }
 
-function TeamMemberDetailPage({member, team, leaveRequests, attendanceRecords, canEdit, canEditSalary, onBack, onEdit}) {
+function TeamMemberDetailPage({member, team, leaveRequests, attendanceRecords, canEdit, canEditSalary, onBack, onEdit, onSelectMember}) {
   const manager = (team||[]).find(t=>t.id===member.manager_id);
+  const directReports = (team||[]).filter(t=>t.manager_id===member.id);
   const myLeave = (leaveRequests||[]).filter(r=>r.team_member_id===member.id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
   const allMyAttendance = (attendanceRecords||[]).filter(a=>a.team_member_id===member.id || a.member_name===member.name).sort((a,b)=>new Date(b.work_date)-new Date(a.work_date));
   const myAttendance = allMyAttendance.slice(0,30);
@@ -10499,6 +10501,32 @@ function TeamMemberDetailPage({member, team, leaveRequests, attendanceRecords, c
           {row("Vacation Days", `${Number(member.vacation_days_used||0)} used / ${Number(member.vacation_days_total??21)} total`)}
           {row("WFH Days", `${Number(member.wfh_days_used||0)} used / ${Number(member.wfh_days_total??12)} total`)}
         </div>
+      </div>
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
+        <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
+          <h3 style={{fontWeight:700,fontSize:14}}>Team Members</h3>
+          <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>People who report to {member.name}</p>
+        </div>
+        {directReports.length===0 ? (
+          <div style={{padding:20,textAlign:"center",color:"var(--text2)",fontSize:13}}>No one reports to {member.name}.</div>
+        ) : (
+          <div>
+            {directReports.map((m,i)=>(
+              <div key={m.id} onClick={()=>onSelectMember&&onSelectMember(m)} data-clickable style={{padding:"12px 18px",borderBottom:i<directReports.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12,cursor:onSelectMember?"pointer":"default"}}>
+                <div style={{width:34,height:34,borderRadius:"50%",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:13,flexShrink:0,overflow:"hidden"}}>
+                  {m.avatar_url?<img src={m.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:m.name?.[0]?.toUpperCase()||"?"}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <p style={{fontWeight:700,fontSize:13}}>{m.name}</p>
+                  <p style={{fontSize:11,color:"var(--text3)"}}>{ROLES[m.role]?.label||m.role}{m.department?` · ${m.department}`:""}</p>
+                </div>
+                <span style={{background:m.status==="active"?"#10b98122":"#f59e0b22",color:m.status==="active"?"#10b981":"#f59e0b",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:600}}>{m.status||"active"}</span>
+                {onSelectMember&&<Ico d={Icons.chevR} size={14} stroke="var(--text3)"/>}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
