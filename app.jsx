@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.54";
+const APP_VERSION = "beta 5.55";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12989,7 +12989,7 @@ function CareersPage() {
               <div key={o.id} onClick={()=>setSelected(o)} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:24,cursor:"pointer"}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
                   <h3 style={{fontWeight:800,fontSize:17,color:"var(--text)"}}>{o.title}</h3>
-                  <Badge label={EMPLOYMENT_LABELS[o.employment_type]||"Full-time"} color="#3b82f6"/>
+                  <Badge label={EMPLOYMENT_LABELS[o.employment_type]||"Full-time"} color="#6b7280"/>
                 </div>
                 <p style={{color:"var(--text2)",fontSize:12,marginTop:4}}>{[o.department,o.location].filter(Boolean).join(" · ")}</p>
                 {o.description&&<p style={{color:"var(--text2)",fontSize:13,marginTop:10,lineHeight:1.6,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{o.description}</p>}
