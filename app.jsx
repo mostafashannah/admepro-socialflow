@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.42";
+const APP_VERSION = "beta 5.43";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12784,7 +12784,56 @@ function AcceptInvitationPage({token, onAccepted}) {
 // CAREERS PAGE (public, unauthenticated — socialflow.admepro.com/careers)
 // ════════════════════════════════════════════════════════════════
 const MAX_CV_MB = 8;
+const ADMEPRO_LOGO_URL = "https://socialflow.admepro.com/storage/public/socialflow-media/assets/client-a9d1402f-ecaa-4718-b77c-bd18e7024863/Assets/1783982300097_icon_white.png";
+const SOCIAL_LINKS = [
+  {label:"Fb.", url:"https://fb.com/admepro"},
+  {label:"Ig.", url:"https://instagram.com/admeproagency"},
+  {label:"Li.", url:"https://linkedin.com/company/admepro"},
+  {label:"Vm.", url:"https://vimeo.com/admepro"},
+];
+
+// Shared chrome across every CareersPage screen state (loading/list/apply/
+// done): its own <GStyle> with independent light/dark state (a public
+// visitor's theme choice shouldn't depend on, or affect, the logged-in
+// app), the Admepro logo linking out to admepro.com, and a fixed
+// theme-toggle + social-links rail on the right edge (matches admepro.com's
+// own site styling).
+function CareersChrome({isDark, setIsDark, children}) {
+  return (
+    <>
+      <GStyle wallpaper={isDark?"dark":"light"} accentColor="#d90b2c" photoIsDark={isDark}/>
+      <div style={{position:"fixed",top:20,left:20,zIndex:10}}>
+        <a href="https://admepro.com" target="_blank" rel="noreferrer" style={{display:"block",width:44,height:44,borderRadius:12,background:"#0e1117",padding:8}}>
+          <img src={ADMEPRO_LOGO_URL} alt="Admepro" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
+        </a>
+      </div>
+      <div style={{position:"fixed",right:20,top:"50%",transform:"translateY(-50%)",zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",gap:22}}>
+        <div style={{display:"flex",flexDirection:"column",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",padding:4}}>
+          <button title="Dark mode" onClick={()=>setIsDark(true)} style={{width:32,height:32,borderRadius:"50%",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",background:isDark?"#fff":"transparent",color:isDark?"#111":"var(--text2)"}}>
+            <Ico d={Icons.moon} size={14}/>
+          </button>
+          <button title="Light mode" onClick={()=>setIsDark(false)} style={{width:32,height:32,borderRadius:"50%",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",background:!isDark?"#fff":"transparent",color:!isDark?"#111":"var(--text2)"}}>
+            <Ico d={Icons.sun} size={14}/>
+          </button>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,writingMode:"vertical-rl",transform:"rotate(180deg)"}}>
+          {SOCIAL_LINKS.map((s,i)=>(
+            <React.Fragment key={s.url}>
+              {i>0&&<span style={{fontSize:12,color:"var(--text3)"}}>/</span>}
+              <a href={s.url} target="_blank" rel="noreferrer" style={{fontSize:12,fontWeight:700,color:"var(--text2)",textDecoration:"none",letterSpacing:"0.02em"}}>{s.label}</a>
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+      {children}
+    </>
+  );
+}
+
 function CareersPage() {
+  const [isDark, setIsDark] = useState(()=>{
+    try { return window.matchMedia("(prefers-color-scheme: dark)").matches; } catch(e) { return true; }
+  });
   const [openings, setOpenings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null); // job_opening being applied to
@@ -12838,18 +12887,21 @@ function CareersPage() {
 
   const EMPLOYMENT_LABELS = {full_time:"Full-time", part_time:"Part-time", contract:"Contract", internship:"Internship"};
 
-  if(loading) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",color:"var(--text2)"}}>Loading openings…</div>;
+  if(loading) return <CareersChrome isDark={isDark} setIsDark={setIsDark}><div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",color:"var(--text2)"}}>Loading openings…</div></CareersChrome>;
 
   if(done) return (
+    <CareersChrome isDark={isDark} setIsDark={setIsDark}>
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:"var(--bg)",padding:20}}>
       <div style={{background:"var(--surface)",borderRadius:20,padding:40,width:420,maxWidth:"100%",border:"1px solid var(--border)",textAlign:"center"}}>
         <h2 style={{fontWeight:800,fontSize:22,color:"var(--text)"}}>Application received!</h2>
         <p style={{color:"var(--text2)",fontSize:14,marginTop:10}}>Thanks for applying to <strong>{selected?.title}</strong> at Admepro. Our team will review your application and reach out if there's a match.</p>
       </div>
     </div>
+    </CareersChrome>
   );
 
   if(!selected) return (
+    <CareersChrome isDark={isDark} setIsDark={setIsDark}>
     <div style={{minHeight:"100vh",background:"var(--bg)",padding:"48px 20px"}}>
       <div style={{maxWidth:720,margin:"0 auto"}}>
         <div style={{textAlign:"center",marginBottom:36}}>
@@ -12875,9 +12927,11 @@ function CareersPage() {
         )}
       </div>
     </div>
+    </CareersChrome>
   );
 
   return (
+    <CareersChrome isDark={isDark} setIsDark={setIsDark}>
     <div style={{minHeight:"100vh",background:"var(--bg)",padding:"48px 20px"}}>
       <div style={{maxWidth:560,margin:"0 auto"}}>
         <button onClick={()=>setSelected(null)} style={{background:"none",border:"none",color:"var(--text2)",fontSize:13,fontWeight:600,cursor:"pointer",marginBottom:16}}>← Back to all openings</button>
@@ -12957,6 +13011,7 @@ function CareersPage() {
         </div>
       </div>
     </div>
+    </CareersChrome>
   );
 }
 
@@ -28154,9 +28209,12 @@ Return ONLY valid JSON (no markdown, no explanation):
     return (<><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/><ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]}/></>);
   }
 
-  // Public careers/job-application page — /careers, no login required
+  // Public careers/job-application page — /careers, no login required.
+  // CareersPage renders its own <GStyle> with independent light/dark state
+  // (a public visitor's preference here shouldn't depend on, or affect,
+  // the logged-in app's theme).
   if(isCareersPath) {
-    return (<><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/><CareersPage/></>);
+    return <CareersPage/>;
   }
 
   // Accept invitation flow (URL has ?invite=TOKEN)
