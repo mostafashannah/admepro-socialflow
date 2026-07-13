@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.68";
+const APP_VERSION = "beta 4.69";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5673,7 +5673,9 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
               {showHidden?"Hide archived":"Show archived ("+hiddenCount+")"}
             </button>
           )}
-          <Btn onClick={()=>setShowAdd(true)}><Ico d={Icons.plus} size={15}/>New Client</Btn>
+          <button onClick={()=>setShowAdd(true)} aria-label="New Client" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
+            <Ico d={Icons.plus} size={15} stroke="#fff"/>
+          </button>
         </div>
       </div>
       <div style={{position:"relative",maxWidth:320}}>
@@ -7742,7 +7744,9 @@ function ProjectsPage({projects, posts, clients, team, assets, clientIntelligenc
           <h1 style={{fontSize:22,fontWeight:700,color:"var(--text1)"}}>Projects</h1>
           <p style={{color:"var(--text3)",fontSize:13,marginTop:2}}>{projects.length} total · {projects.filter(p=>p.status==="active").length} active</p>
         </div>
-        <Btn onClick={()=>setShowWizard(true)}><Ico d={Icons.plus} size={14}/>New Project</Btn>
+        <button onClick={()=>setShowWizard(true)} aria-label="New Project" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
+          <Ico d={Icons.plus} size={15} stroke="#fff"/>
+        </button>
       </div>
 
       {/* Type filter */}
@@ -7891,7 +7895,9 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>All Posts & Tasks</h2>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{posts.length} total</p></div>
-        <Btn onClick={()=>setShowAdd(true)}><Ico d={Icons.plus} size={15}/>New Post</Btn>
+        <button onClick={()=>setShowAdd(true)} aria-label="New Post" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
+          <Ico d={Icons.plus} size={15} stroke="#fff"/>
+        </button>
       </div>
       {/* ── Toolbar: always-visible controls ── */}
       <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
@@ -10174,8 +10180,8 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
           <p style={{color:"var(--text2)",fontSize:13,marginTop:2}}>Manage team members, invitations, and client access</p>
         </div>
         <div style={{display:"flex",gap:8}}>
-          {tab==="team"&&<button onClick={()=>setShowInviteModal(true)} style={{background:"var(--accent)",color:"#fff",border:"none",borderRadius:8,padding:"9px 18px",fontWeight:600,cursor:"pointer",fontSize:13}}>+ Invite User</button>}
-          {tab==="clients"&&<button onClick={()=>setShowClientUserModal(true)} style={{background:"var(--accent)",color:"#fff",border:"none",borderRadius:8,padding:"9px 18px",fontWeight:600,cursor:"pointer",fontSize:13}}>+ Add Client User</button>}
+          {tab==="team"&&<button onClick={()=>setShowInviteModal(true)} aria-label="Invite User" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}><Ico d={Icons.plus} size={15} stroke="#fff"/></button>}
+          {tab==="clients"&&<button onClick={()=>setShowClientUserModal(true)} aria-label="Add Client User" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}><Ico d={Icons.plus} size={15} stroke="#fff"/></button>}
         </div>
       </div>
 
@@ -10923,7 +10929,7 @@ function TemplatesPage({templates}) {
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Content Templates</h2>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{templates.length} templates</p></div>
-        <Btn><Ico d={Icons.plus} size={15}/>New Template</Btn>
+        <button aria-label="New Template" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}><Ico d={Icons.plus} size={15} stroke="#fff"/></button>
       </div>
       <div style={{display:"flex",gap:6}}>
         <button onClick={()=>setCatF("all")} style={{padding:"5px 14px",borderRadius:99,fontSize:12,fontWeight:600,background:catF==="all"?"var(--accent)":"var(--surface2)",color:catF==="all"?"#fff":"var(--text2)",border:`1px solid ${catF==="all"?"var(--accent)":"var(--border2)"}`}}>All</button>
@@ -11336,7 +11342,11 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
               </div>
               <div style={{display:"flex",gap:8,flexDirection:isMobile?"column":"row",width:isMobile?"100%":"auto"}}>
                 <Btn variant="secondary" onClick={()=>setShowBrief(true)} style={isMobile?{width:"100%",justifyContent:"center"}:{}}><Ico d={Icons.plus} size={15}/>Add Calendar Brief{pendingBrief?" ●":""}</Btn>
-                <Btn onClick={()=>setShowAddTask(true)} style={isMobile?{width:"100%",justifyContent:"center"}:{}}><Ico d={Icons.plus} size={15}/>New Request</Btn>
+                {isMobile ? (
+                  <Btn onClick={()=>setShowAddTask(true)} style={{width:"100%",justifyContent:"center"}}><Ico d={Icons.plus} size={15}/>New Request</Btn>
+                ) : (
+                  <button onClick={()=>setShowAddTask(true)} aria-label="New Request" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}><Ico d={Icons.plus} size={15} stroke="#fff"/></button>
+                )}
               </div>
             </div>
 
@@ -13028,7 +13038,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
               </button>
             ))}
           </div>
-          <Btn onClick={()=>setShowForm(true)}><Ico d={Icons.plus} size={15}/> Add Lead</Btn>
+          <button onClick={()=>setShowForm(true)} aria-label="Add Lead" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}><Ico d={Icons.plus} size={15} stroke="#fff"/></button>
         </div>
       </div>
 
@@ -16571,7 +16581,7 @@ function SubscriptionsPage({subscriptions, subscriptionPayments, clients, curren
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Subscriptions</h2>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{subscriptions.length} retainers · EGP {mrr.toLocaleString()} MRR</p>
         </div>
-        {canManage&&<Btn onClick={()=>setShowCreate(true)}><Ico d={Icons.plus} size={15}/> New Subscription</Btn>}
+        {canManage&&<button onClick={()=>setShowCreate(true)} aria-label="New Subscription" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}><Ico d={Icons.plus} size={15} stroke="#fff"/></button>}
       </div>
 
       {/* Stats cards */}
@@ -18635,7 +18645,7 @@ function InvoicesPage({invoices,payments,clients,quotes,currentUser,appSettings,
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Invoices</h2>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{invoices.length} invoices · {fmtMoney(collected,"USD")} collected</p>
         </div>
-        {canManage&&<Btn onClick={()=>{setSourceQuote(null);setShowCreate(true);}}><Ico d={Icons.plus} size={15}/> New Invoice</Btn>}
+        {canManage&&<button onClick={()=>{setSourceQuote(null);setShowCreate(true);}} aria-label="New Invoice" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}><Ico d={Icons.plus} size={15} stroke="#fff"/></button>}
       </div>
 
       {/* Financial stats */}
