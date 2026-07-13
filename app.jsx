@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.62";
+const APP_VERSION = "beta 5.63";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13051,9 +13051,13 @@ function CareersPage() {
               <div key={o.id} onClick={()=>setSelected(o)} style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:16,padding:28,cursor:"pointer",display:"flex",flexDirection:"column"}}>
                 <div style={{height:120,marginBottom:24}}/>
                 <p style={{color:"var(--text3)",fontSize:13,marginBottom:8}}>{fmtDate(o.created_at)}</p>
-                <h3 style={{fontWeight:800,fontSize:19,color:"var(--text)",lineHeight:1.25,marginBottom:12}}>{o.title}</h3>
-                {o.description&&<p style={{color:"var(--text2)",fontSize:14,lineHeight:1.6,marginBottom:20,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{o.description}</p>}
-                <p style={{color:"var(--text)",fontSize:14,fontWeight:700,marginTop:"auto",display:"flex",alignItems:"center",gap:6}}>Read More <Ico d={Icons.arrow} size={15}/></p>
+                <h3 style={{fontWeight:800,fontSize:19,color:"var(--text)",lineHeight:1.25,marginBottom:14}}>{o.title}</h3>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+                  <span style={{padding:"6px 12px",borderRadius:99,background:"var(--surface)",border:"1px solid var(--border)",fontSize:12,fontWeight:600,color:"var(--text2)"}}>{EMPLOYMENT_LABELS[o.employment_type]||"Full-time"}</span>
+                  <span style={{padding:"6px 12px",borderRadius:99,background:"var(--surface)",border:"1px solid var(--border)",fontSize:12,fontWeight:600,color:"var(--text2)"}}>Open</span>
+                </div>
+                <p style={{color:"var(--text2)",fontSize:14,lineHeight:1.6,marginBottom:20,minHeight:44.8,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{o.description||""}</p>
+                <p style={{color:"var(--accent)",fontSize:14,fontWeight:700,marginTop:"auto",display:"flex",alignItems:"center",gap:6}}>Apply now <Ico d={Icons.arrow} size={15}/></p>
               </div>
             ))}
           </div>
