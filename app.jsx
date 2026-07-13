@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.60";
+const APP_VERSION = "beta 5.61";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13037,7 +13037,7 @@ function CareersPage() {
   if(!selected) return (
     <CareersChrome isDark={isDark} setIsDark={setIsDark}>
     <div style={{minHeight:"100vh",background:"var(--bg)",padding:"48px 20px"}}>
-      <div style={{maxWidth:960,margin:"0 auto"}}>
+      <div style={{maxWidth:1200,margin:"0 auto"}}>
         <div style={{textAlign:"center",marginBottom:36,marginTop:100}}>
           <p style={{fontSize:13,fontWeight:700,color:"var(--accent)",letterSpacing:"0.12em",marginBottom:12}}>#WEAREHIRING</p>
           <h1 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:"clamp(32px,5.5vw,56px)",lineHeight:1.15,color:"var(--text)"}}>Ready To Join Our Team?<br/>Apply Now.</h1>
@@ -13046,16 +13046,13 @@ function CareersPage() {
         {openings.length===0 ? (
           <div style={{textAlign:"center",padding:60,color:"var(--text3)"}}>No open positions right now — check back soon!</div>
         ) : (
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:20}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:20}}>
             {openings.map(o=>(
-              <div key={o.id} onClick={()=>setSelected(o)} style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:16,padding:24,cursor:"pointer",display:"flex",flexDirection:"column"}}>
+              <div key={o.id} onClick={()=>setSelected(o)} style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:16,padding:28,cursor:"pointer",display:"flex",flexDirection:"column"}}>
                 <div style={{height:120,marginBottom:24}}/>
                 <p style={{color:"var(--text3)",fontSize:13,marginBottom:8}}>{fmtDate(o.created_at)}</p>
-                <h3 style={{fontWeight:800,fontSize:19,color:"var(--text)",lineHeight:1.25,marginBottom:14}}>{o.title}</h3>
-                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:20}}>
-                  <span style={{padding:"6px 12px",borderRadius:99,background:"var(--surface)",border:"1px solid var(--border)",fontSize:12,fontWeight:600,color:"var(--text2)"}}>Job</span>
-                  {o.department&&<span style={{padding:"6px 12px",borderRadius:99,background:"var(--surface)",border:"1px solid var(--border)",fontSize:12,fontWeight:600,color:"var(--text2)"}}>{o.department}</span>}
-                </div>
+                <h3 style={{fontWeight:800,fontSize:19,color:"var(--text)",lineHeight:1.25,marginBottom:12}}>{o.title}</h3>
+                {(o.brief||o.description)&&<p style={{color:"var(--text2)",fontSize:14,lineHeight:1.6,marginBottom:20,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{o.brief||o.description}</p>}
                 <p style={{color:"var(--text)",fontSize:14,fontWeight:700,marginTop:"auto",display:"flex",alignItems:"center",gap:6}}>Read More <Ico d={Icons.arrow} size={15}/></p>
               </div>
             ))}
