@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.99";
+const APP_VERSION = "beta 5.00";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19611,7 +19611,7 @@ function MyCalendarPage({posts,currentUser,team}) {
   const monthName = new Date(year, month).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:24,maxWidth:1200,margin:"0 auto",padding:isMobile?"16px":"32px 24px"}}>
+    <div style={{display:"flex",flexDirection:"column",gap:24,maxWidth:"100%",padding:isMobile?"16px":"32px 24px"}}>
       {/* Header */}
       <div>
         <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?24:32,fontWeight:800,marginBottom:6}}>My Calendar</h1>
@@ -19775,7 +19775,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   });
 
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:1200,margin:"0 auto"}}>
+    <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:"100%"}}>
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
         <div>
@@ -20031,7 +20031,7 @@ function MyPerformancePage({currentUser, posts, timeEntries, perfLogs}) {
   );
 
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:1100,margin:"0 auto"}}>
+    <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:"100%"}}>
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
         <div>
