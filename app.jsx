@@ -637,7 +637,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.24";
+const APP_VERSION = "beta 5.25";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -4209,11 +4209,10 @@ function FAB({currentUser,onAddClient,onAddCalendar,onAddTask,onCreateInvoice,on
         </div>
       )}
       {/* FAB Button */}
-      <button onClick={()=>setOpen(o=>!o)} style={{
-        display:"flex",alignItems:"center",gap:8,
-        padding:"10px 18px",borderRadius:99,
-        background:"var(--accent)",color:"#fff",
-        fontWeight:700,fontSize:14,
+      <button onClick={()=>setOpen(o=>!o)} aria-label="Add" title="Add" style={{
+        width:44,height:44,borderRadius:"50%",
+        display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
+        background:"var(--accent)",color:"#fff",border:"1px solid var(--accent)",
         boxShadow:"0 4px 20px rgba(217,11,44,0.4)",
         transition:"all 0.18s",
         transform:open?"rotate(45deg) scale(1.05)":"none",
@@ -4221,7 +4220,6 @@ function FAB({currentUser,onAddClient,onAddCalendar,onAddTask,onCreateInvoice,on
       onMouseEnter={e=>{if(!open)e.currentTarget.style.boxShadow="0 8px 32px rgba(217,11,44,0.5)";e.currentTarget.style.transform=open?"rotate(45deg) scale(1.1)":"scale(1.04)";}}
       onMouseLeave={e=>{e.currentTarget.style.boxShadow="0 4px 20px rgba(217,11,44,0.4)";e.currentTarget.style.transform=open?"rotate(45deg)":"none";}}>
         <Ico d={Icons.plus} size={18} stroke="#fff"/>
-        <span>Add</span>
       </button>
     </div>
   );
@@ -5088,6 +5086,28 @@ function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAdd
   const [genInsights,setGenInsights] = useState(false);
   const [liveInsights,setLiveInsights] = useState([]);
 
+  // Real presence (team_members.last_seen, pinged every 60s app-wide) rather
+  // than the old fake "has an active task" proxy — `data.team` is only
+  // fetched once at load so it never sees anyone's heartbeat; poll fresh
+  // team rows here instead, same pattern used on System Log's Live Now.
+  const [liveTeam,setLiveTeam] = useState(team);
+  const [liveClock,setLiveClock] = useState(Date.now());
+  useEffect(()=>{
+    if(!isAdmin) return;
+    let cancelled = false;
+    const poll = async () => {
+      const res = await qe("TeamMember",{},null,500).catch(()=>null);
+      if(!cancelled && res?.entities) setLiveTeam(res.entities);
+    };
+    poll();
+    const t = setInterval(poll, 20000);
+    const c = setInterval(()=>setLiveClock(Date.now()), 15000);
+    return ()=>{ cancelled=true; clearInterval(t); clearInterval(c); };
+  },[isAdmin]);
+  const liveMemberEmails = new Set(
+    liveTeam.filter(m=>m.last_seen && (liveClock-parseSqlUtc(m.last_seen).getTime())<3*60000).map(m=>m.email)
+  );
+
   const myNotifs = notifications.filter(n=>n.recipient_email===currentUser.email&&!n.is_read);
   const myTasks = posts.filter(p=>p.assigned_to===currentUser.email);
   const pendingApproval = posts.filter(p=>p.stage==="client_approval").length;
@@ -5211,16 +5231,16 @@ No markdown, no explanation.`;
         </div>
         {isAdmin&&(
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-            <select value={dateRange} onChange={e=>setDateRange(e.target.value)} style={{...inputSt,width:"auto",flex:1,minWidth:100,padding:"8px 10px",fontSize:12}}>
+            <select value={dateRange} onChange={e=>setDateRange(e.target.value)} style={{...inputSt,width:"auto",height:38,minHeight:38,flex:1,minWidth:100,padding:"0 14px",fontSize:12,borderRadius:99}}>
               <option value="all">All Time</option>
               <option value="week">This Week</option>
               <option value="month">This Month</option>
             </select>
-            <select value={filterUser} onChange={e=>setFilterUser(e.target.value)} style={{...inputSt,width:"auto",flex:1,minWidth:100,padding:"8px 10px",fontSize:12}}>
+            <select value={filterUser} onChange={e=>setFilterUser(e.target.value)} style={{...inputSt,width:"auto",height:38,minHeight:38,flex:1,minWidth:100,padding:"0 14px",fontSize:12,borderRadius:99}}>
               <option value="all">All Users</option>
               {team.map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
             </select>
-            <select value={filterClient} onChange={e=>setFilterClient(e.target.value)} style={{...inputSt,width:"auto",flex:1,minWidth:100,padding:"8px 10px",fontSize:12}}>
+            <select value={filterClient} onChange={e=>setFilterClient(e.target.value)} style={{...inputSt,width:"auto",height:38,minHeight:38,flex:1,minWidth:100,padding:"0 14px",fontSize:12,borderRadius:99}}>
               <option value="all">All Clients</option>
               {clients.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}
             </select>
@@ -5277,8 +5297,12 @@ No markdown, no explanation.`;
             </div>
           )}
 
-          {/* Finance Snapshot — compact strip, admin/accountant only */}
+          {/* Finance Snapshot — admin/accountant only */}
           {isAdmin&&invoices.length>0&&(()=>{
+            const expenses = data.expenses||[];
+            const totalIn = payments.reduce((a,p)=>a+(p.amount||0),0);
+            const totalOut = expenses.filter(e=>(e.type||"out")==="out").reduce((a,e)=>a+(e.amount||0),0);
+            const balance = totalIn-totalOut;
             const outstanding=invoices.filter(i=>i.status!=="paid").reduce((a,i)=>a+(i.balance_due||0),0);
             const overdueCount=invoices.filter(i=>isOverdueInvoice(i)&&i.status!=="paid").length;
             const mrr=subscriptions.filter(s=>s.status==="active").reduce((a,s)=>{
@@ -5288,15 +5312,27 @@ No markdown, no explanation.`;
             const overdueSubCount=subscriptions.filter(s=>s.status==="overdue").length;
             const hasAlerts=overdueCount>0||overdueSubCount>0;
             return (
-              <div style={{background:"var(--surface)",border:`1px solid ${hasAlerts?"#ef444444":"var(--border)"}`,borderRadius:"var(--r)",padding:"12px 18px",display:"flex",alignItems:"center",gap:0,flexWrap:"wrap"}}>
-                <Ico d={Icons.wallet} size={15} stroke={hasAlerts?"#ef4444":"var(--text3)"}/>
-                <span style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginLeft:8,marginRight:4}}>Finance:</span>
-                <span style={{fontSize:13,fontWeight:800,color:"#f59e0b",marginRight:16}}>EGP {Math.round(outstanding).toLocaleString()} outstanding</span>
-                <span style={{fontSize:13,fontWeight:800,color:"var(--accent)",marginRight:16}}>EGP {Math.round(mrr).toLocaleString()} MRR</span>
-                {hasAlerts&&<span style={{fontSize:12,fontWeight:700,color:"#ef4444",marginRight:16}}> {overdueCount+overdueSubCount} overdue</span>}
-                <button onClick={()=>setPage("invoices")} style={{marginLeft:"auto",fontSize:12,fontWeight:700,color:"var(--accent)",display:"flex",alignItems:"center",gap:4,padding:"4px 0",flexShrink:0}}>
-                  View Finance <Ico d={Icons.chevR} size={13} stroke="var(--accent)"/>
-                </button>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <h3 style={{fontWeight:700,fontSize:14}}>Finance</h3>
+                  <button onClick={()=>setPage("invoices")} style={{fontSize:12,fontWeight:700,color:"var(--accent)",display:"flex",alignItems:"center",gap:4}}>
+                    View Finance <Ico d={Icons.chevR} size={13} stroke="var(--accent)"/>
+                  </button>
+                </div>
+                <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
+                  {[
+                    {label:"Balance",value:`${balance>=0?"":"−"}EGP ${Math.round(Math.abs(balance)).toLocaleString()}`,color:balance>=0?"#10b981":"#ef4444",sub:"all-time in − out"},
+                    {label:"Outstanding",value:`EGP ${Math.round(outstanding).toLocaleString()}`,color:"#f59e0b",sub:"unpaid invoices"},
+                    {label:"MRR",value:`EGP ${Math.round(mrr).toLocaleString()}`,color:"var(--accent)",sub:"active subscriptions"},
+                    {label:"Overdue",value:overdueCount+overdueSubCount,color:hasAlerts?"#ef4444":"#10b981",sub:hasAlerts?"needs attention":"all clear"},
+                  ].map(s=>(
+                    <div key={s.label} style={{padding:"14px 18px",background:"var(--surface)",border:`1px solid ${s.label==="Overdue"&&hasAlerts?"#ef444444":"var(--border)"}`,borderRadius:"var(--r)"}}>
+                      <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>{s.label}</p>
+                      <p style={{fontSize:22,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1}}>{s.value}</p>
+                      <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>{s.sub}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             );
           })()}
@@ -5308,13 +5344,19 @@ No markdown, no explanation.`;
                 <>
                   <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                     <h3 style={{fontWeight:700,fontSize:14}}>Active Team</h3>
-                    <span style={{fontSize:10,background:"#10b98122",color:"#10b981",padding:"2px 8px",borderRadius:99,fontWeight:700,border:"1px solid #10b98144"}}>{team.length} members</span>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{display:"flex",alignItems:"center",gap:5,fontSize:10,background:"#10b98122",color:"#10b981",padding:"2px 8px",borderRadius:99,fontWeight:700,border:"1px solid #10b98144"}}>
+                        <span style={{width:6,height:6,borderRadius:"50%",background:"#10b981"}}/>
+                        {liveMemberEmails.size} live now
+                      </span>
+                      <span style={{fontSize:10,background:"var(--surface2)",color:"var(--text3)",padding:"2px 8px",borderRadius:99,fontWeight:700,border:"1px solid var(--border2)"}}>{team.length} members</span>
+                    </div>
                   </div>
                   <div style={{maxHeight:"min(280px,40vh)",overflowY:"auto"}}>
                     {team.map(member=>{
                       const mPerf=perf.find(p=>p.email===member.email)||{};
                       const activeTasks=filteredPosts.filter(p=>p.assigned_to===member.email&&!["published","rejected"].includes(p.stage));
-                      const isOnline=activeTasks.length>0;
+                      const isOnline=liveMemberEmails.has(member.email);
                       return (
                         <div key={member.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 18px",borderBottom:"1px solid var(--border)"}}>
                           <div style={{position:"relative"}}>
