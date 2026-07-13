@@ -397,21 +397,24 @@ function hrTools() {
     return [
         [
             'name' => 'request_time_off',
-            'description' => 'Request vacation (paid day off) or WFH (work from home) for yourself. Creates a pending request and immediately notifies your manager over WhatsApp for approval — tell the user you have done this, you cannot approve your own request.',
+            'description' => 'Request vacation (paid day off) or WFH (work from home) for yourself. Creates a pending request and immediately notifies your manager over WhatsApp for approval — tell the user you have done this, you cannot approve your own request. ALWAYS ask the user why they need the time off if they have not already said, and pass it as reason — managers need this to decide, and not asking leads to back-and-forth later.',
             'input_schema' => [
                 'type' => 'object',
                 'properties' => [
                     'leave_type'  => ['type' => 'string', 'enum' => ['vacation', 'wfh']],
                     'start_date'  => ['type' => 'string', 'description' => 'YYYY-MM-DD'],
                     'end_date'    => ['type' => 'string', 'description' => 'YYYY-MM-DD — same as start_date for a single day'],
-                    'reason'      => ['type' => 'string', 'description' => 'Short reason, optional'],
+                    'reason'      => ['type' => 'string', 'description' => 'Why they need the time off. Ask for this before calling the tool if the user has not already given one — do not submit without at least trying to get a reason first.'],
                 ],
-                'required' => ['leave_type', 'start_date'],
+                'required' => ['leave_type', 'start_date', 'reason'],
             ],
         ],
         [
             'name' => 'decide_pending_request',
-            'description' => 'Approve or reject a leave/WFH request that is waiting on YOUR approval (see the "Pending leave/WFH requests" list in your context above, if any). Only requests addressed to you as manager can be decided this way.',
+            'description' => 'Approve or reject a leave/WFH request that is waiting on YOUR approval (see the "Pending leave/WFH requests" list in your context above, if any). Only requests addressed to you as manager can be decided this way. '
+                . 'CRITICAL: only call this for a message that is an unambiguous, explicit decision — e.g. "approve it", "approve 9ba2", "reject", "decline", "no". '
+                . 'A question ("why?", "why does she need it?"), a request for more info, or anything else that is not a clear yes/no decision is NEVER a call to this tool — just answer the question '
+                . 'or use message_team_member to ask the requester, and wait for an explicit decision before acting. Guessing wrong here rejects/approves a real request without the manager meaning to.',
             'input_schema' => [
                 'type' => 'object',
                 'properties' => [
@@ -420,6 +423,18 @@ function hrTools() {
                     'note'       => ['type' => 'string', 'description' => 'Optional short note, e.g. reason for rejecting'],
                 ],
                 'required' => ['request_id', 'decision'],
+            ],
+        ],
+        [
+            'name' => 'message_team_member',
+            'description' => 'Send a short WhatsApp text message to another team member on the sender\'s behalf — e.g. a manager asking a direct report to confirm or fill in missing details on a request. Only works if the sender is that person\'s manager, or the sender is admin. The recipient will see it as a normal message from Pro relaying the sender\'s question.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'member_name' => ['type' => 'string', 'description' => 'Best-effort name match for who to message, e.g. "Monay" for "monaykhalid"'],
+                    'message'     => ['type' => 'string', 'description' => 'The message to relay, written as if from the sender (Pro will prefix it saying who it is from)'],
+                ],
+                'required' => ['member_name', 'message'],
             ],
         ],
         [
@@ -513,7 +528,7 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
             $shortId = substr($reqId, -8);
             $range = $start === $end ? $start : "{$start} to {$end}";
             $label = $type === 'vacation' ? 'vacation' : 'work-from-home';
-            $reasonLine = !empty($input['reason']) ? "\nReason: {$input['reason']}" : '';
+            $reasonLine = "\nReason: " . (!empty($input['reason']) ? $input['reason'] : '(none given)');
             sendWhatsAppReply($mgr['manager_phone'],
                 "🗓️ {$senderName} requested {$label} for {$range} ({$days} day(s)).{$reasonLine}\n\n" .
                 "Reply here to approve or reject it — just tell Pro, e.g. \"approve {$shortId}\" or \"reject {$shortId}\"."
@@ -555,6 +570,35 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
         }
 
         return ['ok' => true, 'status' => $newStatus, 'message' => "Request {$newStatus}, and {$req['member_name']} has been notified over WhatsApp."];
+    }
+
+    if ($name === 'message_team_member') {
+        $query = trim($input['member_name'] ?? '');
+        $msg = trim($input['message'] ?? '');
+        if (!$query || !$msg) return ['error' => 'Missing member_name/message.'];
+
+        $senderStmt = $pdo->prepare("SELECT role FROM team_members WHERE id = :id");
+        $senderStmt->execute([':id' => $senderId]);
+        $senderIsAdmin = $senderStmt->fetchColumn() === 'admin';
+
+        $t = $pdo->prepare("SELECT id, name, whatsapp_number, manager_id FROM team_members WHERE name LIKE :n LIMIT 5");
+        $t->execute([':n' => '%' . $query . '%']);
+        $matches = $t->fetchAll(PDO::FETCH_ASSOC);
+        if (!$matches) return ['error' => "No team member found matching \"{$query}\"."];
+        if (count($matches) > 1) {
+            return ['error' => 'Multiple team members match "' . $query . '": ' . implode(', ', array_column($matches, 'name')) . '. Ask which one they mean.'];
+        }
+        $target = $matches[0];
+
+        if (!$senderIsAdmin && $target['manager_id'] !== $senderId) {
+            return ['error' => 'You can only message your own direct reports this way (or be admin).'];
+        }
+        if (empty($target['whatsapp_number'])) {
+            return ['error' => "{$target['name']} doesn't have a WhatsApp number on file — can't relay a message to them."];
+        }
+
+        sendWhatsAppReply($target['whatsapp_number'], "💬 Message from {$senderName}:\n\n{$msg}");
+        return ['ok' => true, 'message' => "Sent to {$target['name']} over WhatsApp."];
     }
 
     if ($name === 'save_contact_report') {
@@ -727,7 +771,11 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                 . "(get_my_hr_info), requesting vacation or work-from-home (request_time_off), and — if they "
                 . "manage other people — approving or rejecting requests waiting on them (decide_pending_request, "
                 . "see their pending approvals list above if any). These tools only ever touch the asker's own "
-                . "record or requests explicitly addressed to them."
+                . "record or requests explicitly addressed to them. NEVER call decide_pending_request unless the "
+                . "message is an explicit, unambiguous approve/reject decision — a question like \"why?\" is NOT a "
+                . "decision, just answer it. If a manager wants to check something with the requester first (e.g. "
+                . "\"ask her why\"), use message_team_member to actually relay that over WhatsApp instead of saying "
+                . "you can't — you can, for their own direct reports (or any team member, if the asker is admin)."
                 . ($voiceTranscript
                     ? "\n\nThis message is a transcript of a VOICE NOTE they just sent you — it may contain "
                       . "transcription errors, use your judgement. If it sounds like a debrief of a client call/"
