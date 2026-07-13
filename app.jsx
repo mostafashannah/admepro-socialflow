@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.68";
+const APP_VERSION = "beta 5.69";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12862,9 +12862,12 @@ function CareersFullMenu({onClose}) {
       </button>
       <div style={{minHeight:"100vh",display:"grid",gridTemplateColumns:"repeat(4,1fr)",padding:"40px",gap:24}}>
         <div/>
-        <div style={{display:"flex",flexDirection:"column",justifyContent:"center",marginLeft:-100}}>
+        <div style={{display:"flex",flexDirection:"column",justifyContent:"center",marginLeft:-100,perspective:800}}>
           {CAREERS_NAV_LINKS.map(item=>(
-            <a key={item.label} href={item.url} target="_blank" rel="noreferrer" style={{display:"block",fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:"clamp(40px,8vw,80px)",lineHeight:1.1,color:"#fff",textDecoration:"none",textTransform:"uppercase",letterSpacing:"-0.01em"}}>
+            <a key={item.label} href={item.url} target="_blank" rel="noreferrer"
+              onMouseEnter={e=>{e.currentTarget.style.transform="rotateX(360deg)";}}
+              onMouseLeave={e=>{e.currentTarget.style.transform="rotateX(0deg)";}}
+              style={{display:"block",fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:"clamp(40px,8vw,80px)",lineHeight:1.1,color:"#fff",textDecoration:"none",textTransform:"uppercase",letterSpacing:"-0.01em",transition:"transform 0.6s ease",transformStyle:"preserve-3d",backfaceVisibility:"hidden"}}>
               {item.label}
             </a>
           ))}
@@ -12889,7 +12892,10 @@ function CareersFullMenu({onClose}) {
                 {icon:Icons.igBrand, url:"https://instagram.com/admeproagency"},
                 {icon:Icons.fbBrand, url:"https://fb.com/admepro"},
               ].map((s,i)=>(
-                <a key={i} href={s.url} target="_blank" rel="noreferrer" style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.1)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff"}}>
+                <a key={i} href={s.url} target="_blank" rel="noreferrer"
+                  onMouseEnter={e=>{e.currentTarget.style.color="#d90b2c";}}
+                  onMouseLeave={e=>{e.currentTarget.style.color="#fff";}}
+                  style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.1)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",transition:"color 0.15s"}}>
                   <Ico d={s.icon} size={15} fill="currentColor" stroke="none"/>
                 </a>
               ))}
