@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.98";
+const APP_VERSION = "beta 4.99";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -24752,6 +24752,23 @@ function App() {
     const onInstalled = () => setupPushSubscription(currentUser.email);
     window.addEventListener("appinstalled", onInstalled);
     return () => window.removeEventListener("appinstalled", onInstalled);
+  },[currentUser?.email]);
+
+  // Session capture (IP/OS/browser for System Log + "Live Now") only ever
+  // ran on the credentials login screen — but the app persists sf_user
+  // across refreshes/reopens, so a real login rarely happens again after
+  // the first time, leaving system_sessions permanently empty. Also
+  // capture once per browser tab session (sessionStorage, not
+  // localStorage) whenever an already-logged-in user resumes the app.
+  React.useEffect(()=>{
+    if(!currentUser?.email || currentUser?.isClient) return;
+    try{ if(sessionStorage.getItem("sf_session_logged")) return; }catch(e){}
+    try{ sessionStorage.setItem("sf_session_logged","1"); }catch(e){}
+    captureSessionInfo(currentUser).then(info=>{
+      ce("SystemSession",[info]).then(res=>{
+        if(res?.entities?.length) setData(d=>({...d,systemSessions:[res.entities[0],...(d.systemSessions||[])]}));
+      }).catch(()=>{});
+    }).catch(()=>{});
   },[currentUser?.email]);
 
   // The app manages all of its own navigation state via pushState (both here
