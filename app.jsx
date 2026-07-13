@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.58";
+const APP_VERSION = "beta 5.59";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13039,8 +13039,9 @@ function CareersPage() {
     <div style={{minHeight:"100vh",background:"var(--bg)",padding:"48px 20px"}}>
       <div style={{maxWidth:960,margin:"0 auto"}}>
         <div style={{textAlign:"center",marginBottom:36,marginTop:100}}>
-          <h1 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:30,color:"var(--text)"}}>Careers at Admepro</h1>
-          <p style={{color:"var(--text2)",fontSize:14,marginTop:8}}>We're a social media agency looking for great people. Explore our open positions below.</p>
+          <p style={{fontSize:13,fontWeight:700,color:"var(--accent)",letterSpacing:"0.12em",marginBottom:12}}>#WEAREHIRING</p>
+          <h1 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:"clamp(32px,5.5vw,56px)",lineHeight:1.15,color:"var(--text)"}}>Ready To Join Our Team?<br/>Apply Now.</h1>
+          <p style={{color:"var(--text2)",fontSize:16,marginTop:16,maxWidth:640,marginLeft:"auto",marginRight:"auto"}}>Discover your potential with us, join our team to craft exceptional digital experiences.</p>
         </div>
         {openings.length===0 ? (
           <div style={{textAlign:"center",padding:60,color:"var(--text3)"}}>No open positions right now — check back soon!</div>
