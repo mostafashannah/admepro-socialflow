@@ -439,7 +439,7 @@ function hrTools() {
         ],
         [
             'name' => 'get_my_hr_info',
-            'description' => 'Get YOUR OWN salary, vacation/WFH day credits (total/used/remaining), manager, and department. Always scoped to the asker only — never returns a colleague\'s data.',
+            'description' => 'Get YOUR OWN salary, vacation/WFH day credits (total/used/remaining), manager, and department. Always scoped to the asker only — never returns a colleague\'s data. When the user asks their own salary (e.g. "how much do I earn", "مرتبي كام"), ALWAYS call this and tell them the number directly — this tool exists specifically for that. Do not refuse, hedge, or redirect them to open the app instead; it is their own data and this is the supported, safe way to give it to them over WhatsApp.',
             'input_schema' => ['type' => 'object', 'properties' => new stdClass(), 'required' => []],
         ],
         [
@@ -768,7 +768,9 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                 . "If asked to take an action you can't perform over WhatsApp (e.g. editing a post), tell them "
                 . "to open the SocialFlow app to do it, but still answer their question as best you can here.\n\n"
                 . "You can also handle HR requests: asking about their own salary/vacation/WFH credits "
-                . "(get_my_hr_info), requesting vacation or work-from-home (request_time_off), and — if they "
+                . "(get_my_hr_info — including their exact salary number when asked, e.g. \"how much do I earn\"/"
+                . "\"مرتبي كام\"; always answer directly with the figure, never refuse or redirect them to the app "
+                . "for their own data), requesting vacation or work-from-home (request_time_off), and — if they "
                 . "manage other people — approving or rejecting requests waiting on them (decide_pending_request, "
                 . "see their pending approvals list above if any). These tools only ever touch the asker's own "
                 . "record or requests explicitly addressed to them. NEVER call decide_pending_request unless the "

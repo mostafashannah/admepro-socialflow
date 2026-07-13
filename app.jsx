@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.70";
+const APP_VERSION = "beta 4.71";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10131,7 +10131,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   onInviteUser, onCancelInvitation, onApproveRequest, onRejectRequest,
   onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation,
   rolePerms, onUpdateTeamMember, onToggleRolePermission, leaveRequests, onDecideLeaveRequest, attendanceRecords}) {
-  const [tab, setTab] = useState("team");
+  const [tab, setTab] = useState(currentUser?.role==="account_manager"&&!hasPerm(currentUser,rolePerms,"hr.view_team")?"requests":"team");
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showClientUserModal, setShowClientUserModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(null);
@@ -10156,13 +10156,25 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
     );
   }
 
-  const pendingRequests = (accessRequests||[]).filter(r=>r.status==="pending");
   const canManageRoles = hasPerm(currentUser, rolePerms, "hr.manage_roles");
   const canApproveLeave = hasPerm(currentUser, rolePerms, "hr.approve_leave");
   const canUploadAttendance = hasPerm(currentUser, rolePerms, "hr.upload_attendance");
   const pendingLeaveCount = (leaveRequests||[]).filter(r=>r.status==="pending").length;
 
-  const tabs = [
+  // Account managers (without broader HR view) only get access requests
+  // scoped to clients they're assigned to as account_manager_id — everything
+  // else (Team Members, Invitations, Client Users, Leave, Roles, Attendance)
+  // stays admin/HR-only.
+  const isScopedAccountManager = currentUser?.role==="account_manager" && !hasPerm(currentUser,rolePerms,"hr.view_team");
+  const myClientIds = isScopedAccountManager ? new Set((clients||[]).filter(c=>c.account_manager_id===currentUser?.id).map(c=>c.id)) : null;
+  const visibleAccessRequests = isScopedAccountManager
+    ? (accessRequests||[]).filter(r=>r.user_type==="client"&&myClientIds.has(r.client_id))
+    : (accessRequests||[]);
+  const pendingRequests = visibleAccessRequests.filter(r=>r.status==="pending");
+
+  const tabs = isScopedAccountManager ? [
+    {id:"requests", label:"Client Requests", count: pendingRequests.length, badge:true},
+  ] : [
     {id:"team", label:"Team Members", count: team?.length||0},
     {id:"invites", label:"Invitations", count: (invitations||[]).filter(i=>i.status==="pending").length},
     {id:"requests", label:"Access Requests", count: pendingRequests.length, badge:true},
@@ -10334,10 +10346,10 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
               ))}
             </div>
           )}
-          {(accessRequests||[]).filter(r=>r.status!=="pending").length>0&&(
+          {visibleAccessRequests.filter(r=>r.status!=="pending").length>0&&(
             <div style={{marginTop:24}}>
               <div style={{fontWeight:600,fontSize:13,color:"var(--text2)",marginBottom:12}}>REVIEWED</div>
-              {(accessRequests||[]).filter(r=>r.status!=="pending").map(req=>(
+              {visibleAccessRequests.filter(r=>r.status!=="pending").map(req=>(
                 <div key={req.id} style={{background:"var(--surface)",borderRadius:10,padding:"12px 16px",marginBottom:8,display:"flex",alignItems:"center",gap:12,border:"1px solid var(--border)"}}>
                   <div style={{flex:1}}>
                     <span style={{fontWeight:600,fontSize:13,color:"var(--text)"}}>{req.name}</span>
@@ -20058,6 +20070,10 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     ...((isAdmin||currentUser?.role==="account_manager") ? [{ group: "CRM", icon: Icons.leads, items: [
       {key:"leads", label:"Leads", ico:Icons.leads},
       {key:"lead_gen", label:"Lead Generation", ico:Icons.zap2},
+      // Account managers get a scoped entry into User Management just for
+      // access requests from their own clients — not the full Team nav
+      // (Team Members/Invitations/Roles), which stays behind canViewTeamNav.
+      ...(!canViewTeamNav&&currentUser?.role==="account_manager"?[{key:"users", label:"Client Requests", ico:Icons.users}]:[]),
     ]}] : []),
     ...((canFinance||(isAdmin||currentUser?.role==="account_manager")) ? [{ group: "FINANCE", icon: Icons.wallet, items: [
       ...((isAdmin||currentUser?.role==="account_manager"||canFinance)?[{key:"quotes", label:"Quotes", ico:Icons.receipt}]:[]),
@@ -26977,7 +26993,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             onSaveClientNote={saveFinanceClientNote}
           />
         )}
-        {page==="users"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.view_team"))&&(
+        {page==="users"&&(currentUser?.role==="admin"||currentUser?.role==="account_manager"||hasPerm(currentUser,rolePermsMap,"hr.view_team"))&&(
           <UsersPage
             currentUser={currentUser}
             team={data.team}
