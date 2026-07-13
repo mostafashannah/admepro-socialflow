@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.44";
+const APP_VERSION = "beta 5.45";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12817,10 +12817,10 @@ function CareersChrome({isDark, setIsDark, children}) {
             <Ico d={Icons.sun} size={14}/>
           </button>
         </div>
-        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,writingMode:"vertical-rl",transform:"rotate(180deg)"}}>
+        <div style={{writingMode:"vertical-rl",transform:"rotate(180deg)",lineHeight:1.9}}>
           {SOCIAL_LINKS.map((s,i)=>(
             <React.Fragment key={s.url}>
-              {i>0&&<span style={{fontSize:12,color:"var(--text3)"}}>/</span>}
+              {i>0&&<span style={{fontSize:12,color:"var(--text3)",margin:"0 3px"}}>/</span>}
               <a href={s.url} target="_blank" rel="noreferrer" style={{fontSize:12,fontWeight:700,color:"var(--text2)",textDecoration:"none",letterSpacing:"0.02em"}}>{s.label}</a>
             </React.Fragment>
           ))}
@@ -12904,8 +12904,8 @@ function CareersPage() {
   if(!selected) return (
     <CareersChrome isDark={isDark} setIsDark={setIsDark}>
     <div style={{minHeight:"100vh",background:"var(--bg)",padding:"48px 20px"}}>
-      <div style={{maxWidth:720,margin:"0 auto"}}>
-        <div style={{textAlign:"center",marginBottom:36}}>
+      <div style={{maxWidth:960,margin:"0 auto"}}>
+        <div style={{textAlign:"center",marginBottom:36,marginTop:50}}>
           <h1 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:30,color:"var(--text)"}}>Careers at Admepro</h1>
           <p style={{color:"var(--text2)",fontSize:14,marginTop:8}}>We're a social media agency looking for great people. Explore our open positions below.</p>
         </div>
@@ -12934,7 +12934,7 @@ function CareersPage() {
   return (
     <CareersChrome isDark={isDark} setIsDark={setIsDark}>
     <div style={{minHeight:"100vh",background:"var(--bg)",padding:"48px 20px"}}>
-      <div style={{maxWidth:560,margin:"0 auto"}}>
+      <div style={{maxWidth:760,margin:"0 auto",marginTop:50}}>
         <button onClick={()=>setSelected(null)} style={{background:"none",border:"none",color:"var(--text2)",fontSize:13,fontWeight:600,cursor:"pointer",marginBottom:16}}>← Back to all openings</button>
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:20,padding:32}}>
           <h2 style={{fontWeight:800,fontSize:22,color:"var(--text)"}}>{selected.title}</h2>
