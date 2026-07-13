@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.76";
+const APP_VERSION = "beta 4.77";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10131,7 +10131,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   onInviteUser, onCancelInvitation, onApproveRequest, onRejectRequest,
   onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation,
   rolePerms, onUpdateTeamMember, onToggleRolePermission, leaveRequests, onDecideLeaveRequest, attendanceRecords}) {
-  const [tab, setTab] = useState(currentUser?.role==="account_manager"&&!hasPerm(currentUser,rolePerms,"hr.view_team")?"requests":"team");
+  const [tab, setTab] = usePersistentState("sf_tab_users","team");
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showClientUserModal, setShowClientUserModal] = useState(false);
   const [showRejectModal, setShowRejectModal] = useState(null);
@@ -10167,6 +10167,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   // else (Team Members, Invitations, Client Users, Leave, Roles, Attendance)
   // stays admin/HR-only.
   const isScopedAccountManager = currentUser?.role==="account_manager" && !hasPerm(currentUser,rolePerms,"hr.view_team");
+  React.useEffect(()=>{ if(isScopedAccountManager && tab!=="requests") setTab("requests"); },[isScopedAccountManager]);
   const myClientIds = isScopedAccountManager ? new Set((clients||[]).filter(c=>c.account_manager_id===currentUser?.id).map(c=>c.id)) : null;
   const visibleAccessRequests = isScopedAccountManager
     ? (accessRequests||[]).filter(r=>r.user_type==="client"&&myClientIds.has(r.client_id))
