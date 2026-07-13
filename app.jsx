@@ -627,7 +627,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.07";
+const APP_VERSION = "beta 5.08";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -8454,13 +8454,17 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
 function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset,currentUser}) {
   const [catF,setCatF] = useState("all");
   const [typeF,setTypeF] = useState("all");
-  const [clientF,setClientF] = useState("all");
   const [uploading,setUploading] = useState(false);
   const [showUpload,setShowUpload] = useState(false);
   const [uploadForm,setUploadForm] = useState({name:"",project_id:"",tags:""});
   const [preview,setPreview] = useState(null);
   const fileRef = useRef(null);
   const [pendingFile,setPendingFile] = useState(null);
+  // Global Assets Library groups by client first (unlike a client's own
+  // Assets tab, which is already scoped to one client) — null means
+  // showing the client-folder picker; a name (or "__unassigned__") drills
+  // into that client's existing month/project folder browsing.
+  const [selectedClientFolder,setSelectedClientFolder] = useState(null);
 
   const clientNames = [...new Set(projects.map(p=>p.client_name).filter(Boolean))].sort();
   const projectClientMap = Object.fromEntries(projects.map(p=>[p.id,p.client_name]));
@@ -8468,9 +8472,19 @@ function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset,curr
   const filtered = assets.filter(a=>{
     if(catF!=="all"&&a.category!==catF) return false;
     if(typeF!=="all"&&a.file_type!==typeF) return false;
-    if(clientF!=="all"&&projectClientMap[a.project_id]!==clientF) return false;
     return true;
   });
+
+  const clientOf = (a) => projectClientMap[a.project_id] || null;
+  const clientScopedAssets = selectedClientFolder==="__unassigned__"
+    ? filtered.filter(a=>!clientOf(a))
+    : selectedClientFolder
+    ? filtered.filter(a=>clientOf(a)===selectedClientFolder)
+    : filtered;
+  const clientScopedProjects = selectedClientFolder && selectedClientFolder!=="__unassigned__"
+    ? projects.filter(p=>p.client_name===selectedClientFolder)
+    : [];
+  const unassignedCount = filtered.filter(a=>!clientOf(a)).length;
 
   const handleFileSelect = (e) => {
     const file = e.target.files?.[0];
@@ -8546,10 +8560,6 @@ function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset,curr
       )}
 
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-        <select value={clientF} onChange={e=>setClientF(e.target.value)} style={{...inputSt,width:"auto",height:38,minHeight:38,padding:"0 14px",fontSize:12,borderRadius:99}}>
-          <option value="all">All Clients</option>
-          {clientNames.map(c=><option key={c} value={c}>{c}</option>)}
-        </select>
         <select value={typeF} onChange={e=>setTypeF(e.target.value)} style={{...inputSt,width:"auto",height:38,minHeight:38,padding:"0 14px",fontSize:12,borderRadius:99}}>
           <option value="all">All Types</option>
           <option value="image">Images</option>
@@ -8558,7 +8568,47 @@ function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset,curr
         </select>
       </div>
 
-      <FolderBrowser assets={filtered} projects={projects} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset} onDeleteAsset={onDeleteAsset} storagePrefix="assets" storageKey="sf_extra_folders" currentUser={currentUser}/>
+      {/* Breadcrumb back to the client picker once inside one */}
+      {selectedClientFolder&&(
+        <div style={{display:"flex",alignItems:"center",gap:6,fontSize:13}}>
+          <span onClick={()=>setSelectedClientFolder(null)} style={{cursor:"pointer",color:"var(--accent)",fontWeight:600}}>All Clients</span>
+          <span style={{color:"var(--text3)"}}>/</span>
+          <span style={{fontWeight:700}}>{selectedClientFolder==="__unassigned__"?"Unassigned":selectedClientFolder}</span>
+        </div>
+      )}
+
+      {!selectedClientFolder ? (
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:10}}>
+          {clientNames.map(name=>{
+            const count = filtered.filter(a=>clientOf(a)===name).length;
+            return (
+              <div key={name} onClick={()=>setSelectedClientFolder(name)}
+                style={{display:"flex",alignItems:"center",gap:8,padding:"12px 14px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface)",cursor:"pointer"}}>
+                <span style={{fontSize:20}}>📁</span>
+                <span style={{flex:1,fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
+                <span style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>{count}</span>
+              </div>
+            );
+          })}
+          {unassignedCount>0&&(
+            <div onClick={()=>setSelectedClientFolder("__unassigned__")}
+              style={{display:"flex",alignItems:"center",gap:8,padding:"12px 14px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface)",cursor:"pointer"}}>
+              <span style={{fontSize:20}}>📁</span>
+              <span style={{flex:1,fontSize:13,fontWeight:600,color:"var(--text2)"}}>Unassigned</span>
+              <span style={{fontSize:11,color:"var(--text3)",fontWeight:700}}>{unassignedCount}</span>
+            </div>
+          )}
+          {clientNames.length===0&&unassignedCount===0&&(
+            <div style={{gridColumn:"1/-1",padding:"50px",textAlign:"center",color:"var(--text3)"}}>
+              <Ico d={Icons.assets} size={36} stroke="var(--text3)"/>
+              <p style={{marginTop:10}}>No files yet</p>
+            </div>
+          )}
+        </div>
+      ) : (
+        <FolderBrowser assets={clientScopedAssets} projects={clientScopedProjects} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset} onDeleteAsset={onDeleteAsset}
+          storagePrefix="assets" storageKey={`sf_extra_folders_lib_${selectedClientFolder}`} currentUser={currentUser}/>
+      )}
     </div>
   );
 }
