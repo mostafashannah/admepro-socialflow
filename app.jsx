@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.00";
+const APP_VERSION = "beta 5.01";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -24763,10 +24763,16 @@ function App() {
   React.useEffect(()=>{
     if(!currentUser?.email || currentUser?.isClient) return;
     try{ if(sessionStorage.getItem("sf_session_logged")) return; }catch(e){}
-    try{ sessionStorage.setItem("sf_session_logged","1"); }catch(e){}
     captureSessionInfo(currentUser).then(info=>{
       ce("SystemSession",[info]).then(res=>{
-        if(res?.entities?.length) setData(d=>({...d,systemSessions:[res.entities[0],...(d.systemSessions||[])]}));
+        if(res?.entities?.length) {
+          setData(d=>({...d,systemSessions:[res.entities[0],...(d.systemSessions||[])]}));
+          // Only mark as done once the insert actually succeeded — an earlier
+          // failed attempt (e.g. before a schema fix) must not permanently
+          // block retrying in the same tab, since sessionStorage otherwise
+          // survives reloads for the whole tab's lifetime.
+          try{ sessionStorage.setItem("sf_session_logged","1"); }catch(e){}
+        }
       }).catch(()=>{});
     }).catch(()=>{});
   },[currentUser?.email]);
