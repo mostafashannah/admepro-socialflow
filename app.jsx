@@ -627,7 +627,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.08";
+const APP_VERSION = "beta 5.09";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6497,7 +6497,7 @@ function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUs
   );
 }
 
-function EditClientModal({open,client,onClose,onSave}) {
+function EditClientModal({open,client,onClose,onSave,canDelete,onRequestDelete}) {
   const [f,setF] = useState({});
   const [showPw,setShowPw] = useState(false);
   useEffect(()=>{ if(client) setF({name:client.name||"",username:client.username||"",email:client.email||"",phone:client.phone||"",industry:client.industry||"",status:client.status||"active",platforms:client.platforms||[],portal_password:client.portal_password||""}); },[client]);
@@ -6506,12 +6506,12 @@ function EditClientModal({open,client,onClose,onSave}) {
   const togglePlat = p => setF(x=>({...x,platforms:x.platforms.includes(p)?x.platforms.filter(v=>v!==p):[...x.platforms,p]}));
   return (
     <div className="modal-backdrop" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-      <div className="modal-box" style={{background:"var(--surface)",borderRadius:"var(--r)",width:"100%",maxWidth:480,boxShadow:"0 24px 80px rgba(0,0,0,0.4)"}}>
-        <div className="modal-header" style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"18px 24px",borderBottom:"1px solid var(--border)"}}>
+      <div className="modal-box" style={{background:"var(--surface)",borderRadius:"var(--r)",width:"100%",maxWidth:480,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 24px 80px rgba(0,0,0,0.4)"}}>
+        <div className="modal-header" style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"18px 24px",borderBottom:"1px solid var(--border)",flexShrink:0}}>
           <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:18,fontWeight:700}}>Edit Client</h3>
           <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text3)",fontSize:20,lineHeight:1}}>×</button>
         </div>
-        <div className="modal-body" style={{padding:"20px 24px",display:"flex",flexDirection:"column",gap:14}}>
+        <div className="modal-body" style={{padding:"20px 24px",display:"flex",flexDirection:"column",gap:14,overflowY:"auto",flex:1}}>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
             <Field label="Company Name"><input value={f.name||""} onChange={e=>setF(x=>({...x,name:e.target.value}))} style={inputSt} placeholder="Company name"/></Field>
             <Field label="Contact Username" hint="Displayed in client portal instead of company name"><input value={f.username||""} onChange={e=>setF(x=>({...x,username:e.target.value}))} style={inputSt} placeholder="e.g. Ahmed"/></Field>
@@ -6546,7 +6546,14 @@ function EditClientModal({open,client,onClose,onSave}) {
             </div>
           </Field>
         </div>
-        <div className="modal-footer" style={{display:"flex",gap:8,justifyContent:"flex-end",padding:"14px 24px",borderTop:"1px solid var(--border)"}}>
+        <div className="modal-footer" style={{display:"flex",gap:8,alignItems:"center",padding:"14px 24px",borderTop:"1px solid var(--border)",flexShrink:0}}>
+          {canDelete&&(
+            <button onClick={()=>onRequestDelete&&onRequestDelete()} aria-label="Delete Client" title="Delete Client"
+              style={{width:36,height:36,borderRadius:"50%",border:"1px solid #ef444455",background:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+              <Ico d={Icons.trash} size={15} stroke="#ef4444"/>
+            </button>
+          )}
+          <div style={{flex:1}}/>
           <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
           <Btn onClick={()=>{if(f.name?.trim()) onSave({...f, username:f.username?.trim()||"", portal_password:f.portal_password?.trim()||client?.portal_password||""});}}>Save Changes</Btn>
         </div>
@@ -7125,15 +7132,23 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
           </div>
         </div>
         <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",gap:12}}>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
             {isPriv&&<Btn variant="secondary" size="sm" onClick={()=>setShowEdit(true)}><Ico d={Icons.edit} size={13}/>Edit</Btn>}
-            {isAdmin&&<Btn variant="secondary" size="sm" onClick={()=>onToggleHide&&onToggleHide(client.id,client.status)} style={{color:client.status==="hidden"?"#10b981":"var(--text2)"}}>
-              <Ico d={client.status==="hidden"?Icons.eye:"M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24M1 1l22 22"} size={13}/>
-              {client.status==="hidden"?"Restore":"Hide"}
-            </Btn>}
-            {isAdmin&&<Btn variant="secondary" size="sm" onClick={()=>setConfirmDelete(true)} style={{color:"var(--accent)"}}><Ico d={Icons.trash} size={13}/>Delete</Btn>}
-            <Btn variant="secondary" size="sm" onClick={onAddProject}><Ico d={Icons.plus} size={13}/>Project</Btn>
-            <Btn size="sm" onClick={onAddPost}><Ico d={Icons.plus} size={13}/>Post</Btn>
+            {isAdmin&&(
+              <button onClick={()=>onToggleHide&&onToggleHide(client.id,client.status)} aria-label={client.status==="hidden"?"Restore":"Hide"}
+                title={client.status==="hidden"?"Restore":"Hide"}
+                style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
+                <Ico d={client.status==="hidden"?Icons.eye:"M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24M1 1l22 22"} size={15} stroke={client.status==="hidden"?"#10b981":"var(--text2)"}/>
+              </button>
+            )}
+            <button onClick={onAddProject} aria-label="Add Project" title="Add Project"
+              style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
+              <Ico d={Icons.plus} size={15} stroke="var(--text2)"/>
+            </button>
+            <button onClick={onAddPost} aria-label="Add Post" title="Add Post"
+              style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
+              <Ico d={Icons.plus} size={15} stroke="#fff"/>
+            </button>
           </div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
             {(client.platforms||[]).map(p=><PChip key={p} platform={p}/>)}
@@ -7321,8 +7336,9 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
       {tab==="leads"&&<ClientLeadsTab clientLeads={clientLeads} clientName={client.name} clientId={client.id} notifySettings={leadNotifySettings.filter(s=>s.client_id===client.id)} onSaveNotifySetting={onSaveLeadNotifySetting} canEditSettings onDeleteLead={currentUser?.role==="admin"?onDeleteLead:null}/>}
 
       {/* Edit Client Modal */}
-      <EditClientModal open={showEdit} client={client} onClose={()=>setShowEdit(false)}
-        onSave={updates=>{ onUpdateClient&&onUpdateClient(client.id,updates); setShowEdit(false); }}/>
+      <EditClientModal open={showEdit} client={client} onClose={()=>setShowEdit(false)} canDelete={isAdmin}
+        onSave={updates=>{ onUpdateClient&&onUpdateClient(client.id,updates); setShowEdit(false); }}
+        onRequestDelete={()=>{ setShowEdit(false); setConfirmDelete(true); }}/>
 
       {/* Delete Confirm */}
       {confirmDelete&&(
