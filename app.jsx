@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.67";
+const APP_VERSION = "beta 5.68";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12862,7 +12862,7 @@ function CareersFullMenu({onClose}) {
       </button>
       <div style={{minHeight:"100vh",display:"grid",gridTemplateColumns:"repeat(4,1fr)",padding:"40px",gap:24}}>
         <div/>
-        <div style={{display:"flex",flexDirection:"column",justifyContent:"center"}}>
+        <div style={{display:"flex",flexDirection:"column",justifyContent:"center",marginLeft:-100}}>
           {CAREERS_NAV_LINKS.map(item=>(
             <a key={item.label} href={item.url} target="_blank" rel="noreferrer" style={{display:"block",fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:"clamp(40px,8vw,80px)",lineHeight:1.1,color:"#fff",textDecoration:"none",textTransform:"uppercase",letterSpacing:"-0.01em"}}>
               {item.label}
@@ -12870,7 +12870,7 @@ function CareersFullMenu({onClose}) {
           ))}
         </div>
         <div/>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"flex-start"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"flex-start",marginLeft:-50}}>
           <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:28,color:"rgba(255,255,255,0.6)",fontSize:15,textAlign:"left"}}>
             <div>
               <p style={{fontWeight:800,color:"#fff",marginBottom:8}}>Get In Touch</p>
