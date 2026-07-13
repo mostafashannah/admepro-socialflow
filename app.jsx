@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.55";
+const APP_VERSION = "beta 5.56";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1998,6 +1998,7 @@ const Icons = {
   moon: "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z",
   arrow: ["M5 12h14","M12 5l7 7-7 7"],
   chevL: "M15 18l-6-6 6-6",
+  menu: ["M3 6h18","M3 12h18","M3 18h18"],
   chevD: "M6 9l6 6 6-6",
   send: "M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z",
   sparkle: ["M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z","M19 3l.8 2.2L22 6l-2.2.8L19 9l-.8-2.2L16 6l2.2-.8z"],
@@ -12800,6 +12801,7 @@ const SOCIAL_LINKS = [
 // theme-toggle + social-links rail on the right edge (matches admepro.com's
 // own site styling).
 function CareersChrome({isDark, setIsDark, children}) {
+  const [menuOpen, setMenuOpen] = useState(false);
   return (
     <>
       <GStyle wallpaper={isDark?"dark":"light"} accentColor="#d90b2c" photoIsDark={isDark}/>
@@ -12807,6 +12809,22 @@ function CareersChrome({isDark, setIsDark, children}) {
         <a href="https://admepro.com" target="_blank" rel="noreferrer" style={{display:"block"}}>
           <img src={isDark?ADMEPRO_LOGO_WHITE:ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:36,width:"auto",objectFit:"contain"}}/>
         </a>
+      </div>
+      <div style={{position:"fixed",top:20,right:20,zIndex:20}}>
+        <button onClick={()=>setMenuOpen(o=>!o)} style={{width:44,height:44,borderRadius:"50%",background:"rgba(120,120,130,0.25)",backdropFilter:"blur(6px)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text)"}}>
+          <Ico d={menuOpen?Icons.x:Icons.menu} size={17}/>
+        </button>
+        {menuOpen&&(
+          <div style={{position:"absolute",top:52,right:0,minWidth:180,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:8,boxShadow:"var(--shadow-lg)"}}>
+            {[
+              {label:"Home", url:"https://admepro.com"},
+              {label:"Careers", url:"https://socialflow.admepro.com/careers"},
+              {label:"Contact Us", url:"mailto:hello@admepro.com"},
+            ].map(item=>(
+              <a key={item.label} href={item.url} target="_blank" rel="noreferrer" onClick={()=>setMenuOpen(false)} style={{display:"block",padding:"10px 14px",borderRadius:8,fontSize:14,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>{item.label}</a>
+            ))}
+          </div>
+        )}
       </div>
       <div style={{position:"fixed",right:20,top:"50%",transform:"translateY(-50%)",zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",gap:22}}>
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",padding:4,width:29}}>
