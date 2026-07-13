@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.49";
+const APP_VERSION = "beta 5.50";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12809,19 +12809,19 @@ function CareersChrome({isDark, setIsDark, children}) {
         </a>
       </div>
       <div style={{position:"fixed",right:20,top:"50%",transform:"translateY(-50%)",zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",gap:22}}>
-        <div style={{display:"flex",flexDirection:"column",alignItems:"center",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",padding:3,width:24}}>
-          <button title="Dark mode" onClick={()=>setIsDark(true)} style={{width:20,height:20,borderRadius:"50%",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",background:isDark?"#fff":"transparent",color:isDark?"#111":"var(--text2)",flexShrink:0}}>
-            <Ico d={Icons.moon} size={11}/>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",padding:4,width:29}}>
+          <button title="Dark mode" onClick={()=>setIsDark(true)} style={{width:24,height:24,borderRadius:"50%",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",background:isDark?"#fff":"transparent",color:isDark?"#111":"var(--text2)",flexShrink:0}}>
+            <Ico d={Icons.moon} size={13}/>
           </button>
-          <button title="Light mode" onClick={()=>setIsDark(false)} style={{width:20,height:20,borderRadius:"50%",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",background:!isDark?"#fff":"transparent",color:!isDark?"#111":"var(--text2)",flexShrink:0}}>
-            <Ico d={Icons.sun} size={11}/>
+          <button title="Light mode" onClick={()=>setIsDark(false)} style={{width:24,height:24,borderRadius:"50%",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",background:!isDark?"#fff":"transparent",color:!isDark?"#111":"var(--text2)",flexShrink:0}}>
+            <Ico d={Icons.sun} size={13}/>
           </button>
         </div>
         <div style={{writingMode:"vertical-rl",transform:"rotate(180deg)",lineHeight:1.9}}>
           {SOCIAL_LINKS.map((s,i)=>(
             <React.Fragment key={s.url}>
-              {i>0&&<span style={{fontSize:12,color:"var(--text3)",margin:"0 3px"}}>/</span>}
-              <a href={s.url} target="_blank" rel="noreferrer" style={{fontSize:12,fontWeight:700,color:"var(--text2)",textDecoration:"none",letterSpacing:"0.02em"}}>{s.label}</a>
+              {i>0&&<span style={{fontSize:14,color:"var(--text3)",margin:"0 3px"}}>/</span>}
+              <a href={s.url} target="_blank" rel="noreferrer" style={{fontSize:14,fontWeight:700,color:"var(--text2)",textDecoration:"none",letterSpacing:"0.02em"}}>{s.label}</a>
             </React.Fragment>
           ))}
         </div>
