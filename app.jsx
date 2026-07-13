@@ -627,7 +627,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.09";
+const APP_VERSION = "beta 5.10";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6497,56 +6497,55 @@ function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUs
   );
 }
 
-function EditClientModal({open,client,onClose,onSave,canDelete,onRequestDelete}) {
-  const [f,setF] = useState({});
+function EditClientPage({client,onBack,onSave,canDelete,onRequestDelete}) {
+  const [f,setF] = useState({name:client.name||"",username:client.username||"",email:client.email||"",phone:client.phone||"",industry:client.industry||"",status:client.status||"active",platforms:client.platforms||[],portal_password:client.portal_password||""});
   const [showPw,setShowPw] = useState(false);
-  useEffect(()=>{ if(client) setF({name:client.name||"",username:client.username||"",email:client.email||"",phone:client.phone||"",industry:client.industry||"",status:client.status||"active",platforms:client.platforms||[],portal_password:client.portal_password||""}); },[client]);
-  if(!open) return null;
   const PLATFORMS = ["instagram","facebook","tiktok","twitter","linkedin","youtube"];
   const togglePlat = p => setF(x=>({...x,platforms:x.platforms.includes(p)?x.platforms.filter(v=>v!==p):[...x.platforms,p]}));
   return (
-    <div className="modal-backdrop" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-      <div className="modal-box" style={{background:"var(--surface)",borderRadius:"var(--r)",width:"100%",maxWidth:480,maxHeight:"85vh",display:"flex",flexDirection:"column",boxShadow:"0 24px 80px rgba(0,0,0,0.4)"}}>
-        <div className="modal-header" style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"18px 24px",borderBottom:"1px solid var(--border)",flexShrink:0}}>
-          <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:18,fontWeight:700}}>Edit Client</h3>
-          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text3)",fontSize:20,lineHeight:1}}>×</button>
+    <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:640}} className="fade-in">
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <button onClick={onBack} style={{fontSize:13,color:"var(--text2)",display:"flex",alignItems:"center",gap:4}}>
+          <Ico d={Icons.chevL} size={14}/> {client.name}
+        </button>
+        <span style={{color:"var(--border2)"}}>/</span>
+        <span style={{fontSize:13,fontWeight:700}}>Edit Client</span>
+      </div>
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:24,display:"flex",flexDirection:"column",gap:14}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <Field label="Company Name"><input value={f.name||""} onChange={e=>setF(x=>({...x,name:e.target.value}))} style={inputSt} placeholder="Company name"/></Field>
+          <Field label="Contact Username" hint="Displayed in client portal instead of company name"><input value={f.username||""} onChange={e=>setF(x=>({...x,username:e.target.value}))} style={inputSt} placeholder="e.g. Ahmed"/></Field>
         </div>
-        <div className="modal-body" style={{padding:"20px 24px",display:"flex",flexDirection:"column",gap:14,overflowY:"auto",flex:1}}>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-            <Field label="Company Name"><input value={f.name||""} onChange={e=>setF(x=>({...x,name:e.target.value}))} style={inputSt} placeholder="Company name"/></Field>
-            <Field label="Contact Username" hint="Displayed in client portal instead of company name"><input value={f.username||""} onChange={e=>setF(x=>({...x,username:e.target.value}))} style={inputSt} placeholder="e.g. Ahmed"/></Field>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-            <Field label="Email"><input value={f.email||""} onChange={e=>setF(x=>({...x,email:e.target.value}))} style={inputSt} type="email"/></Field>
-            <Field label="Phone"><input value={f.phone||""} onChange={e=>setF(x=>({...x,phone:e.target.value}))} style={inputSt}/></Field>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-            <Field label="Industry"><input value={f.industry||""} onChange={e=>setF(x=>({...x,industry:e.target.value}))} style={inputSt}/></Field>
-            <Field label="Status">
-              <select value={f.status||"active"} onChange={e=>setF(x=>({...x,status:e.target.value}))} style={inputSt}>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-                <option value="hidden">Hidden</option>
-              </select>
-            </Field>
-          </div>
-          <Field label="Platforms">
-            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>
-              {PLATFORMS.map(p=>(
-                <button key={p} onClick={()=>togglePlat(p)} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",border:"none",background:f.platforms?.includes(p)?"var(--accent)":"var(--surface2)",color:f.platforms?.includes(p)?"#fff":"var(--text2)",outline:f.platforms?.includes(p)?"none":"1px solid var(--border2)"}}>
-                  {p.charAt(0).toUpperCase()+p.slice(1)}
-                </button>
-              ))}
-            </div>
-          </Field>
-          <Field label="Client Portal Password" hint="Used by this client to log into their portal — leave blank to keep unchanged">
-            <div style={{display:"flex",gap:6}}>
-              <input value={f.portal_password||""} onChange={e=>setF(x=>({...x,portal_password:e.target.value}))} type={showPw?"text":"password"} style={{...inputSt,flex:1}} placeholder="Leave blank to keep current password"/>
-              <button type="button" onClick={()=>setShowPw(s=>!s)} style={{padding:"0 12px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",cursor:"pointer",fontSize:12,fontWeight:600}}>{showPw?"Hide":"Show"}</button>
-            </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <Field label="Email"><input value={f.email||""} onChange={e=>setF(x=>({...x,email:e.target.value}))} style={inputSt} type="email"/></Field>
+          <Field label="Phone"><input value={f.phone||""} onChange={e=>setF(x=>({...x,phone:e.target.value}))} style={inputSt}/></Field>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <Field label="Industry"><input value={f.industry||""} onChange={e=>setF(x=>({...x,industry:e.target.value}))} style={inputSt}/></Field>
+          <Field label="Status">
+            <select value={f.status||"active"} onChange={e=>setF(x=>({...x,status:e.target.value}))} style={inputSt}>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="hidden">Hidden</option>
+            </select>
           </Field>
         </div>
-        <div className="modal-footer" style={{display:"flex",gap:8,alignItems:"center",padding:"14px 24px",borderTop:"1px solid var(--border)",flexShrink:0}}>
+        <Field label="Platforms">
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>
+            {PLATFORMS.map(p=>(
+              <button key={p} onClick={()=>togglePlat(p)} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",border:"none",background:f.platforms?.includes(p)?"var(--accent)":"var(--surface2)",color:f.platforms?.includes(p)?"#fff":"var(--text2)",outline:f.platforms?.includes(p)?"none":"1px solid var(--border2)"}}>
+                {p.charAt(0).toUpperCase()+p.slice(1)}
+              </button>
+            ))}
+          </div>
+        </Field>
+        <Field label="Client Portal Password" hint="Used by this client to log into their portal — leave blank to keep unchanged">
+          <div style={{display:"flex",gap:6}}>
+            <input value={f.portal_password||""} onChange={e=>setF(x=>({...x,portal_password:e.target.value}))} type={showPw?"text":"password"} style={{...inputSt,flex:1}} placeholder="Leave blank to keep current password"/>
+            <button type="button" onClick={()=>setShowPw(s=>!s)} style={{padding:"0 12px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",cursor:"pointer",fontSize:12,fontWeight:600}}>{showPw?"Hide":"Show"}</button>
+          </div>
+        </Field>
+        <div style={{display:"flex",gap:8,alignItems:"center",paddingTop:6,borderTop:"1px solid var(--border)"}}>
           {canDelete&&(
             <button onClick={()=>onRequestDelete&&onRequestDelete()} aria-label="Delete Client" title="Delete Client"
               style={{width:36,height:36,borderRadius:"50%",border:"1px solid #ef444455",background:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
@@ -6554,7 +6553,7 @@ function EditClientModal({open,client,onClose,onSave,canDelete,onRequestDelete})
             </button>
           )}
           <div style={{flex:1}}/>
-          <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+          <Btn variant="secondary" onClick={onBack}>Cancel</Btn>
           <Btn onClick={()=>{if(f.name?.trim()) onSave({...f, username:f.username?.trim()||"", portal_password:f.portal_password?.trim()||client?.portal_password||""});}}>Save Changes</Btn>
         </div>
       </div>
@@ -7084,6 +7083,8 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
   const [tab,setTab] = usePersistentState(`sf_tab_client_${client?.id}`,"overview");
   const [showEdit,setShowEdit] = useState(false);
   const [confirmDelete,setConfirmDelete] = useState(false);
+  const [showAddMenu,setShowAddMenu] = useState(false);
+  const [brainSubTab,setBrainSubTab] = useState("profile");
   const cProjects = projects.filter(p=>p.client_id===client.id||p.client_name===client.name);
   const cPosts = posts.filter(p=>cProjects.some(pr=>pr.id===p.project_id));
   const cAssets = assets.filter(a=>cProjects.some(pr=>pr.id===a.project_id) || (a.tags||[]).includes(`client_${client.id}`));
@@ -7108,11 +7109,18 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
     ["tasks","Tasks"],
     ["calendar","Calendar"],
     ["assets","Assets"],
-    ["reports","Reports"],
     ...(isPriv?[["inbox",`Inbox${cMessagesNeedReplyCount?` (${cMessagesNeedReplyCount})`:""}`]]:[]),
     ...(isPriv?[["meta_insights","Meta Insights"]]:[]),
-    ...(isPriv?[["brain","Client Brain"],["contact_reports","Contact Reports"],["leads",`Leads${clientLeads.length?` (${clientLeads.length})`:""}`]]:[]),
+    ...(isPriv?[["brain","Client Brain"],["leads",`Leads${clientLeads.length?` (${clientLeads.length})`:""}`]]:[]),
   ];
+
+  if(showEdit) {
+    return (
+      <EditClientPage client={client} onBack={()=>setShowEdit(false)} canDelete={isAdmin}
+        onSave={updates=>{ onUpdateClient&&onUpdateClient(client.id,updates); setShowEdit(false); }}
+        onRequestDelete={()=>{ setShowEdit(false); setConfirmDelete(true); }}/>
+    );
+  }
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:"100%"}} className="fade-in">
       <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -7123,35 +7131,46 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
         <span style={{fontSize:13,fontWeight:700}}>{client.name}</span>
       </div>
       {/* Header */}
-      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:isMobile?16:24,display:"flex",flexDirection:isMobile?"column":"row",alignItems:isMobile?"stretch":"flex-start",gap:isMobile?14:20,maxWidth:"100%",boxSizing:"border-box"}}>
-        <div style={{display:"flex",alignItems:"center",gap:14}}>
-          <Avatar name={client.name} size={isMobile?44:56}/>
-          <div style={{minWidth:0}}>
-            <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?18:24,fontWeight:800,overflowWrap:"anywhere"}}>{client.name}</h2>
-            <p style={{fontSize:12,color:"var(--text2)",marginTop:2,overflowWrap:"anywhere"}}>{client.industry} · {client.email}</p>
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:isMobile?20:30,display:"flex",flexDirection:"column",gap:16,maxWidth:"100%",boxSizing:"border-box"}}>
+        <div style={{display:"flex",alignItems:isMobile?"flex-start":"center",justifyContent:"space-between",flexWrap:"wrap",gap:14}}>
+          <div style={{display:"flex",alignItems:"center",gap:14}}>
+            <Avatar name={client.name} size={isMobile?44:56}/>
+            <div style={{minWidth:0}}>
+              <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?18:24,fontWeight:800,overflowWrap:"anywhere"}}>{client.name}</h2>
+              <p style={{fontSize:12,color:"var(--text2)",marginTop:2,overflowWrap:"anywhere"}}>{client.industry} · {client.email}</p>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
+            {(client.platforms||[]).map(p=><PChip key={p} platform={p}/>)}
           </div>
         </div>
-        <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",gap:12}}>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-            {isPriv&&<Btn variant="secondary" size="sm" onClick={()=>setShowEdit(true)}><Ico d={Icons.edit} size={13}/>Edit</Btn>}
-            {isAdmin&&(
-              <button onClick={()=>onToggleHide&&onToggleHide(client.id,client.status)} aria-label={client.status==="hidden"?"Restore":"Hide"}
-                title={client.status==="hidden"?"Restore":"Hide"}
-                style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
-                <Ico d={client.status==="hidden"?Icons.eye:"M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24M1 1l22 22"} size={15} stroke={client.status==="hidden"?"#10b981":"var(--text2)"}/>
-              </button>
-            )}
-            <button onClick={onAddProject} aria-label="Add Project" title="Add Project"
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",position:"relative"}}>
+          {isPriv&&<Btn variant="secondary" size="sm" onClick={()=>setShowEdit(true)} style={{borderRadius:99}}><Ico d={Icons.edit} size={13}/>Edit</Btn>}
+          {isAdmin&&(
+            <button onClick={()=>onToggleHide&&onToggleHide(client.id,client.status)} aria-label={client.status==="hidden"?"Restore":"Hide"}
+              title={client.status==="hidden"?"Restore":"Hide"}
               style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
-              <Ico d={Icons.plus} size={15} stroke="var(--text2)"/>
+              <Ico d={client.status==="hidden"?Icons.eye:"M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24M1 1l22 22"} size={15} stroke={client.status==="hidden"?"#10b981":"var(--text2)"}/>
             </button>
-            <button onClick={onAddPost} aria-label="Add Post" title="Add Post"
+          )}
+          <div style={{position:"relative"}}>
+            <button onClick={()=>setShowAddMenu(v=>!v)} aria-label="Add" title="Add Project or Post"
               style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
-              <Ico d={Icons.plus} size={15} stroke="#fff"/>
+              <Ico d={Icons.plus} size={16} stroke="#fff"/>
             </button>
-          </div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            {(client.platforms||[]).map(p=><PChip key={p} platform={p}/>)}
+            {showAddMenu&&(
+              <>
+                <div onClick={()=>setShowAddMenu(false)} style={{position:"fixed",inset:0,zIndex:9}}/>
+                <div className="fade-in" style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:10,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--rs)",boxShadow:"0 10px 30px rgba(0,0,0,0.15)",overflow:"hidden",minWidth:150}}>
+                  <button onClick={()=>{setShowAddMenu(false);onAddProject();}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"10px 14px",fontSize:13,fontWeight:600,color:"var(--text)",background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>
+                    <Ico d={Icons.projects} size={14} stroke="var(--text2)"/> Project
+                  </button>
+                  <button onClick={()=>{setShowAddMenu(false);onAddPost();}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"10px 14px",fontSize:13,fontWeight:600,color:"var(--text)",background:"none",border:"none",cursor:"pointer",textAlign:"left",borderTop:"1px solid var(--border)"}}>
+                    <Ico d={Icons.tasks} size={14} stroke="var(--text2)"/> Post
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -7239,25 +7258,71 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
       )}
       {tab==="calendar"&&<CalendarView posts={cPosts} onPostClick={onPostClick}/>}
       {tab==="brain"&&(
-        <ClientBrainTab
-          client={client}
-          knowledge={knowledge}
-          clientKnowledge={clientKnowledge}
-          documents={documents}
-          currentUser={currentUser}
-          onUploadDoc={onUploadDoc}
-          onSaveKnowledge={onSaveKnowledge}
-          clientIntelligence={clientIntelligence}
-          onSaveIntelligence={onSaveIntelligence}
-          clientMemory={clientMemory}
-          onUpsertMemory={onUpsertMemory}
-          onDeleteMemory={onDeleteMemory}
-          cPosts={cPosts}
-          posts={posts}
-          projects={projects}
-          comments={comments}
-          integrations={integrations}
-        />
+        <div style={{display:"flex",flexDirection:"column",gap:16}}>
+          <div style={{display:"flex",gap:4,borderBottom:"1px solid var(--border)"}}>
+            {[["profile","Brand Profile"],["contact_reports","Contact Reports"]].map(([k,l])=>(
+              <button key={k} onClick={()=>setBrainSubTab(k)} style={{
+                padding:"8px 16px",fontSize:13,fontWeight:700,border:"none",background:"transparent",cursor:"pointer",
+                color:brainSubTab===k?"var(--accent)":"var(--text3)",
+                borderBottom:brainSubTab===k?"2px solid var(--accent)":"2px solid transparent",
+                marginBottom:-1,
+              }}>{l}</button>
+            ))}
+          </div>
+          {brainSubTab==="profile"&&(
+            <ClientBrainTab
+              client={client}
+              knowledge={knowledge}
+              clientKnowledge={clientKnowledge}
+              documents={documents}
+              currentUser={currentUser}
+              onUploadDoc={onUploadDoc}
+              onSaveKnowledge={onSaveKnowledge}
+              clientIntelligence={clientIntelligence}
+              onSaveIntelligence={onSaveIntelligence}
+              clientMemory={clientMemory}
+              onUpsertMemory={onUpsertMemory}
+              onDeleteMemory={onDeleteMemory}
+              cPosts={cPosts}
+              posts={posts}
+              projects={projects}
+              comments={comments}
+              integrations={integrations}
+            />
+          )}
+          {brainSubTab==="contact_reports"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:16}}>
+              {(contactReports||[]).filter(r=>r.client_id===client.id).length===0&&(
+                <div style={{padding:"40px 0",textAlign:"center",color:"var(--text3)",fontSize:14}}>
+                  No contact reports yet. Send Pro a voice note on WhatsApp after a client call and it'll show up here.
+                </div>
+              )}
+              {(contactReports||[]).filter(r=>r.client_id===client.id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).map(r=>(
+                <div key={r.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                    <div>
+                      <p style={{fontWeight:700,fontSize:14}}>{r.created_by_name||"Unknown"}</p>
+                      <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>{r.created_at?new Date(r.created_at).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):""} · via {r.channel}</p>
+                    </div>
+                  </div>
+                  {r.summary&&<p style={{fontSize:13,lineHeight:1.7,color:"var(--text)",marginBottom:10}}>{r.summary}</p>}
+                  {r.key_points&&(
+                    <div style={{marginBottom:10}}>
+                      <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:3}}>KEY POINTS</p>
+                      <p style={{fontSize:13,lineHeight:1.7,color:"var(--text)",whiteSpace:"pre-wrap"}}>{r.key_points}</p>
+                    </div>
+                  )}
+                  {r.action_items&&(
+                    <div>
+                      <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:3}}>ACTION ITEMS</p>
+                      <p style={{fontSize:13,lineHeight:1.7,color:"var(--text)",whiteSpace:"pre-wrap"}}>{r.action_items}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
       {tab==="meta_insights"&&(
         <MetaInsightsTab client={client} integrations={integrations}/>
@@ -7296,49 +7361,8 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
         </div>
       )}
 
-      {tab==="contact_reports"&&(
-        <div style={{display:"flex",flexDirection:"column",gap:16}}>
-          <div>
-            <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:16}}>Contact Reports</h3>
-            <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Call/meeting debriefs — captured by Pro from voice notes and messages</p>
-          </div>
-          {(contactReports||[]).filter(r=>r.client_id===client.id).length===0&&(
-            <div style={{padding:"40px 0",textAlign:"center",color:"var(--text3)",fontSize:14}}>
-              No contact reports yet. Send Pro a voice note on WhatsApp after a client call and it'll show up here.
-            </div>
-          )}
-          {(contactReports||[]).filter(r=>r.client_id===client.id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).map(r=>(
-            <div key={r.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-                <div>
-                  <p style={{fontWeight:700,fontSize:14}}>{r.created_by_name||"Unknown"}</p>
-                  <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>{r.created_at?new Date(r.created_at).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):""} · via {r.channel}</p>
-                </div>
-              </div>
-              {r.summary&&<p style={{fontSize:13,lineHeight:1.7,color:"var(--text)",marginBottom:10}}>{r.summary}</p>}
-              {r.key_points&&(
-                <div style={{marginBottom:10}}>
-                  <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:3}}>KEY POINTS</p>
-                  <p style={{fontSize:13,lineHeight:1.7,color:"var(--text)",whiteSpace:"pre-wrap"}}>{r.key_points}</p>
-                </div>
-              )}
-              {r.action_items&&(
-                <div>
-                  <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:3}}>ACTION ITEMS</p>
-                  <p style={{fontSize:13,lineHeight:1.7,color:"var(--text)",whiteSpace:"pre-wrap"}}>{r.action_items}</p>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
 
       {tab==="leads"&&<ClientLeadsTab clientLeads={clientLeads} clientName={client.name} clientId={client.id} notifySettings={leadNotifySettings.filter(s=>s.client_id===client.id)} onSaveNotifySetting={onSaveLeadNotifySetting} canEditSettings onDeleteLead={currentUser?.role==="admin"?onDeleteLead:null}/>}
-
-      {/* Edit Client Modal */}
-      <EditClientModal open={showEdit} client={client} onClose={()=>setShowEdit(false)} canDelete={isAdmin}
-        onSave={updates=>{ onUpdateClient&&onUpdateClient(client.id,updates); setShowEdit(false); }}
-        onRequestDelete={()=>{ setShowEdit(false); setConfirmDelete(true); }}/>
 
       {/* Delete Confirm */}
       {confirmDelete&&(
