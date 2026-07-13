@@ -2,11 +2,20 @@
 /**
  * meta-insights-cron.php — daily cron that snapshots Page/IG/Ads metrics
  * for every active Facebook/Instagram integration, so the "Meta Insights"
- * tab has a real trend to learn from instead of just today's numbers.
+ * tab and client Overview trend chart have a real day-by-day history
+ * instead of just today's numbers.
  *
  * Setup on Hostinger (same pattern as brief_reminder.php):
  *   Cron command: php /home/u123456789/domains/socialflow.admepro.com/public_html/meta-insights-cron.php
  *   Schedule: once daily, e.g. 0 1 * * *
+ *
+ * One-time historical backfill (run manually, not from cron):
+ *   php meta-insights-cron.php backfill
+ * Fetches the last 30 days of day-by-day time-series metrics (reach,
+ * impressions, etc.) in a single Graph API call per integration and stores
+ * one row per day. Lifetime-only fields (follower/fan counts) have no
+ * historical API — those only ever get today's value, same as the normal
+ * daily run; backfilled days for that metric are simply left blank.
  */
 
 require_once __DIR__ . '/config.php';
@@ -18,10 +27,12 @@ $pdo = new PDO(
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]
 );
 
+$isBackfill = isset($argv[1]) && $argv[1] === 'backfill';
+
 function graph_get($url, $params) {
     $qs = http_build_query($params);
     $ch = curl_init("$url?$qs");
-    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_SSL_VERIFYPEER => true, CURLOPT_TIMEOUT => 20]);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_SSL_VERIFYPEER => true, CURLOPT_TIMEOUT => 30]);
     $res  = curl_exec($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
@@ -41,6 +52,37 @@ function insights_resilient($base, array $metrics, array $extraParams) {
     return $data;
 }
 
+// Regroups a Graph API /insights response (each metric has one "values"
+// array with one entry per day) into per-date metric arrays:
+// {"2026-07-01": [{"name":"reach","values":[{"value":123}]}], ...}
+function group_by_date(array $seriesData) {
+    $byDate = [];
+    foreach ($seriesData as $metric) {
+        foreach (($metric['values'] ?? []) as $v) {
+            $date = substr($v['end_time'] ?? '', 0, 10);
+            if (!$date) continue;
+            $byDate[$date][] = ['name' => $metric['name'], 'title' => $metric['title'] ?? $metric['name'], 'values' => [['value' => $v['value']]]];
+        }
+    }
+    return $byDate;
+}
+
+$upsert = $pdo->prepare(
+    "INSERT INTO meta_insights_snapshots (id, integration_id, client_id, client_name, platform, snapshot_date, metrics)
+     VALUES (UUID(), :iid, :cid, :cname, :platform, :date, :metrics)
+     ON DUPLICATE KEY UPDATE metrics = VALUES(metrics)"
+);
+function save_snapshot($upsert, $integ, $platform, $date, $metrics) {
+    $upsert->execute([
+        ':iid'     => $integ['id'],
+        ':cid'     => $integ['client_id'] ?? null,
+        ':cname'   => $integ['client_name'] ?? null,
+        ':platform'=> $platform,
+        ':date'    => $date,
+        ':metrics' => json_encode($metrics),
+    ]);
+}
+
 $v = defined('META_GRAPH_VERSION') ? META_GRAPH_VERSION : 'v23.0';
 $today = date('Y-m-d');
 $integrations = $pdo->query("SELECT * FROM integrations WHERE status = 'active' AND app_key IN ('facebook','instagram')")->fetchAll(PDO::FETCH_ASSOC);
@@ -55,13 +97,39 @@ foreach ($integrations as $integ) {
     if (!$page_id || !$access_token) continue;
 
     $platform = $integ['app_key'];
-    $metrics  = [];
 
+    if ($isBackfill) {
+        // One call covering the last 30 days of day-by-day time-series
+        // metrics, then split into one snapshot row per day.
+        $since = date('Y-m-d', strtotime('-30 days'));
+        $until = $today;
+        if ($platform === 'facebook') {
+            $series = insights_resilient("https://graph.facebook.com/{$v}/{$page_id}/insights",
+                ["page_post_engagements","page_impressions_unique","page_views_total","page_fan_adds","page_daily_follows_unique","page_impressions","page_total_actions"],
+                ["period" => "day", "since" => $since, "until" => $until, "access_token" => $access_token]);
+            $byDate = group_by_date($series);
+        } else {
+            $ig_host = str_starts_with($access_token, 'IGAA') ? 'graph.instagram.com' : 'graph.facebook.com';
+            $series = insights_resilient("https://{$ig_host}/{$v}/{$page_id}/insights",
+                ["reach","profile_views","accounts_engaged","total_interactions"],
+                ["period" => "day", "since" => $since, "until" => $until, "access_token" => $access_token]);
+            $byDate = group_by_date($series);
+        }
+        foreach ($byDate as $date => $dayMetrics) {
+            $key = $platform === 'facebook' ? 'page_insights' : 'ig_insights';
+            save_snapshot($upsert, $integ, $platform, $date, [$key => $dayMetrics]);
+            $snapped++;
+        }
+        continue;
+    }
+
+    // Normal daily run — today's time series point plus lifetime
+    // follower/like counts (no historical API for those, only "now").
+    $metrics = [];
     if ($platform === 'facebook') {
         $series = insights_resilient("https://graph.facebook.com/{$v}/{$page_id}/insights",
             ["page_post_engagements","page_impressions_unique","page_views_total","page_fan_adds","page_daily_follows_unique","page_fans","page_impressions","page_total_actions"],
             ["period" => "day", "access_token" => $access_token]);
-        // Lifetime follower/like counts from the Page node (see meta-insights.php).
         [$pc, $presp] = graph_get("https://graph.facebook.com/{$v}/{$page_id}", [
             "fields" => "followers_count,fan_count", "access_token" => $access_token,
         ]);
@@ -73,9 +141,17 @@ foreach ($integrations as $integ) {
         $metrics['page_insights'] = array_merge($pageStats, $series);
     } else {
         $ig_host = str_starts_with($access_token, 'IGAA') ? 'graph.instagram.com' : 'graph.facebook.com';
-        $metrics['ig_insights'] = insights_resilient("https://{$ig_host}/{$v}/{$page_id}/insights",
+        $series = insights_resilient("https://{$ig_host}/{$v}/{$page_id}/insights",
             ["reach","profile_views","accounts_engaged","total_interactions"],
             ["period" => "day", "access_token" => $access_token]);
+        [$ic, $iresp] = graph_get("https://{$ig_host}/{$v}/{$page_id}", [
+            "fields" => "followers_count", "access_token" => $access_token,
+        ]);
+        $igStats = [];
+        if ($ic === 200 && isset($iresp["followers_count"])) {
+            $igStats[] = ["name"=>"followers_count","title"=>"Followers","values"=>[["value"=>$iresp["followers_count"]]]];
+        }
+        $metrics['ig_insights'] = array_merge($igStats, $series);
     }
 
     if ($ad_account_id) {
@@ -86,20 +162,9 @@ foreach ($integrations as $integ) {
         $metrics['ads_insights'] = $code === 200 ? ($resp['data'] ?? []) : null;
     }
 
-    $stmt = $pdo->prepare(
-        "INSERT INTO meta_insights_snapshots (id, integration_id, client_id, client_name, platform, snapshot_date, metrics)
-         VALUES (UUID(), :iid, :cid, :cname, :platform, :date, :metrics)"
-    );
-    $stmt->execute([
-        ':iid'     => $integ['id'],
-        ':cid'     => $integ['client_id'] ?? null,
-        ':cname'   => $integ['client_name'] ?? null,
-        ':platform'=> $platform,
-        ':date'    => $today,
-        ':metrics' => json_encode($metrics),
-    ]);
+    save_snapshot($upsert, $integ, $platform, $today, $metrics);
     $snapped++;
 }
 
 header('Content-Type: application/json');
-echo json_encode(['checked' => count($integrations), 'snapshotted' => $snapped]);
+echo json_encode(['mode' => $isBackfill ? 'backfill' : 'daily', 'checked' => count($integrations), 'snapshotted' => $snapped]);

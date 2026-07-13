@@ -637,7 +637,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.20";
+const APP_VERSION = "beta 5.21";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9299,13 +9299,25 @@ const INSIGHTS_METRIC_LABELS = {
 // ── 30-Day Performance — one line per connected platform, built from
 // meta_insights_snapshots (populated once daily by meta-insights-cron.php,
 // NOT a live API call) so it's fast and doesn't burn Graph API rate limits.
-const OVERVIEW_TREND_METRIC = {
-  facebook: {arrKey:"page_insights", metric:"page_impressions"},
-  instagram: {arrKey:"ig_insights", metric:"reach"},
+// "Reach" is a real day-by-day time series (backfillable 30 days back in
+// one call — see meta-insights-cron.php's backfill mode). "Followers" is a
+// lifetime count with no historical API, so past days before the cron
+// first captured it are forward-filled from the nearest known value
+// instead of showing as zero.
+const OVERVIEW_TREND_METRICS = {
+  reach: {
+    facebook: {arrKey:"page_insights", metric:"page_impressions"},
+    instagram: {arrKey:"ig_insights", metric:"reach"},
+  },
+  followers: {
+    facebook: {arrKey:"page_insights", metric:"followers_count"},
+    instagram: {arrKey:"ig_insights", metric:"followers_count"},
+  },
 };
 function ClientPerformanceTrend({clientId}) {
   const [snapshots,setSnapshots] = useState([]);
   const [loading,setLoading] = useState(true);
+  const [metricMode,setMetricMode] = useState("reach");
   useEffect(()=>{
     let cancelled = false;
     setLoading(true);
@@ -9320,15 +9332,16 @@ function ClientPerformanceTrend({clientId}) {
       const obj = typeof metricsJson==="string" ? JSON.parse(metricsJson) : metricsJson;
       const arr = obj?.[arrKey];
       const m = Array.isArray(arr) ? arr.find(x=>x.name===metricName) : null;
-      return Number(m?.values?.[0]?.value)||0;
-    } catch(e){ return 0; }
+      return m?.values?.[0]?.value===undefined ? null : Number(m.values[0].value);
+    } catch(e){ return null; }
   };
 
   const last30 = [...Array(30)].map((_,i)=>{
     const d = new Date(); d.setDate(d.getDate()-(29-i));
     return d.toISOString().slice(0,10);
   });
-  const platformsPresent = [...new Set(snapshots.map(s=>s.platform))].filter(p=>OVERVIEW_TREND_METRIC[p]);
+  const activeMetric = OVERVIEW_TREND_METRICS[metricMode];
+  const platformsPresent = [...new Set(snapshots.map(s=>s.platform))].filter(p=>activeMetric[p]);
 
   if(loading) return (
     <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"30px 20px",textAlign:"center",color:"var(--text3)",fontSize:13}}>
@@ -9343,14 +9356,22 @@ function ClientPerformanceTrend({clientId}) {
   );
 
   const seriesList = platformsPresent.map(p=>{
-    const cfg = OVERVIEW_TREND_METRIC[p];
+    const cfg = activeMetric[p];
     const byDate = {};
-    snapshots.filter(s=>s.platform===p).forEach(s=>{ byDate[(s.snapshot_date||"").slice(0,10)] = extractMetric(s.metrics, cfg.arrKey, cfg.metric); });
+    snapshots.filter(s=>s.platform===p).forEach(s=>{
+      const v = extractMetric(s.metrics, cfg.arrKey, cfg.metric);
+      if(v!==null) byDate[(s.snapshot_date||"").slice(0,10)] = v;
+    });
+    let lastKnown = 0;
+    const data = last30.map(date=>{
+      if(byDate[date]!==undefined) lastKnown = byDate[date];
+      return {date, value: lastKnown};
+    });
     return {
       platform: p,
       label: `${p.charAt(0).toUpperCase()+p.slice(1)} ${INSIGHTS_METRIC_LABELS[cfg.metric]||cfg.metric}`,
       color: PLT_COLOR[p]||"#3b82f6",
-      data: last30.map(date=>({date, value: byDate[date]||0})),
+      data,
     };
   });
 
@@ -9358,16 +9379,23 @@ function ClientPerformanceTrend({clientId}) {
     <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"16px 20px",display:"flex",flexDirection:"column",gap:14}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
         <h4 style={{fontWeight:700,fontSize:14}}>30-Day Performance</h4>
-        <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-          {seriesList.map(s=>(
-            <div key={s.platform} style={{display:"flex",alignItems:"center",gap:6}}>
-              <span style={{width:9,height:9,borderRadius:"50%",background:s.color,flexShrink:0}}/>
-              <span style={{fontSize:12,fontWeight:600,color:"var(--text2)"}}>{s.label}</span>
-            </div>
-          ))}
+        <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+          <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)"}}>
+            {[["reach","Reach"],["followers","Followers"]].map(([k,l])=>(
+              <button key={k} onClick={()=>setMetricMode(k)} style={{padding:"5px 14px",borderRadius:99,fontSize:12,fontWeight:700,border:"none",cursor:"pointer",background:metricMode===k?"var(--accent)":"transparent",color:metricMode===k?"#fff":"var(--text2)"}}>{l}</button>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+            {seriesList.map(s=>(
+              <div key={s.platform} style={{display:"flex",alignItems:"center",gap:6}}>
+                <span style={{width:9,height:9,borderRadius:"50%",background:s.color,flexShrink:0}}/>
+                <span style={{fontSize:12,fontWeight:600,color:"var(--text2)"}}>{s.label}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-      <MultiLineChart series={seriesList} height={260}/>
+      <MultiLineChart series={seriesList} height={280}/>
     </div>
   );
 }
@@ -9375,7 +9403,7 @@ function ClientPerformanceTrend({clientId}) {
 // Multiple series (e.g. one per platform) on one chart, wide, with a visible
 // dot for every single day — not just a bare line.
 function MultiLineChart({series, height=260}) {
-  const w = 900;
+  const w = 1400;
   const padL = 10, padR = 10, padT = 12, padB = 26;
   const allVals = series.flatMap(s=>s.data.map(d=>d.value));
   const maxVal = Math.max(1, ...allVals);
