@@ -637,7 +637,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.21";
+const APP_VERSION = "beta 5.22";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1437,14 +1437,14 @@ const WALLPAPERS = [
   {
     key:"dark",
     label:"Dark Mode",
-    desc:"Classic dark workspace",
-    preview:["#080810","#111122","#d90b2c"],
+    desc:"Neutral gray elegance (Slate Professional)",
+    preview:["#0e1117","#161b22","#d90b2c"],
     bg: null, // uses CSS vars only
     vars:()=>({
-      "--bg":"#080810","--bg2":"#0d0d1a","--surface":"#111122",
-      "--surface2":"#191930","--surface3":"#20203a",
-      "--border":"rgba(255,255,255,0.06)","--border2":"rgba(255,255,255,0.1)",
-      "--text":"#f0eeff","--text2":"#9896c8","--text3":"#8886b5",
+      "--bg":"#0e1117","--bg2":"#121820","--surface":"#161b22",
+      "--surface2":"#1e242d","--surface3":"#252c38",
+      "--border":"rgba(255,255,255,0.07)","--border2":"rgba(255,255,255,0.12)",
+      "--text":"#e6edf3","--text2":"#8b949e","--text3":"#7a8899",
     }),
   },
   {
@@ -1497,19 +1497,6 @@ const WALLPAPERS = [
       "--surface2":"#271500","--surface3":"#321c00",
       "--border":"rgba(200,100,20,0.1)","--border2":"rgba(200,100,20,0.18)",
       "--text":"#ffe8c8","--text2":"#c8884a","--text3":"#b08060",
-    }),
-  },
-  {
-    key:"slate",
-    label:"Slate Professional",
-    desc:"Neutral gray elegance",
-    preview:["#0e1117","#161b22","#d90b2c"],
-    bg: null,
-    vars:()=>({
-      "--bg":"#0e1117","--bg2":"#121820","--surface":"#161b22",
-      "--surface2":"#1e242d","--surface3":"#252c38",
-      "--border":"rgba(255,255,255,0.07)","--border2":"rgba(255,255,255,0.12)",
-      "--text":"#e6edf3","--text2":"#8b949e","--text3":"#7a8899",
     }),
   },
 ];
