@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.85";
+const APP_VERSION = "beta 4.86";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -15151,9 +15151,24 @@ function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh, te
     return true;
   });
 
+  // The `team` prop is only fetched once at login and never refreshes, so it
+  // never reflects other members' last_seen heartbeats (or even this admin's
+  // own, since re-render alone won't refetch). Poll team members directly
+  // here instead so "live now" reflects real, current presence.
+  const [liveTeam, setLiveTeam] = useState(team||[]);
+  useEffect(()=>{
+    let cancelled = false;
+    const poll = async () => {
+      const res = await qe("TeamMember",{},null,500).catch(()=>null);
+      if(!cancelled && res?.entities) setLiveTeam(res.entities);
+    };
+    poll();
+    const t = setInterval(poll, 20000);
+    return ()=>{ cancelled=true; clearInterval(t); };
+  },[]);
   const [liveClock, setLiveClock] = useState(Date.now());
   useEffect(()=>{ const t = setInterval(()=>setLiveClock(Date.now()), 15000); return ()=>clearInterval(t); },[]);
-  const liveMembers = (team||[]).filter(m=>m.last_seen && (liveClock - new Date(m.last_seen).getTime()) < 3*60000);
+  const liveMembers = (liveTeam||[]).filter(m=>m.last_seen && (liveClock - new Date(m.last_seen).getTime()) < 3*60000);
 
   const filteredSessions = (systemSessions||[]).filter(s=>{
     if(!sessionSearch) return true;
