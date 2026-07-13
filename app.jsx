@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.53";
+const APP_VERSION = "beta 5.54";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12881,7 +12881,14 @@ function CareersFooter({isDark}) {
           </div>
         </div>
 
-        <button onClick={()=>window.scrollTo({top:0,behavior:"smooth"})} style={{display:"flex",alignItems:"center",gap:10,marginTop:48,background:"none",border:"none",cursor:"pointer",color:"var(--text2)",fontSize:14,fontWeight:600}}>
+        <button onClick={()=>{
+          // Cross-browser: some browsers track scroll position on
+          // documentElement, others on body — set both so this reliably
+          // works regardless of which one the current browser uses.
+          try{window.scrollTo({top:0,behavior:"smooth"});}catch(e){}
+          document.documentElement.scrollTop = 0;
+          document.body.scrollTop = 0;
+        }} style={{display:"flex",alignItems:"center",gap:10,marginTop:48,background:"none",border:"none",cursor:"pointer",color:"var(--text2)",fontSize:14,fontWeight:600}}>
           <span style={{width:36,height:36,borderRadius:"50%",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",transform:"rotate(90deg)"}}>
             <Ico d={Icons.chevL} size={14} stroke="var(--text2)"/>
           </span>
