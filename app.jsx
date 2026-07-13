@@ -627,7 +627,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.12";
+const APP_VERSION = "beta 5.13";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1979,16 +1979,24 @@ function Badge({label,color,xs}) {
   );
 }
 
-function PChip({platform,xs}) {
+function PChip({platform,xs,connected}) {
   const c = PLT_COLOR[platform]||"#888";
   const p = xs?"2px 6px":"3px 9px";
   return (
     <span style={{
-      display:"inline-flex",alignItems:"center",padding:p,
+      position:"relative",display:"inline-flex",alignItems:"center",padding:p,
       borderRadius:99,fontSize:xs?9:11,fontWeight:700,
       background:c+"22",color:c,border:`1px solid ${c}44`,
       letterSpacing:"0.06em",textTransform:"uppercase",
-    }}>{PLT_ICON[platform]||platform}</span>
+    }}>
+      {PLT_ICON[platform]||platform}
+      {connected!==undefined&&(
+        <span title={connected?"Connected":"Not connected"} style={{
+          position:"absolute",top:-3,right:-3,width:8,height:8,borderRadius:"50%",
+          background:connected?"#10b981":"#ef4444",border:"1.5px solid var(--surface)",
+        }}/>
+      )}
+    </span>
   );
 }
 
@@ -7202,7 +7210,10 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
         </div>
         </div>
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {(client.platforms||[]).map(p=><PChip key={p} platform={p}/>)}
+          {(client.platforms||[]).map(p=>{
+            const isConnected = (integrations||[]).some(i=>i.app_key===p && i.status==="active" && (i.client_id===client.id || !i.client_id));
+            return <PChip key={p} platform={p} connected={isConnected}/>;
+          })}
         </div>
       </div>
       {/* Tabs */}
