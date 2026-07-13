@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.82";
+const APP_VERSION = "beta 4.83";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -24497,7 +24497,10 @@ function App() {
   });
   const impersonateAs = (member) => {
     if(currentUser?.role!=="admin" || !member || member.email===currentUser.email) return;
-    try{ localStorage.setItem("sf_impersonator", JSON.stringify(currentUser)); }catch(e){}
+    try{
+      localStorage.setItem("sf_impersonator", JSON.stringify(currentUser));
+      localStorage.setItem("sf_impersonator_return_page", page);
+    }catch(e){}
     setImpersonatorUser(currentUser);
     const u = {...member, isClient:false};
     try{ localStorage.setItem("sf_user", JSON.stringify(u)); }catch(e){}
@@ -24508,9 +24511,14 @@ function App() {
     if(!impersonatorUser) return;
     try{ localStorage.setItem("sf_user", JSON.stringify(impersonatorUser)); }catch(e){}
     setCurrentUser(impersonatorUser);
+    let returnPage = "dashboard";
+    try{
+      returnPage = localStorage.getItem("sf_impersonator_return_page") || "dashboard";
+      localStorage.removeItem("sf_impersonator_return_page");
+    }catch(e){}
     try{ localStorage.removeItem("sf_impersonator"); }catch(e){}
     setImpersonatorUser(null);
-    setPage("dashboard");
+    setPage(returnPage);
   };
   const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account"];
   const [page,setPage_] = useState(()=>{
@@ -25532,6 +25540,7 @@ function App() {
   // Load user profile when user logs in
   useEffect(()=>{
     if(!currentUser?.email) return;
+    setUserProfile(null); // clear stale profile (e.g. previous identity) before the new one loads
     async function loadProfile() {
       try {
         const res = await qe("UserProfile",{user_email:currentUser.email});
