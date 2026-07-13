@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.66";
+const APP_VERSION = "beta 5.67";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12829,7 +12829,7 @@ function CareersChrome({isDark, setIsDark, children}) {
         <div style={{writingMode:"vertical-rl",transform:"rotate(180deg)",lineHeight:1.9}}>
           {SOCIAL_LINKS.map((s,i)=>(
             <React.Fragment key={s.url}>
-              {i>0&&<span style={{fontSize:14,color:"var(--text3)",display:"inline-block",margin:"16px 0"}}>/</span>}
+              {i>0&&<span style={{fontSize:14,color:"var(--text3)",display:"inline-block",margin:"5px 0"}}>/</span>}
               <a href={s.url} target="_blank" rel="noreferrer" style={{fontSize:14,fontWeight:700,color:"var(--text2)",textDecoration:"none",letterSpacing:"0.02em"}}>{s.label}</a>
             </React.Fragment>
           ))}
