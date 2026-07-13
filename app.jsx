@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.35";
+const APP_VERSION = "beta 5.36";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -20912,34 +20912,37 @@ function JobOpeningForm({opening, currentUser, onSave, onClose}) {
   };
 
   return (
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{background:"var(--surface)",borderRadius:16,padding:28,width:520,maxWidth:"100%",maxHeight:"85vh",overflowY:"auto",border:"1px solid var(--border)"}}>
-        <h3 style={{fontWeight:800,fontSize:18,marginBottom:18}}>{opening?"Edit Opening":"New Job Opening"}</h3>
-        <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          <Field label="Title *"><input value={f.title} onChange={e=>sf("title",e.target.value)} placeholder="e.g. Senior Graphic Designer" style={inputSt}/></Field>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-            <Field label="Department"><input value={f.department} onChange={e=>sf("department",e.target.value)} style={inputSt}/></Field>
-            <Field label="Location"><input value={f.location} onChange={e=>sf("location",e.target.value)} placeholder="Remote / Cairo" style={inputSt}/></Field>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-            <Field label="Employment Type">
-              <select value={f.employment_type} onChange={e=>sf("employment_type",e.target.value)} style={inputSt}>
-                {Object.entries(EMPLOYMENT_TYPE_LABELS).map(([k,l])=><option key={k} value={k}>{l}</option>)}
-              </select>
-            </Field>
-            <Field label="Status">
-              <select value={f.status} onChange={e=>sf("status",e.target.value)} style={inputSt}>
-                <option value="open">Open</option>
-                <option value="closed">Closed</option>
-                <option value="draft">Draft</option>
-              </select>
-            </Field>
-          </div>
-          <Field label="Description"><textarea value={f.description} onChange={e=>sf("description",e.target.value)} rows={4} style={{...inputSt,resize:"vertical"}}/></Field>
-          <Field label="Requirements"><textarea value={f.requirements} onChange={e=>sf("requirements",e.target.value)} rows={4} style={{...inputSt,resize:"vertical"}}/></Field>
-          <Field label="Closing Date"><input type="date" value={f.closing_date} onChange={e=>sf("closing_date",e.target.value)} style={inputSt}/></Field>
+    <div className="fade-in" style={{maxWidth:640}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+        <button onClick={onClose} style={{width:36,height:36,borderRadius:"50%",background:"var(--surface2)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text2)",cursor:"pointer",flexShrink:0}}>
+          <Ico d={Icons.chevL} size={16}/>
+        </button>
+        <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:22,margin:0}}>{opening?"Edit Opening":"New Job Opening"}</h2>
+      </div>
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:28,display:"flex",flexDirection:"column",gap:14}}>
+        <Field label="Title *"><input value={f.title} onChange={e=>sf("title",e.target.value)} placeholder="e.g. Senior Graphic Designer" style={inputSt}/></Field>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <Field label="Department"><input value={f.department} onChange={e=>sf("department",e.target.value)} style={inputSt}/></Field>
+          <Field label="Location"><input value={f.location} onChange={e=>sf("location",e.target.value)} placeholder="Remote / Cairo" style={inputSt}/></Field>
         </div>
-        <div style={{display:"flex",gap:10,marginTop:22}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <Field label="Employment Type">
+            <select value={f.employment_type} onChange={e=>sf("employment_type",e.target.value)} style={inputSt}>
+              {Object.entries(EMPLOYMENT_TYPE_LABELS).map(([k,l])=><option key={k} value={k}>{l}</option>)}
+            </select>
+          </Field>
+          <Field label="Status">
+            <select value={f.status} onChange={e=>sf("status",e.target.value)} style={inputSt}>
+              <option value="open">Open</option>
+              <option value="closed">Closed</option>
+              <option value="draft">Draft</option>
+            </select>
+          </Field>
+        </div>
+        <Field label="Description"><textarea value={f.description} onChange={e=>sf("description",e.target.value)} rows={4} style={{...inputSt,resize:"vertical"}}/></Field>
+        <Field label="Requirements"><textarea value={f.requirements} onChange={e=>sf("requirements",e.target.value)} rows={4} style={{...inputSt,resize:"vertical"}}/></Field>
+        <Field label="Closing Date"><input type="date" value={f.closing_date} onChange={e=>sf("closing_date",e.target.value)} style={inputSt}/></Field>
+        <div style={{display:"flex",gap:10,marginTop:8}}>
           <Btn variant="secondary" onClick={onClose} style={{flex:1}}>Cancel</Btn>
           <Btn onClick={handleSave} disabled={saving} style={{flex:2}}>{saving?"Saving…":opening?"Save Changes":"Create Opening"}</Btn>
         </div>
@@ -21114,6 +21117,10 @@ function RecruitmentPage({currentUser}) {
 
   if(loading) return <div style={{padding:40,textAlign:"center",color:"var(--text2)"}}><Spinner size={20}/></div>;
 
+  if(showForm) return (
+    <JobOpeningForm opening={editOpening} currentUser={currentUser} onSave={handleSaveOpening} onClose={()=>{setShowForm(false);setEditOpening(null);}}/>
+  );
+
   return (
     <div className="fade-in" style={{display:"flex",flexDirection:"column",gap:20}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
@@ -21191,7 +21198,6 @@ function RecruitmentPage({currentUser}) {
         </div>
       )}
 
-      {showForm&&<JobOpeningForm opening={editOpening} currentUser={currentUser} onSave={handleSaveOpening} onClose={()=>{setShowForm(false);setEditOpening(null);}}/>}
       {selectedApp&&<ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} onClose={()=>setSelectedApp(null)} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview}/>}
     </div>
   );
