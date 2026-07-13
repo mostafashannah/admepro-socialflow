@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.43";
+const APP_VERSION = "beta 5.44";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12784,7 +12784,8 @@ function AcceptInvitationPage({token, onAccepted}) {
 // CAREERS PAGE (public, unauthenticated — socialflow.admepro.com/careers)
 // ════════════════════════════════════════════════════════════════
 const MAX_CV_MB = 8;
-const ADMEPRO_LOGO_URL = "https://socialflow.admepro.com/storage/public/socialflow-media/assets/client-a9d1402f-ecaa-4718-b77c-bd18e7024863/Assets/1783982300097_icon_white.png";
+const ADMEPRO_LOGO_WHITE = "https://admepro.com/wp-content/uploads/2024/10/adme-p3.png";
+const ADMEPRO_LOGO_BLACK = "https://admepro.com/wp-content/uploads/2024/10/adme-p2.png";
 const SOCIAL_LINKS = [
   {label:"Fb.", url:"https://fb.com/admepro"},
   {label:"Ig.", url:"https://instagram.com/admeproagency"},
@@ -12803,8 +12804,8 @@ function CareersChrome({isDark, setIsDark, children}) {
     <>
       <GStyle wallpaper={isDark?"dark":"light"} accentColor="#d90b2c" photoIsDark={isDark}/>
       <div style={{position:"fixed",top:20,left:20,zIndex:10}}>
-        <a href="https://admepro.com" target="_blank" rel="noreferrer" style={{display:"block",width:44,height:44,borderRadius:12,background:"#0e1117",padding:8}}>
-          <img src={ADMEPRO_LOGO_URL} alt="Admepro" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
+        <a href="https://admepro.com" target="_blank" rel="noreferrer" style={{display:"block"}}>
+          <img src={isDark?ADMEPRO_LOGO_WHITE:ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:36,width:"auto",objectFit:"contain"}}/>
         </a>
       </div>
       <div style={{position:"fixed",right:20,top:"50%",transform:"translateY(-50%)",zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",gap:22}}>
