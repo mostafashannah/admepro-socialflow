@@ -627,7 +627,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.03";
+const APP_VERSION = "beta 5.04";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -8137,7 +8137,7 @@ function FolderPickerModal({open, allFolders=[], initialPath="", onPick, onClose
   );
 }
 
-function AssetCard({asset:a, proj, allFolders=[], onUpdate, onDelete}) {
+function AssetCard({asset:a, proj, allFolders=[], onUpdate, onDelete, selected, onToggleSelect}) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(a.name||"");
   const [showPicker, setShowPicker] = useState(false);
@@ -8151,8 +8151,13 @@ function AssetCard({asset:a, proj, allFolders=[], onUpdate, onDelete}) {
   };
 
   return (
-    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+    <div style={{background:"var(--surface)",border:`1px solid ${selected?"var(--accent)":"var(--border)"}`,borderRadius:"var(--r)",overflow:"hidden",boxShadow:selected?"0 0 0 2px var(--accent)33":"none"}}>
       <div style={{height:140,background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",position:"relative",overflow:"hidden"}}>
+        {onToggleSelect&&(
+          <label onClick={e=>e.stopPropagation()} style={{position:"absolute",top:8,left:8,zIndex:2,width:22,height:22,borderRadius:6,background:selected?"var(--accent)":"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+            <input type="checkbox" checked={!!selected} onChange={()=>onToggleSelect(a.id)} style={{width:14,height:14,cursor:"pointer",accentColor:"var(--accent)"}}/>
+          </label>
+        )}
         {isImage&&a.file_url&&a.file_url!="#"
           ? <img src={a.file_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt={a.name}/>
           : isVideo&&a.file_url&&a.file_url!="#"
@@ -8215,8 +8220,17 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
   const [dragOverFolder, setDragOverFolder] = useState(null);
   const [dragOverPanel, setDragOverPanel] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [selected, setSelected] = useState(()=>new Set());
+  const [bulkPicker, setBulkPicker] = useState(false);
 
   const currentPath = path.join("/");
+  // Selection is per-folder — clear it whenever the open folder changes so
+  // stale ids from a previous folder can't get silently bulk-acted on.
+  useEffect(()=>{ setSelected(new Set()); },[currentPath]);
+  const toggleSelect = (id) => setSelected(prev=>{ const s=new Set(prev); if(s.has(id)) s.delete(id); else s.add(id); return s; });
+  const clearSelection = () => setSelected(new Set());
+  const bulkMoveTo = (folderPath) => { selected.forEach(id=>onUpdateAsset&&onUpdateAsset(id,{category:folderPath})); clearSelection(); };
+  const bulkDelete = () => { if(!confirm(`Delete ${selected.size} file(s)? This can't be undone.`)) return; selected.forEach(id=>onDeleteAsset&&onDeleteAsset(id)); clearSelection(); };
   const persistExtra = (list) => { setExtraFolders(list); try{ localStorage.setItem(storageKey, JSON.stringify(list)); }catch(e){} };
 
   // Project folders are derived live from `projects` (not localStorage) so a
@@ -8326,8 +8340,20 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
 
       {uploading&&<div style={{fontSize:12,color:"var(--text3)"}}><Spinner size={12}/> Uploading dropped file(s)…</div>}
 
-      {/* Folder tiles */}
-      {childFolders.length>0&&(
+      {/* Bulk selection bar — appears once any file is selected */}
+      {selected.size>0&&(
+        <div className="fade-in" style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"var(--accentbg)",border:"1px solid var(--accent)44",borderRadius:"var(--rs)"}}>
+          <span style={{fontSize:12,fontWeight:700,color:"var(--accent)"}}>{selected.size} selected</span>
+          <button onClick={()=>setBulkPicker(true)} style={{fontSize:12,fontWeight:700,padding:"6px 12px",borderRadius:6,border:"1px solid var(--accent)",background:"var(--surface)",color:"var(--accent)",cursor:"pointer"}}>Move</button>
+          {isAdmin&&<button onClick={bulkDelete} style={{fontSize:12,fontWeight:700,padding:"6px 12px",borderRadius:6,border:"1px solid #ef444455",background:"var(--surface)",color:"#ef4444",cursor:"pointer"}}>Delete</button>}
+          <button onClick={clearSelection} style={{fontSize:12,fontWeight:600,padding:"6px 12px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text2)",cursor:"pointer",marginLeft:"auto"}}>Clear</button>
+        </div>
+      )}
+      <FolderPickerModal open={bulkPicker} allFolders={allFolders} initialPath={currentPath}
+        onPick={bulkMoveTo} onClose={()=>setBulkPicker(false)}/>
+
+      {/* Folder tiles — grid tiles in Grid view, list rows in List view */}
+      {childFolders.length>0&&(view==="grid"?(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:10}}>
           {childFolders.map(name=>(
             <div key={name} onClick={()=>openFolder(name)}
@@ -8339,14 +8365,28 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
             </div>
           ))}
         </div>
-      )}
+      ):(
+        <div style={{display:"flex",flexDirection:"column",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+          {childFolders.map(name=>(
+            <div key={name} onClick={()=>openFolder(name)}
+              onDragOver={e=>{e.preventDefault();setDragOverFolder(name);}} onDragLeave={()=>setDragOverFolder(null)}
+              onDrop={e=>{e.preventDefault();setDragOverFolder(null);const id=e.dataTransfer.getData("text/plain");if(id)moveAssetTo(id,[...path,name].join("/"));}}
+              style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderBottom:"1px solid var(--border)",background:dragOverFolder===name?"var(--accent)11":"var(--surface)",cursor:"pointer"}}>
+              <span style={{fontSize:16}}>📁</span>
+              <span style={{flex:1,fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
+              <Ico d={Icons.chevR} size={12} stroke="var(--text3)"/>
+            </div>
+          ))}
+        </div>
+      ))}
 
       {/* Files in this folder */}
       {view==="grid" ? (
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
           {filesHere.map(a=>(
             <div key={a.id} draggable onDragStart={e=>e.dataTransfer.setData("text/plain", a.id)}>
-              <AssetCard asset={a} proj={projects.find(p=>p.id===a.project_id)} allFolders={allFolders} onUpdate={onUpdateAsset} onDelete={isAdmin?onDeleteAsset:undefined}/>
+              <AssetCard asset={a} proj={projects.find(p=>p.id===a.project_id)} allFolders={allFolders} onUpdate={onUpdateAsset} onDelete={isAdmin?onDeleteAsset:undefined}
+                selected={selected.has(a.id)} onToggleSelect={toggleSelect}/>
             </div>
           ))}
         </div>
@@ -8354,7 +8394,8 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
         <div style={{display:"flex",flexDirection:"column",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
           {filesHere.map(a=>(
             <div key={a.id} draggable onDragStart={e=>e.dataTransfer.setData("text/plain", a.id)}
-              style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderBottom:"1px solid var(--border)",background:"var(--surface)"}}>
+              style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderBottom:"1px solid var(--border)",background:selected.has(a.id)?"var(--accentbg)":"var(--surface)"}}>
+              <input type="checkbox" checked={selected.has(a.id)} onChange={()=>toggleSelect(a.id)} style={{width:14,height:14,cursor:"pointer",accentColor:"var(--accent)"}}/>
               <span style={{fontSize:16}}>{a.file_type==="video"?"🎬":a.file_type==="image"?"🖼️":"📄"}</span>
               <span style={{flex:1,fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</span>
               <span style={{fontSize:11,color:"var(--text3)",width:70}}>{a.file_size?`${(a.file_size/1024/1024).toFixed(1)} MB`:""}</span>
