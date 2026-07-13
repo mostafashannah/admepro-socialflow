@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.64";
+const APP_VERSION = "beta 5.65";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12829,14 +12829,16 @@ function CareersChrome({isDark, setIsDark, children}) {
         <div style={{writingMode:"vertical-rl",transform:"rotate(180deg)",lineHeight:1.9}}>
           {SOCIAL_LINKS.map((s,i)=>(
             <React.Fragment key={s.url}>
-              {i>0&&<span style={{fontSize:14,color:"var(--text3)",margin:"0 16px"}}>/</span>}
+              {i>0&&<span style={{fontSize:14,color:"var(--text3)",display:"inline-block",margin:"16px 0"}}>/</span>}
               <a href={s.url} target="_blank" rel="noreferrer" style={{fontSize:14,fontWeight:700,color:"var(--text2)",textDecoration:"none",letterSpacing:"0.02em"}}>{s.label}</a>
             </React.Fragment>
           ))}
         </div>
       </div>
-      {children}
-      <CareersFooter isDark={isDark}/>
+      <div id="careers-scroll" style={{height:"100vh",height:"100dvh",overflowY:"auto"}}>
+        {children}
+        <CareersFooter isDark={isDark}/>
+      </div>
     </>
   );
 }
@@ -12858,36 +12860,40 @@ function CareersFullMenu({onClose}) {
       <button onClick={onClose} style={{position:"absolute",top:20,right:20,width:44,height:44,borderRadius:"50%",background:"rgba(255,255,255,0.1)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff"}}>
         <Ico d={Icons.x} size={20}/>
       </button>
-      <div style={{minHeight:"100vh",display:"flex",alignItems:"center",padding:"100px 40px",flexWrap:"wrap",gap:40}}>
-        <div style={{flex:"1 1 320px"}}>
+      <div style={{minHeight:"100vh",display:"grid",gridTemplateRows:"repeat(4,1fr)",padding:"40px"}}>
+        <div/>
+        <div style={{display:"flex",flexDirection:"column",justifyContent:"center"}}>
           {CAREERS_NAV_LINKS.map(item=>(
-            <a key={item.label} href={item.url} target="_blank" rel="noreferrer" style={{display:"block",fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:"clamp(32px,6vw,56px)",lineHeight:1.15,color:"#fff",textDecoration:"none",textTransform:"uppercase",letterSpacing:"-0.01em"}}>
+            <a key={item.label} href={item.url} target="_blank" rel="noreferrer" style={{display:"block",fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:"clamp(40px,8vw,80px)",lineHeight:1.1,color:"#fff",textDecoration:"none",textTransform:"uppercase",letterSpacing:"-0.01em"}}>
               {item.label}
             </a>
           ))}
         </div>
-        <div style={{flex:"1 1 280px",display:"flex",flexDirection:"column",gap:28,color:"rgba(255,255,255,0.6)",fontSize:15}}>
-          <div>
-            <p style={{fontWeight:800,color:"#fff",marginBottom:8}}>Get In Touch</p>
-            <p>145 El Banafsig 3, New Cairo, Cairo,</p>
-            <p>info@admepro.com</p>
-            <p>Ph: +20 100 037 0140</p>
-          </div>
-          <div>
-            <p style={{fontWeight:800,color:"#fff",marginBottom:8}}>Work Inquiries</p>
-            <p>hello@admepro.com</p>
-            <p>Ph: +20 100 037 0140</p>
-          </div>
-          <div style={{display:"flex",gap:10,marginTop:8}}>
-            {[
-              {icon:Icons.vimeoBrand, url:"https://vimeo.com/admepro"},
-              {icon:Icons.igBrand, url:"https://instagram.com/admeproagency"},
-              {icon:Icons.fbBrand, url:"https://fb.com/admepro"},
-            ].map((s,i)=>(
-              <a key={i} href={s.url} target="_blank" rel="noreferrer" style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.1)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff"}}>
-                <Ico d={s.icon} size={15} fill="currentColor" stroke="none"/>
-              </a>
-            ))}
+        <div/>
+        <div style={{display:"flex",alignItems:"flex-end",justifyContent:"flex-end"}}>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:28,color:"rgba(255,255,255,0.6)",fontSize:15,textAlign:"right"}}>
+            <div>
+              <p style={{fontWeight:800,color:"#fff",marginBottom:8}}>Get In Touch</p>
+              <p>145 El Banafsig 3, New Cairo, Cairo,</p>
+              <p>info@admepro.com</p>
+              <p>Ph: +20 100 037 0140</p>
+            </div>
+            <div>
+              <p style={{fontWeight:800,color:"#fff",marginBottom:8}}>Work Inquiries</p>
+              <p>hello@admepro.com</p>
+              <p>Ph: +20 100 037 0140</p>
+            </div>
+            <div style={{display:"flex",gap:10,marginTop:8}}>
+              {[
+                {icon:Icons.vimeoBrand, url:"https://vimeo.com/admepro"},
+                {icon:Icons.igBrand, url:"https://instagram.com/admeproagency"},
+                {icon:Icons.fbBrand, url:"https://fb.com/admepro"},
+              ].map((s,i)=>(
+                <a key={i} href={s.url} target="_blank" rel="noreferrer" style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.1)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff"}}>
+                  <Ico d={s.icon} size={15} fill="currentColor" stroke="none"/>
+                </a>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -12943,12 +12949,12 @@ function CareersFooter({isDark}) {
         </div>
 
         <button onClick={()=>{
-          // Cross-browser: some browsers track scroll position on
-          // documentElement, others on body — set both so this reliably
-          // works regardless of which one the current browser uses.
-          try{window.scrollTo({top:0,behavior:"smooth"});}catch(e){}
-          document.documentElement.scrollTop = 0;
-          document.body.scrollTop = 0;
+          // The page scrolls inside its own #careers-scroll container (not
+          // document/body), so scroll that directly — window.scrollTo alone
+          // was a no-op since the actual scrollable element was never window.
+          const el = document.getElementById("careers-scroll");
+          if(el) el.scrollTo({top:0,behavior:"smooth"});
+          else window.scrollTo({top:0,behavior:"smooth"});
         }} style={{display:"flex",alignItems:"center",gap:10,marginTop:48,background:"none",border:"none",cursor:"pointer",color:"var(--text2)",fontSize:14,fontWeight:600}}>
           <span style={{width:36,height:36,borderRadius:"50%",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",transform:"rotate(90deg)"}}>
             <Ico d={Icons.chevL} size={14} stroke="var(--text2)"/>
