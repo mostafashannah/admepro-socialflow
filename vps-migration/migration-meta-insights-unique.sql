@@ -4,4 +4,4 @@
 --   sudo mysql socialflow < migration-meta-insights-unique.sql
 
 ALTER TABLE meta_insights_snapshots
-  ADD UNIQUE KEY uq_meta_snapshot (integration_id, platform, snapshot_date);
+  ADD UNIQUE KEY uq_meta_snapshot (integration_id, platform(20), snapshot_date);
