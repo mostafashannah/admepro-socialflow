@@ -627,7 +627,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.06";
+const APP_VERSION = "beta 5.07";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -8515,8 +8515,8 @@ function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset,curr
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Assets Library</h2>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{assets.length} files · stored in Supabase Storage</p>
         </div>
-        <label style={{display:"flex",alignItems:"center",gap:7,padding:"9px 18px",borderRadius:"var(--rs)",background:"var(--accent)",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-          <Ico d={Icons.upload} size={15} stroke="#fff"/>Upload Asset
+        <label aria-label="Upload Asset" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
+          <Ico d={Icons.upload} size={15} stroke="#fff"/>
           <input ref={fileRef} type="file" accept="image/*,video/*,application/pdf,.ai,.psd,.eps,.svg" style={{display:"none"}} onChange={handleFileSelect}/>
         </label>
       </div>
@@ -8546,11 +8546,11 @@ function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset,curr
       )}
 
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-        <select value={clientF} onChange={e=>setClientF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12}}>
+        <select value={clientF} onChange={e=>setClientF(e.target.value)} style={{...inputSt,width:"auto",height:38,minHeight:38,padding:"0 14px",fontSize:12,borderRadius:99}}>
           <option value="all">All Clients</option>
           {clientNames.map(c=><option key={c} value={c}>{c}</option>)}
         </select>
-        <select value={typeF} onChange={e=>setTypeF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12}}>
+        <select value={typeF} onChange={e=>setTypeF(e.target.value)} style={{...inputSt,width:"auto",height:38,minHeight:38,padding:"0 14px",fontSize:12,borderRadius:99}}>
           <option value="all">All Types</option>
           <option value="image">Images</option>
           <option value="video">Videos</option>
