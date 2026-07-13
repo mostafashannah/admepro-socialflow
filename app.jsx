@@ -627,7 +627,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.11";
+const APP_VERSION = "beta 5.12";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1390,6 +1390,16 @@ const clr = (name,arr=["#d90b2c","#3b82f6","#8b5cf6","#10b981","#f59e0b","#ec489
 // of restructuring the folder tree itself.
 const monthProjectFolder = (projectName, clientName, date=new Date()) =>
   `${date.toLocaleDateString("en-US",{month:"long",year:"numeric"})}/${projectName||"Unsorted"}`;
+
+// clients.account_manager_id started as a single plain-string team-member id;
+// now stores a JSON-encoded array so a client can have more than one account
+// manager, while staying readable for any client saved under the old format.
+const getAccountManagerIds = (client) => {
+  const v = client?.account_manager_id;
+  if(!v) return [];
+  if(Array.isArray(v)) return v;
+  try { const parsed = JSON.parse(v); return Array.isArray(parsed) ? parsed : [v]; } catch(e) { return [v]; }
+};
 // Names an uploaded file after its task/post title, keeping the original extension.
 const renameForTask = (taskTitle, originalName, suffix="") => {
   const ext = (originalName||"").includes(".") ? originalName.slice(originalName.lastIndexOf(".")) : "";
@@ -6497,11 +6507,13 @@ function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUs
   );
 }
 
-function EditClientPage({client,onBack,onSave,canDelete,onRequestDelete}) {
-  const [f,setF] = useState({name:client.name||"",username:client.username||"",email:client.email||"",phone:client.phone||"",industry:client.industry||"",status:client.status||"active",platforms:client.platforms||[],portal_password:client.portal_password||""});
+function EditClientPage({client,onBack,onSave,canDelete,onRequestDelete,team=[]}) {
+  const [f,setF] = useState({name:client.name||"",username:client.username||"",email:client.email||"",phone:client.phone||"",industry:client.industry||"",status:client.status||"active",platforms:client.platforms||[],portal_password:client.portal_password||"",account_manager_ids:getAccountManagerIds(client)});
   const [showPw,setShowPw] = useState(false);
   const PLATFORMS = ["instagram","facebook","tiktok","twitter","linkedin","youtube"];
   const togglePlat = p => setF(x=>({...x,platforms:x.platforms.includes(p)?x.platforms.filter(v=>v!==p):[...x.platforms,p]}));
+  const accountManagers = team.filter(t=>t.role==="account_manager");
+  const toggleAM = id => setF(x=>({...x,account_manager_ids:x.account_manager_ids.includes(id)?x.account_manager_ids.filter(v=>v!==id):[...x.account_manager_ids,id]}));
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:640}} className="fade-in">
       <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -6545,6 +6557,16 @@ function EditClientPage({client,onBack,onSave,canDelete,onRequestDelete}) {
             <button type="button" onClick={()=>setShowPw(s=>!s)} style={{padding:"0 12px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",cursor:"pointer",fontSize:12,fontWeight:600}}>{showPw?"Hide":"Show"}</button>
           </div>
         </Field>
+        <Field label="Account Manager(s)" hint="Who this client's requests/notifications get scoped to — pick as many as needed">
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>
+            {accountManagers.length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>No account managers on the team yet.</p>}
+            {accountManagers.map(m=>(
+              <button key={m.id} onClick={()=>toggleAM(m.id)} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",border:"none",background:f.account_manager_ids.includes(m.id)?"var(--accent)":"var(--surface2)",color:f.account_manager_ids.includes(m.id)?"#fff":"var(--text2)",outline:f.account_manager_ids.includes(m.id)?"none":"1px solid var(--border2)"}}>
+                {m.name}
+              </button>
+            ))}
+          </div>
+        </Field>
         <div style={{display:"flex",gap:8,alignItems:"center",paddingTop:6,borderTop:"1px solid var(--border)"}}>
           {canDelete&&(
             <button onClick={()=>onRequestDelete&&onRequestDelete()} aria-label="Delete Client" title="Delete Client"
@@ -6554,7 +6576,11 @@ function EditClientPage({client,onBack,onSave,canDelete,onRequestDelete}) {
           )}
           <div style={{flex:1}}/>
           <Btn variant="secondary" onClick={onBack}>Cancel</Btn>
-          <Btn onClick={()=>{if(f.name?.trim()) onSave({...f, username:f.username?.trim()||"", portal_password:f.portal_password?.trim()||client?.portal_password||""});}}>Save Changes</Btn>
+          <Btn onClick={()=>{
+            if(!f.name?.trim()) return;
+            const {account_manager_ids, ...rest} = f;
+            onSave({...rest, username:f.username?.trim()||"", portal_password:f.portal_password?.trim()||client?.portal_password||"", account_manager_id: account_manager_ids.length?JSON.stringify(account_manager_ids):""});
+          }}>Save Changes</Btn>
         </div>
       </div>
     </div>
@@ -7078,7 +7104,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
   );
 }
 
-function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead}) {
+function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[]}) {
   const {isMobile} = useResponsive();
   const [tab,setTab] = usePersistentState(`sf_tab_client_${client?.id}`,"overview");
   const [showEdit,setShowEdit] = useState(false);
@@ -7116,7 +7142,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
 
   if(showEdit) {
     return (
-      <EditClientPage client={client} onBack={()=>setShowEdit(false)} canDelete={isAdmin}
+      <EditClientPage client={client} onBack={()=>setShowEdit(false)} canDelete={isAdmin} team={team}
         onSave={updates=>{ onUpdateClient&&onUpdateClient(client.id,updates); setShowEdit(false); }}
         onRequestDelete={()=>{ setShowEdit(false); setConfirmDelete(true); }}/>
     );
@@ -7960,7 +7986,7 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
   // Client Requests are only relevant to admin (sees everything) or the
   // account manager responsible for that client — not the rest of the team.
   const canSeeClientRequests = ["admin","account_manager"].includes(currentUser?.role);
-  const myClientNames = currentUser?.role==="account_manager" ? new Set((clients||[]).filter(c=>c.account_manager_id===currentUser?.id).map(c=>c.name)) : null;
+  const myClientNames = currentUser?.role==="account_manager" ? new Set((clients||[]).filter(c=>getAccountManagerIds(c).includes(currentUser?.id)).map(c=>c.name)) : null;
   const visibleClientTasks = !canSeeClientRequests ? [] : (currentUser?.role==="admin" ? clientTasks : clientTasks.filter(t=>myClientNames.has(t.client_name)));
   const newClientTasks = visibleClientTasks.filter(t=>t.stage==="new_request");
   const pendingClientTasks = visibleClientTasks.filter(t=>!["completed","approved"].includes(t.stage));
@@ -10419,7 +10445,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   const canApproveLeave = hasPerm(currentUser, rolePerms, "hr.approve_leave");
   const canUploadAttendance = hasPerm(currentUser, rolePerms, "hr.upload_attendance");
   const pendingLeaveCount = (leaveRequests||[]).filter(r=>r.status==="pending").length;
-  const myClientIds = isScopedAccountManager ? new Set((clients||[]).filter(c=>c.account_manager_id===currentUser?.id).map(c=>c.id)) : null;
+  const myClientIds = isScopedAccountManager ? new Set((clients||[]).filter(c=>getAccountManagerIds(c).includes(currentUser?.id)).map(c=>c.id)) : null;
   const visibleAccessRequests = isScopedAccountManager
     ? (accessRequests||[]).filter(r=>r.user_type==="client"&&myClientIds.has(r.client_id))
     : (accessRequests||[]);
@@ -27387,6 +27413,7 @@ Return ONLY valid JSON (no markdown, no explanation):
               leadNotifySettings={data.leadNotifySettings||[]}
               onSaveLeadNotifySetting={saveLeadNotifySetting}
               onDeleteLead={deleteLead}
+              team={data.team}
             />
           );
         })()}
