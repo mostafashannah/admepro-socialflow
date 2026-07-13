@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.69";
+const APP_VERSION = "beta 4.70";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16031,15 +16031,18 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
               ].map(r=><Row key={r.k} {...r} disabled={prefs.all_disabled||prefs.mentions_only}/>)}
             </div>
 
-            {/* Finance notifications */}
-            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:0}}>
-              <SectionHead title="Finance Notifications" color="#10b981"/>
-              {[
-                {k:"invoice_created", label:"New invoice created", desc:"Alert when a new invoice is generated"},
-                {k:"payment_received", label:"Payment received", desc:"Alert when a payment is recorded"},
-                {k:"subscription_renewal",label:"Subscription renewal", desc:"Reminder 7 days before a subscription renews"},
-              ].map(r=><Row key={r.k} {...r} disabled={prefs.all_disabled||prefs.mentions_only}/>)}
-            </div>
+            {/* Finance notifications — only relevant to roles that actually
+                touch invoices/payments/subscriptions */}
+            {["admin","accountant","account_manager"].includes(currentUser?.role)&&(
+              <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:0}}>
+                <SectionHead title="Finance Notifications" color="#10b981"/>
+                {[
+                  {k:"invoice_created", label:"New invoice created", desc:"Alert when a new invoice is generated"},
+                  {k:"payment_received", label:"Payment received", desc:"Alert when a payment is recorded"},
+                  {k:"subscription_renewal",label:"Subscription renewal", desc:"Reminder 7 days before a subscription renews"},
+                ].map(r=><Row key={r.k} {...r} disabled={prefs.all_disabled||prefs.mentions_only}/>)}
+              </div>
+            )}
 
             <div style={{display:"flex",alignItems:"center",gap:12}}>
               <Btn onClick={handleSaveNotif} disabled={nsaving}>
