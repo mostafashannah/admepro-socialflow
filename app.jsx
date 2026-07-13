@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.56";
+const APP_VERSION = "beta 5.57";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1998,7 +1998,7 @@ const Icons = {
   moon: "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z",
   arrow: ["M5 12h14","M12 5l7 7-7 7"],
   chevL: "M15 18l-6-6 6-6",
-  menu: ["M3 6h18","M3 12h18","M3 18h18"],
+  menu: ["M3 8h18","M3 16h18"],
   chevD: "M6 9l6 6 6-6",
   send: "M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z",
   sparkle: ["M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5z","M19 3l.8 2.2L22 6l-2.2.8L19 9l-.8-2.2L16 6l2.2-.8z"],
