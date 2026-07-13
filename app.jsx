@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.81";
+const APP_VERSION = "beta 4.82";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -20046,6 +20046,15 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
   const [proShowAll, setProShowAll] = useState(false);
   const [proSessions, setProSessions] = useState(()=>loadProSessions(currentUser?.email));
   const [proActiveId, setProActiveId] = useState(()=>loadActiveChatId(currentUser?.email));
+  // Reload from the correct per-identity storage whenever the active user changes
+  // (e.g. admin impersonating a team member) — state otherwise stays stale in memory.
+  const proChatEmailRef = React.useRef(currentUser?.email);
+  useEffect(()=>{
+    if(proChatEmailRef.current === currentUser?.email) return;
+    proChatEmailRef.current = currentUser?.email;
+    setProSessions(loadProSessions(currentUser?.email));
+    setProActiveId(loadActiveChatId(currentUser?.email));
+  },[currentUser?.email]);
 
   // Keep the flyout's list + active highlight live while it's open, so a
   // title that finishes deriving (or a session switch from the chat itself)
@@ -21216,6 +21225,16 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
   // ── Session-based persistent chat storage ──
   const [sessions, setSessions] = useState(()=>loadProSessions(currentUser?.email));
   const [activeChatId, setActiveChatId] = useState(()=>loadActiveChatId(currentUser?.email));
+  // Reload from the correct per-identity storage whenever the active user changes
+  // (e.g. admin impersonating a team member) — state otherwise stays stale in memory.
+  const proChatEmailRef = React.useRef(currentUser?.email);
+  useEffect(()=>{
+    if(proChatEmailRef.current === currentUser?.email) return;
+    proChatEmailRef.current = currentUser?.email;
+    setSessions(loadProSessions(currentUser?.email));
+    setActiveChatId(loadActiveChatId(currentUser?.email));
+    setPendingSession(null);
+  },[currentUser?.email]);
   // A freshly-opened conversation that hasn't received a real user message yet.
   // Kept OUT of `sessions` (and therefore out of localStorage) until the first
   // message is sent, so opening/refreshing Pro never litters saved history.
@@ -22898,6 +22917,16 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
   // Same keys: PRO_CHAT_SESSIONS_KEY + PRO_CHAT_ACTIVE_KEY → continues whatever chat is open in floating bubble
   const [chatSessions, setChatSessions] = useState(()=>loadProSessions(currentUser?.email));
   const [activeChatId, setActiveChatId] = useState(()=>loadActiveChatId(currentUser?.email));
+  // Reload from the correct per-identity storage whenever the active user changes
+  // (e.g. admin impersonating a team member) — state otherwise stays stale in memory.
+  const proChatEmailRef = React.useRef(currentUser?.email);
+  useEffect(()=>{
+    if(proChatEmailRef.current === currentUser?.email) return;
+    proChatEmailRef.current = currentUser?.email;
+    setChatSessions(loadProSessions(currentUser?.email));
+    setActiveChatId(loadActiveChatId(currentUser?.email));
+    setPendingSession(null);
+  },[currentUser?.email]);
   // A freshly-opened conversation (incl. its welcome message) that hasn't received
   // a real user message yet — kept out of chatSessions/localStorage until then.
   const [pendingSession, setPendingSession] = useState(null);
