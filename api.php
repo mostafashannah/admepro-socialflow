@@ -50,6 +50,7 @@ $ALLOWED_TABLES = [
     'meta_insights_snapshots','customer_messages','reply_bot_settings',
     'role_permissions','leave_requests','attendance_records','contact_reports',
     'lead_notify_settings','expenses','finance_client_notes',
+    'job_openings','job_applications',
 ];
 
 $table = $_GET['table'] ?? '';

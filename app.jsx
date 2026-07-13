@@ -84,6 +84,7 @@ const HR_PERMISSIONS = [
   { key: "hr.view_performance",label: "View performance logs" },
   { key: "hr.approve_leave",   label: "Approve / reject leave & WFH requests" },
   { key: "hr.upload_attendance",label:"Upload monthly attendance sheet" },
+  { key: "hr.manage_recruitment",label:"Manage job openings & applications" },
 ];
 const DEFAULT_ROLE_PERMISSIONS = {
   hr: ["hr.view_team","hr.edit_team","hr.manage_roles","hr.view_salary","hr.edit_salary","hr.view_performance","hr.approve_leave","hr.upload_attendance"],
@@ -371,6 +372,8 @@ const SB_TABLE = {
   Expense:"expenses",
   FinanceClientNote:"finance_client_notes",
   MetaInsightsSnapshot:"meta_insights_snapshots",
+  JobOpening:"job_openings",
+  JobApplication:"job_applications",
 };
 
 function sbTable(entityName) {
@@ -564,6 +567,53 @@ Rules:
   }catch(e){ return []; }
 }
 
+// ── Recruitment: AI CV review ──────────────────────────────────
+// Sends the applicant's CV straight to Claude as a document content block
+// (ai-proxy.php is a pure passthrough to the Messages API, so this needs
+// no backend changes) and asks for strict JSON back — same defensive
+// regex-extract + JSON.parse shape as proLearnFromExchange() above.
+// cvBase64 may include the "data:application/pdf;base64," prefix (from
+// FileReader.readAsDataURL) or be a bare base64 string — both are handled.
+async function reviewApplication(application, cvBase64, opening) {
+  if(!application?.id || !cvBase64) return null;
+  const data = cvBase64.includes(",") ? cvBase64.split(",")[1] : cvBase64;
+  const sys = `You are an HR screening assistant reviewing a candidate's CV (attached as a PDF document) for the position "${opening?.title||application.job_title||"this role"}".
+Job description: ${(opening?.description||"").slice(0,1500)}
+Requirements: ${(opening?.requirements||"").slice(0,1500)}
+
+Read the CV and return ONLY JSON in this exact shape:
+{"candidate_name":"","candidate_email":"","candidate_phone":"","years_experience":0,"skills":["..."],"education":"","languages":["..."],"highlights":["≤5 concrete, specific achievements or qualifications relevant to this role"],"red_flags":["≤3 concerns, gaps, or mismatches — empty array if none"],"score":0,"summary":"2-3 sentence overall assessment of fit for this specific role"}
+"score" is 0-100, reflecting fit for THIS role specifically (not a generic CV quality score).`;
+  try {
+    const r = await fetch(AI_ENDPOINT, {
+      method:"POST", headers:AI_HEADERS,
+      body: JSON.stringify({
+        model:"claude-sonnet-4-6", max_tokens:1500, system:sys,
+        messages:[{role:"user", content:[
+          {type:"document", source:{type:"base64", media_type:"application/pdf", data}},
+          {type:"text", text:"Review this CV and return the JSON described in the system prompt."},
+        ]}],
+      }),
+    });
+    if(!r.ok) throw new Error(`AI review failed: ${r.status}`);
+    const d = await r.json();
+    const raw = (d.content?.map(b=>b.text||"").join("")||"").trim();
+    const m = raw.match(/\{[\s\S]*\}/);
+    if(!m) throw new Error("No JSON in AI response");
+    const extracted = JSON.parse(m[0]);
+    await ue("JobApplication", application.id, {
+      ai_score: typeof extracted.score==="number" ? Math.max(0,Math.min(100,Math.round(extracted.score))) : null,
+      ai_summary: (extracted.summary||"").slice(0,600),
+      ai_extracted: JSON.stringify(extracted),
+      ai_review_status: "done",
+    });
+    return extracted;
+  } catch(e) {
+    await ue("JobApplication", application.id, {ai_review_status:"failed"}).catch(()=>{});
+    return null;
+  }
+}
+
 // ── Feature flags ──────────────────────────────────────────────
 // Untested/in-progress features stay off by default until toggled on
 // from Settings → Feature Flags (writes to app_settings.feature_flags).
@@ -642,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.34";
+const APP_VERSION = "beta 5.35";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12731,6 +12781,161 @@ function AcceptInvitationPage({token, onAccepted}) {
 }
 
 // ════════════════════════════════════════════════════════════════
+// CAREERS PAGE (public, unauthenticated — socialflow.admepro.com/careers)
+// ════════════════════════════════════════════════════════════════
+const MAX_CV_MB = 8;
+function CareersPage() {
+  const [openings, setOpenings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState(null); // job_opening being applied to
+  const [form, setForm] = useState({name:"",email:"",phone:"",cover_letter:"",portfolio_url:"",linkedin_url:"",website:""}); // "website" = honeypot
+  const [cvFile, setCvFile] = useState(null);
+  const [cvBase64, setCvBase64] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+  const fileRef = useRef(null);
+  const sf = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  useEffect(()=>{
+    qe("JobOpening",{status:"open"},"-created_date",100).then(res=>{
+      setOpenings(res.entities||[]);
+      setLoading(false);
+    }).catch(()=>setLoading(false));
+  },[]);
+
+  const handleCv = e => {
+    const file = e.target.files?.[0];
+    if(!file) return;
+    if(file.type!=="application/pdf") { alert("Please upload your CV as a PDF file."); return; }
+    if(file.size > MAX_CV_MB*1024*1024) { alert(`CV is too large (max ${MAX_CV_MB}MB). Please choose a smaller file.`); return; }
+    setCvFile(file);
+    const reader = new FileReader();
+    reader.onload = ev => setCvBase64(ev.target.result);
+    reader.readAsDataURL(file);
+  };
+
+  const handleSubmit = async () => {
+    if(form.website) return; // honeypot tripped — silently drop
+    if(!form.name.trim()||!form.email.trim()) { alert("Name and email are required."); return; }
+    if(!cvFile||!cvBase64) { alert("Please attach your CV (PDF)."); return; }
+    setSubmitting(true);
+    try {
+      const cv_url = await uploadToStorage(cvFile, "job-applications");
+      const res = await ce("JobApplication",[{
+        job_opening_id: selected.id, job_title: selected.title,
+        candidate_name: form.name.trim(), candidate_email: form.email.trim(), candidate_phone: form.phone.trim(),
+        cv_url, cover_letter: form.cover_letter, portfolio_url: form.portfolio_url, linkedin_url: form.linkedin_url,
+        status:"new", ai_review_status:"pending",
+      }]);
+      const created = res.entities?.[0];
+      setDone(true);
+      if(created?.id) reviewApplication(created, cvBase64, selected).catch(()=>{});
+    } catch(e) { alert("Something went wrong submitting your application. Please try again."); }
+    setSubmitting(false);
+  };
+
+  const EMPLOYMENT_LABELS = {full_time:"Full-time", part_time:"Part-time", contract:"Contract", internship:"Internship"};
+
+  if(loading) return <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",color:"var(--text2)"}}>Loading openings…</div>;
+
+  if(done) return (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:"var(--bg)",padding:20}}>
+      <div style={{background:"var(--surface)",borderRadius:20,padding:40,width:420,maxWidth:"100%",border:"1px solid var(--border)",textAlign:"center"}}>
+        <h2 style={{fontWeight:800,fontSize:22,color:"var(--text)"}}>Application received!</h2>
+        <p style={{color:"var(--text2)",fontSize:14,marginTop:10}}>Thanks for applying to <strong>{selected?.title}</strong> at SocialFlow. Our team will review your application and reach out if there's a match.</p>
+      </div>
+    </div>
+  );
+
+  if(!selected) return (
+    <div style={{minHeight:"100vh",background:"var(--bg)",padding:"48px 20px"}}>
+      <div style={{maxWidth:720,margin:"0 auto"}}>
+        <div style={{textAlign:"center",marginBottom:36}}>
+          <h1 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:30,color:"var(--text)"}}>Careers at SocialFlow</h1>
+          <p style={{color:"var(--text2)",fontSize:14,marginTop:8}}>We're a social media agency looking for great people. Explore our open positions below.</p>
+        </div>
+        {openings.length===0 ? (
+          <div style={{textAlign:"center",padding:60,color:"var(--text3)"}}>No open positions right now — check back soon!</div>
+        ) : (
+          <div style={{display:"flex",flexDirection:"column",gap:14}}>
+            {openings.map(o=>(
+              <div key={o.id} onClick={()=>setSelected(o)} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:24,cursor:"pointer"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+                  <h3 style={{fontWeight:800,fontSize:17,color:"var(--text)"}}>{o.title}</h3>
+                  <Badge label={EMPLOYMENT_LABELS[o.employment_type]||"Full-time"} color="#3b82f6"/>
+                </div>
+                <p style={{color:"var(--text2)",fontSize:12,marginTop:4}}>{[o.department,o.location].filter(Boolean).join(" · ")}</p>
+                {o.description&&<p style={{color:"var(--text2)",fontSize:13,marginTop:10,lineHeight:1.6,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{o.description}</p>}
+                <p style={{color:"var(--accent)",fontSize:13,fontWeight:700,marginTop:12}}>Apply now →</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{minHeight:"100vh",background:"var(--bg)",padding:"48px 20px"}}>
+      <div style={{maxWidth:560,margin:"0 auto"}}>
+        <button onClick={()=>setSelected(null)} style={{background:"none",border:"none",color:"var(--text2)",fontSize:13,fontWeight:600,cursor:"pointer",marginBottom:16}}>← Back to all openings</button>
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:20,padding:32}}>
+          <h2 style={{fontWeight:800,fontSize:22,color:"var(--text)"}}>{selected.title}</h2>
+          <p style={{color:"var(--text2)",fontSize:13,marginTop:4}}>{[selected.department,selected.location,EMPLOYMENT_LABELS[selected.employment_type]].filter(Boolean).join(" · ")}</p>
+          {selected.description&&<p style={{color:"var(--text2)",fontSize:13,marginTop:16,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{selected.description}</p>}
+          {selected.requirements&&(
+            <div style={{marginTop:14}}>
+              <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:6}}>Requirements</p>
+              <p style={{color:"var(--text2)",fontSize:13,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{selected.requirements}</p>
+            </div>
+          )}
+
+          <div style={{display:"flex",flexDirection:"column",gap:14,marginTop:24,paddingTop:24,borderTop:"1px solid var(--border)"}}>
+            <div>
+              <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Full Name *</label>
+              <input value={form.name} onChange={e=>sf("name",e.target.value)} placeholder="Your name" style={inputSt}/>
+            </div>
+            <div>
+              <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Email *</label>
+              <input type="email" value={form.email} onChange={e=>sf("email",e.target.value)} placeholder="you@example.com" style={inputSt}/>
+            </div>
+            <div>
+              <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Phone</label>
+              <input value={form.phone} onChange={e=>sf("phone",e.target.value)} placeholder="+20 100 000 0000" style={inputSt}/>
+            </div>
+            <div>
+              <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Portfolio Link <span style={{fontWeight:400,color:"var(--text3)"}}>(Behance, Canva, personal site…)</span></label>
+              <input value={form.portfolio_url} onChange={e=>sf("portfolio_url",e.target.value)} placeholder="https://…" style={inputSt}/>
+            </div>
+            <div>
+              <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>LinkedIn</label>
+              <input value={form.linkedin_url} onChange={e=>sf("linkedin_url",e.target.value)} placeholder="https://linkedin.com/in/…" style={inputSt}/>
+            </div>
+            <div>
+              <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Cover Letter</label>
+              <textarea value={form.cover_letter} onChange={e=>sf("cover_letter",e.target.value)} placeholder="Tell us why you're a great fit…" rows={5} style={{...inputSt,resize:"vertical"}}/>
+            </div>
+            {/* Honeypot — hidden from real users, bots tend to fill every field */}
+            <input value={form.website} onChange={e=>sf("website",e.target.value)} tabIndex={-1} autoComplete="off" style={{position:"absolute",left:-9999,width:1,height:1,opacity:0}} aria-hidden="true"/>
+            <div>
+              <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>CV (PDF only, max {MAX_CV_MB}MB) *</label>
+              <button onClick={()=>fileRef.current?.click()} style={{width:"100%",padding:"12px",borderRadius:"var(--rs)",border:"1px dashed var(--border2)",background:"var(--surface2)",color:cvFile?"var(--text)":"var(--text2)",fontSize:13,fontWeight:600,cursor:"pointer",textAlign:"left"}}>
+                {cvFile ? `📄 ${cvFile.name}` : "Click to attach your CV (PDF)"}
+              </button>
+              <input ref={fileRef} type="file" accept="application/pdf" style={{display:"none"}} onChange={handleCv}/>
+            </div>
+          </div>
+
+          <button onClick={handleSubmit} disabled={submitting} style={{width:"100%",marginTop:24,background:"var(--accent)",color:"#fff",border:"none",borderRadius:10,padding:"13px",fontWeight:700,fontSize:15,cursor:"pointer",opacity:submitting?0.7:1}}>
+            {submitting?"Submitting…":"Submit Application"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
 // REQUEST ACCESS PAGE
 // ════════════════════════════════════════════════════════════════
 // ── Social OAuth helpers ──────────────────────────────────────
@@ -20678,6 +20883,321 @@ Give 3 specific, actionable recommendations to improve their performance. Be con
 }
 
 // ════════════════════════════════════════════════════════════════
+// RECRUITMENT PAGE (admin / hr.manage_recruitment)
+// ════════════════════════════════════════════════════════════════
+const APPLICATION_STATUSES = [
+  {key:"new", label:"New", color:"#3b82f6"},
+  {key:"reviewing", label:"Reviewing", color:"#8b5cf6"},
+  {key:"shortlisted", label:"Shortlisted", color:"#f59e0b"},
+  {key:"interview", label:"Interview", color:"#d90b2c"},
+  {key:"hired", label:"Hired", color:"#10b981"},
+  {key:"rejected", label:"Rejected", color:"#6b7280"},
+];
+const EMPLOYMENT_TYPE_LABELS = {full_time:"Full-time", part_time:"Part-time", contract:"Contract", internship:"Internship"};
+
+function JobOpeningForm({opening, currentUser, onSave, onClose}) {
+  const [f, setF] = useState({
+    title: opening?.title||"", department: opening?.department||"", location: opening?.location||"",
+    employment_type: opening?.employment_type||"full_time", description: opening?.description||"",
+    requirements: opening?.requirements||"", status: opening?.status||"open", closing_date: opening?.closing_date||"",
+  });
+  const [saving, setSaving] = useState(false);
+  const sf = (k,v) => setF(p=>({...p,[k]:v}));
+
+  const handleSave = async () => {
+    if(!f.title.trim()) { alert("Title is required"); return; }
+    setSaving(true);
+    await onSave(opening?.id, {...f, created_by: opening?.created_by||currentUser?.email});
+    setSaving(false);
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"var(--surface)",borderRadius:16,padding:28,width:520,maxWidth:"100%",maxHeight:"85vh",overflowY:"auto",border:"1px solid var(--border)"}}>
+        <h3 style={{fontWeight:800,fontSize:18,marginBottom:18}}>{opening?"Edit Opening":"New Job Opening"}</h3>
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <Field label="Title *"><input value={f.title} onChange={e=>sf("title",e.target.value)} placeholder="e.g. Senior Graphic Designer" style={inputSt}/></Field>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <Field label="Department"><input value={f.department} onChange={e=>sf("department",e.target.value)} style={inputSt}/></Field>
+            <Field label="Location"><input value={f.location} onChange={e=>sf("location",e.target.value)} placeholder="Remote / Cairo" style={inputSt}/></Field>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <Field label="Employment Type">
+              <select value={f.employment_type} onChange={e=>sf("employment_type",e.target.value)} style={inputSt}>
+                {Object.entries(EMPLOYMENT_TYPE_LABELS).map(([k,l])=><option key={k} value={k}>{l}</option>)}
+              </select>
+            </Field>
+            <Field label="Status">
+              <select value={f.status} onChange={e=>sf("status",e.target.value)} style={inputSt}>
+                <option value="open">Open</option>
+                <option value="closed">Closed</option>
+                <option value="draft">Draft</option>
+              </select>
+            </Field>
+          </div>
+          <Field label="Description"><textarea value={f.description} onChange={e=>sf("description",e.target.value)} rows={4} style={{...inputSt,resize:"vertical"}}/></Field>
+          <Field label="Requirements"><textarea value={f.requirements} onChange={e=>sf("requirements",e.target.value)} rows={4} style={{...inputSt,resize:"vertical"}}/></Field>
+          <Field label="Closing Date"><input type="date" value={f.closing_date} onChange={e=>sf("closing_date",e.target.value)} style={inputSt}/></Field>
+        </div>
+        <div style={{display:"flex",gap:10,marginTop:22}}>
+          <Btn variant="secondary" onClick={onClose} style={{flex:1}}>Cancel</Btn>
+          <Btn onClick={handleSave} disabled={saving} style={{flex:2}}>{saving?"Saving…":opening?"Save Changes":"Create Opening"}</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ApplicationDetail({application, opening, onClose, onUpdateStatus, onSaveNotes, onRerunReview}) {
+  const [notes, setNotes] = useState(application.notes||"");
+  const [rerunning, setRerunning] = useState(false);
+  const extracted = (() => { try { return JSON.parse(application.ai_extracted||"{}"); } catch(e) { return {}; } })();
+
+  const handleRerun = async () => {
+    setRerunning(true);
+    await onRerunReview(application);
+    setRerunning(false);
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"var(--surface)",borderRadius:16,padding:28,width:600,maxWidth:"100%",maxHeight:"88vh",overflowY:"auto",border:"1px solid var(--border)"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+          <div>
+            <h3 style={{fontWeight:800,fontSize:18}}>{application.candidate_name}</h3>
+            <p style={{fontSize:12,color:"var(--text2)",marginTop:2}}>Applied for {application.job_title||opening?.title||"—"}</p>
+          </div>
+          {application.ai_score!=null&&(
+            <div style={{textAlign:"center",padding:"8px 16px",background:"var(--surface2)",borderRadius:12,border:"1px solid var(--border)"}}>
+              <p style={{fontSize:9,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>AI Score</p>
+              <p style={{fontSize:22,fontWeight:800,color:application.ai_score>=70?"#10b981":application.ai_score>=40?"#f59e0b":"#ef4444"}}>{application.ai_score}</p>
+            </div>
+          )}
+        </div>
+
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:18}}>
+          <a href={`mailto:${application.candidate_email}`} style={{fontSize:12,color:"var(--text2)"}}>{application.candidate_email}</a>
+          {application.candidate_phone&&<span style={{fontSize:12,color:"var(--text3)"}}>· {application.candidate_phone}</span>}
+        </div>
+
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:18}}>
+          {application.cv_url&&<a href={application.cv_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--accentbg)",border:"1px solid var(--accent)33",fontSize:12,fontWeight:700,color:"var(--accent)",textDecoration:"none"}}>View CV</a>}
+          {application.portfolio_url&&<a href={application.portfolio_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>Portfolio</a>}
+          {application.linkedin_url&&<a href={application.linkedin_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>LinkedIn</a>}
+        </div>
+
+        {application.ai_review_status==="pending"&&<p style={{fontSize:12,color:"var(--text3)",marginBottom:14}}><Spinner size={12}/> AI review in progress…</p>}
+        {application.ai_review_status==="failed"&&(
+          <div style={{padding:"10px 14px",background:"#ef444422",border:"1px solid #ef444455",borderRadius:"var(--rs)",marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+            <span style={{fontSize:12,color:"#ef4444",fontWeight:600}}>AI review failed</span>
+            <Btn size="sm" onClick={handleRerun} disabled={rerunning}>{rerunning?"Retrying…":"Retry"}</Btn>
+          </div>
+        )}
+        {application.ai_summary&&(
+          <div style={{background:"var(--surface2)",borderRadius:12,padding:16,marginBottom:14}}>
+            <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:6}}>AI Summary</p>
+            <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6}}>{application.ai_summary}</p>
+          </div>
+        )}
+        {extracted.highlights?.length>0&&(
+          <div style={{marginBottom:14}}>
+            <p style={{fontSize:11,fontWeight:800,color:"#10b981",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:6}}>Highlights</p>
+            <ul style={{margin:0,paddingLeft:18,fontSize:13,color:"var(--text2)",lineHeight:1.7}}>{extracted.highlights.map((h,i)=><li key={i}>{h}</li>)}</ul>
+          </div>
+        )}
+        {extracted.red_flags?.length>0&&(
+          <div style={{marginBottom:14}}>
+            <p style={{fontSize:11,fontWeight:800,color:"#ef4444",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:6}}>Concerns</p>
+            <ul style={{margin:0,paddingLeft:18,fontSize:13,color:"var(--text2)",lineHeight:1.7}}>{extracted.red_flags.map((h,i)=><li key={i}>{h}</li>)}</ul>
+          </div>
+        )}
+        {(extracted.skills?.length>0||extracted.years_experience||extracted.education)&&(
+          <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+            {extracted.years_experience!=null&&<Badge label={`${extracted.years_experience} yrs exp`} color="#6366f1"/>}
+            {extracted.education&&<Badge label={extracted.education} color="#8b5cf6"/>}
+            {(extracted.skills||[]).slice(0,8).map((s,i)=><Badge key={i} label={s} color="#3b82f6"/>)}
+          </div>
+        )}
+        {application.cover_letter&&(
+          <div style={{marginBottom:14}}>
+            <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:6}}>Cover Letter</p>
+            <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{application.cover_letter}</p>
+          </div>
+        )}
+
+        <div style={{marginBottom:14}}>
+          <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Status</p>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            {APPLICATION_STATUSES.map(s=>(
+              <button key={s.key} onClick={()=>onUpdateStatus(application, s.key)} style={{
+                padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,
+                background:application.status===s.key?s.color:"var(--surface2)",
+                color:application.status===s.key?"#fff":"var(--text2)",
+                border:`1px solid ${application.status===s.key?s.color:"var(--border2)"}`,
+              }}>{s.label}</button>
+            ))}
+          </div>
+        </div>
+
+        <Field label="Notes">
+          <textarea value={notes} onChange={e=>setNotes(e.target.value)} onBlur={()=>onSaveNotes(application, notes)} rows={3} style={{...inputSt,resize:"vertical"}}/>
+        </Field>
+
+        <Btn variant="secondary" onClick={onClose} style={{width:"100%",marginTop:18}}>Close</Btn>
+      </div>
+    </div>
+  );
+}
+
+function RecruitmentPage({currentUser}) {
+  const [tab, setTab] = useState("openings");
+  const [openings, setOpenings] = useState([]);
+  const [applications, setApplications] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editOpening, setEditOpening] = useState(null);
+  const [selectedApp, setSelectedApp] = useState(null);
+  const [openingFilter, setOpeningFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    const [oRes, aRes] = await Promise.all([qe("JobOpening",{},"-created_date",200), qe("JobApplication",{},"-created_date",500)]);
+    setOpenings(oRes.entities||[]);
+    setApplications(aRes.entities||[]);
+    setLoading(false);
+  };
+  useEffect(()=>{ load(); },[]);
+
+  const handleSaveOpening = async (id, payload) => {
+    if(id) await ue("JobOpening", id, payload);
+    else await ce("JobOpening",[payload]);
+    setShowForm(false); setEditOpening(null);
+    await load();
+  };
+
+  const handleUpdateStatus = async (app, status) => {
+    setApplications(prev=>prev.map(a=>a.id===app.id?{...a,status}:a));
+    setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,status}:prev);
+    await ue("JobApplication", app.id, {status}).catch(()=>{});
+  };
+  const handleSaveNotes = async (app, notes) => {
+    setApplications(prev=>prev.map(a=>a.id===app.id?{...a,notes}:a));
+    await ue("JobApplication", app.id, {notes}).catch(()=>{});
+  };
+  const handleRerunReview = async (app) => {
+    const opening = openings.find(o=>o.id===app.job_opening_id);
+    if(!app.cv_url) return;
+    try {
+      const r = await fetch(app.cv_url);
+      const blob = await r.blob();
+      const reader = new FileReader();
+      const base64 = await new Promise(res=>{ reader.onload = ()=>res(reader.result); reader.readAsDataURL(blob); });
+      await ue("JobApplication", app.id, {ai_review_status:"pending"});
+      await reviewApplication(app, base64, opening);
+      await load();
+      if(selectedApp?.id===app.id) {
+        const refreshed = (await qe("JobApplication",{})).entities?.find(a=>a.id===app.id);
+        if(refreshed) setSelectedApp(refreshed);
+      }
+    } catch(e) { await ue("JobApplication", app.id, {ai_review_status:"failed"}).catch(()=>{}); }
+  };
+
+  const filteredApps = applications
+    .filter(a=>openingFilter==="all"||a.job_opening_id===openingFilter)
+    .filter(a=>statusFilter==="all"||a.status===statusFilter)
+    .sort((a,b)=>(b.ai_score||-1)-(a.ai_score||-1));
+
+  const careersUrl = (typeof window!=="undefined"?window.location.origin:"https://socialflow.admepro.com") + "/careers";
+  const copyLink = () => { navigator.clipboard?.writeText(careersUrl); setLinkCopied(true); setTimeout(()=>setLinkCopied(false),2000); };
+
+  if(loading) return <div style={{padding:40,textAlign:"center",color:"var(--text2)"}}><Spinner size={20}/></div>;
+
+  return (
+    <div className="fade-in" style={{display:"flex",flexDirection:"column",gap:20}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+        <div>
+          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:22,fontWeight:800,margin:0}}>Recruitment</h2>
+          <p style={{color:"var(--text3)",fontSize:13,margin:"4px 0 0"}}>{openings.filter(o=>o.status==="open").length} open positions · {applications.length} applications</p>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <button onClick={copyLink} style={{padding:"9px 16px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text2)",display:"flex",alignItems:"center",gap:6}}>
+            <Ico d={Icons.link2} size={13}/> {linkCopied?"Copied!":"Copy Careers Link"}
+          </button>
+          {tab==="openings"&&<Btn onClick={()=>{setEditOpening(null);setShowForm(true);}}><Ico d={Icons.plus} size={15}/> New Opening</Btn>}
+        </div>
+      </div>
+
+      <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)",alignSelf:"flex-start"}}>
+        {[["openings","Job Openings"],["applications","Applications"]].map(([k,l])=>(
+          <button key={k} onClick={()=>setTab(k)} style={{padding:"7px 16px",borderRadius:"var(--rxs)",fontSize:12,fontWeight:700,background:tab===k?"var(--accent)":"none",color:tab===k?"#fff":"var(--text2)"}}>{l}</button>
+        ))}
+      </div>
+
+      {tab==="openings"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {openings.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--text2)"}}>No job openings yet. Create one to start receiving applications.</div>}
+          {openings.map(o=>(
+            <div key={o.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:18,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <p style={{fontWeight:700,fontSize:15}}>{o.title}</p>
+                  <Badge label={o.status} color={o.status==="open"?"#10b981":o.status==="draft"?"#f59e0b":"#6b7280"} xs/>
+                </div>
+                <p style={{fontSize:12,color:"var(--text3)",marginTop:3}}>{[o.department,o.location,EMPLOYMENT_TYPE_LABELS[o.employment_type]].filter(Boolean).join(" · ")} · {applications.filter(a=>a.job_opening_id===o.id).length} applications</p>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>{setOpeningFilter(o.id);setTab("applications");}} style={{padding:"7px 12px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)"}}>View Applications</button>
+                <button onClick={()=>{setEditOpening(o);setShowForm(true);}} style={{padding:"7px 12px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)"}}>Edit</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab==="applications"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+            <select value={openingFilter} onChange={e=>setOpeningFilter(e.target.value)} style={{...inputSt,width:"auto",borderRadius:99}}>
+              <option value="all">All Openings</option>
+              {openings.map(o=><option key={o.id} value={o.id}>{o.title}</option>)}
+            </select>
+            <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} style={{...inputSt,width:"auto",borderRadius:99}}>
+              <option value="all">All Statuses</option>
+              {APPLICATION_STATUSES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
+            </select>
+          </div>
+          {filteredApps.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--text2)"}}>No applications match these filters.</div>}
+          {filteredApps.map(a=>{
+            const statusInfo = APPLICATION_STATUSES.find(s=>s.key===a.status)||APPLICATION_STATUSES[0];
+            return (
+              <div key={a.id} onClick={()=>setSelectedApp(a)} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:"pointer",flexWrap:"wrap"}}>
+                <div style={{display:"flex",alignItems:"center",gap:12}}>
+                  <Avatar name={a.candidate_name} size={36}/>
+                  <div>
+                    <p style={{fontWeight:700,fontSize:14}}>{a.candidate_name}</p>
+                    <p style={{fontSize:12,color:"var(--text3)"}}>{a.job_title} · {fmtDate(a.created_at)}</p>
+                  </div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  {a.ai_review_status==="pending"&&<Spinner size={13}/>}
+                  {a.ai_score!=null&&<span style={{fontWeight:800,fontSize:16,color:a.ai_score>=70?"#10b981":a.ai_score>=40?"#f59e0b":"#ef4444"}}>{a.ai_score}</span>}
+                  <Badge label={statusInfo.label} color={statusInfo.color} xs/>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {showForm&&<JobOpeningForm opening={editOpening} currentUser={currentUser} onSave={handleSaveOpening} onClose={()=>{setShowForm(false);setEditOpening(null);}}/>}
+      {selectedApp&&<ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} onClose={()=>setSelectedApp(null)} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview}/>}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
 // SIDEBAR
 // ════════════════════════════════════════════════════════════════
 function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfile,onLogout,open,onClose,wallpaper,onWallpaperChange,rolePerms}) {
@@ -20685,6 +21205,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
   const unread = notifications.filter(n=>n.recipient_email===currentUser?.email&&!n.is_read).length;
   const isAdmin = currentUser?.role==="admin";
   const canViewTeamNav = isAdmin || hasPerm(currentUser, rolePerms, "hr.view_team");
+  const canManageRecruitment = isAdmin || hasPerm(currentUser, rolePerms, "hr.manage_recruitment");
   const isAccountant = currentUser?.role==="accountant";
   const canFinance = isAdmin||isAccountant;
   const canAgency = isAdmin||["account_manager","content_creator","graphic_designer"].includes(currentUser?.role);
@@ -20746,6 +21267,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     ...(canViewTeamNav ? [{ group: "TEAM", icon: Icons.users, items: [
       {key:"users", label:"User Management", ico:Icons.users},
       ...(isAdmin?[{key:"performance", label:"Performance", ico:Icons.award}]:[]),
+      ...(canManageRecruitment?[{key:"recruitment", label:"Recruitment", ico:Icons.briefcase}]:[]),
     ]}] : []),
     ...((canAgency||isAdmin) ? [{ group: "TOOLS", icon: Icons.wand, items: [
       ...(canAgency?[
@@ -25270,14 +25792,14 @@ function App() {
     setImpersonatorUser(null);
     setPage(returnPage);
   };
-  const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account"];
+  const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment"];
   const [page,setPage_] = useState(()=>{
     try{
       // URL hash takes priority (direct link) — but always reset to home on fresh load
       // to avoid getting stuck on a detail page that hasn't loaded data yet
       const hash = window.location.hash.replace("#","");
       // Only use hash/localStorage if it's a top-level list page (not a detail context)
-      const SAFE_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account"];
+      const SAFE_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment"];
       if(hash && SAFE_PAGES.includes(hash)) return hash;
       const stored = localStorage.getItem("sf_page");
       return (stored && SAFE_PAGES.includes(stored)) ? stored : "home";
@@ -25466,6 +25988,10 @@ function App() {
   // Check for invite token in URL
   const [inviteToken] = useState(()=>{
     try { return new URLSearchParams(window.location.search).get("invite")||null; } catch(e) { return null; }
+  });
+  // Public careers page — socialflow.admepro.com/careers, no login required
+  const [isCareersPath] = useState(()=>{
+    try { return window.location.pathname==="/careers"; } catch(e) { return false; }
   });
   // Handle OAuth callback (Supabase redirects back with #access_token=...)
   const [oauthEmail] = useState(()=>{
@@ -27486,6 +28012,11 @@ Return ONLY valid JSON (no markdown, no explanation):
     return (<><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/><ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]}/></>);
   }
 
+  // Public careers/job-application page — /careers, no login required
+  if(isCareersPath) {
+    return (<><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/><CareersPage/></>);
+  }
+
   // Accept invitation flow (URL has ?invite=TOKEN)
   if(inviteToken && !currentUser) {
     return (<><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/><AcceptInvitationPage token={inviteToken} onAccepted={()=>{ try{window.history.replaceState({},"",window.location.pathname);}catch(e){} window.location.reload(); }}/></>);
@@ -27910,6 +28441,9 @@ Return ONLY valid JSON (no markdown, no explanation):
             aiInsights={data.aiInsights||[]}
             team={data.team}
           />
+        )}
+        {page==="recruitment"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.manage_recruitment"))&&(
+          <RecruitmentPage currentUser={currentUser}/>
         )}
         {page==="agents"&&currentUser?.role==="admin"&&(
           <AgentsPage
