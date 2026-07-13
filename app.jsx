@@ -636,7 +636,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.14";
+const APP_VERSION = "beta 5.15";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9326,21 +9326,6 @@ No markdown, no explanation, just the JSON array.`;
     <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
       <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12}}>
         {kpis.map(k=><StatCard key={k.label} label={k.label} value={k.value} color={k.color}/>)}
-      </div>
-
-      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"16px 20px"}}>
-        <h4 style={{fontWeight:700,fontSize:14,marginBottom:14}}>Platforms Summary</h4>
-        {platformStatus.length?(
-          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-            {platformStatus.map(p=>(
-              <div key={p.platform} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
-                <PChip platform={p.platform}/>
-                <span style={{width:8,height:8,borderRadius:"50%",background:p.connected?"#10b981":"#ef4444",flexShrink:0}}/>
-                <span style={{fontSize:12,fontWeight:600,color:p.connected?"#10b981":"#ef4444"}}>{p.connected?"Connected":"Not connected"}</span>
-              </div>
-            ))}
-          </div>
-        ):<p style={{fontSize:12,color:"var(--text3)"}}>No platforms configured for this client yet.</p>}
       </div>
 
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"16px 20px"}}>
