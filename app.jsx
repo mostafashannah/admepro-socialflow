@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.41";
+const APP_VERSION = "beta 5.42";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -20924,14 +20924,17 @@ const JOB_DEPARTMENTS = ["Creative","Design","Account Management","Development",
 const JOB_LOCATIONS = ["Remote","Cairo, Egypt","Alexandria, Egypt","Hybrid","Other"];
 
 // AI-generate a job description + requirements draft for one opening, from
-// whatever's already filled in (title/department/location/employment type).
+// whatever's already filled in (title/department/location/employment type)
+// plus a short free-text brief the admin can jot down (key must-haves,
+// team context, anything that makes this posting more than generic).
 // Same defensive JSON shape as proLearnFromExchange/reviewApplication.
-async function generateJobDescription({title, department, location, employment_type}) {
+async function generateJobDescription({title, department, location, employment_type, brief}) {
   const prompt = `Write a job posting for a social media agency's open position. Return ONLY JSON: {"description":"2-3 paragraphs about the role and what the person will do day-to-day, written to attract candidates","requirements":"a bullet-point-style list (use \\n between items, each starting with \\"- \\") of qualifications, skills, and experience needed"}.
 Position: ${title}
 Department: ${department||"not specified"}
 Location: ${location||"not specified"}
 Employment type: ${EMPLOYMENT_TYPE_LABELS[employment_type]||employment_type}
+${brief?.trim() ? `Brief from the hiring manager (base the posting on this — it's the most important input):\n${brief.trim()}` : ""}
 Keep it concise, realistic, and specific to this role — no generic filler.`;
   const res = await ai(prompt, 900);
   const m = res.match(/\{[\s\S]*\}/);
@@ -20944,6 +20947,7 @@ function JobOpeningForm({opening, currentUser, onSave, onClose}) {
     title: opening?.title||"", department: opening?.department||"", location: opening?.location||"",
     employment_type: opening?.employment_type||"full_time", description: opening?.description||"",
     requirements: opening?.requirements||"", status: opening?.status||"open", closing_date: opening?.closing_date||"",
+    brief: opening?.brief||"",
   });
   const [deptOther, setDeptOther] = useState(opening?.department && !JOB_DEPARTMENTS.includes(opening.department));
   const [locOther, setLocOther] = useState(opening?.location && !JOB_LOCATIONS.includes(opening.location));
@@ -21015,6 +21019,9 @@ function JobOpeningForm({opening, currentUser, onSave, onClose}) {
           </Field>
         </div>
 
+        <Field label="Brief" hint="A few notes for the AI to write the description/requirements from — key must-haves, team context, anything role-specific">
+          <textarea value={f.brief} onChange={e=>sf("brief",e.target.value)} placeholder="e.g. Needs to handle 3-4 FMCG client accounts, strong Arabic copywriting, comfortable presenting to clients directly…" rows={3} style={{...inputSt,resize:"vertical"}}/>
+        </Field>
         <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end"}}>
           <button onClick={handleGenerate} disabled={generating||!f.title.trim()} style={{
             display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:99,
