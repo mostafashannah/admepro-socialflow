@@ -477,6 +477,21 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
         if (!in_array($type, ['vacation', 'wfh'], true) || !$start) {
             return ['error' => 'Missing or invalid leave_type/start_date.'];
         }
+        $startTs = strtotime($start);
+        $endTs = strtotime($end);
+        if ($startTs === false || $endTs === false) {
+            return ['error' => 'Could not parse start_date/end_date — use YYYY-MM-DD format.'];
+        }
+        // A date like "13/6" with no year given is easy to misread into the
+        // wrong year. Reject anything before today up front instead of
+        // silently forwarding a stale request to the manager for approval.
+        $today = strtotime(date('Y-m-d'));
+        if ($startTs < $today || $endTs < $today) {
+            return ['error' => "That date ({$start}" . ($end !== $start ? " to {$end}" : "") . ") is in the past — today is " . date('Y-m-d') . ". Confirm the correct date (including year) with the user and try again."];
+        }
+        if ($endTs < $startTs) {
+            return ['error' => 'end_date is before start_date — check the dates and try again.'];
+        }
         $days = max(1, (strtotime($end) - strtotime($start)) / 86400 + 1);
 
         $mgrStmt = $pdo->prepare("SELECT tm.manager_id, mgr.name AS manager_name, mgr.whatsapp_number AS manager_phone FROM team_members tm LEFT JOIN team_members mgr ON mgr.id = tm.manager_id WHERE tm.id = :id");
@@ -688,7 +703,12 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                 . "to ask their SocialFlow admin to add their WhatsApp number to their profile, in one short message.";
         $tools = [];
     } else {
-        $system = "You are Pro, the AI assistant built into SocialFlow. You are replying over WhatsApp to "
+        $system = "You are Pro, the AI assistant built into SocialFlow. Today's date is " . date('Y-m-d') . " ("
+                . date('l') . "). When the user gives you a date without a year (e.g. \"13/6\" or \"next Tuesday\"), "
+                . "resolve it relative to today and assume the nearest occurrence on or after today — never assume "
+                . "a past year. If a date is genuinely ambiguous, confirm it with the user before acting on it, "
+                . "especially before submitting anything (like a time-off request) that another person will "
+                . "review. You are replying over WhatsApp to "
                 . "{$senderName} (role: {$senderRole}). Keep replies short — a few sentences max, WhatsApp-style, "
                 . "no markdown headers. ALWAYS reply in the same language the user just wrote in — if their message "
                 . "is in English, reply in English; if Arabic, reply in Arabic; if mixed/Arabizi, match their style. "
