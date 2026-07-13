@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.92";
+const APP_VERSION = "beta 4.93";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1365,22 +1365,22 @@ const initials = n => (n||"").split(" ").map(w=>w[0]).join("").toUpperCase().sli
 const clr = (name,arr=["#d90b2c","#3b82f6","#8b5cf6","#10b981","#f59e0b","#ec4899"]) =>
   arr[(name||"").charCodeAt(0)%arr.length];
 
-// Auto-organizes uploaded assets into "<Month Year>/<Project Name>" folders
+// Auto-organizes uploaded assets into "<Client Name>/<Project Name>" folders
 // (category is reused as a "/"-joined folder path — no schema change needed).
-const monthProjectFolder = (projectName, date=new Date()) =>
-  `${date.toLocaleDateString("en-US",{month:"long",year:"numeric"})}/${projectName||"Unsorted"}`;
+const monthProjectFolder = (projectName, clientName) =>
+  `${clientName||"Unsorted"}/${projectName||"Unsorted"}`;
 // Names an uploaded file after its task/post title, keeping the original extension.
 const renameForTask = (taskTitle, originalName, suffix="") => {
   const ext = (originalName||"").includes(".") ? originalName.slice(originalName.lastIndexOf(".")) : "";
   const base = (taskTitle||"").trim() || (originalName||"file").replace(/\.[^.]+$/,"");
   return `${base}${suffix?` ${suffix}`:""}${ext}`;
 };
-// Pre-creates a project's "<Month Year>/<Project Name>" folder (in both the
+// Pre-creates a project's "<Client Name>/<Project Name>" folder (in both the
 // global Assets Library and that client's Assets tab) the moment the project
 // is created, so it's there waiting even before the first file is uploaded.
 // Mirrors FolderBrowser's own localStorage-backed "extra folder" persistence.
-const ensureProjectFolder = (clientId, projectName, date=new Date()) => {
-  const fp = monthProjectFolder(projectName, date);
+const ensureProjectFolder = (clientId, projectName, clientName) => {
+  const fp = monthProjectFolder(projectName, clientName);
   [`sf_extra_folders`, clientId?`sf_extra_folders_${clientId}`:null].filter(Boolean).forEach(key=>{
     try {
       const list = JSON.parse(localStorage.getItem(key)||"[]");
@@ -3392,7 +3392,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
                         const isNewUpload = !!a.url;
                         const fileUrl = a.url || a.file_url;
                         const name = renameForTask(post.title, a.name, picked.length>1?String(i+1):"");
-                        if(onAddAsset) onAddAsset({name, file_url:fileUrl, file_type:a.file_type||"image", category:monthProjectFolder(project?.title), project_id:post.project_id, tags:[]}).catch(()=>{});
+                        if(onAddAsset) onAddAsset({name, file_url:fileUrl, file_type:a.file_type||"image", category:monthProjectFolder(project?.title, project?.client_name), project_id:post.project_id, tags:[]}).catch(()=>{});
                         return isNewUpload ? {...a, name} : {name, type:a.file_type, url:a.file_url, uploaded_at:new Date().toISOString()};
                       }));
                       const newAssets = [...(post.design_assets||[]), ...mapped];
@@ -3557,11 +3557,11 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
     if(!valid.length) return;
     setUploading(true);
     try {
-      const projName = projects.find(p=>p.id===f.project_id)?.title;
+      const projRef = projects.find(p=>p.id===f.project_id); const projName = projRef?.title; const projClientName = projRef?.client_name;
       const uploaded = await Promise.all(valid.map(async (file,i)=>{
         const url = await uploadToStorage(file, "ready-content");
         let assetId;
-        if(onAddAsset) assetId = (await onAddAsset({name:renameForTask(f.title,file.name,valid.length>1?String(i+1):""), file_url:url, file_type:file.type.startsWith("video")?"video":"image", category:monthProjectFolder(projName), project_id:f.project_id, tags:[], file_size:file.size}).catch(()=>null))?.id;
+        if(onAddAsset) assetId = (await onAddAsset({name:renameForTask(f.title,file.name,valid.length>1?String(i+1):""), file_url:url, file_type:file.type.startsWith("video")?"video":"image", category:monthProjectFolder(projName, projClientName), project_id:f.project_id, tags:[], file_size:file.size}).catch(()=>null))?.id;
         return {name:file.name, type:file.type, url, uploaded_at:new Date().toISOString(), assetId};
       }));
       s("media",[...f.media,...uploaded]);
@@ -3576,9 +3576,9 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
     setUploadingCover(true);
     try {
       const url = await uploadToStorage(file, "ready-content/covers");
-      const projName = projects.find(p=>p.id===f.project_id)?.title;
+      const projRef = projects.find(p=>p.id===f.project_id); const projName = projRef?.title; const projClientName = projRef?.client_name;
       let assetId;
-      if(onAddAsset) assetId = (await onAddAsset({name:renameForTask(f.title,file.name,"cover"), file_url:url, file_type:"image", category:monthProjectFolder(projName), project_id:f.project_id, tags:["cover"], file_size:file.size}).catch(()=>null))?.id;
+      if(onAddAsset) assetId = (await onAddAsset({name:renameForTask(f.title,file.name,"cover"), file_url:url, file_type:"image", category:monthProjectFolder(projName, projClientName), project_id:f.project_id, tags:["cover"], file_size:file.size}).catch(()=>null))?.id;
       s("cover",{name:file.name, type:file.type, url, uploaded_at:new Date().toISOString(), assetId});
     } catch(e) { alert("Cover upload failed: "+e.message); }
     setUploadingCover(false);
@@ -3590,9 +3590,9 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
     setUploadingStory(true);
     try {
       const url = await uploadToStorage(file, "ready-content/stories");
-      const projName = projects.find(p=>p.id===f.project_id)?.title;
+      const projRef = projects.find(p=>p.id===f.project_id); const projName = projRef?.title; const projClientName = projRef?.client_name;
       let assetId;
-      if(onAddAsset) assetId = (await onAddAsset({name:renameForTask(f.title,file.name,"story"), file_url:url, file_type:file.type.startsWith("video")?"video":"image", category:monthProjectFolder(projName), project_id:f.project_id, tags:["story"], file_size:file.size}).catch(()=>null))?.id;
+      if(onAddAsset) assetId = (await onAddAsset({name:renameForTask(f.title,file.name,"story"), file_url:url, file_type:file.type.startsWith("video")?"video":"image", category:monthProjectFolder(projName, projClientName), project_id:f.project_id, tags:["story"], file_size:file.size}).catch(()=>null))?.id;
       s("storyImage",{name:file.name, type:file.type, url, uploaded_at:new Date().toISOString(), assetId});
     } catch(e) { alert("Story upload failed: "+e.message); }
     setUploadingStory(false);
@@ -3608,8 +3608,8 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
     if(onUpdateAsset) {
       // Files may have been uploaded before the title/project were finalized
       // — re-file them now that the real title/project are known.
-      const finalProjName = projects.find(p=>p.id===f.project_id)?.title;
-      const finalCategory = monthProjectFolder(finalProjName);
+      const finalProjRef = projects.find(p=>p.id===f.project_id); const finalProjName = finalProjRef?.title; const finalProjClientName = finalProjRef?.client_name;
+      const finalCategory = monthProjectFolder(finalProjName, finalProjClientName);
       [...f.media, f.cover, f.storyImage].filter(Boolean).forEach(m=>{
         if(!m.assetId) return;
         onUpdateAsset(m.assetId, {name:renameForTask(f.title,m.name,f.media.length>1&&f.media.includes(m)?String(f.media.indexOf(m)+1):""), category:finalCategory, project_id:f.project_id}).catch?.(()=>{});
@@ -3746,7 +3746,7 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
                       // Save freshly-uploaded files to the asset library too — see the matching
                       // comment in PostDetail's picker for why this was previously missing.
                       picked.filter(a=>a.url).forEach(a=>{
-                        if(onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(selectableProjects.find(p=>p.id===f.project_id)?.title), project_id:f.project_id, tags:[]}).catch(()=>{});
+                        if(onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(selectableProjects.find(p=>p.id===f.project_id)?.title, selectableProjects.find(p=>p.id===f.project_id)?.client_name), project_id:f.project_id, tags:[]}).catch(()=>{});
                       });
                       s("media",[...f.media,...picked.map(a=>a.url?a:{name:a.name,type:a.file_type,url:a.file_url,uploaded_at:new Date().toISOString()})]);
                     }}/>
@@ -3758,7 +3758,7 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
                       <Ico d={Icons.upload} size={14} stroke="var(--text2)"/> Choose Cover Image…
                     </button>
                     <AssetPickerModal open={showCoverPicker} assets={assets.filter(a=>a.file_type==="image"||(a.file_url||"").match(/\.(jpg|jpeg|png|gif|webp)/i))} multiple={false} onClose={()=>setShowCoverPicker(false)}
-                      onPick={(picked)=>{ const a=picked[0]; if(a.url&&onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(selectableProjects.find(p=>p.id===f.project_id)?.title), project_id:f.project_id, tags:[]}).catch(()=>{}); s("cover",a.url?a:{name:a.name,type:a.file_type,url:a.file_url}); }}/>
+                      onPick={(picked)=>{ const a=picked[0]; if(a.url&&onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(selectableProjects.find(p=>p.id===f.project_id)?.title, selectableProjects.find(p=>p.id===f.project_id)?.client_name), project_id:f.project_id, tags:[]}).catch(()=>{}); s("cover",a.url?a:{name:a.name,type:a.file_type,url:a.file_url}); }}/>
                     {uploadingCover&&<div style={{fontSize:12,color:"var(--text3)",marginTop:6}}><Spinner size={12}/> Uploading…</div>}
                     {f.cover&&(
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,padding:"4px 8px",borderRadius:8,background:"var(--surface2)",fontSize:11,width:"fit-content"}}>
@@ -4603,11 +4603,11 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
     if(!valid.length) return;
     setUploading(true);
     try {
-      const projName = projects.find(p=>p.id===f.project_id)?.title;
+      const projRef = projects.find(p=>p.id===f.project_id); const projName = projRef?.title; const projClientName = projRef?.client_name;
       const uploaded = await Promise.all(valid.map(async (file,i)=>{
         const url = await uploadToStorage(file, "ready-content");
         let assetId;
-        if(onAddAsset) assetId = (await onAddAsset({name:renameForTask(f.title,file.name,valid.length>1?String(i+1):""), file_url:url, file_type:file.type.startsWith("video")?"video":"image", category:monthProjectFolder(projName), project_id:f.project_id, tags:[], file_size:file.size}).catch(()=>null))?.id;
+        if(onAddAsset) assetId = (await onAddAsset({name:renameForTask(f.title,file.name,valid.length>1?String(i+1):""), file_url:url, file_type:file.type.startsWith("video")?"video":"image", category:monthProjectFolder(projName, projClientName), project_id:f.project_id, tags:[], file_size:file.size}).catch(()=>null))?.id;
         return {name:file.name, type:file.type, url, uploaded_at:new Date().toISOString(), assetId};
       }));
       s("media",[...f.media,...uploaded]);
@@ -4622,9 +4622,9 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
     setUploadingCover(true);
     try {
       const url = await uploadToStorage(file, "ready-content/covers");
-      const projName = projects.find(p=>p.id===f.project_id)?.title;
+      const projRef = projects.find(p=>p.id===f.project_id); const projName = projRef?.title; const projClientName = projRef?.client_name;
       let assetId;
-      if(onAddAsset) assetId = (await onAddAsset({name:renameForTask(f.title,file.name,"cover"), file_url:url, file_type:"image", category:monthProjectFolder(projName), project_id:f.project_id, tags:["cover"], file_size:file.size}).catch(()=>null))?.id;
+      if(onAddAsset) assetId = (await onAddAsset({name:renameForTask(f.title,file.name,"cover"), file_url:url, file_type:"image", category:monthProjectFolder(projName, projClientName), project_id:f.project_id, tags:["cover"], file_size:file.size}).catch(()=>null))?.id;
       s("cover",{name:file.name, type:file.type, url, uploaded_at:new Date().toISOString(), assetId});
     } catch(e) { alert("Cover upload failed: "+e.message); }
     setUploadingCover(false);
@@ -4636,9 +4636,9 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
     setUploadingStory(true);
     try {
       const url = await uploadToStorage(file, "ready-content/stories");
-      const projName = projects.find(p=>p.id===f.project_id)?.title;
+      const projRef = projects.find(p=>p.id===f.project_id); const projName = projRef?.title; const projClientName = projRef?.client_name;
       let assetId;
-      if(onAddAsset) assetId = (await onAddAsset({name:renameForTask(f.title,file.name,"story"), file_url:url, file_type:file.type.startsWith("video")?"video":"image", category:monthProjectFolder(projName), project_id:f.project_id, tags:["story"], file_size:file.size}).catch(()=>null))?.id;
+      if(onAddAsset) assetId = (await onAddAsset({name:renameForTask(f.title,file.name,"story"), file_url:url, file_type:file.type.startsWith("video")?"video":"image", category:monthProjectFolder(projName, projClientName), project_id:f.project_id, tags:["story"], file_size:file.size}).catch(()=>null))?.id;
       s("storyImage",{name:file.name, type:file.type, url, uploaded_at:new Date().toISOString(), assetId});
     } catch(e) { alert("Story upload failed: "+e.message); }
     setUploadingStory(false);
@@ -4656,8 +4656,8 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
       // Files may have been uploaded before title/project were finalized
       // (this form has no required field order) — re-file them now that
       // the real title/project are known, so they land in the right folder.
-      const finalProjName = projects.find(p=>p.id===f.project_id)?.title;
-      const finalCategory = monthProjectFolder(finalProjName);
+      const finalProjRef = projects.find(p=>p.id===f.project_id); const finalProjName = finalProjRef?.title; const finalProjClientName = finalProjRef?.client_name;
+      const finalCategory = monthProjectFolder(finalProjName, finalProjClientName);
       [...f.media, f.cover, f.storyImage].filter(Boolean).forEach((m,i)=>{
         if(!m.assetId) return;
         onUpdateAsset(m.assetId, {name:renameForTask(f.title,m.name,f.media.length>1&&f.media.includes(m)?String(f.media.indexOf(m)+1):""), category:finalCategory, project_id:f.project_id}).catch?.(()=>{});
@@ -4803,7 +4803,7 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
                       // Save freshly-uploaded files to the asset library too — see the matching
                       // comment in PostDetail's picker for why this was previously missing.
                       picked.filter(a=>a.url).forEach(a=>{
-                        if(onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(projects.find(p=>p.id===f.project_id)?.title), project_id:f.project_id, tags:[]}).catch(()=>{});
+                        if(onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(projects.find(p=>p.id===f.project_id)?.title, projects.find(p=>p.id===f.project_id)?.client_name), project_id:f.project_id, tags:[]}).catch(()=>{});
                       });
                       s("media",[...f.media,...picked.map(a=>a.url?a:{name:a.name,type:a.file_type,url:a.file_url,uploaded_at:new Date().toISOString()})]);
                     }}/>
@@ -4815,7 +4815,7 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
                       <Ico d={Icons.upload} size={14} stroke="var(--text2)"/> Choose Cover Image…
                     </button>
                     <AssetPickerModal open={showCoverPicker} assets={assets.filter(a=>a.file_type==="image"||(a.file_url||"").match(/\.(jpg|jpeg|png|gif|webp)/i))} multiple={false} onClose={()=>setShowCoverPicker(false)}
-                      onPick={(picked)=>{ const a=picked[0]; if(a.url&&onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(projects.find(p=>p.id===f.project_id)?.title), project_id:f.project_id, tags:[]}).catch(()=>{}); s("cover",a.url?a:{name:a.name,type:a.file_type,url:a.file_url}); }}/>
+                      onPick={(picked)=>{ const a=picked[0]; if(a.url&&onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(projects.find(p=>p.id===f.project_id)?.title, projects.find(p=>p.id===f.project_id)?.client_name), project_id:f.project_id, tags:[]}).catch(()=>{}); s("cover",a.url?a:{name:a.name,type:a.file_type,url:a.file_url}); }}/>
                     {uploadingCover&&<div style={{fontSize:12,color:"var(--text3)",marginTop:6}}><Spinner size={12}/> Uploading…</div>}
                     {f.cover&&(
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,padding:"4px 8px",borderRadius:8,background:"var(--surface2)",fontSize:11,width:"fit-content"}}>
@@ -8199,7 +8199,7 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
   // Project folders are derived live from `projects` (not localStorage) so a
   // freshly-created project's folder shows up immediately, even if this
   // FolderBrowser instance was already mounted when the project was created.
-  const projectFolders = projects.map(p=>monthProjectFolder(p.title, p.created_at?new Date(p.created_at):new Date()));
+  const projectFolders = projects.map(p=>monthProjectFolder(p.title, p.client_name));
 
   // Every known folder path across the whole library (not just the currently
   // open one) — feeds FolderPickerModal's "Move" browser so it can start at
@@ -8395,12 +8395,12 @@ function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset,curr
     try {
       const url = await uploadToStorage(pendingFile, "assets");
       const fileType = pendingFile.type.startsWith("video")?"video":pendingFile.type.startsWith("image")?"image":"file";
-      const projName = projects.find(p=>p.id===uploadForm.project_id)?.title;
+      const projRefUp = projects.find(p=>p.id===uploadForm.project_id); const projName = projRefUp?.title; const projClientName = projRefUp?.client_name;
       const assetData = {
         name: renameForTask(uploadForm.name, pendingFile.name),
         file_url: url,
         file_type: fileType,
-        category: monthProjectFolder(projName),
+        category: monthProjectFolder(projName, projClientName),
         project_id: uploadForm.project_id||null,
         tags: uploadForm.tags ? uploadForm.tags.split(",").map(t=>t.trim()).filter(Boolean) : [],
         file_size: pendingFile.size,
@@ -20141,8 +20141,8 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     ]},
     { group: "ACCOUNT", icon: Icons.person, items: [{key:"account", label:"My Account", ico:Icons.person}] },
   ] : [
-    { group: null, icon: null, items: [{key:"home", label:"Pro", ico:Icons.robot}] },
-    { group: "WORKSPACE", icon: Icons.home, items: [
+    { group: null, icon: null, items: [
+      {key:"home", label:"Pro", ico:Icons.robot},
       {key:"dashboard", label:"Dashboard", ico:Icons.home},
     ]},
     { group: "MY WORK", icon: Icons.briefcase, items: [
@@ -20180,7 +20180,6 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     ...((canAgency||isAdmin) ? [{ group: "TOOLS", icon: Icons.wand, items: [
       ...(canAgency?[
         {key:"assets", label:"Assets", ico:Icons.assets},
-        {key:"templates", label:"Templates", ico:Icons.templates},
         {key:"reports", label:"My Report", ico:Icons.chart2},
       ]:[]),
       ...(isAdmin?[
@@ -25275,7 +25274,7 @@ function App() {
     };
     const localProj = {...projPayload, id:uid(), created_at:new Date().toISOString()};
     setData(d=>({...d, projects:[localProj,...d.projects]}));
-    ensureProjectFolder(formData.client_id, formData.name);
+    ensureProjectFolder(formData.client_id, formData.name, formData.client_name);
     let projectId = localProj.id;
     try {
       const res = await ce("Project",[projPayload]);
