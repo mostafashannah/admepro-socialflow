@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.40";
+const APP_VERSION = "beta 5.41";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21243,11 +21243,15 @@ function RecruitmentPage({currentUser}) {
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:22,fontWeight:800,margin:0}}>Recruitment</h2>
           <p style={{color:"var(--text3)",fontSize:13,margin:"4px 0 0"}}>{openings.filter(o=>o.status==="open").length} open positions · {applications.length} applications</p>
         </div>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <button onClick={copyLink} style={{padding:"9px 16px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text2)",display:"flex",alignItems:"center",gap:6}}>
-            <Ico d={Icons.link2} size={13}/> {linkCopied?"Copied!":"Copy Careers Link"}
+        <div style={{display:"flex",gap:10,alignItems:"center"}}>
+          <button title={linkCopied?"Copied!":"Copy Careers Link"} onClick={copyLink} style={{width:40,height:40,borderRadius:"50%",background:linkCopied?"#10b98122":"var(--surface2)",border:`1px solid ${linkCopied?"#10b98155":"var(--border2)"}`,color:linkCopied?"#10b981":"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
+            <Ico d={linkCopied?Icons.check:Icons.link2} size={16}/>
           </button>
-          {tab==="openings"&&<Btn onClick={()=>{setEditOpening(null);setShowForm(true);}}><Ico d={Icons.plus} size={15}/> New Opening</Btn>}
+          {tab==="openings"&&(
+            <button title="New Opening" onClick={()=>{setEditOpening(null);setShowForm(true);}} style={{width:40,height:40,borderRadius:"50%",background:"var(--accent)",border:"none",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
+              <Ico d={Icons.plus} size={18}/>
+            </button>
+          )}
         </div>
       </div>
 
