@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.74";
+const APP_VERSION = "beta 4.75";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10424,10 +10424,40 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   );
 }
 
+// Hours actually worked from a check_in/check_out pair (HH:MM[:SS] strings),
+// guarding against an overnight shift where check_out's clock time is
+// numerically earlier than check_in's.
+function workedHoursFor(checkIn, checkOut) {
+  if(!checkIn || !checkOut) return null;
+  const toMin = (t) => { const [h,m] = t.split(":").map(Number); return h*60+(m||0); };
+  let mins = toMin(checkOut) - toMin(checkIn);
+  if(mins < 0) mins += 24*60;
+  return mins/60;
+}
+// Extra hours beyond a daily threshold (default 9h/day), from imported
+// attendance rows — total plus a per-month breakdown for the monthly sheet.
+function calcExtraHours(records, threshold=9) {
+  let total = 0;
+  const perMonth = {};
+  (records||[]).forEach(a=>{
+    const worked = workedHoursFor(a.check_in, a.check_out);
+    if(worked==null) return;
+    const extra = Math.max(0, worked-threshold);
+    if(extra>0) {
+      total += extra;
+      const mKey = (a.work_date||"").slice(0,7);
+      perMonth[mKey] = (perMonth[mKey]||0)+extra;
+    }
+  });
+  return {total, perMonth};
+}
+
 function TeamMemberDetailPage({member, team, leaveRequests, attendanceRecords, canEdit, canEditSalary, onBack, onEdit}) {
   const manager = (team||[]).find(t=>t.id===member.manager_id);
   const myLeave = (leaveRequests||[]).filter(r=>r.team_member_id===member.id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
-  const myAttendance = (attendanceRecords||[]).filter(a=>a.team_member_id===member.id || a.member_name===member.name).sort((a,b)=>new Date(b.work_date)-new Date(a.work_date)).slice(0,30);
+  const allMyAttendance = (attendanceRecords||[]).filter(a=>a.team_member_id===member.id || a.member_name===member.name).sort((a,b)=>new Date(b.work_date)-new Date(a.work_date));
+  const myAttendance = allMyAttendance.slice(0,30);
+  const overtime = calcExtraHours(allMyAttendance);
   const docs = [member.id_photo_front_url&&{label:"ID Photo — Front", url:member.id_photo_front_url}, member.id_photo_back_url&&{label:"ID Photo — Back", url:member.id_photo_back_url}].filter(Boolean);
   const row = (label,value) => value==null||value===""?null:(
     <div style={{display:"flex",justifyContent:"space-between",padding:"9px 0",borderBottom:"1px solid var(--border)"}}>
@@ -10471,6 +10501,25 @@ function TeamMemberDetailPage({member, team, leaveRequests, attendanceRecords, c
         </div>
       </div>
 
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
+        <h3 style={{fontWeight:700,fontSize:14,marginBottom:8}}>Extra Hours <span style={{fontWeight:400,color:"var(--text3)",fontSize:11}}>(beyond 9h/day, from imported attendance)</span></h3>
+        {overtime.total<=0 ? (
+          <p style={{fontSize:13,color:"var(--text3)"}}>No extra hours recorded.</p>
+        ) : (
+          <>
+            {row("Total Extra Hours", `${overtime.total.toFixed(1)}h`)}
+            <div style={{display:"flex",flexDirection:"column",gap:0,marginTop:6}}>
+              {Object.keys(overtime.perMonth).sort().reverse().map(mKey=>(
+                <div key={mKey} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",fontSize:12,color:"var(--text2)"}}>
+                  <span>{new Date(mKey+"-01").toLocaleDateString("en-US",{month:"long",year:"numeric"})}</span>
+                  <span style={{fontWeight:700,color:"var(--text)"}}>{overtime.perMonth[mKey].toFixed(1)}h</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
       {docs.length>0&&(
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
           <h3 style={{fontWeight:700,fontSize:14,marginBottom:12}}>Documents</h3>
@@ -10504,13 +10553,18 @@ function TeamMemberDetailPage({member, team, leaveRequests, attendanceRecords, c
         <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}><h3 style={{fontWeight:700,fontSize:14}}>Recent Attendance</h3></div>
         {myAttendance.length===0?(
           <div style={{padding:20,textAlign:"center",color:"var(--text2)",fontSize:13}}>No attendance records imported yet.</div>
-        ):myAttendance.map((a,i)=>(
-          <div key={a.id} style={{padding:"10px 18px",borderBottom:i<myAttendance.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12}}>
-            <span style={{fontSize:13,flex:1}}>{fmtDate(a.work_date)}</span>
-            {a.check_in&&<span style={{fontSize:12,color:"var(--text3)"}}>{a.check_in}{a.check_out?` – ${a.check_out}`:""}</span>}
-            <span style={{textTransform:"capitalize",fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:6,background:"var(--surface2)",color:"var(--text2)"}}>{a.status}</span>
-          </div>
-        ))}
+        ):myAttendance.map((a,i)=>{
+          const worked = workedHoursFor(a.check_in, a.check_out);
+          const extra = worked!=null ? Math.max(0, worked-9) : 0;
+          return (
+            <div key={a.id} style={{padding:"10px 18px",borderBottom:i<myAttendance.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12}}>
+              <span style={{fontSize:13,flex:1}}>{fmtDate(a.work_date)}</span>
+              {a.check_in&&<span style={{fontSize:12,color:"var(--text3)"}}>{a.check_in}{a.check_out?` – ${a.check_out}`:""}{worked!=null?` (${worked.toFixed(1)}h)`:""}</span>}
+              {extra>0&&<span style={{fontSize:11,fontWeight:700,color:"#f59e0b"}}>+{extra.toFixed(1)}h</span>}
+              <span style={{textTransform:"capitalize",fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:6,background:"var(--surface2)",color:"var(--text2)"}}>{a.status}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -19861,7 +19915,7 @@ function MyPerformancePage({currentUser, posts, timeEntries, perfLogs}) {
 // ════════════════════════════════════════════════════════════════
 // TEAM MEMBERS PAGE - Each member has dashboard with tasks & calendar
 // ════════════════════════════════════════════════════════════════
-function TeamMembersPage({team,posts,perfLogs,onMemberSelect,currentUser,onImpersonate,leaveRequests}) {
+function TeamMembersPage({team,posts,perfLogs,onMemberSelect,currentUser,onImpersonate,leaveRequests,attendanceRecords}) {
   const isAdmin = currentUser?.role==="admin";
   const {isMobile} = useResponsive();
   const [selectedMember, setSelectedMember] = useState(null);
@@ -20040,6 +20094,30 @@ function TeamMembersPage({team,posts,perfLogs,onMemberSelect,currentUser,onImper
                         {r.reason&&<p style={{fontSize:12,color:"var(--text2)",marginTop:2}}>"{r.reason}"</p>}
                       </div>
                       <span style={{background:r.status==="approved"?"#10b98122":r.status==="rejected"?"#ef444422":"#f59e0b22",color:r.status==="approved"?"#10b981":r.status==="rejected"?"#ef4444":"#f59e0b",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:600,textTransform:"capitalize",flexShrink:0}}>{r.status}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Extra Hours */}
+          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
+            <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:18,marginBottom:8}}>Extra Hours <span style={{fontWeight:400,color:"var(--text3)",fontSize:12}}>(beyond 9h/day, from imported attendance)</span></h3>
+            {(()=>{
+              const myAttendance = (attendanceRecords||[]).filter(a=>a.team_member_id===selectedMember.id || a.member_name===selectedMember.name);
+              const overtime = calcExtraHours(myAttendance);
+              if(overtime.total<=0) return <p style={{fontSize:13,color:"var(--text3)"}}>No extra hours recorded.</p>;
+              return (
+                <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                  <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid var(--border)",marginBottom:4}}>
+                    <span style={{fontSize:13,fontWeight:700}}>Total</span>
+                    <span style={{fontSize:13,fontWeight:800,color:"#f59e0b"}}>{overtime.total.toFixed(1)}h</span>
+                  </div>
+                  {Object.keys(overtime.perMonth).sort().reverse().map(mKey=>(
+                    <div key={mKey} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",fontSize:12,color:"var(--text2)"}}>
+                      <span>{new Date(mKey+"-01").toLocaleDateString("en-US",{month:"long",year:"numeric"})}</span>
+                      <span style={{fontWeight:700,color:"var(--text)"}}>{overtime.perMonth[mKey].toFixed(1)}h</span>
                     </div>
                   ))}
                 </div>
@@ -27101,6 +27179,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             currentUser={currentUser}
             onImpersonate={impersonateAs}
             leaveRequests={data.leaveRequests||[]}
+            attendanceRecords={data.attendanceRecords||[]}
           />
         )}
         {page==="reports"&&["admin","account_manager","content_creator","graphic_designer","director"].includes(currentUser?.role)&&(
