@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.71";
+const APP_VERSION = "beta 4.73";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10589,6 +10589,7 @@ function LeaveRequestsTab({requests, canDecide, onDecide}) {
         <div style={{flex:1}}>
           <div style={{fontWeight:600,fontSize:14,color:"var(--text)"}}>{r.member_name} — {r.type==="vacation"?"Vacation":"WFH"}</div>
           <div style={{color:"var(--text2)",fontSize:12}}>{r.start_date===r.end_date?r.start_date:`${r.start_date} → ${r.end_date}`} · {r.days} day(s){r.manager_name?` · Manager: ${r.manager_name}`:""}</div>
+          {r.created_at&&<div style={{color:"var(--text3)",fontSize:11,marginTop:2}}>Submitted {fmtDateTime(r.created_at)}</div>}
           {r.reason&&<div style={{color:"var(--text3)",fontSize:12,marginTop:2}}>"{r.reason}"</div>}
         </div>
         <span style={{
@@ -25155,7 +25156,19 @@ function App() {
   const addClient = async (clientData) => {
     const local = {...clientData, id:uid(), created_date:new Date().toISOString()};
     logActivity("Client Created","clients",`New client: ${clientData.name}`, "success","",currentUser?.email||"admin");
-    return b44Create("Client","clients", local, clientData);
+    const created = await b44Create("Client","clients", local, clientData);
+    // Every new client gets an auto-generated portal login (portal_password) —
+    // surface that as a proper entry in Client Users too, instead of it only
+    // being usable to log in without ever showing up anywhere to manage.
+    if(clientData.email) {
+      const cuPayload = {
+        client_id: created?.id||local.id, client_name: clientData.name, email: clientData.email,
+        name: clientData.contact_person||clientData.name, role: "client_admin", status: "active",
+        password: clientData.portal_password||"",
+      };
+      addClientUser(cuPayload).catch(()=>{});
+    }
+    return created;
   };
 
   const updateClient = async (id, updates) => {
