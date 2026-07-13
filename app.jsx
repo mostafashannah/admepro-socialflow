@@ -627,7 +627,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.05";
+const APP_VERSION = "beta 5.06";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -25093,13 +25093,16 @@ function App() {
   const [convertQuote, setConvertQuote] = useState(null);
 
   const [data,setData] = useState({
-    clients:SEED.clients, team:SEED.team, projects:SEED.projects,
-    posts:SEED.posts, comments:SEED.comments, assets:SEED.assets,
-    timelogs:SEED.timelogs, notifications:SEED.notifications, templates:SEED.templates,
-    // The fields below are all loaded for real in wave 2 — seeding them with
-    // SEED's hardcoded demo rows just makes those fake rows flash on screen
-    // for the moment between mount and wave 2 resolving, before being
-    // replaced by the real fetched data.
+    // None of these are seeded with SEED's hardcoded demo rows — doing so
+    // just makes fake clients/projects/posts/asset-folders/etc. flash on
+    // screen for the moment between mount and the real fetch resolving
+    // (this was already fixed for the fields below in an earlier pass, but
+    // missed these — e.g. SEED's demo assets ("Brand"/"Campaign"/"Product"
+    // categories) were showing as real folders on every refresh before
+    // vanishing once real data loaded).
+    clients:[], team:[], projects:[],
+    posts:[], comments:[], assets:[],
+    timelogs:[], notifications:[], templates:[],
     quotes:[], leads:[], leadActivities:[],
     clientKnowledge:[], clientDocuments:[],
     perfLogs:[], aiInsights:[],
