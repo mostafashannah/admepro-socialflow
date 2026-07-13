@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.39";
+const APP_VERSION = "beta 5.40";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12788,7 +12788,7 @@ function CareersPage() {
   const [openings, setOpenings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null); // job_opening being applied to
-  const [form, setForm] = useState({name:"",email:"",phone:"",cover_letter:"",portfolio_url:"",linkedin_url:"",website:""}); // "website" = honeypot
+  const [form, setForm] = useState({name:"",email:"",phone:"",cover_letter:"",portfolio_url:"",linkedin_url:"",current_salary:"",expected_salary:"",available_start_date:"",open_to_task:"yes",website:""}); // "website" = honeypot
   const [cvFile, setCvFile] = useState(null);
   const [cvBase64, setCvBase64] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -12825,6 +12825,8 @@ function CareersPage() {
         job_opening_id: selected.id, job_title: selected.title,
         candidate_name: form.name.trim(), candidate_email: form.email.trim(), candidate_phone: form.phone.trim(),
         cv_url, cover_letter: form.cover_letter, portfolio_url: form.portfolio_url, linkedin_url: form.linkedin_url,
+        current_salary: form.current_salary, expected_salary: form.expected_salary,
+        available_start_date: form.available_start_date, open_to_task: form.open_to_task,
         status:"new", ai_review_status:"pending",
       }]);
       const created = res.entities?.[0];
@@ -12914,6 +12916,29 @@ function CareersPage() {
             <div>
               <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Cover Letter</label>
               <textarea value={form.cover_letter} onChange={e=>sf("cover_letter",e.target.value)} placeholder="Tell us why you're a great fit…" rows={5} style={{...inputSt,resize:"vertical"}}/>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+              <div>
+                <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Current Salary</label>
+                <input value={form.current_salary} onChange={e=>sf("current_salary",e.target.value)} placeholder="e.g. 15,000 EGP" style={inputSt}/>
+              </div>
+              <div>
+                <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Expected Salary</label>
+                <input value={form.expected_salary} onChange={e=>sf("expected_salary",e.target.value)} placeholder="e.g. 20,000 EGP" style={inputSt}/>
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+              <div>
+                <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Available Join Date</label>
+                <input type="date" value={form.available_start_date} onChange={e=>sf("available_start_date",e.target.value)} style={inputSt}/>
+              </div>
+              <div>
+                <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Open to a test task?</label>
+                <select value={form.open_to_task} onChange={e=>sf("open_to_task",e.target.value)} style={inputSt}>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </div>
             </div>
             {/* Honeypot — hidden from real users, bots tend to fill every field */}
             <input value={form.website} onChange={e=>sf("website",e.target.value)} tabIndex={-1} autoComplete="off" style={{position:"absolute",left:-9999,width:1,height:1,opacity:0}} aria-hidden="true"/>
@@ -21086,6 +21111,35 @@ function ApplicationDetail({application, opening, onClose, onUpdateStatus, onSav
           <div style={{marginBottom:14}}>
             <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:6}}>Cover Letter</p>
             <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{application.cover_letter}</p>
+          </div>
+        )}
+
+        {(application.current_salary||application.expected_salary||application.available_start_date||application.open_to_task)&&(
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+            {application.current_salary&&(
+              <div style={{background:"var(--surface2)",borderRadius:10,padding:"10px 14px"}}>
+                <p style={{fontSize:10,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Current Salary</p>
+                <p style={{fontSize:13,fontWeight:700,marginTop:2}}>{application.current_salary}</p>
+              </div>
+            )}
+            {application.expected_salary&&(
+              <div style={{background:"var(--surface2)",borderRadius:10,padding:"10px 14px"}}>
+                <p style={{fontSize:10,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Expected Salary</p>
+                <p style={{fontSize:13,fontWeight:700,marginTop:2}}>{application.expected_salary}</p>
+              </div>
+            )}
+            {application.available_start_date&&(
+              <div style={{background:"var(--surface2)",borderRadius:10,padding:"10px 14px"}}>
+                <p style={{fontSize:10,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Available From</p>
+                <p style={{fontSize:13,fontWeight:700,marginTop:2}}>{fmtDate(application.available_start_date)}</p>
+              </div>
+            )}
+            {application.open_to_task&&(
+              <div style={{background:"var(--surface2)",borderRadius:10,padding:"10px 14px"}}>
+                <p style={{fontSize:10,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Open to Test Task</p>
+                <p style={{fontSize:13,fontWeight:700,marginTop:2,color:application.open_to_task==="yes"?"#10b981":"#ef4444"}}>{application.open_to_task==="yes"?"Yes":"No"}</p>
+              </div>
+            )}
           </div>
         )}
 
