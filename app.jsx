@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.93";
+const APP_VERSION = "beta 4.94";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -15053,22 +15053,38 @@ function BrandingSettingsTab({brandingAssets, onSave, wallpaper, accentColor}) {
 // require a prior user gesture before audio can play; since this only ever
 // fires from a poll after the user has already been interacting with the
 // app, the audio context is unlocked by then.
+// Browsers only allow audio to actually play once the page has had a user
+// gesture (click/tap/keydown) — a fresh AudioContext created later (e.g. from
+// a poll interval) can silently stay "suspended" forever without one. Keep a
+// single shared context, created/unlocked on the very first interaction, and
+// explicitly resume() it every time before playing (Safari in particular
+// needs the resume call, not just having interacted at some point before).
+let _sharedAudioCtx = null;
+function unlockNotificationAudio() {
+  if(_sharedAudioCtx) return;
+  try { _sharedAudioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+}
 function playNotificationSound() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    [880, 1108.73].forEach((freq, i) => {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = "sine";
-      o.frequency.setValueAtTime(freq, ctx.currentTime + i*0.12);
-      g.gain.setValueAtTime(0.0001, ctx.currentTime + i*0.12);
-      g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + i*0.12 + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + i*0.12 + 0.3);
-      o.connect(g); g.connect(ctx.destination);
-      o.start(ctx.currentTime + i*0.12);
-      o.stop(ctx.currentTime + i*0.12 + 0.3);
-    });
-    setTimeout(()=>ctx.close().catch(()=>{}), 600);
+    if(!_sharedAudioCtx) unlockNotificationAudio();
+    const ctx = _sharedAudioCtx;
+    if(!ctx) return;
+    const afterResume = () => {
+      [880, 1108.73].forEach((freq, i) => {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.type = "sine";
+        o.frequency.setValueAtTime(freq, ctx.currentTime + i*0.12);
+        g.gain.setValueAtTime(0.0001, ctx.currentTime + i*0.12);
+        g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + i*0.12 + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + i*0.12 + 0.3);
+        o.connect(g); g.connect(ctx.destination);
+        o.start(ctx.currentTime + i*0.12);
+        o.stop(ctx.currentTime + i*0.12 + 0.3);
+      });
+    };
+    if(ctx.state === "suspended") ctx.resume().then(afterResume).catch(()=>{});
+    else afterResume();
   } catch(e) {}
 }
 
@@ -24752,6 +24768,16 @@ function App() {
     document.addEventListener("visibilitychange", ping);
     return ()=>{ clearInterval(t); document.removeEventListener("visibilitychange", ping); };
   },[currentUser?.id, currentUser?.isClient]);
+
+  // Unlock notification sound on the very first tap/click/keydown anywhere in
+  // the app — required so the later poll-triggered playNotificationSound()
+  // (which has no gesture of its own) is actually allowed to make sound.
+  React.useEffect(()=>{
+    const unlock = () => { unlockNotificationAudio(); };
+    window.addEventListener("pointerdown", unlock, {once:true});
+    window.addEventListener("keydown", unlock, {once:true});
+    return ()=>{ window.removeEventListener("pointerdown", unlock); window.removeEventListener("keydown", unlock); };
+  },[]);
 
   // ── Notification sound ──
   // Notifications are otherwise only fetched once at load, so there's no way
