@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.45";
+const APP_VERSION = "beta 5.46";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12809,12 +12809,12 @@ function CareersChrome({isDark, setIsDark, children}) {
         </a>
       </div>
       <div style={{position:"fixed",right:20,top:"50%",transform:"translateY(-50%)",zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",gap:22}}>
-        <div style={{display:"flex",flexDirection:"column",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",padding:4}}>
-          <button title="Dark mode" onClick={()=>setIsDark(true)} style={{width:32,height:32,borderRadius:"50%",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",background:isDark?"#fff":"transparent",color:isDark?"#111":"var(--text2)"}}>
-            <Ico d={Icons.moon} size={14}/>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",padding:3,width:26}}>
+          <button title="Dark mode" onClick={()=>setIsDark(true)} style={{width:22,height:22,borderRadius:"50%",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",background:isDark?"#fff":"transparent",color:isDark?"#111":"var(--text2)",flexShrink:0}}>
+            <Ico d={Icons.moon} size={11}/>
           </button>
-          <button title="Light mode" onClick={()=>setIsDark(false)} style={{width:32,height:32,borderRadius:"50%",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",background:!isDark?"#fff":"transparent",color:!isDark?"#111":"var(--text2)"}}>
-            <Ico d={Icons.sun} size={14}/>
+          <button title="Light mode" onClick={()=>setIsDark(false)} style={{width:22,height:22,borderRadius:"50%",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",background:!isDark?"#fff":"transparent",color:!isDark?"#111":"var(--text2)",flexShrink:0}}>
+            <Ico d={Icons.sun} size={11}/>
           </button>
         </div>
         <div style={{writingMode:"vertical-rl",transform:"rotate(180deg)",lineHeight:1.9}}>
