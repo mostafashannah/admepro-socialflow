@@ -637,7 +637,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.29";
+const APP_VERSION = "beta 5.30";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5146,6 +5146,7 @@ function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAdd
   const invoices = data.invoices||[];
   const payments = data.payments||[];
   const subscriptions = data.subscriptions||[];
+  const subscriptionPayments = data.subscriptionPayments||[];
   const isAdmin = currentUser?.role==="admin";
   const {isMobile} = useResponsive();
 
@@ -5369,9 +5370,12 @@ No markdown, no explanation.`;
 
           {/* Finance Snapshot — admin/accountant only */}
           {isAdmin&&(invoices.length>0||payments.length>0||(data.expenses||[]).length>0||subscriptions.length>0)&&(()=>{
+            const num = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
             const expenses = data.expenses||[];
-            const totalIn = payments.reduce((a,p)=>a+(p.amount||0),0);
-            const totalOut = expenses.filter(e=>(e.type||"out")==="out").reduce((a,e)=>a+(e.amount||0),0);
+            const totalIn = payments.reduce((a,p)=>a+num(p.amount),0)
+              + subscriptionPayments.reduce((a,p)=>a+num(p.amount),0)
+              + expenses.filter(e=>(e.type||"out")!=="out").reduce((a,e)=>a+num(e.amount),0);
+            const totalOut = expenses.filter(e=>(e.type||"out")==="out").reduce((a,e)=>a+num(e.amount),0);
             const balance = totalIn-totalOut;
             const outstanding=invoices.filter(i=>i.status!=="paid").reduce((a,i)=>a+(i.balance_due||0),0);
             const overdueCount=invoices.filter(i=>isOverdueInvoice(i)&&i.status!=="paid").length;
