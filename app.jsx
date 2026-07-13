@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.38";
+const APP_VERSION = "beta 5.39";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12842,7 +12842,7 @@ function CareersPage() {
     <div style={{display:"flex",alignItems:"center",justifyContent:"center",minHeight:"100vh",background:"var(--bg)",padding:20}}>
       <div style={{background:"var(--surface)",borderRadius:20,padding:40,width:420,maxWidth:"100%",border:"1px solid var(--border)",textAlign:"center"}}>
         <h2 style={{fontWeight:800,fontSize:22,color:"var(--text)"}}>Application received!</h2>
-        <p style={{color:"var(--text2)",fontSize:14,marginTop:10}}>Thanks for applying to <strong>{selected?.title}</strong> at SocialFlow. Our team will review your application and reach out if there's a match.</p>
+        <p style={{color:"var(--text2)",fontSize:14,marginTop:10}}>Thanks for applying to <strong>{selected?.title}</strong> at Admepro. Our team will review your application and reach out if there's a match.</p>
       </div>
     </div>
   );
@@ -12851,7 +12851,7 @@ function CareersPage() {
     <div style={{minHeight:"100vh",background:"var(--bg)",padding:"48px 20px"}}>
       <div style={{maxWidth:720,margin:"0 auto"}}>
         <div style={{textAlign:"center",marginBottom:36}}>
-          <h1 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:30,color:"var(--text)"}}>Careers at SocialFlow</h1>
+          <h1 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:30,color:"var(--text)"}}>Careers at Admepro</h1>
           <p style={{color:"var(--text2)",fontSize:14,marginTop:8}}>We're a social media agency looking for great people. Explore our open positions below.</p>
         </div>
         {openings.length===0 ? (
