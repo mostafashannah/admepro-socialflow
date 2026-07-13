@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.79";
+const APP_VERSION = "beta 4.80";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5059,6 +5059,12 @@ function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAdd
 
   const perf = computePerformance(team, filteredPosts, timelogs, perfLogs);
   const topPerformer = perf[0];
+  // Individual contributors (content creators, designers, etc.) get a
+  // dashboard scoped to their own work instead of whole-agency aggregates —
+  // admin and account managers still see everything.
+  const isManager = ["admin","account_manager"].includes(currentUser?.role);
+  const myPosts = filteredPosts.filter(p=>p.assigned_to===currentUser?.email);
+  const myPerf = perf.find(p=>p.email===currentUser?.email) || {};
 
   // Stage bottleneck analysis
   const stageData = STAGES.map(s=>{
@@ -5196,12 +5202,17 @@ No markdown, no explanation.`;
             </div>
           ) : (
             <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
-              {[
+              {(isManager ? [
                 {label:"Active Projects",value:projects.filter(p=>p.status==="active").length,color:"#3b82f6",sub:`${filteredPosts.length} posts`},
                 {label:"Completed Posts",value:filteredPosts.filter(p=>p.stage==="published").length,color:"#10b981",sub:`${filteredPosts.length?Math.round(filteredPosts.filter(p=>p.stage==="published").length/filteredPosts.length*100):0}% rate`},
                 {label:"Pending Approval",value:pendingApproval,color:"#ec4899",sub:"awaiting client"},
                 {label:"Avg Quality Score",value:avgQualityAll+"%",color:"#8b5cf6",sub:`${approvedPosts} approved`},
-              ].map(s=>(
+              ] : [
+                {label:"My Active Tasks",value:myPosts.filter(p=>!["published","rejected"].includes(p.stage)).length,color:"#3b82f6",sub:`${myPosts.length} total`},
+                {label:"My Completed Posts",value:myPosts.filter(p=>p.stage==="published").length,color:"#10b981",sub:`${myPosts.length?Math.round(myPosts.filter(p=>p.stage==="published").length/myPosts.length*100):0}% rate`},
+                {label:"Pending Approval",value:myPosts.filter(p=>p.stage==="client_approval").length,color:"#ec4899",sub:"awaiting client"},
+                {label:"My Quality Score",value:(myPerf.perfScore||0)+"%",color:"#8b5cf6",sub:"your score"},
+              ]).map(s=>(
                 <div key={s.label} style={{padding:"18px 20px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)"}}>
                   <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>{s.label}</p>
                   <p style={{fontSize:30,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1}}>{s.value}</p>
@@ -5236,37 +5247,62 @@ No markdown, no explanation.`;
           })()}
 
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
-            {/* Active Users */}
+            {/* Active Team (managers) / My Tasks (individual contributors) */}
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
-              <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                <h3 style={{fontWeight:700,fontSize:14}}>Active Team</h3>
-                <span style={{fontSize:10,background:"#10b98122",color:"#10b981",padding:"2px 8px",borderRadius:99,fontWeight:700,border:"1px solid #10b98144"}}>{team.length} members</span>
-              </div>
-              <div style={{maxHeight:"min(280px,40vh)",overflowY:"auto"}}>
-                {team.map(member=>{
-                  const mPerf=perf.find(p=>p.email===member.email)||{};
-                  const activeTasks=filteredPosts.filter(p=>p.assigned_to===member.email&&!["published","rejected"].includes(p.stage));
-                  const isOnline=activeTasks.length>0;
-                  return (
-                    <div key={member.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 18px",borderBottom:"1px solid var(--border)"}}>
-                      <div style={{position:"relative"}}>
-                        <Avatar name={member.name} role={member.role} size={34}/>
-                        <div style={{position:"absolute",bottom:0,right:0,width:9,height:9,borderRadius:"50%",background:isOnline?"#10b981":"#6b7280",border:"2px solid var(--surface)"}}/>
+              {isManager ? (
+                <>
+                  <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                    <h3 style={{fontWeight:700,fontSize:14}}>Active Team</h3>
+                    <span style={{fontSize:10,background:"#10b98122",color:"#10b981",padding:"2px 8px",borderRadius:99,fontWeight:700,border:"1px solid #10b98144"}}>{team.length} members</span>
+                  </div>
+                  <div style={{maxHeight:"min(280px,40vh)",overflowY:"auto"}}>
+                    {team.map(member=>{
+                      const mPerf=perf.find(p=>p.email===member.email)||{};
+                      const activeTasks=filteredPosts.filter(p=>p.assigned_to===member.email&&!["published","rejected"].includes(p.stage));
+                      const isOnline=activeTasks.length>0;
+                      return (
+                        <div key={member.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 18px",borderBottom:"1px solid var(--border)"}}>
+                          <div style={{position:"relative"}}>
+                            <Avatar name={member.name} role={member.role} size={34}/>
+                            <div style={{position:"absolute",bottom:0,right:0,width:9,height:9,borderRadius:"50%",background:isOnline?"#10b981":"#6b7280",border:"2px solid var(--surface)"}}/>
+                          </div>
+                          <div style={{flex:1,minWidth:0}}>
+                            <p style={{fontWeight:700,fontSize:13}}>{member.name}</p>
+                            <p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                              {activeTasks.length>0?`Working: ${activeTasks[0].title.slice(0,25)}…`:"No active tasks"}
+                            </p>
+                          </div>
+                          <div style={{textAlign:"right",flexShrink:0}}>
+                            <p style={{fontSize:12,fontWeight:800,color:mPerf.perfScore>=80?"#10b981":mPerf.perfScore>=60?"#f59e0b":"#ef4444"}}>{mPerf.perfScore||0}</p>
+                            <p style={{fontSize:9,color:"var(--text3)"}}>score</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                    <h3 style={{fontWeight:700,fontSize:14}}>My Tasks</h3>
+                    <span style={{fontSize:10,background:"#3b82f622",color:"#3b82f6",padding:"2px 8px",borderRadius:99,fontWeight:700,border:"1px solid #3b82f644"}}>{myPosts.length} total</span>
+                  </div>
+                  <div style={{maxHeight:"min(280px,40vh)",overflowY:"auto"}}>
+                    {myPosts.length===0?(
+                      <p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:20}}>No tasks assigned to you.</p>
+                    ):myPosts.slice(0,10).map(post=>(
+                      <div key={post.id} onClick={()=>setPage("my_tasks")} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 18px",borderBottom:"1px solid var(--border)",cursor:"pointer"}}>
+                        <Badge label={post.platform} color={PLT_COLOR[post.platform]} xs/>
+                        <div style={{flex:1,minWidth:0}}>
+                          <p style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{post.title}</p>
+                          <p style={{fontSize:11,color:"var(--text3)"}}>{STAGE_MAP[post.stage]?.label||post.stage}</p>
+                        </div>
+                        {post.priority&&<Badge label={post.priority} color={PRI_COLOR[post.priority]} xs/>}
                       </div>
-                      <div style={{flex:1,minWidth:0}}>
-                        <p style={{fontWeight:700,fontSize:13}}>{member.name}</p>
-                        <p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                          {activeTasks.length>0?`Working: ${activeTasks[0].title.slice(0,25)}…`:"No active tasks"}
-                        </p>
-                      </div>
-                      <div style={{textAlign:"right",flexShrink:0}}>
-                        <p style={{fontSize:12,fontWeight:800,color:mPerf.perfScore>=80?"#10b981":mPerf.perfScore>=60?"#f59e0b":"#ef4444"}}>{mPerf.perfScore||0}</p>
-                        <p style={{fontSize:9,color:"var(--text3)"}}>score</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Quick pipeline — top 3 active stages only */}
@@ -5278,18 +5314,19 @@ No markdown, no explanation.`;
                 </button>
               </div>
               <div style={{padding:"12px 16px",display:"flex",flexDirection:"column",gap:8}}>
-                {STAGES.filter(s=>filteredPosts.some(p=>p.stage===s.key)).slice(0,5).map(s=>{
-                  const cnt=filteredPosts.filter(p=>p.stage===s.key).length;
+                {STAGES.filter(s=>(isManager?filteredPosts:myPosts).some(p=>p.stage===s.key)).slice(0,5).map(s=>{
+                  const pool=isManager?filteredPosts:myPosts;
+                  const cnt=pool.filter(p=>p.stage===s.key).length;
                   return (
                     <div key={s.key} style={{display:"flex",alignItems:"center",gap:10}}>
                       <div style={{width:7,height:7,borderRadius:"50%",background:s.color,flexShrink:0}}/>
                       <span style={{fontSize:12,color:"var(--text2)",width:100,flexShrink:0}}>{s.label}</span>
-                      <div style={{flex:1}}><ProgressBar value={cnt} max={Math.max(filteredPosts.length,1)} color={s.color} height={5}/></div>
+                      <div style={{flex:1}}><ProgressBar value={cnt} max={Math.max(pool.length,1)} color={s.color} height={5}/></div>
                       <span style={{fontSize:11,fontWeight:700,color:s.color,width:18,textAlign:"right"}}>{cnt}</span>
                     </div>
                   );
                 })}
-                {STAGES.every(s=>!filteredPosts.some(p=>p.stage===s.key))&&(
+                {STAGES.every(s=>!(isManager?filteredPosts:myPosts).some(p=>p.stage===s.key))&&(
                   <p style={{fontSize:12,color:"var(--text3)",textAlign:"center",padding:"8px 0"}}>No active posts</p>
                 )}
               </div>
