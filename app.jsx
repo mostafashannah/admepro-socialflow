@@ -637,7 +637,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.30";
+const APP_VERSION = "beta 5.31";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19654,134 +19654,6 @@ function QualitySparkline({logs}) {
 }
 
 // ════════════════════════════════════════════════════════════════
-// REPORTS PAGE (personal — account managers: daily, creative: weekly)
-// ════════════════════════════════════════════════════════════════
-function ReportsPage({currentUser, perfLogs, aiInsights, team}) {
-  const myLogs = (perfLogs||[]).filter(l=>l.user_email===currentUser?.email);
-  const perf = calcUserPerf(currentUser?.email, perfLogs);
-  const myInsights = (aiInsights||[]).filter(i=>!i.related_user||i.related_user===currentUser?.email);
-  const isAdmin = ["admin","director"].includes(currentUser?.role);
-  const [aiRec, setAiRec] = React.useState(null);
-  const [aiLoading, setAiLoading] = React.useState(false);
-
-  const getAiRecommendations = async () => {
-    setAiLoading(true);
-    const prompt = `You are a performance coach for a social media agency. Here is a team member's performance data:
-Name: ${currentUser?.name}, Role: ${currentUser?.role}
-Performance Score: ${perf.score}/100
-Completion Rate: ${perf.completionRate}%
-On-Time Rate: ${perf.onTimeRate}%
-Avg Quality Score: ${perf.avgQuality}/100
-Avg Revisions per Task: ${perf.avgRevisions}
-Total Tasks: ${perf.total}
-
-Give 3 specific, actionable recommendations to improve their performance. Be concise and practical. Format as numbered list.`;
-    const res = await ai(prompt);
-    setAiRec(res);
-    setAiLoading(false);
-  };
-
-  const periodLabel = ["account_manager","admin"].includes(currentUser?.role) ? "Daily" : "Weekly";
-
-  return (
-    <div className="fade-in" style={{maxWidth:900}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24,flexWrap:"wrap",gap:12}}>
-        <div>
-          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:22,fontWeight:800,margin:0}}>My Performance Report</h2>
-          <p style={{color:"var(--text3)",fontSize:13,margin:"4px 0 0"}}>{periodLabel} summary · {currentUser?.name}</p>
-        </div>
-        <Badge color="#6366f1">{ROLES[currentUser?.role]?.label||currentUser?.role}</Badge>
-      </div>
-
-      {/* Score + Metrics row */}
-      <div style={{display:"grid",gridTemplateColumns:"auto 1fr",gap:20,marginBottom:20,alignItems:"start"}}>
-        {/* Gauge card */}
-        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:"20px 24px",display:"flex",flexDirection:"column",alignItems:"center",minWidth:180}}>
-          <ScoreGauge score={perf.score}/>
-          <p style={{fontSize:12,color:"var(--text3)",margin:"8px 0 0",textAlign:"center"}}>Performance Score</p>
-          <p style={{fontSize:11,color:"var(--text3)",margin:"2px 0 0",textAlign:"center"}}>{perf.total} tasks logged</p>
-        </div>
-        {/* Metrics card */}
-        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:"20px 24px"}}>
-          <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:16}}>Key Metrics</p>
-          <PerfBar value={perf.completionRate} color="#10b981" label="Completion Rate"/>
-          <PerfBar value={perf.onTimeRate} color="#3b82f6" label="On-Time Delivery"/>
-          <PerfBar value={perf.avgQuality} color="#8b5cf6" label="Avg Quality Score"/>
-          <PerfBar value={perf.avgRevisions} max={5} color={perf.avgRevisions<=1?"#10b981":perf.avgRevisions<=2?"#f59e0b":"#ef4444"} label="Avg Revisions" sub={perf.avgRevisions+" rev"}/>
-        </div>
-      </div>
-
-      {/* Quality Trend */}
-      {myLogs.length>=2&&(
-        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:"18px 20px",marginBottom:20}}>
-          <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:12}}>Quality Score Trend</p>
-          <QualitySparkline logs={myLogs}/>
-          <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
-            <span style={{fontSize:11,color:"var(--text3)"}}>{myLogs[0]?.post_title||"Earliest"}</span>
-            <span style={{fontSize:11,color:"var(--text3)"}}>{myLogs[myLogs.length-1]?.post_title||"Latest"}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Recent Work */}
-      {myLogs.length>0&&(
-        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:"18px 20px",marginBottom:20}}>
-          <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:14}}>Recent Work</p>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {myLogs.slice(-6).reverse().map(l=>(
-              <div key={l.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:"var(--surface2)",borderRadius:10}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <p style={{fontSize:13,fontWeight:600,margin:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.post_title}</p>
-                  <p style={{fontSize:11,color:"var(--text3)",margin:"2px 0 0"}}>{l.client_name} · {fmtDate(l.completed_at)}</p>
-                </div>
-                <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
-                  <span style={{fontSize:12,fontWeight:700,color:l.quality_score>=85?"#10b981":l.quality_score>=70?"#f59e0b":"#ef4444"}}>Q:{l.quality_score}</span>
-                  <span style={{fontSize:12,color:"var(--text3)"}}>R:{l.revision_count}</span>
-                  {l.on_time
-                    ? <span style={{fontSize:10,padding:"2px 7px",borderRadius:99,background:"#10b98122",color:"#10b981"}}>On Time</span>
-                    : <span style={{fontSize:10,padding:"2px 7px",borderRadius:99,background:"#ef444422",color:"#ef4444"}}>Late</span>}
-                  {l.rejected&&<span style={{fontSize:10,padding:"2px 7px",borderRadius:99,background:"#ef444422",color:"#ef4444"}}>Rejected</span>}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* AI Insights */}
-      {myInsights.length>0&&(
-        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:"18px 20px",marginBottom:20}}>
-          <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:14}}>AI Insights for You</p>
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            {myInsights.map(ins=>(
-              <div key={ins.id} style={{padding:"12px 14px",background:"var(--accentbg)",border:"1px solid var(--accent)33",borderRadius:10}}>
-                <p style={{fontSize:13,fontWeight:700,margin:"0 0 4px",color:"var(--accent)"}}>{ins.title}</p>
-                <p style={{fontSize:12,color:"var(--text2)",margin:"0 0 6px"}}>{ins.insight}</p>
-                <p style={{fontSize:12,color:"var(--text3)",margin:0}}><strong style={{color:"var(--text2)"}}>Action:</strong> {ins.action}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* AI Recommendations */}
-      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:"18px 20px"}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-          <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",margin:0}}>AI Coach Recommendations</p>
-          <Btn size="sm" onClick={getAiRecommendations} disabled={aiLoading}>
-            {aiLoading?<Spinner size={14}/>:<Ico d={Icons.sparkle} size={13}/>}
-            {aiLoading?"Generating...":"Get Recommendations"}
-          </Btn>
-        </div>
-        {aiRec
-          ? <div style={{fontSize:13,color:"var(--text2)",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{aiRec}</div>
-          : <p style={{fontSize:13,color:"var(--text3)",margin:0}}>Click the button to get personalized AI coaching based on your performance data.</p>}
-      </div>
-    </div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════
 // TEAM PERFORMANCE PAGE (admin / director only)
 // ════════════════════════════════════════════════════════════════
 function TeamPerformancePage({currentUser, perfLogs, aiInsights, team}) {
@@ -20516,11 +20388,34 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
 // ════════════════════════════════════════════════════════════════
 // MY PERFORMANCE PAGE - Personal productivity stats & time analysis
 // ════════════════════════════════════════════════════════════════
-function MyPerformancePage({currentUser, posts, timeEntries, perfLogs}) {
+function MyPerformancePage({currentUser, posts, timeEntries, perfLogs, aiInsights}) {
   const {isMobile} = useResponsive();
   const [rangeDays, setRangeDays] = useState(7);
   const [tick, setTick] = useState(0);
   useEffect(() => { const id = setInterval(()=>setTick(t=>t+1),1000); return ()=>clearInterval(id); }, []);
+
+  // Review-score data (merged in from the old standalone "My Report" page)
+  const myLogs = (perfLogs||[]).filter(l=>l.user_email===currentUser?.email);
+  const reviewPerf = calcUserPerf(currentUser?.email, perfLogs);
+  const myInsights = (aiInsights||[]).filter(i=>!i.related_user||i.related_user===currentUser?.email);
+  const [aiRec, setAiRec] = React.useState(null);
+  const [aiLoading, setAiLoading] = React.useState(false);
+  const getAiRecommendations = async () => {
+    setAiLoading(true);
+    const prompt = `You are a performance coach for a social media agency. Here is a team member's performance data:
+Name: ${currentUser?.name}, Role: ${currentUser?.role}
+Performance Score: ${reviewPerf.score}/100
+Completion Rate: ${reviewPerf.completionRate}%
+On-Time Rate: ${reviewPerf.onTimeRate}%
+Avg Quality Score: ${reviewPerf.avgQuality}/100
+Avg Revisions per Task: ${reviewPerf.avgRevisions}
+Total Tasks: ${reviewPerf.total}
+
+Give 3 specific, actionable recommendations to improve their performance. Be concise and practical. Format as numbered list.`;
+    const res = await ai(prompt);
+    setAiRec(res);
+    setAiLoading(false);
+  };
 
   const email = currentUser?.email;
   const now = Date.now();
@@ -20680,6 +20575,85 @@ function MyPerformancePage({currentUser, posts, timeEntries, perfLogs}) {
           </div>
         )}
       </div>
+
+      {/* Review score gauge + quality metrics (merged from old "My Report" page) */}
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"auto 1fr",gap:20,alignItems:"start"}}>
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:"20px 24px",display:"flex",flexDirection:"column",alignItems:"center",minWidth:180}}>
+          <ScoreGauge score={reviewPerf.score}/>
+          <p style={{fontSize:12,color:"var(--text3)",margin:"8px 0 0",textAlign:"center"}}>Review Score</p>
+          <p style={{fontSize:11,color:"var(--text3)",margin:"2px 0 0",textAlign:"center"}}>{reviewPerf.total} tasks logged</p>
+        </div>
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:"20px 24px"}}>
+          <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:16}}>Key Metrics</p>
+          <PerfBar value={reviewPerf.completionRate} color="#10b981" label="Completion Rate"/>
+          <PerfBar value={reviewPerf.onTimeRate} color="#3b82f6" label="On-Time Delivery"/>
+          <PerfBar value={reviewPerf.avgQuality} color="#8b5cf6" label="Avg Quality Score"/>
+          <PerfBar value={reviewPerf.avgRevisions} max={5} color={reviewPerf.avgRevisions<=1?"#10b981":reviewPerf.avgRevisions<=2?"#f59e0b":"#ef4444"} label="Avg Revisions" sub={reviewPerf.avgRevisions+" rev"}/>
+        </div>
+      </div>
+
+      {myLogs.length>=2&&(
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:"18px 20px"}}>
+          <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:12}}>Quality Score Trend</p>
+          <QualitySparkline logs={myLogs}/>
+          <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
+            <span style={{fontSize:11,color:"var(--text3)"}}>{myLogs[0]?.post_title||"Earliest"}</span>
+            <span style={{fontSize:11,color:"var(--text3)"}}>{myLogs[myLogs.length-1]?.post_title||"Latest"}</span>
+          </div>
+        </div>
+      )}
+
+      {myLogs.length>0&&(
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:"18px 20px"}}>
+          <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:14}}>Recent Work</p>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {myLogs.slice(-6).reverse().map(l=>(
+              <div key={l.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:"var(--surface2)",borderRadius:10}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <p style={{fontSize:13,fontWeight:600,margin:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{l.post_title}</p>
+                  <p style={{fontSize:11,color:"var(--text3)",margin:"2px 0 0"}}>{l.client_name} · {fmtDate(l.completed_at)}</p>
+                </div>
+                <div style={{display:"flex",gap:8,alignItems:"center",flexShrink:0}}>
+                  <span style={{fontSize:12,fontWeight:700,color:l.quality_score>=85?"#10b981":l.quality_score>=70?"#f59e0b":"#ef4444"}}>Q:{l.quality_score}</span>
+                  <span style={{fontSize:12,color:"var(--text3)"}}>R:{l.revision_count}</span>
+                  {l.on_time
+                    ? <span style={{fontSize:10,padding:"2px 7px",borderRadius:99,background:"#10b98122",color:"#10b981"}}>On Time</span>
+                    : <span style={{fontSize:10,padding:"2px 7px",borderRadius:99,background:"#ef444422",color:"#ef4444"}}>Late</span>}
+                  {l.rejected&&<span style={{fontSize:10,padding:"2px 7px",borderRadius:99,background:"#ef444422",color:"#ef4444"}}>Rejected</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {myInsights.length>0&&(
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:"18px 20px"}}>
+          <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:14}}>AI Insights for You</p>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {myInsights.map(ins=>(
+              <div key={ins.id} style={{padding:"12px 14px",background:"var(--accentbg)",border:"1px solid var(--accent)33",borderRadius:10}}>
+                <p style={{fontSize:13,fontWeight:700,margin:"0 0 4px",color:"var(--accent)"}}>{ins.title}</p>
+                <p style={{fontSize:12,color:"var(--text2)",margin:"0 0 6px"}}>{ins.insight}</p>
+                <p style={{fontSize:12,color:"var(--text3)",margin:0}}><strong style={{color:"var(--text2)"}}>Action:</strong> {ins.action}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:"18px 20px"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+          <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",margin:0}}>AI Coach Recommendations</p>
+          <Btn size="sm" onClick={getAiRecommendations} disabled={aiLoading}>
+            {aiLoading?<Spinner size={14}/>:<Ico d={Icons.sparkle} size={13}/>}
+            {aiLoading?"Generating...":"Get Recommendations"}
+          </Btn>
+        </div>
+        {aiRec
+          ? <div style={{fontSize:13,color:"var(--text2)",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{aiRec}</div>
+          : <p style={{fontSize:13,color:"var(--text3)",margin:0}}>Click the button to get personalized AI coaching based on your performance data.</p>}
+      </div>
     </div>
   );
 }
@@ -20757,7 +20731,6 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     ...((canAgency||isAdmin) ? [{ group: "TOOLS", icon: Icons.wand, items: [
       ...(canAgency?[
         {key:"assets", label:"Assets", ico:Icons.assets},
-        {key:"reports", label:"My Report", ico:Icons.chart2},
       ]:[]),
       ...(isAdmin?[
         {key:"agents", label:"Agents", ico:Icons.activity},
@@ -27877,14 +27850,6 @@ Return ONLY valid JSON (no markdown, no explanation):
             onSaveSettings={saveAppSettings}
           />
         )}
-        {page==="reports"&&["admin","account_manager","content_creator","graphic_designer","director"].includes(currentUser?.role)&&(
-          <ReportsPage
-            currentUser={currentUser}
-            perfLogs={data.perfLogs||[]}
-            aiInsights={data.aiInsights||[]}
-            team={data.team}
-          />
-        )}
         {page==="performance"&&currentUser?.role==="admin"&&(
           <TeamPerformancePage
             currentUser={currentUser}
@@ -27954,7 +27919,7 @@ Return ONLY valid JSON (no markdown, no explanation):
           />
         )}
         {page==="my_timeline"&&<MyTimelinePage posts={data.posts} team={data.team} currentUser={currentUser} timeEntries={data.timeEntries||[]} onPostClick={setSelectedPost} onStartTimer={startTimer} onPauseTimer={pauseTimer} onResumeTimer={resumeTimer} schedules={data.schedules||[]} scheduleOverrides={data.scheduleOverrides||[]} onOverrideSchedule={overrideSchedule}/>}
-        {page==="my_performance"&&<MyPerformancePage currentUser={currentUser} posts={data.posts} timeEntries={data.timeEntries||[]} perfLogs={data.perfLogs||[]}/>}
+        {(page==="my_performance"||page==="reports")&&<MyPerformancePage currentUser={currentUser} posts={data.posts} timeEntries={data.timeEntries||[]} perfLogs={data.perfLogs||[]} aiInsights={data.aiInsights||[]}/>}
         {page==="account"&&(
           <AccountPage
             currentUser={currentUser}
