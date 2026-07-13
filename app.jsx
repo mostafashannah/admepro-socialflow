@@ -637,7 +637,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.25";
+const APP_VERSION = "beta 5.26";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1508,6 +1508,52 @@ const WALLPAPERS = [
       "--surface2":"#271500","--surface3":"#321c00",
       "--border":"rgba(200,100,20,0.1)","--border2":"rgba(200,100,20,0.18)",
       "--text":"#ffe8c8","--text2":"#c8884a","--text3":"#b08060",
+    }),
+  },
+  // Real photo backgrounds — a dark overlay gradient baked into `bg` keeps
+  // text legible over any photo brightness; surfaces are semi-transparent
+  // dark panels so the photo subtly shows through card backgrounds instead
+  // of being fully covered by them.
+  {
+    key:"photo-forest",
+    label:"Misty Forest",
+    desc:"Real photo — foggy pine forest",
+    preview:["#1a2820","#2a3830","#d90b2c"],
+    photo: true,
+    bg: "linear-gradient(rgba(8,14,10,0.6),rgba(8,14,10,0.72)),url('https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1920&q=70')",
+    vars:()=>({
+      "--bg":"#0c1210","--bg2":"#0c1210","--surface":"rgba(18,28,22,0.62)",
+      "--surface2":"rgba(26,38,30,0.68)","--surface3":"rgba(34,48,38,0.72)",
+      "--border":"rgba(255,255,255,0.1)","--border2":"rgba(255,255,255,0.16)",
+      "--text":"#eef5ee","--text2":"#b8c9ba","--text3":"#9fb3a2",
+    }),
+  },
+  {
+    key:"photo-ocean",
+    label:"Ocean Horizon",
+    desc:"Real photo — coastal sunset",
+    preview:["#1a2436","#2b3d52","#d90b2c"],
+    photo: true,
+    bg: "linear-gradient(rgba(6,10,18,0.58),rgba(6,10,18,0.72)),url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1920&q=70')",
+    vars:()=>({
+      "--bg":"#0a0e14","--bg2":"#0a0e14","--surface":"rgba(20,28,40,0.6)",
+      "--surface2":"rgba(28,38,52,0.66)","--surface3":"rgba(36,48,64,0.7)",
+      "--border":"rgba(255,255,255,0.1)","--border2":"rgba(255,255,255,0.16)",
+      "--text":"#eef3fa","--text2":"#b6c4d8","--text3":"#9dacc2",
+    }),
+  },
+  {
+    key:"photo-mountains",
+    label:"Mountain Lake",
+    desc:"Real photo — alpine lake at dusk",
+    preview:["#1c2430","#2f3a48","#d90b2c"],
+    photo: true,
+    bg: "linear-gradient(rgba(8,10,16,0.58),rgba(8,10,16,0.72)),url('https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=1920&q=70')",
+    vars:()=>({
+      "--bg":"#0a0c12","--bg2":"#0a0c12","--surface":"rgba(22,26,36,0.6)",
+      "--surface2":"rgba(30,36,48,0.66)","--surface3":"rgba(38,46,60,0.7)",
+      "--border":"rgba(255,255,255,0.1)","--border2":"rgba(255,255,255,0.16)",
+      "--text":"#f0f2f6","--text2":"#bcc2ce","--text3":"#a3aab8",
     }),
   },
 ];
