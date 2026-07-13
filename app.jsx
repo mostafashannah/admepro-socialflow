@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.73";
+const APP_VERSION = "beta 4.74";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19861,7 +19861,8 @@ function MyPerformancePage({currentUser, posts, timeEntries, perfLogs}) {
 // ════════════════════════════════════════════════════════════════
 // TEAM MEMBERS PAGE - Each member has dashboard with tasks & calendar
 // ════════════════════════════════════════════════════════════════
-function TeamMembersPage({team,posts,perfLogs,onMemberSelect}) {
+function TeamMembersPage({team,posts,perfLogs,onMemberSelect,currentUser,onImpersonate,leaveRequests}) {
+  const isAdmin = currentUser?.role==="admin";
   const {isMobile} = useResponsive();
   const [selectedMember, setSelectedMember] = useState(null);
 
@@ -19936,8 +19937,15 @@ function TeamMembersPage({team,posts,perfLogs,onMemberSelect}) {
                 )}
 
                 {/* CTA */}
-                <div style={{paddingTop:10,borderTop:"1px solid var(--border)",display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:600,color:"var(--accent)"}}>
-                  View Dashboard <Ico d={Icons.arrow} size={14} stroke="var(--accent)"/>
+                <div style={{paddingTop:10,borderTop:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:6}}>
+                  <span style={{display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:600,color:"var(--accent)"}}>
+                    View Dashboard <Ico d={Icons.arrow} size={14} stroke="var(--accent)"/>
+                  </span>
+                  {isAdmin&&member.email!==currentUser?.email&&(
+                    <button onClick={(e)=>{e.stopPropagation();onImpersonate&&onImpersonate(member);}} style={{fontSize:11,fontWeight:700,color:"var(--text2)",background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:6,padding:"5px 10px",cursor:"pointer"}}>
+                      Access Account
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -20011,6 +20019,32 @@ function TeamMembersPage({team,posts,perfLogs,onMemberSelect}) {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Leave & WFH Requests */}
+          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+            <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
+              <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:18}}>Vacation & WFH Requests</h3>
+            </div>
+            {(()=>{
+              const myRequests = (leaveRequests||[]).filter(r=>r.team_member_id===selectedMember.id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+              return myRequests.length===0 ? (
+                <div style={{padding:24,textAlign:"center",color:"var(--text3)",fontSize:13}}>No vacation or WFH requests yet.</div>
+              ) : (
+                <div style={{display:"flex",flexDirection:"column"}}>
+                  {myRequests.map((r,i)=>(
+                    <div key={r.id} style={{padding:"12px 18px",borderBottom:i<myRequests.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <p style={{fontWeight:700,fontSize:13}}>{r.type==="vacation"?"Vacation":"WFH"} — {r.start_date===r.end_date?r.start_date:`${r.start_date} → ${r.end_date}`}</p>
+                        <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{r.days} day(s){r.manager_name?` · Manager: ${r.manager_name}`:""}{r.created_at?` · Submitted ${fmtDateTime(r.created_at)}`:""}</p>
+                        {r.reason&&<p style={{fontSize:12,color:"var(--text2)",marginTop:2}}>"{r.reason}"</p>}
+                      </div>
+                      <span style={{background:r.status==="approved"?"#10b98122":r.status==="rejected"?"#ef444422":"#f59e0b22",color:r.status==="approved"?"#10b981":r.status==="rejected"?"#ef4444":"#f59e0b",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:600,textTransform:"capitalize",flexShrink:0}}>{r.status}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -24550,6 +24584,29 @@ function App() {
   const [currentUser,setCurrentUser] = useState(()=>{
     try { const s=localStorage.getItem("sf_user"); return s?JSON.parse(s):null; } catch(e){return null;}
   });
+  // Admin "access account" impersonation — sf_impersonator holds the admin's
+  // own user object while they're viewing as someone else, so returning to
+  // it survives a refresh instead of being lost.
+  const [impersonatorUser,setImpersonatorUser] = useState(()=>{
+    try { const s=localStorage.getItem("sf_impersonator"); return s?JSON.parse(s):null; } catch(e){return null;}
+  });
+  const impersonateAs = (member) => {
+    if(currentUser?.role!=="admin" || !member || member.email===currentUser.email) return;
+    try{ localStorage.setItem("sf_impersonator", JSON.stringify(currentUser)); }catch(e){}
+    setImpersonatorUser(currentUser);
+    const u = {...member, isClient:false};
+    try{ localStorage.setItem("sf_user", JSON.stringify(u)); }catch(e){}
+    setCurrentUser(u);
+    setPage("dashboard");
+  };
+  const stopImpersonating = () => {
+    if(!impersonatorUser) return;
+    try{ localStorage.setItem("sf_user", JSON.stringify(impersonatorUser)); }catch(e){}
+    setCurrentUser(impersonatorUser);
+    try{ localStorage.removeItem("sf_impersonator"); }catch(e){}
+    setImpersonatorUser(null);
+    setPage("dashboard");
+  };
   const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","team_members","reports","account","system_log"];
   const [page,setPage_] = useState(()=>{
     try{
@@ -26696,7 +26753,13 @@ Return ONLY valid JSON (no markdown, no explanation):
 
   return (
     <><GStyle wallpaper={wallpaper} accentColor={accentColor}/>
-    <div className="app-shell" style={{display:"flex",position:"relative",overflow:"hidden"}}>
+    {impersonatorUser&&(
+      <div style={{position:"fixed",top:0,left:0,right:0,zIndex:9999,background:"#111827",color:"#fff",padding:"8px 16px",display:"flex",alignItems:"center",justifyContent:"center",gap:12,fontSize:13,fontWeight:600}}>
+        <span>Viewing as <strong>{currentUser?.name}</strong> ({ROLES[currentUser?.role]?.label||currentUser?.role})</span>
+        <button onClick={stopImpersonating} style={{background:"#fff",color:"#111827",border:"none",borderRadius:6,padding:"4px 12px",fontWeight:700,fontSize:12,cursor:"pointer"}}>Return to my account</button>
+      </div>
+    )}
+    <div className="app-shell" style={{display:"flex",position:"relative",overflow:"hidden",...(impersonatorUser?{marginTop:36,height:"calc(var(--app-height, 100dvh) - 36px)"}:{})}}>
 
       {/* Sidebar — hidden on mobile (uses drawer instead) */}
       {!isMobile&&(
@@ -27035,6 +27098,9 @@ Return ONLY valid JSON (no markdown, no explanation):
             posts={data.posts}
             perfLogs={data.perfLogs||[]}
             onMemberSelect={(member)=>setSelectedTeamMember(member)}
+            currentUser={currentUser}
+            onImpersonate={impersonateAs}
+            leaveRequests={data.leaveRequests||[]}
           />
         )}
         {page==="reports"&&["admin","account_manager","content_creator","graphic_designer","director"].includes(currentUser?.role)&&(
