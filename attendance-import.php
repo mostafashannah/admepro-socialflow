@@ -90,9 +90,76 @@ while (($row = fgetcsv($fh)) !== false) {
 }
 fclose($fh);
 
+// ── Attendance rules: late-arrival + unapproved-absence deductions ──
+// Configured from the app (Users > Attendance tab, admin only), stored as
+// JSON on app_settings.attendance_rules. Applied on every import so it
+// covers both freshly-imported rows and any older undeducted rows.
+$rulesDeducted = ['late' => 0, 'absent' => 0];
+try {
+    $settingsRow = $pdo->query("SELECT attendance_rules FROM app_settings LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+    $rules = $settingsRow && !empty($settingsRow['attendance_rules']) ? json_decode($settingsRow['attendance_rules'], true) : [];
+    $rules = is_array($rules) ? $rules : [];
+
+    // Late arrivals: every N late check-ins (after the configured threshold
+    // time) deducts a fixed number of hours (converted to a fraction of a
+    // vacation day) from that member's vacation_days_used.
+    if (!empty($rules['lateEnabled']) && floatval($rules['lateDeductHours'] ?? 0) > 0) {
+        $threshold = $rules['lateThresholdTime'] ?? '09:15';
+        $triggerCount = max(1, intval($rules['lateTriggerCount'] ?? 1));
+        $deductHours = floatval($rules['lateDeductHours']);
+
+        $lateStmt = $pdo->prepare(
+            "SELECT id, team_member_id FROM attendance_records
+             WHERE team_member_id IS NOT NULL AND late_deducted = 0
+               AND check_in IS NOT NULL AND check_in > :thresh
+               AND status NOT IN ('leave','wfh')
+             ORDER BY team_member_id, work_date"
+        );
+        $lateStmt->execute([':thresh' => $threshold]);
+        $byMember = [];
+        foreach ($lateStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $byMember[$row['team_member_id']][] = $row['id'];
+        }
+        foreach ($byMember as $tid => $ids) {
+            $groups = intdiv(count($ids), $triggerCount);
+            if ($groups <= 0) continue;
+            $toMark = array_slice($ids, 0, $groups * $triggerCount);
+            $placeholders = implode(',', array_fill(0, count($toMark), '?'));
+            $pdo->prepare("UPDATE attendance_records SET late_deducted = 1 WHERE id IN ($placeholders)")->execute($toMark);
+            $deductDays = ($groups * $deductHours) / 8;
+            $pdo->prepare("UPDATE team_members SET vacation_days_used = COALESCE(vacation_days_used,0) + ? WHERE id = ?")->execute([$deductDays, $tid]);
+            $rulesDeducted['late'] += $groups;
+        }
+    }
+
+    // Unapproved absences: any 'absent' row with no approved vacation/WFH
+    // request covering that date deducts a fixed number of days.
+    if (!empty($rules['absentEnabled']) && floatval($rules['absentDeductDays'] ?? 0) > 0) {
+        $deductDays = floatval($rules['absentDeductDays']);
+        $absentStmt = $pdo->query(
+            "SELECT id, team_member_id, work_date FROM attendance_records
+             WHERE status = 'absent' AND absence_deducted = 0 AND team_member_id IS NOT NULL"
+        );
+        $checkStmt = $pdo->prepare(
+            "SELECT COUNT(*) FROM leave_requests
+             WHERE team_member_id = ? AND status = 'approved' AND start_date <= ? AND end_date >= ?"
+        );
+        foreach ($absentStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $checkStmt->execute([$row['team_member_id'], $row['work_date'], $row['work_date']]);
+            $covered = $checkStmt->fetchColumn() > 0;
+            if (!$covered) {
+                $pdo->prepare("UPDATE team_members SET vacation_days_used = COALESCE(vacation_days_used,0) + ? WHERE id = ?")->execute([$deductDays, $row['team_member_id']]);
+                $rulesDeducted['absent']++;
+            }
+            $pdo->prepare("UPDATE attendance_records SET absence_deducted = 1 WHERE id = ?")->execute([$row['id']]);
+        }
+    }
+} catch (Exception $e) { /* rules are best-effort; import itself already succeeded */ }
+
 echo json_encode([
     'ok' => true,
     'imported' => $imported,
     'skipped' => $skipped,
     'unmatched_names' => array_keys($unmatched),
+    'rules_applied' => $rulesDeducted,
 ]);

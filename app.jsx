@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.84";
+const APP_VERSION = "beta 4.85";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10173,7 +10173,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   onInviteUser, onCancelInvitation, onApproveRequest, onRejectRequest,
   onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation,
   rolePerms, onUpdateTeamMember, onToggleRolePermission, leaveRequests, onDecideLeaveRequest, attendanceRecords,
-  posts, onImpersonate}) {
+  posts, onImpersonate, appSettings, onSaveSettings}) {
   const [tab, setTab] = usePersistentState("sf_tab_users","team");
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showClientUserModal, setShowClientUserModal] = useState(false);
@@ -10303,7 +10303,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
       )}
 
       {tab==="attendance"&&canUploadAttendance&&(
-        <AttendanceImportTab/>
+        <AttendanceImportTab appSettings={appSettings} onSaveSettings={onSaveSettings} isAdmin={currentUser?.role==="admin"}/>
       )}
 
       {tab==="invites"&&(
@@ -10840,7 +10840,7 @@ function RolesPermissionsTab({rolePerms, onToggle}) {
   );
 }
 
-function AttendanceImportTab() {
+function AttendanceImportTab({appSettings, onSaveSettings, isAdmin}) {
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState(null);
   const fileRef = useRef(null);
@@ -10863,22 +10863,100 @@ function AttendanceImportTab() {
   };
 
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:16,maxWidth:520}}>
-      <p style={{color:"var(--text2)",fontSize:13}}>
-        Upload a monthly attendance CSV with columns <code>name, date, status</code> (status: present, absent, late, half_day, leave, wfh),
-        plus optional <code>check_in, check_out, note</code>. Rows are matched to team members by exact name.
-      </p>
-      <input ref={fileRef} type="file" accept=".csv" onChange={handleUpload} disabled={uploading} style={{fontSize:13}}/>
-      {uploading&&<p style={{color:"var(--text2)",fontSize:13}}>Uploading...</p>}
-      {result?.error&&<p style={{color:"#ef4444",fontSize:13}}>{result.error}</p>}
-      {result?.ok&&(
-        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,padding:16,fontSize:13,color:"var(--text)"}}>
-          <p>✅ Imported {result.imported} row(s){result.skipped?`, skipped ${result.skipped} invalid row(s)`:""}.</p>
-          {result.unmatched_names?.length>0&&(
-            <p style={{color:"#f59e0b",marginTop:8}}>Names not matched to a team member: {result.unmatched_names.join(", ")}</p>
-          )}
+    <div style={{display:"flex",flexDirection:"column",gap:24,maxWidth:560}}>
+      <div style={{display:"flex",flexDirection:"column",gap:16}}>
+        <p style={{color:"var(--text2)",fontSize:13}}>
+          Upload a monthly attendance CSV with columns <code>name, date, status</code> (status: present, absent, late, half_day, leave, wfh),
+          plus optional <code>check_in, check_out, note</code>. Rows are matched to team members by exact name.
+        </p>
+        <input ref={fileRef} type="file" accept=".csv" onChange={handleUpload} disabled={uploading} style={{fontSize:13}}/>
+        {uploading&&<p style={{color:"var(--text2)",fontSize:13}}>Uploading...</p>}
+        {result?.error&&<p style={{color:"#ef4444",fontSize:13}}>{result.error}</p>}
+        {result?.ok&&(
+          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,padding:16,fontSize:13,color:"var(--text)"}}>
+            <p> Imported {result.imported} row(s){result.skipped?`, skipped ${result.skipped} invalid row(s)`:""}.</p>
+            {result.unmatched_names?.length>0&&(
+              <p style={{color:"#f59e0b",marginTop:8}}>Names not matched to a team member: {result.unmatched_names.join(", ")}</p>
+            )}
+            {(result.rules_applied?.late>0||result.rules_applied?.absent>0)&&(
+              <p style={{color:"var(--text2)",marginTop:8}}>
+                Attendance rules applied: {result.rules_applied.late>0?`${result.rules_applied.late} late-arrival deduction(s)`:""}{result.rules_applied.late>0&&result.rules_applied.absent>0?", ":""}{result.rules_applied.absent>0?`${result.rules_applied.absent} unapproved-absence deduction(s)`:""}.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+      {isAdmin&&<AttendanceRulesPanel appSettings={appSettings} onSaveSettings={onSaveSettings}/>}
+    </div>
+  );
+}
+
+function AttendanceRulesPanel({appSettings, onSaveSettings}) {
+  const rules = appSettings?.attendance_rules || {};
+  const [form, setForm] = useState({
+    lateEnabled: rules.lateEnabled ?? false,
+    lateThresholdTime: rules.lateThresholdTime || "09:15",
+    lateDeductHours: rules.lateDeductHours ?? 1,
+    lateTriggerCount: rules.lateTriggerCount ?? 3,
+    absentEnabled: rules.absentEnabled ?? false,
+    absentDeductDays: rules.absentDeductDays ?? 1,
+  });
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const s = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSaveSettings({attendance_rules: form});
+    setSaving(false);
+    setSaved(true);
+    setTimeout(()=>setSaved(false), 2500);
+  };
+
+  const numInput = {width:80,padding:"6px 8px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontSize:13};
+  const timeInput = {...numInput,width:100};
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:18,paddingTop:8,borderTop:"1px solid var(--border)"}}>
+      <div>
+        <h3 style={{fontWeight:700,fontSize:15,marginBottom:2}}>Attendance Rules</h3>
+        <p style={{fontSize:12,color:"var(--text3)"}}>Automatically deduct from a member's vacation credit for late arrivals and unapproved absences. Applied every time a new attendance sheet is uploaded.</p>
+      </div>
+
+      {/* Late arrival rule */}
+      <div style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",padding:16,display:"flex",flexDirection:"column",gap:10}}>
+        <label style={{display:"flex",alignItems:"center",gap:8,fontWeight:700,fontSize:13,cursor:"pointer"}}>
+          <input type="checkbox" checked={form.lateEnabled} onChange={e=>s("lateEnabled",e.target.checked)}/>
+          Deduct for late arrivals
+        </label>
+        <div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:8,fontSize:13,color:"var(--text2)",opacity:form.lateEnabled?1:0.5}}>
+          <span>Consider check-in after</span>
+          <input type="time" value={form.lateThresholdTime} onChange={e=>s("lateThresholdTime",e.target.value)} disabled={!form.lateEnabled} style={timeInput}/>
+          <span>as late. After</span>
+          <input type="number" min="1" value={form.lateTriggerCount} onChange={e=>s("lateTriggerCount",e.target.value)} disabled={!form.lateEnabled} style={numInput}/>
+          <span>late time(s), deduct</span>
+          <input type="number" min="0" step="0.5" value={form.lateDeductHours} onChange={e=>s("lateDeductHours",e.target.value)} disabled={!form.lateEnabled} style={numInput}/>
+          <span>hour(s) from their vacation credit.</span>
         </div>
-      )}
+      </div>
+
+      {/* Unapproved absence rule */}
+      <div style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",padding:16,display:"flex",flexDirection:"column",gap:10}}>
+        <label style={{display:"flex",alignItems:"center",gap:8,fontWeight:700,fontSize:13,cursor:"pointer"}}>
+          <input type="checkbox" checked={form.absentEnabled} onChange={e=>s("absentEnabled",e.target.checked)}/>
+          Deduct for unapproved absence
+        </label>
+        <div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:8,fontSize:13,color:"var(--text2)",opacity:form.absentEnabled?1:0.5}}>
+          <span>If marked absent with no approved vacation/WFH request covering that day, deduct</span>
+          <input type="number" min="0" step="0.5" value={form.absentDeductDays} onChange={e=>s("absentDeductDays",e.target.value)} disabled={!form.absentEnabled} style={numInput}/>
+          <span>day(s) from their vacation credit.</span>
+        </div>
+      </div>
+
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <Btn onClick={handleSave} disabled={saving}>{saving?<><Spinner size={14}/> Saving…</>:<><Ico d={Icons.check} size={15}/> Save Rules</>}</Btn>
+        {saved&&<span style={{color:"#10b981",fontSize:13,fontWeight:600}}>Saved — applies on next attendance upload.</span>}
+      </div>
     </div>
   );
 }
@@ -27046,6 +27124,8 @@ Return ONLY valid JSON (no markdown, no explanation):
             attendanceRecords={data.attendanceRecords||[]}
             posts={data.posts}
             onImpersonate={impersonateAs}
+            appSettings={appSettings}
+            onSaveSettings={saveAppSettings}
           />
         )}
         {page==="reports"&&["admin","account_manager","content_creator","graphic_designer","director"].includes(currentUser?.role)&&(
