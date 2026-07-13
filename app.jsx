@@ -441,11 +441,16 @@ async function ce(entityName, records) {
       } else {
         const errBody = await r.text().catch(()=>"");
         console.warn(`[SB] POST ${tbl} ${r.status}:`, errBody);
+        if(entityName!=="ActivityLog") logActivity(`Save Failed: ${entityName}`, "system", `POST ${tbl} → ${r.status}`, "error", errBody.slice(0,500), "system");
         results.push({_saveError: true, _status: r.status, _detail: errBody});
       }
     }
     return {entities: results};
-  } catch(e) { console.error("[SB] ce error:", e); return {entities:[]}; }
+  } catch(e) {
+    console.error("[SB] ce error:", e);
+    if(entityName!=="ActivityLog") logActivity(`Save Failed: ${entityName}`, "system", "Network/exception error", "error", String(e?.message||e), "system");
+    return {entities: []};
+  }
 }
 
 // Update a record by ID — PATCH
@@ -461,10 +466,17 @@ async function ue(entityName, id, updates) {
       headers: {...SB_HEADERS, "Prefer": "return=representation"},
       body: JSON.stringify(payload),
     });
-    if(!r.ok) return null;
+    if(!r.ok) {
+      const errBody = await r.text().catch(()=>"");
+      if(entityName!=="ActivityLog") logActivity(`Update Failed: ${entityName}`, "system", `PATCH ${tbl} (${id}) → ${r.status}`, "error", errBody.slice(0,500), "system");
+      return null;
+    }
     const d = await r.json();
     return Array.isArray(d) ? d[0] : d;
-  } catch(e) { return null; }
+  } catch(e) {
+    if(entityName!=="ActivityLog") logActivity(`Update Failed: ${entityName}`, "system", "Network/exception error", "error", String(e?.message||e), "system");
+    return null;
+  }
 }
 
 // Delete a record by ID
@@ -476,8 +488,15 @@ async function de(entityName, id) {
       method: "DELETE",
       headers: SB_HEADERS,
     });
+    if(!r.ok) {
+      const errBody = await r.text().catch(()=>"");
+      if(entityName!=="ActivityLog") logActivity(`Delete Failed: ${entityName}`, "system", `DELETE ${tbl} (${id}) → ${r.status}`, "error", errBody.slice(0,500), "system");
+    }
     return r.ok;
-  } catch(e) { return false; }
+  } catch(e) {
+    if(entityName!=="ActivityLog") logActivity(`Delete Failed: ${entityName}`, "system", "Network/exception error", "error", String(e?.message||e), "system");
+    return false;
+  }
 }
 // ── AI endpoint — always use proxy on server ──
 const AI_ENDPOINT = window.location.origin + "/ai-proxy.php";
@@ -608,7 +627,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.02";
+const APP_VERSION = "beta 5.03";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
