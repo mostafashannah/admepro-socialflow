@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.80";
+const APP_VERSION = "beta 4.81";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -14708,7 +14708,7 @@ function DailyEmailSettings({emailSettings, onSave, team, posts, timelogs, perfL
                     </div>
                     {log.error_message&&!ok&&(
                       <div style={{gridColumn:"1/-1",marginTop:2,padding:"6px 10px",background:"#ef444411",border:"1px solid #ef444433",borderRadius:"var(--rxs)",fontSize:11,color:"#ef4444",fontFamily:"monospace"}}>
-                        {log.error_message}
+                        {typeof log.error_message==="string"?log.error_message:(log.error_message.message||log.error_message.name||JSON.stringify(log.error_message))}
                       </div>
                     )}
                   </div>
