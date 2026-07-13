@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.83";
+const APP_VERSION = "beta 4.84";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -15044,7 +15044,7 @@ async function captureSessionInfo(user) {
 // ════════════════════════════════════════════════════════════════
 // SYSTEM LOG PAGE — Full admin audit center
 // ════════════════════════════════════════════════════════════════
-function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh}) {
+function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh, team}) {
   const [tab, setTab] = useState("sessions");
   const [logFilter, setLogFilter] = useState("all");
   const [logSearch, setLogSearch] = useState("");
@@ -15072,6 +15072,10 @@ function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh}) {
     if(logSearch && !`${a.action} ${a.details} ${a.performed_by}`.toLowerCase().includes(logSearch.toLowerCase())) return false;
     return true;
   });
+
+  const [liveClock, setLiveClock] = useState(Date.now());
+  useEffect(()=>{ const t = setInterval(()=>setLiveClock(Date.now()), 15000); return ()=>clearInterval(t); },[]);
+  const liveMembers = (team||[]).filter(m=>m.last_seen && (liveClock - new Date(m.last_seen).getTime()) < 3*60000);
 
   const filteredSessions = (systemSessions||[]).filter(s=>{
     if(!sessionSearch) return true;
@@ -15118,6 +15122,26 @@ function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh}) {
             <p style={{fontSize:22,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color}}>{s.val}</p>
           </div>
         ))}
+      </div>
+
+      {/* Live now — real presence, based on a 60s heartbeat from each signed-in member */}
+      <div style={{padding:"12px 16px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+          <div style={{width:8,height:8,borderRadius:"50%",background:"#10b981",boxShadow:"0 0 0 3px #10b98122"}}/>
+          <span style={{fontSize:12,fontWeight:800,color:"var(--text)"}}>{liveMembers.length} live now</span>
+        </div>
+        {liveMembers.length===0?(
+          <span style={{fontSize:12,color:"var(--text3)"}}>No one active in the last 3 minutes</span>
+        ):(
+          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+            {liveMembers.map(m=>(
+              <span key={m.id} style={{display:"flex",alignItems:"center",gap:5,padding:"3px 10px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:99,fontSize:12,fontWeight:600,color:"var(--text2)"}}>
+                <ProfilePhoto photoUrl={m.photo_url} name={m.name} role={m.role} size={16}/>
+                {m.name}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Tabs */}
@@ -15517,7 +15541,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
       )}
 
       {/* ── SYSTEM LOG TAB ── */}
-      {settingsTab==="syslog"&&<SystemLogPage activityLogs={activityLogs} systemSessions={systemSessions} currentUser={currentUser} onRefresh={()=>{ onRefreshLogs&&onRefreshLogs(); onRefreshSessions&&onRefreshSessions(); }}/>}
+      {settingsTab==="syslog"&&<SystemLogPage activityLogs={activityLogs} systemSessions={systemSessions} currentUser={currentUser} team={team} onRefresh={()=>{ onRefreshLogs&&onRefreshLogs(); onRefreshSessions&&onRefreshSessions(); }}/>}
 
       {/* ── AI & TOKENS TAB ── */}
       {settingsTab==="ai_model"&&(
@@ -24555,6 +24579,22 @@ function App() {
   React.useEffect(()=>{
     try{ if("scrollRestoration" in window.history) window.history.scrollRestoration = "manual"; }catch(e){}
   },[]);
+
+  // ── "Live now" presence heartbeat ──
+  // Pings team_members.last_seen every 60s while a (non-client) team member
+  // is signed in and the tab is visible, so admin views can show who's
+  // actually online right now instead of a fake proxy.
+  React.useEffect(()=>{
+    if(!currentUser?.id || currentUser?.isClient) return;
+    const ping = () => {
+      if(document.visibilityState !== "visible") return;
+      ue("TeamMember", currentUser.id, {last_seen:new Date().toISOString()}).catch(()=>{});
+    };
+    ping();
+    const t = setInterval(ping, 60000);
+    document.addEventListener("visibilitychange", ping);
+    return ()=>{ clearInterval(t); document.removeEventListener("visibilitychange", ping); };
+  },[currentUser?.id, currentUser?.isClient]);
 
   const setPage = (p) => {
     setPage_(p);
