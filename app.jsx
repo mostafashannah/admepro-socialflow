@@ -380,7 +380,16 @@ function sbTable(entityName) {
 const SB_SCHEMA = {
   projects: ["title","description","client_id","client_name","status","start_date","end_date","platforms","team_members","project_type","posting_start","posting_end"],
   posts: ["project_id","client_id","client_name","title","description","stage","platform","post_type","caption","hashtags","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes"],
-  clients: ["name","email","phone","industry","status","platforms","portal_password","address","website","contact_person","notes"],
+  // address/website/contact_person/username were never real columns on the
+  // clients table (mysql-schema.sql only has name/email/phone/logo_url/
+  // industry/status/account_manager_id/notes/platforms/portal_password) —
+  // keeping fields here that don't exist in the DB is a live landmine: any
+  // update that happens to include one would fail outright with an "Unknown
+  // column" SQL error instead of silently dropping it. account_manager_id
+  // DOES exist but was missing from this list, so it always got stripped
+  // before the request went out — assigning an account manager silently
+  // never persisted.
+  clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","notes"],
   client_tasks: ["client_id","client_name","title","description","task_type","priority","stage","assigned_to","created_by","deliverable_note"],
   customer_messages: ["client_id","client_name","channel","customer_id","customer_name","direction","message_text","sent_by","thread_status","draft_status","external_id"],
   reply_bot_settings: ["client_id","client_name","enabled","mode","channels","tone","brain","dont_do","fallback_message","updated_by"],
@@ -627,7 +636,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.13";
+const APP_VERSION = "beta 5.14";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
