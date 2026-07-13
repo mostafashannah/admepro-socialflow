@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.57";
+const APP_VERSION = "beta 5.58";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -2074,6 +2074,7 @@ const Icons = {
   waBrand: "M.06 24l1.69-6.16a11.87 11.87 0 0 1-1.59-5.95C.16 5.34 5.5 0 12.06 0a11.82 11.82 0 0 1 8.41 3.49 11.82 11.82 0 0 1 3.48 8.41c0 6.56-5.34 11.9-11.9 11.9a11.9 11.9 0 0 1-5.69-1.45L.06 24zm6.6-3.8c1.68.99 3.28 1.59 5.4 1.59 5.45 0 9.89-4.43 9.89-9.89 0-5.45-4.44-9.89-9.89-9.89-5.45 0-9.89 4.44-9.89 9.89 0 2.22.65 3.89 1.74 5.64l-1 3.66 3.65-1zm11.39-5.55c-.07-.12-.27-.2-.57-.35-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.65.07-.3-.15-1.25-.46-2.39-1.47-.88-.79-1.48-1.76-1.65-2.06-.17-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.07-.15-.67-1.62-.92-2.22-.24-.58-.49-.5-.67-.51-.17-.01-.37-.01-.57-.01-.2 0-.52.07-.8.37-.27.3-1.04 1.02-1.04 2.48 0 1.46 1.07 2.88 1.22 3.08.15.2 2.1 3.2 5.08 4.49.71.31 1.26.49 1.69.62.71.23 1.36.19 1.87.12.57-.09 1.76-.72 2.01-1.41.25-.69.25-1.29.17-1.41z",
   sheetsBrand: ["M5 2h10l4 4v15a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z","M14 2v4h4"],
   linkedinBrand: "M20.45 20.45h-3.55v-5.57c0-1.33-.02-3.03-1.85-3.03-1.85 0-2.14 1.45-2.14 2.94v5.66H9.36V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.45v6.29zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56v11.45zM22.22 0H1.77C.79 0 0 .77 0 1.73v20.54C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.73V1.73C24 .77 23.2 0 22.22 0z",
+  vimeoBrand: "M22.396 7.164c-.093 2.026-1.507 4.799-4.245 8.317-2.828 3.675-5.223 5.512-7.184 5.512-1.215 0-2.24-1.123-3.078-3.369-.559-2.052-1.118-4.104-1.677-6.156-.622-2.246-1.29-3.369-2.004-3.369-.156 0-.7.328-1.634.98l-.978-1.26c1.027-.902 2.04-1.804 3.037-2.708C6.03 4.04 6.977 3.505 7.6 3.447c1.484-.143 2.398.871 2.74 3.042.37 2.343.626 3.799.769 4.368.427 1.938.897 2.907 1.41 2.907.4 0 .999-.633 1.799-1.899.797-1.266 1.225-2.229 1.28-2.891.111-1.093-.316-1.64-1.28-1.64-.457 0-.925.104-1.409.313.936-3.066 2.724-4.556 5.365-4.469 1.958.06 2.883 1.324 2.771 3.986",
   shopifyBrand: "M7.5 9.2l.3-2.1c.3-1.9 1.8-4 4.3-4 1 0 1.7.3 2.2.7l1.1-.4 2 18.6-9.4 1.7-3.4-2.6.1-1.1zm1.3-.2h1.5c.1-1.1.5-2.6 1.1-3.5-1.3.2-2.3 1.8-2.6 3.5zm2.7 0h2c-.1-1.4-.5-2.7-1-3.3-.5.6-.9 1.9-1 3.3zm1-4.6c.2.6.5 1.9.6 4.6h1.5c-.2-1.8-.8-3.4-1.6-4.2-.2-.2-.3-.3-.5-.4z",
 };
 
@@ -12814,18 +12815,8 @@ function CareersChrome({isDark, setIsDark, children}) {
         <button onClick={()=>setMenuOpen(o=>!o)} style={{width:44,height:44,borderRadius:"50%",background:"rgba(120,120,130,0.25)",backdropFilter:"blur(6px)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text)"}}>
           <Ico d={menuOpen?Icons.x:Icons.menu} size={17}/>
         </button>
-        {menuOpen&&(
-          <div style={{position:"absolute",top:52,right:0,minWidth:180,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:8,boxShadow:"var(--shadow-lg)"}}>
-            {[
-              {label:"Home", url:"https://admepro.com"},
-              {label:"Careers", url:"https://socialflow.admepro.com/careers"},
-              {label:"Contact Us", url:"mailto:hello@admepro.com"},
-            ].map(item=>(
-              <a key={item.label} href={item.url} target="_blank" rel="noreferrer" onClick={()=>setMenuOpen(false)} style={{display:"block",padding:"10px 14px",borderRadius:8,fontSize:14,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>{item.label}</a>
-            ))}
-          </div>
-        )}
       </div>
+      {menuOpen&&<CareersFullMenu onClose={()=>setMenuOpen(false)}/>}
       <div style={{position:"fixed",right:20,top:"50%",transform:"translateY(-50%)",zIndex:10,display:"flex",flexDirection:"column",alignItems:"center",gap:22}}>
         <div style={{display:"flex",flexDirection:"column",alignItems:"center",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",padding:4,width:29}}>
           <button title="Dark mode" onClick={()=>setIsDark(true)} style={{width:24,height:24,borderRadius:"50%",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",background:isDark?"#fff":"transparent",color:isDark?"#111":"var(--text2)",flexShrink:0}}>
@@ -12852,6 +12843,58 @@ function CareersChrome({isDark, setIsDark, children}) {
 
 // Mirrors admepro.com's own site footer (same info/links), adapted to the
 // app's CSS-variable theme so it works in both light and dark mode.
+const CAREERS_NAV_LINKS = [
+  {label:"Home", url:"https://admepro.com"},
+  {label:"About", url:"https://admepro.com/about/"},
+  {label:"Portfolio", url:"https://admepro.com/portfolio/"},
+  {label:"Contact", url:"https://admepro.com/contact-us/"},
+];
+
+// Full-screen menu overlay matching admepro.com's own site menu style —
+// big bold nav links on the left, contact info + social icons on the right.
+function CareersFullMenu({onClose}) {
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:100,background:"rgba(10,10,14,0.97)",backdropFilter:"blur(10px)",overflowY:"auto"}}>
+      <button onClick={onClose} style={{position:"absolute",top:20,right:20,width:44,height:44,borderRadius:"50%",background:"rgba(255,255,255,0.1)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff"}}>
+        <Ico d={Icons.x} size={20}/>
+      </button>
+      <div style={{minHeight:"100vh",display:"flex",alignItems:"center",padding:"100px 40px",flexWrap:"wrap",gap:40}}>
+        <div style={{flex:"1 1 320px"}}>
+          {CAREERS_NAV_LINKS.map(item=>(
+            <a key={item.label} href={item.url} target="_blank" rel="noreferrer" style={{display:"block",fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:"clamp(32px,6vw,56px)",lineHeight:1.15,color:"#fff",textDecoration:"none",textTransform:"uppercase",letterSpacing:"-0.01em"}}>
+              {item.label}
+            </a>
+          ))}
+        </div>
+        <div style={{flex:"1 1 280px",display:"flex",flexDirection:"column",gap:28,color:"rgba(255,255,255,0.6)",fontSize:15}}>
+          <div>
+            <p style={{fontWeight:800,color:"#fff",marginBottom:8}}>Get In Touch</p>
+            <p>145 El Banafsig 3, New Cairo, Cairo,</p>
+            <p>info@admepro.com</p>
+            <p>Ph: +20 100 037 0140</p>
+          </div>
+          <div>
+            <p style={{fontWeight:800,color:"#fff",marginBottom:8}}>Work Inquiries</p>
+            <p>hello@admepro.com</p>
+            <p>Ph: +20 100 037 0140</p>
+          </div>
+          <div style={{display:"flex",gap:10,marginTop:8}}>
+            {[
+              {icon:Icons.vimeoBrand, url:"https://vimeo.com/admepro"},
+              {icon:Icons.igBrand, url:"https://instagram.com/admeproagency"},
+              {icon:Icons.fbBrand, url:"https://fb.com/admepro"},
+            ].map((s,i)=>(
+              <a key={i} href={s.url} target="_blank" rel="noreferrer" style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.1)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff"}}>
+                <Ico d={s.icon} size={15} fill="currentColor" stroke="none"/>
+              </a>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CareersFooter({isDark}) {
   return (
     <div style={{background:"var(--surface)",borderTop:"1px solid var(--border)",padding:"56px 20px 28px"}}>
@@ -12995,7 +13038,7 @@ function CareersPage() {
     <CareersChrome isDark={isDark} setIsDark={setIsDark}>
     <div style={{minHeight:"100vh",background:"var(--bg)",padding:"48px 20px"}}>
       <div style={{maxWidth:960,margin:"0 auto"}}>
-        <div style={{textAlign:"center",marginBottom:36,marginTop:50}}>
+        <div style={{textAlign:"center",marginBottom:36,marginTop:100}}>
           <h1 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:30,color:"var(--text)"}}>Careers at Admepro</h1>
           <p style={{color:"var(--text2)",fontSize:14,marginTop:8}}>We're a social media agency looking for great people. Explore our open positions below.</p>
         </div>
