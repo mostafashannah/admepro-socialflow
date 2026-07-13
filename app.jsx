@@ -392,6 +392,11 @@ const SB_SCHEMA = {
   // migration-client-username.sql for the added username column).
   clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","username","notes","logo_url"],
   client_tasks: ["client_id","client_name","title","description","task_type","priority","stage","assigned_to","created_by","deliverable_note"],
+  // DEFAULT_NOTIF_PREFS (used to build every save payload) has a
+  // "digest_time" field the notification_prefs table never actually had —
+  // an UPDATE/INSERT including it errored out at the SQL level, so every
+  // single notification-prefs save was silently failing.
+  notification_prefs: ["user_email","all_disabled","mentions_only","daily_digest","task_assigned","task_stage_changed","task_due_soon","task_overdue","task_mention","task_comment","project_created","project_task_added","project_deadline_updated","post_approved","post_rejected","client_approval_required","invoice_created","payment_received","subscription_renewal","user_invited","access_approved","access_rejected","permissions_updated"],
   customer_messages: ["client_id","client_name","channel","customer_id","customer_name","direction","message_text","sent_by","thread_status","draft_status","external_id"],
   reply_bot_settings: ["client_id","client_name","enabled","mode","channels","tone","brain","dont_do","fallback_message","updated_by"],
 };
@@ -637,7 +642,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.33";
+const APP_VERSION = "beta 5.34";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -875,6 +880,14 @@ const EMAIL_TEMPLATES = {
     ${emailCard([["Invoice #",invoiceNum],["Amount Due",`${currency||"USD"} ${total||"0.00"}`,"#d90b2c"],["Due Date",dueDate||"N/A","#f59e0b"]])}
     ${emailBtn(viewUrl||APP_URL,"View Invoice")}
     ${emailP(`For questions about this invoice, simply reply to this email.`)}
+  `),
+
+  invoiceCreated: (recipientName, invoiceNum, total, currency, clientName) => emailBase(`
+    ${emailH("New invoice created")}
+    ${emailP(`Hi <strong>${recipientName||"there"}</strong>,`)}
+    ${emailP(`A new invoice was generated for <strong>${clientName||"a client"}</strong>.`)}
+    ${emailCard([["Invoice #",invoiceNum],["Amount",`${currency||"USD"} ${total||"0.00"}`,"#d90b2c"],["Client",clientName||"—"]])}
+    ${emailBtn(APP_URL,"View Invoice")}
   `),
 
   paymentReceived: (recipientName, invoiceNum, amount, currency, clientName) => emailBase(`
@@ -26397,20 +26410,34 @@ function App() {
   const saveUserProfile = async (profileData) => {
     const prevWaNumber = userProfile?.whatsapp_number || "";
     const payload = {...profileData, user_email:currentUser.email, wallpaper};
-    const existingId = userProfile?.id;
+    let existingId = userProfile?.id;
     setUserProfile(prev=>({...prev,...payload}));
     if(profileData.wallpaper) setWallpaper(profileData.wallpaper);
+    let ok = false;
     try {
+      // If the user hits Save before the profile-load effect resolves,
+      // existingId can still be blank even though a row already exists —
+      // user_profiles.user_email is UNIQUE, so a blind INSERT would fail
+      // (silently, since ce() only logs it) and the edit would never
+      // actually land, reappearing "reverted" on the next hard refresh.
+      // Re-check right before deciding create vs update to close that race.
+      if(!existingId) {
+        const existing = await qe("UserProfile",{user_email:currentUser.email});
+        if(existing?.entities?.length) existingId = existing.entities[0].id;
+      }
       if(existingId) {
-        await ue("UserProfile", existingId, payload);
+        const updated = await ue("UserProfile", existingId, payload);
+        ok = !!updated;
+        if(updated) setUserProfile(prev=>({...prev,...updated}));
       } else {
         const res = await ce("UserProfile",[payload]);
         const real = res.entities?.[0];
+        ok = !!(real && !real._saveError);
         if(real?.id) setUserProfile(prev=>({...prev,...real}));
       }
       // Mirror into team_members.whatsapp_number too — task-assignment
       // notifications read from `data.team`, not the user_profiles row.
-      if("whatsapp_number" in profileData) {
+      if(ok && "whatsapp_number" in profileData) {
         const member = data.team.find(m=>m.email===currentUser.email);
         if(member) updateTeamMember(member.id, {whatsapp_number: profileData.whatsapp_number||null});
         const newWaNumber = profileData.whatsapp_number || "";
@@ -26420,9 +26447,9 @@ function App() {
           sendWhatsApp(newWaNumber, `Hi ${name}! Your WhatsApp number is now linked to your SocialFlow account.\n\nName: ${name}\nEmail: ${currentUser.email}\nRole: ${role}\n\nYou'll receive task and approval notifications here, and can message "Pro" anytime for help.`).catch(()=>{});
         }
       }
-    } catch(e){}
-    logActivity("Profile Updated","users",currentUser?.email||"","success","",currentUser?.email||"admin");
-    setToast("Profile saved successfully");
+    } catch(e){ ok = false; }
+    logActivity("Profile Updated","users",currentUser?.email||"",ok?"success":"error","",currentUser?.email||"admin");
+    setToast(ok ? "Profile saved successfully" : "Failed to save profile — please try again");
   };
 
   // ── Notification Preferences ─────────────────────────────────
@@ -26440,11 +26467,12 @@ function App() {
       ? d.notifPrefs.map(p=>p.user_email===email?{...p,...payload}:p)
       : [...(d.notifPrefs||[]),{...payload,id:uid()}]
     }));
+    let ok = false;
     try {
-      if(existing?.id) await ue("NotificationPrefs",existing.id,payload);
-      else { const res=await ce("NotificationPrefs",[payload]); const real=res.entities?.[0]; if(real?.id) setData(d=>({...d,notifPrefs:d.notifPrefs.map(p=>p.user_email===email&&!p.id?{...p,...real}:p)})); }
-    } catch(e){}
-    setToast("Notification preferences saved");
+      if(existing?.id) { const updated = await ue("NotificationPrefs",existing.id,payload); ok = !!updated; }
+      else { const res=await ce("NotificationPrefs",[payload]); const real=res.entities?.[0]; ok=!!(real&&!real._saveError); if(real?.id) setData(d=>({...d,notifPrefs:d.notifPrefs.map(p=>p.user_email===email&&!p.id?{...p,...real}:p)})); }
+    } catch(e){ ok = false; }
+    setToast(ok ? "Notification preferences saved" : "Failed to save preferences — please try again");
   };
 
   const handleWallpaperChange = (key) => {
@@ -26865,6 +26893,14 @@ Return ONLY the JSON array, no markdown.`;
     }).catch(()=>{});
     logActivity("Invoice Created","finance",`Invoice ${invData.invoice_number} for ${invData.client_name} — ${fmtMoney(invData.total,invData.currency)}`,"success","",currentUser?.email||"admin");
     setToast(`Invoice ${invData.invoice_number} created`);
+    data.team.filter(m=>["admin","accountant"].includes(m.role)&&m.email!==currentUser?.email).forEach(m=>{
+      const prefs = getNotifPrefs(m.email);
+      sendNotification("invoice_created", m.email,
+        `[SocialFlow] New invoice — ${invData.invoice_number}`,
+        EMAIL_TEMPLATES.invoiceCreated(m.name, invData.invoice_number, fmtMoney(invData.total,invData.currency), invData.currency, invData.client_name),
+        prefs
+      ).catch(()=>{});
+    });
   };
 
   const confirmPayment = async (invoice, payData) => {
@@ -27217,6 +27253,17 @@ Return ONLY valid JSON (no markdown, no explanation):
         sendNotification("post_approved", originalAssignee.email,
           `[SocialFlow] Post approved: ${post.title}`,
           EMAIL_TEMPLATES.postApproved(originalAssignee.name, post.title, post.client_name||"Client"),
+          prefs, originalAssignee.whatsapp_number||null
+        ).catch(()=>{});
+      }
+    }
+    if(newStage === "rejected") {
+      const originalAssignee = data.team.find(m=>m.email===post.assigned_to);
+      if(originalAssignee && originalAssignee.email !== currentUser?.email) {
+        const prefs = getNotifPrefs(originalAssignee.email);
+        sendNotification("post_rejected", originalAssignee.email,
+          `[SocialFlow] Post needs revision: ${post.title}`,
+          EMAIL_TEMPLATES.postRejected(originalAssignee.name, post.title, post.client_name||"Client", post.rejection_reason||""),
           prefs, originalAssignee.whatsapp_number||null
         ).catch(()=>{});
       }
