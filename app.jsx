@@ -637,7 +637,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.23";
+const APP_VERSION = "beta 5.24";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1434,6 +1434,17 @@ const ensureProjectFolder = (clientId, projectName, clientName) => {
 // WALLPAPER / THEME DEFINITIONS
 // ════════════════════════════════════════════════════════════════
 const WALLPAPERS = [
+  {
+    key:"auto",
+    label:"Auto (System)",
+    desc:"Matches your device's light/dark setting",
+    preview:["#0e1117","#fafafa","#d90b2c"],
+    bg: null,
+    // Never actually rendered directly — App() resolves "auto" to "dark" or
+    // "light" (via prefers-color-scheme) before passing a wallpaper key to
+    // GStyle. This entry only exists so it's selectable in the theme picker.
+    vars:()=>getWallpaperVars("dark"),
+  },
   {
     key:"dark",
     label:"Dark Mode",
@@ -9364,22 +9375,20 @@ function ClientPerformanceTrend({clientId}) {
 
   return (
     <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"16px 20px",display:"flex",flexDirection:"column",gap:14}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",gap:10}}>
         <h4 style={{fontWeight:700,fontSize:14}}>30-Day Performance</h4>
-        <div style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
-          <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)"}}>
-            {[["reach","Reach"],["followers","Followers"]].map(([k,l])=>(
-              <button key={k} onClick={()=>setMetricMode(k)} style={{padding:"5px 14px",borderRadius:99,fontSize:12,fontWeight:700,border:"none",cursor:"pointer",background:metricMode===k?"var(--accent)":"transparent",color:metricMode===k?"#fff":"var(--text2)"}}>{l}</button>
-            ))}
-          </div>
-          <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-            {seriesList.map(s=>(
-              <div key={s.platform} style={{display:"flex",alignItems:"center",gap:6}}>
-                <span style={{width:9,height:9,borderRadius:"50%",background:s.color,flexShrink:0}}/>
-                <span style={{fontSize:12,fontWeight:600,color:"var(--text2)"}}>{s.label}</span>
-              </div>
-            ))}
-          </div>
+        <div style={{display:"flex",gap:2,background:"var(--surface2)",padding:2,borderRadius:99,border:"1px solid var(--border2)",justifySelf:"center"}}>
+          {[["reach","Reach"],["followers","Followers"]].map(([k,l])=>(
+            <button key={k} onClick={()=>setMetricMode(k)} style={{padding:"3px 12px",borderRadius:99,fontSize:11,fontWeight:700,border:"none",cursor:"pointer",background:metricMode===k?"var(--accent)":"transparent",color:metricMode===k?"#fff":"var(--text2)"}}>{l}</button>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:12,flexWrap:"wrap",justifySelf:"end"}}>
+          {seriesList.map(s=>(
+            <div key={s.platform} style={{display:"flex",alignItems:"center",gap:6}}>
+              <span style={{width:9,height:9,borderRadius:"50%",background:s.color,flexShrink:0}}/>
+              <span style={{fontSize:12,fontWeight:600,color:"var(--text2)"}}>{s.label}</span>
+            </div>
+          ))}
         </div>
       </div>
       <MultiLineChart series={seriesList} height={280}/>
@@ -25425,6 +25434,19 @@ function App() {
   // User profile & wallpaper
   const [userProfile, setUserProfile] = useState(null);
   const [wallpaper, setWallpaper] = useState("light");
+  // "Auto" theme — follows the OS/browser's prefers-color-scheme live,
+  // including switching mid-session if the user's system theme changes.
+  const [systemPrefersDark, setSystemPrefersDark] = useState(()=>{
+    try{ return window.matchMedia("(prefers-color-scheme: dark)").matches; }catch(e){ return true; }
+  });
+  React.useEffect(()=>{
+    let mq;
+    try{ mq = window.matchMedia("(prefers-color-scheme: dark)"); }catch(e){ return; }
+    const onChange = (e) => setSystemPrefersDark(e.matches);
+    mq.addEventListener ? mq.addEventListener("change", onChange) : mq.addListener(onChange);
+    return () => { mq.removeEventListener ? mq.removeEventListener("change", onChange) : mq.removeListener(onChange); };
+  },[]);
+  const effectiveWallpaper = wallpaper==="auto" ? (systemPrefersDark?"dark":"light") : wallpaper;
   // Invoice conversion flow
   const [convertQuote, setConvertQuote] = useState(null);
 
@@ -27319,12 +27341,12 @@ Return ONLY valid JSON (no markdown, no explanation):
   // Client portal
   if(currentUser?.isClient) {
     const clientRecord = data.clients.find(c=>c.email===currentUser.email)||currentUser;
-    return (<><GStyle wallpaper={wallpaper} accentColor={accentColor}/><ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]}/></>);
+    return (<><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor}/><ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]}/></>);
   }
 
   // Accept invitation flow (URL has ?invite=TOKEN)
   if(inviteToken && !currentUser) {
-    return (<><GStyle wallpaper={wallpaper} accentColor={accentColor}/><AcceptInvitationPage token={inviteToken} onAccepted={()=>{ try{window.history.replaceState({},"",window.location.pathname);}catch(e){} window.location.reload(); }}/></>);
+    return (<><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor}/><AcceptInvitationPage token={inviteToken} onAccepted={()=>{ try{window.history.replaceState({},"",window.location.pathname);}catch(e){} window.location.reload(); }}/></>);
   }
 
   // OAuth callback — auto-login if user exists in team_members
@@ -27342,7 +27364,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       },0);
     } else {
       return (
-        <><GStyle wallpaper={wallpaper} accentColor={accentColor}/>
+        <><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor}/>
         <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:20,padding:"40px 32px",maxWidth:420,width:"100%",textAlign:"center"}}>
             <div style={{width:56,height:56,borderRadius:16,background:"var(--accentbg)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"}}><Ico d={Icons.send} size={24} stroke="var(--accent)"/></div>
@@ -27362,7 +27384,7 @@ Return ONLY valid JSON (no markdown, no explanation):
 
   // Login screen
   if(!currentUser) {
-    return (<><GStyle wallpaper={wallpaper} accentColor={accentColor}/><LoginScreen onLogin={u=>{
+    return (<><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor}/><LoginScreen onLogin={u=>{
       try{localStorage.setItem("sf_user",JSON.stringify(u));}catch(e){}
       setCurrentUser(u);
       // Capture session info asynchronously — don't block login
@@ -27378,7 +27400,7 @@ Return ONLY valid JSON (no markdown, no explanation):
 
   // Loading
   if(loading) return (
-    <><GStyle wallpaper={wallpaper} accentColor={accentColor}/>
+    <><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor}/>
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:14}}>
       <Spinner size={36}/>
       <p style={{fontSize:13,color:"var(--text3)"}}>Loading workspace…</p>
@@ -27389,7 +27411,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   const postComments = selectedPost ? data.comments.filter(c=>c.post_id===selectedPost.id) : [];
 
   return (
-    <><GStyle wallpaper={wallpaper} accentColor={accentColor}/>
+    <><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor}/>
     {impersonatorUser&&(
       <div style={{position:"fixed",top:0,left:0,right:0,zIndex:9999,background:"#111827",color:"#fff",padding:"8px 16px",display:"flex",alignItems:"center",justifyContent:"center",gap:12,fontSize:13,fontWeight:600}}>
         <span>Viewing as <strong>{currentUser?.name}</strong> ({ROLES[currentUser?.role]?.label||currentUser?.role})</span>
