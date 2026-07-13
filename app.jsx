@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.91";
+const APP_VERSION = "beta 4.92";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -15049,6 +15049,29 @@ function BrandingSettingsTab({brandingAssets, onSave, wallpaper, accentColor}) {
 // ════════════════════════════════════════════════════════════════
 // SESSION CAPTURE — collects device/IP/geo info on login
 // ════════════════════════════════════════════════════════════════
+// Short two-tone "ding" via Web Audio — no external asset needed. Browsers
+// require a prior user gesture before audio can play; since this only ever
+// fires from a poll after the user has already been interacting with the
+// app, the audio context is unlocked by then.
+function playNotificationSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [880, 1108.73].forEach((freq, i) => {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = "sine";
+      o.frequency.setValueAtTime(freq, ctx.currentTime + i*0.12);
+      g.gain.setValueAtTime(0.0001, ctx.currentTime + i*0.12);
+      g.gain.exponentialRampToValueAtTime(0.18, ctx.currentTime + i*0.12 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + i*0.12 + 0.3);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(ctx.currentTime + i*0.12);
+      o.stop(ctx.currentTime + i*0.12 + 0.3);
+    });
+    setTimeout(()=>ctx.close().catch(()=>{}), 600);
+  } catch(e) {}
+}
+
 async function captureSessionInfo(user) {
   try {
     // Parse user agent
@@ -24730,6 +24753,33 @@ function App() {
     document.addEventListener("visibilitychange", ping);
     return ()=>{ clearInterval(t); document.removeEventListener("visibilitychange", ping); };
   },[currentUser?.id, currentUser?.isClient]);
+
+  // ── Notification sound ──
+  // Notifications are otherwise only fetched once at load, so there's no way
+  // to know a new one arrived while the app stays open. Poll for this user's
+  // notifications and play a sound the moment one shows up that we haven't
+  // already seen (seeded from whatever was already loaded, so logging in
+  // with existing unread notifications doesn't beep).
+  const seenNotifIdsRef = React.useRef(null);
+  React.useEffect(()=>{
+    if(!currentUser?.email) { seenNotifIdsRef.current = null; return; }
+    seenNotifIdsRef.current = new Set((data.notifications||[]).filter(n=>n.recipient_email===currentUser.email).map(n=>n.id));
+    const poll = async () => {
+      const res = await qe("Notification", {recipient_email:currentUser.email}, "-created_at", 50).catch(()=>null);
+      if(!res?.entities || !seenNotifIdsRef.current) return;
+      const fresh = res.entities.filter(n=>!seenNotifIdsRef.current.has(n.id));
+      res.entities.forEach(n=>seenNotifIdsRef.current.add(n.id));
+      if(fresh.length>0) {
+        playNotificationSound();
+        setData(d=>{
+          const known = new Set(d.notifications.map(x=>x.id));
+          return {...d, notifications:[...fresh.filter(f=>!known.has(f.id)), ...d.notifications]};
+        });
+      }
+    };
+    const t = setInterval(poll, 25000);
+    return ()=>clearInterval(t);
+  },[currentUser?.email]);
 
   const setPage = (p) => {
     setPage_(p);
