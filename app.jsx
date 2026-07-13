@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.77";
+const APP_VERSION = "beta 4.78";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10130,7 +10130,8 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
 function UsersPage({currentUser, team, invitations, accessRequests, clientUsers, clients,
   onInviteUser, onCancelInvitation, onApproveRequest, onRejectRequest,
   onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation,
-  rolePerms, onUpdateTeamMember, onToggleRolePermission, leaveRequests, onDecideLeaveRequest, attendanceRecords}) {
+  rolePerms, onUpdateTeamMember, onToggleRolePermission, leaveRequests, onDecideLeaveRequest, attendanceRecords,
+  posts, onImpersonate}) {
   const [tab, setTab] = usePersistentState("sf_tab_users","team");
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showClientUserModal, setShowClientUserModal] = useState(false);
@@ -10140,12 +10141,24 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   const [approvingId, setApprovingId] = useState(null);
   const [viewingMember, setViewingMember] = useState(null);
 
+  // Account managers (without broader HR view) only get access requests
+  // scoped to clients they're assigned to as account_manager_id — everything
+  // else (Team Members, Invitations, Client Users, Leave, Roles, Attendance)
+  // stays admin/HR-only.
+  const isScopedAccountManager = currentUser?.role==="account_manager" && !hasPerm(currentUser,rolePerms,"hr.view_team");
+  // Every hook must run on every render regardless of the viewingMember early
+  // return below — this useEffect used to sit after that return, so it was
+  // skipped whenever a member's profile was open, violating the Rules of
+  // Hooks (React error #300, "rendered fewer hooks than expected").
+  React.useEffect(()=>{ if(isScopedAccountManager && tab!=="requests") setTab("requests"); },[isScopedAccountManager]);
+
   if(viewingMember) {
     const live = (team||[]).find(t=>t.id===viewingMember.id) || viewingMember;
     return (
       <TeamMemberDetailPage
         member={live}
         team={team}
+        posts={posts}
         leaveRequests={leaveRequests||[]}
         attendanceRecords={attendanceRecords||[]}
         canEdit={hasPerm(currentUser,rolePerms,"hr.edit_team")}
@@ -10153,6 +10166,8 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
         onBack={()=>setViewingMember(null)}
         onEdit={()=>setEditingMember(live)}
         onSelectMember={(m)=>setViewingMember(m)}
+        currentUser={currentUser}
+        onImpersonate={onImpersonate}
       />
     );
   }
@@ -10161,13 +10176,6 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   const canApproveLeave = hasPerm(currentUser, rolePerms, "hr.approve_leave");
   const canUploadAttendance = hasPerm(currentUser, rolePerms, "hr.upload_attendance");
   const pendingLeaveCount = (leaveRequests||[]).filter(r=>r.status==="pending").length;
-
-  // Account managers (without broader HR view) only get access requests
-  // scoped to clients they're assigned to as account_manager_id — everything
-  // else (Team Members, Invitations, Client Users, Leave, Roles, Attendance)
-  // stays admin/HR-only.
-  const isScopedAccountManager = currentUser?.role==="account_manager" && !hasPerm(currentUser,rolePerms,"hr.view_team");
-  React.useEffect(()=>{ if(isScopedAccountManager && tab!=="requests") setTab("requests"); },[isScopedAccountManager]);
   const myClientIds = isScopedAccountManager ? new Set((clients||[]).filter(c=>c.account_manager_id===currentUser?.id).map(c=>c.id)) : null;
   const visibleAccessRequests = isScopedAccountManager
     ? (accessRequests||[]).filter(r=>r.user_type==="client"&&myClientIds.has(r.client_id))
@@ -10454,9 +10462,11 @@ function calcExtraHours(records, threshold=9) {
   return {total, perMonth};
 }
 
-function TeamMemberDetailPage({member, team, leaveRequests, attendanceRecords, canEdit, canEditSalary, onBack, onEdit, onSelectMember}) {
+function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRecords, canEdit, canEditSalary, onBack, onEdit, onSelectMember, currentUser, onImpersonate}) {
   const manager = (team||[]).find(t=>t.id===member.manager_id);
   const directReports = (team||[]).filter(t=>t.manager_id===member.id);
+  const myTasks = (posts||[]).filter(p=>p.assigned_to===member.email);
+  const myScheduled = myTasks.filter(p=>p.scheduled_date).sort((a,b)=>new Date(a.scheduled_date)-new Date(b.scheduled_date));
   const myLeave = (leaveRequests||[]).filter(r=>r.team_member_id===member.id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
   const allMyAttendance = (attendanceRecords||[]).filter(a=>a.team_member_id===member.id || a.member_name===member.name).sort((a,b)=>new Date(b.work_date)-new Date(a.work_date));
   const myAttendance = allMyAttendance.slice(0,30);
@@ -10485,7 +10495,53 @@ function TeamMemberDetailPage({member, team, leaveRequests, attendanceRecords, c
         </div>
         <span style={{background:ROLES[member.role]?.color+"22",color:ROLES[member.role]?.color,borderRadius:6,padding:"4px 12px",fontSize:12,fontWeight:600}}>{ROLES[member.role]?.label||member.role}</span>
         <span style={{background:member.status==="active"?"#10b98122":"#f59e0b22",color:member.status==="active"?"#10b981":"#f59e0b",borderRadius:6,padding:"4px 12px",fontSize:12,fontWeight:600}}>{member.status||"active"}</span>
+        {currentUser?.role==="admin"&&member.email!==currentUser?.email&&(
+          <button onClick={()=>onImpersonate&&onImpersonate(member)} style={{fontSize:12,fontWeight:700,color:"var(--text2)",background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"7px 14px",cursor:"pointer"}}>Access Account</button>
+        )}
         {canEdit&&<Btn size="sm" onClick={onEdit}>Edit</Btn>}
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:10}}>
+          <h3 style={{fontWeight:700,fontSize:14}}>My Tasks</h3>
+          {myTasks.length===0?(
+            <p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:16}}>No tasks assigned</p>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:320,overflowY:"auto"}}>
+              {myTasks.map(post=>(
+                <div key={post.id} style={{padding:10,background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border)",display:"flex",gap:8,alignItems:"flex-start"}}>
+                  <Badge label={post.platform} color={PLT_COLOR[post.platform]}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <p style={{fontWeight:700,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{post.title}</p>
+                    <p style={{fontSize:11,color:"var(--text3)",marginTop:1}}>Stage: {STAGE_MAP[post.stage]?.label||post.stage}</p>
+                  </div>
+                  <Badge label={post.priority} color={PRI_COLOR[post.priority]} xs/>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:10}}>
+          <h3 style={{fontWeight:700,fontSize:14}}>Scheduled</h3>
+          {myScheduled.length===0?(
+            <p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:16}}>No scheduled items</p>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:320,overflowY:"auto"}}>
+              {myScheduled.map(post=>(
+                <div key={post.id} style={{padding:10,background:"var(--surface2)",borderRadius:8,border:`1px solid ${STAGE_MAP[post.stage]?.color}44`}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                    <p style={{fontWeight:700,fontSize:12,flex:1}}>{post.title}</p>
+                    <Badge label={STAGE_MAP[post.stage]?.label} color={STAGE_MAP[post.stage]?.color} xs/>
+                  </div>
+                  <div style={{display:"flex",gap:10,fontSize:11,color:"var(--text2)"}}>
+                    <span>{fmtDate(post.scheduled_date)}</span>
+                    {post.scheduled_time&&<span>{post.scheduled_time}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
@@ -19942,224 +19998,6 @@ function MyPerformancePage({currentUser, posts, timeEntries, perfLogs}) {
 }
 
 // ════════════════════════════════════════════════════════════════
-// TEAM MEMBERS PAGE - Each member has dashboard with tasks & calendar
-// ════════════════════════════════════════════════════════════════
-function TeamMembersPage({team,posts,perfLogs,onMemberSelect,currentUser,onImpersonate,leaveRequests,attendanceRecords}) {
-  const isAdmin = currentUser?.role==="admin";
-  const {isMobile} = useResponsive();
-  const [selectedMember, setSelectedMember] = useState(null);
-
-  const getTeamMemberTasks = (memberEmail) => {
-    return posts.filter(p => p.assigned_to === memberEmail);
-  };
-
-  const getTeamMemberStats = (memberEmail) => {
-    const tasks = getTeamMemberTasks(memberEmail);
-    const completed = tasks.filter(t => ["published","scheduled"].includes(t.stage)).length;
-    const inProgress = tasks.filter(t => !["published","scheduled","rejected"].includes(t.stage)).length;
-    return { total: tasks.length, completed, inProgress };
-  };
-
-  return (
-    <div style={{display:"flex",flexDirection:"column",gap:24,width:"100%",padding:isMobile?"16px":"32px 24px"}}>
-      {/* Page Header */}
-      <div>
-        <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?24:32,fontWeight:800,marginBottom:6}}>Team Members</h1>
-        <p style={{fontSize:13,color:"var(--text2)"}}>View each team member's assigned tasks and personal calendar</p>
-      </div>
-
-      {!selectedMember ? (
-        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fill,minmax(300px,1fr))",gap:isMobile?12:16,width:"100%"}}>
-          {team.filter(m=>m.role!=="client").map(member=>{
-            const stats = getTeamMemberStats(member.email);
-            const perf = perfLogs.filter(p=>p.user_email===member.email);
-            const avgQuality = perf.length > 0 ? Math.round(perf.reduce((a,l)=>a+(l.quality_score||0),0)/perf.length) : 0;
-
-            return (
-              <div key={member.email} onClick={()=>setSelectedMember(member)} style={{
-                background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,cursor:"pointer",
-                transition:"all 0.2s",display:"flex",flexDirection:"column",gap:14
-              }}
-              onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--accent)";e.currentTarget.style.boxShadow="0 4px 12px rgba(217, 11, 44, 0.1)";}}
-              onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border)";e.currentTarget.style.boxShadow="none";}}>
-                {/* Header */}
-                <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
-                  <Avatar name={member.name} size={48}/>
-                  <div style={{flex:1,minWidth:0}}>
-                    <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:15,marginBottom:2}}>{member.name}</h3>
-                    <p style={{fontSize:11,color:"var(--accent)",fontWeight:600}}>{ROLES[member.role]?.label||member.role}</p>
-                    <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{member.department||"No dept"}</p>
-                  </div>
-                </div>
-
-                {/* Stats */}
-                <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
-                  <div style={{padding:10,background:"var(--surface2)",borderRadius:"var(--rs)",textAlign:"center"}}>
-                    <p style={{fontSize:18,fontWeight:800,color:"var(--accent)"}}>{stats.total}</p>
-                    <p style={{fontSize:10,color:"var(--text3)",marginTop:2}}>Assigned</p>
-                  </div>
-                  <div style={{padding:10,background:"var(--surface2)",borderRadius:"var(--rs)",textAlign:"center"}}>
-                    <p style={{fontSize:18,fontWeight:800,color:"#3b82f6"}}>{stats.inProgress}</p>
-                    <p style={{fontSize:10,color:"var(--text3)",marginTop:2}}>In Progress</p>
-                  </div>
-                  <div style={{padding:10,background:"var(--surface2)",borderRadius:"var(--rs)",textAlign:"center"}}>
-                    <p style={{fontSize:18,fontWeight:800,color:"#10b981"}}>{stats.completed}</p>
-                    <p style={{fontSize:10,color:"var(--text3)",marginTop:2}}>Completed</p>
-                  </div>
-                </div>
-
-                {/* Quality Score */}
-                {avgQuality > 0 && (
-                  <div style={{padding:10,background:"#f9731622",borderRadius:"var(--rs)",border:"1px solid #f9731644",display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:16}}></span>
-                    <div>
-                      <p style={{fontSize:11,fontWeight:700,color:"#f97316"}}>Quality Score</p>
-                      <p style={{fontSize:13,fontWeight:700}}>{avgQuality}/100</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* CTA */}
-                <div style={{paddingTop:10,borderTop:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:6}}>
-                  <span style={{display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:600,color:"var(--accent)"}}>
-                    View Dashboard <Ico d={Icons.arrow} size={14} stroke="var(--accent)"/>
-                  </span>
-                  {isAdmin&&member.email!==currentUser?.email&&(
-                    <button onClick={(e)=>{e.stopPropagation();onImpersonate&&onImpersonate(member);}} style={{fontSize:11,fontWeight:700,color:"var(--text2)",background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:6,padding:"5px 10px",cursor:"pointer"}}>
-                      Access Account
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        /* Member Detail View */
-        <div style={{display:"flex",flexDirection:"column",gap:20}}>
-          {/* Back Button */}
-          <button onClick={()=>setSelectedMember(null)} style={{alignSelf:"flex-start",display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:600,color:"var(--text2)",background:"none",border:"none",cursor:"pointer"}}>
-            <Ico d={Icons.arrow} size={14} stroke="var(--text2)" style={{transform:"rotate(180deg)"}}/>Back to Team
-          </button>
-
-          {/* Member Header */}
-          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:24,display:"flex",alignItems:"center",gap:16}}>
-            <Avatar name={selectedMember.name} size={80}/>
-            <div style={{flex:1}}>
-              <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:24,marginBottom:4}}>{selectedMember.name}</h2>
-              <p style={{fontSize:13,color:"var(--accent)",fontWeight:700,marginBottom:8}}>{ROLES[selectedMember.role]?.label}</p>
-              <p style={{fontSize:12,color:"var(--text2)"}}>{selectedMember.email}</p>
-            </div>
-          </div>
-
-          {/* Two Column Layout */}
-          <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:20}}>
-            {/* Assigned Tasks */}
-            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:14}}>
-              <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:18}}> My Tasks</h3>
-              {getTeamMemberTasks(selectedMember.email).length === 0 ? (
-                <p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:20}}>No tasks assigned</p>
-              ) : (
-                <div style={{display:"flex",flexDirection:"column",gap:10,maxHeight:400,overflowY:"auto"}}>
-                  {getTeamMemberTasks(selectedMember.email).map(post=>(
-                    <div key={post.id} style={{padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",display:"flex",gap:10,alignItems:"flex-start"}}>
-                      <Badge label={post.platform} color={PLT_COLOR[post.platform]}/>
-                      <div style={{flex:1,minWidth:0}}>
-                        <p style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{post.title}</p>
-                        <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>Stage: {STAGE_MAP[post.stage]?.label||post.stage}</p>
-                        {post.scheduled_date && <p style={{fontSize:11,color:"var(--text2)",marginTop:1}}> {fmtDate(post.scheduled_date)}</p>}
-                      </div>
-                      <Badge label={post.priority} color={PRI_COLOR[post.priority]} xs/>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Calendar View */}
-            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:14}}>
-              <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:18}}> Scheduled</h3>
-              {getTeamMemberTasks(selectedMember.email).filter(p=>p.scheduled_date).length === 0 ? (
-                <p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:20}}>No scheduled items</p>
-              ) : (
-                <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                  {getTeamMemberTasks(selectedMember.email)
-                    .filter(p=>p.scheduled_date)
-                    .sort((a,b)=>new Date(a.scheduled_date) - new Date(b.scheduled_date))
-                    .map(post=>(
-                      <div key={post.id} style={{padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:`1px solid ${STAGE_MAP[post.stage]?.color}44`}}>
-                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                          <span style={{fontSize:16}}></span>
-                          <p style={{fontWeight:700,fontSize:13,flex:1}}>{post.title}</p>
-                          <Badge label={STAGE_MAP[post.stage]?.label} color={STAGE_MAP[post.stage]?.color} xs/>
-                        </div>
-                        <div style={{display:"flex",gap:12,fontSize:12,color:"var(--text2)"}}>
-                          <span> {fmtDate(post.scheduled_date)}</span>
-                          {post.scheduled_time && <span> {post.scheduled_time}</span>}
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Leave & WFH Requests */}
-          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
-            <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
-              <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:18}}>Vacation & WFH Requests</h3>
-            </div>
-            {(()=>{
-              const myRequests = (leaveRequests||[]).filter(r=>r.team_member_id===selectedMember.id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
-              return myRequests.length===0 ? (
-                <div style={{padding:24,textAlign:"center",color:"var(--text3)",fontSize:13}}>No vacation or WFH requests yet.</div>
-              ) : (
-                <div style={{display:"flex",flexDirection:"column"}}>
-                  {myRequests.map((r,i)=>(
-                    <div key={r.id} style={{padding:"12px 18px",borderBottom:i<myRequests.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12}}>
-                      <div style={{flex:1,minWidth:0}}>
-                        <p style={{fontWeight:700,fontSize:13}}>{r.type==="vacation"?"Vacation":"WFH"} — {r.start_date===r.end_date?r.start_date:`${r.start_date} → ${r.end_date}`}</p>
-                        <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{r.days} day(s){r.manager_name?` · Manager: ${r.manager_name}`:""}{r.created_at?` · Submitted ${fmtDateTime(r.created_at)}`:""}</p>
-                        {r.reason&&<p style={{fontSize:12,color:"var(--text2)",marginTop:2}}>"{r.reason}"</p>}
-                      </div>
-                      <span style={{background:r.status==="approved"?"#10b98122":r.status==="rejected"?"#ef444422":"#f59e0b22",color:r.status==="approved"?"#10b981":r.status==="rejected"?"#ef4444":"#f59e0b",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:600,textTransform:"capitalize",flexShrink:0}}>{r.status}</span>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
-          </div>
-
-          {/* Extra Hours */}
-          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
-            <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:18,marginBottom:8}}>Extra Hours <span style={{fontWeight:400,color:"var(--text3)",fontSize:12}}>(beyond 9h/day, from imported attendance)</span></h3>
-            {(()=>{
-              const myAttendance = (attendanceRecords||[]).filter(a=>a.team_member_id===selectedMember.id || a.member_name===selectedMember.name);
-              const overtime = calcExtraHours(myAttendance);
-              if(overtime.total<=0) return <p style={{fontSize:13,color:"var(--text3)"}}>No extra hours recorded.</p>;
-              return (
-                <div style={{display:"flex",flexDirection:"column",gap:2}}>
-                  <div style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid var(--border)",marginBottom:4}}>
-                    <span style={{fontSize:13,fontWeight:700}}>Total</span>
-                    <span style={{fontSize:13,fontWeight:800,color:"#f59e0b"}}>{overtime.total.toFixed(1)}h</span>
-                  </div>
-                  {Object.keys(overtime.perMonth).sort().reverse().map(mKey=>(
-                    <div key={mKey} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",fontSize:12,color:"var(--text2)"}}>
-                      <span>{new Date(mKey+"-01").toLocaleDateString("en-US",{month:"long",year:"numeric"})}</span>
-                      <span style={{fontWeight:700,color:"var(--text)"}}>{overtime.perMonth[mKey].toFixed(1)}h</span>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════
 // SIDEBAR
 // ════════════════════════════════════════════════════════════════
 function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfile,onLogout,open,onClose,wallpaper,onWallpaperChange,rolePerms}) {
@@ -20226,7 +20064,6 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
       ]:[]),
     ]}] : []),
     ...(canViewTeamNav ? [{ group: "TEAM", icon: Icons.users, items: [
-      {key:"team_members", label:"Team Members", ico:Icons.users},
       {key:"users", label:"User Management", ico:Icons.users},
       ...(isAdmin?[{key:"performance", label:"Performance", ico:Icons.award}]:[]),
       ...(isAdmin?[{key:"system_log", label:"System Log", ico:"M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z"}]:[]),
@@ -24714,14 +24551,14 @@ function App() {
     setImpersonatorUser(null);
     setPage("dashboard");
   };
-  const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","team_members","reports","account","system_log"];
+  const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","system_log"];
   const [page,setPage_] = useState(()=>{
     try{
       // URL hash takes priority (direct link) — but always reset to home on fresh load
       // to avoid getting stuck on a detail page that hasn't loaded data yet
       const hash = window.location.hash.replace("#","");
       // Only use hash/localStorage if it's a top-level list page (not a detail context)
-      const SAFE_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","team_members","reports","account"];
+      const SAFE_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account"];
       if(hash && SAFE_PAGES.includes(hash)) return hash;
       const stored = localStorage.getItem("sf_page");
       return (stored && SAFE_PAGES.includes(stored)) ? stored : "home";
@@ -27197,18 +27034,8 @@ Return ONLY valid JSON (no markdown, no explanation):
             leaveRequests={data.leaveRequests||[]}
             onDecideLeaveRequest={decideLeaveRequest}
             attendanceRecords={data.attendanceRecords||[]}
-          />
-        )}
-        {page==="team_members"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.view_team"))&&(
-          <TeamMembersPage
-            team={data.team}
             posts={data.posts}
-            perfLogs={data.perfLogs||[]}
-            onMemberSelect={(member)=>setSelectedTeamMember(member)}
-            currentUser={currentUser}
             onImpersonate={impersonateAs}
-            leaveRequests={data.leaveRequests||[]}
-            attendanceRecords={data.attendanceRecords||[]}
           />
         )}
         {page==="reports"&&["admin","account_manager","content_creator","graphic_designer","director"].includes(currentUser?.role)&&(
