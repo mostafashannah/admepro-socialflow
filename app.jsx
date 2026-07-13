@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.88";
+const APP_VERSION = "beta 4.89";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -27033,8 +27033,6 @@ Return ONLY valid JSON (no markdown, no explanation):
               onOpenPost={postId=>{
                 const found = data.posts.find(p=>p.id===postId);
                 if(found) setSelectedPost(found);
-                setPage("tasks");
-                setSelectedClientId(null);
               }}
               onMarkNotifRead={markNotifRead}
             />}
