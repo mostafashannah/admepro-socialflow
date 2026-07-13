@@ -389,7 +389,7 @@ const SB_SCHEMA = {
   // and username both exist but were missing from this list, so they always
   // got stripped before the request went out (see
   // migration-client-username.sql for the added username column).
-  clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","username","notes"],
+  clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","username","notes","logo_url"],
   client_tasks: ["client_id","client_name","title","description","task_type","priority","stage","assigned_to","created_by","deliverable_note"],
   customer_messages: ["client_id","client_name","channel","customer_id","customer_name","direction","message_text","sent_by","thread_status","draft_status","external_id"],
   reply_bot_settings: ["client_id","client_name","enabled","mode","channels","tone","brain","dont_do","fallback_message","updated_by"],
@@ -636,7 +636,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.16";
+const APP_VERSION = "beta 5.17";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1962,8 +1962,16 @@ function EmptyState({icon=Icons.folder2, title="Nothing here yet", sub="", actio
   );
 }
 
-function Avatar({name,size=32,role}) {
+function Avatar({name,size=32,role,photoUrl}) {
   const c = role ? (ROLES[role]?.color||clr(name)) : clr(name);
+  if(photoUrl) {
+    return (
+      <img src={photoUrl} alt={name} title={name} style={{
+        width:size,height:size,borderRadius:"50%",objectFit:"cover",flexShrink:0,
+        border:`2px solid ${c}6a`,boxShadow:`0 2px 8px ${c}20`,
+      }}/>
+    );
+  }
   return (
     <div title={name} style={{
       width:size,height:size,borderRadius:"50%",background:c+"28",
@@ -6525,12 +6533,21 @@ function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUs
 }
 
 function EditClientPage({client,onBack,onSave,canDelete,onRequestDelete,team=[]}) {
-  const [f,setF] = useState({name:client.name||"",username:client.username||"",email:client.email||"",phone:client.phone||"",industry:client.industry||"",status:client.status||"active",platforms:client.platforms||[],portal_password:client.portal_password||"",account_manager_ids:getAccountManagerIds(client)});
+  const [f,setF] = useState({name:client.name||"",username:client.username||"",email:client.email||"",phone:client.phone||"",industry:client.industry||"",status:client.status||"active",platforms:client.platforms||[],portal_password:client.portal_password||"",account_manager_ids:getAccountManagerIds(client),logo_url:client.logo_url||""});
   const [showPw,setShowPw] = useState(false);
+  const [uploadingLogo,setUploadingLogo] = useState(false);
   const PLATFORMS = ["instagram","facebook","tiktok","twitter","linkedin","youtube"];
   const togglePlat = p => setF(x=>({...x,platforms:x.platforms.includes(p)?x.platforms.filter(v=>v!==p):[...x.platforms,p]}));
   const accountManagers = team.filter(t=>t.role==="account_manager");
   const toggleAM = id => setF(x=>({...x,account_manager_ids:x.account_manager_ids.includes(id)?x.account_manager_ids.filter(v=>v!==id):[...x.account_manager_ids,id]}));
+  const handleLogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if(!file) return;
+    setUploadingLogo(true);
+    try { const url = await uploadToStorage(file, "client-logos"); setF(x=>({...x,logo_url:url})); }
+    catch(err) { alert("Upload failed: "+err.message); }
+    setUploadingLogo(false);
+  };
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:640}} className="fade-in">
       <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -6541,6 +6558,18 @@ function EditClientPage({client,onBack,onSave,canDelete,onRequestDelete,team=[]}
         <span style={{fontSize:13,fontWeight:700}}>Edit Client</span>
       </div>
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:24,display:"flex",flexDirection:"column",gap:14}}>
+        <Field label="Profile Image">
+          <div style={{display:"flex",alignItems:"center",gap:14}}>
+            <Avatar name={f.name||client.name} size={56} photoUrl={f.logo_url}/>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <label style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:"var(--rs)",border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:uploadingLogo?"default":"pointer",opacity:uploadingLogo?0.6:1}}>
+                {uploadingLogo?<Spinner size={13}/>:<Ico d={Icons.upload} size={13}/>} {f.logo_url?"Change":"Upload"}
+                <input type="file" accept="image/*" style={{display:"none"}} disabled={uploadingLogo} onChange={handleLogoUpload}/>
+              </label>
+              {f.logo_url&&<button type="button" onClick={()=>setF(x=>({...x,logo_url:""}))} style={{fontSize:12,fontWeight:600,color:"#ef4444",background:"none",border:"none",cursor:"pointer"}}>Remove</button>}
+            </div>
+          </div>
+        </Field>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <Field label="Company Name"><input value={f.name||""} onChange={e=>setF(x=>({...x,name:e.target.value}))} style={inputSt} placeholder="Company name"/></Field>
           <Field label="Contact Username" hint="Displayed in client portal instead of company name"><input value={f.username||""} onChange={e=>setF(x=>({...x,username:e.target.value}))} style={inputSt} placeholder="e.g. Ahmed"/></Field>
@@ -7177,7 +7206,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:isMobile?20:30,display:"flex",flexDirection:"column",gap:16,maxWidth:"100%",boxSizing:"border-box"}}>
         <div style={{display:"flex",alignItems:isMobile?"flex-start":"center",justifyContent:"space-between",flexWrap:"wrap",gap:14}}>
           <div style={{display:"flex",alignItems:"center",gap:14}}>
-            <Avatar name={client.name} size={isMobile?44:56}/>
+            <Avatar name={client.name} size={isMobile?44:56} photoUrl={client.logo_url}/>
             <div style={{minWidth:0}}>
               <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?18:24,fontWeight:800,overflowWrap:"anywhere"}}>{client.name}</h2>
               <p style={{fontSize:12,color:"var(--text2)",marginTop:2,overflowWrap:"anywhere"}}>{client.industry} · {client.email}</p>
