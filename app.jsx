@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.37";
+const APP_VERSION = "beta 5.38";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -20895,13 +20895,35 @@ const APPLICATION_STATUSES = [
 ];
 const EMPLOYMENT_TYPE_LABELS = {full_time:"Full-time", part_time:"Part-time", contract:"Contract", internship:"Internship"};
 
+const JOB_DEPARTMENTS = ["Creative","Design","Account Management","Development","Marketing","Finance","HR & Admin","Leadership","Other"];
+const JOB_LOCATIONS = ["Remote","Cairo, Egypt","Alexandria, Egypt","Hybrid","Other"];
+
+// AI-generate a job description + requirements draft for one opening, from
+// whatever's already filled in (title/department/location/employment type).
+// Same defensive JSON shape as proLearnFromExchange/reviewApplication.
+async function generateJobDescription({title, department, location, employment_type}) {
+  const prompt = `Write a job posting for a social media agency's open position. Return ONLY JSON: {"description":"2-3 paragraphs about the role and what the person will do day-to-day, written to attract candidates","requirements":"a bullet-point-style list (use \\n between items, each starting with \\"- \\") of qualifications, skills, and experience needed"}.
+Position: ${title}
+Department: ${department||"not specified"}
+Location: ${location||"not specified"}
+Employment type: ${EMPLOYMENT_TYPE_LABELS[employment_type]||employment_type}
+Keep it concise, realistic, and specific to this role — no generic filler.`;
+  const res = await ai(prompt, 900);
+  const m = res.match(/\{[\s\S]*\}/);
+  if(!m) throw new Error("No JSON in AI response");
+  return JSON.parse(m[0]);
+}
+
 function JobOpeningForm({opening, currentUser, onSave, onClose}) {
   const [f, setF] = useState({
     title: opening?.title||"", department: opening?.department||"", location: opening?.location||"",
     employment_type: opening?.employment_type||"full_time", description: opening?.description||"",
     requirements: opening?.requirements||"", status: opening?.status||"open", closing_date: opening?.closing_date||"",
   });
+  const [deptOther, setDeptOther] = useState(opening?.department && !JOB_DEPARTMENTS.includes(opening.department));
+  const [locOther, setLocOther] = useState(opening?.location && !JOB_LOCATIONS.includes(opening.location));
   const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const sf = (k,v) => setF(p=>({...p,[k]:v}));
 
   const handleSave = async () => {
@@ -20909,6 +20931,16 @@ function JobOpeningForm({opening, currentUser, onSave, onClose}) {
     setSaving(true);
     await onSave(opening?.id, {...f, created_by: opening?.created_by||currentUser?.email});
     setSaving(false);
+  };
+
+  const handleGenerate = async () => {
+    if(!f.title.trim()) { alert("Enter a title first so the AI knows what to write about."); return; }
+    setGenerating(true);
+    try {
+      const {description, requirements} = await generateJobDescription(f);
+      setF(p=>({...p, description: description||p.description, requirements: requirements||p.requirements}));
+    } catch(e) { alert("AI generation failed. Please try again."); }
+    setGenerating(false);
   };
 
   return (
@@ -20922,8 +20954,26 @@ function JobOpeningForm({opening, currentUser, onSave, onClose}) {
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:28,display:"flex",flexDirection:"column",gap:14}}>
         <Field label="Title *"><input value={f.title} onChange={e=>sf("title",e.target.value)} placeholder="e.g. Senior Graphic Designer" style={inputSt}/></Field>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          <Field label="Department"><input value={f.department} onChange={e=>sf("department",e.target.value)} style={inputSt}/></Field>
-          <Field label="Location"><input value={f.location} onChange={e=>sf("location",e.target.value)} placeholder="Remote / Cairo" style={inputSt}/></Field>
+          <Field label="Department">
+            <select value={deptOther?"Other":(f.department||"")} onChange={e=>{
+              if(e.target.value==="Other") { setDeptOther(true); sf("department",""); }
+              else { setDeptOther(false); sf("department",e.target.value); }
+            }} style={inputSt}>
+              <option value="">Select…</option>
+              {JOB_DEPARTMENTS.map(d=><option key={d} value={d}>{d}</option>)}
+            </select>
+            {deptOther&&<input value={f.department} onChange={e=>sf("department",e.target.value)} placeholder="Department name" style={{...inputSt,marginTop:8}}/>}
+          </Field>
+          <Field label="Location">
+            <select value={locOther?"Other":(f.location||"")} onChange={e=>{
+              if(e.target.value==="Other") { setLocOther(true); sf("location",""); }
+              else { setLocOther(false); sf("location",e.target.value); }
+            }} style={inputSt}>
+              <option value="">Select…</option>
+              {JOB_LOCATIONS.map(l=><option key={l} value={l}>{l}</option>)}
+            </select>
+            {locOther&&<input value={f.location} onChange={e=>sf("location",e.target.value)} placeholder="Location" style={{...inputSt,marginTop:8}}/>}
+          </Field>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <Field label="Employment Type">
@@ -20938,6 +20988,17 @@ function JobOpeningForm({opening, currentUser, onSave, onClose}) {
               <option value="draft">Draft</option>
             </select>
           </Field>
+        </div>
+
+        <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end"}}>
+          <button onClick={handleGenerate} disabled={generating||!f.title.trim()} style={{
+            display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:99,
+            background:"var(--accentbg)",border:"1px solid var(--accent)33",color:"var(--accent)",
+            fontSize:12,fontWeight:700,cursor:(generating||!f.title.trim())?"not-allowed":"pointer",opacity:(generating||!f.title.trim())?0.6:1,
+          }}>
+            {generating?<Spinner size={13}/>:<Ico d={Icons.sparkle} size={13}/>}
+            {generating?"Writing…":"Generate with AI"}
+          </button>
         </div>
         <Field label="Description"><textarea value={f.description} onChange={e=>sf("description",e.target.value)} rows={4} style={{...inputSt,resize:"vertical"}}/></Field>
         <Field label="Requirements"><textarea value={f.requirements} onChange={e=>sf("requirements",e.target.value)} rows={4} style={{...inputSt,resize:"vertical"}}/></Field>
