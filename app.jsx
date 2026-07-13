@@ -637,7 +637,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.26";
+const APP_VERSION = "beta 5.27";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5322,7 +5322,7 @@ No markdown, no explanation.`;
               ))}
             </div>
           ) : (
-            <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
+            <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12}}>
               {(isManager ? [
                 {label:"Active Projects",value:projects.filter(p=>p.status==="active").length,color:"#3b82f6",sub:`${filteredPosts.length} posts`},
                 {label:"Completed Posts",value:filteredPosts.filter(p=>p.stage==="published").length,color:"#10b981",sub:`${filteredPosts.length?Math.round(filteredPosts.filter(p=>p.stage==="published").length/filteredPosts.length*100):0}% rate`},
@@ -5365,7 +5365,7 @@ No markdown, no explanation.`;
                     View Finance <Ico d={Icons.chevR} size={13} stroke="var(--accent)"/>
                   </button>
                 </div>
-                <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
+                <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12}}>
                   {[
                     {label:"Balance",value:`${balance>=0?"":"−"}EGP ${Math.round(Math.abs(balance)).toLocaleString()}`,color:balance>=0?"#10b981":"#ef4444",sub:"all-time in − out"},
                     {label:"Outstanding",value:`EGP ${Math.round(outstanding).toLocaleString()}`,color:"#f59e0b",sub:"unpaid invoices"},
@@ -5383,7 +5383,7 @@ No markdown, no explanation.`;
             );
           })()}
 
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:14}}>
             {/* Active Team (managers) / My Tasks (individual contributors) */}
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
               {isManager ? (
@@ -5512,7 +5512,7 @@ No markdown, no explanation.`;
 
           {/* Quick insights strip */}
           {insights.slice(0,3).length>0&&(
-            <div className="grid-3" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:10}}>
+            <div className="grid-3" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10}}>
               {insights.slice(0,3).map((ins,i)=>{
                 const c=INSIGHT_COLORS[ins.category]||"#6b7280";
                 return (
@@ -5605,7 +5605,7 @@ No markdown, no explanation.`;
           </div>
 
           {/* Score breakdown cards */}
-          <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
+          <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12}}>
             {perf.slice(0,4).map(member=>{
               const scoreColor=member.perfScore>=80?"#10b981":member.perfScore>=60?"#f59e0b":"#ef4444";
               const breakdown=[
@@ -5643,7 +5643,7 @@ No markdown, no explanation.`;
       {/* ════ ANALYTICS TAB ════ */}
       {tab==="analytics"&&isAdmin&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(260px,100%),1fr))",gap:14}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(260px,100%),1fr))",gap:14}}>
 
             {/* Productivity by hour */}
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:18}}>
@@ -5718,7 +5718,7 @@ No markdown, no explanation.`;
             {/* Quality metrics */}
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:18}}>
               <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:14}}>Quality Metrics</p>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(260px,100%),1fr))",gap:12,marginBottom:14}}>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(260px,100%),1fr))",gap:12,marginBottom:14}}>
                 {[
                   {label:"Avg Quality Score",value:`${avgQualityAll}%`,color:avgQualityAll>=80?"#10b981":"#f59e0b"},
                   {label:"Client Approved",value:approvedPosts,color:"#10b981"},
@@ -5773,7 +5773,7 @@ No markdown, no explanation.`;
           </div>
 
           {/* Stats row */}
-          <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:10}}>
+          <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10}}>
             {[
               {label:"Performance Score",value:`${perf[0]?.perfScore||0}/100`,sub:"Top performer",color:"#10b981"},
               {label:"Bottleneck Stage",value:stageData.sort((a,b)=>b.avgHrs-a.avgHrs)[0]?.label||"—",sub:`${stageData.sort((a,b)=>b.avgHrs-a.avgHrs)[0]?.avgHrs||0}h avg`,color:"#ef4444"},
@@ -5789,7 +5789,7 @@ No markdown, no explanation.`;
           </div>
 
           {/* Insights cards */}
-          <div className="insight-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(300px,100%),1fr))",gap:12}}>
+          <div className="insight-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(300px,100%),1fr))",gap:12}}>
             {insights.map((ins,i)=>{
               const c=INSIGHT_COLORS[ins.category]||"#6b7280";
               const ico=INSIGHT_ICONS[ins.category]||"";
