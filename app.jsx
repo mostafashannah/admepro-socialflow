@@ -627,7 +627,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.10";
+const APP_VERSION = "beta 5.11";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7140,12 +7140,13 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
               <p style={{fontSize:12,color:"var(--text2)",marginTop:2,overflowWrap:"anywhere"}}>{client.industry} · {client.email}</p>
             </div>
           </div>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:"flex-end"}}>
-            {(client.platforms||[]).map(p=><PChip key={p} platform={p}/>)}
-          </div>
-        </div>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",position:"relative"}}>
-          {isPriv&&<Btn variant="secondary" size="sm" onClick={()=>setShowEdit(true)} style={{borderRadius:99}}><Ico d={Icons.edit} size={13}/>Edit</Btn>}
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",justifyContent:"flex-end",position:"relative"}}>
+          {isPriv&&(
+            <button onClick={()=>setShowEdit(true)} aria-label="Edit" title="Edit"
+              style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
+              <Ico d={Icons.edit} size={15} stroke="var(--text2)"/>
+            </button>
+          )}
           {isAdmin&&(
             <button onClick={()=>onToggleHide&&onToggleHide(client.id,client.status)} aria-label={client.status==="hidden"?"Restore":"Hide"}
               title={client.status==="hidden"?"Restore":"Hide"}
@@ -7172,6 +7173,10 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
               </>
             )}
           </div>
+        </div>
+        </div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          {(client.platforms||[]).map(p=><PChip key={p} platform={p}/>)}
         </div>
       </div>
       {/* Tabs */}
