@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.96";
+const APP_VERSION = "beta 4.97";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7949,23 +7949,25 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
           <Ico d={Icons.plus} size={15} stroke="#fff"/>
         </button>
       </div>
-      {/* ── Toolbar: always-visible controls ── */}
+      {/* ── Toolbar: always-visible controls ── all same height (38px), same
+          border radius/color so Search/View/Stage/Filters read as one row. */}
       <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
         {/* Search */}
-        <div style={{position:"relative",flex:1,minWidth:180,maxWidth:280}}>
+        <div style={{position:"relative",flex:1,minWidth:180,maxWidth:280,height:38}}>
           <div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"var(--text3)"}}><Ico d={Icons.search} size={14}/></div>
-          <input value={search} onChange={e=>setSearch(e.target.value)} aria-label="Search posts" placeholder="Search posts…" style={{...inputSt,paddingLeft:32}}/>
+          <input value={search} onChange={e=>setSearch(e.target.value)} aria-label="Search posts" placeholder="Search posts…"
+            style={{...inputSt,height:38,minHeight:38,padding:"0 12px 0 32px",fontSize:13,borderRadius:"var(--rs)"}}/>
         </div>
         {/* View toggle */}
-        <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:3,height:38,background:"var(--surface2)",padding:3,borderRadius:"var(--rs)",border:"1px solid var(--border2)",boxSizing:"border-box"}}>
           {[["kanban",Icons.grid],["list",Icons.list],["calendar",Icons.calendar]].map(([v,ico])=>(
-            <button key={v} onClick={()=>setView(v)} style={{padding:"5px 10px",borderRadius:"var(--rxs)",fontSize:12,fontWeight:700,background:view===v?"var(--accent)":"none",color:view===v?"#fff":"var(--text2)",display:"flex",alignItems:"center",gap:4}}>
+            <button key={v} onClick={()=>setView(v)} style={{height:"100%",padding:"0 10px",borderRadius:"var(--rxs)",fontSize:12,fontWeight:700,background:view===v?"var(--accent)":"none",color:view===v?"#fff":"var(--text2)",display:"flex",alignItems:"center",gap:4}}>
               <Ico d={ico} size={12}/>{v.charAt(0).toUpperCase()+v.slice(1)}
             </button>
           ))}
         </div>
         {/* Stage — always visible, highest-value filter */}
-        <select value={stageF} onChange={e=>setStageF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12}}>
+        <select value={stageF} onChange={e=>setStageF(e.target.value)} style={{...inputSt,width:"auto",height:38,minHeight:38,padding:"0 10px",fontSize:12,borderRadius:"var(--rs)"}}>
           <option value="all">All Stages</option>
           {STAGES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
@@ -7974,8 +7976,8 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
           const extraActive=[clientF,assigneeF,platF].filter(v=>v!=="all").length;
           return (
             <button onClick={()=>setShowMoreFilters(v=>!v)} style={{
-              display:"flex",alignItems:"center",gap:6,padding:"8px 14px",
-              borderRadius:99,fontSize:12,fontWeight:700,
+              display:"flex",alignItems:"center",gap:6,height:38,padding:"0 14px",boxSizing:"border-box",
+              borderRadius:"var(--rs)",fontSize:12,fontWeight:700,
               background:showMoreFilters||extraActive>0?"var(--accentbg)":"var(--surface2)",
               color:showMoreFilters||extraActive>0?"var(--accent)":"var(--text2)",
               border:`1px solid ${showMoreFilters||extraActive>0?"var(--accent)44":"var(--border2)"}`,
@@ -7992,20 +7994,20 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
       {/* ── Expanded extra filters panel ── */}
       {showMoreFilters&&(
         <div className="fade-in" style={{display:"flex",gap:8,flexWrap:"wrap",padding:"12px 14px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
-          <select value={clientF} onChange={e=>setClientF(e.target.value)} style={{...inputSt,width:"auto",padding:"8px 10px",fontSize:12,flex:1,minWidth:140}}>
+          <select value={clientF} onChange={e=>setClientF(e.target.value)} style={{...inputSt,width:"auto",height:38,minHeight:38,padding:"0 10px",fontSize:12,borderRadius:"var(--rs)",flex:1,minWidth:140}}>
             <option value="all">All Clients</option>
             {allClients.map(c=><option key={c} value={c}>{c}</option>)}
           </select>
-          <select value={assigneeF} onChange={e=>setAssigneeF(e.target.value)} style={{...inputSt,width:"auto",padding:"8px 10px",fontSize:12,flex:1,minWidth:140}}>
+          <select value={assigneeF} onChange={e=>setAssigneeF(e.target.value)} style={{...inputSt,width:"auto",height:38,minHeight:38,padding:"0 10px",fontSize:12,borderRadius:"var(--rs)",flex:1,minWidth:140}}>
             <option value="all">All Assignees</option>
             {team.map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
           </select>
-          <select value={platF} onChange={e=>setPlatF(e.target.value)} style={{...inputSt,width:"auto",padding:"8px 10px",fontSize:12,flex:1,minWidth:140}}>
+          <select value={platF} onChange={e=>setPlatF(e.target.value)} style={{...inputSt,width:"auto",height:38,minHeight:38,padding:"0 10px",fontSize:12,borderRadius:"var(--rs)",flex:1,minWidth:140}}>
             <option value="all">All Platforms</option>
             {PLATFORMS.map(p=><option key={p} value={p}>{p}</option>)}
           </select>
           {(clientF!=="all"||assigneeF!=="all"||platF!=="all")&&(
-            <button onClick={()=>{setClientF("all");setAssigneeF("all");setPlatF("all");}} style={{fontSize:12,fontWeight:700,color:"var(--text3)",padding:"8px 12px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface)"}}>
+            <button onClick={()=>{setClientF("all");setAssigneeF("all");setPlatF("all");}} style={{fontSize:12,fontWeight:700,color:"var(--text3)",height:38,padding:"0 12px",boxSizing:"border-box",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface)"}}>
               Clear
             </button>
           )}
