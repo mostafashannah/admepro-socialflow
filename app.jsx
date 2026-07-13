@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.87";
+const APP_VERSION = "beta 4.88";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5016,7 +5016,7 @@ function computePerformance(team, posts, timelogs, perfLogs) {
   }).sort((a,b)=>b.perfScore-a.perfScore);
 }
 
-function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAddTask,onCreateInvoice,onAddProject}) {
+function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAddTask,onCreateInvoice,onAddProject,onOpenPost,onMarkNotifRead}) {
   const {posts,projects,clients,team,timelogs,notifications} = data;
   const perfLogs = data.perfLogs||[];
   const aiInsights = data.aiInsights||[];
@@ -5341,9 +5341,15 @@ No markdown, no explanation.`;
               <div style={{maxHeight:"min(360px,40vh)",overflowY:"auto"}}>
                 {notifications.slice(0,8).map((n,i)=>{
                   const c={info:"#3b82f6",approval:"#10b981",rejection:"#ef4444",assignment:"#8b5cf6",comment:"#f59e0b",stage_change:"#06b6d4",performance:"#8b5cf6",performance_alert:"#ef4444"}[n.type]||"#6b7280";
-                  const isClickable = n.link_type==="page" && n.link_id;
+                  const isClickable = (n.link_type==="page"||n.link_type==="post") && n.link_id;
+                  const handleClick = () => {
+                    if(!isClickable) return;
+                    if(!n.is_read) onMarkNotifRead&&onMarkNotifRead(n.id);
+                    if(n.link_type==="post") onOpenPost&&onOpenPost(n.link_id);
+                    else setPage(n.link_id);
+                  };
                   return (
-                    <div key={n.id} onClick={isClickable?()=>setPage(n.link_id):undefined}
+                    <div key={n.id} onClick={isClickable?handleClick:undefined}
                       style={{padding:"10px 16px",borderBottom:i<notifications.length-1?"1px solid var(--border)":undefined,display:"flex",gap:10,opacity:n.is_read?0.5:1,cursor:isClickable?"pointer":"default"}}
                       onMouseEnter={isClickable?e=>{e.currentTarget.style.background="var(--surface2)"}:undefined}
                       onMouseLeave={isClickable?e=>{e.currentTarget.style.background=""}:undefined}>
@@ -15173,6 +15179,13 @@ function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh, te
     const t = parseSqlUtc(m.last_seen);
     return t && (liveClock - t.getTime()) < 3*60000;
   });
+  const relTimeShort = (v) => {
+    const t = parseSqlUtc(v);
+    if(!t) return "—";
+    const s = Math.max(0, Math.floor((liveClock - t.getTime())/1000));
+    if(s<60) return "just now";
+    return `${Math.floor(s/60)}m ago`;
+  };
 
   const filteredSessions = (systemSessions||[]).filter(s=>{
     if(!sessionSearch) return true;
@@ -15221,22 +15234,46 @@ function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh, te
         ))}
       </div>
 
-      {/* Live now — real presence, based on a 60s heartbeat from each signed-in member */}
-      <div style={{padding:"12px 16px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
-        <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+      {/* Live now — real presence, based on a 60s heartbeat from each signed-in member.
+          IP/OS/browser are cross-referenced from that member's most recent login
+          session (heartbeats themselves don't carry device info, only logins do). */}
+      <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+        <div style={{padding:"10px 16px",background:"var(--surface2)",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:8}}>
           <div style={{width:8,height:8,borderRadius:"50%",background:"#10b981",boxShadow:"0 0 0 3px #10b98122"}}/>
           <span style={{fontSize:12,fontWeight:800,color:"var(--text)"}}>{liveMembers.length} live now</span>
         </div>
         {liveMembers.length===0?(
-          <span style={{fontSize:12,color:"var(--text3)"}}>No one active in the last 3 minutes</span>
+          <p style={{padding:"14px 16px",fontSize:12,color:"var(--text3)"}}>No one active in the last 3 minutes</p>
         ):(
-          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-            {liveMembers.map(m=>(
-              <span key={m.id} style={{display:"flex",alignItems:"center",gap:5,padding:"3px 10px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:99,fontSize:12,fontWeight:600,color:"var(--text2)"}}>
-                <ProfilePhoto photoUrl={m.photo_url} name={m.name} role={m.role} size={16}/>
-                {m.name}
-              </span>
-            ))}
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <thead>
+                <tr style={{background:"var(--surface2)"}}>
+                  {["Member","IP Address","OS / Device","Browser","Last active"].map(h=>(
+                    <th key={h} style={{textAlign:"left",padding:"8px 16px",fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",borderBottom:"1px solid var(--border)"}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {liveMembers.map(m=>{
+                  const lastSession = (systemSessions||[]).filter(s=>s.user_email===m.email).sort((a,b)=>new Date(b.login_at||0)-new Date(a.login_at||0))[0];
+                  return (
+                    <tr key={m.id} style={{borderBottom:"1px solid var(--border)"}}>
+                      <td style={{padding:"8px 16px"}}>
+                        <span style={{display:"flex",alignItems:"center",gap:7,fontWeight:600,color:"var(--text)"}}>
+                          <ProfilePhoto photoUrl={m.photo_url} name={m.name} role={m.role} size={20}/>
+                          {m.name}
+                        </span>
+                      </td>
+                      <td style={{padding:"8px 16px",color:"var(--text2)"}}>{lastSession?.ip_address||"—"}</td>
+                      <td style={{padding:"8px 16px",color:"var(--text2)"}}>{lastSession?.os||"—"}{lastSession?.device_type?` (${lastSession.device_type})`:""}</td>
+                      <td style={{padding:"8px 16px",color:"var(--text2)"}}>{lastSession?.browser||"—"}</td>
+                      <td style={{padding:"8px 16px",color:"var(--text3)"}}>{relTimeShort(m.last_seen)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
@@ -26596,7 +26633,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       if(mentioned && mentioned.email !== user?.email) {
         mentionedEmails.add(mentioned.email);
         const postTitle = post?.title||"a post";
-        const notifPayload = {recipient_email:mentioned.email, title:"You were mentioned", message:`${user?.name||'Someone'} mentioned you in a comment on "${postTitle}"`, type:'comment', is_read:false};
+        const notifPayload = {recipient_email:mentioned.email, title:"You were mentioned", message:`${user?.name||'Someone'} mentioned you in a comment on "${postTitle}"`, type:'comment', is_read:false, link_type:"post", link_id:postId};
         const localNotif = {...notifPayload, id:uid(), created_date:new Date().toISOString()};
         setData(d=>({...d, notifications:[localNotif,...d.notifications]}));
         ce("Notification",[notifPayload]).catch(()=>{});
@@ -26993,6 +27030,13 @@ Return ONLY valid JSON (no markdown, no explanation):
               onAddTask={()=>setShowFABTask(true)}
               onCreateInvoice={()=>setPage("invoices")}
               onAddProject={()=>setShowFABProject(true)}
+              onOpenPost={postId=>{
+                const found = data.posts.find(p=>p.id===postId);
+                if(found) setSelectedPost(found);
+                setPage("tasks");
+                setSelectedClientId(null);
+              }}
+              onMarkNotifRead={markNotifRead}
             />}
         {page==="clients"&&(()=>{
           const selectedClient = data.clients.find(c=>c.id===selectedClientId)||null;
