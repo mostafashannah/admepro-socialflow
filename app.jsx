@@ -637,7 +637,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.27";
+const APP_VERSION = "beta 5.29";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1510,71 +1510,95 @@ const WALLPAPERS = [
       "--text":"#ffe8c8","--text2":"#c8884a","--text3":"#b08060",
     }),
   },
-  // Real photo backgrounds — a dark overlay gradient baked into `bg` keeps
-  // text legible over any photo brightness; surfaces are semi-transparent
-  // dark panels so the photo subtly shows through card backgrounds instead
-  // of being fully covered by them.
+  // Real photo backgrounds. Both `bg` and `vars` accept an `isDark` flag
+  // (system prefers-color-scheme, same signal the "Auto" theme uses) so the
+  // same photo works in both a dark overlay (light text, darker translucent
+  // cards) and a light overlay (dark text, lighter translucent cards)
+  // rather than always forcing a dark look regardless of preference.
   {
     key:"photo-forest",
     label:"Misty Forest",
-    desc:"Real photo — foggy pine forest",
+    desc:"Real photo — foggy pine forest, adapts to light/dark",
     preview:["#1a2820","#2a3830","#d90b2c"],
     photo: true,
-    bg: "linear-gradient(rgba(8,14,10,0.6),rgba(8,14,10,0.72)),url('https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1920&q=70')",
-    vars:()=>({
-      "--bg":"#0c1210","--bg2":"#0c1210","--surface":"rgba(18,28,22,0.62)",
-      "--surface2":"rgba(26,38,30,0.68)","--surface3":"rgba(34,48,38,0.72)",
+    bg: (isDark=true) => isDark
+      ? "linear-gradient(rgba(6,10,8,0.68),rgba(6,10,8,0.8)),url('https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1920&q=70')"
+      : "linear-gradient(rgba(255,255,255,0.42),rgba(255,255,255,0.58)),url('https://images.unsplash.com/photo-1441974231531-c6227db76b6e?auto=format&fit=crop&w=1920&q=70')",
+    vars:(isDark=true) => isDark ? {
+      "--bg":"#0c1210","--bg2":"#0c1210","--surface":"rgba(12,20,16,0.72)",
+      "--surface2":"rgba(18,28,22,0.78)","--surface3":"rgba(24,36,28,0.82)",
       "--border":"rgba(255,255,255,0.1)","--border2":"rgba(255,255,255,0.16)",
       "--text":"#eef5ee","--text2":"#b8c9ba","--text3":"#9fb3a2",
-    }),
+    } : {
+      "--bg":"#f4f6f4","--bg2":"#f4f6f4","--surface":"rgba(255,255,255,0.74)",
+      "--surface2":"rgba(255,255,255,0.82)","--surface3":"rgba(255,255,255,0.9)",
+      "--border":"rgba(20,30,24,0.1)","--border2":"rgba(20,30,24,0.16)",
+      "--text":"#12201a","--text2":"#3d4f44","--text3":"#5c6f63",
+    },
   },
   {
     key:"photo-ocean",
     label:"Ocean Horizon",
-    desc:"Real photo — coastal sunset",
+    desc:"Real photo — coastal sunset, adapts to light/dark",
     preview:["#1a2436","#2b3d52","#d90b2c"],
     photo: true,
-    bg: "linear-gradient(rgba(6,10,18,0.58),rgba(6,10,18,0.72)),url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1920&q=70')",
-    vars:()=>({
-      "--bg":"#0a0e14","--bg2":"#0a0e14","--surface":"rgba(20,28,40,0.6)",
-      "--surface2":"rgba(28,38,52,0.66)","--surface3":"rgba(36,48,64,0.7)",
+    bg: (isDark=true) => isDark
+      ? "linear-gradient(rgba(4,8,14,0.66),rgba(4,8,14,0.8)),url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1920&q=70')"
+      : "linear-gradient(rgba(255,255,255,0.4),rgba(255,255,255,0.56)),url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1920&q=70')",
+    vars:(isDark=true) => isDark ? {
+      "--bg":"#0a0e14","--bg2":"#0a0e14","--surface":"rgba(14,20,30,0.72)",
+      "--surface2":"rgba(20,28,40,0.78)","--surface3":"rgba(26,36,50,0.82)",
       "--border":"rgba(255,255,255,0.1)","--border2":"rgba(255,255,255,0.16)",
       "--text":"#eef3fa","--text2":"#b6c4d8","--text3":"#9dacc2",
-    }),
+    } : {
+      "--bg":"#f3f5f8","--bg2":"#f3f5f8","--surface":"rgba(255,255,255,0.74)",
+      "--surface2":"rgba(255,255,255,0.82)","--surface3":"rgba(255,255,255,0.9)",
+      "--border":"rgba(16,24,36,0.1)","--border2":"rgba(16,24,36,0.16)",
+      "--text":"#131a24","--text2":"#3f4b5a","--text3":"#5d6b7a",
+    },
   },
   {
     key:"photo-mountains",
     label:"Mountain Lake",
-    desc:"Real photo — alpine lake at dusk",
+    desc:"Real photo — alpine lake at dusk, adapts to light/dark",
     preview:["#1c2430","#2f3a48","#d90b2c"],
     photo: true,
-    bg: "linear-gradient(rgba(8,10,16,0.58),rgba(8,10,16,0.72)),url('https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=1920&q=70')",
-    vars:()=>({
-      "--bg":"#0a0c12","--bg2":"#0a0c12","--surface":"rgba(22,26,36,0.6)",
-      "--surface2":"rgba(30,36,48,0.66)","--surface3":"rgba(38,46,60,0.7)",
+    bg: (isDark=true) => isDark
+      ? "linear-gradient(rgba(6,8,14,0.66),rgba(6,8,14,0.8)),url('https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=1920&q=70')"
+      : "linear-gradient(rgba(255,255,255,0.4),rgba(255,255,255,0.56)),url('https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=1920&q=70')",
+    vars:(isDark=true) => isDark ? {
+      "--bg":"#0a0c12","--bg2":"#0a0c12","--surface":"rgba(16,20,28,0.72)",
+      "--surface2":"rgba(22,26,36,0.78)","--surface3":"rgba(28,34,44,0.82)",
       "--border":"rgba(255,255,255,0.1)","--border2":"rgba(255,255,255,0.16)",
       "--text":"#f0f2f6","--text2":"#bcc2ce","--text3":"#a3aab8",
-    }),
+    } : {
+      "--bg":"#f4f5f7","--bg2":"#f4f5f7","--surface":"rgba(255,255,255,0.74)",
+      "--surface2":"rgba(255,255,255,0.82)","--surface3":"rgba(255,255,255,0.9)",
+      "--border":"rgba(20,24,32,0.1)","--border2":"rgba(20,24,32,0.16)",
+      "--text":"#151a22","--text2":"#414957","--text3":"#5f6874",
+    },
   },
 ];
 
-const getWallpaperVars = (key) => {
+const getWallpaperVars = (key, isDark=true) => {
   const wp = WALLPAPERS.find(w=>w.key===key) || WALLPAPERS[0];
+  if(wp.photo) return wp.vars(isDark);
   return wp.vars();
 };
 
-const getWallpaperBg = (key) => {
+const getWallpaperBg = (key, isDark=true) => {
   const wp = WALLPAPERS.find(w=>w.key===key);
-  return wp?.bg || null;
+  if(!wp?.bg) return null;
+  return wp.photo ? wp.bg(isDark) : wp.bg;
 };
 
 
 // ════════════════════════════════════════════════════════════════
 // GLOBAL STYLES (wallpaper-aware)
 // ════════════════════════════════════════════════════════════════
-const GStyle = ({wallpaper="dark", accentColor="#d90b2c"}) => {
-  const wp = getWallpaperVars(wallpaper);
-  const bg = getWallpaperBg(wallpaper);
+const GStyle = ({wallpaper="dark", accentColor="#d90b2c", photoIsDark=true}) => {
+  const wp = getWallpaperVars(wallpaper, photoIsDark);
+  const bg = getWallpaperBg(wallpaper, photoIsDark);
   const cssVars = Object.entries(wp).map(([k,v])=>`${k}:${v}`).join(";");
   const r = parseInt(accentColor.slice(1,3),16);
   const g = parseInt(accentColor.slice(3,5),16);
@@ -5344,7 +5368,7 @@ No markdown, no explanation.`;
           )}
 
           {/* Finance Snapshot — admin/accountant only */}
-          {isAdmin&&invoices.length>0&&(()=>{
+          {isAdmin&&(invoices.length>0||payments.length>0||(data.expenses||[]).length>0||subscriptions.length>0)&&(()=>{
             const expenses = data.expenses||[];
             const totalIn = payments.reduce((a,p)=>a+(p.amount||0),0);
             const totalOut = expenses.filter(e=>(e.type||"out")==="out").reduce((a,e)=>a+(e.amount||0),0);
@@ -27429,12 +27453,12 @@ Return ONLY valid JSON (no markdown, no explanation):
   // Client portal
   if(currentUser?.isClient) {
     const clientRecord = data.clients.find(c=>c.email===currentUser.email)||currentUser;
-    return (<><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor}/><ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]}/></>);
+    return (<><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/><ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]}/></>);
   }
 
   // Accept invitation flow (URL has ?invite=TOKEN)
   if(inviteToken && !currentUser) {
-    return (<><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor}/><AcceptInvitationPage token={inviteToken} onAccepted={()=>{ try{window.history.replaceState({},"",window.location.pathname);}catch(e){} window.location.reload(); }}/></>);
+    return (<><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/><AcceptInvitationPage token={inviteToken} onAccepted={()=>{ try{window.history.replaceState({},"",window.location.pathname);}catch(e){} window.location.reload(); }}/></>);
   }
 
   // OAuth callback — auto-login if user exists in team_members
@@ -27452,7 +27476,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       },0);
     } else {
       return (
-        <><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor}/>
+        <><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/>
         <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:20,padding:"40px 32px",maxWidth:420,width:"100%",textAlign:"center"}}>
             <div style={{width:56,height:56,borderRadius:16,background:"var(--accentbg)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"}}><Ico d={Icons.send} size={24} stroke="var(--accent)"/></div>
@@ -27472,7 +27496,7 @@ Return ONLY valid JSON (no markdown, no explanation):
 
   // Login screen
   if(!currentUser) {
-    return (<><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor}/><LoginScreen onLogin={u=>{
+    return (<><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/><LoginScreen onLogin={u=>{
       try{localStorage.setItem("sf_user",JSON.stringify(u));}catch(e){}
       setCurrentUser(u);
       // Capture session info asynchronously — don't block login
@@ -27488,7 +27512,7 @@ Return ONLY valid JSON (no markdown, no explanation):
 
   // Loading
   if(loading) return (
-    <><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor}/>
+    <><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/>
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:14}}>
       <Spinner size={36}/>
       <p style={{fontSize:13,color:"var(--text3)"}}>Loading workspace…</p>
@@ -27499,7 +27523,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   const postComments = selectedPost ? data.comments.filter(c=>c.post_id===selectedPost.id) : [];
 
   return (
-    <><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor}/>
+    <><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/>
     {impersonatorUser&&(
       <div style={{position:"fixed",top:0,left:0,right:0,zIndex:9999,background:"#111827",color:"#fff",padding:"8px 16px",display:"flex",alignItems:"center",justifyContent:"center",gap:12,fontSize:13,fontWeight:600}}>
         <span>Viewing as <strong>{currentUser?.name}</strong> ({ROLES[currentUser?.role]?.label||currentUser?.role})</span>
