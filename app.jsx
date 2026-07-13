@@ -627,7 +627,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.04";
+const APP_VERSION = "beta 5.05";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7104,7 +7104,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
     ["reports","Reports"],
     ...(isPriv?[["inbox",`Inbox${cMessagesNeedReplyCount?` (${cMessagesNeedReplyCount})`:""}`]]:[]),
     ...(isPriv?[["meta_insights","Meta Insights"]]:[]),
-    ...(isPriv?[["brain","Client Brain"],["briefs",`Briefs${pendingBriefCount?` (${pendingBriefCount} pending)`:""}`],["contact_reports","Contact Reports"],["leads",`Leads${clientLeads.length?` (${clientLeads.length})`:""}`]]:[]),
+    ...(isPriv?[["brain","Client Brain"],["contact_reports","Contact Reports"],["leads",`Leads${clientLeads.length?` (${clientLeads.length})`:""}`]]:[]),
   ];
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:"100%"}} className="fade-in">
@@ -8221,16 +8221,41 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
   const [dragOverPanel, setDragOverPanel] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [selected, setSelected] = useState(()=>new Set());
+  const [selectedFolders, setSelectedFolders] = useState(()=>new Set());
   const [bulkPicker, setBulkPicker] = useState(false);
 
   const currentPath = path.join("/");
   // Selection is per-folder — clear it whenever the open folder changes so
   // stale ids from a previous folder can't get silently bulk-acted on.
-  useEffect(()=>{ setSelected(new Set()); },[currentPath]);
+  useEffect(()=>{ setSelected(new Set()); setSelectedFolders(new Set()); },[currentPath]);
   const toggleSelect = (id) => setSelected(prev=>{ const s=new Set(prev); if(s.has(id)) s.delete(id); else s.add(id); return s; });
-  const clearSelection = () => setSelected(new Set());
-  const bulkMoveTo = (folderPath) => { selected.forEach(id=>onUpdateAsset&&onUpdateAsset(id,{category:folderPath})); clearSelection(); };
-  const bulkDelete = () => { if(!confirm(`Delete ${selected.size} file(s)? This can't be undone.`)) return; selected.forEach(id=>onDeleteAsset&&onDeleteAsset(id)); clearSelection(); };
+  const toggleSelectFolder = (name) => setSelectedFolders(prev=>{ const s=new Set(prev); if(s.has(name)) s.delete(name); else s.add(name); return s; });
+  const clearSelection = () => { setSelected(new Set()); setSelectedFolders(new Set()); };
+  const totalSelected = selected.size + selectedFolders.size;
+
+  const bulkMoveTo = (folderPath) => {
+    selected.forEach(id=>onUpdateAsset&&onUpdateAsset(id,{category:folderPath}));
+    selectedFolders.forEach(name=>{
+      const oldPrefix = [...path,name].join("/");
+      const newPrefix = [folderPath,name].filter(Boolean).join("/");
+      assets.filter(a=>(a.category||"")===oldPrefix || (a.category||"").startsWith(oldPrefix+"/"))
+        .forEach(a=>onUpdateAsset&&onUpdateAsset(a.id,{category:newPrefix+a.category.slice(oldPrefix.length)}));
+      const migrated = extraFolders.filter(fp=>fp===oldPrefix||fp.startsWith(oldPrefix+"/")).map(fp=>newPrefix+fp.slice(oldPrefix.length));
+      const remaining = extraFolders.filter(fp=>!(fp===oldPrefix||fp.startsWith(oldPrefix+"/")));
+      persistExtra([...remaining, ...migrated]);
+    });
+    clearSelection();
+  };
+  const bulkDelete = () => {
+    if(!confirm(`Delete ${totalSelected} item(s)? Folders delete every file inside them too. This can't be undone.`)) return;
+    selected.forEach(id=>onDeleteAsset&&onDeleteAsset(id));
+    selectedFolders.forEach(name=>{
+      const prefix = [...path,name].join("/");
+      assets.filter(a=>(a.category||"")===prefix || (a.category||"").startsWith(prefix+"/")).forEach(a=>onDeleteAsset&&onDeleteAsset(a.id));
+      persistExtra(extraFolders.filter(fp=>!(fp===prefix||fp.startsWith(prefix+"/"))));
+    });
+    clearSelection();
+  };
   const persistExtra = (list) => { setExtraFolders(list); try{ localStorage.setItem(storageKey, JSON.stringify(list)); }catch(e){} };
 
   // Project folders are derived live from `projects` (not localStorage) so a
@@ -8341,9 +8366,9 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
       {uploading&&<div style={{fontSize:12,color:"var(--text3)"}}><Spinner size={12}/> Uploading dropped file(s)…</div>}
 
       {/* Bulk selection bar — appears once any file is selected */}
-      {selected.size>0&&(
+      {totalSelected>0&&(
         <div className="fade-in" style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"var(--accentbg)",border:"1px solid var(--accent)44",borderRadius:"var(--rs)"}}>
-          <span style={{fontSize:12,fontWeight:700,color:"var(--accent)"}}>{selected.size} selected</span>
+          <span style={{fontSize:12,fontWeight:700,color:"var(--accent)"}}>{totalSelected} selected</span>
           <button onClick={()=>setBulkPicker(true)} style={{fontSize:12,fontWeight:700,padding:"6px 12px",borderRadius:6,border:"1px solid var(--accent)",background:"var(--surface)",color:"var(--accent)",cursor:"pointer"}}>Move</button>
           {isAdmin&&<button onClick={bulkDelete} style={{fontSize:12,fontWeight:700,padding:"6px 12px",borderRadius:6,border:"1px solid #ef444455",background:"var(--surface)",color:"#ef4444",cursor:"pointer"}}>Delete</button>}
           <button onClick={clearSelection} style={{fontSize:12,fontWeight:600,padding:"6px 12px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text2)",cursor:"pointer",marginLeft:"auto"}}>Clear</button>
@@ -8359,7 +8384,8 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
             <div key={name} onClick={()=>openFolder(name)}
               onDragOver={e=>{e.preventDefault();setDragOverFolder(name);}} onDragLeave={()=>setDragOverFolder(null)}
               onDrop={e=>{e.preventDefault();setDragOverFolder(null);const id=e.dataTransfer.getData("text/plain");if(id)moveAssetTo(id,[...path,name].join("/"));}}
-              style={{display:"flex",alignItems:"center",gap:8,padding:"12px 14px",borderRadius:"var(--rs)",border:`1px solid ${dragOverFolder===name?"var(--accent)":"var(--border)"}`,background:dragOverFolder===name?"var(--accent)11":"var(--surface)",cursor:"pointer"}}>
+              style={{display:"flex",alignItems:"center",gap:8,padding:"12px 14px",borderRadius:"var(--rs)",border:`1px solid ${selectedFolders.has(name)?"var(--accent)":dragOverFolder===name?"var(--accent)":"var(--border)"}`,background:dragOverFolder===name?"var(--accent)11":selectedFolders.has(name)?"var(--accentbg)":"var(--surface)",cursor:"pointer"}}>
+              <input type="checkbox" checked={selectedFolders.has(name)} onClick={e=>e.stopPropagation()} onChange={()=>toggleSelectFolder(name)} style={{width:14,height:14,cursor:"pointer",accentColor:"var(--accent)",flexShrink:0}}/>
               <span style={{fontSize:20}}>📁</span>
               <span style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
             </div>
@@ -8371,7 +8397,8 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
             <div key={name} onClick={()=>openFolder(name)}
               onDragOver={e=>{e.preventDefault();setDragOverFolder(name);}} onDragLeave={()=>setDragOverFolder(null)}
               onDrop={e=>{e.preventDefault();setDragOverFolder(null);const id=e.dataTransfer.getData("text/plain");if(id)moveAssetTo(id,[...path,name].join("/"));}}
-              style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderBottom:"1px solid var(--border)",background:dragOverFolder===name?"var(--accent)11":"var(--surface)",cursor:"pointer"}}>
+              style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderBottom:"1px solid var(--border)",background:dragOverFolder===name?"var(--accent)11":selectedFolders.has(name)?"var(--accentbg)":"var(--surface)",cursor:"pointer"}}>
+              <input type="checkbox" checked={selectedFolders.has(name)} onClick={e=>e.stopPropagation()} onChange={()=>toggleSelectFolder(name)} style={{width:14,height:14,cursor:"pointer",accentColor:"var(--accent)",flexShrink:0}}/>
               <span style={{fontSize:16}}>📁</span>
               <span style={{flex:1,fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
               <Ico d={Icons.chevR} size={12} stroke="var(--text3)"/>
