@@ -637,7 +637,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.32";
+const APP_VERSION = "beta 5.33";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16776,7 +16776,16 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
       )}
 
       {/* ─── NOTIFICATIONS TAB ─── */}
-      {tab==="notifications"&&(()=>{
+      {tab==="notifications"&&<NotificationPrefsTab notifPrefs={notifPrefs} onSaveNotifPrefs={onSaveNotifPrefs} currentUser={currentUser}/>}
+    </div>
+  );
+}
+
+// Its own component (not an inline IIFE) so its hooks always run in a
+// consistent order — an IIFE calling useState conditionally inside
+// AccountPage's own render (only when tab==="notifications") violates the
+// rules of hooks and threw "Minified React error #310" when switching tabs.
+function NotificationPrefsTab({notifPrefs, onSaveNotifPrefs, currentUser}) {
         const [prefs, setPrefs] = React.useState({...DEFAULT_NOTIF_PREFS,...(notifPrefs||{})});
         const [nsaving, setNSaving] = React.useState(false);
         const [nsaved, setNSaved] = React.useState(false);
@@ -16893,9 +16902,6 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
             </div>
           </div>
         );
-      })()}
-    </div>
-  );
 }
 
 // ════════════════════════════════════════════════════════════════
