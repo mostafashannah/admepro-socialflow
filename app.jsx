@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.65";
+const APP_VERSION = "beta 5.66";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12860,7 +12860,7 @@ function CareersFullMenu({onClose}) {
       <button onClick={onClose} style={{position:"absolute",top:20,right:20,width:44,height:44,borderRadius:"50%",background:"rgba(255,255,255,0.1)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff"}}>
         <Ico d={Icons.x} size={20}/>
       </button>
-      <div style={{minHeight:"100vh",display:"grid",gridTemplateRows:"repeat(4,1fr)",padding:"40px"}}>
+      <div style={{minHeight:"100vh",display:"grid",gridTemplateColumns:"repeat(4,1fr)",padding:"40px",gap:24}}>
         <div/>
         <div style={{display:"flex",flexDirection:"column",justifyContent:"center"}}>
           {CAREERS_NAV_LINKS.map(item=>(
@@ -12870,8 +12870,8 @@ function CareersFullMenu({onClose}) {
           ))}
         </div>
         <div/>
-        <div style={{display:"flex",alignItems:"flex-end",justifyContent:"flex-end"}}>
-          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:28,color:"rgba(255,255,255,0.6)",fontSize:15,textAlign:"right"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"flex-start"}}>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:28,color:"rgba(255,255,255,0.6)",fontSize:15,textAlign:"left"}}>
             <div>
               <p style={{fontWeight:800,color:"#fff",marginBottom:8}}>Get In Touch</p>
               <p>145 El Banafsig 3, New Cairo, Cairo,</p>
@@ -12974,6 +12974,17 @@ function CareersPage() {
   const [isDark, setIsDark] = useState(()=>{
     try { return window.matchMedia("(prefers-color-scheme: dark)").matches; } catch(e) { return true; }
   });
+  // Keep following the browser/OS theme live — not just at page load — so
+  // switching your system's light/dark mode updates this page too. The
+  // moon/sun toggle still lets a visitor override it manually in-session.
+  useEffect(()=>{
+    try {
+      const mq = window.matchMedia("(prefers-color-scheme: dark)");
+      const onChange = (e) => setIsDark(e.matches);
+      mq.addEventListener("change", onChange);
+      return ()=>mq.removeEventListener("change", onChange);
+    } catch(e) {}
+  },[]);
   const [openings, setOpenings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null); // job_opening being applied to
@@ -13066,7 +13077,10 @@ function CareersPage() {
         ) : (
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:20}}>
             {openings.map(o=>(
-              <div key={o.id} onClick={()=>openJob(o)} style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:16,padding:28,cursor:"pointer",display:"flex",flexDirection:"column"}}>
+              <div key={o.id} onClick={()=>openJob(o)}
+                onMouseEnter={e=>{e.currentTarget.style.filter = isDark?"brightness(0.82)":"brightness(1.06)";}}
+                onMouseLeave={e=>{e.currentTarget.style.filter = "none";}}
+                style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:16,padding:28,cursor:"pointer",display:"flex",flexDirection:"column",transition:"filter 0.15s"}}>
                 <div style={{height:120,marginBottom:24}}/>
                 <p style={{color:"var(--text3)",fontSize:13,marginBottom:8}}>{fmtDate(o.created_at)}</p>
                 <h3 style={{fontWeight:800,fontSize:19,color:"var(--text)",lineHeight:1.25,marginBottom:14}}>{o.title}</h3>
