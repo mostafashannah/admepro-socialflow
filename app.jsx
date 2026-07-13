@@ -637,7 +637,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.31";
+const APP_VERSION = "beta 5.32";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1244,8 +1244,8 @@ const SEED = {
     attach_pdf:false,
     attach_format:"pdf",
     custom_footer:"Keep up the great work! — admepro Management",
-    last_sent_at:"2026-04-08T18:00:00Z",
-    last_sent_count:4,
+    last_sent_at:null,
+    last_sent_count:0,
   },
   invoices: [
     {id:"inv1",invoice_number:"INV-2026-001",quote_id:"q1",client_id:"c1",client_name:"TechStart Co.",client_phone:"+20 100 123 4567",client_email:"contact@techstartco.com",title:"Social Media Management Package",issue_date:"2026-03-01",due_date:"2026-03-31",status:"paid",currency:"USD",items:'[{"id":"i1","name":"Monthly Content Calendar","description":"30 posts across all platforms","qty":1,"unit_price":1500},{"id":"i2","name":"Graphic Design","description":"Custom branded visuals","qty":30,"unit_price":25},{"id":"i3","name":"Account Management","description":"Dedicated manager, reporting & strategy","qty":1,"unit_price":500}]',subtotal:2750,discount_value:0,discount_type:"percent",tax_rate:14,total:3135,amount_paid:3135,balance_due:0,payment_terms:"Net 30",notes:"Thank you for your business!",created_by:"mostafashannah@gmail.com"},
