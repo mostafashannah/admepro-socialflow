@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.50";
+const APP_VERSION = "beta 5.51";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12827,7 +12827,70 @@ function CareersChrome({isDark, setIsDark, children}) {
         </div>
       </div>
       {children}
+      <CareersFooter isDark={isDark}/>
     </>
+  );
+}
+
+// Mirrors admepro.com's own site footer (same info/links), adapted to the
+// app's CSS-variable theme so it works in both light and dark mode.
+function CareersFooter({isDark}) {
+  return (
+    <div style={{background:"var(--surface)",borderTop:"1px solid var(--border)",padding:"56px 20px 28px"}}>
+      <div style={{maxWidth:1100,margin:"0 auto"}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:32}}>
+          <div>
+            <a href="https://admepro.com" target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6}}>
+              <img src={isDark?ADMEPRO_LOGO_WHITE:ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:32,width:"auto",objectFit:"contain"}}/>
+            </a>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:20}}>
+            <div>
+              <p style={{fontWeight:800,fontSize:15,color:"var(--text)",marginBottom:8}}>Cairo</p>
+              <p style={{fontSize:14,color:"var(--text2)",lineHeight:1.6}}>145 El Banafsig 3<br/>New Cairo, Cairo</p>
+            </div>
+            <div>
+              <p style={{fontWeight:800,fontSize:15,color:"var(--text)",marginBottom:8}}>Call</p>
+              <p style={{fontSize:14,color:"var(--text2)"}}>+2 0100 037 0140</p>
+            </div>
+            <div>
+              <p style={{fontWeight:800,fontSize:15,color:"var(--text)",marginBottom:8}}>GPS</p>
+              <p style={{fontSize:14,color:"var(--text2)",lineHeight:1.6}}>30.0638829"<br/>31.4708194"</p>
+            </div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:20}}>
+            <div>
+              <p style={{fontWeight:800,fontSize:15,color:"var(--text)",marginBottom:8}}>Work inquiries</p>
+              <p style={{fontSize:14,color:"var(--text2)"}}>Interested in working with us?</p>
+              <a href="mailto:hello@admepro.com" style={{fontSize:14,fontWeight:700,color:"var(--text)",textDecoration:"none"}}>hello@admepro.com</a>
+            </div>
+            <div>
+              <p style={{fontWeight:800,fontSize:15,color:"var(--text)",marginBottom:8}}>Career</p>
+              <p style={{fontSize:14,color:"var(--text2)"}}>Looking for a job opportunity?</p>
+              <p style={{fontSize:14,fontWeight:700,color:"var(--accent)"}}>You're on the right page!</p>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:4}}>
+              {SOCIAL_LINKS.filter(s=>s.label!=="Li.").map(s=>(
+                <a key={s.url} href={s.url} target="_blank" rel="noreferrer" style={{fontSize:14,color:"var(--text2)",textDecoration:"none"}}>
+                  {s.label==="Fb."?"Facebook":s.label==="Ig."?"Instagram":"Vimeo"}
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <button onClick={()=>window.scrollTo({top:0,behavior:"smooth"})} style={{display:"flex",alignItems:"center",gap:10,marginTop:48,background:"none",border:"none",cursor:"pointer",color:"var(--text2)",fontSize:14,fontWeight:600}}>
+          <span style={{width:36,height:36,borderRadius:"50%",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",transform:"rotate(90deg)"}}>
+            <Ico d={Icons.chevL} size={14} stroke="var(--text2)"/>
+          </span>
+          Scroll to top
+        </button>
+
+        <div style={{borderTop:"1px solid var(--border)",marginTop:28,paddingTop:20}}>
+          <p style={{fontSize:13,color:"var(--text3)"}}>© 2013-{new Date().getFullYear()} admepro . All rights reserved.</p>
+        </div>
+      </div>
+    </div>
   );
 }
 
