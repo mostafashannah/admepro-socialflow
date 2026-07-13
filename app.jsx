@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.36";
+const APP_VERSION = "beta 5.37";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -25898,12 +25898,22 @@ function App() {
   // Notifications are otherwise only fetched once at load, so there's no way
   // to know a new one arrived while the app stays open. Poll for this user's
   // notifications and play a sound the moment one shows up that we haven't
-  // already seen (seeded from whatever was already loaded, so logging in
-  // with existing unread notifications doesn't beep).
+  // already seen.
+  // The seed MUST come from the same per-user query the poll itself uses —
+  // seeding from the globally-fetched `data.notifications` (capped at 500
+  // rows across ALL users) let this user's older notifications get pushed
+  // out of that global cap on a busy system. The poll would then see them
+  // as "new" and play the sound, but since they already existed in
+  // data.notifications by id, the dedup silently skipped re-adding them —
+  // a sound with nothing new ever appearing.
   const seenNotifIdsRef = React.useRef(null);
   React.useEffect(()=>{
     if(!currentUser?.email) { seenNotifIdsRef.current = null; return; }
-    seenNotifIdsRef.current = new Set((data.notifications||[]).filter(n=>n.recipient_email===currentUser.email).map(n=>n.id));
+    seenNotifIdsRef.current = null; // don't treat anything as "new" until the seed query below resolves
+    let cancelled = false;
+    qe("Notification", {recipient_email:currentUser.email}, "-created_at", 50).then(res=>{
+      if(!cancelled) seenNotifIdsRef.current = new Set((res?.entities||[]).map(n=>n.id));
+    }).catch(()=>{ if(!cancelled) seenNotifIdsRef.current = new Set(); });
     const poll = async () => {
       const res = await qe("Notification", {recipient_email:currentUser.email}, "-created_at", 50).catch(()=>null);
       if(!res?.entities || !seenNotifIdsRef.current) return;
@@ -25918,7 +25928,7 @@ function App() {
       }
     };
     const t = setInterval(poll, 25000);
-    return ()=>clearInterval(t);
+    return ()=>{ cancelled = true; clearInterval(t); };
   },[currentUser?.email]);
 
   const setPage = (p) => {

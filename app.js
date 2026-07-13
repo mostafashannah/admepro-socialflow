@@ -103,7 +103,7 @@ function speedTokens(speed,base){if(speed==="low")return Math.max(300,Math.round
 function logActivity(action,category,details="",status="success",errorMsg="",user="system"){const entry={action,category,details,status,error_message:errorMsg,performed_by:user,performed_at:new Date().toISOString()};ce("ActivityLog",[entry]).then(({entities})=>{const saved=entities===null||entities===void 0?void 0:entities[0];// Push the freshly-saved row (with real id) into the live UI immediately,
 // otherwise System Log only reflects what was loaded at page load.
 if(saved&&!saved._saveError)window.dispatchEvent(new CustomEvent("sf:activitylog",{detail:saved}));}).catch(()=>{});}// ── Email HTML templates ─────────────────────────────────────────
-const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 5.36";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 5.37";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
 <tr><td align="center">
@@ -2393,9 +2393,16 @@ React.useEffect(()=>{const unlock=()=>{unlockNotificationAudio();};window.addEve
 // Notifications are otherwise only fetched once at load, so there's no way
 // to know a new one arrived while the app stays open. Poll for this user's
 // notifications and play a sound the moment one shows up that we haven't
-// already seen (seeded from whatever was already loaded, so logging in
-// with existing unread notifications doesn't beep).
-const seenNotifIdsRef=React.useRef(null);React.useEffect(()=>{if(!(currentUser!==null&&currentUser!==void 0&&currentUser.email)){seenNotifIdsRef.current=null;return;}seenNotifIdsRef.current=new Set((data.notifications||[]).filter(n=>n.recipient_email===currentUser.email).map(n=>n.id));const poll=async()=>{const res=await qe("Notification",{recipient_email:currentUser.email},"-created_at",50).catch(()=>null);if(!(res!==null&&res!==void 0&&res.entities)||!seenNotifIdsRef.current)return;const fresh=res.entities.filter(n=>!seenNotifIdsRef.current.has(n.id));res.entities.forEach(n=>seenNotifIdsRef.current.add(n.id));if(fresh.length>0){playNotificationSound();setData(d=>{const known=new Set(d.notifications.map(x=>x.id));return{...d,notifications:[...fresh.filter(f=>!known.has(f.id)),...d.notifications]};});}};const t=setInterval(poll,25000);return()=>clearInterval(t);},[currentUser===null||currentUser===void 0?void 0:currentUser.email]);const setPage=p=>{setPage_(p);try{localStorage.setItem("sf_page",p);}catch(e){}try{window.history.pushState({sfPage:p},"","#"+p);}catch(e){}};// Accountants only get the financial pages — bounce them off anything else
+// already seen.
+// The seed MUST come from the same per-user query the poll itself uses —
+// seeding from the globally-fetched `data.notifications` (capped at 500
+// rows across ALL users) let this user's older notifications get pushed
+// out of that global cap on a busy system. The poll would then see them
+// as "new" and play the sound, but since they already existed in
+// data.notifications by id, the dedup silently skipped re-adding them —
+// a sound with nothing new ever appearing.
+const seenNotifIdsRef=React.useRef(null);React.useEffect(()=>{if(!(currentUser!==null&&currentUser!==void 0&&currentUser.email)){seenNotifIdsRef.current=null;return;}seenNotifIdsRef.current=null;// don't treat anything as "new" until the seed query below resolves
+let cancelled=false;qe("Notification",{recipient_email:currentUser.email},"-created_at",50).then(res=>{if(!cancelled)seenNotifIdsRef.current=new Set(((res===null||res===void 0?void 0:res.entities)||[]).map(n=>n.id));}).catch(()=>{if(!cancelled)seenNotifIdsRef.current=new Set();});const poll=async()=>{const res=await qe("Notification",{recipient_email:currentUser.email},"-created_at",50).catch(()=>null);if(!(res!==null&&res!==void 0&&res.entities)||!seenNotifIdsRef.current)return;const fresh=res.entities.filter(n=>!seenNotifIdsRef.current.has(n.id));res.entities.forEach(n=>seenNotifIdsRef.current.add(n.id));if(fresh.length>0){playNotificationSound();setData(d=>{const known=new Set(d.notifications.map(x=>x.id));return{...d,notifications:[...fresh.filter(f=>!known.has(f.id)),...d.notifications]};});}};const t=setInterval(poll,25000);return()=>{cancelled=true;clearInterval(t);};},[currentUser===null||currentUser===void 0?void 0:currentUser.email]);const setPage=p=>{setPage_(p);try{localStorage.setItem("sf_page",p);}catch(e){}try{window.history.pushState({sfPage:p},"","#"+p);}catch(e){}};// Accountants only get the financial pages — bounce them off anything else
 // (e.g. a stale "home"/tasks page restored from localStorage on login).
 React.useEffect(()=>{if((currentUser===null||currentUser===void 0?void 0:currentUser.role)==="accountant"&&!["quotes","invoices","subscriptions","finance"].includes(page)){setPage("finance");}},[currentUser===null||currentUser===void 0?void 0:currentUser.role]);// Browser back/forward support
 React.useEffect(()=>{// The CSS 100dvh unit doesn't reliably settle immediately on some mobile
