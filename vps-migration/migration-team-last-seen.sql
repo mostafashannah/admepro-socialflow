@@ -4,4 +4,4 @@
 -- the last 3 minutes). Requires ALTER privileges — run via:
 --   sudo mysql socialflow < migration-team-last-seen.sql
 
-ALTER TABLE team_members ADD COLUMN IF NOT EXISTS last_seen TIMESTAMP NULL DEFAULT NULL;
+ALTER TABLE team_members ADD COLUMN last_seen TIMESTAMP NULL DEFAULT NULL;
