@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.48";
+const APP_VERSION = "beta 5.49";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12789,7 +12789,7 @@ const ADMEPRO_LOGO_BLACK = "https://admepro.com/wp-content/uploads/2024/10/adme-
 const SOCIAL_LINKS = [
   {label:"Fb.", url:"https://fb.com/admepro"},
   {label:"Ig.", url:"https://instagram.com/admeproagency"},
-  {label:"Li.", url:"https://linkedin.com/company/admepro"},
+  {label:"Li.", url:"https://www.linkedin.com/company/5040327/"},
   {label:"Vm.", url:"https://vimeo.com/admepro"},
 ];
 
