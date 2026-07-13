@@ -637,7 +637,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.19";
+const APP_VERSION = "beta 5.20";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9342,25 +9342,78 @@ function ClientPerformanceTrend({clientId}) {
     </div>
   );
 
+  const seriesList = platformsPresent.map(p=>{
+    const cfg = OVERVIEW_TREND_METRIC[p];
+    const byDate = {};
+    snapshots.filter(s=>s.platform===p).forEach(s=>{ byDate[(s.snapshot_date||"").slice(0,10)] = extractMetric(s.metrics, cfg.arrKey, cfg.metric); });
+    return {
+      platform: p,
+      label: `${p.charAt(0).toUpperCase()+p.slice(1)} ${INSIGHTS_METRIC_LABELS[cfg.metric]||cfg.metric}`,
+      color: PLT_COLOR[p]||"#3b82f6",
+      data: last30.map(date=>({date, value: byDate[date]||0})),
+    };
+  });
+
   return (
-    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"16px 20px",display:"flex",flexDirection:"column",gap:18}}>
-      <h4 style={{fontWeight:700,fontSize:14}}>30-Day Performance</h4>
-      {platformsPresent.map(p=>{
-        const cfg = OVERVIEW_TREND_METRIC[p];
-        const byDate = {};
-        snapshots.filter(s=>s.platform===p).forEach(s=>{ byDate[(s.snapshot_date||"").slice(0,10)] = extractMetric(s.metrics, cfg.arrKey, cfg.metric); });
-        const series = last30.map(date=>({date, value: byDate[date]||0}));
-        return (
-          <div key={p}>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-              <PChip platform={p} xs/>
-              <span style={{fontSize:12,fontWeight:600,color:"var(--text2)"}}>{INSIGHTS_METRIC_LABELS[cfg.metric]||cfg.metric} · last 30 days</span>
+    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"16px 20px",display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+        <h4 style={{fontWeight:700,fontSize:14}}>30-Day Performance</h4>
+        <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+          {seriesList.map(s=>(
+            <div key={s.platform} style={{display:"flex",alignItems:"center",gap:6}}>
+              <span style={{width:9,height:9,borderRadius:"50%",background:s.color,flexShrink:0}}/>
+              <span style={{fontSize:12,fontWeight:600,color:"var(--text2)"}}>{s.label}</span>
             </div>
-            <MetricLineChart current={series} previous={[]} color={PLT_COLOR[p]||"#3b82f6"} height={140}/>
-          </div>
+          ))}
+        </div>
+      </div>
+      <MultiLineChart series={seriesList} height={260}/>
+    </div>
+  );
+}
+
+// Multiple series (e.g. one per platform) on one chart, wide, with a visible
+// dot for every single day — not just a bare line.
+function MultiLineChart({series, height=260}) {
+  const w = 900;
+  const padL = 10, padR = 10, padT = 12, padB = 26;
+  const allVals = series.flatMap(s=>s.data.map(d=>d.value));
+  const maxVal = Math.max(1, ...allVals);
+  const len = series[0]?.data.length || 0;
+  const toPoints = (data) => data.map((d,i)=>{
+    const x = padL + (len>1 ? (i/(len-1))*(w-padL-padR) : 0);
+    const y = padT + (1-(d.value/maxVal))*(height-padT-padB);
+    return [x,y];
+  });
+  const pathFrom = (pts) => pts.length ? pts.map((p,i)=>(i===0?"M":"L")+p[0].toFixed(1)+","+p[1].toFixed(1)).join(" ") : "";
+  const ticks = [0,0.25,0.5,0.75,1];
+  const labelIdxs = len>1 ? [0, Math.floor((len-1)/2), len-1] : [];
+  const firstData = series[0]?.data || [];
+  return (
+    <svg viewBox={`0 0 ${w} ${height}`} style={{width:"100%",height,display:"block"}}>
+      {ticks.map(t=>{
+        const y = padT + t*(height-padT-padB);
+        return <line key={t} x1={padL} x2={w-padR} y1={y} y2={y} stroke="var(--border)" strokeWidth={1}/>;
+      })}
+      {series.map(s=>{
+        const pts = toPoints(s.data);
+        return (
+          <g key={s.platform}>
+            {pts.length>1&&<path d={pathFrom(pts)} fill="none" stroke={s.color} strokeWidth={2.5}/>}
+            {pts.map((p,i)=>(
+              <circle key={i} cx={p[0]} cy={p[1]} r={3} fill={s.color}>
+                <title>{s.data[i].date}: {s.data[i].value.toLocaleString()}</title>
+              </circle>
+            ))}
+          </g>
         );
       })}
-    </div>
+      {labelIdxs.map(i=>(
+        <text key={i} x={toPoints(firstData)[i]?.[0]} y={height-6} fontSize={11} fill="var(--text3)" textAnchor={i===0?"start":i===len-1?"end":"middle"}>
+          {firstData[i]?.date ? new Date(firstData[i].date).toLocaleDateString(undefined,{month:"short",day:"numeric"}) : ""}
+        </text>
+      ))}
+    </svg>
   );
 }
 
