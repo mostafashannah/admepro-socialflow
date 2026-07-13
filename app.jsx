@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.90";
+const APP_VERSION = "beta 4.91";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -24567,7 +24567,7 @@ function NotificationsPage({notifications, currentUser, onMarkRead, onNavigate, 
     return `${Math.floor(h/24)}d ago`;
   };
   return (
-    <div style={{maxWidth:1100,margin:"0 auto"}} className="fade-in">
+    <div style={{maxWidth:"100%"}} className="fade-in">
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24}}>
         <div>
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Notifications</h2>
