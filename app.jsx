@@ -370,6 +370,7 @@ const SB_TABLE = {
   LeadNotifySetting:"lead_notify_settings",
   Expense:"expenses",
   FinanceClientNote:"finance_client_notes",
+  MetaInsightsSnapshot:"meta_insights_snapshots",
 };
 
 function sbTable(entityName) {
@@ -636,7 +637,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.17";
+const APP_VERSION = "beta 5.19";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9295,6 +9296,74 @@ const INSIGHTS_METRIC_LABELS = {
   page_total_actions: "Page Actions (CTA)",
 };
 
+// ── 30-Day Performance — one line per connected platform, built from
+// meta_insights_snapshots (populated once daily by meta-insights-cron.php,
+// NOT a live API call) so it's fast and doesn't burn Graph API rate limits.
+const OVERVIEW_TREND_METRIC = {
+  facebook: {arrKey:"page_insights", metric:"page_impressions"},
+  instagram: {arrKey:"ig_insights", metric:"reach"},
+};
+function ClientPerformanceTrend({clientId}) {
+  const [snapshots,setSnapshots] = useState([]);
+  const [loading,setLoading] = useState(true);
+  useEffect(()=>{
+    let cancelled = false;
+    setLoading(true);
+    qe("MetaInsightsSnapshot", {client_id:clientId}, "-snapshot_date", 90).catch(()=>null).then(res=>{
+      if(!cancelled) { setSnapshots(res?.entities||[]); setLoading(false); }
+    });
+    return ()=>{cancelled=true;};
+  },[clientId]);
+
+  const extractMetric = (metricsJson, arrKey, metricName) => {
+    try {
+      const obj = typeof metricsJson==="string" ? JSON.parse(metricsJson) : metricsJson;
+      const arr = obj?.[arrKey];
+      const m = Array.isArray(arr) ? arr.find(x=>x.name===metricName) : null;
+      return Number(m?.values?.[0]?.value)||0;
+    } catch(e){ return 0; }
+  };
+
+  const last30 = [...Array(30)].map((_,i)=>{
+    const d = new Date(); d.setDate(d.getDate()-(29-i));
+    return d.toISOString().slice(0,10);
+  });
+  const platformsPresent = [...new Set(snapshots.map(s=>s.platform))].filter(p=>OVERVIEW_TREND_METRIC[p]);
+
+  if(loading) return (
+    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"30px 20px",textAlign:"center",color:"var(--text3)",fontSize:13}}>
+      <Spinner size={14}/> Loading 30-day trend…
+    </div>
+  );
+  if(platformsPresent.length===0) return (
+    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"16px 20px"}}>
+      <h4 style={{fontWeight:700,fontSize:14,marginBottom:6}}>30-Day Performance</h4>
+      <p style={{fontSize:12,color:"var(--text3)"}}>No daily data yet — a snapshot is captured automatically once a day for each connected platform. Check back tomorrow.</p>
+    </div>
+  );
+
+  return (
+    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"16px 20px",display:"flex",flexDirection:"column",gap:18}}>
+      <h4 style={{fontWeight:700,fontSize:14}}>30-Day Performance</h4>
+      {platformsPresent.map(p=>{
+        const cfg = OVERVIEW_TREND_METRIC[p];
+        const byDate = {};
+        snapshots.filter(s=>s.platform===p).forEach(s=>{ byDate[(s.snapshot_date||"").slice(0,10)] = extractMetric(s.metrics, cfg.arrKey, cfg.metric); });
+        const series = last30.map(date=>({date, value: byDate[date]||0}));
+        return (
+          <div key={p}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+              <PChip platform={p} xs/>
+              <span style={{fontSize:12,fontWeight:600,color:"var(--text2)"}}>{INSIGHTS_METRIC_LABELS[cfg.metric]||cfg.metric} · last 30 days</span>
+            </div>
+            <MetricLineChart current={series} previous={[]} color={PLT_COLOR[p]||"#3b82f6"} height={140}/>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function ClientOverviewTab({client, cProjects, cPosts, cMessages, cLeads, integrations}) {
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState(null);
@@ -9303,14 +9372,20 @@ function ClientOverviewTab({client, cProjects, cPosts, cMessages, cLeads, integr
   const published = cPosts.filter(p=>p.stage==="published").length;
   const pendingApproval = cPosts.filter(p=>p.stage==="client_approval").length;
   const openLeads = (cLeads||[]).filter(l=>!["closed_won","closed_lost"].includes(l.status)).length;
+  // Count distinct conversations (channel + customer), not every individual
+  // inbound/outbound message row.
+  const conversationCount = new Set((cMessages||[]).map(m=>`${m.channel}_${m.customer_id}`)).size;
+  // Only actual leads — exclude service_provider/hiring categories (older
+  // leads with no category set are treated as plain leads).
+  const actualLeadsCount = (cLeads||[]).filter(l=>!l.category || l.category==="lead").length;
 
   const kpis = [
     {label:"Projects", value:cProjects.length, color:"#3b82f6"},
     {label:"Total Posts", value:cPosts.length, color:"#8b5cf6"},
     {label:"Published", value:published, color:"#10b981"},
     {label:"Pending Approval", value:pendingApproval, color:"#ec4899"},
-    {label:"Messages", value:(cMessages||[]).length, color:"#06b6d4"},
-    {label:"Leads", value:(cLeads||[]).length, color:"#f59e0b"},
+    {label:"Messages", value:conversationCount, color:"#06b6d4"},
+    {label:"Leads", value:actualLeadsCount, color:"#f59e0b"},
   ];
 
   // Which of the client's platforms have an active, connected integration —
@@ -9356,6 +9431,8 @@ No markdown, no explanation, just the JSON array.`;
       <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12}}>
         {kpis.map(k=><StatCard key={k.label} label={k.label} value={k.value} color={k.color}/>)}
       </div>
+
+      <ClientPerformanceTrend clientId={client.id}/>
 
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"16px 20px"}}>
         <h4 style={{fontWeight:700,fontSize:14,marginBottom:14}}>Workflow Pipeline</h4>
