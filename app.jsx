@@ -637,7 +637,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.22";
+const APP_VERSION = "beta 5.23";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9395,6 +9395,8 @@ function MultiLineChart({series, height=260}) {
   const allVals = series.flatMap(s=>s.data.map(d=>d.value));
   const maxVal = Math.max(1, ...allVals);
   const len = series[0]?.data.length || 0;
+  const wrapRef = useRef(null);
+  const [hoverIdx, setHoverIdx] = useState(null);
   const toPoints = (data) => data.map((d,i)=>{
     const x = padL + (len>1 ? (i/(len-1))*(w-padL-padR) : 0);
     const y = padT + (1-(d.value/maxVal))*(height-padT-padB);
@@ -9404,31 +9406,65 @@ function MultiLineChart({series, height=260}) {
   const ticks = [0,0.25,0.5,0.75,1];
   const labelIdxs = len>1 ? [0, Math.floor((len-1)/2), len-1] : [];
   const firstData = series[0]?.data || [];
+
+  const handleMove = (e) => {
+    if(!wrapRef.current || len<1) return;
+    const rect = wrapRef.current.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (e.clientX-rect.left)/rect.width));
+    setHoverIdx(Math.round(ratio*(len-1)));
+  };
+
+  const hoverXPct = hoverIdx!==null && len>1 ? (hoverIdx/(len-1))*100 : (hoverIdx===0 ? 0 : null);
+
   return (
-    <svg viewBox={`0 0 ${w} ${height}`} style={{width:"100%",height,display:"block"}}>
-      {ticks.map(t=>{
-        const y = padT + t*(height-padT-padB);
-        return <line key={t} x1={padL} x2={w-padR} y1={y} y2={y} stroke="var(--border)" strokeWidth={1}/>;
-      })}
-      {series.map(s=>{
-        const pts = toPoints(s.data);
-        return (
-          <g key={s.platform}>
-            {pts.length>1&&<path d={pathFrom(pts)} fill="none" stroke={s.color} strokeWidth={2.5}/>}
-            {pts.map((p,i)=>(
-              <circle key={i} cx={p[0]} cy={p[1]} r={3} fill={s.color}>
-                <title>{s.data[i].date}: {s.data[i].value.toLocaleString()}</title>
-              </circle>
-            ))}
-          </g>
-        );
-      })}
-      {labelIdxs.map(i=>(
-        <text key={i} x={toPoints(firstData)[i]?.[0]} y={height-6} fontSize={11} fill="var(--text3)" textAnchor={i===0?"start":i===len-1?"end":"middle"}>
-          {firstData[i]?.date ? new Date(firstData[i].date).toLocaleDateString(undefined,{month:"short",day:"numeric"}) : ""}
-        </text>
-      ))}
-    </svg>
+    <div ref={wrapRef} style={{position:"relative"}} onMouseMove={handleMove} onMouseLeave={()=>setHoverIdx(null)}>
+      <svg viewBox={`0 0 ${w} ${height}`} style={{width:"100%",height,display:"block"}}>
+        {ticks.map(t=>{
+          const y = padT + t*(height-padT-padB);
+          return <line key={t} x1={padL} x2={w-padR} y1={y} y2={y} stroke="var(--border)" strokeWidth={1}/>;
+        })}
+        {hoverIdx!==null && (
+          <line x1={toPoints(firstData)[hoverIdx]?.[0]} x2={toPoints(firstData)[hoverIdx]?.[0]} y1={padT} y2={height-padB} stroke="var(--text3)" strokeWidth={1} strokeDasharray="3,3"/>
+        )}
+        {series.map(s=>{
+          const pts = toPoints(s.data);
+          return (
+            <g key={s.platform}>
+              {pts.length>1&&<path d={pathFrom(pts)} fill="none" stroke={s.color} strokeWidth={2.5}/>}
+              {pts.map((p,i)=>(
+                <circle key={i} cx={p[0]} cy={p[1]} r={hoverIdx===i?5:3} fill={s.color} stroke={hoverIdx===i?"var(--surface)":"none"} strokeWidth={hoverIdx===i?2:0}/>
+              ))}
+            </g>
+          );
+        })}
+        {labelIdxs.map(i=>(
+          <text key={i} x={toPoints(firstData)[i]?.[0]} y={height-6} fontSize={11} fill="var(--text3)" textAnchor={i===0?"start":i===len-1?"end":"middle"}>
+            {firstData[i]?.date ? new Date(firstData[i].date).toLocaleDateString(undefined,{month:"short",day:"numeric"}) : ""}
+          </text>
+        ))}
+      </svg>
+      {hoverIdx!==null && hoverXPct!==null && (
+        <div style={{
+          position:"absolute", top:0,
+          left:`${hoverXPct}%`,
+          transform:`translateX(${hoverXPct<10?"0%":hoverXPct>90?"-100%":"-50%"})`,
+          background:"var(--surface2)", border:"1px solid var(--border2)", borderRadius:8,
+          padding:"8px 12px", fontSize:12, boxShadow:"0 4px 16px rgba(0,0,0,0.18)",
+          pointerEvents:"none", whiteSpace:"nowrap", zIndex:2,
+        }}>
+          <div style={{fontWeight:700,marginBottom:4,color:"var(--text)"}}>
+            {firstData[hoverIdx]?.date ? new Date(firstData[hoverIdx].date).toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"}) : ""}
+          </div>
+          {series.map(s=>(
+            <div key={s.platform} style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}>
+              <span style={{width:8,height:8,borderRadius:"50%",background:s.color,flexShrink:0}}/>
+              <span style={{color:"var(--text2)"}}>{s.platform}:</span>
+              <span style={{fontWeight:700,color:"var(--text)"}}>{(s.data[hoverIdx]?.value||0).toLocaleString()}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
