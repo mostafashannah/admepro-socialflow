@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.59";
+const APP_VERSION = "beta 5.60";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13046,16 +13046,17 @@ function CareersPage() {
         {openings.length===0 ? (
           <div style={{textAlign:"center",padding:60,color:"var(--text3)"}}>No open positions right now — check back soon!</div>
         ) : (
-          <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:20}}>
             {openings.map(o=>(
-              <div key={o.id} onClick={()=>setSelected(o)} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:24,cursor:"pointer"}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-                  <h3 style={{fontWeight:800,fontSize:17,color:"var(--text)"}}>{o.title}</h3>
-                  <Badge label={EMPLOYMENT_LABELS[o.employment_type]||"Full-time"} color="#6b7280"/>
+              <div key={o.id} onClick={()=>setSelected(o)} style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:16,padding:24,cursor:"pointer",display:"flex",flexDirection:"column"}}>
+                <div style={{height:120,marginBottom:24}}/>
+                <p style={{color:"var(--text3)",fontSize:13,marginBottom:8}}>{fmtDate(o.created_at)}</p>
+                <h3 style={{fontWeight:800,fontSize:19,color:"var(--text)",lineHeight:1.25,marginBottom:14}}>{o.title}</h3>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:20}}>
+                  <span style={{padding:"6px 12px",borderRadius:99,background:"var(--surface)",border:"1px solid var(--border)",fontSize:12,fontWeight:600,color:"var(--text2)"}}>Job</span>
+                  {o.department&&<span style={{padding:"6px 12px",borderRadius:99,background:"var(--surface)",border:"1px solid var(--border)",fontSize:12,fontWeight:600,color:"var(--text2)"}}>{o.department}</span>}
                 </div>
-                <p style={{color:"var(--text2)",fontSize:12,marginTop:4}}>{[o.department,o.location].filter(Boolean).join(" · ")}</p>
-                {o.description&&<p style={{color:"var(--text2)",fontSize:13,marginTop:10,lineHeight:1.6,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{o.description}</p>}
-                <p style={{color:"var(--accent)",fontSize:13,fontWeight:700,marginTop:12}}>Apply now →</p>
+                <p style={{color:"var(--text)",fontSize:14,fontWeight:700,marginTop:"auto",display:"flex",alignItems:"center",gap:6}}>Read More <Ico d={Icons.arrow} size={15}/></p>
               </div>
             ))}
           </div>
