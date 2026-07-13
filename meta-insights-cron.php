@@ -67,12 +67,38 @@ function group_by_date(array $seriesData) {
     return $byDate;
 }
 
+// Merges by metric name within each arrKey (page_insights/ig_insights/...)
+// instead of replacing the whole array — otherwise a backfill run (which
+// only ever has the day-by-day reach-type metrics, never the lifetime
+// follower/like counts) would silently wipe out a follower count that an
+// earlier daily run had already captured for that same date.
+function merge_metrics($old, $new) {
+    $out = $old;
+    foreach ($new as $key => $arr) {
+        if (!isset($out[$key]) || !is_array($out[$key])) { $out[$key] = $arr; continue; }
+        $byName = [];
+        foreach ($out[$key] as $m) { if (isset($m['name'])) $byName[$m['name']] = $m; }
+        foreach ($arr as $m) { if (isset($m['name'])) $byName[$m['name']] = $m; }
+        $out[$key] = array_values($byName);
+    }
+    return $out;
+}
+
+$selectExisting = $pdo->prepare(
+    "SELECT metrics FROM meta_insights_snapshots WHERE integration_id = :iid AND platform = :platform AND snapshot_date = :date"
+);
 $upsert = $pdo->prepare(
     "INSERT INTO meta_insights_snapshots (id, integration_id, client_id, client_name, platform, snapshot_date, metrics)
      VALUES (UUID(), :iid, :cid, :cname, :platform, :date, :metrics)
      ON DUPLICATE KEY UPDATE metrics = VALUES(metrics)"
 );
-function save_snapshot($upsert, $integ, $platform, $date, $metrics) {
+function save_snapshot($upsert, $selectExisting, $integ, $platform, $date, $metrics) {
+    $selectExisting->execute([':iid' => $integ['id'], ':platform' => $platform, ':date' => $date]);
+    $existingRaw = $selectExisting->fetchColumn();
+    if ($existingRaw) {
+        $existing = json_decode($existingRaw, true) ?: [];
+        $metrics = merge_metrics($existing, $metrics);
+    }
     $upsert->execute([
         ':iid'     => $integ['id'],
         ':cid'     => $integ['client_id'] ?? null,
@@ -117,7 +143,7 @@ foreach ($integrations as $integ) {
         }
         foreach ($byDate as $date => $dayMetrics) {
             $key = $platform === 'facebook' ? 'page_insights' : 'ig_insights';
-            save_snapshot($upsert, $integ, $platform, $date, [$key => $dayMetrics]);
+            save_snapshot($upsert, $selectExisting, $integ, $platform, $date, [$key => $dayMetrics]);
             $snapped++;
         }
         continue;
@@ -162,7 +188,7 @@ foreach ($integrations as $integ) {
         $metrics['ads_insights'] = $code === 200 ? ($resp['data'] ?? []) : null;
     }
 
-    save_snapshot($upsert, $integ, $platform, $today, $metrics);
+    save_snapshot($upsert, $selectExisting, $integ, $platform, $today, $metrics);
     $snapped++;
 }
 
