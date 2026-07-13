@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.63";
+const APP_VERSION = "beta 5.64";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12971,6 +12971,18 @@ function CareersPage() {
   const [openings, setOpenings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null); // job_opening being applied to
+
+  // Browser back button should close the job detail view and land back on
+  // the openings list, not navigate away from /careers entirely — push a
+  // history entry when opening a job so the back button has something to
+  // pop, and listen for that pop to close the detail view.
+  useEffect(()=>{
+    const onPop = () => setSelected(null);
+    window.addEventListener("popstate", onPop);
+    return ()=>window.removeEventListener("popstate", onPop);
+  },[]);
+  const openJob = (o) => { window.history.pushState({careersJob:o.id}, "", window.location.pathname); setSelected(o); };
+  const closeJob = () => { window.history.back(); };
   const [form, setForm] = useState({name:"",email:"",phone:"",cover_letter:"",portfolio_url:"",linkedin_url:"",current_salary:"",expected_salary:"",available_start_date:"",open_to_task:"yes",website:""}); // "website" = honeypot
   const [cvFile, setCvFile] = useState(null);
   const [cvBase64, setCvBase64] = useState(null);
@@ -13048,7 +13060,7 @@ function CareersPage() {
         ) : (
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:20}}>
             {openings.map(o=>(
-              <div key={o.id} onClick={()=>setSelected(o)} style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:16,padding:28,cursor:"pointer",display:"flex",flexDirection:"column"}}>
+              <div key={o.id} onClick={()=>openJob(o)} style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:16,padding:28,cursor:"pointer",display:"flex",flexDirection:"column"}}>
                 <div style={{height:120,marginBottom:24}}/>
                 <p style={{color:"var(--text3)",fontSize:13,marginBottom:8}}>{fmtDate(o.created_at)}</p>
                 <h3 style={{fontWeight:800,fontSize:19,color:"var(--text)",lineHeight:1.25,marginBottom:14}}>{o.title}</h3>
@@ -13071,7 +13083,7 @@ function CareersPage() {
     <CareersChrome isDark={isDark} setIsDark={setIsDark}>
     <div style={{minHeight:"100vh",background:"var(--bg)",padding:"48px 20px"}}>
       <div style={{maxWidth:760,margin:"0 auto",marginTop:50}}>
-        <button onClick={()=>setSelected(null)} style={{background:"none",border:"none",color:"var(--text2)",fontSize:13,fontWeight:600,cursor:"pointer",marginBottom:16}}>← Back to all openings</button>
+        <button onClick={closeJob} style={{background:"none",border:"none",color:"var(--text2)",fontSize:13,fontWeight:600,cursor:"pointer",marginBottom:16}}>← Back to all openings</button>
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:20,padding:32}}>
           <h2 style={{fontWeight:800,fontSize:22,color:"var(--text)"}}>{selected.title}</h2>
           <p style={{color:"var(--text2)",fontSize:13,marginTop:4}}>{[selected.department,selected.location,EMPLOYMENT_LABELS[selected.employment_type]].filter(Boolean).join(" · ")}</p>
