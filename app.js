@@ -77,7 +77,7 @@ function speedTokens(speed,base){if(speed==="low")return Math.max(300,Math.round
 function logActivity(action,category,details="",status="success",errorMsg="",user="system"){const entry={action,category,details,status,error_message:errorMsg,performed_by:user,performed_at:new Date().toISOString()};ce("ActivityLog",[entry]).then(({entities})=>{const saved=entities===null||entities===void 0?void 0:entities[0];// Push the freshly-saved row (with real id) into the live UI immediately,
 // otherwise System Log only reflects what was loaded at page load.
 if(saved&&!saved._saveError)window.dispatchEvent(new CustomEvent("sf:activitylog",{detail:saved}));}).catch(()=>{});}// ── Email HTML templates ─────────────────────────────────────────
-const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 5.01";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 5.02";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
 <tr><td align="center">
@@ -2287,14 +2287,16 @@ const SAFE_PAGES=["home","dashboard","clients","tasks","calendar","projects","as
 React.useEffect(()=>{if(!(currentUser!==null&&currentUser!==void 0&&currentUser.email))return;setupPushSubscription(currentUser.email);const onInstalled=()=>setupPushSubscription(currentUser.email);window.addEventListener("appinstalled",onInstalled);return()=>window.removeEventListener("appinstalled",onInstalled);},[currentUser===null||currentUser===void 0?void 0:currentUser.email]);// Session capture (IP/OS/browser for System Log + "Live Now") only ever
 // ran on the credentials login screen — but the app persists sf_user
 // across refreshes/reopens, so a real login rarely happens again after
-// the first time, leaving system_sessions permanently empty. Also
-// capture once per browser tab session (sessionStorage, not
-// localStorage) whenever an already-logged-in user resumes the app.
-React.useEffect(()=>{if(!(currentUser!==null&&currentUser!==void 0&&currentUser.email)||currentUser!==null&&currentUser!==void 0&&currentUser.isClient)return;try{if(sessionStorage.getItem("sf_session_logged"))return;}catch(e){}captureSessionInfo(currentUser).then(info=>{ce("SystemSession",[info]).then(res=>{var _res$entities;if(res!==null&&res!==void 0&&(_res$entities=res.entities)!==null&&_res$entities!==void 0&&_res$entities.length){setData(d=>({...d,systemSessions:[res.entities[0],...(d.systemSessions||[])]}));// Only mark as done once the insert actually succeeded — an earlier
-// failed attempt (e.g. before a schema fix) must not permanently
-// block retrying in the same tab, since sessionStorage otherwise
-// survives reloads for the whole tab's lifetime.
-try{sessionStorage.setItem("sf_session_logged","1");}catch(e){}}}).catch(()=>{});}).catch(()=>{});},[currentUser===null||currentUser===void 0?void 0:currentUser.email]);// The app manages all of its own navigation state via pushState (both here
+// the first time, leaving system_sessions permanently empty. A one-shot
+// "already tried this tab" flag doesn't work reliably here either: as an
+// installed PWA (or even a backgrounded browser tab), "closing and
+// reopening" the app usually just suspends/resumes the same JS process
+// rather than truly destroying and recreating it, so a mount-only effect
+// may never fire again at all. Instead, recheck on every tab-visibility
+// change (which DOES fire reliably on PWA foreground/background) and
+// capture at most once per 30 minutes, tracked in localStorage so it
+// survives actual reloads too.
+React.useEffect(()=>{if(!(currentUser!==null&&currentUser!==void 0&&currentUser.email)||currentUser!==null&&currentUser!==void 0&&currentUser.isClient)return;const RECAPTURE_MS=30*60*1000;const tryCapture=()=>{if(document.visibilityState!=="visible")return;let last=0;try{last=parseInt(localStorage.getItem("sf_session_last_logged")||"0",10)||0;}catch(e){}if(Date.now()-last<RECAPTURE_MS)return;captureSessionInfo(currentUser).then(info=>{ce("SystemSession",[info]).then(res=>{var _res$entities;if(res!==null&&res!==void 0&&(_res$entities=res.entities)!==null&&_res$entities!==void 0&&_res$entities.length){setData(d=>({...d,systemSessions:[res.entities[0],...(d.systemSessions||[])]}));try{localStorage.setItem("sf_session_last_logged",String(Date.now()));}catch(e){}}}).catch(()=>{});}).catch(()=>{});};tryCapture();document.addEventListener("visibilitychange",tryCapture);return()=>document.removeEventListener("visibilitychange",tryCapture);},[currentUser===null||currentUser===void 0?void 0:currentUser.email]);// The app manages all of its own navigation state via pushState (both here
 // and, much more heavily, inside Finance's internal tab/detail navigation)
 // without ever doing a real page reload. Left on the browser default
 // ("auto"), Safari tries to save/restore a scroll position per history
