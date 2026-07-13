@@ -608,7 +608,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 4.94";
+const APP_VERSION = "beta 4.95";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1365,17 +1365,19 @@ const initials = n => (n||"").split(" ").map(w=>w[0]).join("").toUpperCase().sli
 const clr = (name,arr=["#d90b2c","#3b82f6","#8b5cf6","#10b981","#f59e0b","#ec4899"]) =>
   arr[(name||"").charCodeAt(0)%arr.length];
 
-// Auto-organizes uploaded assets into "<Client Name>/<Project Name>" folders
+// Auto-organizes uploaded assets into "<Month Year>/<Project Name>" folders
 // (category is reused as a "/"-joined folder path — no schema change needed).
-const monthProjectFolder = (projectName, clientName) =>
-  `${clientName||"Unsorted"}/${projectName||"Unsorted"}`;
+// Client filtering lives as a separate dropdown on the Assets page instead
+// of restructuring the folder tree itself.
+const monthProjectFolder = (projectName, clientName, date=new Date()) =>
+  `${date.toLocaleDateString("en-US",{month:"long",year:"numeric"})}/${projectName||"Unsorted"}`;
 // Names an uploaded file after its task/post title, keeping the original extension.
 const renameForTask = (taskTitle, originalName, suffix="") => {
   const ext = (originalName||"").includes(".") ? originalName.slice(originalName.lastIndexOf(".")) : "";
   const base = (taskTitle||"").trim() || (originalName||"file").replace(/\.[^.]+$/,"");
   return `${base}${suffix?` ${suffix}`:""}${ext}`;
 };
-// Pre-creates a project's "<Client Name>/<Project Name>" folder (in both the
+// Pre-creates a project's "<Month Year>/<Project Name>" folder (in both the
 // global Assets Library and that client's Assets tab) the moment the project
 // is created, so it's there waiting even before the first file is uploaded.
 // Mirrors FolderBrowser's own localStorage-backed "extra folder" persistence.
@@ -8199,7 +8201,7 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
   // Project folders are derived live from `projects` (not localStorage) so a
   // freshly-created project's folder shows up immediately, even if this
   // FolderBrowser instance was already mounted when the project was created.
-  const projectFolders = projects.map(p=>monthProjectFolder(p.title, p.client_name));
+  const projectFolders = projects.map(p=>monthProjectFolder(p.title, p.client_name, p.created_at?new Date(p.created_at):new Date()));
 
   // Every known folder path across the whole library (not just the currently
   // open one) — feeds FolderPickerModal's "Move" browser so it can start at
@@ -8363,6 +8365,7 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
 function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset,currentUser}) {
   const [catF,setCatF] = useState("all");
   const [typeF,setTypeF] = useState("all");
+  const [clientF,setClientF] = useState("all");
   const [uploading,setUploading] = useState(false);
   const [showUpload,setShowUpload] = useState(false);
   const [uploadForm,setUploadForm] = useState({name:"",project_id:"",tags:""});
@@ -8370,9 +8373,13 @@ function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset,curr
   const fileRef = useRef(null);
   const [pendingFile,setPendingFile] = useState(null);
 
+  const clientNames = [...new Set(projects.map(p=>p.client_name).filter(Boolean))].sort();
+  const projectClientMap = Object.fromEntries(projects.map(p=>[p.id,p.client_name]));
+
   const filtered = assets.filter(a=>{
     if(catF!=="all"&&a.category!==catF) return false;
     if(typeF!=="all"&&a.file_type!==typeF) return false;
+    if(clientF!=="all"&&projectClientMap[a.project_id]!==clientF) return false;
     return true;
   });
 
@@ -8450,6 +8457,10 @@ function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset,curr
       )}
 
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <select value={clientF} onChange={e=>setClientF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12}}>
+          <option value="all">All Clients</option>
+          {clientNames.map(c=><option key={c} value={c}>{c}</option>)}
+        </select>
         <select value={typeF} onChange={e=>setTypeF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12}}>
           <option value="all">All Types</option>
           <option value="image">Images</option>
