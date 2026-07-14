@@ -41,6 +41,23 @@ const fetchFileUrl = (url, timeoutMs=20000) => {
   return fetchWithTimeout(target, opts, timeoutMs);
 };
 
+// A source URL's path doesn't always end in a real filename+extension —
+// e.g. Google Drive's download link is .../uc?export=download&id=... with
+// no extension anywhere in the path. Without one, a file gets stored and
+// served with no way for the browser (or our own server) to know it's a
+// PDF/Word doc, and it silently falls back to a generic download instead
+// of previewing. Infer the extension from the actual content type when
+// the URL didn't give us a usable one.
+function fileNameFromUrlAndBlob(url, blob, fallbackBase="cv") {
+  let name = (url||"").split("/").pop().split("?")[0] || fallbackBase;
+  if (!/\.\w{2,5}$/.test(name)) {
+    const mime = (blob.type||"").toLowerCase();
+    const ext = mime.includes("wordprocessingml") ? "docx" : mime === "application/msword" ? "doc" : "pdf";
+    name = `${name}.${ext}`;
+  }
+  return name;
+}
+
 // Downloads an array of flat objects as a CSV file — used by the client
 // Leads tab's "Download CSV" button (and reusable anywhere else needed).
 function downloadCsv(filename, rows, columns) {
@@ -901,7 +918,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.125";
+const APP_VERSION = "beta 5.126";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21747,7 +21764,12 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
   const extracted = (() => { try { return JSON.parse(application.ai_extracted||"{}"); } catch(e) { return {}; } })();
   const cvIsDocx = /\.docx?(?:[?#]|$)/i.test(application.cv_url||"");
   const cvIsExternal = !!application.cv_url && !application.cv_url.startsWith(window.location.origin);
-  const cvNeedsLocalCopy = cvIsDocx || cvIsExternal;
+  // A file stored with no recognized extension at all (an earlier bug —
+  // a source URL like Drive's uc?export=download&id=... has no filename
+  // in its path) can't be identified by the browser/server as a PDF
+  // either, even once it's already on our own domain.
+  const cvHasNoExt = !!application.cv_url && !/\.(pdf|docx?)(?:[?#]|$)/i.test(application.cv_url);
+  const cvNeedsLocalCopy = cvIsDocx || cvIsExternal || cvHasNoExt;
 
   const handleRerun = async () => {
     setRerunning(true);
@@ -22184,7 +22206,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
         // PDF at the same time, same as the direct-upload path. Also
         // covers apps whose cv_url got set to an external link by an
         // earlier version of this code, before this fix existed.
-        const srcName = cvSourceUrl.split("/").pop().split("?")[0] || "cv";
+        const srcName = fileNameFromUrlAndBlob(cvSourceUrl, blob);
         const rawFile = new File([blob], srcName, {type: blob.type});
         const storedFile = await convertCvToPdfForStorage(rawFile).catch(()=>rawFile);
         const ownUrl = await uploadToStorage(storedFile, "job-applications/email").catch(()=>null);
@@ -22231,7 +22253,8 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     if(!app.cv_url) return;
     const isDocx = /\.docx?(?:[?#]|$)/i.test(app.cv_url);
     const isExternal = !app.cv_url.startsWith(window.location.origin);
-    if(!isDocx && !isExternal) return;
+    const hasNoExt = !/\.(pdf|docx?)(?:[?#]|$)/i.test(app.cv_url);
+    if(!isDocx && !isExternal && !hasNoExt) return;
     setConvertingCvId(app.id);
     setCvConvertFailedId(null);
     let converted = false;
@@ -22239,10 +22262,10 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
       const r = await fetchFileUrl(app.cv_url, 20000);
       if(!r.ok) throw new Error(`${r.status}`);
       const blob = await r.blob();
-      const name = app.cv_url.split("/").pop().split("?")[0] || "cv.docx";
+      const name = fileNameFromUrlAndBlob(app.cv_url, blob);
       const asFile = new File([blob], name, {type: blob.type});
       const pdfFile = await convertCvToPdfForStorage(asFile);
-      if(pdfFile !== asFile || isExternal) {
+      if(pdfFile !== asFile || isExternal || hasNoExt) {
         const cv_url = await uploadToStorage(pdfFile, "job-applications/email");
         await ue("JobApplication", app.id, {cv_url});
         await load();
