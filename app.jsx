@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.74";
+const APP_VERSION = "beta 5.75";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12856,12 +12856,16 @@ const CAREERS_NAV_LINKS = [
 // big bold nav links on the left, contact info + social icons on the right.
 function CareersFullMenu({onClose}) {
   const {isMobile} = useResponsive();
-  const navFontStyle = {fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:isMobile?"clamp(32px,11vw,44px)":"clamp(40px,8vw,80px)",lineHeight:1.1,color:"#fff",textTransform:"uppercase",letterSpacing:"-0.01em"};
+  const navFontStyle = {fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:isMobile?"clamp(32px,11vw,44px)":"clamp(40px,8vw,80px)",lineHeight:1.1,color:"#fff",textTransform:"uppercase",letterSpacing:"-0.01em"};
 
+  // onTouchStart below is a no-op handler — iOS Safari silently ignores
+  // :active styles on links unless something in the ancestor chain has a
+  // touch listener attached. Without this, tapping never showed the flip
+  // on iPhone at all.
   const navBlock = (
     <div style={{display:"flex",flexDirection:"column",justifyContent:"center",marginLeft:isMobile?0:-100}}>
       {CAREERS_NAV_LINKS.map(item=>(
-        <a key={item.label} href={item.url} target="_blank" rel="noreferrer" className="careers-nav-flip">
+        <a key={item.label} href={item.url} target="_blank" rel="noreferrer" className="careers-nav-flip" onTouchStart={()=>{}}>
           <span className="careers-nav-flip-inner">
             <span className="careers-nav-flip-face" style={navFontStyle}>{item.label}</span>
             <span className="careers-nav-flip-face back" style={navFontStyle}>{item.label}</span>
