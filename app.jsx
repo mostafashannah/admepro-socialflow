@@ -642,6 +642,52 @@ ${AI_REVIEW_JSON_SHAPE}
   }
 }
 
+// For an unassigned application with a CV, score the candidate against
+// EVERY open job opening in one pass and assign whichever one it fits
+// best, instead of leaving it unassigned or generically scored against
+// "this role". Falls back to reviewApplication()'s generic scoring if
+// there are no open openings to compare against.
+async function reviewApplicationBestFit(application, cvBase64, openOpenings) {
+  if(!application?.id || !cvBase64) return null;
+  if(!openOpenings?.length) return reviewApplication(application, cvBase64, null);
+  const data = cvBase64.includes(",") ? cvBase64.split(",")[1] : cvBase64;
+  const openingsList = openOpenings.map((o,i)=>`${i+1}. "${o.title}"\nDescription: ${(o.description||"").slice(0,600)}\nRequirements: ${(o.requirements||"").slice(0,600)}`).join("\n\n");
+  const sys = `You are an HR screening assistant. This candidate's application wasn't tied to a specific job opening — read their CV (attached as a PDF) and decide which of these OPEN positions they fit best:
+
+${openingsList}
+
+Return ONLY JSON in this exact shape:
+{"best_fit_title":"the exact title from the list above that fits best","candidate_name":"","candidate_email":"","candidate_phone":"","years_experience":0,"skills":["..."],"education":"","languages":["..."],"highlights":["≤5 concrete, specific achievements or qualifications relevant to the best-fit role"],"red_flags":["≤3 concerns, gaps, or mismatches — empty array if none"],"links":["any LinkedIn/Behance/Canva/portfolio/personal-site URLs found in the document — empty array if none"],"score":0,"summary":"2-3 sentence assessment of fit for the best-fit role, mentioning which role you picked and why"}
+"best_fit_title" MUST be copied exactly from the numbered list above. "score" is 0-100, reflecting fit for that specific role (not a generic CV quality score).`;
+  try {
+    const r = await fetchWithTimeout(AI_ENDPOINT, {
+      method:"POST", headers:AI_HEADERS,
+      body: JSON.stringify({
+        model:"claude-sonnet-4-6", max_tokens:1500, system:sys,
+        messages:[{role:"user", content:[
+          {type:"document", source:{type:"base64", media_type:"application/pdf", data}},
+          {type:"text", text:"Review this CV, pick the best-fit open position, and return the JSON described in the system prompt."},
+        ]}],
+      }),
+    });
+    if(!r.ok) { const body = await r.text().catch(()=>""); throw new Error(`AI review failed: ${r.status} ${body.slice(0,300)}`); }
+    const d = await r.json();
+    const raw = (d.content?.map(b=>b.text||"").join("")||"").trim();
+    const m = raw.match(/\{[\s\S]*\}/);
+    if(!m) throw new Error("No JSON in AI response");
+    const extracted = JSON.parse(m[0]);
+    const matched = openOpenings.find(o=>o.title===extracted.best_fit_title) || openOpenings.find(o=>o.title.toLowerCase()===String(extracted.best_fit_title||"").toLowerCase());
+    if(matched) {
+      application = {...application, job_opening_id: matched.id, job_title: matched.title};
+      await ue("JobApplication", application.id, {job_opening_id: matched.id, job_title: matched.title}).catch(()=>{});
+    }
+    return await finishReview(application, raw);
+  } catch(e) {
+    await ue("JobApplication", application.id, {ai_review_status:"failed", ai_summary:`Retry failed: ${String(e?.message||e).slice(0,500)}`}).catch(()=>{});
+    return null;
+  }
+}
+
 // ── Feature flags ──────────────────────────────────────────────
 // Untested/in-progress features stay off by default until toggled on
 // from Settings → Feature Flags (writes to app_settings.feature_flags).
@@ -720,7 +766,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.111";
+const APP_VERSION = "beta 5.112";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21974,7 +22020,14 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
       return;
     }
     await ue("JobApplication", app.id, {ai_review_status:"pending"});
-    await reviewApplication(app, base64, opening);
+    if(!app.job_opening_id) {
+      // Unassigned but has a CV — instead of scoring against "this role"
+      // generically, check fit against every open opening and assign
+      // whichever one the candidate matches best.
+      await reviewApplicationBestFit(app, base64, openings.filter(o=>o.status==="open"));
+    } else {
+      await reviewApplication(app, base64, opening);
+    }
   };
   const handleRerunReview = async (app) => {
     await reviewOne(app);
@@ -22000,6 +22053,30 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     setRetryingAll(false);
     setRetryMsg(stuck.length ? `Retried ${stuck.length} application${stuck.length!==1?"s":""}` : "Nothing stuck to retry");
     setTimeout(()=>setRetryMsg(""),4000);
+  };
+
+  const [autoAssigning, setAutoAssigning] = useState(false);
+  const [autoAssignMsg, setAutoAssignMsg] = useState("");
+  const handleAutoAssignUnassigned = async () => {
+    setAutoAssigning(true);
+    const openOpenings = openings.filter(o=>o.status==="open");
+    const unassigned = applications.filter(a=>!a.job_opening_id && a.cv_url);
+    let done = 0;
+    for (const app of unassigned) {
+      const r = await fetchWithTimeout(app.cv_url, {}, 20000).catch(()=>null);
+      if(r?.ok) {
+        const blob = await r.blob();
+        const reader = new FileReader();
+        const base64 = await new Promise(res=>{ reader.onload = ()=>res(reader.result); reader.readAsDataURL(blob); });
+        await reviewApplicationBestFit(app, base64, openOpenings);
+      }
+      done++;
+      setAutoAssignMsg(`Assigning ${done}/${unassigned.length}…`);
+    }
+    await load();
+    setAutoAssigning(false);
+    setAutoAssignMsg(unassigned.length ? `Auto-assigned ${unassigned.length} application${unassigned.length!==1?"s":""}` : "No unassigned applications with a CV to auto-assign");
+    setTimeout(()=>setAutoAssignMsg(""),4000);
   };
 
   // Auto-heal: an application can get stuck at ai_review_status "pending"
@@ -22134,6 +22211,8 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
               {retryMsg&&<span style={{fontSize:11,color:"var(--text2)"}}>{retryMsg}</span>}
               <button onClick={handleRetryAllStuck} disabled={retryingAll} style={{padding:"5px 10px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{retryingAll?"Retrying…":"Retry All Stuck AI Reviews"}</button>
               <button onClick={()=>setHideNoCv(v=>!v)} style={{padding:"5px 10px",borderRadius:99,background:hideNoCv?"var(--accent)":"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:hideNoCv?"#fff":"var(--text2)",cursor:"pointer"}}>{hideNoCv?"Showing With CV Only":"Hide No-CV"}</button>
+              {autoAssignMsg&&<span style={{fontSize:11,color:"var(--text2)"}}>{autoAssignMsg}</span>}
+              <button onClick={handleAutoAssignUnassigned} disabled={autoAssigning} style={{padding:"5px 10px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{autoAssigning?"Assigning…":"Auto-Assign Unassigned (Best Fit)"}</button>
             </div>
           </div>
           {filteredApps.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--text2)"}}>No applications match these filters.</div>}
