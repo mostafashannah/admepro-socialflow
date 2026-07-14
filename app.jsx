@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.81";
+const APP_VERSION = "beta 5.82";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21360,9 +21360,10 @@ function JobOpeningForm({opening, currentUser, onSave, onClose}) {
   );
 }
 
-function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign}) {
+function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete}) {
   const [notes, setNotes] = useState(application.notes||"");
   const [rerunning, setRerunning] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const extracted = (() => { try { return JSON.parse(application.ai_extracted||"{}"); } catch(e) { return {}; } })();
 
   const handleRerun = async () => {
@@ -21377,7 +21378,17 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
         <button onClick={onClose} style={{width:36,height:36,borderRadius:"50%",background:"var(--surface2)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text2)",cursor:"pointer",flexShrink:0}}>
           <Ico d={Icons.chevL} size={16}/>
         </button>
-        <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:22,margin:0}}>{application.candidate_name}</h2>
+        <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:22,margin:0,flex:1}}>{application.candidate_name}</h2>
+        {onDelete&&(confirmDelete?(
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>setConfirmDelete(false)} style={{padding:"7px 12px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>Cancel</button>
+            <button onClick={()=>onDelete(application)} style={{padding:"7px 12px",borderRadius:"var(--rxs)",background:"#ef4444",border:"none",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer"}}>Confirm Delete</button>
+          </div>
+        ):(
+          <button title="Delete Application" onClick={()=>setConfirmDelete(true)} style={{width:36,height:36,borderRadius:"50%",background:"var(--surface2)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",color:"#ef4444",cursor:"pointer",flexShrink:0}}>
+            <Ico d={Icons.trash} size={15}/>
+          </button>
+        ))}
       </div>
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:28}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,gap:12,flexWrap:"wrap"}}>
@@ -21542,6 +21553,11 @@ function RecruitmentPage({currentUser}) {
     setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,...patch}:prev);
     await ue("JobApplication", app.id, patch).catch(()=>{});
   };
+  const handleDeleteApplication = async (app) => {
+    setApplications(prev=>prev.filter(a=>a.id!==app.id));
+    setSelectedApp(null);
+    await de("JobApplication", app.id).catch(()=>{});
+  };
   const handleRerunReview = async (app) => {
     const opening = openings.find(o=>o.id===app.job_opening_id);
     if(!app.cv_url) return;
@@ -21575,7 +21591,7 @@ function RecruitmentPage({currentUser}) {
   );
 
   if(selectedApp) return (
-    <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={()=>setSelectedApp(null)} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign}/>
+    <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={()=>setSelectedApp(null)} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication}/>
   );
 
   return (

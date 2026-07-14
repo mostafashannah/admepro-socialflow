@@ -152,8 +152,8 @@ try {
 $openings = $pdo->query("SELECT id, title, description, requirements FROM job_openings WHERE status = 'open'")->fetchAll(PDO::FETCH_ASSOC);
 $checkDup = $pdo->prepare("SELECT 1 FROM job_applications WHERE email_message_id = :mid");
 $insert = $pdo->prepare(
-    "INSERT INTO job_applications (id, job_opening_id, job_title, candidate_name, candidate_email, cover_letter, cv_url, status, ai_review_status, source, email_message_id)
-     VALUES (UUID(), :job_opening_id, :job_title, :candidate_name, :candidate_email, :cover_letter, :cv_url, 'new', :ai_review_status, 'email', :email_message_id)"
+    "INSERT INTO job_applications (id, job_opening_id, job_title, candidate_name, candidate_email, cover_letter, cv_url, portfolio_url, portfolio_attachment_url, linkedin_url, status, ai_review_status, source, email_message_id)
+     VALUES (UUID(), :job_opening_id, :job_title, :candidate_name, :candidate_email, :cover_letter, :cv_url, :portfolio_url, :portfolio_attachment_url, :linkedin_url, 'new', :ai_review_status, 'email', :email_message_id)"
 );
 $lookup = $pdo->prepare("SELECT id FROM job_applications WHERE email_message_id = :mid");
 
@@ -183,23 +183,46 @@ foreach ($messages as $message) {
             if ($o['title'] !== '' && stripos($subject, $o['title']) !== false) { $matchedOpening = $o; break; }
         }
 
-        // Grab the first PDF attachment as the CV; plain-text body as the cover letter.
+        // Grab the first PDF attachment as the CV, and (if present) a second
+        // attachment (any type) as the optional portfolio attachment.
         $cvUrl = null;
+        $portfolioAttachmentUrl = null;
+        $saveAttachment = function ($attachment, $subdir, $fallbackName) {
+            $raw = $attachment->getContent();
+            $safeName = preg_replace('/[^a-zA-Z0-9._-]/', '_', $attachment->getName() ?: $fallbackName);
+            $path = 'job-applications/' . $subdir . '/' . time() . '_' . $safeName;
+            $dir = STORAGE_ROOT . '/socialflow-media/' . dirname($path);
+            if (!is_dir($dir)) mkdir($dir, 0755, true);
+            file_put_contents(STORAGE_ROOT . '/socialflow-media/' . $path, $raw);
+            return ['url' => STORAGE_PUBLIC_URL . '/socialflow-media/' . $path, 'base64' => base64_encode($raw)];
+        };
         foreach ($message->getAttachments() as $attachment) {
             $name = strtolower((string) $attachment->getName());
             $mime = strtolower((string) $attachment->getMimeType());
-            if (str_ends_with($name, '.pdf') || $mime === 'application/pdf') {
-                $raw = $attachment->getContent();
-                $safeName = preg_replace('/[^a-zA-Z0-9._-]/', '_', $attachment->getName() ?: 'cv.pdf');
-                $path = 'job-applications/email/' . time() . '_' . $safeName;
-                $dir = STORAGE_ROOT . '/socialflow-media/' . dirname($path);
-                if (!is_dir($dir)) mkdir($dir, 0755, true);
-                file_put_contents(STORAGE_ROOT . '/socialflow-media/' . $path, $raw);
-                $cvUrl = ['url' => STORAGE_PUBLIC_URL . '/socialflow-media/' . $path, 'base64' => base64_encode($raw)];
-                break;
+            $isPdf = str_ends_with($name, '.pdf') || $mime === 'application/pdf';
+            if ($isPdf && !$cvUrl) {
+                $cvUrl = $saveAttachment($attachment, 'email', 'cv.pdf');
+            } elseif (!$portfolioAttachmentUrl) {
+                $portfolioAttachmentUrl = $saveAttachment($attachment, 'portfolio', 'portfolio');
             }
         }
         $bodyText = trim((string) $message->getTextBody());
+
+        // Pull any links out of the body: LinkedIn goes to linkedin_url,
+        // the first other link (portfolio/Behance/personal site/etc.) to
+        // portfolio_url — same fields the public /careers form fills in.
+        $linkedinUrl = null;
+        $portfolioUrl = null;
+        if (preg_match_all('/https?:\/\/[^\s<>")]+/i', $bodyText, $urlMatches)) {
+            foreach ($urlMatches[0] as $url) {
+                $url = rtrim($url, '.,;:!?');
+                if (stripos($url, 'linkedin.com') !== false) {
+                    if (!$linkedinUrl) $linkedinUrl = $url;
+                } elseif (!$portfolioUrl) {
+                    $portfolioUrl = $url;
+                }
+            }
+        }
 
         $insert->execute([
             ':job_opening_id' => $matchedOpening['id'] ?? null,
@@ -208,6 +231,9 @@ foreach ($messages as $message) {
             ':candidate_email' => $candidateEmail,
             ':cover_letter' => substr($bodyText, 0, 3000),
             ':cv_url' => $cvUrl['url'] ?? null,
+            ':portfolio_url' => $portfolioUrl,
+            ':portfolio_attachment_url' => $portfolioAttachmentUrl['url'] ?? null,
+            ':linkedin_url' => $linkedinUrl,
             ':ai_review_status' => $cvUrl ? 'pending' : 'failed',
             ':email_message_id' => $messageId,
         ]);
