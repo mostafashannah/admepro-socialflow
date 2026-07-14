@@ -697,10 +697,30 @@ function findCvSourceUrl(app) {
 // forcing a download of a .docx. Legacy .doc can't be converted this way
 // (mammoth doesn't support it) — those are stored as-is. Returns the
 // original file unchanged if it's already a PDF or conversion fails.
+// CDN scripts (mammoth, html2pdf) are plain <script> tags loaded before
+// app.js, so they should already be on window by the time this runs — but
+// a slow/blocked CDN load can lose that race. Give them a few seconds to
+// show up instead of silently giving up on the first check.
+async function waitForLib(getter, timeoutMs=5000) {
+  const start = Date.now();
+  while (!getter() && Date.now()-start < timeoutMs) {
+    await new Promise(r=>setTimeout(r, 200));
+  }
+  return getter();
+}
+
 async function convertCvToPdfForStorage(file) {
   const name = (file.name||"").toLowerCase();
   const isDocx = name.endsWith(".docx") || file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-  if (!isDocx || !window.mammoth || !window.html2pdf) return file;
+  if (!isDocx) return file;
+  const [mammothLib, html2pdfLib] = await Promise.all([
+    waitForLib(()=>window.mammoth),
+    waitForLib(()=>window.html2pdf),
+  ]);
+  if (!mammothLib || !html2pdfLib) {
+    console.error("convertCvToPdfForStorage: mammoth/html2pdf failed to load from CDN");
+    return file;
+  }
   try {
     const arrayBuffer = await file.arrayBuffer();
     const {value: html} = await window.mammoth.convertToHtml({arrayBuffer});
@@ -715,7 +735,8 @@ async function convertCvToPdfForStorage(file) {
       document.body.removeChild(container);
     }
   } catch(e) {
-    return file; // conversion failed — fall back to storing the original
+    console.error("convertCvToPdfForStorage failed:", e); // fall back to storing the original
+    return file;
   }
 }
 
@@ -872,7 +893,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.121";
+const APP_VERSION = "beta 5.122";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21711,7 +21732,7 @@ function JobOpeningForm({opening, currentUser, onSave, onClose}) {
   );
 }
 
-function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader, onConvertCv, convertingCv}) {
+function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader, onConvertCv, convertingCv, cvConvertFailed}) {
   const [notes, setNotes] = useState(application.notes||"");
   const [rerunning, setRerunning] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -21725,7 +21746,10 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
   };
 
   useEffect(()=>{
-    if(cvIsDocx && onConvertCv) onConvertCv(application);
+    // Only auto-trigger once per application — if it already failed for
+    // this exact cv_url, retrying silently on every view just repeats the
+    // same failure. A manual retry button covers that case instead.
+    if(cvIsDocx && onConvertCv && !cvConvertFailed) onConvertCv(application);
   },[application.id, application.cv_url]);
 
   return (
@@ -21775,6 +21799,9 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
 
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:18}}>
           {application.cv_url&&<a href={application.cv_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--accentbg)",border:"1px solid var(--accent)33",fontSize:12,fontWeight:700,color:"var(--accent)",textDecoration:"none"}}>{convertingCv?"Converting to PDF…":cvIsDocx?"View CV (Word)":"View CV"}</a>}
+          {cvIsDocx&&!convertingCv&&cvConvertFailed&&onConvertCv&&(
+            <button onClick={()=>onConvertCv(application)} style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>Retry PDF Conversion</button>
+          )}
           {application.portfolio_url&&<a href={application.portfolio_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>Portfolio</a>}
           {application.portfolio_attachment_url&&<a href={application.portfolio_attachment_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>Portfolio Attachment</a>}
           {application.linkedin_url&&<a href={application.linkedin_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>LinkedIn</a>}
@@ -22175,9 +22202,12 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   // using the same mammoth->html->html2pdf pipeline the web apply form
   // already uses for uploads.
   const [convertingCvId, setConvertingCvId] = useState(null);
+  const [cvConvertFailedId, setCvConvertFailedId] = useState(null);
   const handleConvertCvToPdf = async (app) => {
     if(!app.cv_url || !/\.docx?(?:[?#]|$)/i.test(app.cv_url)) return;
     setConvertingCvId(app.id);
+    setCvConvertFailedId(null);
+    let converted = false;
     try {
       const r = await fetchFileUrl(app.cv_url, 20000);
       if(!r.ok) throw new Error(`${r.status}`);
@@ -22193,8 +22223,10 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
           const refreshed = (await qe("JobApplication",{})).entities?.find(a=>a.id===app.id);
           if(refreshed) setSelectedApp(refreshed);
         }
+        converted = true;
       }
-    } catch(e) { /* leave the original .docx link in place if conversion fails */ }
+    } catch(e) { console.error("handleConvertCvToPdf failed:", e); }
+    if(!converted) setCvConvertFailedId(app.id);
     setConvertingCvId(null);
   };
   const handleRetryAllStuck = async () => {
@@ -22308,7 +22340,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   );
 
   if(selectedApp) return (
-    <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===selectedApp.id}/>
+    <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===selectedApp.id} cvConvertFailed={cvConvertFailedId===selectedApp.id}/>
   );
 
   if(selectedGroup) {
@@ -22322,7 +22354,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:22,margin:0}}>{sortedGroup[0].candidate_name} · {sortedGroup.length} applications</h2>
         </div>
         {sortedGroup.map((app,i)=>(
-          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===app.id}/>
+          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===app.id} cvConvertFailed={cvConvertFailedId===app.id}/>
         ))}
       </div>
     );
