@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.72";
+const APP_VERSION = "beta 5.73";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12855,7 +12855,52 @@ const CAREERS_NAV_LINKS = [
 // Full-screen menu overlay matching admepro.com's own site menu style —
 // big bold nav links on the left, contact info + social icons on the right.
 function CareersFullMenu({onClose}) {
-  const navFontStyle = {fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:"clamp(40px,8vw,80px)",lineHeight:1.1,color:"#fff",textTransform:"uppercase",letterSpacing:"-0.01em"};
+  const {isMobile} = useResponsive();
+  const navFontStyle = {fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:isMobile?"clamp(32px,11vw,44px)":"clamp(40px,8vw,80px)",lineHeight:1.1,color:"#fff",textTransform:"uppercase",letterSpacing:"-0.01em"};
+
+  const navBlock = (
+    <div style={{display:"flex",flexDirection:"column",justifyContent:"center",marginLeft:isMobile?0:-100}}>
+      {CAREERS_NAV_LINKS.map(item=>(
+        <a key={item.label} href={item.url} target="_blank" rel="noreferrer" className="careers-nav-flip">
+          <span className="careers-nav-flip-inner">
+            <span className="careers-nav-flip-face" style={navFontStyle}>{item.label}</span>
+            <span className="careers-nav-flip-face back" style={navFontStyle}>{item.label}</span>
+          </span>
+        </a>
+      ))}
+    </div>
+  );
+
+  const infoBlock = (
+    <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:28,color:"rgba(255,255,255,0.6)",fontSize:15,textAlign:"left"}}>
+      <div>
+        <p style={{fontWeight:800,color:"#fff",marginBottom:8}}>Get In Touch</p>
+        <p>145 El Banafsig 3, New Cairo, Cairo,</p>
+        <p>info@admepro.com</p>
+        <p>Ph: +20 100 037 0140</p>
+      </div>
+      <div>
+        <p style={{fontWeight:800,color:"#fff",marginBottom:8}}>Work Inquiries</p>
+        <p>hello@admepro.com</p>
+        <p>Ph: +20 100 037 0140</p>
+      </div>
+      <div style={{display:"flex",gap:10,marginTop:8}}>
+        {[
+          {icon:Icons.vimeoBrand, url:"https://vimeo.com/admepro"},
+          {icon:Icons.igBrand, url:"https://instagram.com/admeproagency"},
+          {icon:Icons.fbBrand, url:"https://fb.com/admepro"},
+        ].map((s,i)=>(
+          <a key={i} href={s.url} target="_blank" rel="noreferrer"
+            onMouseEnter={e=>{e.currentTarget.style.color="#d90b2c";}}
+            onMouseLeave={e=>{e.currentTarget.style.color="#fff";}}
+            style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.1)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",transition:"color 0.15s"}}>
+            <Ico d={s.icon} size={15} fill="currentColor" stroke="none"/>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div style={{position:"fixed",inset:0,zIndex:100,background:"rgba(10,10,14,0.97)",backdropFilter:"blur(10px)",overflowY:"auto"}}>
       {/* Two-layer flip: hovering rotates the inner wrapper 180deg so the
@@ -12872,49 +12917,21 @@ function CareersFullMenu({onClose}) {
       <button onClick={onClose} style={{position:"absolute",top:20,right:20,width:44,height:44,borderRadius:"50%",background:"rgba(255,255,255,0.1)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff"}}>
         <Ico d={Icons.x} size={20}/>
       </button>
-      <div style={{minHeight:"100vh",display:"grid",gridTemplateColumns:"repeat(4,1fr)",padding:"40px",gap:24}}>
-        <div/>
-        <div style={{display:"flex",flexDirection:"column",justifyContent:"center",marginLeft:-100}}>
-          {CAREERS_NAV_LINKS.map(item=>(
-            <a key={item.label} href={item.url} target="_blank" rel="noreferrer" className="careers-nav-flip">
-              <span className="careers-nav-flip-inner">
-                <span className="careers-nav-flip-face" style={navFontStyle}>{item.label}</span>
-                <span className="careers-nav-flip-face back" style={navFontStyle}>{item.label}</span>
-              </span>
-            </a>
-          ))}
+      {isMobile ? (
+        <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",justifyContent:"center",gap:48,padding:"100px 24px 60px"}}>
+          {navBlock}
+          {infoBlock}
         </div>
-        <div/>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"flex-start",marginLeft:-50}}>
-          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:28,color:"rgba(255,255,255,0.6)",fontSize:15,textAlign:"left"}}>
-            <div>
-              <p style={{fontWeight:800,color:"#fff",marginBottom:8}}>Get In Touch</p>
-              <p>145 El Banafsig 3, New Cairo, Cairo,</p>
-              <p>info@admepro.com</p>
-              <p>Ph: +20 100 037 0140</p>
-            </div>
-            <div>
-              <p style={{fontWeight:800,color:"#fff",marginBottom:8}}>Work Inquiries</p>
-              <p>hello@admepro.com</p>
-              <p>Ph: +20 100 037 0140</p>
-            </div>
-            <div style={{display:"flex",gap:10,marginTop:8}}>
-              {[
-                {icon:Icons.vimeoBrand, url:"https://vimeo.com/admepro"},
-                {icon:Icons.igBrand, url:"https://instagram.com/admeproagency"},
-                {icon:Icons.fbBrand, url:"https://fb.com/admepro"},
-              ].map((s,i)=>(
-                <a key={i} href={s.url} target="_blank" rel="noreferrer"
-                  onMouseEnter={e=>{e.currentTarget.style.color="#d90b2c";}}
-                  onMouseLeave={e=>{e.currentTarget.style.color="#fff";}}
-                  style={{width:36,height:36,borderRadius:"50%",background:"rgba(255,255,255,0.1)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",transition:"color 0.15s"}}>
-                  <Ico d={s.icon} size={15} fill="currentColor" stroke="none"/>
-                </a>
-              ))}
-            </div>
+      ) : (
+        <div style={{minHeight:"100vh",display:"grid",gridTemplateColumns:"repeat(4,1fr)",padding:"40px",gap:24}}>
+          <div/>
+          {navBlock}
+          <div/>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"flex-start",marginLeft:-50}}>
+            {infoBlock}
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
