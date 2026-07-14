@@ -198,7 +198,7 @@ foreach ($messages as $message) {
         // Match subject against open job titles (case-insensitive substring)
         $matchedOpening = null;
         foreach ($openings as $o) {
-            if ($o['title'] !== '' && stripos($subject, $o['title']) !== false) { $matchedOpening = $o; break; }
+            if ($o['title'] !== '' && (stripos($subject, $o['title']) !== false || stripos($o['title'], $subject) !== false)) { $matchedOpening = $o; break; }
         }
 
         // Grab the first PDF attachment as the CV, and (if present) a second

@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.85";
+const APP_VERSION = "beta 5.86";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21650,7 +21650,12 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
       // Auto-assign unassigned applications by matching their captured
       // subject/job_title text against currently open job openings.
       if (!app.job_opening_id && app.job_title) {
-        const match = openings.find(o=>o.status==="open" && o.title && app.job_title.toLowerCase().includes(o.title.toLowerCase()));
+        const subj = app.job_title.toLowerCase();
+        const match = openings.find(o=>{
+          if(o.status!=="open"||!o.title) return false;
+          const t = o.title.toLowerCase();
+          return subj.includes(t) || t.includes(subj);
+        });
         if (match) { patch.job_opening_id = match.id; patch.job_title = match.title; }
       }
       if (Object.keys(patch).length) {
