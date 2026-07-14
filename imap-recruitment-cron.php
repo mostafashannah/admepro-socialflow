@@ -355,6 +355,16 @@ foreach ($messages as $message) {
             }
         }
 
+        // A "Re:"/"Fwd:"/"Fw:" subject means this is a reply/forward inside
+        // an existing email thread — either our own confirmation being
+        // replied to, or back-and-forth conversation — never a fresh
+        // application, even if it happens to have an attachment or a
+        // matching subject. Skip it outright.
+        if (preg_match('/^\s*(re|fwd?)\s*:/i', $subject)) {
+            $message->setFlag('Seen');
+            continue;
+        }
+
         // Strict filtering (Recruitment → Email Settings): only treat a
         // message as a real application if its subject matched an open job
         // or it has a CV attachment — otherwise skip mailbox noise
