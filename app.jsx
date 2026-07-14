@@ -720,7 +720,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.107";
+const APP_VERSION = "beta 5.108";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22155,17 +22155,24 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
                   </div>
                 );
               }
+              const sortedGroup = [...group].sort((x,y)=>(y.ai_score??-1)-(x.ai_score??-1));
+              const bestScore = sortedGroup.find(app=>app.ai_score!=null)?.ai_score;
               return (
                 <div key={a.candidate_email} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"column",gap:10}}>
-                  <div style={{display:"flex",alignItems:"center",gap:12}}>
-                    <Avatar name={a.candidate_name} size={36}/>
-                    <div>
-                      <p style={{fontWeight:700,fontSize:14}}>{a.candidate_name}</p>
-                      <p style={{fontSize:12,color:"var(--text3)"}}>{a.candidate_email}{a.candidate_phone?` · ${a.candidate_phone}`:""} · Applied to {group.length} positions</p>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:12}}>
+                      <Avatar name={a.candidate_name} size={36}/>
+                      <div>
+                        <p style={{fontWeight:700,fontSize:14}}>{a.candidate_name}</p>
+                        <p style={{fontSize:12,color:"var(--text3)"}}>{a.candidate_email}{a.candidate_phone?` · ${a.candidate_phone}`:""} · Applied to {group.length} positions</p>
+                      </div>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      {bestScore!=null&&<span style={{fontWeight:800,fontSize:16,color:bestScore>=70?"#10b981":bestScore>=40?"#f59e0b":"#ef4444"}}>{bestScore}</span>}
                     </div>
                   </div>
                   <div style={{display:"flex",flexWrap:"wrap",gap:8,paddingLeft:48}}>
-                    {group.map(app => {
+                    {sortedGroup.map(app => {
                       const statusInfo = APPLICATION_STATUSES.find(s=>s.key===app.status)||APPLICATION_STATUSES[0];
                       return (
                         <button key={app.id} onClick={()=>openApp(app)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",cursor:"pointer"}}>
