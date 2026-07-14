@@ -766,7 +766,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.112";
+const APP_VERSION = "beta 5.113";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21600,7 +21600,7 @@ function JobOpeningForm({opening, currentUser, onSave, onClose}) {
   );
 }
 
-function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete}) {
+function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader}) {
   const [notes, setNotes] = useState(application.notes||"");
   const [rerunning, setRerunning] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -21615,10 +21615,13 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
   return (
     <div className="fade-in" style={{maxWidth:700}}>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
-        <button onClick={onClose} style={{width:36,height:36,borderRadius:"50%",background:"var(--surface2)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text2)",cursor:"pointer",flexShrink:0}}>
-          <Ico d={Icons.chevL} size={16}/>
-        </button>
-        <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:22,margin:0,flex:1}}>{application.candidate_name}</h2>
+        {!hideHeader&&(
+          <button onClick={onClose} style={{width:36,height:36,borderRadius:"50%",background:"var(--surface2)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text2)",cursor:"pointer",flexShrink:0}}>
+            <Ico d={Icons.chevL} size={16}/>
+          </button>
+        )}
+        {!hideHeader&&<h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:22,margin:0,flex:1}}>{application.candidate_name}</h2>}
+        {hideHeader&&<div style={{flex:1}}/>}
         {onDelete&&(confirmDelete?(
           <div style={{display:"flex",gap:6}}>
             <button onClick={()=>setConfirmDelete(false)} style={{padding:"7px 12px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>Cancel</button>
@@ -22128,11 +22131,14 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     const sortedGroup = [...selectedGroup].sort((x,y)=>(y.ai_score??-1)-(x.ai_score??-1));
     return (
       <div className="fade-in" style={{maxWidth:700,display:"flex",flexDirection:"column",gap:20}}>
-        <button onClick={closeGroup} style={{width:36,height:36,borderRadius:"50%",background:"var(--surface2)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text2)",cursor:"pointer",flexShrink:0}}>
-          <Ico d={Icons.chevL} size={16}/>
-        </button>
-        {sortedGroup.map(app=>(
-          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication}/>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <button onClick={closeGroup} style={{width:36,height:36,borderRadius:"50%",background:"var(--surface2)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text2)",cursor:"pointer",flexShrink:0}}>
+            <Ico d={Icons.chevL} size={16}/>
+          </button>
+          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:22,margin:0}}>{sortedGroup[0].candidate_name} · {sortedGroup.length} applications</h2>
+        </div>
+        {sortedGroup.map((app,i)=>(
+          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader/>
         ))}
       </div>
     );
