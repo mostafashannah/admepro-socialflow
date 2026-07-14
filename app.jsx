@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.76";
+const APP_VERSION = "beta 5.77";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13009,6 +13009,36 @@ function CareersFooter({isDark}) {
   );
 }
 
+// Confirmation email sent to the applicant right after they submit —
+// Admepro-branded (not the internal "SocialFlow" product branding used by
+// emailBase() elsewhere), since this is a candidate-facing email from the
+// agency itself.
+function applicationReceivedEmail(candidateName, jobTitle) {
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
+<tr><td align="center">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb">
+  <tr><td style="padding:32px 36px 0">
+    <img src="${ADMEPRO_LOGO_BLACK}" alt="Admepro" style="height:28px;width:auto"/>
+  </td></tr>
+  <tr><td style="padding:24px 36px 36px">
+    <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Thanks for applying, ${candidateName||"there"}!</h2>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">We've received your application for <strong>${jobTitle||"the position"}</strong> at Admepro. Our recruitment team is reviewing it now, and we'll get back to you as soon as possible.</p>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Thanks again for your interest in joining us — we appreciate the time you took to apply.</p>
+    <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px">
+      <tr><td>
+        <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
+        <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
+        <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</td></tr></table>
+</body></html>`;
+}
+
 function CareersPage() {
   const [isDark, setIsDark] = useState(()=>{
     try { return window.matchMedia("(prefers-color-scheme: dark)").matches; } catch(e) { return true; }
@@ -13087,6 +13117,7 @@ function CareersPage() {
       const created = res.entities?.[0];
       setDone(true);
       if(created?.id) reviewApplication(created, cvBase64, selected).catch(()=>{});
+      sendEmail(form.email.trim(), "Thanks for applying to Admepro!", applicationReceivedEmail(form.name.trim(), selected.title)).catch(()=>{});
     } catch(e) { alert("Something went wrong submitting your application. Please try again."); }
     setSubmitting(false);
   };
