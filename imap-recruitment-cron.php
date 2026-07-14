@@ -313,10 +313,17 @@ foreach ($messages as $message) {
 
         // Best-effort phone number from the body (AI review, when it runs,
         // may still overwrite this with a more accurate one from the CV).
+        // Validate the digit COUNT of each candidate match (10-14 digits
+        // covers local 11-digit Egyptian mobiles and +20-prefixed
+        // international ones) rather than trusting the first digit-run
+        // found — guards against picking a shorter, truncated match when
+        // multiple number-like sequences appear in the body.
         $candidatePhone = null;
-        if (preg_match('/(\+?\d[\d\s\-().]{7,}\d)/', $bodyText, $phoneMatch)) {
-            $digits = preg_replace('/\D/', '', $phoneMatch[1]);
-            if (strlen($digits) >= 8) $candidatePhone = trim($phoneMatch[1]);
+        if (preg_match_all('/\+?\d[\d\s\-().]{7,16}\d/', $bodyText, $phoneMatches)) {
+            foreach ($phoneMatches[0] as $candidate) {
+                $digits = preg_replace('/\D/', '', $candidate);
+                if (strlen($digits) >= 10 && strlen($digits) <= 14) { $candidatePhone = trim($candidate); break; }
+            }
         }
 
         $insert->execute([

@@ -720,7 +720,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.99";
+const APP_VERSION = "beta 5.100";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21442,6 +21442,7 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:18}}>
           <a href={`mailto:${application.candidate_email}`} style={{fontSize:12,color:"var(--text2)"}}>{application.candidate_email}</a>
           {application.candidate_phone&&<span style={{fontSize:12,color:"var(--text3)"}}>· {application.candidate_phone}</span>}
+          {application.created_at&&<span style={{fontSize:12,color:"var(--text3)"}}>· Submitted {fmtDateTime(application.created_at)}</span>}
         </div>
 
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:18}}>
@@ -21636,6 +21637,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   const [selectedApp, setSelectedApp] = useState(null);
   const [openingFilter, setOpeningFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("score");
   const [linkCopied, setLinkCopied] = useState(false);
 
   // Browser back button should close the application detail view and land
@@ -21727,8 +21729,11 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
         let phone = null;
         try { const ext = JSON.parse(app.ai_extracted||"{}"); if(ext.candidate_phone) phone = ext.candidate_phone; } catch(e) {}
         if (!phone && app.cover_letter) {
-          const m = app.cover_letter.match(/(\+?\d[\d\s\-().]{7,}\d)/);
-          if (m && m[1].replace(/\D/g,"").length>=8) phone = m[1].trim();
+          const matches = app.cover_letter.match(/\+?\d[\d\s\-().]{7,16}\d/g) || [];
+          for (const m of matches) {
+            const digits = m.replace(/\D/g,"");
+            if (digits.length>=10 && digits.length<=14) { phone = m.trim(); break; }
+          }
         }
         if (phone) patch.candidate_phone = phone;
       }
@@ -21811,7 +21816,11 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   const filteredApps = applications
     .filter(a=>openingFilter==="all"||(openingFilter==="unassigned"?!a.job_opening_id:a.job_opening_id===openingFilter))
     .filter(a=>statusFilter==="all"||a.status===statusFilter)
-    .sort((a,b)=>(b.ai_score||-1)-(a.ai_score||-1));
+    .sort((a,b)=>{
+      if(sortBy==="recent") return new Date(b.created_at)-new Date(a.created_at);
+      if(sortBy==="oldest") return new Date(a.created_at)-new Date(b.created_at);
+      return (b.ai_score??-1)-(a.ai_score??-1);
+    });
 
   const careersUrl = (typeof window!=="undefined"?window.location.origin:"https://socialflow.admepro.com") + "/careers";
   const copyLink = () => { navigator.clipboard?.writeText(careersUrl); setLinkCopied(true); setTimeout(()=>setLinkCopied(false),2000); };
@@ -21884,6 +21893,11 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
               <option value="all">All Statuses</option>
               {APPLICATION_STATUSES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
+            <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{...inputSt,width:"auto",minHeight:"auto",borderRadius:99,padding:"5px 10px",fontSize:11,fontWeight:600,border:"1px solid var(--border2)"}}>
+              <option value="score">Top Score</option>
+              <option value="recent">Most Recent</option>
+              <option value="oldest">Oldest First</option>
+            </select>
             <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
               {fixMsg&&<span style={{fontSize:11,color:"var(--text2)"}}>{fixMsg}</span>}
               <button onClick={handleFixEmailApplications} disabled={fixingEmailApps} style={{padding:"5px 10px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{fixingEmailApps?"Fixing…":"Fix Email Applications"}</button>
@@ -21900,7 +21914,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
                   <Avatar name={a.candidate_name} size={36}/>
                   <div>
                     <p style={{fontWeight:700,fontSize:14}}>{a.candidate_name}</p>
-                    <p style={{fontSize:12,color:"var(--text3)"}}>{a.job_title} · {fmtDate(a.created_at)}</p>
+                    <p style={{fontSize:12,color:"var(--text3)"}}>{a.job_title} · {fmtDateTime(a.created_at)}</p>
                   </div>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
