@@ -174,6 +174,8 @@ $confirmationFromName = !empty($emailSettings['confirmation_from_name']) ? $emai
 $confirmationSubject = !empty($emailSettings['confirmation_subject']) ? $emailSettings['confirmation_subject'] : 'Thanks for applying to Admepro!';
 $confirmationMessage = !empty($emailSettings['confirmation_message']) ? $emailSettings['confirmation_message'] : "We've received your application at Admepro. Our recruitment team is reviewing it now, and we'll get back to you as soon as possible.";
 $strictFiltering = !array_key_exists('strict_filtering', $emailSettings) || $emailSettings['strict_filtering'] !== false;
+$completionSubject = !empty($emailSettings['completion_subject']) ? $emailSettings['completion_subject'] : 'Please complete your Admepro application';
+$completionMessage = !empty($emailSettings['completion_message']) ? $emailSettings['completion_message'] : "Thanks for applying! To finish reviewing your application, could you fill in a few more details:";
 
 // The OS crontab (see docblock) triggers this script every minute — the
 // finest granularity cron supports — but the actual polling interval is
@@ -423,9 +425,10 @@ foreach ($messages as $message) {
                 $missingListHtml = '<ul style="margin:0 0 16px;padding-left:18px;font-size:14px;line-height:1.8;color:#4b5563">'
                     . implode('', array_map(fn($m) => '<li>' . htmlspecialchars($m) . '</li>', $missing))
                     . '</ul>';
+                $completeIntro = str_replace('{{job}}', $matchedOpening ? htmlspecialchars($matchedOpening['title']) : '', $completionMessage);
                 $completeHtml = email_base(
                     '<h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">A few more details, ' . htmlspecialchars($candidateName ?: 'there') . '</h2>'
-                    . '<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Thanks for applying' . ($matchedOpening ? ' for <strong>' . htmlspecialchars($matchedOpening['title']) . '</strong>' : '') . '! To finish reviewing your application, could you fill in a few more details:</p>'
+                    . '<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">' . $completeIntro . '</p>'
                     . $missingListHtml
                     . '<p style="margin:0 0 20px"><a href="' . htmlspecialchars($completeUrl) . '" style="display:inline-block;padding:12px 24px;background:#d90b2c;color:#ffffff;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none">Complete My Application</a></p>'
                     . '<table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>'
@@ -434,7 +437,7 @@ foreach ($messages as $message) {
                     . '<p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>'
                     . '</td></tr></table>'
                 );
-                send_via_resend($candidateEmail, 'Please complete your Admepro application', $completeHtml, $confirmationFromName);
+                send_via_resend($candidateEmail, $completionSubject, $completeHtml, $confirmationFromName);
             }
         }
 

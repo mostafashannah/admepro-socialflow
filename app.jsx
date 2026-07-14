@@ -720,7 +720,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.104";
+const APP_VERSION = "beta 5.105";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21718,6 +21718,8 @@ const RECRUITMENT_EMAIL_DEFAULTS = {
   confirmation_enabled: true, confirmation_from_name: "Admepro Careers",
   confirmation_subject: "Thanks for applying to Admepro!",
   confirmation_message: "We've received your application at Admepro. Our recruitment team is reviewing it now, and we'll get back to you as soon as possible.",
+  completion_subject: "Please complete your Admepro application",
+  completion_message: "Thanks for applying! To finish reviewing your application, could you fill in a few more details:",
 };
 
 function RecruitmentEmailSettingsTab({appSettings, onSaveSettings}) {
@@ -21782,6 +21784,15 @@ function RecruitmentEmailSettingsTab({appSettings, onSaveSettings}) {
           <Field label="From Name"><input value={f.confirmation_from_name} onChange={e=>set("confirmation_from_name",e.target.value)} style={inputSt}/></Field>
           <Field label="Subject"><input value={f.confirmation_subject} onChange={e=>set("confirmation_subject",e.target.value)} style={inputSt}/></Field>
           <Field label="Message"><textarea value={f.confirmation_message} onChange={e=>set("confirmation_message",e.target.value)} rows={4} style={{...inputSt,resize:"vertical"}}/></Field>
+        </div>
+      </div>
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:24}}>
+        <p style={{fontSize:13,fontWeight:800,marginBottom:4}}>"Complete Your Application" Email</p>
+        <p style={{fontSize:12,color:"var(--text3)",marginBottom:16}}>Sent to email-captured applicants missing required info (CV, phone, expected salary, start date, etc), with a link to a short form asking only for what's missing. The list of missing fields is appended automatically after your message.</p>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <Field label="Subject"><input value={f.completion_subject} onChange={e=>set("completion_subject",e.target.value)} style={inputSt}/></Field>
+          <Field label="Message"><textarea value={f.completion_message} onChange={e=>set("completion_message",e.target.value)} rows={4} style={{...inputSt,resize:"vertical"}}/></Field>
         </div>
       </div>
 
