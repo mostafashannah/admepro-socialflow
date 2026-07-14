@@ -697,7 +697,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.89";
+const APP_VERSION = "beta 5.90";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21652,6 +21652,25 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
           url = url.replace(/[.,;:!?]+$/,"");
           if (/linkedin\.com/i.test(url)) { if (!app.linkedin_url && !patch.linkedin_url) patch.linkedin_url = url; }
           else if (!app.portfolio_url && !patch.portfolio_url) patch.portfolio_url = url;
+        }
+      }
+      // Some applications arrive via a website form (e.g. WordPress) whose
+      // relay address (wordpress@admepro.com) got captured as the
+      // candidate's email instead of the real applicant. If the header
+      // email looks like a relay/system address, pull the real one out of
+      // the cover letter body instead (e.g. "Name: Touka <touka@gmail.com>").
+      if (isEmail && app.candidate_email && app.cover_letter) {
+        const mailboxDomain = (appSettings?.recruitment_email_settings?.imap_email||"").split("@")[1]?.toLowerCase();
+        const emailDomain = app.candidate_email.split("@")[1]?.toLowerCase();
+        const looksLikeRelay = /^(wordpress|noreply|no-reply|donotreply|forms?|admin|info|hello)@/i.test(app.candidate_email) || (mailboxDomain && emailDomain===mailboxDomain);
+        if (looksLikeRelay) {
+          const bodyEmails = app.cover_letter.match(/[\w.+-]+@[\w-]+\.[\w.-]+/g) || [];
+          const realEmail = bodyEmails.find(e=>e.toLowerCase()!==app.candidate_email.toLowerCase());
+          if (realEmail) {
+            patch.candidate_email = realEmail;
+            const nameMatch = app.cover_letter.match(/Name:\s*([^<\n\r]+)/i);
+            if (nameMatch) patch.candidate_name = nameMatch[1].trim();
+          }
         }
       }
       // Backfill phone: prefer whatever the AI already extracted from the

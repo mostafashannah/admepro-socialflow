@@ -232,6 +232,26 @@ foreach ($messages as $message) {
         }
         $bodyText = trim((string) $message->getTextBody());
 
+        // Applications submitted through a website form (e.g. WordPress)
+        // often arrive with the site's own relay address as the sender
+        // (e.g. wordpress@admepro.com) and the real applicant's name/email
+        // stated in the body instead (e.g. "Name: Touka <touka@gmail.com>").
+        // If the header sender is on the same domain as this mailbox, trust
+        // the body's email/name over the relay address.
+        $mailboxDomain = strtolower(substr(strrchr($imapEmail, '@'), 1));
+        $fromDomain = strtolower(substr(strrchr($candidateEmail, '@'), 1));
+        if ($fromDomain !== '' && $fromDomain === $mailboxDomain && preg_match('/[\w.+-]+@[\w-]+\.[\w.-]+/', $bodyText, $bodyEmailMatch)) {
+            $bodyEmail = $bodyEmailMatch[0];
+            if (strtolower($bodyEmail) !== strtolower($candidateEmail)) {
+                $candidateEmail = $bodyEmail;
+                if (preg_match('/Name:\s*([^<\n\r]+)/i', $bodyText, $nameMatch)) {
+                    $candidateName = trim($nameMatch[1]);
+                } elseif ($candidateName === '' || strtolower($candidateName) === strtolower($from->mail ?? '')) {
+                    $candidateName = $bodyEmail;
+                }
+            }
+        }
+
         // Pull any links out of the body: LinkedIn goes to linkedin_url,
         // the first other link (portfolio/Behance/personal site/etc.) to
         // portfolio_url — same fields the public /careers form fills in.
