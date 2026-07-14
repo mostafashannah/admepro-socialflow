@@ -645,6 +645,18 @@ async function buildCvContentBlockFromUrl(blob, url) {
   return buildCvContentBlock(asFile);
 }
 
+// Some applicants paste a Google Drive share link instead of attaching a
+// file — converts it to Drive's direct-download endpoint so it can be
+// fetched as raw bytes. Only works for links shared "anyone with the
+// link"; a private/restricted file will fail the fetch with a login page
+// instead of the real content, same as it would for a human visitor.
+function driveLinkToDirectUrl(link) {
+  if (!link || !/drive\.google\.com/i.test(link)) return null;
+  const m = link.match(/\/d\/([a-zA-Z0-9_-]+)/) || link.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (!m) return null;
+  return `https://drive.google.com/uc?export=download&id=${m[1]}`;
+}
+
 // For upload only (not scoring): if the CV is a .docx, convert it to an
 // actual PDF client-side (mammoth → HTML → html2pdf, both already loaded)
 // so cv_url points to something the browser can render inline instead of
@@ -826,7 +838,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.115";
+const APP_VERSION = "beta 5.116";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22068,17 +22080,19 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   const [hideNoCv, setHideNoCv] = useState(false);
   const reviewOne = async (app) => {
     const opening = openings.find(o=>o.id===app.job_opening_id);
-    if(!app.cv_url) {
-      // No CV file — score 0 and tag it, don't spend an AI call on it.
+    const cvSourceUrl = app.cv_url || driveLinkToDirectUrl(app.portfolio_attachment_url) || driveLinkToDirectUrl(app.portfolio_url);
+    if(!cvSourceUrl) {
+      // No CV file, and no Google Drive link to fall back to — score 0
+      // and tag it, don't spend an AI call on it.
       await ue("JobApplication", app.id, {ai_score:0, ai_summary:"No CV attached.", ai_extracted:null, ai_review_status:"no_cv"}).catch(()=>{});
       return;
     }
     let cvContent;
     try {
-      const r = await fetchWithTimeout(app.cv_url, {}, 20000);
+      const r = await fetchWithTimeout(cvSourceUrl, {}, 20000);
       if(!r.ok) throw new Error(`${r.status}`);
       const blob = await r.blob();
-      cvContent = await buildCvContentBlockFromUrl(blob, app.cv_url);
+      cvContent = await buildCvContentBlockFromUrl(blob, cvSourceUrl);
     } catch(e) {
       // The CV file itself is missing/broken/unreachable, or couldn't be
       // read as a PDF/Word document — not a fixable AI-call error. Tag it
@@ -22128,13 +22142,14 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   const handleAutoAssignUnassigned = async () => {
     setAutoAssigning(true);
     const openOpenings = openings.filter(o=>o.status==="open");
-    const unassigned = applications.filter(a=>!a.job_opening_id && a.cv_url);
+    const unassigned = applications.filter(a=>!a.job_opening_id && (a.cv_url || driveLinkToDirectUrl(a.portfolio_attachment_url) || driveLinkToDirectUrl(a.portfolio_url)));
     let done = 0;
     for (const app of unassigned) {
-      const r = await fetchWithTimeout(app.cv_url, {}, 20000).catch(()=>null);
+      const cvSourceUrl = app.cv_url || driveLinkToDirectUrl(app.portfolio_attachment_url) || driveLinkToDirectUrl(app.portfolio_url);
+      const r = await fetchWithTimeout(cvSourceUrl, {}, 20000).catch(()=>null);
       if(r?.ok) {
         const blob = await r.blob();
-        const cvContent = await buildCvContentBlockFromUrl(blob, app.cv_url).catch(()=>null);
+        const cvContent = await buildCvContentBlockFromUrl(blob, cvSourceUrl).catch(()=>null);
         if(cvContent) await reviewApplicationBestFit(app, cvContent, openOpenings);
       }
       done++;
