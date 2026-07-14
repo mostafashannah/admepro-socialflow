@@ -720,7 +720,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.98";
+const APP_VERSION = "beta 5.99";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21875,12 +21875,12 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
       {tab==="applications"&&(
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",justifyContent:"flex-end"}}>
-            <select value={openingFilter} onChange={e=>setOpeningFilter(e.target.value)} style={{...inputSt,width:"auto",borderRadius:99,padding:"5px 10px",fontSize:11}}>
+            <select value={openingFilter} onChange={e=>setOpeningFilter(e.target.value)} style={{...inputSt,width:"auto",minHeight:"auto",borderRadius:99,padding:"5px 10px",fontSize:11,fontWeight:600,border:"1px solid var(--border2)"}}>
               <option value="all">All Openings</option>
               <option value="unassigned">Unassigned</option>
               {openings.map(o=><option key={o.id} value={o.id}>{o.title}</option>)}
             </select>
-            <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} style={{...inputSt,width:"auto",borderRadius:99,padding:"5px 10px",fontSize:11}}>
+            <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} style={{...inputSt,width:"auto",minHeight:"auto",borderRadius:99,padding:"5px 10px",fontSize:11,fontWeight:600,border:"1px solid var(--border2)"}}>
               <option value="all">All Statuses</option>
               {APPLICATION_STATUSES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
