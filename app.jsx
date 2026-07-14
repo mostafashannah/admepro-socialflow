@@ -720,7 +720,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.110";
+const APP_VERSION = "beta 5.111";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21951,16 +21951,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     setSelectedApp(null);
     await de("JobApplication", app.id).catch(()=>{});
   };
-  const [deletingNoCv, setDeletingNoCv] = useState(false);
-  const handleDeleteAllNoCv = async () => {
-    const noCvApps = applications.filter(a=>a.ai_review_status==="no_cv");
-    if(!noCvApps.length) return;
-    if(!window.confirm(`Delete ${noCvApps.length} application${noCvApps.length!==1?"s":""} with no CV attached? This can't be undone.`)) return;
-    setDeletingNoCv(true);
-    setApplications(prev=>prev.filter(a=>a.ai_review_status!=="no_cv"));
-    await Promise.all(noCvApps.map(a=>de("JobApplication", a.id).catch(()=>{})));
-    setDeletingNoCv(false);
-  };
+  const [hideNoCv, setHideNoCv] = useState(false);
   const reviewOne = async (app) => {
     const opening = openings.find(o=>o.id===app.job_opening_id);
     if(!app.cv_url) {
@@ -22031,6 +22022,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   const filteredApps = applications
     .filter(a=>openingFilter==="all"||(openingFilter==="unassigned"?!a.job_opening_id:a.job_opening_id===openingFilter))
     .filter(a=>statusFilter==="all"||a.status===statusFilter)
+    .filter(a=>!hideNoCv||a.ai_review_status!=="no_cv")
     .filter(a=>{
       if(!searchQuery.trim()) return true;
       const q = searchQuery.trim().toLowerCase();
@@ -22141,7 +22133,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
               <button onClick={handleFixEmailApplications} disabled={fixingEmailApps} style={{padding:"5px 10px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{fixingEmailApps?"Fixing…":"Fix Email Applications"}</button>
               {retryMsg&&<span style={{fontSize:11,color:"var(--text2)"}}>{retryMsg}</span>}
               <button onClick={handleRetryAllStuck} disabled={retryingAll} style={{padding:"5px 10px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{retryingAll?"Retrying…":"Retry All Stuck AI Reviews"}</button>
-              <button onClick={handleDeleteAllNoCv} disabled={deletingNoCv} style={{padding:"5px 10px",borderRadius:99,background:"#ef444422",border:"1px solid #ef444455",fontSize:11,fontWeight:600,color:"#ef4444",cursor:"pointer"}}>{deletingNoCv?"Deleting…":"Delete All No-CV"}</button>
+              <button onClick={()=>setHideNoCv(v=>!v)} style={{padding:"5px 10px",borderRadius:99,background:hideNoCv?"var(--accent)":"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:hideNoCv?"#fff":"var(--text2)",cursor:"pointer"}}>{hideNoCv?"Showing With CV Only":"Hide No-CV"}</button>
             </div>
           </div>
           {filteredApps.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--text2)"}}>No applications match these filters.</div>}
