@@ -826,7 +826,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.114";
+const APP_VERSION = "beta 5.115";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22146,6 +22146,15 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     setTimeout(()=>setAutoAssignMsg(""),4000);
   };
 
+  const [cleaningUp, setCleaningUp] = useState(false);
+  const handleCleanUpApplications = async () => {
+    setCleaningUp(true);
+    await handleFixEmailApplications();
+    await handleRetryAllStuck();
+    await handleAutoAssignUnassigned();
+    setCleaningUp(false);
+  };
+
   // Auto-heal: an application can get stuck at ai_review_status "pending"
   // forever if the browser tab that triggered its AI review closed mid-call
   // (e.g. a web applicant closing the tab right after submitting), with no
@@ -22276,13 +22285,9 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
               <option value="oldest">Oldest First</option>
             </select>
             <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-              {fixMsg&&<span style={{fontSize:11,color:"var(--text2)"}}>{fixMsg}</span>}
-              <button onClick={handleFixEmailApplications} disabled={fixingEmailApps} style={{padding:"5px 10px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{fixingEmailApps?"Fixing…":"Fix Email Applications"}</button>
-              {retryMsg&&<span style={{fontSize:11,color:"var(--text2)"}}>{retryMsg}</span>}
-              <button onClick={handleRetryAllStuck} disabled={retryingAll} style={{padding:"5px 10px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{retryingAll?"Retrying…":"Retry All Stuck AI Reviews"}</button>
+              {(fixMsg||retryMsg||autoAssignMsg)&&<span style={{fontSize:11,color:"var(--text2)"}}>{fixMsg||retryMsg||autoAssignMsg}</span>}
+              <button onClick={handleCleanUpApplications} disabled={cleaningUp||fixingEmailApps||retryingAll||autoAssigning} style={{padding:"5px 10px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{fixingEmailApps?"Fixing Email Applications…":retryingAll?"Retrying Stuck AI Reviews…":autoAssigning?"Auto-Assigning…":"Clean Up Applications"}</button>
               <button onClick={()=>setHideNoCv(v=>!v)} style={{padding:"5px 10px",borderRadius:99,background:hideNoCv?"var(--accent)":"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:hideNoCv?"#fff":"var(--text2)",cursor:"pointer"}}>{hideNoCv?"Showing With CV Only":"Hide No-CV"}</button>
-              {autoAssignMsg&&<span style={{fontSize:11,color:"var(--text2)"}}>{autoAssignMsg}</span>}
-              <button onClick={handleAutoAssignUnassigned} disabled={autoAssigning} style={{padding:"5px 10px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{autoAssigning?"Assigning…":"Auto-Assign Unassigned (Best Fit)"}</button>
             </div>
           </div>
           {filteredApps.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--text2)"}}>No applications match these filters.</div>}
