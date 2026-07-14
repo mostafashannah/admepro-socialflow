@@ -720,7 +720,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.108";
+const APP_VERSION = "beta 5.109";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21819,6 +21819,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   const [showForm, setShowForm] = useState(false);
   const [editOpening, setEditOpening] = useState(null);
   const [selectedApp, setSelectedApp] = useState(null);
+  const [selectedGroup, setSelectedGroup] = useState(null);
   const [openingFilter, setOpeningFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState("score");
@@ -21828,12 +21829,14 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   // Browser back button should close the application detail view and land
   // back on the applications list, not navigate away from the page.
   useEffect(()=>{
-    const onPop = () => setSelectedApp(null);
+    const onPop = () => { setSelectedApp(null); setSelectedGroup(null); };
     window.addEventListener("popstate", onPop);
     return ()=>window.removeEventListener("popstate", onPop);
   },[]);
   const openApp = (a) => { try{ window.history.pushState({recruitmentApp:a.id}, ""); }catch(e){} setSelectedApp(a); };
   const closeApp = () => { window.history.back(); };
+  const openGroup = (group) => { try{ window.history.pushState({recruitmentGroup:true}, ""); }catch(e){} setSelectedGroup(group); };
+  const closeGroup = () => { window.history.back(); };
 
   const load = async () => {
     setLoading(true);
@@ -22042,6 +22045,23 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication}/>
   );
 
+  if(selectedGroup) {
+    const sortedGroup = [...selectedGroup].sort((x,y)=>(y.ai_score??-1)-(x.ai_score??-1));
+    return (
+      <div className="fade-in" style={{maxWidth:700,display:"flex",flexDirection:"column",gap:20}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <button onClick={closeGroup} style={{width:36,height:36,borderRadius:"50%",background:"var(--surface2)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text2)",cursor:"pointer",flexShrink:0}}>
+            <Ico d={Icons.chevL} size={16}/>
+          </button>
+          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:22,margin:0}}>{sortedGroup[0].candidate_name} · {sortedGroup.length} applications</h2>
+        </div>
+        {sortedGroup.map(app=>(
+          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication}/>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="fade-in" style={{display:"flex",flexDirection:"column",gap:20}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
@@ -22157,31 +22177,24 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
               }
               const sortedGroup = [...group].sort((x,y)=>(y.ai_score??-1)-(x.ai_score??-1));
               const bestScore = sortedGroup.find(app=>app.ai_score!=null)?.ai_score;
+              const bestApp = sortedGroup[0];
+              const bestStatusInfo = APPLICATION_STATUSES.find(s=>s.key===bestApp.status)||APPLICATION_STATUSES[0];
               return (
-                <div key={a.candidate_email} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"column",gap:10}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:12}}>
-                      <Avatar name={a.candidate_name} size={36}/>
-                      <div>
-                        <p style={{fontWeight:700,fontSize:14}}>{a.candidate_name}</p>
-                        <p style={{fontSize:12,color:"var(--text3)"}}>{a.candidate_email}{a.candidate_phone?` · ${a.candidate_phone}`:""} · Applied to {group.length} positions</p>
-                      </div>
-                    </div>
-                    <div style={{display:"flex",alignItems:"center",gap:10}}>
-                      {bestScore!=null&&<span style={{fontWeight:800,fontSize:16,color:bestScore>=70?"#10b981":bestScore>=40?"#f59e0b":"#ef4444"}}>{bestScore}</span>}
+                <div key={a.candidate_email} onClick={()=>openGroup(sortedGroup)} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:"pointer",flexWrap:"wrap"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:12}}>
+                    <Avatar name={a.candidate_name} size={36}/>
+                    <div>
+                      <p style={{fontWeight:700,fontSize:14}}>{a.candidate_name}</p>
+                      <p style={{fontSize:12,color:"var(--text3)"}}>{group.length} positions applied · {fmtDateTime(bestApp.created_at)}</p>
                     </div>
                   </div>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:8,paddingLeft:48}}>
-                    {sortedGroup.map(app => {
-                      const statusInfo = APPLICATION_STATUSES.find(s=>s.key===app.status)||APPLICATION_STATUSES[0];
-                      return (
-                        <button key={app.id} onClick={()=>openApp(app)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",cursor:"pointer"}}>
-                          <span style={{fontSize:12,fontWeight:600}}>{app.job_title}</span>
-                          {app.ai_score!=null&&<span style={{fontSize:11,fontWeight:800,color:app.ai_score>=70?"#10b981":app.ai_score>=40?"#f59e0b":"#ef4444"}}>{app.ai_score}</span>}
-                          <Badge label={statusInfo.label} color={statusInfo.color} xs/>
-                        </button>
-                      );
-                    })}
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    {bestApp.ai_review_status==="pending"&&<Spinner size={13}/>}
+                    {bestApp.ai_review_status==="no_cv"&&<Badge label="No CV" color="#6b7280" xs/>}
+                    {bestApp.ai_review_status==="cv_error"&&<Badge label="Crashed CV" color="#f59e0b" xs/>}
+                    {bestScore!=null&&<span style={{fontWeight:800,fontSize:16,color:bestScore>=70?"#10b981":bestScore>=40?"#f59e0b":"#ef4444"}}>{bestScore}</span>}
+                    <Badge label={`${group.length} Applications`} color="#6366f1" xs/>
+                    <Badge label={bestStatusInfo.label} color={bestStatusInfo.color} xs/>
                   </div>
                 </div>
               );
