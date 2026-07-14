@@ -86,10 +86,31 @@ function send_via_resend($to, $subject, $html, $fromName = 'Admepro Careers') {
     return $status >= 200 && $status < 300;
 }
 
+// Extracts plain text from a .docx file's raw bytes — a .docx is a zip
+// archive with the actual text in word/document.xml. Legacy .doc (pre-2007
+// binary format) can't be read this way; returns null for those/on any
+// failure so the caller can fall back to tagging the CV as unreadable
+// instead of scoring garbage.
+function extract_docx_text($rawBytes) {
+    $tmp = tempnam(sys_get_temp_dir(), 'docx');
+    file_put_contents($tmp, $rawBytes);
+    $zip = new ZipArchive();
+    if ($zip->open($tmp) !== true) { unlink($tmp); return null; }
+    $xml = $zip->getFromName('word/document.xml');
+    $zip->close();
+    unlink($tmp);
+    if ($xml === false) return null;
+    $xml = preg_replace('/<\/w:p>/', "\n", $xml);
+    $text = trim(html_entity_decode(strip_tags($xml)));
+    return $text !== '' ? $text : null;
+}
+
 // Same shape/prompt as reviewApplication() in app.jsx, called server-side
-// here instead of from the browser.
-function ai_review_cv($pdoRef, $applicationId, $pdfBase64, $jobTitle, $jobDescription, $jobRequirements) {
-    $sys = "You are an HR screening assistant reviewing a candidate's CV (attached as a PDF document) for the position \"".($jobTitle ?: 'this role')."\".\n"
+// here instead of from the browser. $cvContent is a pre-built Claude
+// content block — a "document" block for a PDF, or a "text" block with
+// extracted text for a .docx (see extract_docx_text above).
+function ai_review_cv($pdoRef, $applicationId, $cvContent, $jobTitle, $jobDescription, $jobRequirements) {
+    $sys = "You are an HR screening assistant reviewing a candidate's CV (attached below, as a PDF document or as extracted text from a Word document) for the position \"".($jobTitle ?: 'this role')."\".\n"
         . "Job description: " . substr($jobDescription ?: '', 0, 1500) . "\n"
         . "Requirements: " . substr($jobRequirements ?: '', 0, 1500) . "\n\n"
         . "Read the CV and return ONLY JSON in this exact shape:\n"
@@ -99,7 +120,7 @@ function ai_review_cv($pdoRef, $applicationId, $pdfBase64, $jobTitle, $jobDescri
     $payload = json_encode([
         "model" => "claude-sonnet-4-6", "max_tokens" => 1500, "system" => $sys,
         "messages" => [["role" => "user", "content" => [
-            ["type" => "document", "source" => ["type" => "base64", "media_type" => "application/pdf", "data" => $pdfBase64]],
+            $cvContent,
             ["type" => "text", "text" => "Review this CV and return the JSON described in the system prompt."],
         ]]],
     ]);
@@ -286,8 +307,12 @@ foreach ($messages as $message) {
             $name = strtolower((string) $attachment->getName());
             $mime = strtolower((string) $attachment->getMimeType());
             $isPdf = str_ends_with($name, '.pdf') || $mime === 'application/pdf';
-            if ($isPdf && !$cvUrl) {
-                $cvUrl = $saveAttachment($attachment, 'email', 'cv.pdf');
+            $isDocx = str_ends_with($name, '.docx') || $mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+            $isDoc = !$isDocx && (str_ends_with($name, '.doc') || $mime === 'application/msword');
+            if (($isPdf || $isDocx || $isDoc) && !$cvUrl) {
+                $cvUrl = $saveAttachment($attachment, 'email', $isPdf ? 'cv.pdf' : ($isDocx ? 'cv.docx' : 'cv.doc'));
+                $cvUrl['is_docx'] = $isDocx;
+                $cvUrl['is_doc'] = $isDoc;
             } elseif (!$portfolioAttachmentUrl) {
                 $portfolioAttachmentUrl = $saveAttachment($attachment, 'portfolio', 'portfolio');
             }
@@ -406,7 +431,24 @@ foreach ($messages as $message) {
         $newId = $lookup->fetchColumn();
 
         if ($newId && $cvUrl) {
-            ai_review_cv($pdo, $newId, $cvUrl['base64'], $matchedOpening['title'] ?? null, $matchedOpening['description'] ?? '', $matchedOpening['requirements'] ?? '');
+            $cvContent = null;
+            if (!empty($cvUrl['is_doc'])) {
+                // Legacy .doc — can't extract text (no library available server-side
+                // for the old binary format) — tag it instead of scoring garbage.
+                $pdo->prepare("UPDATE job_applications SET ai_score=0, ai_summary='Legacy .doc file could not be read — please ask the candidate for a PDF or .docx.', ai_review_status='cv_error' WHERE id=:id")->execute([':id' => $newId]);
+            } elseif (!empty($cvUrl['is_docx'])) {
+                $docxText = extract_docx_text(base64_decode($cvUrl['base64']));
+                if ($docxText) {
+                    $cvContent = ["type" => "text", "text" => substr($docxText, 0, 20000)];
+                } else {
+                    $pdo->prepare("UPDATE job_applications SET ai_score=0, ai_summary='Could not extract text from this Word document.', ai_review_status='cv_error' WHERE id=:id")->execute([':id' => $newId]);
+                }
+            } else {
+                $cvContent = ["type" => "document", "source" => ["type" => "base64", "media_type" => "application/pdf", "data" => $cvUrl['base64']]];
+            }
+            if ($cvContent) {
+                ai_review_cv($pdo, $newId, $cvContent, $matchedOpening['title'] ?? null, $matchedOpening['description'] ?? '', $matchedOpening['requirements'] ?? '');
+            }
         } elseif ($newId) {
             // No CV — score 0 and tag it rather than spend an AI call on it.
             $pdo->prepare("UPDATE job_applications SET ai_score=0, ai_summary='No CV attached.' WHERE id=:id")->execute([':id' => $newId]);

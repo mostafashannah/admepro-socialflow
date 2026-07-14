@@ -611,10 +611,71 @@ async function fetchWithTimeout(url, options, ms=45000) {
   finally { clearTimeout(t); }
 }
 
-async function reviewApplication(application, cvBase64, opening) {
-  if(!application?.id || !cvBase64) return null;
-  const data = cvBase64.includes(",") ? cvBase64.split(",")[1] : cvBase64;
-  const sys = `You are an HR screening assistant reviewing a candidate's CV (attached as a PDF document) for the position "${opening?.title||application.job_title||"this role"}".
+// Builds the Claude content block for a CV file — a PDF goes in as a
+// "document" block (as before); a .docx goes in as extracted plain text
+// via mammoth.js (loaded from CDN in index.html), since Claude's document
+// blocks only render PDFs. Legacy .doc (pre-2007 binary format) isn't
+// supported by mammoth — those throw so the caller can fail gracefully
+// instead of silently mis-scoring garbage.
+async function buildCvContentBlock(file) {
+  const name = (file.name||"").toLowerCase();
+  const isDocx = name.endsWith(".docx") || file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  const isLegacyDoc = !isDocx && (name.endsWith(".doc") || file.type === "application/msword");
+  if (isLegacyDoc) throw new Error("Legacy .doc files can't be read for AI scoring — please re-save as PDF or .docx.");
+  if (isDocx) {
+    if (!window.mammoth) throw new Error("Word document reader not loaded — please try again in a moment.");
+    const arrayBuffer = await file.arrayBuffer();
+    const result = await window.mammoth.extractRawText({arrayBuffer});
+    const text = (result.value||"").trim();
+    if (!text) throw new Error("Couldn't extract any text from this Word document.");
+    return {type:"text", text: text.slice(0,20000)};
+  }
+  const dataUrl = await new Promise((res,rej)=>{ const reader = new FileReader(); reader.onload = ()=>res(reader.result); reader.onerror = ()=>rej(reader.error||new Error("read error")); reader.readAsDataURL(file); });
+  const data = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
+  return {type:"document", source:{type:"base64", media_type:"application/pdf", data}};
+}
+
+// Same as buildCvContentBlock(), but for a Blob fetched from a stored
+// cv_url (which has no filename of its own) instead of a File from an
+// <input>. Infers the filename/type from the URL so the PDF-vs-Word
+// detection in buildCvContentBlock still works.
+async function buildCvContentBlockFromUrl(blob, url) {
+  const name = (url||"").split("/").pop().split("?")[0] || "cv";
+  const asFile = new File([blob], name, {type: blob.type});
+  return buildCvContentBlock(asFile);
+}
+
+// For upload only (not scoring): if the CV is a .docx, convert it to an
+// actual PDF client-side (mammoth → HTML → html2pdf, both already loaded)
+// so cv_url points to something the browser can render inline instead of
+// forcing a download of a .docx. Legacy .doc can't be converted this way
+// (mammoth doesn't support it) — those are stored as-is. Returns the
+// original file unchanged if it's already a PDF or conversion fails.
+async function convertCvToPdfForStorage(file) {
+  const name = (file.name||"").toLowerCase();
+  const isDocx = name.endsWith(".docx") || file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  if (!isDocx || !window.mammoth || !window.html2pdf) return file;
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const {value: html} = await window.mammoth.convertToHtml({arrayBuffer});
+    const container = document.createElement("div");
+    container.style.cssText = "padding:32px;font-family:Arial,sans-serif;font-size:12px;line-height:1.6;color:#111;background:#fff;width:700px;position:fixed;left:-9999px;top:0";
+    container.innerHTML = html || "<p>(empty document)</p>";
+    document.body.appendChild(container);
+    try {
+      const pdfBlob = await window.html2pdf().set({filename:"cv.pdf", jsPDF:{unit:"pt",format:"a4"}}).from(container).outputPdf("blob");
+      return new File([pdfBlob], file.name.replace(/\.docx$/i, ".pdf"), {type:"application/pdf"});
+    } finally {
+      document.body.removeChild(container);
+    }
+  } catch(e) {
+    return file; // conversion failed — fall back to storing the original
+  }
+}
+
+async function reviewApplication(application, cvContent, opening) {
+  if(!application?.id || !cvContent) return null;
+  const sys = `You are an HR screening assistant reviewing a candidate's CV (attached below, as a PDF document or as extracted text from a Word document) for the position "${opening?.title||application.job_title||"this role"}".
 Job description: ${(opening?.description||"").slice(0,1500)}
 Requirements: ${(opening?.requirements||"").slice(0,1500)}
 
@@ -627,7 +688,7 @@ ${AI_REVIEW_JSON_SHAPE}
       body: JSON.stringify({
         model:"claude-sonnet-4-6", max_tokens:1500, system:sys,
         messages:[{role:"user", content:[
-          {type:"document", source:{type:"base64", media_type:"application/pdf", data}},
+          cvContent,
           {type:"text", text:"Review this CV and return the JSON described in the system prompt."},
         ]}],
       }),
@@ -647,12 +708,11 @@ ${AI_REVIEW_JSON_SHAPE}
 // best, instead of leaving it unassigned or generically scored against
 // "this role". Falls back to reviewApplication()'s generic scoring if
 // there are no open openings to compare against.
-async function reviewApplicationBestFit(application, cvBase64, openOpenings) {
-  if(!application?.id || !cvBase64) return null;
-  if(!openOpenings?.length) return reviewApplication(application, cvBase64, null);
-  const data = cvBase64.includes(",") ? cvBase64.split(",")[1] : cvBase64;
+async function reviewApplicationBestFit(application, cvContent, openOpenings) {
+  if(!application?.id || !cvContent) return null;
+  if(!openOpenings?.length) return reviewApplication(application, cvContent, null);
   const openingsList = openOpenings.map((o,i)=>`${i+1}. "${o.title}"\nDescription: ${(o.description||"").slice(0,600)}\nRequirements: ${(o.requirements||"").slice(0,600)}`).join("\n\n");
-  const sys = `You are an HR screening assistant. This candidate's application wasn't tied to a specific job opening — read their CV (attached as a PDF) and decide which of these OPEN positions they fit best:
+  const sys = `You are an HR screening assistant. This candidate's application wasn't tied to a specific job opening — read their CV (attached below, as a PDF document or as extracted text from a Word document) and decide which of these OPEN positions they fit best:
 
 ${openingsList}
 
@@ -665,7 +725,7 @@ Return ONLY JSON in this exact shape:
       body: JSON.stringify({
         model:"claude-sonnet-4-6", max_tokens:1500, system:sys,
         messages:[{role:"user", content:[
-          {type:"document", source:{type:"base64", media_type:"application/pdf", data}},
+          cvContent,
           {type:"text", text:"Review this CV, pick the best-fit open position, and return the JSON described in the system prompt."},
         ]}],
       }),
@@ -766,7 +826,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.113";
+const APP_VERSION = "beta 5.114";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13190,16 +13250,18 @@ function CompleteApplicationPage({token}) {
       if(missing.available_start_date) patch.available_start_date = form.available_start_date;
       if(missing.open_to_task) patch.open_to_task = form.open_to_task;
 
-      let cvBase64 = null;
+      let cvContent = null;
       if(missing.cv && cvFile) {
-        const cv_url = await uploadToStorage(cvFile, "job-applications/email");
+        try { cvContent = await buildCvContentBlock(cvFile); }
+        catch(e) { patch.ai_review_status = "cv_error"; patch.ai_score = 0; patch.ai_summary = String(e?.message||e); }
+        const fileToStore = await convertCvToPdfForStorage(cvFile);
+        const cv_url = await uploadToStorage(fileToStore, "job-applications/email");
         patch.cv_url = cv_url;
-        patch.ai_review_status = "pending";
-        cvBase64 = await new Promise(res=>{ const reader = new FileReader(); reader.onload = ()=>res(reader.result); reader.readAsDataURL(cvFile); });
+        if(!patch.ai_review_status) patch.ai_review_status = "pending";
       }
 
       await ue("JobApplication", application.id, patch);
-      if(cvBase64) reviewApplication({...application, ...patch}, cvBase64, opening).catch(()=>{});
+      if(cvContent) reviewApplication({...application, ...patch}, cvContent, opening).catch(()=>{});
       setDone(true);
     } catch(e) { alert("Something went wrong submitting your info. Please try again."); }
     setSubmitting(false);
@@ -13244,8 +13306,8 @@ function CompleteApplicationPage({token}) {
             {missing.name&&<Field label="Full Name"><input value={form.name} onChange={e=>sf("name",e.target.value)} style={inputSt}/></Field>}
             {missing.phone&&<Field label="Phone"><input value={form.phone} onChange={e=>sf("phone",e.target.value)} style={inputSt}/></Field>}
             {missing.cv&&(
-              <Field label="CV (PDF, max 5MB)">
-                <input ref={cvRef} type="file" accept="application/pdf" onChange={handleCvFile} style={inputSt}/>
+              <Field label="CV (PDF or Word, max 5MB)">
+                <input ref={cvRef} type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={handleCvFile} style={inputSt}/>
                 {cvFile&&<p style={{fontSize:11,color:isDark?"#9099ab":"#666",marginTop:4}}>{cvFile.name}</p>}
               </Field>
             )}
@@ -13299,7 +13361,6 @@ function CareersPage({appSettings}) {
   const closeJob = () => { window.history.back(); };
   const [form, setForm] = useState({name:"",email:"",phone:"",cover_letter:"",portfolio_url:"",linkedin_url:"",current_salary:"",expected_salary:"",available_start_date:"",open_to_task:"yes",website:""}); // "website" = honeypot
   const [cvFile, setCvFile] = useState(null);
-  const [cvBase64, setCvBase64] = useState(null);
   const [portfolioFile, setPortfolioFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
@@ -13317,12 +13378,12 @@ function CareersPage({appSettings}) {
   const handleCv = e => {
     const file = e.target.files?.[0];
     if(!file) return;
-    if(file.type!=="application/pdf") { alert("Please upload your CV as a PDF file."); return; }
+    const name = file.name.toLowerCase();
+    const isPdf = file.type==="application/pdf" || name.endsWith(".pdf");
+    const isWord = name.endsWith(".doc") || name.endsWith(".docx") || file.type==="application/msword" || file.type==="application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    if(!isPdf && !isWord) { alert("Please upload your CV as a PDF or Word document."); return; }
     if(file.size > MAX_CV_MB*1024*1024) { alert(`CV is too large (max ${MAX_CV_MB}MB). Please choose a smaller file.`); return; }
     setCvFile(file);
-    const reader = new FileReader();
-    reader.onload = ev => setCvBase64(ev.target.result);
-    reader.readAsDataURL(file);
   };
 
   const handlePortfolioFile = e => {
@@ -13339,7 +13400,7 @@ function CareersPage({appSettings}) {
     if(!form.cover_letter.trim()) { alert("Cover letter is required."); return; }
     if(!form.expected_salary.trim()) { alert("Expected salary is required."); return; }
     if(!form.available_start_date) { alert("Available join date is required."); return; }
-    if(!cvFile||!cvBase64) { alert("Please attach your CV (PDF)."); return; }
+    if(!cvFile) { alert("Please attach your CV (PDF or Word)."); return; }
     setSubmitting(true);
     try {
       // Guard against accidental double-submits (double-click, browser
@@ -13352,7 +13413,11 @@ function CareersPage({appSettings}) {
         setSubmitting(false);
         return;
       }
-      const cv_url = await uploadToStorage(cvFile, "job-applications");
+      let cvContent = null, ai_review_status = "pending", ai_score, ai_summary;
+      try { cvContent = await buildCvContentBlock(cvFile); }
+      catch(e) { ai_review_status = "cv_error"; ai_score = 0; ai_summary = String(e?.message||e); }
+      const cvFileToStore = await convertCvToPdfForStorage(cvFile);
+      const cv_url = await uploadToStorage(cvFileToStore, "job-applications");
       const portfolio_attachment_url = portfolioFile ? await uploadToStorage(portfolioFile, "job-applications/portfolio") : "";
       const res = await ce("JobApplication",[{
         job_opening_id: selected.id, job_title: selected.title,
@@ -13360,11 +13425,11 @@ function CareersPage({appSettings}) {
         cv_url, cover_letter: form.cover_letter, portfolio_url: form.portfolio_url, portfolio_attachment_url, linkedin_url: form.linkedin_url,
         current_salary: form.current_salary, expected_salary: form.expected_salary,
         available_start_date: form.available_start_date, open_to_task: form.open_to_task,
-        status:"new", ai_review_status:"pending",
+        status:"new", ai_review_status, ai_score, ai_summary,
       }]);
       const created = res.entities?.[0];
       setDone(true);
-      if(created?.id) reviewApplication(created, cvBase64, selected).catch(()=>{});
+      if(created?.id && cvContent) reviewApplication(created, cvContent, selected).catch(()=>{});
       const es = {...RECRUITMENT_EMAIL_DEFAULTS, ...(appSettings?.recruitment_email_settings||{})};
       if(es.confirmation_enabled!==false) {
         sendEmail(form.email.trim(), es.confirmation_subject||"Thanks for applying to Admepro!", applicationReceivedEmail(form.name.trim(), selected.title, es.confirmation_message), es.confirmation_from_name||"Admepro Careers").catch(()=>{});
@@ -13498,11 +13563,11 @@ function CareersPage({appSettings}) {
             {/* Honeypot — hidden from real users, bots tend to fill every field */}
             <input value={form.website} onChange={e=>sf("website",e.target.value)} tabIndex={-1} autoComplete="off" style={{position:"absolute",left:-9999,width:1,height:1,opacity:0}} aria-hidden="true"/>
             <div>
-              <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>CV (PDF only, max {MAX_CV_MB}MB) *</label>
+              <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>CV (PDF or Word, max {MAX_CV_MB}MB) *</label>
               <button onClick={()=>fileRef.current?.click()} style={{width:"100%",padding:"12px",borderRadius:"var(--rs)",border:"1px dashed var(--border2)",background:"var(--surface2)",color:cvFile?"var(--text)":"var(--text2)",fontSize:13,fontWeight:600,cursor:"pointer",textAlign:"left"}}>
-                {cvFile ? `📄 ${cvFile.name}` : "Click to attach your CV (PDF)"}
+                {cvFile ? `📄 ${cvFile.name}` : "Click to attach your CV (PDF or Word)"}
               </button>
-              <input ref={fileRef} type="file" accept="application/pdf" style={{display:"none"}} onChange={handleCv}/>
+              <input ref={fileRef} type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style={{display:"none"}} onChange={handleCv}/>
             </div>
           </div>
 
@@ -22008,18 +22073,18 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
       await ue("JobApplication", app.id, {ai_score:0, ai_summary:"No CV attached.", ai_extracted:null, ai_review_status:"no_cv"}).catch(()=>{});
       return;
     }
-    let base64;
+    let cvContent;
     try {
       const r = await fetchWithTimeout(app.cv_url, {}, 20000);
       if(!r.ok) throw new Error(`${r.status}`);
       const blob = await r.blob();
-      const reader = new FileReader();
-      base64 = await new Promise((res,rej)=>{ reader.onload = ()=>res(reader.result); reader.onerror = ()=>rej(reader.error||new Error("read error")); reader.readAsDataURL(blob); });
+      cvContent = await buildCvContentBlockFromUrl(blob, app.cv_url);
     } catch(e) {
-      // The CV file itself is missing/broken/unreachable — not an AI
-      // failure. Tag it distinctly so it's not confused with a fixable
-      // AI-call error, and don't keep burning retries on a dead file.
-      await ue("JobApplication", app.id, {ai_score:0, ai_summary:"CV file could not be loaded (crashed/corrupted CV).", ai_extracted:null, ai_review_status:"cv_error"}).catch(()=>{});
+      // The CV file itself is missing/broken/unreachable, or couldn't be
+      // read as a PDF/Word document — not a fixable AI-call error. Tag it
+      // distinctly so it's not confused with one, and don't keep burning
+      // retries on a dead file.
+      await ue("JobApplication", app.id, {ai_score:0, ai_summary:`CV file could not be loaded: ${String(e?.message||e)}`, ai_extracted:null, ai_review_status:"cv_error"}).catch(()=>{});
       return;
     }
     await ue("JobApplication", app.id, {ai_review_status:"pending"});
@@ -22027,9 +22092,9 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
       // Unassigned but has a CV — instead of scoring against "this role"
       // generically, check fit against every open opening and assign
       // whichever one the candidate matches best.
-      await reviewApplicationBestFit(app, base64, openings.filter(o=>o.status==="open"));
+      await reviewApplicationBestFit(app, cvContent, openings.filter(o=>o.status==="open"));
     } else {
-      await reviewApplication(app, base64, opening);
+      await reviewApplication(app, cvContent, opening);
     }
   };
   const handleRerunReview = async (app) => {
@@ -22069,9 +22134,8 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
       const r = await fetchWithTimeout(app.cv_url, {}, 20000).catch(()=>null);
       if(r?.ok) {
         const blob = await r.blob();
-        const reader = new FileReader();
-        const base64 = await new Promise(res=>{ reader.onload = ()=>res(reader.result); reader.readAsDataURL(blob); });
-        await reviewApplicationBestFit(app, base64, openOpenings);
+        const cvContent = await buildCvContentBlockFromUrl(blob, app.cv_url).catch(()=>null);
+        if(cvContent) await reviewApplicationBestFit(app, cvContent, openOpenings);
       }
       done++;
       setAutoAssignMsg(`Assigning ${done}/${unassigned.length}…`);
