@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.73";
+const APP_VERSION = "beta 5.74";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12910,7 +12910,7 @@ function CareersFullMenu({onClose}) {
       <style>{`
         .careers-nav-flip{display:block;text-decoration:none;perspective:600px}
         .careers-nav-flip-inner{position:relative;transition:transform 0.5s cubic-bezier(.4,0,.2,1);transform-style:preserve-3d}
-        .careers-nav-flip:hover .careers-nav-flip-inner{transform:rotateX(180deg)}
+        .careers-nav-flip:hover .careers-nav-flip-inner,.careers-nav-flip:active .careers-nav-flip-inner{transform:rotateX(180deg)}
         .careers-nav-flip-face{display:block;backface-visibility:hidden}
         .careers-nav-flip-face.back{position:absolute;inset:0;transform:rotateX(180deg);color:#d90b2c}
       `}</style>
