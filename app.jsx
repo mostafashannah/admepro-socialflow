@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.70";
+const APP_VERSION = "beta 5.71";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12855,20 +12855,32 @@ const CAREERS_NAV_LINKS = [
 // Full-screen menu overlay matching admepro.com's own site menu style —
 // big bold nav links on the left, contact info + social icons on the right.
 function CareersFullMenu({onClose}) {
+  const navFontStyle = {fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:"clamp(40px,8vw,80px)",lineHeight:1.1,color:"#fff",textTransform:"uppercase",letterSpacing:"-0.01em"};
   return (
     <div style={{position:"fixed",inset:0,zIndex:100,background:"rgba(10,10,14,0.97)",backdropFilter:"blur(10px)",overflowY:"auto"}}>
+      {/* Two-layer flip: hovering rotates the inner wrapper 180deg so the
+          duplicate back-face label swaps in — a single-layer rotateX(360deg)
+          made the text vanish mid-spin (backface-visibility hidden with
+          nothing behind it), which read as flickering/"shaking". */}
+      <style>{`
+        .careers-nav-flip{display:block;text-decoration:none;perspective:600px}
+        .careers-nav-flip-inner{position:relative;transition:transform 0.5s cubic-bezier(.4,0,.2,1);transform-style:preserve-3d}
+        .careers-nav-flip:hover .careers-nav-flip-inner{transform:rotateX(180deg)}
+        .careers-nav-flip-face{display:block;backface-visibility:hidden}
+        .careers-nav-flip-face.back{position:absolute;inset:0;transform:rotateX(180deg);color:#d90b2c}
+      `}</style>
       <button onClick={onClose} style={{position:"absolute",top:20,right:20,width:44,height:44,borderRadius:"50%",background:"rgba(255,255,255,0.1)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff"}}>
         <Ico d={Icons.x} size={20}/>
       </button>
       <div style={{minHeight:"100vh",display:"grid",gridTemplateColumns:"repeat(4,1fr)",padding:"40px",gap:24}}>
         <div/>
-        <div style={{display:"flex",flexDirection:"column",justifyContent:"center",marginLeft:-100,perspective:800}}>
+        <div style={{display:"flex",flexDirection:"column",justifyContent:"center",marginLeft:-100}}>
           {CAREERS_NAV_LINKS.map(item=>(
-            <a key={item.label} href={item.url} target="_blank" rel="noreferrer"
-              onMouseEnter={e=>{e.currentTarget.style.transform="rotateX(360deg)";}}
-              onMouseLeave={e=>{e.currentTarget.style.transform="rotateX(0deg)";}}
-              style={{display:"block",fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:"clamp(40px,8vw,80px)",lineHeight:1.1,color:"#fff",textDecoration:"none",textTransform:"uppercase",letterSpacing:"-0.01em",transition:"transform 0.6s ease",transformStyle:"preserve-3d",backfaceVisibility:"hidden"}}>
-              {item.label}
+            <a key={item.label} href={item.url} target="_blank" rel="noreferrer" className="careers-nav-flip">
+              <span className="careers-nav-flip-inner">
+                <span className="careers-nav-flip-face" style={navFontStyle}>{item.label}</span>
+                <span className="careers-nav-flip-face back" style={navFontStyle}>{item.label}</span>
+              </span>
             </a>
           ))}
         </div>
