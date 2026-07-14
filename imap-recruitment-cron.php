@@ -285,11 +285,16 @@ foreach ($messages as $message) {
             }
         }
 
-        // Pull any links out of the body: LinkedIn goes to linkedin_url,
-        // the first other link (portfolio/Behance/personal site/etc.) to
-        // portfolio_url — same fields the public /careers form fills in.
+        // Pull any links out of the body: LinkedIn goes to linkedin_url, the
+        // first other link (portfolio/Behance/personal site/etc.) to
+        // portfolio_url — same fields the public /careers form fills in. A
+        // second non-LinkedIn link (e.g. a Google Drive CV link some
+        // applicants paste instead of attaching a file) goes into
+        // portfolio_attachment_url as a clickable link, same slot used for
+        // an actual second file attachment.
         $linkedinUrl = null;
         $portfolioUrl = null;
+        $secondLink = null;
         if (preg_match_all('/https?:\/\/[^\s<>")]+/i', $bodyText, $urlMatches)) {
             foreach ($urlMatches[0] as $url) {
                 $url = rtrim($url, '.,;:!?');
@@ -297,8 +302,13 @@ foreach ($messages as $message) {
                     if (!$linkedinUrl) $linkedinUrl = $url;
                 } elseif (!$portfolioUrl) {
                     $portfolioUrl = $url;
+                } elseif (!$secondLink && $url !== $portfolioUrl) {
+                    $secondLink = $url;
                 }
             }
+        }
+        if ($secondLink && !$portfolioAttachmentUrl) {
+            $portfolioAttachmentUrl = ['url' => $secondLink];
         }
 
         // Best-effort phone number from the body (AI review, when it runs,

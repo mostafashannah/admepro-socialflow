@@ -720,7 +720,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.96";
+const APP_VERSION = "beta 5.97";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21691,12 +21691,15 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
       const isEmail = app.source === "email";
       // Pull links out of the cover letter that weren't split into their
       // own fields yet (older email captures, before link parsing was added).
-      if (isEmail && (!app.portfolio_url || !app.linkedin_url) && app.cover_letter) {
+      // A second non-LinkedIn link (e.g. a Google Drive CV link pasted
+      // instead of attached) goes into portfolio_attachment_url.
+      if (isEmail && (!app.portfolio_url || !app.linkedin_url || !app.portfolio_attachment_url) && app.cover_letter) {
         const urls = app.cover_letter.match(/https?:\/\/[^\s<>")]+/gi) || [];
         for (let url of urls) {
           url = url.replace(/[.,;:!?]+$/,"");
           if (/linkedin\.com/i.test(url)) { if (!app.linkedin_url && !patch.linkedin_url) patch.linkedin_url = url; }
           else if (!app.portfolio_url && !patch.portfolio_url) patch.portfolio_url = url;
+          else if (!app.portfolio_attachment_url && !patch.portfolio_attachment_url && url!==(patch.portfolio_url||app.portfolio_url)) patch.portfolio_attachment_url = url;
         }
       }
       // Some applications arrive via a website form (e.g. WordPress) whose
@@ -21871,20 +21874,24 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
 
       {tab==="applications"&&(
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-            <select value={openingFilter} onChange={e=>setOpeningFilter(e.target.value)} style={{...inputSt,width:"auto",borderRadius:99}}>
-              <option value="all">All Openings</option>
-              <option value="unassigned">Unassigned</option>
-              {openings.map(o=><option key={o.id} value={o.id}>{o.title}</option>)}
-            </select>
-            <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} style={{...inputSt,width:"auto",borderRadius:99}}>
-              <option value="all">All Statuses</option>
-              {APPLICATION_STATUSES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
-            </select>
-            <button onClick={handleFixEmailApplications} disabled={fixingEmailApps} style={{padding:"7px 14px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{fixingEmailApps?"Fixing…":"Fix Email Applications"}</button>
-            {fixMsg&&<span style={{fontSize:12,color:"var(--text2)",alignSelf:"center"}}>{fixMsg}</span>}
-            <button onClick={handleRetryAllStuck} disabled={retryingAll} style={{padding:"7px 14px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{retryingAll?"Retrying…":"Retry All Stuck AI Reviews"}</button>
-            {retryMsg&&<span style={{fontSize:12,color:"var(--text2)",alignSelf:"center"}}>{retryMsg}</span>}
+          <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",justifyContent:"space-between"}}>
+            <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+              <select value={openingFilter} onChange={e=>setOpeningFilter(e.target.value)} style={{...inputSt,width:"auto",borderRadius:99}}>
+                <option value="all">All Openings</option>
+                <option value="unassigned">Unassigned</option>
+                {openings.map(o=><option key={o.id} value={o.id}>{o.title}</option>)}
+              </select>
+              <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} style={{...inputSt,width:"auto",borderRadius:99}}>
+                <option value="all">All Statuses</option>
+                {APPLICATION_STATUSES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
+              </select>
+            </div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+              {fixMsg&&<span style={{fontSize:11,color:"var(--text2)"}}>{fixMsg}</span>}
+              <button onClick={handleFixEmailApplications} disabled={fixingEmailApps} style={{padding:"5px 10px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{fixingEmailApps?"Fixing…":"Fix Email Applications"}</button>
+              {retryMsg&&<span style={{fontSize:11,color:"var(--text2)"}}>{retryMsg}</span>}
+              <button onClick={handleRetryAllStuck} disabled={retryingAll} style={{padding:"5px 10px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{retryingAll?"Retrying…":"Retry All Stuck AI Reviews"}</button>
+            </div>
           </div>
           {filteredApps.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--text2)"}}>No applications match these filters.</div>}
           {filteredApps.map(a=>{
