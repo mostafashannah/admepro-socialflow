@@ -249,6 +249,9 @@ foreach ($messages as $message) {
         $subject = (string) $message->getSubject();
 
         if ($candidateEmail === '') { $message->setFlag('Seen'); continue; }
+        // Skip our own mailbox — a message "from" the mailbox itself is
+        // our own confirmation reply (or similar), not a real applicant.
+        if (strtolower($candidateEmail) === strtolower($imapEmail)) { $message->setFlag('Seen'); continue; }
 
         // Match subject against open job titles (case-insensitive substring)
         $matchedOpening = null;
