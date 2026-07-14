@@ -720,7 +720,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.92";
+const APP_VERSION = "beta 5.93";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21764,7 +21764,10 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   };
   const handleRetryAllStuck = async () => {
     setRetryingAll(true);
-    const stuck = applications.filter(a=>a.ai_score==null && (a.ai_review_status==="pending"||a.ai_review_status==="failed"));
+    // Anything with no score and not already correctly tagged "no_cv" is
+    // stuck — including "done" rows where the AI response didn't include
+    // a parseable score, which the old pending/failed-only filter missed.
+    const stuck = applications.filter(a=>a.ai_score==null && a.ai_review_status!=="no_cv");
     let done = 0;
     for (const app of stuck) {
       await reviewOne(app);
