@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.79";
+const APP_VERSION = "beta 5.80";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12785,7 +12785,8 @@ function AcceptInvitationPage({token, onAccepted}) {
 // ════════════════════════════════════════════════════════════════
 // CAREERS PAGE (public, unauthenticated — socialflow.admepro.com/careers)
 // ════════════════════════════════════════════════════════════════
-const MAX_CV_MB = 8;
+const MAX_CV_MB = 5;
+const MAX_PORTFOLIO_MB = 15;
 const ADMEPRO_LOGO_WHITE = "https://admepro.com/wp-content/uploads/2024/10/adme-p3.png";
 const ADMEPRO_LOGO_BLACK = "https://admepro.com/wp-content/uploads/2024/10/adme-p2.png";
 const SOCIAL_LINKS = [
@@ -13072,9 +13073,11 @@ function CareersPage() {
   const [form, setForm] = useState({name:"",email:"",phone:"",cover_letter:"",portfolio_url:"",linkedin_url:"",current_salary:"",expected_salary:"",available_start_date:"",open_to_task:"yes",website:""}); // "website" = honeypot
   const [cvFile, setCvFile] = useState(null);
   const [cvBase64, setCvBase64] = useState(null);
+  const [portfolioFile, setPortfolioFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const fileRef = useRef(null);
+  const portfolioFileRef = useRef(null);
   const sf = (k,v) => setForm(p=>({...p,[k]:v}));
 
   useEffect(()=>{
@@ -13095,6 +13098,13 @@ function CareersPage() {
     reader.readAsDataURL(file);
   };
 
+  const handlePortfolioFile = e => {
+    const file = e.target.files?.[0];
+    if(!file) return;
+    if(file.size > MAX_PORTFOLIO_MB*1024*1024) { alert(`Portfolio file is too large (max ${MAX_PORTFOLIO_MB}MB). Please choose a smaller file.`); return; }
+    setPortfolioFile(file);
+  };
+
   const handleSubmit = async () => {
     if(form.website) return; // honeypot tripped — silently drop
     if(!form.name.trim()||!form.email.trim()) { alert("Name and email are required."); return; }
@@ -13106,10 +13116,11 @@ function CareersPage() {
     setSubmitting(true);
     try {
       const cv_url = await uploadToStorage(cvFile, "job-applications");
+      const portfolio_attachment_url = portfolioFile ? await uploadToStorage(portfolioFile, "job-applications/portfolio") : "";
       const res = await ce("JobApplication",[{
         job_opening_id: selected.id, job_title: selected.title,
         candidate_name: form.name.trim(), candidate_email: form.email.trim(), candidate_phone: form.phone.trim(),
-        cv_url, cover_letter: form.cover_letter, portfolio_url: form.portfolio_url, linkedin_url: form.linkedin_url,
+        cv_url, cover_letter: form.cover_letter, portfolio_url: form.portfolio_url, portfolio_attachment_url, linkedin_url: form.linkedin_url,
         current_salary: form.current_salary, expected_salary: form.expected_salary,
         available_start_date: form.available_start_date, open_to_task: form.open_to_task,
         status:"new", ai_review_status:"pending",
@@ -13205,6 +13216,13 @@ function CareersPage() {
             <div>
               <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Portfolio Link <span style={{fontWeight:400,color:"var(--text3)"}}>(Behance, Canva, personal site…)</span></label>
               <input value={form.portfolio_url} onChange={e=>sf("portfolio_url",e.target.value)} placeholder="https://…" style={inputSt}/>
+            </div>
+            <div>
+              <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Portfolio Attachment <span style={{fontWeight:400,color:"var(--text3)"}}>(optional, max {MAX_PORTFOLIO_MB}MB)</span></label>
+              <button type="button" onClick={()=>portfolioFileRef.current?.click()} style={{width:"100%",padding:"12px",borderRadius:"var(--rs)",border:"1px dashed var(--border2)",background:"var(--surface2)",color:portfolioFile?"var(--text)":"var(--text2)",fontSize:13,fontWeight:600,cursor:"pointer",textAlign:"left"}}>
+                {portfolioFile ? `📎 ${portfolioFile.name}` : "Click to attach a portfolio file"}
+              </button>
+              <input ref={portfolioFileRef} type="file" style={{display:"none"}} onChange={handlePortfolioFile}/>
             </div>
             <div>
               <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>LinkedIn</label>
@@ -21382,6 +21400,7 @@ function ApplicationDetail({application, opening, onClose, onUpdateStatus, onSav
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:18}}>
           {application.cv_url&&<a href={application.cv_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--accentbg)",border:"1px solid var(--accent)33",fontSize:12,fontWeight:700,color:"var(--accent)",textDecoration:"none"}}>View CV</a>}
           {application.portfolio_url&&<a href={application.portfolio_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>Portfolio</a>}
+          {application.portfolio_attachment_url&&<a href={application.portfolio_attachment_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>Portfolio Attachment</a>}
           {application.linkedin_url&&<a href={application.linkedin_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>LinkedIn</a>}
         </div>
 
