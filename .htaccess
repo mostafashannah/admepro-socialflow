@@ -3,3 +3,16 @@ RewriteEngine On
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ index.html [QSA,L]
+
+# Uploaded CVs (converted Word docs and originals) should preview inline
+# in the browser tab instead of forcing a download — without this, some
+# server configs serve .pdf without a proper Content-Type/Disposition
+# and browsers fall back to downloading it.
+<IfModule mod_mime.c>
+  AddType application/pdf .pdf
+</IfModule>
+<IfModule mod_headers.c>
+  <FilesMatch "\.pdf$">
+    Header set Content-Disposition inline
+  </FilesMatch>
+</IfModule>
