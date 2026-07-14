@@ -250,9 +250,16 @@ foreach ($messages as $message) {
         $subject = (string) $message->getSubject();
 
         if ($candidateEmail === '') { $message->setFlag('Seen'); continue; }
-        // Skip our own mailbox — a message "from" the mailbox itself is
-        // our own confirmation reply (or similar), not a real applicant.
-        if (strtolower($candidateEmail) === strtolower($imapEmail)) { $message->setFlag('Seen'); continue; }
+        // Skip our own mail — a message "from" the mailbox itself, from
+        // noreply@admepro.com (the confirmation email's own sender), or
+        // whose subject IS the confirmation email's subject line, is our
+        // own outgoing reply landing back in this inbox — not a real
+        // applicant. Checking the subject too catches the case where the
+        // confirmation gets forwarded/bounced through a different sender.
+        $selfSenders = [strtolower($imapEmail), 'noreply@admepro.com'];
+        $isOwnConfirmation = in_array(strtolower($candidateEmail), $selfSenders, true)
+            || strcasecmp(trim($subject), trim($confirmationSubject)) === 0;
+        if ($isOwnConfirmation) { $message->setFlag('Seen'); continue; }
 
         // Match subject against open job titles (case-insensitive substring)
         $matchedOpening = null;
