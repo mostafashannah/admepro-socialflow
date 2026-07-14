@@ -1,0 +1,250 @@
+<?php
+/**
+ * imap-recruitment-cron.php — polls the recruitment mailbox (e.g.
+ * hr@admepro.com) for application emails and turns them into
+ * job_applications rows, same as the public /careers form does:
+ *   - matches the email subject against open job_openings titles
+ *     (case-insensitive substring match; falls back to "Unassigned")
+ *   - saves the first PDF attachment found as the CV
+ *   - runs it through the same AI review Claude does for web
+ *     applications (score/summary/highlights/red flags)
+ *   - sends the applicant the same "Thanks for applying" confirmation
+ *   - dedupes by the email's Message-ID (RECRUITMENT_IMAP_* config +
+ *     migration-recruitment-email-inbox.sql required)
+ *
+ * Requires the PHP imap extension (ext-imap). If it's not installed,
+ * this script exits immediately with a clear error instead of failing
+ * silently — ask your host to enable it if you see that message.
+ *
+ * Crontab (every 5 minutes):
+ *   (star)/5 (star) (star) (star) (star) /usr/bin/php /var/www/socialflow/imap-recruitment-cron.php >> /var/www/socialflow/imap-recruitment-cron.log 2>&1
+ * (5-field cron wildcard syntax — written out here so this docblock comment doesn't break PHP parsing)
+ */
+
+require_once __DIR__ . '/config.php';
+
+if (!function_exists('imap_open')) {
+    fwrite(STDERR, "PHP imap extension is not installed/enabled — ask your hosting provider to enable ext-imap.\n");
+    echo json_encode(['error' => 'imap extension not available']);
+    exit(1);
+}
+
+$pdo = new PDO(
+    'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4',
+    DB_USER, DB_PASS,
+    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]
+);
+
+function email_base($content) {
+    return '<!DOCTYPE html><html><head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
+<tr><td align="center">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb">
+  <tr><td style="padding:32px 36px 0">
+    <img src="https://admepro.com/wp-content/uploads/2024/10/adme-p2.png" alt="Admepro" style="height:28px;width:auto"/>
+  </td></tr>
+  <tr><td style="padding:24px 36px 36px">'.$content.'</td></tr>
+</table>
+</td></tr></table>
+</body></html>';
+}
+
+function send_via_resend($to, $subject, $html, $fromName = 'Admepro Careers') {
+    $payload = json_encode([
+        "from"    => "$fromName <noreply@admepro.com>",
+        "to"      => [$to],
+        "subject" => $subject,
+        "html"    => $html,
+    ]);
+    $ch = curl_init("https://api.resend.com/emails");
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true, CURLOPT_POSTFIELDS => $payload, CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_HTTPHEADER => ["Authorization: Bearer " . RESEND_API_KEY, "Content-Type: application/json"],
+    ]);
+    $res = curl_exec($ch);
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    return $status >= 200 && $status < 300;
+}
+
+// Same shape/prompt as reviewApplication() in app.jsx, called server-side
+// here instead of from the browser.
+function ai_review_cv($pdoRef, $applicationId, $pdfBase64, $jobTitle, $jobDescription, $jobRequirements) {
+    $sys = "You are an HR screening assistant reviewing a candidate's CV (attached as a PDF document) for the position \"".($jobTitle ?: 'this role')."\".\n"
+        . "Job description: " . substr($jobDescription ?: '', 0, 1500) . "\n"
+        . "Requirements: " . substr($jobRequirements ?: '', 0, 1500) . "\n\n"
+        . "Read the CV and return ONLY JSON in this exact shape:\n"
+        . '{"candidate_name":"","candidate_email":"","candidate_phone":"","years_experience":0,"skills":["..."],"education":"","languages":["..."],"highlights":["up to 5 concrete, specific achievements or qualifications relevant to this role"],"red_flags":["up to 3 concerns, gaps, or mismatches — empty array if none"],"score":0,"summary":"2-3 sentence overall assessment of fit for this specific role"}' . "\n"
+        . '"score" is 0-100, reflecting fit for THIS role specifically (not a generic CV quality score).';
+
+    $payload = json_encode([
+        "model" => "claude-sonnet-4-6", "max_tokens" => 1500, "system" => $sys,
+        "messages" => [["role" => "user", "content" => [
+            ["type" => "document", "source" => ["type" => "base64", "media_type" => "application/pdf", "data" => $pdfBase64]],
+            ["type" => "text", "text" => "Review this CV and return the JSON described in the system prompt."],
+        ]]],
+    ]);
+    $ch = curl_init("https://api.anthropic.com/v1/messages");
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true, CURLOPT_POSTFIELDS => $payload, CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 60,
+        CURLOPT_HTTPHEADER => ["x-api-key: " . ANTHROPIC_API_KEY, "anthropic-version: 2023-06-01", "Content-Type: application/json"],
+    ]);
+    $res = curl_exec($ch);
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    $upd = $pdoRef->prepare("UPDATE job_applications SET ai_score=:s, ai_summary=:sum, ai_extracted=:ext, ai_review_status=:st WHERE id=:id");
+    if ($status < 200 || $status >= 300) {
+        $upd->execute([':s' => null, ':sum' => null, ':ext' => null, ':st' => 'failed', ':id' => $applicationId]);
+        return;
+    }
+    $d = json_decode($res, true);
+    $raw = '';
+    foreach (($d['content'] ?? []) as $block) { $raw .= $block['text'] ?? ''; }
+    if (!preg_match('/\{[\s\S]*\}/', $raw, $m)) {
+        $upd->execute([':s' => null, ':sum' => null, ':ext' => null, ':st' => 'failed', ':id' => $applicationId]);
+        return;
+    }
+    $extracted = json_decode($m[0], true);
+    if (!$extracted) {
+        $upd->execute([':s' => null, ':sum' => null, ':ext' => null, ':st' => 'failed', ':id' => $applicationId]);
+        return;
+    }
+    $score = isset($extracted['score']) && is_numeric($extracted['score']) ? max(0, min(100, round($extracted['score']))) : null;
+    $upd->execute([
+        ':s' => $score,
+        ':sum' => substr($extracted['summary'] ?? '', 0, 600),
+        ':ext' => json_encode($extracted),
+        ':st' => 'done',
+        ':id' => $applicationId,
+    ]);
+}
+
+$mailbox = '{' . RECRUITMENT_IMAP_HOST . ':' . RECRUITMENT_IMAP_PORT . '/imap/ssl}INBOX';
+$conn = @imap_open($mailbox, RECRUITMENT_IMAP_EMAIL, RECRUITMENT_IMAP_PASSWORD);
+if (!$conn) {
+    echo json_encode(['error' => 'IMAP connection failed: ' . imap_last_error()]);
+    exit(1);
+}
+
+$openings = $pdo->query("SELECT id, title, description, requirements FROM job_openings WHERE status = 'open'")->fetchAll(PDO::FETCH_ASSOC);
+$checkDup = $pdo->prepare("SELECT 1 FROM job_applications WHERE email_message_id = :mid");
+$insert = $pdo->prepare(
+    "INSERT INTO job_applications (id, job_opening_id, job_title, candidate_name, candidate_email, cover_letter, cv_url, status, ai_review_status, source, email_message_id)
+     VALUES (UUID(), :job_opening_id, :job_title, :candidate_name, :candidate_email, :cover_letter, :cv_url, 'new', :ai_review_status, 'email', :email_message_id)"
+);
+
+$uids = imap_search($conn, 'UNSEEN', SE_UID) ?: [];
+$processed = 0;
+
+foreach ($uids as $uid) {
+    $headerRaw = imap_fetchheader($conn, $uid, FT_UID);
+    $header = imap_rfc822_parse_headers($headerRaw);
+    $messageId = trim($header->message_id ?? '');
+    if ($messageId === '') { $messageId = 'uid-' . $uid . '@no-message-id'; }
+
+    $checkDup->execute([':mid' => $messageId]);
+    if ($checkDup->fetchColumn()) {
+        imap_setflag_full($conn, $uid, "\\Seen", ST_UID);
+        continue;
+    }
+
+    $fromAddr = $header->from[0] ?? null;
+    $candidateEmail = $fromAddr ? ($fromAddr->mailbox . '@' . $fromAddr->host) : '';
+    $candidateName = $fromAddr && !empty($fromAddr->personal) ? imap_utf8($fromAddr->personal) : $candidateEmail;
+    $subject = isset($header->subject) ? imap_utf8($header->subject) : '';
+
+    if ($candidateEmail === '') { imap_setflag_full($conn, $uid, "\\Seen", ST_UID); continue; }
+
+    // Match subject against open job titles (case-insensitive substring)
+    $matchedOpening = null;
+    foreach ($openings as $o) {
+        if ($o['title'] !== '' && stripos($subject, $o['title']) !== false) { $matchedOpening = $o; break; }
+    }
+
+    // Walk MIME parts: grab the first PDF attachment (the CV) and the
+    // plain-text body (used as the cover letter).
+    $structure = imap_fetchstructure($conn, $uid, FT_UID);
+    $cvUrl = null;
+    $bodyText = '';
+
+    $walkParts = function($parts, $prefix = '') use (&$walkParts, &$cvUrl, &$bodyText, $conn, $uid) {
+        foreach ($parts as $i => $part) {
+            $partNum = $prefix . ($i + 1);
+            $filename = '';
+            foreach ([$part->dparameters ?? [], $part->parameters ?? []] as $paramSet) {
+                foreach ($paramSet as $p) {
+                    if (in_array(strtolower($p->attribute), ['filename', 'name'])) $filename = $p->value;
+                }
+            }
+            $isPdf = (strtolower($filename) && str_ends_with(strtolower($filename), '.pdf'))
+                || ($part->subtype === 'PDF' && $part->type === 0);
+
+            if ($isPdf && !$cvUrl) {
+                $raw = imap_fetchbody($conn, $uid, $partNum, FT_UID);
+                if (($part->encoding ?? 0) === 3) $raw = base64_decode($raw);
+                elseif (($part->encoding ?? 0) === 4) $raw = quoted_printable_decode($raw);
+                $safeName = preg_replace('/[^a-zA-Z0-9._-]/', '_', $filename ?: 'cv.pdf');
+                $path = 'job-applications/email/' . time() . '_' . $safeName;
+                $dir = STORAGE_ROOT . '/socialflow-media/' . dirname($path);
+                if (!is_dir($dir)) mkdir($dir, 0755, true);
+                file_put_contents(STORAGE_ROOT . '/socialflow-media/' . $path, $raw);
+                $cvUrl = ['url' => STORAGE_PUBLIC_URL . '/socialflow-media/' . $path, 'base64' => base64_encode($raw)];
+            } elseif ($part->type === 0 && $part->subtype === 'PLAIN' && $bodyText === '') {
+                $raw = imap_fetchbody($conn, $uid, $partNum ?: '1', FT_UID);
+                if (($part->encoding ?? 0) === 3) $raw = base64_decode($raw);
+                elseif (($part->encoding ?? 0) === 4) $raw = quoted_printable_decode($raw);
+                $bodyText = $raw;
+            }
+            if (!empty($part->parts)) $walkParts($part->parts, $partNum . '.');
+        }
+    };
+
+    if (!empty($structure->parts)) {
+        $walkParts($structure->parts);
+    } else {
+        // Not multipart — just a plain text body, no attachment possible.
+        $bodyText = imap_fetchbody($conn, $uid, '1', FT_UID);
+    }
+
+    $insert->execute([
+        ':job_opening_id' => $matchedOpening['id'] ?? null,
+        ':job_title' => $matchedOpening['title'] ?? ($subject ?: 'Unassigned'),
+        ':candidate_name' => $candidateName,
+        ':candidate_email' => $candidateEmail,
+        ':cover_letter' => substr(trim($bodyText), 0, 3000),
+        ':cv_url' => $cvUrl['url'] ?? null,
+        ':ai_review_status' => $cvUrl ? 'pending' : 'failed',
+        ':email_message_id' => $messageId,
+    ]);
+    // job_applications.id defaults to UUID() at the DB level, so
+    // lastInsertId() (auto_increment-only) is useless here — look it up
+    // by the message id we just inserted (unique) instead.
+    $lookup = $pdo->prepare("SELECT id FROM job_applications WHERE email_message_id = :mid");
+    $lookup->execute([':mid' => $messageId]);
+    $newId = $lookup->fetchColumn();
+
+    if ($newId && $cvUrl) {
+        ai_review_cv($pdo, $newId, $cvUrl['base64'], $matchedOpening['title'] ?? null, $matchedOpening['description'] ?? '', $matchedOpening['requirements'] ?? '');
+    }
+
+    $confirmHtml = email_base(
+        '<h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Thanks for applying, ' . htmlspecialchars($candidateName ?: 'there') . '!</h2>'
+        . '<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">We\'ve received your application' . ($matchedOpening ? ' for <strong>' . htmlspecialchars($matchedOpening['title']) . '</strong>' : '') . ' at Admepro. Our recruitment team is reviewing it now, and we\'ll get back to you as soon as possible.</p>'
+        . '<table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>'
+        . '<p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>'
+        . '<p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>'
+        . '<p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>'
+        . '</td></tr></table>'
+    );
+    send_via_resend($candidateEmail, "Thanks for applying to Admepro!", $confirmHtml);
+
+    imap_setflag_full($conn, $uid, "\\Seen", ST_UID);
+    $processed++;
+}
+
+imap_close($conn);
+echo json_encode(['checked' => count($uids), 'processed' => $processed]);

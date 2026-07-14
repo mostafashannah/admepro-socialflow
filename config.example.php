@@ -91,3 +91,12 @@ define('GITHUB_WEBHOOK_SECRET', 'CHANGE_ME_TO_A_LONG_RANDOM_STRING');
 define('VAPID_PUBLIC_KEY',  'YOUR_VAPID_PUBLIC_KEY');
 define('VAPID_PRIVATE_KEY', 'YOUR_VAPID_PRIVATE_KEY');
 define('VAPID_SUBJECT',     'mailto:admin@admepro.com');
+
+// Recruitment inbox (imap-recruitment-cron.php) — polls this mailbox for
+// application emails and turns them into job_applications rows. Requires
+// the PHP imap extension. Get these from your email provider's IMAP
+// settings page (e.g. Hostinger: imap.hostinger.com, port 993, SSL).
+define('RECRUITMENT_IMAP_HOST',     'imap.hostinger.com');
+define('RECRUITMENT_IMAP_PORT',     993);
+define('RECRUITMENT_IMAP_EMAIL',    'hr@admepro.com');
+define('RECRUITMENT_IMAP_PASSWORD', 'CHANGE_ME');

@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.80";
+const APP_VERSION = "beta 5.81";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21360,7 +21360,7 @@ function JobOpeningForm({opening, currentUser, onSave, onClose}) {
   );
 }
 
-function ApplicationDetail({application, opening, onClose, onUpdateStatus, onSaveNotes, onRerunReview}) {
+function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign}) {
   const [notes, setNotes] = useState(application.notes||"");
   const [rerunning, setRerunning] = useState(false);
   const extracted = (() => { try { return JSON.parse(application.ai_extracted||"{}"); } catch(e) { return {}; } })();
@@ -21380,9 +21380,14 @@ function ApplicationDetail({application, opening, onClose, onUpdateStatus, onSav
         <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:22,margin:0}}>{application.candidate_name}</h2>
       </div>
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:28}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-          <div>
-            <p style={{fontSize:12,color:"var(--text2)"}}>Applied for {application.job_title||opening?.title||"—"}</p>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,gap:12,flexWrap:"wrap"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            <p style={{fontSize:12,color:"var(--text2)"}}>Applied for</p>
+            <select value={application.job_opening_id||""} onChange={e=>onReassign(application, openings?.find(o=>o.id===e.target.value)||null)} style={{...inputSt,width:"auto",fontSize:12,padding:"5px 10px"}}>
+              <option value="">Unassigned</option>
+              {(openings||[]).map(o=><option key={o.id} value={o.id}>{o.title}</option>)}
+            </select>
+            {application.source==="email"&&<Badge label="via Email" color="#6366f1" xs/>}
           </div>
           {application.ai_score!=null&&(
             <div style={{textAlign:"center",padding:"8px 16px",background:"var(--surface2)",borderRadius:12,border:"1px solid var(--border)"}}>
@@ -21531,6 +21536,12 @@ function RecruitmentPage({currentUser}) {
     setApplications(prev=>prev.map(a=>a.id===app.id?{...a,notes}:a));
     await ue("JobApplication", app.id, {notes}).catch(()=>{});
   };
+  const handleReassign = async (app, opening) => {
+    const patch = {job_opening_id: opening?.id||null, job_title: opening?.title||"Unassigned"};
+    setApplications(prev=>prev.map(a=>a.id===app.id?{...a,...patch}:a));
+    setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,...patch}:prev);
+    await ue("JobApplication", app.id, patch).catch(()=>{});
+  };
   const handleRerunReview = async (app) => {
     const opening = openings.find(o=>o.id===app.job_opening_id);
     if(!app.cv_url) return;
@@ -21550,7 +21561,7 @@ function RecruitmentPage({currentUser}) {
   };
 
   const filteredApps = applications
-    .filter(a=>openingFilter==="all"||a.job_opening_id===openingFilter)
+    .filter(a=>openingFilter==="all"||(openingFilter==="unassigned"?!a.job_opening_id:a.job_opening_id===openingFilter))
     .filter(a=>statusFilter==="all"||a.status===statusFilter)
     .sort((a,b)=>(b.ai_score||-1)-(a.ai_score||-1));
 
@@ -21564,7 +21575,7 @@ function RecruitmentPage({currentUser}) {
   );
 
   if(selectedApp) return (
-    <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} onClose={()=>setSelectedApp(null)} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview}/>
+    <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={()=>setSelectedApp(null)} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign}/>
   );
 
   return (
@@ -21618,6 +21629,7 @@ function RecruitmentPage({currentUser}) {
           <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
             <select value={openingFilter} onChange={e=>setOpeningFilter(e.target.value)} style={{...inputSt,width:"auto",borderRadius:99}}>
               <option value="all">All Openings</option>
+              <option value="unassigned">Unassigned</option>
               {openings.map(o=><option key={o.id} value={o.id}>{o.title}</option>)}
             </select>
             <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} style={{...inputSt,width:"auto",borderRadius:99}}>
