@@ -746,7 +746,12 @@ async function convertCvToPdfForStorage(file) {
     // viewport and often returns a blank canvas for elements positioned
     // far outside it (e.g. left:-9999px) — keep it inside the viewport
     // bounds instead, just hidden behind everything else on the page.
-    container.style.cssText = "padding:32px;font-family:Arial,sans-serif;font-size:12px;line-height:1.6;color:#111;background:#fff;width:700px;position:fixed;left:0;top:0;z-index:-9999;opacity:0.01;pointer-events:none";
+    // opacity must stay 1 here — html2canvas captures actual rendered
+    // pixel opacity, so a near-transparent container (an earlier attempt
+    // used opacity:0.01 to hide it from the user) produces a near-blank
+    // PDF. Hidden from the user via stacking order (negative z-index
+    // behind the app's own opaque background) instead.
+    container.style.cssText = "padding:32px;font-family:Arial,sans-serif;font-size:12px;line-height:1.6;color:#111;background:#fff;width:700px;position:fixed;left:0;top:0;z-index:-9999;opacity:1;pointer-events:none";
     container.innerHTML = html || "<p>(empty document)</p>";
     document.body.appendChild(container);
     try {
@@ -918,7 +923,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.126";
+const APP_VERSION = "beta 5.127";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
