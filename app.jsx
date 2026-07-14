@@ -28,6 +28,19 @@ const uploadToStorage = async (file, folder="uploads") => {
   return `${SB_STORAGE_URL}/public/${SB_BUCKET}/${path}`;
 };
 
+// Fetch a file URL for the browser to read. Same-origin URLs (our own
+// storage) can be fetched directly; third-party hosts (Google Drive, etc.)
+// don't send CORS headers, so a direct fetch() fails with an opaque
+// "Load failed" before any bytes arrive — those are routed through
+// fetch-url-proxy.php, which downloads the file server-side (not subject
+// to CORS) and streams it back with permissive headers.
+const fetchFileUrl = (url, timeoutMs=20000) => {
+  const isSameOrigin = url.startsWith(window.location.origin);
+  const target = isSameOrigin ? url : `${window.location.origin}/fetch-url-proxy.php?url=${encodeURIComponent(url)}`;
+  const opts = isSameOrigin ? {} : { headers: { "apikey": SB_KEY } };
+  return fetchWithTimeout(target, opts, timeoutMs);
+};
+
 // Downloads an array of flat objects as a CSV file — used by the client
 // Leads tab's "Download CSV" button (and reusable anywhere else needed).
 function downloadCsv(filename, rows, columns) {
@@ -859,7 +872,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.120";
+const APP_VERSION = "beta 5.121";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22122,7 +22135,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     }
     let cvContent;
     try {
-      const r = await fetchWithTimeout(cvSourceUrl, {}, 20000);
+      const r = await fetchFileUrl(cvSourceUrl, 20000);
       if(!r.ok) throw new Error(`${r.status}`);
       const blob = await r.blob();
       cvContent = await buildCvContentBlockFromUrl(blob, cvSourceUrl);
@@ -22166,7 +22179,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     if(!app.cv_url || !/\.docx?(?:[?#]|$)/i.test(app.cv_url)) return;
     setConvertingCvId(app.id);
     try {
-      const r = await fetchWithTimeout(app.cv_url, {}, 20000);
+      const r = await fetchFileUrl(app.cv_url, 20000);
       if(!r.ok) throw new Error(`${r.status}`);
       const blob = await r.blob();
       const name = app.cv_url.split("/").pop().split("?")[0] || "cv.docx";
@@ -22211,7 +22224,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     let done = 0;
     for (const app of unassigned) {
       const cvSourceUrl = findCvSourceUrl(app);
-      const r = await fetchWithTimeout(cvSourceUrl, {}, 20000).catch(()=>null);
+      const r = await fetchFileUrl(cvSourceUrl, 20000).catch(()=>null);
       if(r?.ok) {
         const blob = await r.blob();
         const cvContent = await buildCvContentBlockFromUrl(blob, cvSourceUrl).catch(()=>null);
