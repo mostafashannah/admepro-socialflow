@@ -725,11 +725,19 @@ async function convertCvToPdfForStorage(file) {
     const arrayBuffer = await file.arrayBuffer();
     const {value: html} = await window.mammoth.convertToHtml({arrayBuffer});
     const container = document.createElement("div");
-    container.style.cssText = "padding:32px;font-family:Arial,sans-serif;font-size:12px;line-height:1.6;color:#111;background:#fff;width:700px;position:fixed;left:-9999px;top:0";
+    // html2canvas (used internally by html2pdf) captures relative to the
+    // viewport and often returns a blank canvas for elements positioned
+    // far outside it (e.g. left:-9999px) — keep it inside the viewport
+    // bounds instead, just hidden behind everything else on the page.
+    container.style.cssText = "padding:32px;font-family:Arial,sans-serif;font-size:12px;line-height:1.6;color:#111;background:#fff;width:700px;position:fixed;left:0;top:0;z-index:-9999;opacity:0.01;pointer-events:none";
     container.innerHTML = html || "<p>(empty document)</p>";
     document.body.appendChild(container);
     try {
-      const pdfBlob = await window.html2pdf().set({filename:"cv.pdf", jsPDF:{unit:"pt",format:"a4"}}).from(container).outputPdf("blob");
+      const pdfBlob = await window.html2pdf().set({filename:"cv.pdf", jsPDF:{unit:"pt",format:"a4"}, html2canvas:{backgroundColor:"#ffffff"}}).from(container).outputPdf("blob");
+      // A near-empty blob almost always means html2canvas captured a blank
+      // page rather than the real content — don't silently store that as
+      // the candidate's CV, fall back to the original .docx instead.
+      if (pdfBlob.size < 1500) throw new Error(`Rendered PDF looks blank (${pdfBlob.size} bytes)`);
       return new File([pdfBlob], file.name.replace(/\.docx$/i, ".pdf"), {type:"application/pdf"});
     } finally {
       document.body.removeChild(container);
@@ -893,7 +901,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.122";
+const APP_VERSION = "beta 5.123";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22166,7 +22174,18 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
       if(!r.ok) throw new Error(`${r.status}`);
       const blob = await r.blob();
       cvContent = await buildCvContentBlockFromUrl(blob, cvSourceUrl);
-      if(!app.cv_url && cvSourceUrl!==app.cv_url) await ue("JobApplication", app.id, {cv_url: cvSourceUrl}).catch(()=>{});
+      if(!app.cv_url) {
+        // Store our OWN copy, not a link back to Drive/wherever the file
+        // came from — Google Drive's download URL always forces the
+        // browser to download rather than preview, and a third-party link
+        // can also go stale/be revoked later. Convert Word CVs to a real
+        // PDF at the same time, same as the direct-upload path.
+        const srcName = cvSourceUrl.split("/").pop().split("?")[0] || "cv";
+        const rawFile = new File([blob], srcName, {type: blob.type});
+        const storedFile = await convertCvToPdfForStorage(rawFile).catch(()=>rawFile);
+        const ownUrl = await uploadToStorage(storedFile, "job-applications/email").catch(()=>null);
+        if(ownUrl) await ue("JobApplication", app.id, {cv_url: ownUrl}).catch(()=>{});
+      }
     } catch(e) {
       // The CV file itself is missing/broken/unreachable, or couldn't be
       // read as a PDF/Word document — not a fixable AI-call error. Tag it
