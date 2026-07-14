@@ -215,7 +215,14 @@ $insert = $pdo->prepare(
 $lookup = $pdo->prepare("SELECT id FROM job_applications WHERE email_message_id = :mid");
 
 $folder = $client->getFolder('INBOX');
-$messages = $folder->messages()->unseen()->get();
+// Deliberately NOT filtering by unseen() — this mailbox may also be read
+// by a human (e.g. checking it via webmail), which marks messages Seen
+// and would make them invisible to an unseen-only query, silently
+// dropping applications that arrived but got read before this script
+// ran. Instead pull everything from the last 7 days and rely purely on
+// the email_message_id UNIQUE constraint (checkDup below) to skip
+// messages already turned into an application.
+$messages = $folder->messages()->since((new DateTime())->modify('-7 days'))->get();
 $processed = 0;
 
 foreach ($messages as $message) {
