@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.86";
+const APP_VERSION = "beta 5.87";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21431,8 +21431,8 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
         )}
         {application.ai_review_status==="failed"&&(
           <div style={{padding:"10px 14px",background:"#ef444422",border:"1px solid #ef444455",borderRadius:"var(--rs)",marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
-            <span style={{fontSize:12,color:"#ef4444",fontWeight:600}}>AI review failed</span>
-            <Btn size="sm" onClick={handleRerun} disabled={rerunning}>{rerunning?"Retrying…":"Retry"}</Btn>
+            <span style={{fontSize:12,color:"#ef4444",fontWeight:600}}>{application.cv_url?"AI review failed":"No CV attached — nothing to score"}</span>
+            {application.cv_url&&<Btn size="sm" onClick={handleRerun} disabled={rerunning}>{rerunning?"Retrying…":"Retry"}</Btn>}
           </div>
         )}
         {application.ai_summary&&(
@@ -21631,6 +21631,8 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   };
   const [fixingEmailApps, setFixingEmailApps] = useState(false);
   const [fixMsg, setFixMsg] = useState("");
+  const [retryingAll, setRetryingAll] = useState(false);
+  const [retryMsg, setRetryMsg] = useState("");
   const handleFixEmailApplications = async () => {
     setFixingEmailApps(true);
     let fixedCount = 0;
@@ -21673,9 +21675,13 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     setSelectedApp(null);
     await de("JobApplication", app.id).catch(()=>{});
   };
-  const handleRerunReview = async (app) => {
+  const reviewOne = async (app) => {
     const opening = openings.find(o=>o.id===app.job_opening_id);
-    if(!app.cv_url) return;
+    if(!app.cv_url) {
+      // Nothing to review — stop it from spinning forever with no CV to score.
+      await ue("JobApplication", app.id, {ai_review_status:"failed"}).catch(()=>{});
+      return;
+    }
     try {
       const r = await fetch(app.cv_url);
       const blob = await r.blob();
@@ -21683,12 +21689,33 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
       const base64 = await new Promise(res=>{ reader.onload = ()=>res(reader.result); reader.readAsDataURL(blob); });
       await ue("JobApplication", app.id, {ai_review_status:"pending"});
       await reviewApplication(app, base64, opening);
-      await load();
-      if(selectedApp?.id===app.id) {
-        const refreshed = (await qe("JobApplication",{})).entities?.find(a=>a.id===app.id);
-        if(refreshed) setSelectedApp(refreshed);
-      }
     } catch(e) { await ue("JobApplication", app.id, {ai_review_status:"failed"}).catch(()=>{}); }
+  };
+  const handleRerunReview = async (app) => {
+    if(!app.cv_url) {
+      setApplications(prev=>prev.map(a=>a.id===app.id?{...a,ai_review_status:"failed"}:a));
+      setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,ai_review_status:"failed"}:prev);
+    }
+    await reviewOne(app);
+    await load();
+    if(selectedApp?.id===app.id) {
+      const refreshed = (await qe("JobApplication",{})).entities?.find(a=>a.id===app.id);
+      if(refreshed) setSelectedApp(refreshed);
+    }
+  };
+  const handleRetryAllStuck = async () => {
+    setRetryingAll(true);
+    const stuck = applications.filter(a=>a.ai_score==null && (a.ai_review_status==="pending"||a.ai_review_status==="failed"));
+    let done = 0;
+    for (const app of stuck) {
+      await reviewOne(app);
+      done++;
+      setRetryMsg(`Retrying ${done}/${stuck.length}…`);
+    }
+    await load();
+    setRetryingAll(false);
+    setRetryMsg(stuck.length ? `Retried ${stuck.length} application${stuck.length!==1?"s":""}` : "Nothing stuck to retry");
+    setTimeout(()=>setRetryMsg(""),4000);
   };
 
   const filteredApps = applications
@@ -21769,6 +21796,8 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
             </select>
             <button onClick={handleFixEmailApplications} disabled={fixingEmailApps} style={{padding:"7px 14px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{fixingEmailApps?"Fixing…":"Fix Email Applications"}</button>
             {fixMsg&&<span style={{fontSize:12,color:"var(--text2)",alignSelf:"center"}}>{fixMsg}</span>}
+            <button onClick={handleRetryAllStuck} disabled={retryingAll} style={{padding:"7px 14px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{retryingAll?"Retrying…":"Retry All Stuck AI Reviews"}</button>
+            {retryMsg&&<span style={{fontSize:12,color:"var(--text2)",alignSelf:"center"}}>{retryMsg}</span>}
           </div>
           {filteredApps.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--text2)"}}>No applications match these filters.</div>}
           {filteredApps.map(a=>{
