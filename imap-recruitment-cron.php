@@ -123,7 +123,15 @@ function ai_review_cv($pdoRef, $applicationId, $pdfBase64, $jobTitle, $jobDescri
     ]);
 }
 
-$mailbox = '{' . RECRUITMENT_IMAP_HOST . ':' . RECRUITMENT_IMAP_PORT . '/imap/ssl}INBOX';
+// PHP's c-client IMAP library has no connection timeout by default and can
+// hang indefinitely on a slow/incompatible TLS handshake — cap it so the
+// cron fails fast instead of stalling the terminal (and future cron runs).
+imap_timeout(IMAP_OPENTIMEOUT, 15);
+imap_timeout(IMAP_READTIMEOUT, 15);
+imap_timeout(IMAP_WRITETIMEOUT, 15);
+imap_timeout(IMAP_CLOSETIMEOUT, 15);
+
+$mailbox = '{' . RECRUITMENT_IMAP_HOST . ':' . RECRUITMENT_IMAP_PORT . '/imap/ssl/novalidate-cert}INBOX';
 $conn = @imap_open($mailbox, RECRUITMENT_IMAP_EMAIL, RECRUITMENT_IMAP_PASSWORD);
 if (!$conn) {
     echo json_encode(['error' => 'IMAP connection failed: ' . imap_last_error()]);
