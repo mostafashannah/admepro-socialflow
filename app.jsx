@@ -657,6 +657,25 @@ function driveLinkToDirectUrl(link) {
   return `https://drive.google.com/uc?export=download&id=${m[1]}`;
 }
 
+// Best-effort search for something scoreable as a CV: the stored cv_url,
+// a Drive link already captured into portfolio_url/portfolio_attachment_url,
+// or — for applications tagged "no_cv" from before link-scanning existed —
+// a Drive link or a raw .doc/.docx URL still sitting unrecognized in the
+// cover letter text.
+function findCvSourceUrl(app) {
+  if (app.cv_url) return app.cv_url;
+  const fromPortfolioAttachment = driveLinkToDirectUrl(app.portfolio_attachment_url);
+  if (fromPortfolioAttachment) return fromPortfolioAttachment;
+  const fromPortfolio = driveLinkToDirectUrl(app.portfolio_url);
+  if (fromPortfolio) return fromPortfolio;
+  const text = app.cover_letter || "";
+  const driveMatch = text.match(/https?:\/\/drive\.google\.com\/[^\s<>")]+/i);
+  if (driveMatch) { const d = driveLinkToDirectUrl(driveMatch[0]); if (d) return d; }
+  const docMatch = text.match(/https?:\/\/[^\s<>")]+\.docx?(?:[?#][^\s<>")]*)?/i);
+  if (docMatch) return docMatch[0];
+  return null;
+}
+
 // For upload only (not scoring): if the CV is a .docx, convert it to an
 // actual PDF client-side (mammoth → HTML → html2pdf, both already loaded)
 // so cv_url points to something the browser can render inline instead of
@@ -838,7 +857,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.116";
+const APP_VERSION = "beta 5.117";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22080,7 +22099,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   const [hideNoCv, setHideNoCv] = useState(false);
   const reviewOne = async (app) => {
     const opening = openings.find(o=>o.id===app.job_opening_id);
-    const cvSourceUrl = app.cv_url || driveLinkToDirectUrl(app.portfolio_attachment_url) || driveLinkToDirectUrl(app.portfolio_url);
+    const cvSourceUrl = findCvSourceUrl(app);
     if(!cvSourceUrl) {
       // No CV file, and no Google Drive link to fall back to — score 0
       // and tag it, don't spend an AI call on it.
@@ -22093,6 +22112,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
       if(!r.ok) throw new Error(`${r.status}`);
       const blob = await r.blob();
       cvContent = await buildCvContentBlockFromUrl(blob, cvSourceUrl);
+      if(!app.cv_url && cvSourceUrl!==app.cv_url) await ue("JobApplication", app.id, {cv_url: cvSourceUrl}).catch(()=>{});
     } catch(e) {
       // The CV file itself is missing/broken/unreachable, or couldn't be
       // read as a PDF/Word document — not a fixable AI-call error. Tag it
@@ -22142,10 +22162,10 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   const handleAutoAssignUnassigned = async () => {
     setAutoAssigning(true);
     const openOpenings = openings.filter(o=>o.status==="open");
-    const unassigned = applications.filter(a=>!a.job_opening_id && (a.cv_url || driveLinkToDirectUrl(a.portfolio_attachment_url) || driveLinkToDirectUrl(a.portfolio_url)));
+    const unassigned = applications.filter(a=>!a.job_opening_id && findCvSourceUrl(a));
     let done = 0;
     for (const app of unassigned) {
-      const cvSourceUrl = app.cv_url || driveLinkToDirectUrl(app.portfolio_attachment_url) || driveLinkToDirectUrl(app.portfolio_url);
+      const cvSourceUrl = findCvSourceUrl(app);
       const r = await fetchWithTimeout(cvSourceUrl, {}, 20000).catch(()=>null);
       if(r?.ok) {
         const blob = await r.blob();
@@ -22162,11 +22182,29 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   };
 
   const [cleaningUp, setCleaningUp] = useState(false);
+  const [recoverMsg, setRecoverMsg] = useState("");
+  const handleRecoverNoCv = async () => {
+    // Applications tagged "no_cv" may actually have a Word CV or a Google
+    // Drive link that earlier passes didn't catch (e.g. it's only mentioned
+    // inside the cover letter text). Re-scan those specifically with the
+    // wider findCvSourceUrl() search and score any that now resolve.
+    const noCv = applications.filter(a=>a.ai_review_status==="no_cv" && findCvSourceUrl(a));
+    let done = 0;
+    for (const app of noCv) {
+      await reviewOne(app);
+      done++;
+      setRecoverMsg(`Recovering ${done}/${noCv.length}…`);
+    }
+    await load();
+    setRecoverMsg(noCv.length ? `Recovered ${noCv.length} application${noCv.length!==1?"s":""}` : "");
+    setTimeout(()=>setRecoverMsg(""),4000);
+  };
   const handleCleanUpApplications = async () => {
     setCleaningUp(true);
     await handleFixEmailApplications();
     await handleRetryAllStuck();
     await handleAutoAssignUnassigned();
+    await handleRecoverNoCv();
     setCleaningUp(false);
   };
 
@@ -22300,8 +22338,8 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
               <option value="oldest">Oldest First</option>
             </select>
             <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-              {(fixMsg||retryMsg||autoAssignMsg)&&<span style={{fontSize:11,color:"var(--text2)"}}>{fixMsg||retryMsg||autoAssignMsg}</span>}
-              <button onClick={handleCleanUpApplications} disabled={cleaningUp||fixingEmailApps||retryingAll||autoAssigning} style={{padding:"5px 10px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{fixingEmailApps?"Fixing Email Applications…":retryingAll?"Retrying Stuck AI Reviews…":autoAssigning?"Auto-Assigning…":"Clean Up Applications"}</button>
+              {(fixMsg||retryMsg||autoAssignMsg||recoverMsg)&&<span style={{fontSize:11,color:"var(--text2)"}}>{fixMsg||retryMsg||autoAssignMsg||recoverMsg}</span>}
+              <button onClick={handleCleanUpApplications} disabled={cleaningUp||fixingEmailApps||retryingAll||autoAssigning} style={{padding:"5px 10px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{fixingEmailApps?"Fixing Email Applications…":retryingAll?"Retrying Stuck AI Reviews…":autoAssigning?"Auto-Assigning…":cleaningUp?"Recovering No-CV Applications…":"Clean Up Applications"}</button>
               <button onClick={()=>setHideNoCv(v=>!v)} style={{padding:"5px 10px",borderRadius:99,background:hideNoCv?"var(--accent)":"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:hideNoCv?"#fff":"var(--text2)",cursor:"pointer"}}>{hideNoCv?"Showing With CV Only":"Hide No-CV"}</button>
             </div>
           </div>
