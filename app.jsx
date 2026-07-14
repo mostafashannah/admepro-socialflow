@@ -720,7 +720,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.106";
+const APP_VERSION = "beta 5.107";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22117,29 +22117,69 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
             </div>
           </div>
           {filteredApps.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--text2)"}}>No applications match these filters.</div>}
-          {filteredApps.map(a=>{
-            const statusInfo = APPLICATION_STATUSES.find(s=>s.key===a.status)||APPLICATION_STATUSES[0];
-            return (
-              <div key={a.id} onClick={()=>openApp(a)} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:"pointer",flexWrap:"wrap"}}>
-                <div style={{display:"flex",alignItems:"center",gap:12}}>
-                  <Avatar name={a.candidate_name} size={36}/>
-                  <div>
-                    <p style={{fontWeight:700,fontSize:14}}>{a.candidate_name}</p>
-                    <p style={{fontSize:12,color:"var(--text3)"}}>{a.job_title} · {fmtDateTime(a.created_at)}</p>
+          {(() => {
+            // Group by candidate email so someone who applied to multiple
+            // openings shows as one row (name/contact shown once) with a
+            // clickable job-title tag per application, instead of one full
+            // row per application — each application record itself stays
+            // fully independent (own status/notes/CV).
+            const groups = [];
+            const byEmail = new Map();
+            for (const a of filteredApps) {
+              const key = (a.candidate_email||"").trim().toLowerCase() || a.id;
+              if (!byEmail.has(key)) { const g = []; byEmail.set(key, g); groups.push(g); }
+              byEmail.get(key).push(a);
+            }
+            return groups.map(group => {
+              const a = group[0];
+              if (group.length === 1) {
+                const statusInfo = APPLICATION_STATUSES.find(s=>s.key===a.status)||APPLICATION_STATUSES[0];
+                return (
+                  <div key={a.id} onClick={()=>openApp(a)} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:"pointer",flexWrap:"wrap"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:12}}>
+                      <Avatar name={a.candidate_name} size={36}/>
+                      <div>
+                        <p style={{fontWeight:700,fontSize:14}}>{a.candidate_name}</p>
+                        <p style={{fontSize:12,color:"var(--text3)"}}>{a.job_title} · {fmtDateTime(a.created_at)}</p>
+                      </div>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      {a.ai_review_status==="pending"&&<Spinner size={13}/>}
+                      {a.ai_review_status==="no_cv"&&<Badge label="No CV" color="#6b7280" xs/>}
+                      {a.ai_review_status==="cv_error"&&<Badge label="Crashed CV" color="#f59e0b" xs/>}
+                      {a.ai_score!=null&&<span style={{fontWeight:800,fontSize:16,color:a.ai_score>=70?"#10b981":a.ai_score>=40?"#f59e0b":"#ef4444"}}>{a.ai_score}</span>}
+                      <Badge label={a.job_opening_id?"Assigned":"Unassigned"} color={a.job_opening_id?"#10b981":"#f59e0b"} xs/>
+                      <Badge label={a.source==="email"?"Email":"Web"} color={a.source==="email"?"#6366f1":"#0ea5e9"} xs/>
+                      <Badge label={statusInfo.label} color={statusInfo.color} xs/>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <div key={a.candidate_email} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"column",gap:10}}>
+                  <div style={{display:"flex",alignItems:"center",gap:12}}>
+                    <Avatar name={a.candidate_name} size={36}/>
+                    <div>
+                      <p style={{fontWeight:700,fontSize:14}}>{a.candidate_name}</p>
+                      <p style={{fontSize:12,color:"var(--text3)"}}>{a.candidate_email}{a.candidate_phone?` · ${a.candidate_phone}`:""} · Applied to {group.length} positions</p>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:8,paddingLeft:48}}>
+                    {group.map(app => {
+                      const statusInfo = APPLICATION_STATUSES.find(s=>s.key===app.status)||APPLICATION_STATUSES[0];
+                      return (
+                        <button key={app.id} onClick={()=>openApp(app)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",cursor:"pointer"}}>
+                          <span style={{fontSize:12,fontWeight:600}}>{app.job_title}</span>
+                          {app.ai_score!=null&&<span style={{fontSize:11,fontWeight:800,color:app.ai_score>=70?"#10b981":app.ai_score>=40?"#f59e0b":"#ef4444"}}>{app.ai_score}</span>}
+                          <Badge label={statusInfo.label} color={statusInfo.color} xs/>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  {a.ai_review_status==="pending"&&<Spinner size={13}/>}
-                  {a.ai_review_status==="no_cv"&&<Badge label="No CV" color="#6b7280" xs/>}
-                  {a.ai_review_status==="cv_error"&&<Badge label="Crashed CV" color="#f59e0b" xs/>}
-                  {a.ai_score!=null&&<span style={{fontWeight:800,fontSize:16,color:a.ai_score>=70?"#10b981":a.ai_score>=40?"#f59e0b":"#ef4444"}}>{a.ai_score}</span>}
-                  <Badge label={a.job_opening_id?"Assigned":"Unassigned"} color={a.job_opening_id?"#10b981":"#f59e0b"} xs/>
-                  <Badge label={a.source==="email"?"Email":"Web"} color={a.source==="email"?"#6366f1":"#0ea5e9"} xs/>
-                  <Badge label={statusInfo.label} color={statusInfo.color} xs/>
-                </div>
-              </div>
-            );
-          })}
+              );
+            });
+          })()}
         </div>
       )}
 
