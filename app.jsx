@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.78";
+const APP_VERSION = "beta 5.79";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13117,7 +13117,7 @@ function CareersPage() {
       const created = res.entities?.[0];
       setDone(true);
       if(created?.id) reviewApplication(created, cvBase64, selected).catch(()=>{});
-      sendEmail(form.email.trim(), "Thanks for applying to Admepro!", applicationReceivedEmail(form.name.trim(), selected.title)).catch(()=>{});
+      sendEmail(form.email.trim(), "Thanks for applying to Admepro!", applicationReceivedEmail(form.name.trim(), selected.title), "Admepro Careers").catch(()=>{});
     } catch(e) { alert("Something went wrong submitting your application. Please try again."); }
     setSubmitting(false);
   };
