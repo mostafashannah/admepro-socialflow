@@ -901,7 +901,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.123";
+const APP_VERSION = "beta 5.124";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22174,12 +22174,14 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
       if(!r.ok) throw new Error(`${r.status}`);
       const blob = await r.blob();
       cvContent = await buildCvContentBlockFromUrl(blob, cvSourceUrl);
-      if(!app.cv_url) {
+      if(!app.cv_url || !app.cv_url.startsWith(window.location.origin)) {
         // Store our OWN copy, not a link back to Drive/wherever the file
         // came from — Google Drive's download URL always forces the
         // browser to download rather than preview, and a third-party link
         // can also go stale/be revoked later. Convert Word CVs to a real
-        // PDF at the same time, same as the direct-upload path.
+        // PDF at the same time, same as the direct-upload path. Also
+        // covers apps whose cv_url got set to an external link by an
+        // earlier version of this code, before this fix existed.
         const srcName = cvSourceUrl.split("/").pop().split("?")[0] || "cv";
         const rawFile = new File([blob], srcName, {type: blob.type});
         const storedFile = await convertCvToPdfForStorage(rawFile).catch(()=>rawFile);

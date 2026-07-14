@@ -163,7 +163,7 @@ function speedTokens(speed,base){if(speed==="low")return Math.max(300,Math.round
 function logActivity(action,category,details="",status="success",errorMsg="",user="system"){const entry={action,category,details,status,error_message:errorMsg,performed_by:user,performed_at:new Date().toISOString()};ce("ActivityLog",[entry]).then(({entities})=>{const saved=entities===null||entities===void 0?void 0:entities[0];// Push the freshly-saved row (with real id) into the live UI immediately,
 // otherwise System Log only reflects what was loaded at page load.
 if(saved&&!saved._saveError)window.dispatchEvent(new CustomEvent("sf:activitylog",{detail:saved}));}).catch(()=>{});}// ── Email HTML templates ─────────────────────────────────────────
-const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 5.123";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 5.124";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
 <tr><td align="center">
@@ -2057,11 +2057,13 @@ if(!app.job_opening_id&&app.job_title){const subj=app.job_title.toLowerCase();co
 // cron can skip it permanently, same as a genuinely-seen duplicate.
 if(app.source==="email"&&app.email_message_id){await ce("DeletedEmailApplication",[{email_message_id:app.email_message_id}]).catch(()=>{});}await de("JobApplication",app.id).catch(()=>{});};const[hideNoCv,setHideNoCv]=useState(false);const reviewOne=async app=>{const opening=openings.find(o=>o.id===app.job_opening_id);const cvSourceUrl=findCvSourceUrl(app);if(!cvSourceUrl){// No CV file, and no Google Drive link to fall back to — score 0
 // and tag it, don't spend an AI call on it.
-await ue("JobApplication",app.id,{ai_score:0,ai_summary:"No CV attached.",ai_extracted:null,ai_review_status:"no_cv"}).catch(()=>{});return;}let cvContent;try{const r=await fetchFileUrl(cvSourceUrl,20000);if(!r.ok)throw new Error(`${r.status}`);const blob=await r.blob();cvContent=await buildCvContentBlockFromUrl(blob,cvSourceUrl);if(!app.cv_url){// Store our OWN copy, not a link back to Drive/wherever the file
+await ue("JobApplication",app.id,{ai_score:0,ai_summary:"No CV attached.",ai_extracted:null,ai_review_status:"no_cv"}).catch(()=>{});return;}let cvContent;try{const r=await fetchFileUrl(cvSourceUrl,20000);if(!r.ok)throw new Error(`${r.status}`);const blob=await r.blob();cvContent=await buildCvContentBlockFromUrl(blob,cvSourceUrl);if(!app.cv_url||!app.cv_url.startsWith(window.location.origin)){// Store our OWN copy, not a link back to Drive/wherever the file
 // came from — Google Drive's download URL always forces the
 // browser to download rather than preview, and a third-party link
 // can also go stale/be revoked later. Convert Word CVs to a real
-// PDF at the same time, same as the direct-upload path.
+// PDF at the same time, same as the direct-upload path. Also
+// covers apps whose cv_url got set to an external link by an
+// earlier version of this code, before this fix existed.
 const srcName=cvSourceUrl.split("/").pop().split("?")[0]||"cv";const rawFile=new File([blob],srcName,{type:blob.type});const storedFile=await convertCvToPdfForStorage(rawFile).catch(()=>rawFile);const ownUrl=await uploadToStorage(storedFile,"job-applications/email").catch(()=>null);if(ownUrl)await ue("JobApplication",app.id,{cv_url:ownUrl}).catch(()=>{});}}catch(e){// The CV file itself is missing/broken/unreachable, or couldn't be
 // read as a PDF/Word document — not a fixable AI-call error. Tag it
 // distinctly so it's not confused with one, and don't keep burning
