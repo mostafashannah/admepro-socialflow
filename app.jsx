@@ -720,7 +720,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.101";
+const APP_VERSION = "beta 5.102";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21429,7 +21429,7 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
               <option value="">Unassigned</option>
               {(openings||[]).map(o=><option key={o.id} value={o.id}>{o.title}</option>)}
             </select>
-            {application.source==="email"&&<Badge label="via Email" color="#6366f1" xs/>}
+            <Badge label={application.source==="email"?"Email":"Web"} color={application.source==="email"?"#6366f1":"#0ea5e9"} xs/>
           </div>
           {application.ai_score!=null&&(
             <div style={{textAlign:"center",padding:"8px 16px",background:"var(--surface2)",borderRadius:12,border:"1px solid var(--border)"}}>
@@ -21933,6 +21933,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
                   {a.ai_review_status==="cv_error"&&<Badge label="Crashed CV" color="#f59e0b" xs/>}
                   {a.ai_score!=null&&<span style={{fontWeight:800,fontSize:16,color:a.ai_score>=70?"#10b981":a.ai_score>=40?"#f59e0b":"#ef4444"}}>{a.ai_score}</span>}
                   <Badge label={a.job_opening_id?"Assigned":"Unassigned"} color={a.job_opening_id?"#10b981":"#f59e0b"} xs/>
+                  <Badge label={a.source==="email"?"Email":"Web"} color={a.source==="email"?"#6366f1":"#0ea5e9"} xs/>
                   <Badge label={statusInfo.label} color={statusInfo.color} xs/>
                 </div>
               </div>
