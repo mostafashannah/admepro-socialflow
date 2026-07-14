@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.84";
+const APP_VERSION = "beta 5.85";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21423,7 +21423,12 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
           {application.linkedin_url&&<a href={application.linkedin_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>LinkedIn</a>}
         </div>
 
-        {application.ai_review_status==="pending"&&<p style={{fontSize:12,color:"var(--text3)",marginBottom:14}}><Spinner size={12}/> AI review in progress…</p>}
+        {application.ai_review_status==="pending"&&(
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:14}}>
+            <p style={{fontSize:12,color:"var(--text3)"}}><Spinner size={12}/> AI review in progress… (stuck? click retry)</p>
+            <Btn size="sm" onClick={handleRerun} disabled={rerunning}>{rerunning?"Retrying…":"Retry"}</Btn>
+          </div>
+        )}
         {application.ai_review_status==="failed"&&(
           <div style={{padding:"10px 14px",background:"#ef444422",border:"1px solid #ef444455",borderRadius:"var(--rs)",marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
             <span style={{fontSize:12,color:"#ef4444",fontWeight:600}}>AI review failed</span>
@@ -21624,6 +21629,40 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,...patch}:prev);
     await ue("JobApplication", app.id, patch).catch(()=>{});
   };
+  const [fixingEmailApps, setFixingEmailApps] = useState(false);
+  const [fixMsg, setFixMsg] = useState("");
+  const handleFixEmailApplications = async () => {
+    setFixingEmailApps(true);
+    let fixedCount = 0;
+    for (const app of applications) {
+      if (app.source !== "email") continue;
+      const patch = {};
+      // Pull links out of the cover letter that weren't split into their
+      // own fields yet (older captures, before link parsing was added).
+      if ((!app.portfolio_url || !app.linkedin_url) && app.cover_letter) {
+        const urls = app.cover_letter.match(/https?:\/\/[^\s<>")]+/gi) || [];
+        for (let url of urls) {
+          url = url.replace(/[.,;:!?]+$/,"");
+          if (/linkedin\.com/i.test(url)) { if (!app.linkedin_url && !patch.linkedin_url) patch.linkedin_url = url; }
+          else if (!app.portfolio_url && !patch.portfolio_url) patch.portfolio_url = url;
+        }
+      }
+      // Auto-assign unassigned applications by matching their captured
+      // subject/job_title text against currently open job openings.
+      if (!app.job_opening_id && app.job_title) {
+        const match = openings.find(o=>o.status==="open" && o.title && app.job_title.toLowerCase().includes(o.title.toLowerCase()));
+        if (match) { patch.job_opening_id = match.id; patch.job_title = match.title; }
+      }
+      if (Object.keys(patch).length) {
+        fixedCount++;
+        setApplications(prev=>prev.map(a=>a.id===app.id?{...a,...patch}:a));
+        await ue("JobApplication", app.id, patch).catch(()=>{});
+      }
+    }
+    setFixingEmailApps(false);
+    setFixMsg(fixedCount ? `Fixed ${fixedCount} application${fixedCount!==1?"s":""}` : "Nothing to fix — all email applications already look correct");
+    setTimeout(()=>setFixMsg(""),4000);
+  };
   const handleDeleteApplication = async (app) => {
     setApplications(prev=>prev.filter(a=>a.id!==app.id));
     setSelectedApp(null);
@@ -21723,6 +21762,8 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
               <option value="all">All Statuses</option>
               {APPLICATION_STATUSES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
+            <button onClick={handleFixEmailApplications} disabled={fixingEmailApps} style={{padding:"7px 14px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{fixingEmailApps?"Fixing…":"Fix Email Applications"}</button>
+            {fixMsg&&<span style={{fontSize:12,color:"var(--text2)",alignSelf:"center"}}>{fixMsg}</span>}
           </div>
           {filteredApps.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--text2)"}}>No applications match these filters.</div>}
           {filteredApps.map(a=>{
@@ -21739,6 +21780,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
                   {a.ai_review_status==="pending"&&<Spinner size={13}/>}
                   {a.ai_score!=null&&<span style={{fontWeight:800,fontSize:16,color:a.ai_score>=70?"#10b981":a.ai_score>=40?"#f59e0b":"#ef4444"}}>{a.ai_score}</span>}
+                  <Badge label={a.job_opening_id?"Assigned":"Unassigned"} color={a.job_opening_id?"#10b981":"#f59e0b"} xs/>
                   <Badge label={statusInfo.label} color={statusInfo.color} xs/>
                 </div>
               </div>
