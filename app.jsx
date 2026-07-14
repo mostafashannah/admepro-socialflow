@@ -632,12 +632,12 @@ ${AI_REVIEW_JSON_SHAPE}
         ]}],
       }),
     });
-    if(!r.ok) throw new Error(`AI review failed: ${r.status}`);
+    if(!r.ok) { const body = await r.text().catch(()=>""); throw new Error(`AI review failed: ${r.status} ${body.slice(0,300)}`); }
     const d = await r.json();
     const raw = (d.content?.map(b=>b.text||"").join("")||"").trim();
     return await finishReview(application, raw);
   } catch(e) {
-    await ue("JobApplication", application.id, {ai_review_status:"failed"}).catch(()=>{});
+    await ue("JobApplication", application.id, {ai_review_status:"failed", ai_summary:`Retry failed: ${String(e?.message||e).slice(0,500)}`}).catch(()=>{});
     return null;
   }
 }
@@ -720,7 +720,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.93";
+const APP_VERSION = "beta 5.94";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21747,12 +21747,13 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     }
     try {
       const r = await fetchWithTimeout(app.cv_url, {}, 20000);
+      if(!r.ok) throw new Error(`Could not fetch CV file: ${r.status} ${app.cv_url}`);
       const blob = await r.blob();
       const reader = new FileReader();
       const base64 = await new Promise(res=>{ reader.onload = ()=>res(reader.result); reader.readAsDataURL(blob); });
       await ue("JobApplication", app.id, {ai_review_status:"pending"});
       await reviewApplication(app, base64, opening);
-    } catch(e) { await ue("JobApplication", app.id, {ai_review_status:"failed"}).catch(()=>{}); }
+    } catch(e) { await ue("JobApplication", app.id, {ai_review_status:"failed", ai_summary:`Retry failed: ${String(e?.message||e).slice(0,500)}`}).catch(()=>{}); }
   };
   const handleRerunReview = async (app) => {
     await reviewOne(app);
