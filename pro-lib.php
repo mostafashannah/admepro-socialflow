@@ -676,7 +676,11 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
             $sql .= " AND assigned_to = :a"; $params[':a'] = $senderName;
         }
 
-        $sql .= " ORDER BY scheduled_date ASC LIMIT 15";
+        // DESC, not ASC — with only 15 rows returned, ascending order meant
+        // a client with more than 15 posts could have its true most recent
+        // one truncated off entirely, so "last published post" questions
+        // were answered from stale/old data instead of the real latest one.
+        $sql .= " ORDER BY scheduled_date DESC LIMIT 15";
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
