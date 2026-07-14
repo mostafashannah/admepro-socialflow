@@ -243,7 +243,7 @@ foreach ($messages as $message) {
         if ($checkDup->fetchColumn()) { $message->setFlag('Seen'); continue; }
 
         $fromList = $message->getFrom();
-        $from = $fromList && count($fromList) ? $fromList[0] : null;
+        $from = $fromList && $fromList->count() ? $fromList[0] : null;
         $candidateEmail = $from ? trim((string) $from->mail) : '';
         $candidateName = $from && !empty($from->personal) ? trim((string) $from->personal) : $candidateEmail;
         $subject = (string) $message->getSubject();
