@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.77";
+const APP_VERSION = "beta 5.78";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21354,12 +21354,17 @@ function ApplicationDetail({application, opening, onClose, onUpdateStatus, onSav
   };
 
   return (
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{background:"var(--surface)",borderRadius:16,padding:28,width:600,maxWidth:"100%",maxHeight:"88vh",overflowY:"auto",border:"1px solid var(--border)"}}>
+    <div className="fade-in" style={{maxWidth:700}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+        <button onClick={onClose} style={{width:36,height:36,borderRadius:"50%",background:"var(--surface2)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text2)",cursor:"pointer",flexShrink:0}}>
+          <Ico d={Icons.chevL} size={16}/>
+        </button>
+        <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:22,margin:0}}>{application.candidate_name}</h2>
+      </div>
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:28}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
           <div>
-            <h3 style={{fontWeight:800,fontSize:18}}>{application.candidate_name}</h3>
-            <p style={{fontSize:12,color:"var(--text2)",marginTop:2}}>Applied for {application.job_title||opening?.title||"—"}</p>
+            <p style={{fontSize:12,color:"var(--text2)"}}>Applied for {application.job_title||opening?.title||"—"}</p>
           </div>
           {application.ai_score!=null&&(
             <div style={{textAlign:"center",padding:"8px 16px",background:"var(--surface2)",borderRadius:12,border:"1px solid var(--border)"}}>
@@ -21465,8 +21470,6 @@ function ApplicationDetail({application, opening, onClose, onUpdateStatus, onSav
         <Field label="Notes">
           <textarea value={notes} onChange={e=>setNotes(e.target.value)} onBlur={()=>onSaveNotes(application, notes)} rows={3} style={{...inputSt,resize:"vertical"}}/>
         </Field>
-
-        <Btn variant="secondary" onClick={onClose} style={{width:"100%",marginTop:18}}>Close</Btn>
       </div>
     </div>
   );
@@ -21539,6 +21542,10 @@ function RecruitmentPage({currentUser}) {
 
   if(showForm) return (
     <JobOpeningForm opening={editOpening} currentUser={currentUser} onSave={handleSaveOpening} onClose={()=>{setShowForm(false);setEditOpening(null);}}/>
+  );
+
+  if(selectedApp) return (
+    <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} onClose={()=>setSelectedApp(null)} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview}/>
   );
 
   return (
@@ -21621,8 +21628,6 @@ function RecruitmentPage({currentUser}) {
           })}
         </div>
       )}
-
-      {selectedApp&&<ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} onClose={()=>setSelectedApp(null)} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview}/>}
     </div>
   );
 }
