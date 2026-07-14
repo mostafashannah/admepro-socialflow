@@ -233,6 +233,11 @@ try {
 
 $openings = $pdo->query("SELECT id, title, description, requirements FROM job_openings WHERE status = 'open'")->fetchAll(PDO::FETCH_ASSOC);
 $checkDup = $pdo->prepare("SELECT 1 FROM job_applications WHERE email_message_id = :mid");
+// A tombstone of message ids whose application was manually deleted by an
+// admin — deleting the job_applications row alone doesn't stop this cron
+// from re-capturing the same email next run, since the UNIQUE constraint
+// above only protects rows that still exist.
+$checkDeleted = $pdo->prepare("SELECT 1 FROM deleted_email_applications WHERE email_message_id = :mid");
 $insert = $pdo->prepare(
     "INSERT INTO job_applications (id, job_opening_id, job_title, candidate_name, candidate_email, candidate_phone, cover_letter, cv_url, portfolio_url, portfolio_attachment_url, linkedin_url, status, ai_review_status, source, email_message_id)
      VALUES (UUID(), :job_opening_id, :job_title, :candidate_name, :candidate_email, :candidate_phone, :cover_letter, :cv_url, :portfolio_url, :portfolio_attachment_url, :linkedin_url, 'new', :ai_review_status, 'email', :email_message_id)"
@@ -265,6 +270,9 @@ foreach ($messages as $message) {
 
         $checkDup->execute([':mid' => $messageId]);
         if ($checkDup->fetchColumn()) { $message->setFlag('Seen'); continue; }
+
+        $checkDeleted->execute([':mid' => $messageId]);
+        if ($checkDeleted->fetchColumn()) { $message->setFlag('Seen'); continue; }
 
         $fromList = $message->getFrom();
         $from = $fromList && $fromList->count() ? $fromList[0] : null;

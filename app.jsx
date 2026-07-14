@@ -374,6 +374,7 @@ const SB_TABLE = {
   MetaInsightsSnapshot:"meta_insights_snapshots",
   JobOpening:"job_openings",
   JobApplication:"job_applications",
+  DeletedEmailApplication:"deleted_email_applications",
 };
 
 function sbTable(entityName) {
@@ -858,7 +859,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.118";
+const APP_VERSION = "beta 5.119";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22095,6 +22096,13 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   const handleDeleteApplication = async (app) => {
     setApplications(prev=>prev.filter(a=>a.id!==app.id));
     setSelectedApp(null);
+    // Deleting the DB row doesn't stop the cron from re-capturing the same
+    // email next run (the UNIQUE constraint that prevents duplicates only
+    // protects rows that still exist). Record the message id here so the
+    // cron can skip it permanently, same as a genuinely-seen duplicate.
+    if (app.source === "email" && app.email_message_id) {
+      await ce("DeletedEmailApplication", [{email_message_id: app.email_message_id}]).catch(()=>{});
+    }
     await de("JobApplication", app.id).catch(()=>{});
   };
   const [hideNoCv, setHideNoCv] = useState(false);
