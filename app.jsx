@@ -720,7 +720,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.102";
+const APP_VERSION = "beta 5.103";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21648,6 +21648,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   const [openingFilter, setOpeningFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortBy, setSortBy] = useState("score");
+  const [searchQuery, setSearchQuery] = useState("");
   const [linkCopied, setLinkCopied] = useState(false);
 
   // Browser back button should close the application detail view and land
@@ -21826,6 +21827,11 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   const filteredApps = applications
     .filter(a=>openingFilter==="all"||(openingFilter==="unassigned"?!a.job_opening_id:a.job_opening_id===openingFilter))
     .filter(a=>statusFilter==="all"||a.status===statusFilter)
+    .filter(a=>{
+      if(!searchQuery.trim()) return true;
+      const q = searchQuery.trim().toLowerCase();
+      return [a.candidate_name,a.job_title,a.candidate_phone,a.candidate_email].some(v=>(v||"").toLowerCase().includes(q));
+    })
     .sort((a,b)=>{
       if(sortBy==="recent") return new Date(b.created_at)-new Date(a.created_at);
       if(sortBy==="oldest") return new Date(a.created_at)-new Date(b.created_at);
@@ -21893,6 +21899,10 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
 
       {tab==="applications"&&(
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{position:"relative",maxWidth:340}}>
+            <Ico d={Icons.search} size={14} style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"var(--text3)"}}/>
+            <input value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder="Search name, title, phone, email…" style={{...inputSt,minHeight:"auto",padding:"8px 12px 8px 34px",fontSize:13,borderRadius:99}}/>
+          </div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",justifyContent:"flex-end"}}>
             <select value={openingFilter} onChange={e=>setOpeningFilter(e.target.value)} style={{...inputSt,width:"auto",minHeight:"auto",borderRadius:99,padding:"5px 10px",fontSize:11,fontWeight:600,border:"1px solid var(--border2)"}}>
               <option value="all">All Openings</option>
