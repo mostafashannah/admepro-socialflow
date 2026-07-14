@@ -115,7 +115,14 @@ try {
         try {
             $pdo->prepare("INSERT INTO wa_processed_messages (message_id) VALUES (:mid)")->execute([':mid' => $waMessageId]);
         } catch (Throwable $e) {
-            exit; // duplicate key = already processed this exact message
+            // Only a genuine duplicate-key violation (code 23000, the
+            // message_id primary key already exists) means "already
+            // processed — skip it". Any other DB error here (e.g. the
+            // migration hasn't been run yet and the table doesn't exist)
+            // must NOT silently drop every message — log it and continue
+            // processing normally instead.
+            if ($e->getCode() === '23000') exit;
+            error_log('[wa-webhook] wa_processed_messages check failed (continuing anyway): ' . $e->getMessage());
         }
     }
 
