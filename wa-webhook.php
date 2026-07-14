@@ -104,6 +104,21 @@ try {
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]
     );
 
+    // Meta can redeliver the exact same webhook message more than once
+    // (slow ack, network retry) — without this check, Pro would reprocess
+    // it and re-run tool calls like add_transaction, creating duplicate
+    // expense/income rows. WhatsApp's own message id is globally unique,
+    // so use it as an idempotency key: if we've already recorded it,
+    // this is a redelivery — stop here before doing any work.
+    $waMessageId = (string)($message['id'] ?? '');
+    if ($waMessageId !== '') {
+        try {
+            $pdo->prepare("INSERT INTO wa_processed_messages (message_id) VALUES (:mid)")->execute([':mid' => $waMessageId]);
+        } catch (Throwable $e) {
+            exit; // duplicate key = already processed this exact message
+        }
+    }
+
     // Route by which WhatsApp number received the message. The "Pro" assistant runs on
     // its own dedicated number (WA_PHONE_ID). Every OTHER connected number belongs to a
     // client's customer inbox — those messages are stored and handed to the reply bot,
