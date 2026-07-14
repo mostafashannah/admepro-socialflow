@@ -90,7 +90,7 @@ function ai_review_cv($pdoRef, $applicationId, $pdfBase64, $jobTitle, $jobDescri
         . "Job description: " . substr($jobDescription ?: '', 0, 1500) . "\n"
         . "Requirements: " . substr($jobRequirements ?: '', 0, 1500) . "\n\n"
         . "Read the CV and return ONLY JSON in this exact shape:\n"
-        . '{"candidate_name":"","candidate_email":"","candidate_phone":"","years_experience":0,"skills":["..."],"education":"","languages":["..."],"highlights":["up to 5 concrete, specific achievements or qualifications relevant to this role"],"red_flags":["up to 3 concerns, gaps, or mismatches — empty array if none"],"score":0,"summary":"2-3 sentence overall assessment of fit for this specific role"}' . "\n"
+        . '{"candidate_name":"","candidate_email":"","candidate_phone":"","years_experience":0,"skills":["..."],"education":"","languages":["..."],"highlights":["up to 5 concrete, specific achievements or qualifications relevant to this role"],"red_flags":["up to 3 concerns, gaps, or mismatches — empty array if none"],"links":["any LinkedIn/Behance/Canva/portfolio/personal-site URLs found in the document — empty array if none"],"score":0,"summary":"2-3 sentence overall assessment of fit for this specific role"}' . "\n"
         . '"score" is 0-100, reflecting fit for THIS role specifically (not a generic CV quality score).';
 
     $payload = json_encode([
@@ -121,63 +121,26 @@ function ai_review_cv($pdoRef, $applicationId, $pdfBase64, $jobTitle, $jobDescri
     $extracted = json_decode($m[0], true);
     if (!$extracted) { $fail(); return; }
 
-    // Backfill phone/name from the CV if the email capture didn't have them.
+    // Backfill phone/links from the CV if the email capture didn't have them.
     if (!empty($extracted['candidate_phone'])) {
         $pdoRef->prepare("UPDATE job_applications SET candidate_phone=:p WHERE id=:id AND (candidate_phone IS NULL OR candidate_phone = '')")
             ->execute([':p' => $extracted['candidate_phone'], ':id' => $applicationId]);
     }
-
-    $score = isset($extracted['score']) && is_numeric($extracted['score']) ? max(0, min(100, round($extracted['score']))) : null;
-    $upd->execute([
-        ':s' => $score,
-        ':sum' => substr($extracted['summary'] ?? '', 0, 600),
-        ':ext' => json_encode($extracted),
-        ':st' => 'done',
-        ':id' => $applicationId,
-    ]);
-}
-
-// Fallback for applications with no CV attachment but real cover-letter
-// text (e.g. a structured "Name/Tel/Exp" body) — score from that instead
-// of leaving ai_review_status stuck at 'failed' with nothing usable.
-function ai_review_text($pdoRef, $applicationId, $coverLetter, $jobTitle, $jobDescription, $jobRequirements) {
-    if (trim($coverLetter) === '' || strlen(trim($coverLetter)) < 20) return;
-    $sys = "You are an HR screening assistant reviewing a candidate's application text (no CV file was attached — this is all the information available) for the position \"".($jobTitle ?: 'this role')."\".\n"
-        . "Job description: " . substr($jobDescription ?: '', 0, 1500) . "\n"
-        . "Requirements: " . substr($jobRequirements ?: '', 0, 1500) . "\n\n"
-        . "Read the application text below and return ONLY JSON in this exact shape:\n"
-        . '{"candidate_name":"","candidate_email":"","candidate_phone":"","years_experience":0,"skills":["..."],"education":"","languages":["..."],"highlights":["up to 5 concrete, specific achievements or qualifications relevant to this role"],"red_flags":["up to 3 concerns, gaps, or mismatches — empty array if none"],"score":0,"summary":"2-3 sentence overall assessment of fit for this specific role"}' . "\n"
-        . '"score" is 0-100, reflecting fit for THIS role specifically based on the limited information given — note in the summary that no CV was attached.' . "\n\n"
-        . "Application text:\n" . substr($coverLetter, 0, 4000);
-
-    $payload = json_encode([
-        "model" => "claude-sonnet-4-6", "max_tokens" => 1200, "system" => $sys,
-        "messages" => [["role" => "user", "content" => "Review this application and return the JSON described in the system prompt."]],
-    ]);
-    $ch = curl_init("https://api.anthropic.com/v1/messages");
-    curl_setopt_array($ch, [
-        CURLOPT_POST => true, CURLOPT_POSTFIELDS => $payload, CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 45,
-        CURLOPT_HTTPHEADER => ["x-api-key: " . ANTHROPIC_API_KEY, "anthropic-version: 2023-06-01", "Content-Type: application/json"],
-    ]);
-    $res = curl_exec($ch);
-    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    $upd = $pdoRef->prepare("UPDATE job_applications SET ai_score=:s, ai_summary=:sum, ai_extracted=:ext, ai_review_status=:st WHERE id=:id");
-    $fail = fn() => $upd->execute([':s' => null, ':sum' => null, ':ext' => null, ':st' => 'failed', ':id' => $applicationId]);
-
-    if ($status < 200 || $status >= 300) { $fail(); return; }
-    $d = json_decode($res, true);
-    $raw = '';
-    foreach (($d['content'] ?? []) as $block) { $raw .= $block['text'] ?? ''; }
-    if (!preg_match('/\{[\s\S]*\}/', $raw, $m)) { $fail(); return; }
-    $extracted = json_decode($m[0], true);
-    if (!$extracted) { $fail(); return; }
-
-    if (!empty($extracted['candidate_phone'])) {
-        $pdoRef->prepare("UPDATE job_applications SET candidate_phone=:p WHERE id=:id AND (candidate_phone IS NULL OR candidate_phone = '')")
-            ->execute([':p' => $extracted['candidate_phone'], ':id' => $applicationId]);
+    if (!empty($extracted['links']) && is_array($extracted['links'])) {
+        $linkedinLink = null; $portfolioLink = null;
+        foreach ($extracted['links'] as $link) {
+            if (!$link) continue;
+            if (stripos($link, 'linkedin.com') !== false) { if (!$linkedinLink) $linkedinLink = $link; }
+            elseif (!$portfolioLink) { $portfolioLink = $link; }
+        }
+        if ($linkedinLink) {
+            $pdoRef->prepare("UPDATE job_applications SET linkedin_url=:l WHERE id=:id AND (linkedin_url IS NULL OR linkedin_url = '')")
+                ->execute([':l' => $linkedinLink, ':id' => $applicationId]);
+        }
+        if ($portfolioLink) {
+            $pdoRef->prepare("UPDATE job_applications SET portfolio_url=:l WHERE id=:id AND (portfolio_url IS NULL OR portfolio_url = '')")
+                ->execute([':l' => $portfolioLink, ':id' => $applicationId]);
+        }
     }
 
     $score = isset($extracted['score']) && is_numeric($extracted['score']) ? max(0, min(100, round($extracted['score']))) : null;
@@ -340,7 +303,7 @@ foreach ($messages as $message) {
             ':portfolio_url' => $portfolioUrl,
             ':portfolio_attachment_url' => $portfolioAttachmentUrl['url'] ?? null,
             ':linkedin_url' => $linkedinUrl,
-            ':ai_review_status' => ($cvUrl || strlen(trim($bodyText)) >= 20) ? 'pending' : 'failed',
+            ':ai_review_status' => $cvUrl ? 'pending' : 'no_cv',
             ':email_message_id' => $messageId,
         ]);
         // job_applications.id defaults to UUID() at the DB level, so
@@ -352,7 +315,8 @@ foreach ($messages as $message) {
         if ($newId && $cvUrl) {
             ai_review_cv($pdo, $newId, $cvUrl['base64'], $matchedOpening['title'] ?? null, $matchedOpening['description'] ?? '', $matchedOpening['requirements'] ?? '');
         } elseif ($newId) {
-            ai_review_text($pdo, $newId, $bodyText, $matchedOpening['title'] ?? null, $matchedOpening['description'] ?? '', $matchedOpening['requirements'] ?? '');
+            // No CV — score 0 and tag it rather than spend an AI call on it.
+            $pdo->prepare("UPDATE job_applications SET ai_score=0, ai_summary='No CV attached.' WHERE id=:id")->execute([':id' => $newId]);
         }
 
         if ($confirmationEnabled) {

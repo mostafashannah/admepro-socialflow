@@ -574,7 +574,7 @@ Rules:
 // regex-extract + JSON.parse shape as proLearnFromExchange() above.
 // cvBase64 may include the "data:application/pdf;base64," prefix (from
 // FileReader.readAsDataURL) or be a bare base64 string — both are handled.
-const AI_REVIEW_JSON_SHAPE = '{"candidate_name":"","candidate_email":"","candidate_phone":"","years_experience":0,"skills":["..."],"education":"","languages":["..."],"highlights":["≤5 concrete, specific achievements or qualifications relevant to this role"],"red_flags":["≤3 concerns, gaps, or mismatches — empty array if none"],"score":0,"summary":"2-3 sentence overall assessment of fit for this specific role"}';
+const AI_REVIEW_JSON_SHAPE = '{"candidate_name":"","candidate_email":"","candidate_phone":"","years_experience":0,"skills":["..."],"education":"","languages":["..."],"highlights":["≤5 concrete, specific achievements or qualifications relevant to this role"],"red_flags":["≤3 concerns, gaps, or mismatches — empty array if none"],"links":["any LinkedIn/Behance/Canva/portfolio/personal-site URLs found in the document — empty array if none"],"score":0,"summary":"2-3 sentence overall assessment of fit for this specific role"}';
 
 async function finishReview(application, raw) {
   const m = raw.match(/\{[\s\S]*\}/);
@@ -586,10 +586,17 @@ async function finishReview(application, raw) {
     ai_extracted: JSON.stringify(extracted),
     ai_review_status: "done",
   };
-  // Backfill contact fields the CV/cover letter had but the application record didn't
+  // Backfill contact fields and links the CV had but the application record didn't
   // (mainly phone — email captures never have it from IMAP headers).
   if(!application.candidate_phone && extracted.candidate_phone) patch.candidate_phone = extracted.candidate_phone;
   if(!application.candidate_name && extracted.candidate_name) patch.candidate_name = extracted.candidate_name;
+  if(Array.isArray(extracted.links)) {
+    for(const link of extracted.links) {
+      if(!link) continue;
+      if(/linkedin\.com/i.test(link)) { if(!application.linkedin_url && !patch.linkedin_url) patch.linkedin_url = link; }
+      else if(!application.portfolio_url && !patch.portfolio_url) patch.portfolio_url = link;
+    }
+  }
   await ue("JobApplication", application.id, patch);
   return extracted;
 }
@@ -623,39 +630,6 @@ ${AI_REVIEW_JSON_SHAPE}
           {type:"document", source:{type:"base64", media_type:"application/pdf", data}},
           {type:"text", text:"Review this CV and return the JSON described in the system prompt."},
         ]}],
-      }),
-    });
-    if(!r.ok) throw new Error(`AI review failed: ${r.status}`);
-    const d = await r.json();
-    const raw = (d.content?.map(b=>b.text||"").join("")||"").trim();
-    return await finishReview(application, raw);
-  } catch(e) {
-    await ue("JobApplication", application.id, {ai_review_status:"failed"}).catch(()=>{});
-    return null;
-  }
-}
-
-// Fallback for applications with no CV file but real cover-letter text
-// (e.g. structured "Name/Tel/Exp" content pasted into an application
-// email) — score from that text instead of leaving it unscoreable.
-async function reviewApplicationFromText(application, opening) {
-  if(!application?.id || !application?.cover_letter || application.cover_letter.trim().length<20) return null;
-  const sys = `You are an HR screening assistant reviewing a candidate's application text (no CV file was attached — this is all the information available) for the position "${opening?.title||application.job_title||"this role"}".
-Job description: ${(opening?.description||"").slice(0,1500)}
-Requirements: ${(opening?.requirements||"").slice(0,1500)}
-
-Read the application text below and return ONLY JSON in this exact shape:
-${AI_REVIEW_JSON_SHAPE}
-"score" is 0-100, reflecting fit for THIS role specifically based on the limited information given — note in the summary that no CV was attached.
-
-Application text:
-${application.cover_letter.slice(0,4000)}`;
-  try {
-    const r = await fetchWithTimeout(AI_ENDPOINT, {
-      method:"POST", headers:AI_HEADERS,
-      body: JSON.stringify({
-        model:"claude-sonnet-4-6", max_tokens:1200, system:sys,
-        messages:[{role:"user", content:"Review this application and return the JSON described in the system prompt."}],
       }),
     });
     if(!r.ok) throw new Error(`AI review failed: ${r.status}`);
@@ -746,7 +720,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.91";
+const APP_VERSION = "beta 5.92";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21485,8 +21459,13 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
         )}
         {application.ai_review_status==="failed"&&(
           <div style={{padding:"10px 14px",background:"#ef444422",border:"1px solid #ef444455",borderRadius:"var(--rs)",marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
-            <span style={{fontSize:12,color:"#ef4444",fontWeight:600}}>{application.cv_url?"AI review failed":"No CV attached — nothing usable to score"}</span>
+            <span style={{fontSize:12,color:"#ef4444",fontWeight:600}}>AI review failed</span>
             <Btn size="sm" onClick={handleRerun} disabled={rerunning}>{rerunning?"Retrying…":"Retry"}</Btn>
+          </div>
+        )}
+        {application.ai_review_status==="no_cv"&&(
+          <div style={{padding:"10px 14px",background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:"var(--rs)",marginBottom:14}}>
+            <span style={{fontSize:12,color:"var(--text2)",fontWeight:600}}>No CV attached — scored 0</span>
           </div>
         )}
         {application.ai_summary&&(
@@ -21762,11 +21741,8 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   const reviewOne = async (app) => {
     const opening = openings.find(o=>o.id===app.job_opening_id);
     if(!app.cv_url) {
-      // No CV file — score from whatever cover-letter text was submitted
-      // instead of leaving it permanently unscoreable.
-      await ue("JobApplication", app.id, {ai_review_status:"pending"});
-      const result = await reviewApplicationFromText(app, opening);
-      if(!result) await ue("JobApplication", app.id, {ai_review_status:"failed"}).catch(()=>{});
+      // No CV file — score 0 and tag it, don't spend an AI call on it.
+      await ue("JobApplication", app.id, {ai_score:0, ai_summary:"No CV attached.", ai_extracted:null, ai_review_status:"no_cv"}).catch(()=>{});
       return;
     }
     try {
@@ -21896,7 +21872,8 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
                   {a.ai_review_status==="pending"&&<Spinner size={13}/>}
-                  {a.ai_score!=null&&<span style={{fontWeight:800,fontSize:16,color:a.ai_score>=70?"#10b981":a.ai_score>=40?"#f59e0b":"#ef4444"}}>{a.ai_score}</span>}
+                  {a.ai_review_status==="no_cv"&&<Badge label="No CV" color="#6b7280" xs/>}
+                  {a.ai_score!=null&&a.ai_review_status!=="no_cv"&&<span style={{fontWeight:800,fontSize:16,color:a.ai_score>=70?"#10b981":a.ai_score>=40?"#f59e0b":"#ef4444"}}>{a.ai_score}</span>}
                   <Badge label={a.job_opening_id?"Assigned":"Unassigned"} color={a.job_opening_id?"#10b981":"#f59e0b"} xs/>
                   <Badge label={statusInfo.label} color={statusInfo.color} xs/>
                 </div>
