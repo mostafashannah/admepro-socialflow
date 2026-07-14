@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.83";
+const APP_VERSION = "beta 5.84";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21583,6 +21583,16 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [linkCopied, setLinkCopied] = useState(false);
 
+  // Browser back button should close the application detail view and land
+  // back on the applications list, not navigate away from the page.
+  useEffect(()=>{
+    const onPop = () => setSelectedApp(null);
+    window.addEventListener("popstate", onPop);
+    return ()=>window.removeEventListener("popstate", onPop);
+  },[]);
+  const openApp = (a) => { try{ window.history.pushState({recruitmentApp:a.id}, ""); }catch(e){} setSelectedApp(a); };
+  const closeApp = () => { window.history.back(); };
+
   const load = async () => {
     setLoading(true);
     const [oRes, aRes] = await Promise.all([qe("JobOpening",{},"-created_date",200), qe("JobApplication",{},"-created_date",500)]);
@@ -21652,7 +21662,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   );
 
   if(selectedApp) return (
-    <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={()=>setSelectedApp(null)} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication}/>
+    <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication}/>
   );
 
   return (
@@ -21718,7 +21728,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
           {filteredApps.map(a=>{
             const statusInfo = APPLICATION_STATUSES.find(s=>s.key===a.status)||APPLICATION_STATUSES[0];
             return (
-              <div key={a.id} onClick={()=>setSelectedApp(a)} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:"pointer",flexWrap:"wrap"}}>
+              <div key={a.id} onClick={()=>openApp(a)} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:"pointer",flexWrap:"wrap"}}>
                 <div style={{display:"flex",alignItems:"center",gap:12}}>
                   <Avatar name={a.candidate_name} size={36}/>
                   <div>
