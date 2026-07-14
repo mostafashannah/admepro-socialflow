@@ -26,8 +26,11 @@
  * Setup:
  *   composer require webklex/php-imap
  *
- * Crontab (every 5 minutes):
- *   (star)/5 (star) (star) (star) (star) /usr/bin/php /var/www/socialflow/imap-recruitment-cron.php >> /var/www/socialflow/imap-recruitment-cron.log 2>&1
+ * Crontab — run every minute; the script self-throttles to the actual
+ * polling interval set in Recruitment → Email Settings ("Check For New
+ * Applications Every"), skipping without connecting to IMAP at all until
+ * that interval has elapsed (see imap-recruitment-cron.lastrun below):
+ *   (star)/1 (star) (star) (star) (star) /usr/bin/php /var/www/socialflow/imap-recruitment-cron.php >> /var/www/socialflow/imap-recruitment-cron.log 2>&1
  * (5-field cron wildcard syntax — written out here so this docblock comment doesn't break PHP parsing)
  */
 
@@ -170,6 +173,20 @@ $confirmationEnabled = !array_key_exists('confirmation_enabled', $emailSettings)
 $confirmationFromName = !empty($emailSettings['confirmation_from_name']) ? $emailSettings['confirmation_from_name'] : 'Admepro Careers';
 $confirmationSubject = !empty($emailSettings['confirmation_subject']) ? $emailSettings['confirmation_subject'] : 'Thanks for applying to Admepro!';
 $confirmationMessage = !empty($emailSettings['confirmation_message']) ? $emailSettings['confirmation_message'] : "We've received your application at Admepro. Our recruitment team is reviewing it now, and we'll get back to you as soon as possible.";
+
+// The OS crontab (see docblock) triggers this script every minute — the
+// finest granularity cron supports — but the actual polling interval is
+// controlled by "Check For New Applications Every" in Recruitment → Email
+// Settings. Self-throttle here: skip this run entirely (no IMAP
+// connection at all) until that interval has elapsed since the last run.
+$pollIntervalMinutes = !empty($emailSettings['poll_interval_minutes']) ? (int) $emailSettings['poll_interval_minutes'] : 5;
+$lastRunFile = __DIR__ . '/imap-recruitment-cron.lastrun';
+$lastRun = file_exists($lastRunFile) ? (int) file_get_contents($lastRunFile) : 0;
+if (time() - $lastRun < $pollIntervalMinutes * 60) {
+    echo json_encode(['skipped' => true, 'reason' => 'not due yet', 'poll_interval_minutes' => $pollIntervalMinutes]);
+    exit(0);
+}
+file_put_contents($lastRunFile, (string) time());
 
 $cm = new ClientManager();
 $client = $cm->make([

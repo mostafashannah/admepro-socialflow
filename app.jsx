@@ -720,7 +720,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.95";
+const APP_VERSION = "beta 5.96";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21559,6 +21559,7 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
 
 const RECRUITMENT_EMAIL_DEFAULTS = {
   imap_host: "", imap_port: 993, imap_email: "", imap_password: "",
+  poll_interval_minutes: 5,
   confirmation_enabled: true, confirmation_from_name: "Admepro Careers",
   confirmation_subject: "Thanks for applying to Admepro!",
   confirmation_message: "We've received your application at Admepro. Our recruitment team is reviewing it now, and we'll get back to you as soon as possible.",
@@ -21590,6 +21591,16 @@ function RecruitmentEmailSettingsTab({appSettings, onSaveSettings}) {
           <Field label="IMAP Port"><input type="number" value={f.imap_port} onChange={e=>set("imap_port",Number(e.target.value)||993)} style={inputSt}/></Field>
           <Field label="Mailbox Email"><input value={f.imap_email} onChange={e=>set("imap_email",e.target.value)} placeholder="hr@admepro.com" style={inputSt}/></Field>
           <Field label="Mailbox Password"><input type="password" value={f.imap_password} onChange={e=>set("imap_password",e.target.value)} placeholder="••••••••" style={inputSt}/></Field>
+          <Field label="Check For New Applications Every">
+            <select value={f.poll_interval_minutes} onChange={e=>set("poll_interval_minutes",Number(e.target.value))} style={inputSt}>
+              <option value={1}>1 minute</option>
+              <option value={5}>5 minutes</option>
+              <option value={10}>10 minutes</option>
+              <option value={15}>15 minutes</option>
+              <option value={30}>30 minutes</option>
+              <option value={60}>1 hour</option>
+            </select>
+          </Field>
         </div>
       </div>
 

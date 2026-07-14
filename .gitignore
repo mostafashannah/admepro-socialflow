@@ -3,3 +3,4 @@ config.php
 *.log
 socialflow-v30m.zip
 node_modules/
+imap-recruitment-cron.lastrun
