@@ -742,20 +742,24 @@ async function convertCvToPdfForStorage(file) {
     const arrayBuffer = await file.arrayBuffer();
     const {value: html} = await window.mammoth.convertToHtml({arrayBuffer});
     const container = document.createElement("div");
-    // html2canvas (used internally by html2pdf) captures relative to the
-    // viewport and often returns a blank canvas for elements positioned
-    // far outside it (e.g. left:-9999px) — keep it inside the viewport
-    // bounds instead, just hidden behind everything else on the page.
-    // opacity must stay 1 here — html2canvas captures actual rendered
-    // pixel opacity, so a near-transparent container (an earlier attempt
-    // used opacity:0.01 to hide it from the user) produces a near-blank
-    // PDF. Hidden from the user via stacking order (negative z-index
-    // behind the app's own opaque background) instead.
-    container.style.cssText = "padding:32px;font-family:Arial,sans-serif;font-size:12px;line-height:1.6;color:#111;background:#fff;width:700px;position:fixed;left:0;top:0;z-index:-9999;opacity:1;pointer-events:none";
+    // html2canvas (used internally by html2pdf) has a well-known bug where
+    // it miscalculates capture coordinates for position:fixed elements
+    // combined with the page's current scroll offset, silently producing
+    // a blank canvas — tried twice already (left:-9999px, then a fixed
+    // element hidden via z-index) and both still came out blank. Use
+    // position:absolute (participates in normal document flow/scrolling,
+    // which html2canvas handles correctly) placed far below any real
+    // content, and pin scrollX/scrollY/window size explicitly so it can't
+    // pick up the page's own scroll position by mistake.
+    container.style.cssText = "padding:32px;font-family:Arial,sans-serif;font-size:12px;line-height:1.6;color:#111;background:#fff;width:700px;position:absolute;left:0;top:100000px";
     container.innerHTML = html || "<p>(empty document)</p>";
     document.body.appendChild(container);
     try {
-      const pdfBlob = await window.html2pdf().set({filename:"cv.pdf", jsPDF:{unit:"pt",format:"a4"}, html2canvas:{backgroundColor:"#ffffff"}}).from(container).outputPdf("blob");
+      const pdfBlob = await window.html2pdf().set({
+        filename:"cv.pdf",
+        jsPDF:{unit:"pt",format:"a4"},
+        html2canvas:{backgroundColor:"#ffffff", scrollX:0, scrollY:-window.scrollY},
+      }).from(container).outputPdf("blob");
       // A near-empty blob almost always means html2canvas captured a blank
       // page rather than the real content — don't silently store that as
       // the candidate's CV, fall back to the original .docx instead.
@@ -923,7 +927,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.127";
+const APP_VERSION = "beta 5.128";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
