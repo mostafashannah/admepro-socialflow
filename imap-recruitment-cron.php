@@ -365,6 +365,16 @@ foreach ($messages as $message) {
             continue;
         }
 
+        // Same guard as the public form: the same email applying to the
+        // same opening again (a forwarded/resent copy, an accidental
+        // second email) would otherwise create a duplicate application and
+        // re-upload/duplicate the CV file. A different opening is fine.
+        if ($matchedOpening) {
+            $dupCheck = $pdo->prepare("SELECT 1 FROM job_applications WHERE candidate_email = :e AND job_opening_id = :o LIMIT 1");
+            $dupCheck->execute([':e' => $candidateEmail, ':o' => $matchedOpening['id']]);
+            if ($dupCheck->fetchColumn()) { $message->setFlag('Seen'); continue; }
+        }
+
         $insert->execute([
             ':job_opening_id' => $matchedOpening['id'] ?? null,
             ':job_title' => $matchedOpening['title'] ?? ($subject ?: 'Unassigned'),

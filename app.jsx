@@ -720,7 +720,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.105";
+const APP_VERSION = "beta 5.106";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13296,6 +13296,16 @@ function CareersPage({appSettings}) {
     if(!cvFile||!cvBase64) { alert("Please attach your CV (PDF)."); return; }
     setSubmitting(true);
     try {
+      // Guard against accidental double-submits (double-click, browser
+      // back+resubmit) — same email applying to the same opening again
+      // would otherwise create a duplicate application and re-upload the
+      // same CV file. A genuinely different opening is unaffected.
+      const dupCheck = await qe("JobApplication", {candidate_email: form.email.trim(), job_opening_id: selected.id});
+      if(dupCheck.entities?.length) {
+        setDone(true);
+        setSubmitting(false);
+        return;
+      }
       const cv_url = await uploadToStorage(cvFile, "job-applications");
       const portfolio_attachment_url = portfolioFile ? await uploadToStorage(portfolioFile, "job-applications/portfolio") : "";
       const res = await ce("JobApplication",[{
@@ -21987,6 +21997,23 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     setRetryMsg(stuck.length ? `Retried ${stuck.length} application${stuck.length!==1?"s":""}` : "Nothing stuck to retry");
     setTimeout(()=>setRetryMsg(""),4000);
   };
+
+  // Auto-heal: an application can get stuck at ai_review_status "pending"
+  // forever if the browser tab that triggered its AI review closed mid-call
+  // (e.g. a web applicant closing the tab right after submitting), with no
+  // admin around to click Retry. Once per page load, silently resolve
+  // anything that's been pending for more than 10 minutes — same review
+  // logic as the manual Retry button, just automatic and quiet.
+  useEffect(()=>{
+    if(loading || !applications.length) return;
+    const staleCutoff = Date.now() - 10*60*1000;
+    const stalePending = applications.filter(a=>a.ai_review_status==="pending" && new Date(a.created_at).getTime()<staleCutoff);
+    if(!stalePending.length) return;
+    (async () => {
+      for (const app of stalePending) await reviewOne(app);
+      load();
+    })();
+  },[loading, applications.length]);
 
   const filteredApps = applications
     .filter(a=>openingFilter==="all"||(openingFilter==="unassigned"?!a.job_opening_id:a.job_opening_id===openingFilter))
