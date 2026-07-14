@@ -121,6 +121,12 @@ function ai_review_cv($pdoRef, $applicationId, $pdfBase64, $jobTitle, $jobDescri
     $extracted = json_decode($m[0], true);
     if (!$extracted) { $fail(); return; }
 
+    // Backfill phone/name from the CV if the email capture didn't have them.
+    if (!empty($extracted['candidate_phone'])) {
+        $pdoRef->prepare("UPDATE job_applications SET candidate_phone=:p WHERE id=:id AND (candidate_phone IS NULL OR candidate_phone = '')")
+            ->execute([':p' => $extracted['candidate_phone'], ':id' => $applicationId]);
+    }
+
     $score = isset($extracted['score']) && is_numeric($extracted['score']) ? max(0, min(100, round($extracted['score']))) : null;
     $upd->execute([
         ':s' => $score,
@@ -170,8 +176,8 @@ try {
 $openings = $pdo->query("SELECT id, title, description, requirements FROM job_openings WHERE status = 'open'")->fetchAll(PDO::FETCH_ASSOC);
 $checkDup = $pdo->prepare("SELECT 1 FROM job_applications WHERE email_message_id = :mid");
 $insert = $pdo->prepare(
-    "INSERT INTO job_applications (id, job_opening_id, job_title, candidate_name, candidate_email, cover_letter, cv_url, portfolio_url, portfolio_attachment_url, linkedin_url, status, ai_review_status, source, email_message_id)
-     VALUES (UUID(), :job_opening_id, :job_title, :candidate_name, :candidate_email, :cover_letter, :cv_url, :portfolio_url, :portfolio_attachment_url, :linkedin_url, 'new', :ai_review_status, 'email', :email_message_id)"
+    "INSERT INTO job_applications (id, job_opening_id, job_title, candidate_name, candidate_email, candidate_phone, cover_letter, cv_url, portfolio_url, portfolio_attachment_url, linkedin_url, status, ai_review_status, source, email_message_id)
+     VALUES (UUID(), :job_opening_id, :job_title, :candidate_name, :candidate_email, :candidate_phone, :cover_letter, :cv_url, :portfolio_url, :portfolio_attachment_url, :linkedin_url, 'new', :ai_review_status, 'email', :email_message_id)"
 );
 $lookup = $pdo->prepare("SELECT id FROM job_applications WHERE email_message_id = :mid");
 
@@ -242,11 +248,20 @@ foreach ($messages as $message) {
             }
         }
 
+        // Best-effort phone number from the body (AI review, when it runs,
+        // may still overwrite this with a more accurate one from the CV).
+        $candidatePhone = null;
+        if (preg_match('/(\+?\d[\d\s\-().]{7,}\d)/', $bodyText, $phoneMatch)) {
+            $digits = preg_replace('/\D/', '', $phoneMatch[1]);
+            if (strlen($digits) >= 8) $candidatePhone = trim($phoneMatch[1]);
+        }
+
         $insert->execute([
             ':job_opening_id' => $matchedOpening['id'] ?? null,
             ':job_title' => $matchedOpening['title'] ?? ($subject ?: 'Unassigned'),
             ':candidate_name' => $candidateName,
             ':candidate_email' => $candidateEmail,
+            ':candidate_phone' => $candidatePhone,
             ':cover_letter' => substr($bodyText, 0, 3000),
             ':cv_url' => $cvUrl['url'] ?? null,
             ':portfolio_url' => $portfolioUrl,

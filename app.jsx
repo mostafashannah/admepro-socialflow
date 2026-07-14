@@ -601,12 +601,17 @@ Read the CV and return ONLY JSON in this exact shape:
     const m = raw.match(/\{[\s\S]*\}/);
     if(!m) throw new Error("No JSON in AI response");
     const extracted = JSON.parse(m[0]);
-    await ue("JobApplication", application.id, {
+    const patch = {
       ai_score: typeof extracted.score==="number" ? Math.max(0,Math.min(100,Math.round(extracted.score))) : null,
       ai_summary: (extracted.summary||"").slice(0,600),
       ai_extracted: JSON.stringify(extracted),
       ai_review_status: "done",
-    });
+    };
+    // Backfill contact fields the CV had but the application record didn't
+    // (mainly phone — email captures never have it from IMAP headers).
+    if(!application.candidate_phone && extracted.candidate_phone) patch.candidate_phone = extracted.candidate_phone;
+    if(!application.candidate_name && extracted.candidate_name) patch.candidate_name = extracted.candidate_name;
+    await ue("JobApplication", application.id, patch);
     return extracted;
   } catch(e) {
     await ue("JobApplication", application.id, {ai_review_status:"failed"}).catch(()=>{});
@@ -692,7 +697,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.87";
+const APP_VERSION = "beta 5.88";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21648,6 +21653,17 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
           if (/linkedin\.com/i.test(url)) { if (!app.linkedin_url && !patch.linkedin_url) patch.linkedin_url = url; }
           else if (!app.portfolio_url && !patch.portfolio_url) patch.portfolio_url = url;
         }
+      }
+      // Backfill phone: prefer whatever the AI already extracted from the
+      // CV, else fall back to scanning the cover letter for a number.
+      if (!app.candidate_phone) {
+        let phone = null;
+        try { const ext = JSON.parse(app.ai_extracted||"{}"); if(ext.candidate_phone) phone = ext.candidate_phone; } catch(e) {}
+        if (!phone && app.cover_letter) {
+          const m = app.cover_letter.match(/(\+?\d[\d\s\-().]{7,}\d)/);
+          if (m && m[1].replace(/\D/g,"").length>=8) phone = m[1].trim();
+        }
+        if (phone) patch.candidate_phone = phone;
       }
       // Auto-assign unassigned applications by matching their captured
       // subject/job_title text against currently open job openings.
