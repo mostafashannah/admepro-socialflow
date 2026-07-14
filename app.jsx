@@ -720,7 +720,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.94";
+const APP_VERSION = "beta 5.95";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21468,6 +21468,12 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
             <span style={{fontSize:12,color:"var(--text2)",fontWeight:600}}>No CV attached — scored 0</span>
           </div>
         )}
+        {application.ai_review_status==="cv_error"&&(
+          <div style={{padding:"10px 14px",background:"#f59e0b22",border:"1px solid #f59e0b55",borderRadius:"var(--rs)",marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+            <span style={{fontSize:12,color:"#f59e0b",fontWeight:600}}>Crashed CV — file could not be loaded, scored 0</span>
+            <Btn size="sm" onClick={handleRerun} disabled={rerunning}>{rerunning?"Retrying…":"Retry"}</Btn>
+          </div>
+        )}
         {application.ai_summary&&(
           <div style={{background:"var(--surface2)",borderRadius:12,padding:16,marginBottom:14}}>
             <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:6}}>AI Summary</p>
@@ -21745,15 +21751,22 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
       await ue("JobApplication", app.id, {ai_score:0, ai_summary:"No CV attached.", ai_extracted:null, ai_review_status:"no_cv"}).catch(()=>{});
       return;
     }
+    let base64;
     try {
       const r = await fetchWithTimeout(app.cv_url, {}, 20000);
-      if(!r.ok) throw new Error(`Could not fetch CV file: ${r.status} ${app.cv_url}`);
+      if(!r.ok) throw new Error(`${r.status}`);
       const blob = await r.blob();
       const reader = new FileReader();
-      const base64 = await new Promise(res=>{ reader.onload = ()=>res(reader.result); reader.readAsDataURL(blob); });
-      await ue("JobApplication", app.id, {ai_review_status:"pending"});
-      await reviewApplication(app, base64, opening);
-    } catch(e) { await ue("JobApplication", app.id, {ai_review_status:"failed", ai_summary:`Retry failed: ${String(e?.message||e).slice(0,500)}`}).catch(()=>{}); }
+      base64 = await new Promise((res,rej)=>{ reader.onload = ()=>res(reader.result); reader.onerror = ()=>rej(reader.error||new Error("read error")); reader.readAsDataURL(blob); });
+    } catch(e) {
+      // The CV file itself is missing/broken/unreachable — not an AI
+      // failure. Tag it distinctly so it's not confused with a fixable
+      // AI-call error, and don't keep burning retries on a dead file.
+      await ue("JobApplication", app.id, {ai_score:0, ai_summary:"CV file could not be loaded (crashed/corrupted CV).", ai_extracted:null, ai_review_status:"cv_error"}).catch(()=>{});
+      return;
+    }
+    await ue("JobApplication", app.id, {ai_review_status:"pending"});
+    await reviewApplication(app, base64, opening);
   };
   const handleRerunReview = async (app) => {
     await reviewOne(app);
@@ -21877,7 +21890,8 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
                   {a.ai_review_status==="pending"&&<Spinner size={13}/>}
                   {a.ai_review_status==="no_cv"&&<Badge label="No CV" color="#6b7280" xs/>}
-                  {a.ai_score!=null&&a.ai_review_status!=="no_cv"&&<span style={{fontWeight:800,fontSize:16,color:a.ai_score>=70?"#10b981":a.ai_score>=40?"#f59e0b":"#ef4444"}}>{a.ai_score}</span>}
+                  {a.ai_review_status==="cv_error"&&<Badge label="Crashed CV" color="#f59e0b" xs/>}
+                  {a.ai_score!=null&&<span style={{fontWeight:800,fontSize:16,color:a.ai_score>=70?"#10b981":a.ai_score>=40?"#f59e0b":"#ef4444"}}>{a.ai_score}</span>}
                   <Badge label={a.job_opening_id?"Assigned":"Unassigned"} color={a.job_opening_id?"#10b981":"#f59e0b"} xs/>
                   <Badge label={statusInfo.label} color={statusInfo.color} xs/>
                 </div>
