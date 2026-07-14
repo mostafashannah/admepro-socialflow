@@ -108,7 +108,7 @@ function driveLinkToDirectUrl(link){if(!link||!/drive\.google\.com/i.test(link))
 // or — for applications tagged "no_cv" from before link-scanning existed —
 // a Drive link or a raw .doc/.docx URL still sitting unrecognized in the
 // cover letter text.
-function findCvSourceUrl(app){if(app.cv_url)return app.cv_url;const fromPortfolioAttachment=driveLinkToDirectUrl(app.portfolio_attachment_url);if(fromPortfolioAttachment)return fromPortfolioAttachment;const fromPortfolio=driveLinkToDirectUrl(app.portfolio_url);if(fromPortfolio)return fromPortfolio;const text=app.cover_letter||"";const driveMatch=text.match(/https?:\/\/drive\.google\.com\/[^\s<>")]+/i);if(driveMatch){const d=driveLinkToDirectUrl(driveMatch[0]);if(d)return d;}const docMatch=text.match(/https?:\/\/[^\s<>")]+\.docx?(?:[?#][^\s<>")]*)?/i);if(docMatch)return docMatch[0];return null;}// For upload only (not scoring): if the CV is a .docx, convert it to an
+function findCvSourceUrl(app){if(app.cv_url)return app.cv_url;const isDocxUrl=u=>!!u&&/\.docx?(?:[?#][^\s]*)?$/i.test(u);const fromPortfolioAttachment=driveLinkToDirectUrl(app.portfolio_attachment_url)||(isDocxUrl(app.portfolio_attachment_url)?app.portfolio_attachment_url:null);if(fromPortfolioAttachment)return fromPortfolioAttachment;const fromPortfolio=driveLinkToDirectUrl(app.portfolio_url)||(isDocxUrl(app.portfolio_url)?app.portfolio_url:null);if(fromPortfolio)return fromPortfolio;const text=app.cover_letter||"";const driveMatch=text.match(/https?:\/\/drive\.google\.com\/[^\s<>")]+/i);if(driveMatch){const d=driveLinkToDirectUrl(driveMatch[0]);if(d)return d;}const docMatch=text.match(/https?:\/\/[^\s<>")]+\.docx?(?:[?#][^\s<>")]*)?/i);if(docMatch)return docMatch[0];return null;}// For upload only (not scoring): if the CV is a .docx, convert it to an
 // actual PDF client-side (mammoth → HTML → html2pdf, both already loaded)
 // so cv_url points to something the browser can render inline instead of
 // forcing a download of a .docx. Legacy .doc can't be converted this way
@@ -146,7 +146,7 @@ function speedTokens(speed,base){if(speed==="low")return Math.max(300,Math.round
 function logActivity(action,category,details="",status="success",errorMsg="",user="system"){const entry={action,category,details,status,error_message:errorMsg,performed_by:user,performed_at:new Date().toISOString()};ce("ActivityLog",[entry]).then(({entities})=>{const saved=entities===null||entities===void 0?void 0:entities[0];// Push the freshly-saved row (with real id) into the live UI immediately,
 // otherwise System Log only reflects what was loaded at page load.
 if(saved&&!saved._saveError)window.dispatchEvent(new CustomEvent("sf:activitylog",{detail:saved}));}).catch(()=>{});}// ── Email HTML templates ─────────────────────────────────────────
-const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 5.117";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 5.118";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
 <tr><td align="center">

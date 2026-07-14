@@ -664,9 +664,10 @@ function driveLinkToDirectUrl(link) {
 // cover letter text.
 function findCvSourceUrl(app) {
   if (app.cv_url) return app.cv_url;
-  const fromPortfolioAttachment = driveLinkToDirectUrl(app.portfolio_attachment_url);
+  const isDocxUrl = (u) => !!u && /\.docx?(?:[?#][^\s]*)?$/i.test(u);
+  const fromPortfolioAttachment = driveLinkToDirectUrl(app.portfolio_attachment_url) || (isDocxUrl(app.portfolio_attachment_url) ? app.portfolio_attachment_url : null);
   if (fromPortfolioAttachment) return fromPortfolioAttachment;
-  const fromPortfolio = driveLinkToDirectUrl(app.portfolio_url);
+  const fromPortfolio = driveLinkToDirectUrl(app.portfolio_url) || (isDocxUrl(app.portfolio_url) ? app.portfolio_url : null);
   if (fromPortfolio) return fromPortfolio;
   const text = app.cover_letter || "";
   const driveMatch = text.match(/https?:\/\/drive\.google\.com\/[^\s<>")]+/i);
@@ -857,7 +858,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.117";
+const APP_VERSION = "beta 5.118";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
