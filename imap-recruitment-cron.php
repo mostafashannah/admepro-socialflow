@@ -405,6 +405,39 @@ foreach ($messages as $message) {
             send_via_resend($candidateEmail, $confirmationSubject, $confirmHtml, $confirmationFromName);
         }
 
+        // Email-only captures skip most of the public form's fields —
+        // check what's missing and, if anything is, send a one-time link
+        // to a short completion form asking only for those fields.
+        if ($newId) {
+            $missing = [];
+            if (!$cvUrl) $missing['cv'] = 'Your CV';
+            if (!$candidatePhone) $missing['phone'] = 'Your phone number';
+            if ($candidateName === '' || strcasecmp($candidateName, $candidateEmail) === 0) $missing['name'] = 'Your full name';
+            $missing['expected_salary'] = 'Your expected salary';
+            $missing['available_start_date'] = 'Your available start date';
+            $missing['open_to_task'] = 'Whether you\'re open to a paid test task';
+            if (!empty($missing)) {
+                $token = bin2hex(random_bytes(24));
+                $pdo->prepare("UPDATE job_applications SET completion_token=:t WHERE id=:id")->execute([':t' => $token, ':id' => $newId]);
+                $completeUrl = 'https://socialflow.admepro.com/careers/complete?token=' . $token;
+                $missingListHtml = '<ul style="margin:0 0 16px;padding-left:18px;font-size:14px;line-height:1.8;color:#4b5563">'
+                    . implode('', array_map(fn($m) => '<li>' . htmlspecialchars($m) . '</li>', $missing))
+                    . '</ul>';
+                $completeHtml = email_base(
+                    '<h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">A few more details, ' . htmlspecialchars($candidateName ?: 'there') . '</h2>'
+                    . '<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Thanks for applying' . ($matchedOpening ? ' for <strong>' . htmlspecialchars($matchedOpening['title']) . '</strong>' : '') . '! To finish reviewing your application, could you fill in a few more details:</p>'
+                    . $missingListHtml
+                    . '<p style="margin:0 0 20px"><a href="' . htmlspecialchars($completeUrl) . '" style="display:inline-block;padding:12px 24px;background:#d90b2c;color:#ffffff;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none">Complete My Application</a></p>'
+                    . '<table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>'
+                    . '<p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>'
+                    . '<p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>'
+                    . '<p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>'
+                    . '</td></tr></table>'
+                );
+                send_via_resend($candidateEmail, 'Please complete your Admepro application', $completeHtml, $confirmationFromName);
+            }
+        }
+
         $message->setFlag('Seen');
         $processed++;
     } catch (Throwable $e) {

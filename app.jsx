@@ -720,7 +720,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.103";
+const APP_VERSION = "beta 5.104";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13068,6 +13068,159 @@ function applicationReceivedEmail(candidateName, jobTitle, message) {
 </body></html>`;
 }
 
+// Short public form for email-captured applications missing required
+// fields (CV, phone, salary expectations, join date, etc) — reached via
+// the one-time link in the "complete your application" email sent by
+// imap-recruitment-cron.php. Only asks for what's actually missing.
+function CompleteApplicationPage({token}) {
+  const [isDark, setIsDark] = useState(()=>{
+    try { return window.matchMedia("(prefers-color-scheme: dark)").matches; } catch(e) { return false; }
+  });
+  useEffect(()=>{
+    try {
+      const mq = window.matchMedia("(prefers-color-scheme: dark)");
+      const onChange = e=>setIsDark(e.matches);
+      mq.addEventListener("change", onChange);
+      return ()=>mq.removeEventListener("change", onChange);
+    } catch(e) {}
+  },[]);
+  const [loading, setLoading] = useState(true);
+  const [application, setApplication] = useState(null);
+  const [opening, setOpening] = useState(null);
+  const [notFound, setNotFound] = useState(false);
+  const [done, setDone] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [form, setForm] = useState({phone:"",name:"",expected_salary:"",available_start_date:"",open_to_task:"yes"});
+  const [cvFile, setCvFile] = useState(null);
+  const cvRef = useRef(null);
+
+  useEffect(()=>{
+    (async () => {
+      const res = await qe("JobApplication", {completion_token: token});
+      const app = res.entities?.[0];
+      if(!app) { setNotFound(true); setLoading(false); return; }
+      setApplication(app);
+      setForm({
+        phone: app.candidate_phone||"", name: app.candidate_name||"",
+        expected_salary: app.expected_salary||"", available_start_date: app.available_start_date||"",
+        open_to_task: app.open_to_task||"yes",
+      });
+      if(app.job_opening_id) {
+        const oRes = await qe("JobOpening", {id: app.job_opening_id});
+        setOpening(oRes.entities?.[0]||null);
+      }
+      setLoading(false);
+    })();
+  },[token]);
+
+  const missing = application ? {
+    cv: !application.cv_url,
+    phone: !application.candidate_phone,
+    name: !application.candidate_name || application.candidate_name.toLowerCase()===(application.candidate_email||"").toLowerCase(),
+    expected_salary: !application.expected_salary,
+    available_start_date: !application.available_start_date,
+    open_to_task: !application.open_to_task,
+  } : {};
+
+  const sf = (k,v) => setForm(prev=>({...prev,[k]:v}));
+
+  const handleCvFile = (e) => {
+    const file = e.target.files?.[0];
+    if(!file) return;
+    if(file.size > MAX_CV_MB*1024*1024) { alert(`CV must be under ${MAX_CV_MB}MB.`); return; }
+    setCvFile(file);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if(missing.expected_salary && !form.expected_salary.trim()) { alert("Please enter your expected salary."); return; }
+    if(missing.available_start_date && !form.available_start_date) { alert("Please enter your available start date."); return; }
+    setSubmitting(true);
+    try {
+      const patch = {completion_token: null};
+      if(missing.phone && form.phone.trim()) patch.candidate_phone = form.phone.trim();
+      if(missing.name && form.name.trim()) patch.candidate_name = form.name.trim();
+      if(missing.expected_salary) patch.expected_salary = form.expected_salary.trim();
+      if(missing.available_start_date) patch.available_start_date = form.available_start_date;
+      if(missing.open_to_task) patch.open_to_task = form.open_to_task;
+
+      let cvBase64 = null;
+      if(missing.cv && cvFile) {
+        const cv_url = await uploadToStorage(cvFile, "job-applications/email");
+        patch.cv_url = cv_url;
+        patch.ai_review_status = "pending";
+        cvBase64 = await new Promise(res=>{ const reader = new FileReader(); reader.onload = ()=>res(reader.result); reader.readAsDataURL(cvFile); });
+      }
+
+      await ue("JobApplication", application.id, patch);
+      if(cvBase64) reviewApplication({...application, ...patch}, cvBase64, opening).catch(()=>{});
+      setDone(true);
+    } catch(e) { alert("Something went wrong submitting your info. Please try again."); }
+    setSubmitting(false);
+  };
+
+  const wrapSt = {minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:24,background:isDark?"#0b0e14":"#f7f7f8"};
+  const cardSt = {width:"100%",maxWidth:480,background:isDark?"#161a23":"#fff",borderRadius:20,padding:32,border:`1px solid ${isDark?"#252b38":"#eee"}`};
+
+  if(loading) return <div style={wrapSt}><Spinner size={22}/></div>;
+  if(notFound) return (
+    <div style={wrapSt}>
+      <div style={cardSt}>
+        <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
+        <p style={{fontSize:15,fontWeight:700,color:isDark?"#fff":"#111"}}>This link is invalid or has already been used.</p>
+      </div>
+    </div>
+  );
+  if(done) return (
+    <div style={wrapSt}>
+      <div style={cardSt}>
+        <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
+        <p style={{fontSize:17,fontWeight:800,color:isDark?"#fff":"#111",marginBottom:6}}>Thanks — you're all set!</p>
+        <p style={{fontSize:13,color:isDark?"#9099ab":"#666"}}>We've updated your application. Our recruitment team will be in touch.</p>
+      </div>
+    </div>
+  );
+
+  const hasAnyMissing = Object.values(missing).some(Boolean);
+
+  return (
+    <div style={wrapSt}>
+      <div style={cardSt}>
+        <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
+        <p style={{fontSize:17,fontWeight:800,color:isDark?"#fff":"#111",marginBottom:4}}>Complete your application</p>
+        <p style={{fontSize:13,color:isDark?"#9099ab":"#666",marginBottom:22}}>
+          {application.candidate_name||"Hi"}, thanks for applying{opening?<> for <strong>{opening.title}</strong></>:null}. Just a few more details to finish reviewing your application.
+        </p>
+        {!hasAnyMissing ? (
+          <p style={{fontSize:13,color:isDark?"#9099ab":"#666"}}>Looks like we already have everything we need — thanks!</p>
+        ) : (
+          <form onSubmit={handleSubmit} style={{display:"flex",flexDirection:"column",gap:14}}>
+            {missing.name&&<Field label="Full Name"><input value={form.name} onChange={e=>sf("name",e.target.value)} style={inputSt}/></Field>}
+            {missing.phone&&<Field label="Phone"><input value={form.phone} onChange={e=>sf("phone",e.target.value)} style={inputSt}/></Field>}
+            {missing.cv&&(
+              <Field label="CV (PDF, max 5MB)">
+                <input ref={cvRef} type="file" accept="application/pdf" onChange={handleCvFile} style={inputSt}/>
+                {cvFile&&<p style={{fontSize:11,color:isDark?"#9099ab":"#666",marginTop:4}}>{cvFile.name}</p>}
+              </Field>
+            )}
+            {missing.expected_salary&&<Field label="Expected Salary" required><input value={form.expected_salary} onChange={e=>sf("expected_salary",e.target.value)} placeholder="e.g. 20,000 EGP" style={inputSt}/></Field>}
+            {missing.available_start_date&&<Field label="Available Start Date" required><input type="date" value={form.available_start_date} onChange={e=>sf("available_start_date",e.target.value)} style={inputSt}/></Field>}
+            {missing.open_to_task&&(
+              <Field label="Open to a paid test task?">
+                <select value={form.open_to_task} onChange={e=>sf("open_to_task",e.target.value)} style={inputSt}>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </Field>
+            )}
+            <Btn type="submit" disabled={submitting} style={{marginTop:4}}>{submitting?"Submitting…":"Submit"}</Btn>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function CareersPage({appSettings}) {
   const [isDark, setIsDark] = useState(()=>{
     try { return window.matchMedia("(prefers-color-scheme: dark)").matches; } catch(e) { return true; }
@@ -21900,7 +22053,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
       {tab==="applications"&&(
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           <div style={{position:"relative",maxWidth:340}}>
-            <Ico d={Icons.search} size={14} style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"var(--text3)"}}/>
+            <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"var(--text3)",display:"flex"}}><Ico d={Icons.search} size={14}/></span>
             <input value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder="Search name, title, phone, email…" style={{...inputSt,minHeight:"auto",padding:"8px 12px 8px 34px",fontSize:13,borderRadius:99}}/>
           </div>
           <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",justifyContent:"flex-end"}}>
@@ -26763,6 +26916,11 @@ function App() {
   const [isCareersPath] = useState(()=>{
     try { return window.location.pathname==="/careers"; } catch(e) { return false; }
   });
+  // Public "complete your application" page for email-captured applications
+  // missing required fields — socialflow.admepro.com/careers/complete?token=...
+  const [completeToken] = useState(()=>{
+    try { return window.location.pathname==="/careers/complete" ? new URLSearchParams(window.location.search).get("token") : null; } catch(e) { return null; }
+  });
   // Handle OAuth callback (Supabase redirects back with #access_token=...)
   const [oauthEmail] = useState(()=>{
     try {
@@ -28788,6 +28946,9 @@ Return ONLY valid JSON (no markdown, no explanation):
   // the logged-in app's theme).
   if(isCareersPath) {
     return <CareersPage appSettings={appSettings}/>;
+  }
+  if(completeToken) {
+    return <CompleteApplicationPage token={completeToken}/>;
   }
 
   // Accept invitation flow (URL has ?invite=TOKEN)
