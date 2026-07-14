@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.82";
+const APP_VERSION = "beta 5.83";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13014,7 +13014,7 @@ function CareersFooter({isDark}) {
 // Admepro-branded (not the internal "SocialFlow" product branding used by
 // emailBase() elsewhere), since this is a candidate-facing email from the
 // agency itself.
-function applicationReceivedEmail(candidateName, jobTitle) {
+function applicationReceivedEmail(candidateName, jobTitle, message) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
@@ -13025,7 +13025,7 @@ function applicationReceivedEmail(candidateName, jobTitle) {
   </td></tr>
   <tr><td style="padding:24px 36px 36px">
     <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Thanks for applying, ${candidateName||"there"}!</h2>
-    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">We've received your application for <strong>${jobTitle||"the position"}</strong> at Admepro. Our recruitment team is reviewing it now, and we'll get back to you as soon as possible.</p>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">${(message||"We've received your application at Admepro. Our recruitment team is reviewing it now, and we'll get back to you as soon as possible.").replace("{{job}}", jobTitle||"the position")}</p>
     <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Thanks again for your interest in joining us — we appreciate the time you took to apply.</p>
     <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px">
       <tr><td>
@@ -13040,7 +13040,7 @@ function applicationReceivedEmail(candidateName, jobTitle) {
 </body></html>`;
 }
 
-function CareersPage() {
+function CareersPage({appSettings}) {
   const [isDark, setIsDark] = useState(()=>{
     try { return window.matchMedia("(prefers-color-scheme: dark)").matches; } catch(e) { return true; }
   });
@@ -13128,7 +13128,10 @@ function CareersPage() {
       const created = res.entities?.[0];
       setDone(true);
       if(created?.id) reviewApplication(created, cvBase64, selected).catch(()=>{});
-      sendEmail(form.email.trim(), "Thanks for applying to Admepro!", applicationReceivedEmail(form.name.trim(), selected.title), "Admepro Careers").catch(()=>{});
+      const es = {...RECRUITMENT_EMAIL_DEFAULTS, ...(appSettings?.recruitment_email_settings||{})};
+      if(es.confirmation_enabled!==false) {
+        sendEmail(form.email.trim(), es.confirmation_subject||"Thanks for applying to Admepro!", applicationReceivedEmail(form.name.trim(), selected.title, es.confirmation_message), es.confirmation_from_name||"Admepro Careers").catch(()=>{});
+      }
     } catch(e) { alert("Something went wrong submitting your application. Please try again."); }
     setSubmitting(false);
   };
@@ -21510,7 +21513,65 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
   );
 }
 
-function RecruitmentPage({currentUser}) {
+const RECRUITMENT_EMAIL_DEFAULTS = {
+  imap_host: "", imap_port: 993, imap_email: "", imap_password: "",
+  confirmation_enabled: true, confirmation_from_name: "Admepro Careers",
+  confirmation_subject: "Thanks for applying to Admepro!",
+  confirmation_message: "We've received your application at Admepro. Our recruitment team is reviewing it now, and we'll get back to you as soon as possible.",
+};
+
+function RecruitmentEmailSettingsTab({appSettings, onSaveSettings}) {
+  const saved = appSettings?.recruitment_email_settings || {};
+  const [f, setF] = useState({...RECRUITMENT_EMAIL_DEFAULTS, ...saved});
+  const [saving, setSaving] = useState(false);
+  const [saved2, setSaved2] = useState(false);
+  useEffect(()=>{ setF({...RECRUITMENT_EMAIL_DEFAULTS, ...(appSettings?.recruitment_email_settings||{})}); },[appSettings?.recruitment_email_settings]);
+
+  const set = (k,v) => setF(prev=>({...prev,[k]:v}));
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSaveSettings({recruitment_email_settings: f});
+    setSaving(false);
+    setSaved2(true); setTimeout(()=>setSaved2(false),2000);
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:560}}>
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:24}}>
+        <p style={{fontSize:13,fontWeight:800,marginBottom:4}}>Mailbox (IMAP)</p>
+        <p style={{fontSize:12,color:"var(--text3)",marginBottom:16}}>Mailbox the recruitment cron polls for application emails. Leave blank to use the RECRUITMENT_IMAP_* values in config.php on the server.</p>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <Field label="IMAP Host"><input value={f.imap_host} onChange={e=>set("imap_host",e.target.value)} placeholder="imap.hostinger.com" style={inputSt}/></Field>
+          <Field label="IMAP Port"><input type="number" value={f.imap_port} onChange={e=>set("imap_port",Number(e.target.value)||993)} style={inputSt}/></Field>
+          <Field label="Mailbox Email"><input value={f.imap_email} onChange={e=>set("imap_email",e.target.value)} placeholder="hr@admepro.com" style={inputSt}/></Field>
+          <Field label="Mailbox Password"><input type="password" value={f.imap_password} onChange={e=>set("imap_password",e.target.value)} placeholder="••••••••" style={inputSt}/></Field>
+        </div>
+      </div>
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:24}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+          <div>
+            <p style={{fontSize:13,fontWeight:800}}>Applicant Confirmation Email</p>
+            <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Sent automatically to every applicant (web or email) once received.</p>
+          </div>
+          <button onClick={()=>set("confirmation_enabled",!f.confirmation_enabled)} style={{width:44,height:26,borderRadius:99,background:f.confirmation_enabled?"var(--accent)":"var(--surface2)",border:"1px solid var(--border2)",position:"relative",cursor:"pointer",flexShrink:0}}>
+            <span style={{position:"absolute",top:2,left:f.confirmation_enabled?20:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.15s"}}/>
+          </button>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:12,opacity:f.confirmation_enabled?1:0.5,pointerEvents:f.confirmation_enabled?"auto":"none"}}>
+          <Field label="From Name"><input value={f.confirmation_from_name} onChange={e=>set("confirmation_from_name",e.target.value)} style={inputSt}/></Field>
+          <Field label="Subject"><input value={f.confirmation_subject} onChange={e=>set("confirmation_subject",e.target.value)} style={inputSt}/></Field>
+          <Field label="Message"><textarea value={f.confirmation_message} onChange={e=>set("confirmation_message",e.target.value)} rows={4} style={{...inputSt,resize:"vertical"}}/></Field>
+        </div>
+      </div>
+
+      <Btn onClick={handleSave} disabled={saving} style={{alignSelf:"flex-start"}}>{saving?"Saving…":saved2?"Saved ✓":"Save Email Settings"}</Btn>
+    </div>
+  );
+}
+
+function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   const [tab, setTab] = useState("openings");
   const [openings, setOpenings] = useState([]);
   const [applications, setApplications] = useState([]);
@@ -21614,7 +21675,7 @@ function RecruitmentPage({currentUser}) {
       </div>
 
       <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)",alignSelf:"flex-start"}}>
-        {[["openings","Job Openings"],["applications","Applications"]].map(([k,l])=>(
+        {[["openings","Job Openings"],["applications","Applications"],["email","Email Settings"]].map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)} style={{padding:"7px 16px",borderRadius:"var(--rxs)",fontSize:12,fontWeight:700,background:tab===k?"var(--accent)":"none",color:tab===k?"#fff":"var(--text2)"}}>{l}</button>
         ))}
       </div>
@@ -21675,6 +21736,8 @@ function RecruitmentPage({currentUser}) {
           })}
         </div>
       )}
+
+      {tab==="email"&&<RecruitmentEmailSettingsTab appSettings={appSettings} onSaveSettings={onSaveSettings}/>}
     </div>
   );
 }
@@ -28509,7 +28572,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   // (a public visitor's preference here shouldn't depend on, or affect,
   // the logged-in app's theme).
   if(isCareersPath) {
-    return <CareersPage/>;
+    return <CareersPage appSettings={appSettings}/>;
   }
 
   // Accept invitation flow (URL has ?invite=TOKEN)
@@ -28938,7 +29001,7 @@ Return ONLY valid JSON (no markdown, no explanation):
           />
         )}
         {page==="recruitment"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.manage_recruitment"))&&(
-          <RecruitmentPage currentUser={currentUser}/>
+          <RecruitmentPage currentUser={currentUser} appSettings={appSettings} onSaveSettings={saveAppSettings}/>
         )}
         {page==="agents"&&currentUser?.role==="admin"&&(
           <AgentsPage

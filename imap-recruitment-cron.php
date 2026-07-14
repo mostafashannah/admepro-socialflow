@@ -131,14 +131,32 @@ function ai_review_cv($pdoRef, $applicationId, $pdfBase64, $jobTitle, $jobDescri
     ]);
 }
 
+// UI-configurable overrides (Recruitment → Email Settings in app.jsx)
+// take priority over the RECRUITMENT_IMAP_* constants in config.php,
+// which remain the fallback when nothing's been saved from the UI yet.
+$emailSettings = [];
+$settingsRow = $pdo->query("SELECT recruitment_email_settings FROM app_settings LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+if ($settingsRow && !empty($settingsRow['recruitment_email_settings'])) {
+    $decoded = json_decode($settingsRow['recruitment_email_settings'], true);
+    if (is_array($decoded)) $emailSettings = $decoded;
+}
+$imapHost = !empty($emailSettings['imap_host']) ? $emailSettings['imap_host'] : RECRUITMENT_IMAP_HOST;
+$imapPort = !empty($emailSettings['imap_port']) ? (int) $emailSettings['imap_port'] : RECRUITMENT_IMAP_PORT;
+$imapEmail = !empty($emailSettings['imap_email']) ? $emailSettings['imap_email'] : RECRUITMENT_IMAP_EMAIL;
+$imapPassword = !empty($emailSettings['imap_password']) ? $emailSettings['imap_password'] : RECRUITMENT_IMAP_PASSWORD;
+$confirmationEnabled = !array_key_exists('confirmation_enabled', $emailSettings) || $emailSettings['confirmation_enabled'] !== false;
+$confirmationFromName = !empty($emailSettings['confirmation_from_name']) ? $emailSettings['confirmation_from_name'] : 'Admepro Careers';
+$confirmationSubject = !empty($emailSettings['confirmation_subject']) ? $emailSettings['confirmation_subject'] : 'Thanks for applying to Admepro!';
+$confirmationMessage = !empty($emailSettings['confirmation_message']) ? $emailSettings['confirmation_message'] : "We've received your application at Admepro. Our recruitment team is reviewing it now, and we'll get back to you as soon as possible.";
+
 $cm = new ClientManager();
 $client = $cm->make([
-    'host'          => RECRUITMENT_IMAP_HOST,
-    'port'          => RECRUITMENT_IMAP_PORT,
+    'host'          => $imapHost,
+    'port'          => $imapPort,
     'encryption'    => 'ssl',
     'validate_cert' => true,
-    'username'      => RECRUITMENT_IMAP_EMAIL,
-    'password'      => RECRUITMENT_IMAP_PASSWORD,
+    'username'      => $imapEmail,
+    'password'      => $imapPassword,
     'protocol'      => 'imap',
 ]);
 
@@ -247,16 +265,20 @@ foreach ($messages as $message) {
             ai_review_cv($pdo, $newId, $cvUrl['base64'], $matchedOpening['title'] ?? null, $matchedOpening['description'] ?? '', $matchedOpening['requirements'] ?? '');
         }
 
-        $confirmHtml = email_base(
-            '<h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Thanks for applying, ' . htmlspecialchars($candidateName ?: 'there') . '!</h2>'
-            . '<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">We\'ve received your application' . ($matchedOpening ? ' for <strong>' . htmlspecialchars($matchedOpening['title']) . '</strong>' : '') . ' at Admepro. Our recruitment team is reviewing it now, and we\'ll get back to you as soon as possible.</p>'
-            . '<table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>'
-            . '<p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>'
-            . '<p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>'
-            . '<p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>'
-            . '</td></tr></table>'
-        );
-        send_via_resend($candidateEmail, "Thanks for applying to Admepro!", $confirmHtml);
+        if ($confirmationEnabled) {
+            $confirmMessage = str_replace('{{job}}', $matchedOpening ? htmlspecialchars($matchedOpening['title']) : '', $confirmationMessage);
+            $confirmHtml = email_base(
+                '<h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Thanks for applying, ' . htmlspecialchars($candidateName ?: 'there') . '!</h2>'
+                . '<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">' . $confirmMessage . '</p>'
+                . '<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Thanks again for your interest in joining us — we appreciate the time you took to apply.</p>'
+                . '<table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>'
+                . '<p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>'
+                . '<p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>'
+                . '<p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>'
+                . '</td></tr></table>'
+            );
+            send_via_resend($candidateEmail, $confirmationSubject, $confirmHtml, $confirmationFromName);
+        }
 
         $message->setFlag('Seen');
         $processed++;
