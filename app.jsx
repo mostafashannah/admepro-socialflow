@@ -859,7 +859,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.119";
+const APP_VERSION = "beta 5.120";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21698,17 +21698,22 @@ function JobOpeningForm({opening, currentUser, onSave, onClose}) {
   );
 }
 
-function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader}) {
+function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader, onConvertCv, convertingCv}) {
   const [notes, setNotes] = useState(application.notes||"");
   const [rerunning, setRerunning] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const extracted = (() => { try { return JSON.parse(application.ai_extracted||"{}"); } catch(e) { return {}; } })();
+  const cvIsDocx = /\.docx?(?:[?#]|$)/i.test(application.cv_url||"");
 
   const handleRerun = async () => {
     setRerunning(true);
     await onRerunReview(application);
     setRerunning(false);
   };
+
+  useEffect(()=>{
+    if(cvIsDocx && onConvertCv) onConvertCv(application);
+  },[application.id, application.cv_url]);
 
   return (
     <div className="fade-in" style={{maxWidth:700}}>
@@ -21756,7 +21761,7 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
         </div>
 
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:18}}>
-          {application.cv_url&&<a href={application.cv_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--accentbg)",border:"1px solid var(--accent)33",fontSize:12,fontWeight:700,color:"var(--accent)",textDecoration:"none"}}>View CV</a>}
+          {application.cv_url&&<a href={application.cv_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--accentbg)",border:"1px solid var(--accent)33",fontSize:12,fontWeight:700,color:"var(--accent)",textDecoration:"none"}}>{convertingCv?"Converting to PDF…":cvIsDocx?"View CV (Word)":"View CV"}</a>}
           {application.portfolio_url&&<a href={application.portfolio_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>Portfolio</a>}
           {application.portfolio_attachment_url&&<a href={application.portfolio_attachment_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>Portfolio Attachment</a>}
           {application.linkedin_url&&<a href={application.linkedin_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>LinkedIn</a>}
@@ -22148,6 +22153,37 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
       if(refreshed) setSelectedApp(refreshed);
     }
   };
+
+  // Email-captured Word CVs are stored as raw .docx (the cron that
+  // captures them is server-side PHP — mammoth/html2pdf are client-side
+  // only, so there's no way to convert at capture time). "View CV" on
+  // those just downloads a Word file instead of showing a PDF. Convert
+  // lazily here, the first time an admin actually opens the application,
+  // using the same mammoth->html->html2pdf pipeline the web apply form
+  // already uses for uploads.
+  const [convertingCvId, setConvertingCvId] = useState(null);
+  const handleConvertCvToPdf = async (app) => {
+    if(!app.cv_url || !/\.docx?(?:[?#]|$)/i.test(app.cv_url)) return;
+    setConvertingCvId(app.id);
+    try {
+      const r = await fetchWithTimeout(app.cv_url, {}, 20000);
+      if(!r.ok) throw new Error(`${r.status}`);
+      const blob = await r.blob();
+      const name = app.cv_url.split("/").pop().split("?")[0] || "cv.docx";
+      const asFile = new File([blob], name, {type: blob.type});
+      const pdfFile = await convertCvToPdfForStorage(asFile);
+      if(pdfFile !== asFile) {
+        const cv_url = await uploadToStorage(pdfFile, "job-applications/email");
+        await ue("JobApplication", app.id, {cv_url});
+        await load();
+        if(selectedApp?.id===app.id) {
+          const refreshed = (await qe("JobApplication",{})).entities?.find(a=>a.id===app.id);
+          if(refreshed) setSelectedApp(refreshed);
+        }
+      }
+    } catch(e) { /* leave the original .docx link in place if conversion fails */ }
+    setConvertingCvId(null);
+  };
   const handleRetryAllStuck = async () => {
     setRetryingAll(true);
     // Anything with no score and not already correctly tagged "no_cv" is
@@ -22259,7 +22295,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   );
 
   if(selectedApp) return (
-    <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication}/>
+    <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===selectedApp.id}/>
   );
 
   if(selectedGroup) {
@@ -22273,7 +22309,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:22,margin:0}}>{sortedGroup[0].candidate_name} · {sortedGroup.length} applications</h2>
         </div>
         {sortedGroup.map((app,i)=>(
-          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader/>
+          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===app.id}/>
         ))}
       </div>
     );
