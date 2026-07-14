@@ -842,7 +842,13 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                      . "short_id, then edit_transaction with only the fields being changed. "
                      . ($isAdmin
                         ? "As admin you can also delete_transaction — always confirm with the user before "
-                          . "deleting, since it cannot be undone."
+                          . "deleting, since it cannot be undone. Once you've proposed specific short_ids to delete "
+                          . "and the user confirms (\"yes\", \"remove them\", \"go ahead\", etc.), you already have "
+                          . "everything you need — call delete_transaction for EACH of those exact short_ids "
+                          . "immediately in that same reply. Do NOT re-run search_transactions or re-list the "
+                          . "transactions again first — that just repeats the same question forever without ever "
+                          . "deleting anything. Only re-search if the user's confirmation is ambiguous about which "
+                          . "specific ones they mean."
                         : "You cannot delete transactions — that requires an admin; tell the user to ask one if "
                           . "they need something removed.");
         }
