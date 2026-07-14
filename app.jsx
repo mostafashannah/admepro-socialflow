@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.69";
+const APP_VERSION = "beta 5.70";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13081,7 +13081,7 @@ function CareersPage() {
         {openings.length===0 ? (
           <div style={{textAlign:"center",padding:60,color:"var(--text3)"}}>No open positions right now — check back soon!</div>
         ) : (
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:20}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:20,marginTop:50,marginBottom:50}}>
             {openings.map(o=>(
               <div key={o.id} onClick={()=>openJob(o)}
                 onMouseEnter={e=>{e.currentTarget.style.filter = isDark?"brightness(0.82)":"brightness(1.06)";}}
