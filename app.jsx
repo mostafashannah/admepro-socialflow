@@ -743,16 +743,18 @@ async function convertCvToPdfForStorage(file) {
     const {value: html, messages: mammothMessages} = await window.mammoth.convertToHtml({arrayBuffer});
     console.log("convertCvToPdfForStorage: mammoth HTML length =", (html||"").length, "messages:", mammothMessages);
     const container = document.createElement("div");
-    // html2canvas (used internally by html2pdf) has a well-known bug where
-    // it miscalculates capture coordinates for position:fixed elements
-    // combined with the page's current scroll offset, silently producing
-    // a blank canvas — tried twice already (left:-9999px, then a fixed
-    // element hidden via z-index) and both still came out blank. Use
-    // position:absolute (participates in normal document flow/scrolling,
-    // which html2canvas handles correctly) placed far below any real
-    // content, and pin scrollX/scrollY/window size explicitly so it can't
-    // pick up the page's own scroll position by mistake.
-    container.style.cssText = "padding:32px;font-family:Arial,sans-serif;font-size:12px;line-height:1.6;color:#111;background:#fff;width:700px;position:absolute;left:0;top:100000px";
+    const containerId = `cv-pdf-render-${Date.now()}`;
+    container.id = containerId;
+    // Confirmed via logging: mammoth's HTML and the live container both
+    // have real content at real dimensions (700x1197), but html2canvas's
+    // capture still comes out blank regardless of how the live element is
+    // positioned/hidden (tried fixed+offscreen, fixed+negative-z-index,
+    // absolute+far-below-page — all identical ~3.4KB blank result).
+    // html2canvas actually renders a CLONED document, not the live DOM —
+    // reposition the element within that clone instead, via the
+    // documented onclone hook, so however the live element is hidden is
+    // irrelevant to what actually gets rasterized.
+    container.style.cssText = "padding:32px;font-family:Arial,sans-serif;font-size:12px;line-height:1.6;color:#111;background:#fff;width:700px;position:fixed;left:-99999px;top:0";
     container.innerHTML = html || "<p>(empty document)</p>";
     document.body.appendChild(container);
     console.log("convertCvToPdfForStorage: container innerHTML length =", container.innerHTML.length, "offsetWidth/Height =", container.offsetWidth, container.offsetHeight);
@@ -760,7 +762,13 @@ async function convertCvToPdfForStorage(file) {
       const pdfBlob = await window.html2pdf().set({
         filename:"cv.pdf",
         jsPDF:{unit:"pt",format:"a4"},
-        html2canvas:{backgroundColor:"#ffffff", scrollX:0, scrollY:-window.scrollY},
+        html2canvas:{
+          backgroundColor:"#ffffff",
+          onclone: (clonedDoc) => {
+            const el = clonedDoc.getElementById(containerId);
+            if (el) { el.style.position = "static"; el.style.left = "auto"; el.style.top = "auto"; el.style.opacity = "1"; el.style.zIndex = "auto"; }
+          },
+        },
       }).from(container).outputPdf("blob");
       console.log("convertCvToPdfForStorage: pdfBlob size =", pdfBlob.size);
       // A near-empty blob almost always means html2canvas captured a blank
@@ -930,7 +938,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.129";
+const APP_VERSION = "beta 5.130";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
