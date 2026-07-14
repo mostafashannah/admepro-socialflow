@@ -720,7 +720,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.109";
+const APP_VERSION = "beta 5.110";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21822,7 +21822,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [openingFilter, setOpeningFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [sortBy, setSortBy] = useState("score");
+  const [sortBy, setSortBy] = useState("recent");
   const [searchQuery, setSearchQuery] = useState("");
   const [linkCopied, setLinkCopied] = useState(false);
 
@@ -21951,6 +21951,16 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     setSelectedApp(null);
     await de("JobApplication", app.id).catch(()=>{});
   };
+  const [deletingNoCv, setDeletingNoCv] = useState(false);
+  const handleDeleteAllNoCv = async () => {
+    const noCvApps = applications.filter(a=>a.ai_review_status==="no_cv");
+    if(!noCvApps.length) return;
+    if(!window.confirm(`Delete ${noCvApps.length} application${noCvApps.length!==1?"s":""} with no CV attached? This can't be undone.`)) return;
+    setDeletingNoCv(true);
+    setApplications(prev=>prev.filter(a=>a.ai_review_status!=="no_cv"));
+    await Promise.all(noCvApps.map(a=>de("JobApplication", a.id).catch(()=>{})));
+    setDeletingNoCv(false);
+  };
   const reviewOne = async (app) => {
     const opening = openings.find(o=>o.id===app.job_opening_id);
     if(!app.cv_url) {
@@ -22049,12 +22059,9 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     const sortedGroup = [...selectedGroup].sort((x,y)=>(y.ai_score??-1)-(x.ai_score??-1));
     return (
       <div className="fade-in" style={{maxWidth:700,display:"flex",flexDirection:"column",gap:20}}>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <button onClick={closeGroup} style={{width:36,height:36,borderRadius:"50%",background:"var(--surface2)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text2)",cursor:"pointer",flexShrink:0}}>
-            <Ico d={Icons.chevL} size={16}/>
-          </button>
-          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:22,margin:0}}>{sortedGroup[0].candidate_name} · {sortedGroup.length} applications</h2>
-        </div>
+        <button onClick={closeGroup} style={{width:36,height:36,borderRadius:"50%",background:"var(--surface2)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text2)",cursor:"pointer",flexShrink:0}}>
+          <Ico d={Icons.chevL} size={16}/>
+        </button>
         {sortedGroup.map(app=>(
           <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication}/>
         ))}
@@ -22134,6 +22141,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
               <button onClick={handleFixEmailApplications} disabled={fixingEmailApps} style={{padding:"5px 10px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{fixingEmailApps?"Fixing…":"Fix Email Applications"}</button>
               {retryMsg&&<span style={{fontSize:11,color:"var(--text2)"}}>{retryMsg}</span>}
               <button onClick={handleRetryAllStuck} disabled={retryingAll} style={{padding:"5px 10px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{retryingAll?"Retrying…":"Retry All Stuck AI Reviews"}</button>
+              <button onClick={handleDeleteAllNoCv} disabled={deletingNoCv} style={{padding:"5px 10px",borderRadius:99,background:"#ef444422",border:"1px solid #ef444455",fontSize:11,fontWeight:600,color:"#ef4444",cursor:"pointer"}}>{deletingNoCv?"Deleting…":"Delete All No-CV"}</button>
             </div>
           </div>
           {filteredApps.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--text2)"}}>No applications match these filters.</div>}
