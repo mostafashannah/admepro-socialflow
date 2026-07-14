@@ -173,6 +173,7 @@ $confirmationEnabled = !array_key_exists('confirmation_enabled', $emailSettings)
 $confirmationFromName = !empty($emailSettings['confirmation_from_name']) ? $emailSettings['confirmation_from_name'] : 'Admepro Careers';
 $confirmationSubject = !empty($emailSettings['confirmation_subject']) ? $emailSettings['confirmation_subject'] : 'Thanks for applying to Admepro!';
 $confirmationMessage = !empty($emailSettings['confirmation_message']) ? $emailSettings['confirmation_message'] : "We've received your application at Admepro. Our recruitment team is reviewing it now, and we'll get back to you as soon as possible.";
+$strictFiltering = !array_key_exists('strict_filtering', $emailSettings) || $emailSettings['strict_filtering'] !== false;
 
 // The OS crontab (see docblock) triggers this script every minute — the
 // finest granularity cron supports — but the actual polling interval is
@@ -343,6 +344,16 @@ foreach ($messages as $message) {
                 $digits = preg_replace('/\D/', '', $candidate);
                 if (strlen($digits) >= 10 && strlen($digits) <= 14) { $candidatePhone = trim($candidate); break; }
             }
+        }
+
+        // Strict filtering (Recruitment → Email Settings): only treat a
+        // message as a real application if its subject matched an open job
+        // or it has a CV attachment — otherwise skip mailbox noise
+        // (newsletters, our own reply confirmations, unrelated mail)
+        // instead of inserting it as an "Unassigned" application.
+        if ($strictFiltering && !$matchedOpening && !$cvUrl) {
+            $message->setFlag('Seen');
+            continue;
         }
 
         $insert->execute([

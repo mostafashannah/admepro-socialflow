@@ -720,7 +720,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.100";
+const APP_VERSION = "beta 5.101";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21561,6 +21561,7 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
 const RECRUITMENT_EMAIL_DEFAULTS = {
   imap_host: "", imap_port: 993, imap_email: "", imap_password: "",
   poll_interval_minutes: 5,
+  strict_filtering: true,
   confirmation_enabled: true, confirmation_from_name: "Admepro Careers",
   confirmation_subject: "Thanks for applying to Admepro!",
   confirmation_message: "We've received your application at Admepro. Our recruitment team is reviewing it now, and we'll get back to you as soon as possible.",
@@ -21602,6 +21603,15 @@ function RecruitmentEmailSettingsTab({appSettings, onSaveSettings}) {
               <option value={60}>1 hour</option>
             </select>
           </Field>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:4}}>
+            <div>
+              <p style={{fontSize:12,fontWeight:700}}>Strict Filtering</p>
+              <p style={{fontSize:11,color:"var(--text3)",marginTop:2,maxWidth:380}}>Only capture emails that either match an open job title in the subject or have a CV attached — skips newsletters, our own reply confirmations, and other mailbox noise. Turn off to capture every email as an "Unassigned" application (not recommended).</p>
+            </div>
+            <button onClick={()=>set("strict_filtering",!f.strict_filtering)} style={{width:44,height:26,borderRadius:99,background:f.strict_filtering?"var(--accent)":"var(--surface2)",border:"1px solid var(--border2)",position:"relative",cursor:"pointer",flexShrink:0}}>
+              <span style={{position:"absolute",top:2,left:f.strict_filtering?20:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.15s"}}/>
+            </button>
+          </div>
         </div>
       </div>
 
