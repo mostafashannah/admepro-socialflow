@@ -697,7 +697,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.88";
+const APP_VERSION = "beta 5.89";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21642,11 +21642,11 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     setFixingEmailApps(true);
     let fixedCount = 0;
     for (const app of applications) {
-      if (app.source !== "email") continue;
       const patch = {};
+      const isEmail = app.source === "email";
       // Pull links out of the cover letter that weren't split into their
-      // own fields yet (older captures, before link parsing was added).
-      if ((!app.portfolio_url || !app.linkedin_url) && app.cover_letter) {
+      // own fields yet (older email captures, before link parsing was added).
+      if (isEmail && (!app.portfolio_url || !app.linkedin_url) && app.cover_letter) {
         const urls = app.cover_letter.match(/https?:\/\/[^\s<>")]+/gi) || [];
         for (let url of urls) {
           url = url.replace(/[.,;:!?]+$/,"");
@@ -21656,7 +21656,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
       }
       // Backfill phone: prefer whatever the AI already extracted from the
       // CV, else fall back to scanning the cover letter for a number.
-      if (!app.candidate_phone) {
+      if (isEmail && !app.candidate_phone) {
         let phone = null;
         try { const ext = JSON.parse(app.ai_extracted||"{}"); if(ext.candidate_phone) phone = ext.candidate_phone; } catch(e) {}
         if (!phone && app.cover_letter) {
@@ -21665,8 +21665,8 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
         }
         if (phone) patch.candidate_phone = phone;
       }
-      // Auto-assign unassigned applications by matching their captured
-      // subject/job_title text against currently open job openings.
+      // Auto-assign unassigned applications (any source) by matching their
+      // captured subject/job_title text against currently open job openings.
       if (!app.job_opening_id && app.job_title) {
         const subj = app.job_title.toLowerCase();
         const match = openings.find(o=>{
