@@ -901,7 +901,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.124";
+const APP_VERSION = "beta 5.125";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21746,6 +21746,8 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
   const [confirmDelete, setConfirmDelete] = useState(false);
   const extracted = (() => { try { return JSON.parse(application.ai_extracted||"{}"); } catch(e) { return {}; } })();
   const cvIsDocx = /\.docx?(?:[?#]|$)/i.test(application.cv_url||"");
+  const cvIsExternal = !!application.cv_url && !application.cv_url.startsWith(window.location.origin);
+  const cvNeedsLocalCopy = cvIsDocx || cvIsExternal;
 
   const handleRerun = async () => {
     setRerunning(true);
@@ -21757,7 +21759,7 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
     // Only auto-trigger once per application — if it already failed for
     // this exact cv_url, retrying silently on every view just repeats the
     // same failure. A manual retry button covers that case instead.
-    if(cvIsDocx && onConvertCv && !cvConvertFailed) onConvertCv(application);
+    if(cvNeedsLocalCopy && onConvertCv && !cvConvertFailed) onConvertCv(application);
   },[application.id, application.cv_url]);
 
   return (
@@ -21806,9 +21808,9 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
         </div>
 
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:18}}>
-          {application.cv_url&&<a href={application.cv_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--accentbg)",border:"1px solid var(--accent)33",fontSize:12,fontWeight:700,color:"var(--accent)",textDecoration:"none"}}>{convertingCv?"Converting to PDF…":cvIsDocx?"View CV (Word)":"View CV"}</a>}
-          {cvIsDocx&&!convertingCv&&cvConvertFailed&&onConvertCv&&(
-            <button onClick={()=>onConvertCv(application)} style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>Retry PDF Conversion</button>
+          {application.cv_url&&<a href={application.cv_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--accentbg)",border:"1px solid var(--accent)33",fontSize:12,fontWeight:700,color:"var(--accent)",textDecoration:"none"}}>{convertingCv?"Saving local copy…":cvIsDocx?"View CV (Word)":cvIsExternal?"View CV (external link)":"View CV"}</a>}
+          {cvNeedsLocalCopy&&!convertingCv&&cvConvertFailed&&onConvertCv&&(
+            <button onClick={()=>onConvertCv(application)} style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>Retry Saving Local Copy</button>
           )}
           {application.portfolio_url&&<a href={application.portfolio_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>Portfolio</a>}
           {application.portfolio_attachment_url&&<a href={application.portfolio_attachment_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>Portfolio Attachment</a>}
@@ -22215,17 +22217,21 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     }
   };
 
-  // Email-captured Word CVs are stored as raw .docx (the cron that
-  // captures them is server-side PHP — mammoth/html2pdf are client-side
-  // only, so there's no way to convert at capture time). "View CV" on
-  // those just downloads a Word file instead of showing a PDF. Convert
-  // lazily here, the first time an admin actually opens the application,
-  // using the same mammoth->html->html2pdf pipeline the web apply form
-  // already uses for uploads.
+  // Two separate cases land a CV somewhere that isn't a clean local PDF:
+  // (1) email-captured Word CVs stored as raw .docx (the cron is
+  // server-side PHP — no mammoth/html2pdf there), and (2) a cv_url that
+  // points off our own domain entirely (a Google Drive download link,
+  // etc, set by an earlier recovery pass) — Drive's own URL always forces
+  // a download and can go stale/be revoked later. Handle both lazily
+  // here, the first time an admin opens the application: fetch the file,
+  // convert Word to PDF if needed, and store our own permanent copy.
   const [convertingCvId, setConvertingCvId] = useState(null);
   const [cvConvertFailedId, setCvConvertFailedId] = useState(null);
   const handleConvertCvToPdf = async (app) => {
-    if(!app.cv_url || !/\.docx?(?:[?#]|$)/i.test(app.cv_url)) return;
+    if(!app.cv_url) return;
+    const isDocx = /\.docx?(?:[?#]|$)/i.test(app.cv_url);
+    const isExternal = !app.cv_url.startsWith(window.location.origin);
+    if(!isDocx && !isExternal) return;
     setConvertingCvId(app.id);
     setCvConvertFailedId(null);
     let converted = false;
@@ -22236,7 +22242,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
       const name = app.cv_url.split("/").pop().split("?")[0] || "cv.docx";
       const asFile = new File([blob], name, {type: blob.type});
       const pdfFile = await convertCvToPdfForStorage(asFile);
-      if(pdfFile !== asFile) {
+      if(pdfFile !== asFile || isExternal) {
         const cv_url = await uploadToStorage(pdfFile, "job-applications/email");
         await ue("JobApplication", app.id, {cv_url});
         await load();
