@@ -197,6 +197,7 @@ $client = $cm->make([
     'username'      => $imapEmail,
     'password'      => $imapPassword,
     'protocol'      => 'imap',
+    'timeout'       => 60,
 ]);
 
 try {
@@ -219,10 +220,18 @@ $folder = $client->getFolder('INBOX');
 // by a human (e.g. checking it via webmail), which marks messages Seen
 // and would make them invisible to an unseen-only query, silently
 // dropping applications that arrived but got read before this script
-// ran. Instead pull everything from the last 7 days and rely purely on
-// the email_message_id UNIQUE constraint (checkDup below) to skip
-// messages already turned into an application.
-$messages = $folder->messages()->since((new DateTime())->modify('-7 days'))->get();
+// ran. Instead pull everything from the last 2 days (cron runs every
+// minute, so this is far more buffer than needed for anything actually
+// new) and rely purely on the email_message_id UNIQUE constraint
+// (checkDup below) to skip messages already turned into an application.
+// A wider window risks the IMAP server dropping the connection
+// mid-fetch on a large mailbox, so this is intentionally tight.
+try {
+    $messages = $folder->messages()->since((new DateTime())->modify('-2 days'))->get();
+} catch (Throwable $e) {
+    echo json_encode(['error' => 'Failed to fetch messages: ' . $e->getMessage()]);
+    exit(1);
+}
 $processed = 0;
 
 foreach ($messages as $message) {
