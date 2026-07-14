@@ -692,7 +692,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.71";
+const APP_VERSION = "beta 5.72";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13047,6 +13047,10 @@ function CareersPage() {
   const handleSubmit = async () => {
     if(form.website) return; // honeypot tripped — silently drop
     if(!form.name.trim()||!form.email.trim()) { alert("Name and email are required."); return; }
+    if(!form.phone.trim()) { alert("Phone number is required."); return; }
+    if(!form.cover_letter.trim()) { alert("Cover letter is required."); return; }
+    if(!form.expected_salary.trim()) { alert("Expected salary is required."); return; }
+    if(!form.available_start_date) { alert("Available join date is required."); return; }
     if(!cvFile||!cvBase64) { alert("Please attach your CV (PDF)."); return; }
     setSubmitting(true);
     try {
@@ -13143,7 +13147,7 @@ function CareersPage() {
               <input type="email" value={form.email} onChange={e=>sf("email",e.target.value)} placeholder="you@example.com" style={inputSt}/>
             </div>
             <div>
-              <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Phone</label>
+              <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Phone *</label>
               <input value={form.phone} onChange={e=>sf("phone",e.target.value)} placeholder="+20 100 000 0000" style={inputSt}/>
             </div>
             <div>
@@ -13155,7 +13159,7 @@ function CareersPage() {
               <input value={form.linkedin_url} onChange={e=>sf("linkedin_url",e.target.value)} placeholder="https://linkedin.com/in/…" style={inputSt}/>
             </div>
             <div>
-              <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Cover Letter</label>
+              <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Cover Letter *</label>
               <textarea value={form.cover_letter} onChange={e=>sf("cover_letter",e.target.value)} placeholder="Tell us why you're a great fit…" rows={5} style={{...inputSt,resize:"vertical"}}/>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
@@ -13164,17 +13168,17 @@ function CareersPage() {
                 <input value={form.current_salary} onChange={e=>sf("current_salary",e.target.value)} placeholder="e.g. 15,000 EGP" style={inputSt}/>
               </div>
               <div>
-                <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Expected Salary</label>
+                <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Expected Salary *</label>
                 <input value={form.expected_salary} onChange={e=>sf("expected_salary",e.target.value)} placeholder="e.g. 20,000 EGP" style={inputSt}/>
               </div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
               <div>
-                <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Available Join Date</label>
+                <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Available Join Date *</label>
                 <input type="date" value={form.available_start_date} onChange={e=>sf("available_start_date",e.target.value)} style={inputSt}/>
               </div>
               <div>
-                <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Open to a test task?</label>
+                <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Open to a test task? *</label>
                 <select value={form.open_to_task} onChange={e=>sf("open_to_task",e.target.value)} style={inputSt}>
                   <option value="yes">Yes</option>
                   <option value="no">No</option>
