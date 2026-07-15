@@ -1051,7 +1051,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.183";
+const APP_VERSION = "beta 5.184";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23256,7 +23256,7 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
               )}
             </div>
             {!application.linked_team_member_id&&(
-              <button onClick={()=>{ alert("Button clicked — opening invite form for "+(application.candidate_name||application.candidate_email||"this candidate")); try{ onMakeTeamMember(application); }catch(e){ console.error("Make Team Member failed:",e); alert("Something went wrong opening the invite form: "+(e?.message||e)); } }} style={{padding:"8px 16px",borderRadius:8,background:"var(--accent)",border:"none",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer",flexShrink:0}}>
+              <button onClick={()=>{ try{ onMakeTeamMember(application); }catch(e){ console.error("Make Team Member failed:",e); alert("Something went wrong opening the invite form: "+(e?.message||e)); } }} style={{padding:"8px 16px",borderRadius:8,background:"var(--accent)",border:"none",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer",flexShrink:0}}>
                 {application.team_member_invited_at?"Resend Invitation":"Make Team Member"}
               </button>
             )}
@@ -24280,8 +24280,26 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
     <JobOpeningForm opening={editOpening} currentUser={currentUser} onSave={handleSaveOpening} onClose={()=>{setShowForm(false);setEditOpening(null);}}/>
   );
 
+  const makeTeamMemberModal = makeTeamMemberApp&&(
+    <InviteUserModal
+      onClose={()=>setMakeTeamMemberApp(null)}
+      onSubmit={handleInviteFromApplication}
+      clients={clients}
+      team={team}
+      initial={{
+        name: makeTeamMemberApp.candidate_name||"",
+        email: makeTeamMemberApp.candidate_email||"",
+        title: makeTeamMemberApp.offer_title||makeTeamMemberApp.job_title||"",
+        source_application_id: makeTeamMemberApp.id,
+      }}
+    />
+  );
+
   if(selectedApp) return (
-    <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===selectedApp.id} cvConvertFailed={cvConvertFailedId===selectedApp.id} onRateInterview={handleRateInterview} activityLog={activityLogs.filter(l=>l.application_id===selectedApp.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===selectedApp.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===selectedApp.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===selectedApp.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===selectedApp.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===selectedApp.id} onMakeTeamMember={setMakeTeamMemberApp}/>
+    <>
+      <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===selectedApp.id} cvConvertFailed={cvConvertFailedId===selectedApp.id} onRateInterview={handleRateInterview} activityLog={activityLogs.filter(l=>l.application_id===selectedApp.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===selectedApp.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===selectedApp.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===selectedApp.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===selectedApp.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===selectedApp.id} onMakeTeamMember={setMakeTeamMemberApp}/>
+      {makeTeamMemberModal}
+    </>
   );
 
   if(selectedGroup) {
@@ -24297,6 +24315,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
         {sortedGroup.map((app,i)=>(
           <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===app.id} cvConvertFailed={cvConvertFailedId===app.id} onRateInterview={handleRateInterview} activityLog={activityLogs.filter(l=>l.application_id===app.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===app.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===app.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===app.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===app.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===app.id} onMakeTeamMember={setMakeTeamMemberApp}/>
         ))}
+        {makeTeamMemberModal}
       </div>
     );
   }
