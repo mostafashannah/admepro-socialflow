@@ -944,7 +944,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.134";
+const APP_VERSION = "beta 5.135";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13314,9 +13314,11 @@ function CompleteApplicationPage({token}) {
   const [notFound, setNotFound] = useState(false);
   const [done, setDone] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({phone:"",name:"",expected_salary:"",available_start_date:"",open_to_task:"yes"});
+  const [form, setForm] = useState({phone:"",name:"",expected_salary:"",available_start_date:"",open_to_task:"yes",linkedin_url:"",behance_url:"",canva_url:"",instagram_url:"",video_url:""});
   const [cvFile, setCvFile] = useState(null);
   const cvRef = useRef(null);
+  const [portfolioFile, setPortfolioFile] = useState(null);
+  const portfolioRef = useRef(null);
 
   useEffect(()=>{
     (async () => {
@@ -13328,6 +13330,8 @@ function CompleteApplicationPage({token}) {
         phone: app.candidate_phone||"", name: app.candidate_name||"",
         expected_salary: app.expected_salary||"", available_start_date: app.available_start_date||"",
         open_to_task: app.open_to_task||"yes",
+        linkedin_url: app.linkedin_url||"", behance_url: app.behance_url||"", canva_url: app.canva_url||"",
+        instagram_url: app.instagram_url||"", video_url: app.video_url||"",
       });
       if(app.job_opening_id) {
         const oRes = await qe("JobOpening", {id: app.job_opening_id});
@@ -13355,6 +13359,13 @@ function CompleteApplicationPage({token}) {
     setCvFile(file);
   };
 
+  const handlePortfolioFile = (e) => {
+    const file = e.target.files?.[0];
+    if(!file) return;
+    if(file.size > MAX_PORTFOLIO_MB*1024*1024) { alert(`Portfolio file is too large (max ${MAX_PORTFOLIO_MB}MB).`); return; }
+    setPortfolioFile(file);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if(missing.expected_salary && !form.expected_salary.trim()) { alert("Please enter your expected salary."); return; }
@@ -13367,6 +13378,13 @@ function CompleteApplicationPage({token}) {
       if(missing.expected_salary) patch.expected_salary = form.expected_salary.trim();
       if(missing.available_start_date) patch.available_start_date = form.available_start_date;
       if(missing.open_to_task) patch.open_to_task = form.open_to_task;
+      // Optional extras — never required, only sent if actually filled in.
+      if(form.linkedin_url.trim()) patch.linkedin_url = form.linkedin_url.trim();
+      if(form.behance_url.trim()) patch.behance_url = form.behance_url.trim();
+      if(form.canva_url.trim()) patch.canva_url = form.canva_url.trim();
+      if(form.instagram_url.trim()) patch.instagram_url = form.instagram_url.trim();
+      if(form.video_url.trim()) patch.video_url = form.video_url.trim();
+      if(portfolioFile) patch.portfolio_attachment_url = await uploadToStorage(portfolioFile, "job-applications/portfolio");
 
       let cvContent = null;
       if(missing.cv && cvFile) {
@@ -13417,31 +13435,37 @@ function CompleteApplicationPage({token}) {
         <p style={{fontSize:13,color:isDark?"#9099ab":"#666",marginBottom:22}}>
           {application.candidate_name||"Hi"}, thanks for applying{opening?<> for <strong>{opening.title}</strong></>:null}. Just a few more details to finish reviewing your application.
         </p>
-        {!hasAnyMissing ? (
-          <p style={{fontSize:13,color:isDark?"#9099ab":"#666"}}>Looks like we already have everything we need — thanks!</p>
-        ) : (
-          <form onSubmit={handleSubmit} style={{display:"flex",flexDirection:"column",gap:14}}>
-            {missing.name&&<Field label="Full Name"><input value={form.name} onChange={e=>sf("name",e.target.value)} style={inputSt}/></Field>}
-            {missing.phone&&<Field label="Phone"><input value={form.phone} onChange={e=>sf("phone",e.target.value)} style={inputSt}/></Field>}
-            {missing.cv&&(
-              <Field label="CV (PDF or Word, max 5MB)">
-                <input ref={cvRef} type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={handleCvFile} style={inputSt}/>
-                {cvFile&&<p style={{fontSize:11,color:isDark?"#9099ab":"#666",marginTop:4}}>{cvFile.name}</p>}
-              </Field>
-            )}
-            {missing.expected_salary&&<Field label="Expected Salary" required><input value={form.expected_salary} onChange={e=>sf("expected_salary",e.target.value)} placeholder="e.g. 20,000 EGP" style={inputSt}/></Field>}
-            {missing.available_start_date&&<Field label="Available Start Date" required><input type="date" value={form.available_start_date} onChange={e=>sf("available_start_date",e.target.value)} style={inputSt}/></Field>}
-            {missing.open_to_task&&(
-              <Field label="Open to a paid test task?">
-                <select value={form.open_to_task} onChange={e=>sf("open_to_task",e.target.value)} style={inputSt}>
-                  <option value="yes">Yes</option>
-                  <option value="no">No</option>
-                </select>
-              </Field>
-            )}
-            <Btn type="submit" disabled={submitting} style={{marginTop:4}}>{submitting?"Submitting…":"Submit"}</Btn>
-          </form>
-        )}
+        {!hasAnyMissing&&<p style={{fontSize:13,color:isDark?"#9099ab":"#666",marginBottom:16}}>Looks like we already have everything we need — feel free to add any links below, or just leave as is.</p>}
+        <form onSubmit={handleSubmit} style={{display:"flex",flexDirection:"column",gap:14}}>
+          {missing.name&&<Field label="Full Name"><input value={form.name} onChange={e=>sf("name",e.target.value)} style={inputSt}/></Field>}
+          {missing.phone&&<Field label="Phone"><input value={form.phone} onChange={e=>sf("phone",e.target.value)} style={inputSt}/></Field>}
+          {missing.cv&&(
+            <Field label="CV (PDF or Word, max 5MB)">
+              <input ref={cvRef} type="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={handleCvFile} style={inputSt}/>
+              {cvFile&&<p style={{fontSize:11,color:isDark?"#9099ab":"#666",marginTop:4}}>{cvFile.name}</p>}
+            </Field>
+          )}
+          {missing.expected_salary&&<Field label="Expected Salary" required><input value={form.expected_salary} onChange={e=>sf("expected_salary",e.target.value)} placeholder="e.g. 20,000 EGP" style={inputSt}/></Field>}
+          {missing.available_start_date&&<Field label="Available Start Date" required><input type="date" value={form.available_start_date} onChange={e=>sf("available_start_date",e.target.value)} style={inputSt}/></Field>}
+          {missing.open_to_task&&(
+            <Field label="Open to a paid test task?">
+              <select value={form.open_to_task} onChange={e=>sf("open_to_task",e.target.value)} style={inputSt}>
+                <option value="yes">Yes</option>
+                <option value="no">No</option>
+              </select>
+            </Field>
+          )}
+          <div style={{borderTop:`1px solid ${isDark?"#252b38":"#eee"}`,paddingTop:14,marginTop:hasAnyMissing?4:0,display:"flex",flexDirection:"column",gap:14}}>
+            <p style={{fontSize:11,fontWeight:800,color:isDark?"#9099ab":"#888",letterSpacing:"0.06em",textTransform:"uppercase"}}>Optional Extras</p>
+            <Field label="Portfolio Attachment"><input ref={portfolioRef} type="file" onChange={handlePortfolioFile} style={inputSt}/>{portfolioFile&&<p style={{fontSize:11,color:isDark?"#9099ab":"#666",marginTop:4}}>{portfolioFile.name}</p>}</Field>
+            <Field label="LinkedIn"><input value={form.linkedin_url} onChange={e=>sf("linkedin_url",e.target.value)} placeholder="https://linkedin.com/in/…" style={inputSt}/></Field>
+            <Field label="Behance"><input value={form.behance_url} onChange={e=>sf("behance_url",e.target.value)} placeholder="https://behance.net/…" style={inputSt}/></Field>
+            <Field label="Canva"><input value={form.canva_url} onChange={e=>sf("canva_url",e.target.value)} placeholder="https://canva.com/…" style={inputSt}/></Field>
+            <Field label="Instagram"><input value={form.instagram_url} onChange={e=>sf("instagram_url",e.target.value)} placeholder="https://instagram.com/…" style={inputSt}/></Field>
+            <Field label="Video Link"><input value={form.video_url} onChange={e=>sf("video_url",e.target.value)} placeholder="Introduce yourself, or a reel/work reference" style={inputSt}/></Field>
+          </div>
+          <Btn type="submit" disabled={submitting} style={{marginTop:4}}>{submitting?"Submitting…":"Submit"}</Btn>
+        </form>
       </div>
     </div>
   );
@@ -13477,7 +13501,7 @@ function CareersPage({appSettings}) {
   },[]);
   const openJob = (o) => { window.history.pushState({careersJob:o.id}, "", window.location.pathname); setSelected(o); };
   const closeJob = () => { window.history.back(); };
-  const [form, setForm] = useState({name:"",email:"",phone:"",cover_letter:"",portfolio_url:"",linkedin_url:"",current_salary:"",expected_salary:"",available_start_date:"",open_to_task:"yes",website:""}); // "website" = honeypot
+  const [form, setForm] = useState({name:"",email:"",phone:"",cover_letter:"",portfolio_url:"",linkedin_url:"",instagram_url:"",video_url:"",current_salary:"",expected_salary:"",available_start_date:"",open_to_task:"yes",website:""}); // "website" = honeypot
   const [cvFile, setCvFile] = useState(null);
   const [portfolioFile, setPortfolioFile] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -13541,6 +13565,7 @@ function CareersPage({appSettings}) {
         job_opening_id: selected.id, job_title: selected.title,
         candidate_name: form.name.trim(), candidate_email: form.email.trim(), candidate_phone: form.phone.trim(),
         cv_url, cover_letter: form.cover_letter, portfolio_url: form.portfolio_url, portfolio_attachment_url, linkedin_url: form.linkedin_url,
+        instagram_url: form.instagram_url, video_url: form.video_url,
         current_salary: form.current_salary, expected_salary: form.expected_salary,
         available_start_date: form.available_start_date, open_to_task: form.open_to_task,
         status:"new", ai_review_status, ai_score, ai_summary,
@@ -13650,6 +13675,14 @@ function CareersPage({appSettings}) {
             <div>
               <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>LinkedIn</label>
               <input value={form.linkedin_url} onChange={e=>sf("linkedin_url",e.target.value)} placeholder="https://linkedin.com/in/…" style={inputSt}/>
+            </div>
+            <div>
+              <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Instagram <span style={{fontWeight:400,color:"var(--text3)"}}>(optional)</span></label>
+              <input value={form.instagram_url} onChange={e=>sf("instagram_url",e.target.value)} placeholder="https://instagram.com/…" style={inputSt}/>
+            </div>
+            <div>
+              <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Video Link <span style={{fontWeight:400,color:"var(--text3)"}}>(optional — introduce yourself, or a reel/work reference)</span></label>
+              <input value={form.video_url} onChange={e=>sf("video_url",e.target.value)} placeholder="https://…" style={inputSt}/>
             </div>
             <div>
               <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Cover Letter *</label>
@@ -21875,6 +21908,10 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
           {application.portfolio_url&&<a href={application.portfolio_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>Portfolio</a>}
           {application.portfolio_attachment_url&&<a href={application.portfolio_attachment_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>Portfolio Attachment</a>}
           {application.linkedin_url&&<a href={application.linkedin_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>LinkedIn</a>}
+          {application.behance_url&&<a href={application.behance_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>Behance</a>}
+          {application.canva_url&&<a href={application.canva_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>Canva</a>}
+          {application.instagram_url&&<a href={application.instagram_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>Instagram</a>}
+          {application.video_url&&<a href={application.video_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>Video</a>}
         </div>
 
         {application.ai_review_status==="pending"&&(
