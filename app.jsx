@@ -781,15 +781,25 @@ async function convertCvToPdfForStorage(file) {
   }
 }
 
-async function reviewApplication(application, cvContent, opening) {
+async function reviewApplication(application, cvContent, opening, otherOpenOpenings=[]) {
   if(!application?.id || !cvContent) return null;
+  // If this candidate would clearly score better against a different
+  // currently-open role, flag it instead of only ever comparing against
+  // whichever opening they happened to apply to — a strong designer who
+  // applied to the wrong listing shouldn't get buried as a weak fit here.
+  const otherOpeningsForCompare = (otherOpenOpenings||[]).filter(o=>o.id!==opening?.id);
+  const recSection = otherOpeningsForCompare.length ? `
+
+Also consider these OTHER currently open positions:
+${otherOpeningsForCompare.map(o=>`- "${o.title}": ${(o.description||"").slice(0,300)}`).join("\n")}
+If the candidate would score meaningfully better against one of these other roles than against "${opening?.title||application.job_title||"this role"}", also include "better_fit_title" (the exact title from the list above) and "better_fit_reason" (one sentence) in your JSON. If none fit clearly better, set both to null. Only recommend a switch if it's a clear, meaningful improvement — not a marginal one.` : "";
   const sys = `You are an HR screening assistant reviewing a candidate's CV (attached below, as a PDF document or as extracted text from a Word document) for the position "${opening?.title||application.job_title||"this role"}".
 Job description: ${(opening?.description||"").slice(0,1500)}
 Requirements: ${(opening?.requirements||"").slice(0,1500)}
 
 Read the CV and return ONLY JSON in this exact shape:
 ${AI_REVIEW_JSON_SHAPE}
-"score" is 0-100, reflecting fit for THIS role specifically (not a generic CV quality score).`;
+"score" is 0-100, reflecting fit for THIS role specifically (not a generic CV quality score).${recSection}`;
   try {
     const r = await fetchWithTimeout(AI_ENDPOINT, {
       method:"POST", headers:AI_HEADERS,
@@ -934,7 +944,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.132";
+const APP_VERSION = "beta 5.133";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21639,6 +21649,18 @@ Give 3 specific, actionable recommendations to improve their performance. Be con
 // ════════════════════════════════════════════════════════════════
 // RECRUITMENT PAGE (admin / hr.manage_recruitment)
 // ════════════════════════════════════════════════════════════════
+// Combines the AI fit score with a post-interview human star rating (1-5)
+// for overall ranking — a candidate who's actually been interviewed and
+// rated should outrank one who only ever got an automated CV score, even
+// if the raw AI score is lower. Weighted so a top interview rating (5)
+// can outweigh a full AI score gap, but a candidate with no rating yet
+// still ranks purely on ai_score.
+function applicationRank(a) {
+  const base = a.ai_score ?? -1;
+  if (a.interview_rating == null) return base;
+  return base + a.interview_rating * 20;
+}
+
 const APPLICATION_STATUSES = [
   {key:"new", label:"New", color:"#3b82f6"},
   {key:"reviewing", label:"Reviewing", color:"#8b5cf6"},
@@ -21773,7 +21795,7 @@ function JobOpeningForm({opening, currentUser, onSave, onClose}) {
   );
 }
 
-function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader, onConvertCv, convertingCv, cvConvertFailed}) {
+function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader, onConvertCv, convertingCv, cvConvertFailed, onRateInterview}) {
   const [notes, setNotes] = useState(application.notes||"");
   const [rerunning, setRerunning] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -21884,6 +21906,12 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
             <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6}}>{application.ai_summary}</p>
           </div>
         )}
+        {extracted.better_fit_title&&(
+          <div style={{background:"#6366f122",border:"1px solid #6366f155",borderRadius:12,padding:16,marginBottom:14}}>
+            <p style={{fontSize:11,fontWeight:800,color:"#6366f1",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:6}}>AI Recommendation</p>
+            <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6}}>Might be a better fit for <strong style={{color:"var(--text)"}}>{extracted.better_fit_title}</strong>{extracted.better_fit_reason?` — ${extracted.better_fit_reason}`:""}</p>
+          </div>
+        )}
         {extracted.highlights?.length>0&&(
           <div style={{marginBottom:14}}>
             <p style={{fontSize:11,fontWeight:800,color:"#10b981",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:6}}>Highlights</p>
@@ -21952,6 +21980,17 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
             ))}
           </div>
         </div>
+
+        {onRateInterview&&(["interview","hired","rejected"].includes(application.status)||application.interview_rating!=null)&&(
+          <div style={{marginBottom:14}}>
+            <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Interview Rating</p>
+            <div style={{display:"flex",gap:4}}>
+              {[1,2,3,4,5].map(n=>(
+                <button key={n} onClick={()=>onRateInterview(application, n)} title={`Rate ${n} star${n!==1?"s":""}`} style={{background:"none",border:"none",padding:2,cursor:"pointer",fontSize:24,lineHeight:1,color:(application.interview_rating||0)>=n?"#f59e0b":"var(--border2)"}}>★</button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <Field label="Notes">
           <textarea value={notes} onChange={e=>setNotes(e.target.value)} onBlur={()=>onSaveNotes(application, notes)} rows={3} style={{...inputSt,resize:"vertical"}}/>
@@ -22109,6 +22148,13 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,...patch}:prev);
     await ue("JobApplication", app.id, patch).catch(()=>{});
   };
+  const handleRateInterview = async (app, rating) => {
+    // Toggle off by clicking the same star again, matching common star-picker UX.
+    const nextRating = app.interview_rating===rating ? null : rating;
+    setApplications(prev=>prev.map(a=>a.id===app.id?{...a,interview_rating:nextRating}:a));
+    setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,interview_rating:nextRating}:prev);
+    await ue("JobApplication", app.id, {interview_rating: nextRating}).catch(()=>{});
+  };
   const [fixingEmailApps, setFixingEmailApps] = useState(false);
   const [fixMsg, setFixMsg] = useState("");
   const [retryingAll, setRetryingAll] = useState(false);
@@ -22243,7 +22289,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
       // whichever one the candidate matches best.
       await reviewApplicationBestFit(app, cvContent, openings.filter(o=>o.status==="open"));
     } else {
-      await reviewApplication(app, cvContent, opening);
+      await reviewApplication(app, cvContent, opening, openings.filter(o=>o.status==="open"));
     }
   };
   const handleRerunReview = async (app) => {
@@ -22393,7 +22439,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     .sort((a,b)=>{
       if(sortBy==="recent") return new Date(b.created_at)-new Date(a.created_at);
       if(sortBy==="oldest") return new Date(a.created_at)-new Date(b.created_at);
-      return (b.ai_score??-1)-(a.ai_score??-1);
+      return applicationRank(b)-applicationRank(a);
     });
 
   const careersUrl = (typeof window!=="undefined"?window.location.origin:"https://socialflow.admepro.com") + "/careers";
@@ -22406,11 +22452,11 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   );
 
   if(selectedApp) return (
-    <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===selectedApp.id} cvConvertFailed={cvConvertFailedId===selectedApp.id}/>
+    <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===selectedApp.id} cvConvertFailed={cvConvertFailedId===selectedApp.id} onRateInterview={handleRateInterview}/>
   );
 
   if(selectedGroup) {
-    const sortedGroup = [...selectedGroup].sort((x,y)=>(y.ai_score??-1)-(x.ai_score??-1));
+    const sortedGroup = [...selectedGroup].sort((x,y)=>applicationRank(y)-applicationRank(x));
     return (
       <div className="fade-in" style={{maxWidth:700,display:"flex",flexDirection:"column",gap:20}}>
         <div style={{display:"flex",alignItems:"center",gap:12}}>
@@ -22420,7 +22466,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:22,margin:0}}>{sortedGroup[0].candidate_name} · {sortedGroup.length} applications</h2>
         </div>
         {sortedGroup.map((app,i)=>(
-          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===app.id} cvConvertFailed={cvConvertFailedId===app.id}/>
+          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===app.id} cvConvertFailed={cvConvertFailedId===app.id} onRateInterview={handleRateInterview}/>
         ))}
       </div>
     );
@@ -22538,7 +22584,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
                   </div>
                 );
               }
-              const sortedGroup = [...group].sort((x,y)=>(y.ai_score??-1)-(x.ai_score??-1));
+              const sortedGroup = [...group].sort((x,y)=>applicationRank(y)-applicationRank(x));
               const bestScore = sortedGroup.find(app=>app.ai_score!=null)?.ai_score;
               const bestApp = sortedGroup[0];
               const bestStatusInfo = APPLICATION_STATUSES.find(s=>s.key===bestApp.status)||APPLICATION_STATUSES[0];
