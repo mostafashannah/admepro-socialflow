@@ -1032,7 +1032,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.153";
+const APP_VERSION = "beta 5.154";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13258,6 +13258,7 @@ function AcceptInvitationPage({token, onAccepted}) {
         // carry those through instead of the old (broken) self-entered mobile field.
         await ce("TeamMember",[{
           ...memberPayload,
+          title: invitation.title || null,
           whatsapp_number: invitation.whatsapp_number || form.mobile || null,
           manager_id: invitation.manager_id || null,
           salary: invitation.salary || null,
