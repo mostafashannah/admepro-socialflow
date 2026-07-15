@@ -18,6 +18,12 @@ header("Content-Type: application/json");
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(200); exit; }
 
+// A large mailbox's IMAP fetch (even with attachment content skipped —
+// full message structure/headers/text bodies for a batch of messages
+// still adds up) can exceed the shared hosting default of 128M; bump it
+// for this script specifically rather than raising it site-wide.
+ini_set('memory_limit', '512M');
+
 require_once __DIR__ . '/config.php';
 $autoload = __DIR__ . '/vendor/autoload.php';
 if (file_exists($autoload)) require_once $autoload;
@@ -101,7 +107,7 @@ function syncMailboxFromImap(PDO $pdo, array $emailSettings, int $retentionDays)
         if (!$folder) continue;
 
         try {
-            $messages = $folder->messages()->since((new DateTime())->modify("-{$fetchDays} days"))->limit(300)->setFetchOrderDesc()->get();
+            $messages = $folder->messages()->since((new DateTime())->modify("-{$fetchDays} days"))->limit(200)->setFetchOrderDesc()->get();
         } catch (Throwable $e) { continue; }
 
         foreach ($messages as $message) {
