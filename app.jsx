@@ -1051,7 +1051,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.178";
+const APP_VERSION = "beta 5.179";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -14146,6 +14146,12 @@ function OfferResponsePage({token}) {
     setSubmitting(true);
     try {
       const patch = {offer_candidate_response: kind, offer_negotiation_letter: negotiationLetter||null, offer_responded_at: new Date().toISOString(), offer_token: null};
+      // Accepting/declining moves the pipeline status automatically — a
+      // decline at this stage is deliberately its own status
+      // (rejected_after_offer), not the same "Rejected" used earlier in
+      // the pipeline, so staff can tell the two apart at a glance.
+      if(kind==="accepted") patch.status = "hired";
+      if(kind==="rejected") patch.status = "rejected_after_offer";
       await ue("JobApplication", application.id, patch);
       logApplicationActivity(application.id, kind==="accepted"?"Candidate accepted the offer":kind==="rejected"?"Candidate rejected the offer":"Candidate wants to negotiate the offer", application.candidate_name||"Candidate");
       setResponse(kind);
@@ -22664,6 +22670,7 @@ const APPLICATION_STATUSES = [
   {key:"offer", label:"Offer", color:"#a855f7"},
   {key:"hired", label:"Hired", color:"#10b981"},
   {key:"rejected", label:"Rejected", color:"#6b7280"},
+  {key:"rejected_after_offer", label:"Rejected After Offer", color:"#7c2d12"},
 ];
 const EMPLOYMENT_TYPE_LABELS = {full_time:"Full-time", part_time:"Part-time", contract:"Contract", internship:"Internship"};
 
@@ -22899,7 +22906,7 @@ function OfferSection({application, opening, onSave, saving, onSend, sending, on
                 <button onClick={()=>onUpdateStatus(application,"hired")} style={{padding:"6px 14px",borderRadius:8,background:"#10b981",border:"none",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer"}}>Mark as Hired</button>
               )}
               {application.offer_candidate_response!=="rejected"&&(
-                <button onClick={()=>onUpdateStatus(application,"rejected")} style={{padding:"6px 14px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"#ef4444",cursor:"pointer"}}>Reject Application</button>
+                <button onClick={()=>onUpdateStatus(application,"rejected_after_offer")} style={{padding:"6px 14px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"#ef4444",cursor:"pointer"}}>Reject Application</button>
               )}
               {application.offer_candidate_response==="negotiate"&&(
                 <span style={{fontSize:11,color:"var(--text3)",alignSelf:"center"}}>Adjust the terms below and click "Send Offer Email" again to send a revised offer.</span>
