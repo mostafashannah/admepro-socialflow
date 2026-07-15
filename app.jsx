@@ -1040,7 +1040,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.162";
+const APP_VERSION = "beta 5.163";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22705,6 +22705,7 @@ const RECRUITMENT_EMAIL_DEFAULTS = {
   confirmation_message: "We've received your application at Admepro. Our recruitment team is reviewing it now, and we'll get back to you as soon as possible.",
   completion_subject: "Please complete your Admepro application",
   completion_message: "Thanks for applying! To finish reviewing your application, could you fill in a few more details:",
+  mailbox_retention_days: 30,
 };
 
 // Read-only inbox/sent viewer for the recruitment mailbox — lets staff
@@ -22768,11 +22769,15 @@ function RecruitmentMailboxTab({appSettings}) {
   const mailboxEmail = (appSettings?.recruitment_email_settings?.imap_email||"").toLowerCase();
   const fromName = appSettings?.recruitment_email_settings?.confirmation_from_name || "Admepro Careers";
 
-  const fetchMailbox = () => fetch(`${RECRUITMENT_MAILBOX_ENDPOINT}?box=all&limit=100`).then(r=>r.json());
+  // Reads from our own database (fast, always) — the endpoint itself
+  // decides whether it's due to re-sync from IMAP (self-throttled to
+  // once per 5 minutes) unless forceSync bypasses that for an explicit
+  // Refresh click.
+  const fetchMailbox = (forceSync) => fetch(`${RECRUITMENT_MAILBOX_ENDPOINT}${forceSync?"?force_sync=1":""}`).then(r=>r.json());
 
-  const load = () => {
+  const load = (forceSync) => {
     setLoading(true); setError("");
-    fetchMailbox()
+    fetchMailbox(forceSync)
       .then(json=>{
         if(!json.ok) throw new Error(json.error||"Failed to load mailbox");
         MAILBOX_CACHE = { messages: json.messages||[], loadedAt: Date.now() };
@@ -22783,9 +22788,9 @@ function RecruitmentMailboxTab({appSettings}) {
   };
   useEffect(()=>{
     // Cache already has something reasonably fresh (<30s old) — show it
-    // instantly, no spinner, no IMAP round trip on this visit.
+    // instantly, no spinner, no extra request on this visit.
     if(MAILBOX_CACHE.messages !== null && Date.now()-MAILBOX_CACHE.loadedAt < 30000) return;
-    load();
+    load(false);
   },[]);
   // Auto-refresh so new inbound/replied emails show up without a manual
   // click — quiet (no spinner state reset) so it doesn't yank focus away
@@ -22810,7 +22815,9 @@ function RecruitmentMailboxTab({appSettings}) {
   // The filter picks which threads to LIST (a thread must have at least
   // one message in that box), but a selected thread still shows its full
   // back-and-forth from both boxes — filtering only narrows the list.
-  const threads = boxFilter==="all" ? allThreads : allThreads.filter(t=>t.messages.some(m=>m.box===boxFilter));
+  const threads = boxFilter==="all" ? allThreads
+    : boxFilter==="system" ? allThreads.filter(t=>t.messages.some(m=>m.is_system))
+    : allThreads.filter(t=>t.messages.some(m=>m.box===boxFilter));
   const selectedThread = allThreads.find(t=>t.key===selectedKey) || null;
 
   // Who to actually send a reply/new email to: the other party in the
@@ -22866,7 +22873,7 @@ function RecruitmentMailboxTab({appSettings}) {
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
         <div style={{display:"flex",gap:6}}>
-          {[["all","All"],["inbox","Inbox"],["sent","Sent"]].map(([k,l])=>(
+          {[["all","All"],["inbox","Inbox"],["sent","Sent"],["system","Sent by System"]].map(([k,l])=>(
             <button key={k} onClick={()=>setBoxFilter(k)} style={{padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,background:boxFilter===k?"var(--accent)":"var(--surface2)",color:boxFilter===k?"#fff":"var(--text2)",border:`1px solid ${boxFilter===k?"var(--accent)":"var(--border2)"}`,cursor:"pointer"}}>{l}</button>
           ))}
         </div>
@@ -22874,7 +22881,7 @@ function RecruitmentMailboxTab({appSettings}) {
           <button onClick={()=>setShowCompose(true)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:8,background:"var(--accent)",border:"none",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer"}}>
             <Ico d={Icons.plus} size={12}/> New Email
           </button>
-          <button onClick={load} disabled={loading} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text2)",cursor:loading?"not-allowed":"pointer"}}>
+          <button onClick={()=>load(true)} disabled={loading} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text2)",cursor:loading?"not-allowed":"pointer"}}>
               {loading?<Spinner size={12}/>:<Ico d={Icons.refresh||Icons.repeat} size={12}/>} Refresh
           </button>
         </div>
@@ -22931,6 +22938,7 @@ function RecruitmentMailboxTab({appSettings}) {
                   <p style={{fontSize:11,fontWeight:700,color:m.box==="sent"?"var(--accent)":"var(--text2)",marginBottom:4}}>
                     {m.box==="sent" ? `To: ${m.to?.join(", ")||"—"}` : (m.from_name||m.from_email)}
                     <span style={{fontWeight:400,color:"var(--text3)",marginLeft:8}}>{fmtDateTime(m.date)}</span>
+                    {m.is_system&&<span style={{fontWeight:700,color:"#f59e0b",marginLeft:8}}>· System</span>}
                   </p>
                   <p style={{fontSize:13,color:"var(--text)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{m.body||m.snippet}</p>
                   {m.has_attachments&&<p style={{fontSize:11,color:"var(--text3)",marginTop:8}}>📎 Has attachment(s) — open in webmail to download.</p>}
@@ -23009,6 +23017,19 @@ function RecruitmentEmailSettingsTab({appSettings, onSaveSettings}) {
             </button>
           </div>
         </div>
+      </div>
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:24}}>
+        <p style={{fontSize:13,fontWeight:800,marginBottom:4}}>Mailbox Storage (Inbox Tab)</p>
+        <p style={{fontSize:12,color:"var(--text3)",marginBottom:16}}>The Recruitment &gt; Inbox tab keeps its own copy of your Inbox and Sent messages in our database (synced from IMAP periodically) so it loads fast. Messages older than this are automatically deleted from our database — they still exist in the real mailbox, just no longer shown here.</p>
+        <Field label="Keep Emails For">
+          <select value={f.mailbox_retention_days} onChange={e=>set("mailbox_retention_days",Number(e.target.value))} style={inputSt}>
+            <option value={30}>30 days</option>
+            <option value={90}>90 days</option>
+            <option value={180}>180 days</option>
+            <option value={360}>360 days</option>
+          </select>
+        </Field>
       </div>
 
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:24}}>
