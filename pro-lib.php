@@ -372,6 +372,19 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
         $currency = $input['currency'] ?? 'EGP';
         $date = !empty($input['date']) ? $input['date'] : date('Y-m-d');
 
+        // Hard guard against the model re-answering an old message and
+        // re-calling add_transaction for something it already logged a
+        // moment ago — a same-sender/same-amount/same-description row
+        // inserted in the last 5 minutes is treated as a repeat, not a new
+        // transaction, and rejected outright rather than trusting the
+        // prompt instructions alone to prevent it.
+        $dupCheck = $pdo->prepare("SELECT ref FROM expenses WHERE type = :type AND description = :desc AND amount = :amt AND created_by = :by AND created_at >= (NOW() - INTERVAL 5 MINUTE) LIMIT 1");
+        $dupCheck->execute([':type' => $type, ':desc' => $description, ':amt' => $amount, ':by' => $senderName]);
+        $dup = $dupCheck->fetchColumn();
+        if ($dup) {
+            return ['error' => "This looks like a repeat of a transaction already logged moments ago (ref {$dup}) — did not create a duplicate. If this is genuinely a separate transaction, ask the user to confirm explicitly."];
+        }
+
         $id = generateProUuid();
         $ref = 'TXN-' . strtoupper(substr($id, 0, 8));
         $method = in_array($input['method'] ?? '', ['Cash', 'Bank transfer', 'Card', 'Other'], true) ? $input['method'] : null;
