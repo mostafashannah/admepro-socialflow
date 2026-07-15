@@ -27,7 +27,7 @@ function recruitment_smtp_settings(PDO $pdo) {
         if (is_array($decoded)) $emailSettings = $decoded;
     }
     return [
-        'host'     => !empty($emailSettings['smtp_host']) ? $emailSettings['smtp_host'] : (defined('RECRUITMENT_SMTP_HOST') ? RECRUITMENT_SMTP_HOST : ''),
+        'host'     => !empty($emailSettings['smtp_host']) ? $emailSettings['smtp_host'] : (defined('RECRUITMENT_SMTP_HOST') ? RECRUITMENT_SMTP_HOST : 'smtp.hostinger.com'),
         'port'     => !empty($emailSettings['smtp_port']) ? (int) $emailSettings['smtp_port'] : (defined('RECRUITMENT_SMTP_PORT') ? RECRUITMENT_SMTP_PORT : 465),
         'username' => !empty($emailSettings['imap_email']) ? $emailSettings['imap_email'] : (defined('RECRUITMENT_IMAP_EMAIL') ? RECRUITMENT_IMAP_EMAIL : ''),
         'password' => !empty($emailSettings['imap_password']) ? $emailSettings['imap_password'] : (defined('RECRUITMENT_IMAP_PASSWORD') ? RECRUITMENT_IMAP_PASSWORD : ''),
