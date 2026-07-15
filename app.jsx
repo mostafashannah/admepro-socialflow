@@ -1051,7 +1051,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.188";
+const APP_VERSION = "beta 5.189";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11304,7 +11304,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
 function UsersPage({currentUser, team, invitations, accessRequests, clientUsers, clients,
   onInviteUser, onCancelInvitation, onApproveRequest, onRejectRequest,
   onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation,
-  rolePerms, onUpdateTeamMember, onToggleRolePermission, leaveRequests, onDecideLeaveRequest, attendanceRecords,
+  rolePerms, onUpdateTeamMember, onRemoveMember, onToggleRolePermission, leaveRequests, onDecideLeaveRequest, attendanceRecords,
   posts, onImpersonate, appSettings, onSaveSettings, expenses, onDeclareCompanyDayOff}) {
   const [tab, setTab] = usePersistentState("sf_tab_users","team");
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -11353,6 +11353,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
           canEditSalary={!isOfficeBoy && hasPerm(currentUser,rolePerms,"hr.edit_salary")}
           onBack={isOfficeBoy ? null : ()=>setViewingMember(null)}
           onEdit={()=>setEditingMember(live)}
+          onDelete={isOfficeBoy ? null : (id)=>{ onRemoveMember(id); setViewingMember(null); }}
           onSelectMember={isOfficeBoy ? null : (m)=>setViewingMember(m)}
           currentUser={currentUser}
           onImpersonate={onImpersonate}
@@ -11663,7 +11664,7 @@ function calcExtraHours(records, threshold=9) {
   return {total, perMonth};
 }
 
-function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRecords, expenses, canEdit, canEditSalary, onBack, onEdit, onSelectMember, currentUser, onImpersonate}) {
+function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRecords, expenses, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate}) {
   const [tab, setTab] = usePersistentState(`sf_tab_member_${member?.id}`,"overview");
   const manager = (team||[]).find(t=>t.id===member.manager_id);
   const directReports = (team||[]).filter(t=>t.manager_id===member.id);
@@ -11723,6 +11724,9 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
           <button onClick={()=>onImpersonate&&onImpersonate(member)} style={{fontSize:12,fontWeight:700,color:"var(--text2)",background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"7px 14px",cursor:"pointer"}}>Access Account</button>
         )}
         {canEdit&&<Btn size="sm" onClick={onEdit}>Edit</Btn>}
+        {onDelete&&currentUser?.role==="admin"&&member.email!==currentUser?.email&&(
+          <button onClick={()=>{ if(window.confirm(`Delete ${member.name||member.email}? This removes their team member account permanently.`)) onDelete(member.id); }} style={{fontSize:12,fontWeight:700,color:"#ef4444",background:"#ef444422",border:"1px solid #ef444455",borderRadius:8,padding:"7px 14px",cursor:"pointer"}}>Delete</button>
+        )}
       </div>
 
       <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)",alignSelf:"flex-start"}}>
@@ -31813,6 +31817,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             onResendInvitation={(inv)=>setToast("Invitation link updated — copy it again")}
             rolePerms={rolePermsMap}
             onUpdateTeamMember={updateTeamMember}
+            onRemoveMember={removeTeamMember}
             onToggleRolePermission={toggleRolePermission}
             leaveRequests={data.leaveRequests||[]}
             onDecideLeaveRequest={decideLeaveRequest}
