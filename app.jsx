@@ -180,7 +180,7 @@ const HR_PERMISSIONS = [
 ];
 const DEFAULT_ROLE_PERMISSIONS = {
   hr: ["hr.view_team","hr.edit_team","hr.manage_roles","hr.view_salary","hr.edit_salary","hr.view_performance","hr.approve_leave","hr.upload_attendance","hr.manage_recruitment"],
-  account_manager: ["hr.view_team","hr.view_performance"],
+  account_manager: ["hr.view_performance"],
 };
 // Converts the flat role_permissions rows fetched from the API into
 // {role: [permission_key,...]} for hasPerm() to consume.
@@ -1051,7 +1051,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.187";
+const APP_VERSION = "beta 5.188";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
