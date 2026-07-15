@@ -86,6 +86,15 @@ function send_via_resend($to, $subject, $html, $fromName = 'Admepro Careers') {
     return $status >= 200 && $status < 300;
 }
 
+function log_activity($pdo, $applicationId, $action, $actor = 'System') {
+    try {
+        $pdo->prepare("INSERT INTO job_application_activity (id, application_id, action, actor_name) VALUES (UUID(), :aid, :action, :actor)")
+            ->execute([':aid' => $applicationId, ':action' => $action, ':actor' => $actor]);
+    } catch (Throwable $e) {
+        // Logging must never break the actual capture/email flow.
+    }
+}
+
 // Extracts plain text from a .docx file's raw bytes — a .docx is a zip
 // archive with the actual text in word/document.xml. Legacy .doc (pre-2007
 // binary format) can't be read this way; returns null for those/on any
@@ -437,6 +446,7 @@ foreach ($messages as $message) {
         // up by the message id we just inserted (unique) instead.
         $lookup->execute([':mid' => $messageId]);
         $newId = $lookup->fetchColumn();
+        if ($newId) log_activity($pdo, $newId, 'Captured from email');
 
         if ($newId && $cvUrl) {
             $cvContent = null;
@@ -506,6 +516,7 @@ foreach ($messages as $message) {
                 . '<p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>'
                 . '</td></tr></table>';
             send_via_resend($candidateEmail, $emailSubject, email_base($bodyHtml), $confirmationFromName);
+            log_activity($pdo, $newId, empty($missing) ? 'Welcome email sent' : 'Welcome + complete-your-application email sent');
         }
 
         $message->setFlag('Seen');

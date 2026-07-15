@@ -405,6 +405,7 @@ const SB_TABLE = {
   JobOpening:"job_openings",
   JobApplication:"job_applications",
   DeletedEmailApplication:"deleted_email_applications",
+  JobApplicationActivity:"job_application_activity",
 };
 
 function sbTable(entityName) {
@@ -629,6 +630,7 @@ async function finishReview(application, raw) {
     }
   }
   await ue("JobApplication", application.id, patch);
+  logApplicationActivity(application.id, `AI review completed — score ${patch.ai_score ?? "n/a"}`, "AI");
   return extracted;
 }
 
@@ -944,7 +946,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.136";
+const APP_VERSION = "beta 5.137";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13397,6 +13399,7 @@ function CompleteApplicationPage({token}) {
       }
 
       await ue("JobApplication", application.id, patch);
+      logApplicationActivity(application.id, "Completed missing application details", application.candidate_name||"Candidate");
       if(cvContent) reviewApplication({...application, ...patch}, cvContent, opening).catch(()=>{});
       setDone(true);
     } catch(e) { alert("Something went wrong submitting your info. Please try again."); }
@@ -13579,10 +13582,12 @@ function CareersPage({appSettings}) {
       }]);
       const created = res.entities?.[0];
       setDone(true);
+      if(created?.id) logApplicationActivity(created.id, "Application submitted via careers page", form.name.trim());
       if(created?.id && cvContent) reviewApplication(created, cvContent, selected).catch(()=>{});
       const es = {...RECRUITMENT_EMAIL_DEFAULTS, ...(appSettings?.recruitment_email_settings||{})};
       if(es.confirmation_enabled!==false) {
         sendEmail(form.email.trim(), es.confirmation_subject||"Thanks for applying to Admepro!", applicationReceivedEmail(form.name.trim(), selected.title, es.confirmation_message), es.confirmation_from_name||"Admepro Careers").catch(()=>{});
+        if(created?.id) logApplicationActivity(created.id, "Welcome email sent", "System");
       }
     } catch(e) { alert("Something went wrong submitting your application. Please try again."); }
     setSubmitting(false);
@@ -21701,6 +21706,15 @@ function applicationRank(a) {
   return base + a.interview_rating * 20;
 }
 
+// Shared activity-log writer for job_applications — status changes,
+// reassignments, ratings, emails sent, candidate form submissions —
+// anything worth showing on the "Activity Log" section of the detail
+// page. Fire-and-forget: a logging failure should never block the
+// action it's describing.
+const logApplicationActivity = (applicationId, action, actorName) => {
+  ce("JobApplicationActivity", [{application_id: applicationId, action, actor_name: actorName||"System"}]).catch(()=>{});
+};
+
 const APPLICATION_STATUSES = [
   {key:"new", label:"New", color:"#3b82f6"},
   {key:"reviewing", label:"Reviewing", color:"#8b5cf6"},
@@ -21835,7 +21849,7 @@ function JobOpeningForm({opening, currentUser, onSave, onClose}) {
   );
 }
 
-function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader, onConvertCv, convertingCv, cvConvertFailed, onRateInterview}) {
+function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader, onConvertCv, convertingCv, cvConvertFailed, onRateInterview, activityLog}) {
   const [notes, setNotes] = useState(application.notes||"");
   const [rerunning, setRerunning] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -22039,6 +22053,20 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
         <Field label="Notes">
           <textarea value={notes} onChange={e=>setNotes(e.target.value)} onBlur={()=>onSaveNotes(application, notes)} rows={3} style={{...inputSt,resize:"vertical"}}/>
         </Field>
+
+        {activityLog&&activityLog.length>0&&(
+          <div style={{marginTop:18,paddingTop:18,borderTop:"1px solid var(--border)"}}>
+            <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:10}}>Activity Log</p>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {[...activityLog].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).map(l=>(
+                <div key={l.id} style={{display:"flex",justifyContent:"space-between",gap:10,fontSize:12}}>
+                  <span style={{color:"var(--text2)"}}>{l.action}{l.actor_name?<span style={{color:"var(--text3)"}}> — {l.actor_name}</span>:null}</span>
+                  <span style={{color:"var(--text3)",flexShrink:0,whiteSpace:"nowrap"}}>{fmtDateTime(l.created_at)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -22161,11 +22189,13 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   const openGroup = (group) => { try{ window.history.pushState({recruitmentGroup:true}, ""); }catch(e){} setSelectedGroup(group); };
   const closeGroup = () => { window.history.back(); };
 
+  const [activityLogs, setActivityLogs] = useState([]);
   const load = async (quiet) => {
     if(!quiet) setLoading(true);
-    const [oRes, aRes] = await Promise.all([qe("JobOpening",{},"-created_date",200), qe("JobApplication",{},"-created_date",500)]);
+    const [oRes, aRes, logRes] = await Promise.all([qe("JobOpening",{},"-created_date",200), qe("JobApplication",{},"-created_date",500), qe("JobApplicationActivity",{},"-created_date",2000)]);
     setOpenings(oRes.entities||[]);
     setApplications(aRes.entities||[]);
+    setActivityLogs(logRes.entities||[]);
     if(!quiet) setLoading(false);
   };
   useEffect(()=>{ load(); },[]);
@@ -22185,20 +22215,32 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     await load();
   };
 
+  const actorName = currentUser?.name || currentUser?.email || "Someone";
+  // Appends to local state immediately (so the Activity Log shows it
+  // without waiting for the next 30s poll) while also persisting it.
+  const logActivity = (applicationId, action) => {
+    setActivityLogs(prev=>[{id:`local-${Date.now()}`, application_id:applicationId, action, actor_name:actorName, created_at:new Date().toISOString()}, ...prev]);
+    logApplicationActivity(applicationId, action, actorName);
+  };
   const handleUpdateStatus = async (app, status) => {
     setApplications(prev=>prev.map(a=>a.id===app.id?{...a,status}:a));
     setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,status}:prev);
     await ue("JobApplication", app.id, {status}).catch(()=>{});
+    const fromLabel = APPLICATION_STATUSES.find(s=>s.key===app.status)?.label||app.status;
+    const toLabel = APPLICATION_STATUSES.find(s=>s.key===status)?.label||status;
+    logActivity(app.id, `Moved from ${fromLabel} to ${toLabel}`);
   };
   const handleSaveNotes = async (app, notes) => {
     setApplications(prev=>prev.map(a=>a.id===app.id?{...a,notes}:a));
     await ue("JobApplication", app.id, {notes}).catch(()=>{});
+    logActivity(app.id, "Notes updated");
   };
   const handleReassign = async (app, opening) => {
     const patch = {job_opening_id: opening?.id||null, job_title: opening?.title||"Unassigned"};
     setApplications(prev=>prev.map(a=>a.id===app.id?{...a,...patch}:a));
     setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,...patch}:prev);
     await ue("JobApplication", app.id, patch).catch(()=>{});
+    logActivity(app.id, `Reassigned to ${opening?.title||"Unassigned"}`);
   };
   const handleRateInterview = async (app, rating) => {
     // Toggle off by clicking the same star again, matching common star-picker UX.
@@ -22206,6 +22248,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     setApplications(prev=>prev.map(a=>a.id===app.id?{...a,interview_rating:nextRating}:a));
     setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,interview_rating:nextRating}:prev);
     await ue("JobApplication", app.id, {interview_rating: nextRating}).catch(()=>{});
+    logActivity(app.id, nextRating==null ? "Interview rating cleared" : `Rated ${nextRating} star${nextRating!==1?"s":""} after interview`);
   };
   const [fixingEmailApps, setFixingEmailApps] = useState(false);
   const [fixMsg, setFixMsg] = useState("");
@@ -22512,7 +22555,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   );
 
   if(selectedApp) return (
-    <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===selectedApp.id} cvConvertFailed={cvConvertFailedId===selectedApp.id} onRateInterview={handleRateInterview}/>
+    <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===selectedApp.id} cvConvertFailed={cvConvertFailedId===selectedApp.id} onRateInterview={handleRateInterview} activityLog={activityLogs.filter(l=>l.application_id===selectedApp.id)}/>
   );
 
   if(selectedGroup) {
@@ -22526,7 +22569,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:22,margin:0}}>{sortedGroup[0].candidate_name} · {sortedGroup.length} applications</h2>
         </div>
         {sortedGroup.map((app,i)=>(
-          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===app.id} cvConvertFailed={cvConvertFailedId===app.id} onRateInterview={handleRateInterview}/>
+          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===app.id} cvConvertFailed={cvConvertFailedId===app.id} onRateInterview={handleRateInterview} activityLog={activityLogs.filter(l=>l.application_id===app.id)}/>
         ))}
       </div>
     );
