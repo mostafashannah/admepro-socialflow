@@ -730,12 +730,12 @@ async function convertCvToPdfForStorage(file) {
   const name = (file.name||"").toLowerCase();
   const isDocx = name.endsWith(".docx") || file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   if (!isDocx) return file;
-  const [mammothLib, html2pdfLib] = await Promise.all([
+  const [mammothLib, jspdfLib] = await Promise.all([
     waitForLib(()=>window.mammoth),
-    waitForLib(()=>window.html2pdf),
+    waitForLib(()=>window.jspdf),
   ]);
-  if (!mammothLib || !html2pdfLib) {
-    console.error("convertCvToPdfForStorage: mammoth/html2pdf failed to load from CDN");
+  if (!mammothLib || !jspdfLib) {
+    console.error("convertCvToPdfForStorage: mammoth/jspdf failed to load from CDN");
     return file;
   }
   // Confirmed via debug logging on a real failing case: mammoth's
@@ -746,11 +746,13 @@ async function convertCvToPdfForStorage(file) {
   // (four different documented workarounds all produced an identical
   // blank result) — this points at an html2canvas rendering quirk with
   // this CDN bundle rather than anything about our DOM setup. Generating
-  // the PDF as real text via jsPDF (bundled inside html2pdf.js) sidesteps
-  // html2canvas — and its screenshot-of-HTML approach — entirely.
-  const jsPDFCtor = window.jspdf?.jsPDF || window.html2pdf?.jsPDF || window.jsPDF;
+  // the PDF as real text via jsPDF sidesteps html2canvas — and its
+  // screenshot-of-HTML approach — entirely. html2pdf.js bundles jsPDF
+  // internally but doesn't expose it as a global, so it's loaded as its
+  // own separate CDN script in index.html (window.jspdf.jsPDF).
+  const jsPDFCtor = window.jspdf?.jsPDF;
   if (!jsPDFCtor) {
-    console.error("convertCvToPdfForStorage: jsPDF not found on window (checked jspdf.jsPDF, html2pdf.jsPDF, jsPDF)");
+    console.error("convertCvToPdfForStorage: jsPDF constructor not found on window.jspdf");
     return file;
   }
   try {
@@ -932,7 +934,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.131";
+const APP_VERSION = "beta 5.132";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
