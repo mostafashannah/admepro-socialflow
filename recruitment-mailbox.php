@@ -92,7 +92,7 @@ function syncMailboxFromImap(PDO $pdo, array $emailSettings, int $retentionDays)
     $upsert = $pdo->prepare(
         "INSERT INTO recruitment_mailbox_messages (box, message_id, thread_key, subject, from_email, from_name, to_emails, message_date, body, has_attachments)
          VALUES (:box, :message_id, :thread_key, :subject, :from_email, :from_name, :to_emails, :message_date, :body, :has_attachments)
-         ON DUPLICATE KEY UPDATE subject=VALUES(subject), body=VALUES(body), has_attachments=VALUES(has_attachments)"
+         ON DUPLICATE KEY UPDATE subject=VALUES(subject), body=VALUES(body), has_attachments=VALUES(has_attachments), to_emails=VALUES(to_emails)"
     );
 
     foreach (['inbox', 'sent'] as $box) {
@@ -118,7 +118,18 @@ function syncMailboxFromImap(PDO $pdo, array $emailSettings, int $retentionDays)
                 $from = $fromList && $fromList->count() ? $fromList[0] : null;
                 $toList = $message->getTo();
                 $to = [];
-                if ($toList) { foreach ($toList as $t) { $to[] = trim((string) $t->mail); } }
+                if ($toList) { foreach ($toList as $t) { if (!empty($t->mail)) $to[] = trim((string) $t->mail); } }
+                // Fallback: some messages (notably ones we ourselves append
+                // to Sent via IMAP APPEND rather than a normally-delivered
+                // message) don't parse cleanly through getTo() — pull raw
+                // addresses out of the To header text directly instead of
+                // showing no recipient at all.
+                if (!$to) {
+                    try {
+                        $rawTo = (string) $message->getHeader()->get('to');
+                        if ($rawTo !== '' && preg_match_all('/[\w.+-]+@[\w-]+\.[\w.-]+/', $rawTo, $m)) { $to = $m[0]; }
+                    } catch (Throwable $e) {}
+                }
                 $bodyText = trim((string) $message->getTextBody());
                 $bodyText = preg_replace('/\n{3,}/', "\n\n", $bodyText);
                 $subject = (string) $message->getSubject();
