@@ -970,7 +970,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.142";
+const APP_VERSION = "beta 5.143";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11538,8 +11538,8 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
             ):mySalaryRecords.map((e,i)=>(
               <div key={e.id} style={{padding:"12px 18px",borderBottom:i<mySalaryRecords.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12}}>
                 <div style={{flex:1}}>
-                  <p style={{fontWeight:600,fontSize:13}}>{e.description}</p>
-                  <p style={{fontSize:11,color:"var(--text3)"}}>{fmtDate(e.date)}{e.method?` · ${e.method}`:""}</p>
+                  <p style={{fontWeight:600,fontSize:13}}>{e.description}{e.salary_month&&<span style={{fontWeight:400,color:"var(--text3)"}}> — {new Date(e.salary_month+"-01").toLocaleDateString("en-US",{month:"long",year:"numeric"})}</span>}</p>
+                  <p style={{fontSize:11,color:"var(--text3)"}}>Paid {fmtDate(e.date)}{e.method?` · ${e.method}`:""}</p>
                 </div>
                 <span style={{fontWeight:800,fontSize:14,color:"#ef4444"}}>-{e.currency||"EGP"} {Number(e.amount).toLocaleString()}</span>
               </div>
@@ -18792,6 +18792,19 @@ const INCOME_CATEGORIES = [
 ];
 const INCOME_CAT_MAP = Object.fromEntries(INCOME_CATEGORIES.map(c=>[c.k,c]));
 
+// Month options for a salary payment's "Salary For Month" field — starts
+// at June 2026 and runs a few years out so it doesn't need updating for
+// a good while.
+const SALARY_MONTH_OPTIONS = (() => {
+  const out = [];
+  let y = 2026, m = 6; // June 2026
+  for (let i=0; i<48; i++) {
+    out.push({value:`${y}-${String(m).padStart(2,"0")}`, label:new Date(y,m-1,1).toLocaleDateString("en-US",{month:"long",year:"numeric"})});
+    m++; if (m>12) { m=1; y++; }
+  }
+  return out;
+})();
+
 function AddExpenseModal({open,onClose,onAdd,onSave,initial,clientNames=[],team=[]}) {
   const isEdit = !!initial;
   const [type,setType] = useState(initial?.type||"out");
@@ -18802,6 +18815,8 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial,clientNames=[],team=
   const [date,setDate] = useState(initial?.date||new Date().toISOString().split("T")[0]);
   const [method,setMethod] = useState(initial?.method||"");
   const [teamMemberId,setTeamMemberId] = useState(initial?.team_member_id||"");
+  const [otherMemberName,setOtherMemberName] = useState("");
+  const [salaryMonth,setSalaryMonth] = useState(initial?.salary_month||"");
   const [saving,setSaving] = useState(false);
   const isClientMatch = (d) => clientNames.includes(d);
   const [clientMode,setClientMode] = useState(initial?.description&&!isClientMatch(initial.description) ? "manual" : "select");
@@ -18814,15 +18829,15 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial,clientNames=[],team=
     setType(initial?.type||"out"); setCategory(initial?.category||"other");
     setDescription(initial?.description||""); setAmount(initial?.amount!=null?String(initial.amount):"");
     setCurrency(initial?.currency||"EGP"); setDate(initial?.date||new Date().toISOString().split("T")[0]);
-    setMethod(initial?.method||""); setTeamMemberId(initial?.team_member_id||"");
+    setMethod(initial?.method||""); setTeamMemberId(initial?.team_member_id||""); setSalaryMonth(initial?.salary_month||""); setOtherMemberName("");
     setClientMode(initial?.description&&!isClientMatch(initial.description) ? "manual" : "select");
   },[open,initial]);
 
-  const reset = () => { setType("out"); setCategory("other"); setDescription(""); setAmount(""); setDate(new Date().toISOString().split("T")[0]); setMethod(""); setTeamMemberId(""); setClientMode("select"); };
+  const reset = () => { setType("out"); setCategory("other"); setDescription(""); setAmount(""); setDate(new Date().toISOString().split("T")[0]); setMethod(""); setTeamMemberId(""); setOtherMemberName(""); setSalaryMonth(""); setClientMode("select"); };
   const submit = async () => {
     if(!amount||Number(amount)<=0||!description.trim()) return;
     setSaving(true);
-    const payload = {type,category,description:description.trim(),amount:Number(amount),currency,date,method:method||null,team_member_id:isSalary?(teamMemberId||null):null};
+    const payload = {type,category,description:description.trim(),amount:Number(amount),currency,date,method:method||null,team_member_id:isSalary&&teamMemberId!=="__other__"?(teamMemberId||null):null,salary_month:isSalary?(salaryMonth||null):null};
     if(isEdit) await onSave(initial.id,payload);
     else await onAdd(payload);
     setSaving(false);
@@ -18850,10 +18865,22 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial,clientNames=[],team=
           </select>
         </Field>
         {isSalary&&(
-          <Field label="For (Team Member)" hint="Optional — links this to their Payroll history. No account? Leave this as — and just type their name in Description below.">
-            <select value={teamMemberId} onChange={e=>setTeamMemberId(e.target.value)} style={inputSt}>
+          <Field label="For (Team Member)" hint="Optional — links this to their Payroll history">
+            <select value={teamMemberId} onChange={e=>{setTeamMemberId(e.target.value); if(e.target.value!=="__other__") setOtherMemberName("");}} style={inputSt}>
               <option value="">—</option>
               {team.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+              <option value="__other__">Other (type name)…</option>
+            </select>
+            {teamMemberId==="__other__"&&(
+              <input value={otherMemberName} onChange={e=>{setOtherMemberName(e.target.value); if(!description.trim()) setDescription(e.target.value);}} placeholder="Name" style={{...inputSt,marginTop:8}}/>
+            )}
+          </Field>
+        )}
+        {isSalary&&(
+          <Field label="Salary For Month" hint="Optional">
+            <select value={salaryMonth} onChange={e=>setSalaryMonth(e.target.value)} style={inputSt}>
+              <option value="">—</option>
+              {SALARY_MONTH_OPTIONS.map(m=><option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
           </Field>
         )}
@@ -18922,6 +18949,8 @@ function AddTransactionPage({onBack,onAdd,clientNames=[],team=[]}) {
   const [date,setDate] = useState(new Date().toISOString().split("T")[0]);
   const [method,setMethod] = useState("");
   const [teamMemberId,setTeamMemberId] = useState("");
+  const [otherMemberName,setOtherMemberName] = useState("");
+  const [salaryMonth,setSalaryMonth] = useState("");
   const [saving,setSaving] = useState(false);
   const [clientMode,setClientMode] = useState("select");
   const cats = type==="out" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
@@ -18931,7 +18960,7 @@ function AddTransactionPage({onBack,onAdd,clientNames=[],team=[]}) {
   const submit = async () => {
     if(!amount||Number(amount)<=0||!description.trim()) return;
     setSaving(true);
-    await onAdd({type,category,description:description.trim(),amount:Number(amount),currency,date,method:method||null,team_member_id:isSalary?(teamMemberId||null):null});
+    await onAdd({type,category,description:description.trim(),amount:Number(amount),currency,date,method:method||null,team_member_id:isSalary&&teamMemberId!=="__other__"?(teamMemberId||null):null,salary_month:isSalary?(salaryMonth||null):null});
     setSaving(false);
     onBack();
   };
@@ -18958,10 +18987,22 @@ function AddTransactionPage({onBack,onAdd,clientNames=[],team=[]}) {
           </select>
         </Field>
         {isSalary&&(
-          <Field label="For (Team Member)" hint="Optional — links this to their Payroll history. No account? Leave this as — and just type their name in Description below.">
-            <select value={teamMemberId} onChange={e=>setTeamMemberId(e.target.value)} style={inputSt}>
+          <Field label="For (Team Member)" hint="Optional — links this to their Payroll history">
+            <select value={teamMemberId} onChange={e=>{setTeamMemberId(e.target.value); if(e.target.value!=="__other__") setOtherMemberName("");}} style={inputSt}>
               <option value="">—</option>
               {team.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+              <option value="__other__">Other (type name)…</option>
+            </select>
+            {teamMemberId==="__other__"&&(
+              <input value={otherMemberName} onChange={e=>{setOtherMemberName(e.target.value); if(!description.trim()) setDescription(e.target.value);}} placeholder="Name" style={{...inputSt,marginTop:8}}/>
+            )}
+          </Field>
+        )}
+        {isSalary&&(
+          <Field label="Salary For Month" hint="Optional">
+            <select value={salaryMonth} onChange={e=>setSalaryMonth(e.target.value)} style={inputSt}>
+              <option value="">—</option>
+              {SALARY_MONTH_OPTIONS.map(m=><option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
           </Field>
         )}
