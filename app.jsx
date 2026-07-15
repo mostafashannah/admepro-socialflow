@@ -1051,7 +1051,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.171";
+const APP_VERSION = "beta 5.172";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23658,6 +23658,8 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
         <p style="margin:0 0 20px"><a href="${completeUrl}" style="display:inline-block;padding:12px 24px;background:#d90b2c;color:#ffffff;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none">Complete My Application</a></p>
         <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
           <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
+          <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
+          <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
         </td></tr></table>`;
       const ok = await sendCareersEmail(app.candidate_email, subject, bodyHtml, settings.confirmation_from_name||"Admepro Careers").catch(()=>false);
       logActivity(app.id, ok ? "Complete-your-application email sent (manual)" : "Complete-your-application email FAILED to send");
@@ -23687,6 +23689,8 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
         <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">If none of these work, the link lets you suggest a time that does.</p>
         <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
           <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
+          <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
+          <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
         </td></tr></table>`;
       const ok = await sendCareersEmail(app.candidate_email, `Pick an interview time — ${jobTitle}`, bodyHtml, "Admepro Careers").catch(()=>false);
       logActivity(app.id, ok ? "Interview time options sent" : "Interview time options FAILED to send");
@@ -23759,6 +23763,8 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
         <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">You can accept, decline, or let us know if you'd like to negotiate any of the terms.</p>
         <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
           <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
+          <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
+          <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
         </td></tr></table>`;
       const ok = await sendCareersEmail(app.candidate_email, `Your offer — ${form.title||"Admepro"}`, bodyHtml, "Admepro Careers").catch(()=>false);
       logActivity(app.id, ok ? "Offer sent" : "Offer FAILED to send");

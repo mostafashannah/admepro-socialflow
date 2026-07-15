@@ -91,6 +91,7 @@ function send_recruitment_email(PDO $pdo, $to, $subject, $html, $fromName = 'Adm
     $mail = new PHPMailer(true);
     try {
         $mail->isSMTP();
+        $mail->CharSet    = 'UTF-8';
         $mail->Host       = $s['host'];
         $mail->SMTPAuth   = true;
         $mail->Username   = $s['username'];
