@@ -1051,7 +1051,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.177";
+const APP_VERSION = "beta 5.178";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11664,7 +11664,7 @@ function calcExtraHours(records, threshold=9) {
 }
 
 function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRecords, expenses, canEdit, canEditSalary, onBack, onEdit, onSelectMember, currentUser, onImpersonate}) {
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = usePersistentState(`sf_tab_member_${member?.id}`,"overview");
   const manager = (team||[]).find(t=>t.id===member.manager_id);
   const directReports = (team||[]).filter(t=>t.manager_id===member.id);
   const myTasks = (posts||[]).filter(p=>p.assigned_to===member.email);
@@ -15355,7 +15355,7 @@ const fmtFollowup = (d) => d ? (d.includes("T") ? fmtDateTime(d) : fmtDate(d)) :
 
 // Lead Detail Panel
 function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivity, onConvert, currentUser, onDeleteLead}) {
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = usePersistentState(`sf_tab_lead_${lead?.id}`,"overview");
   const [note, setNote] = useState("");
   const [noteType, setNoteType] = useState("note");
   const [followupDate, setFollowupDate] = useState("");
@@ -16811,7 +16811,7 @@ function DailyEmailSettings({emailSettings, onSave, team, posts, timelogs, perfL
   const [previewMember, setPreviewMember] = useState(team[0]?.email||"");
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState(null);
-  const [tab, setTab] = useState("config");
+  const [tab, setTab] = usePersistentState("sf_tab_daily_email","config");
   const upd = (k,v) => setEs(p=>({...p,[k]:v}));
 
   // Compute mock performance for preview
@@ -17491,7 +17491,7 @@ async function captureSessionInfo(user) {
 // SYSTEM LOG PAGE — Full admin audit center
 // ════════════════════════════════════════════════════════════════
 function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh, team}) {
-  const [tab, setTab] = useState("sessions");
+  const [tab, setTab] = usePersistentState("sf_tab_syslog","sessions");
   const [logFilter, setLogFilter] = useState("all");
   const [logSearch, setLogSearch] = useState("");
   const [sessionSearch, setSessionSearch] = useState("");
@@ -23573,7 +23573,7 @@ function RecruitmentEmailSettingsTab({appSettings, onSaveSettings}) {
 }
 
 function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
-  const [tab, setTab] = useState("openings");
+  const [tab, setTab] = usePersistentState("sf_tab_recruitment","openings");
   const [openings, setOpenings] = useState([]);
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23590,12 +23590,15 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   // Browser back button should close the application detail view and land
   // back on the applications list, not navigate away from the page.
   useEffect(()=>{
-    const onPop = () => { setSelectedApp(null); setSelectedGroup(null); };
+    const onPop = () => { setSelectedApp(null); setSelectedGroup(null); try{ localStorage.removeItem("sf_recruitment_open_app"); }catch(e){} };
     window.addEventListener("popstate", onPop);
     return ()=>window.removeEventListener("popstate", onPop);
   },[]);
-  const openApp = (a) => { try{ window.history.pushState({recruitmentApp:a.id}, ""); }catch(e){} setSelectedApp(a); };
-  const closeApp = () => { window.history.back(); };
+  // Which application is open survives a hard refresh too, not just
+  // in-app navigation — the id is all that's stored (the actual record
+  // is looked up once applications finish loading, right below).
+  const openApp = (a) => { try{ window.history.pushState({recruitmentApp:a.id}, ""); localStorage.setItem("sf_recruitment_open_app",a.id); }catch(e){} setSelectedApp(a); };
+  const closeApp = () => { try{ localStorage.removeItem("sf_recruitment_open_app"); }catch(e){} window.history.back(); };
   const openGroup = (group) => { try{ window.history.pushState({recruitmentGroup:true}, ""); }catch(e){} setSelectedGroup(group); };
   const closeGroup = () => { window.history.back(); };
 
@@ -23607,6 +23610,15 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     setApplications(aRes.entities||[]);
     setActivityLogs(logRes.entities||[]);
     if(!quiet) setLoading(false);
+    if(!quiet) {
+      try {
+        const savedId = localStorage.getItem("sf_recruitment_open_app");
+        if(savedId) {
+          const found = (aRes.entities||[]).find(a=>a.id===savedId);
+          if(found) setSelectedApp(found);
+        }
+      } catch(e) {}
+    }
   };
   useEffect(()=>{ load(); },[]);
   // The recruitment email cron can capture a new application at any time
@@ -26611,7 +26623,7 @@ function AgentSettingsModal({open, agent, onClose, onSave}) {
 }
 
 function AgentsPage({agentConfigs, agentLogs, agentRuns, data, currentUser, onStart, onPause, onStop, onRunNow, onSaveSettings, onToast}) {
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = usePersistentState("sf_tab_agents","overview");
   const [settingsAgent, setSettingsAgent] = useState(null);
   const [logFilter, setLogFilter] = useState("all");
   const [ruleForm, setRuleForm] = useState({metric:"leads_pending",operator:"<",value:"10",action:"run_lead-gen-agent"});
@@ -26964,7 +26976,7 @@ function AgentsPage({agentConfigs, agentLogs, agentRuns, data, currentUser, onSt
 // LEAD GENERATION PAGE
 // ════════════════════════════════════════════════════════════════
 function LeadGenerationPage({generatedLeads,leadAgentConfig,existingLeads,currentUser,onToast,onApprove,onReject,onSaveConfig,onGenerate,onConvertToLead}) {
-  const [tab,setTab] = useState("pending");
+  const [tab,setTab] = usePersistentState("sf_tab_leadgen","pending");
   const [genCount,setGenCount] = useState(10);
   const [generating,setGenerating] = useState(false);
   const [config,setConfig] = useState(()=>{
