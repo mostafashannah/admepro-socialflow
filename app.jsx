@@ -1051,7 +1051,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.170";
+const APP_VERSION = "beta 5.171";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -14109,6 +14109,113 @@ function InterviewSchedulingPage({token}) {
   );
 }
 
+// Public offer-response page — reached via the link in the offer email.
+// Candidate accepts, rejects, or negotiates (with a letter staff can
+// review). One-time link, same pattern as the completion/interview pages.
+function OfferResponsePage({token}) {
+  const [isDark, setIsDark] = useState(()=>{
+    try { return window.matchMedia("(prefers-color-scheme: dark)").matches; } catch(e) { return false; }
+  });
+  useEffect(()=>{
+    try {
+      const mq = window.matchMedia("(prefers-color-scheme: dark)");
+      const onChange = e=>setIsDark(e.matches);
+      mq.addEventListener("change", onChange);
+      return ()=>mq.removeEventListener("change", onChange);
+    } catch(e) {}
+  },[]);
+  const [loading, setLoading] = useState(true);
+  const [application, setApplication] = useState(null);
+  const [notFound, setNotFound] = useState(false);
+  const [response, setResponse] = useState(null); // "accepted" | "negotiate" | "rejected" once done
+  const [submitting, setSubmitting] = useState(false);
+  const [negotiating, setNegotiating] = useState(false);
+  const [letter, setLetter] = useState("");
+
+  useEffect(()=>{
+    (async () => {
+      const res = await qe("JobApplication", {offer_token: token});
+      const app = res.entities?.[0];
+      if(!app) { setNotFound(true); setLoading(false); return; }
+      setApplication(app);
+      setLoading(false);
+    })();
+  },[token]);
+
+  const submitResponse = async (kind, negotiationLetter) => {
+    setSubmitting(true);
+    try {
+      const patch = {offer_candidate_response: kind, offer_negotiation_letter: negotiationLetter||null, offer_responded_at: new Date().toISOString(), offer_token: null};
+      await ue("JobApplication", application.id, patch);
+      logApplicationActivity(application.id, kind==="accepted"?"Candidate accepted the offer":kind==="rejected"?"Candidate rejected the offer":"Candidate wants to negotiate the offer", application.candidate_name||"Candidate");
+      setResponse(kind);
+    } catch(e) { alert("Something went wrong submitting your response. Please try again."); }
+    setSubmitting(false);
+  };
+
+  const wrapSt = {minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:24,background:isDark?"#0b0e14":"#f7f7f8"};
+  const cardSt = {width:"100%",maxWidth:480,background:isDark?"#161a23":"#fff",borderRadius:20,padding:32,border:`1px solid ${isDark?"#252b38":"#eee"}`};
+  const gstyle = <GStyle wallpaper={isDark?"dark":"light"} accentColor="#d90b2c" photoIsDark={isDark}/>;
+  const rowSt = {display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${isDark?"#252b38":"#f0f0f0"}`,fontSize:13};
+
+  if(loading) return <>{gstyle}<div style={wrapSt}><Spinner size={22}/></div></>;
+  if(notFound) return (
+    <>{gstyle}<div style={wrapSt}>
+      <div style={cardSt}>
+        <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
+        <p style={{fontSize:15,fontWeight:700,color:isDark?"#fff":"#111"}}>This link is invalid or has already been used.</p>
+      </div>
+    </div></>
+  );
+  if(response) return (
+    <>{gstyle}<div style={wrapSt}>
+      <div style={cardSt}>
+        <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
+        <p style={{fontSize:15,fontWeight:700,color:isDark?"#fff":"#111"}}>
+          {response==="accepted"&&"Thanks for accepting the offer! We'll be in touch shortly with next steps."}
+          {response==="rejected"&&"Thanks for letting us know. We appreciate your time and wish you the best."}
+          {response==="negotiate"&&"Thanks — we've received your note and will get back to you soon."}
+        </p>
+      </div>
+    </div></>
+  );
+
+  return (
+    <>{gstyle}<div style={wrapSt}>
+      <div style={cardSt}>
+        <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
+        <h2 style={{fontSize:19,fontWeight:800,color:isDark?"#fff":"#111",marginBottom:6}}>Your offer — {application.offer_title||application.job_title}</h2>
+        <p style={{fontSize:13,color:isDark?"#9099ab":"#666",marginBottom:16}}>Hi {application.candidate_name||"there"}, here's a summary of the offer:</p>
+
+        <div style={{marginBottom:20}}>
+          <div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Salary (probation)</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_salary||"—"}</strong></div>
+          <div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Probation period</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_probation_months||0} month(s)</strong></div>
+          <div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Salary after probation</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_post_probation_salary||"—"}</strong></div>
+          <div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Start date</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_start_date?fmtDate(application.offer_start_date):"—"}</strong></div>
+          <div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Annual vacation</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_vacation_days_annual||0} days/year</strong></div>
+          <div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Work from home</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_wfh_days_monthly||0} days/month</strong></div>
+          {application.offer_laptop_provided&&<div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Laptop</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_laptop_provided==="company"?"Company-provided":"Personal laptop"}</strong></div>}
+        </div>
+
+        {!negotiating ? (
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <Btn onClick={()=>submitResponse("accepted")} disabled={submitting} style={{width:"100%",background:"#10b981",borderColor:"#10b981"}}>{submitting?"Submitting…":"Accept Offer"}</Btn>
+            <button onClick={()=>setNegotiating(true)} disabled={submitting} style={{padding:"11px 0",borderRadius:10,background:"none",border:`1px solid ${isDark?"#252b38":"#ddd"}`,color:isDark?"#fff":"#111",fontSize:14,fontWeight:700,cursor:"pointer"}}>I'd Like to Negotiate</button>
+            <button onClick={()=>submitResponse("rejected")} disabled={submitting} style={{padding:"11px 0",background:"none",border:"none",color:"#ef4444",fontSize:13,fontWeight:600,cursor:"pointer"}}>Decline Offer</button>
+          </div>
+        ) : (
+          <>
+            <p style={{fontSize:13,color:isDark?"#9099ab":"#666",marginBottom:10}}>Let us know what you'd like to see different — salary, start date, anything else.</p>
+            <textarea value={letter} onChange={e=>setLetter(e.target.value)} rows={5} placeholder="Write your note here…" style={{...inputSt,resize:"vertical",marginBottom:12}}/>
+            <Btn onClick={()=>submitResponse("negotiate",letter)} disabled={submitting||!letter.trim()} style={{width:"100%",marginBottom:10}}>{submitting?"Submitting…":"Send"}</Btn>
+            <button onClick={()=>setNegotiating(false)} style={{background:"none",border:"none",color:isDark?"#9099ab":"#666",fontSize:13,fontWeight:600,cursor:"pointer",textDecoration:"underline",width:"100%",textAlign:"center"}}>Back</button>
+          </>
+        )}
+      </div>
+    </div></>
+  );
+}
+
 function CareersPage({appSettings}) {
   const [isDark, setIsDark] = useState(()=>{
     try { return window.matchMedia("(prefers-color-scheme: dark)").matches; } catch(e) { return true; }
@@ -22722,7 +22829,7 @@ function InterviewSchedulingSection({application, onSendTimes, sending, onConfir
 // Offer terms — salary during/after probation, start date, title, and a
 // few company-policy points (laptop, vacation/WFH allowance) — filled in
 // once, then optionally emailed to the candidate as a formatted offer.
-function OfferSection({application, opening, onSave, saving, onSend, sending}) {
+function OfferSection({application, opening, onSave, saving, onSend, sending, onUpdateStatus}) {
   const [form, setForm] = useState({
     title: application.offer_title || opening?.title || application.job_title || "",
     salary: application.offer_salary || "",
@@ -22742,6 +22849,35 @@ function OfferSection({application, opening, onSave, saving, onSend, sending}) {
         <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Offer</p>
         {application.offer_sent_at && <span style={{fontSize:11,fontWeight:700,color:"#10b981"}}>Sent {fmtDateTime(application.offer_sent_at)}</span>}
       </div>
+
+      {application.offer_candidate_response && (
+        <div style={{marginBottom:14,padding:"10px 12px",borderRadius:8,background:
+          application.offer_candidate_response==="accepted"?"#10b98122":application.offer_candidate_response==="rejected"?"#ef444422":"#f59e0b22",
+          border:`1px solid ${application.offer_candidate_response==="accepted"?"#10b98155":application.offer_candidate_response==="rejected"?"#ef444455":"#f59e0b55"}`}}>
+          <p style={{fontSize:13,fontWeight:700,color:application.offer_candidate_response==="accepted"?"#10b981":application.offer_candidate_response==="rejected"?"#ef4444":"#f59e0b"}}>
+            {application.offer_candidate_response==="accepted"&&"✓ Candidate accepted the offer"}
+            {application.offer_candidate_response==="rejected"&&"✗ Candidate declined the offer"}
+            {application.offer_candidate_response==="negotiate"&&"Candidate wants to negotiate"}
+          </p>
+          {application.offer_negotiation_letter&&(
+            <p style={{fontSize:13,color:"var(--text2)",marginTop:6,whiteSpace:"pre-wrap"}}>"{application.offer_negotiation_letter}"</p>
+          )}
+          {onUpdateStatus&&(
+            <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap"}}>
+              {application.offer_candidate_response==="accepted"&&(
+                <button onClick={()=>onUpdateStatus(application,"hired")} style={{padding:"6px 14px",borderRadius:8,background:"#10b981",border:"none",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer"}}>Mark as Hired</button>
+              )}
+              {application.offer_candidate_response!=="rejected"&&(
+                <button onClick={()=>onUpdateStatus(application,"rejected")} style={{padding:"6px 14px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"#ef4444",cursor:"pointer"}}>Reject Application</button>
+              )}
+              {application.offer_candidate_response==="negotiate"&&(
+                <span style={{fontSize:11,color:"var(--text3)",alignSelf:"center"}}>Adjust the terms below and click "Send Offer Email" again to send a revised offer.</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         <Field label="Job Title"><input value={form.title} onChange={e=>sf("title",e.target.value)} style={inputSt}/></Field>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
@@ -22979,7 +23115,7 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
         )}
 
         {onSaveOffer&&["interview","offer","hired"].includes(application.status)&&(
-          <OfferSection application={application} opening={opening} onSave={onSaveOffer} saving={savingOffer} onSend={onSendOffer} sending={sendingOffer}/>
+          <OfferSection application={application} opening={opening} onSave={onSaveOffer} saving={savingOffer} onSend={onSendOffer} sending={sendingOffer} onUpdateStatus={onUpdateStatus}/>
         )}
 
         {onRateInterview&&(["interview","hired","rejected"].includes(application.status)||application.interview_rating!=null)&&(
@@ -23595,10 +23731,15 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     if(!app.candidate_email) return;
     setSendingOfferId(app.id);
     try {
-      const patch = {...offerPatchFromForm(form), offer_sent_at: new Date().toISOString(), status: "offer"};
+      const token = uid().replace("local_","") + uid().replace("local_","");
+      // Resending (e.g. a revised offer after negotiation) clears any prior
+      // response so the candidate sees a fresh accept/negotiate/reject
+      // choice on the new terms, not a stale answer to the old ones.
+      const patch = {...offerPatchFromForm(form), offer_sent_at: new Date().toISOString(), status: "offer", offer_token: token, offer_candidate_response: null, offer_negotiation_letter: null, offer_responded_at: null};
       await ue("JobApplication", app.id, patch).catch(()=>{});
       setApplications(prev=>prev.map(a=>a.id===app.id?{...a,...patch}:a));
       setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,...patch}:prev);
+      const offerUrl = window.location.origin + "/careers/offer?token=" + token;
       const laptopLine = form.laptop_provided==="company" ? "We'll provide you with a company laptop."
         : form.laptop_provided==="personal" ? "This role works with your own personal laptop."
         : "";
@@ -23614,7 +23755,8 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
           <tr><td style="padding:6px 0;font-weight:700">Work from home</td><td style="padding:6px 0">${form.wfh_days_monthly||0} days/month</td></tr>
         </table>
         ${laptopLine?`<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">${laptopLine}</p>`:""}
-        <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Let us know if you have any questions, and we look forward to hearing from you!</p>
+        <p style="margin:0 0 20px"><a href="${offerUrl}" style="display:inline-block;padding:12px 24px;background:#d90b2c;color:#ffffff;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none">Respond to This Offer</a></p>
+        <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">You can accept, decline, or let us know if you'd like to negotiate any of the terms.</p>
         <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
           <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
         </td></tr></table>`;
@@ -28920,6 +29062,10 @@ function App() {
   const [interviewToken] = useState(()=>{
     try { return window.location.pathname==="/careers/interview" ? new URLSearchParams(window.location.search).get("token") : null; } catch(e) { return null; }
   });
+  // Public offer-response page — socialflow.admepro.com/careers/offer?token=...
+  const [offerToken] = useState(()=>{
+    try { return window.location.pathname==="/careers/offer" ? new URLSearchParams(window.location.search).get("token") : null; } catch(e) { return null; }
+  });
   // Handle OAuth callback (Supabase redirects back with #access_token=...)
   const [oauthEmail] = useState(()=>{
     try {
@@ -30977,6 +31123,9 @@ Return ONLY valid JSON (no markdown, no explanation):
   }
   if(interviewToken) {
     return <InterviewSchedulingPage token={interviewToken}/>;
+  }
+  if(offerToken) {
+    return <OfferResponsePage token={offerToken}/>;
   }
   if(completeToken) {
     return <CompleteApplicationPage token={completeToken}/>;
