@@ -1032,7 +1032,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.151";
+const APP_VERSION = "beta 5.152";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19303,6 +19303,8 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
           {row("Source", txn.source)}
           {txn.ref && row("Reference", txn.ref)}
           {txn.method && row("Payment Method", txn.method)}
+          {txn.raw?.team_member_id && row("Team Member", team.find(t=>t.id===txn.raw.team_member_id)?.name||"—")}
+          {txn.raw?.salary_month && row("Salary For Month", new Date(txn.raw.salary_month+"-01").toLocaleDateString("en-US",{month:"long",year:"numeric"}))}
           {txn.createdBy && row("Added by", txn.createdBy)}
         </div>
 
