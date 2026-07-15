@@ -1033,7 +1033,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.160";
+const APP_VERSION = "beta 5.161";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22773,6 +22773,20 @@ function RecruitmentMailboxTab({appSettings}) {
       .finally(()=>setLoading(false));
   };
   useEffect(()=>{ load(); },[]);
+  // Auto-refresh so new inbound/replied emails show up without a manual
+  // click — quiet (no spinner state reset) so it doesn't yank focus away
+  // from whatever thread is open. Skips while composing/replying so an
+  // in-progress draft the user is looking at doesn't visually shift.
+  useEffect(()=>{
+    const t = setInterval(()=>{
+      if(showCompose||sendingReply) return;
+      fetch(`${RECRUITMENT_MAILBOX_ENDPOINT}?box=all&limit=100`)
+        .then(r=>r.json())
+        .then(json=>{ if(json.ok) setMessages(json.messages||[]); })
+        .catch(()=>{});
+    }, 30000);
+    return ()=>clearInterval(t);
+  },[showCompose,sendingReply]);
 
   const allThreads = buildMailThreads(messages);
   // The filter picks which threads to LIST (a thread must have at least
@@ -22869,7 +22883,7 @@ function RecruitmentMailboxTab({appSettings}) {
                     onMouseLeave={e=>{ if(selectedKey!==t.key) e.currentTarget.style.background="transparent"; }}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
                       <p style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>{counterparty}</p>
-                      <span style={{fontSize:10,color:"var(--text3)",flexShrink:0}}>{t.lastDate?fmtDate(t.lastDate):""}</span>
+                      <span style={{fontSize:10,color:"var(--text3)",flexShrink:0}}>{t.lastDate?fmtDateTime(t.lastDate):""}</span>
                     </div>
                     <p style={{fontSize:12,fontWeight:600,color:"var(--text2)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                       {t.subject}{t.messages.length>1&&<span style={{fontWeight:700,color:"var(--accent)"}}> ({t.messages.length})</span>}

@@ -60,6 +60,11 @@ $client = $cm->make([
     'password'      => $imapPassword,
     'protocol'      => 'imap',
     'timeout'       => 30,
+    // Only headers/text body get fetched — attachment content is never
+    // downloaded here (this endpoint only shows has_attachments, never a
+    // download link), which keeps every list/refresh request fast even on
+    // a mailbox with large CV attachments.
+    'options'       => ['fetch_attachment' => false],
 ]);
 
 try {
@@ -99,7 +104,7 @@ function fetchBox($client, $box, $limit) {
     if (!$folder) return [];
 
     try {
-        $messages = $folder->messages()->all()->limit($limit)->setFetchOrderDesc()->get();
+        $messages = $folder->messages()->since((new DateTime())->modify('-30 days'))->limit($limit)->setFetchOrderDesc()->get();
     } catch (Throwable $e) {
         return [];
     }
