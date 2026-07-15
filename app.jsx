@@ -971,7 +971,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.144";
+const APP_VERSION = "beta 5.145";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11316,6 +11316,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
                           <option value="content_creator">Content Creator</option>
                           <option value="graphic_designer">Graphic Designer</option>
                           <option value="accountant">Accountant</option>
+                          <option value="office_boy">Office Boy</option>
                         </>
                       )}
                     </select>
@@ -12062,6 +12063,7 @@ function InviteUserModal({onClose, onSubmit, clients, team}) {
                   <option value="content_creator">Content Creator</option>
                   <option value="graphic_designer">Graphic Designer</option>
                   <option value="accountant">Accountant</option>
+                  <option value="office_boy">Office Boy</option>
                 </>
               ):(
                 <>
