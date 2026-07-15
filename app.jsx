@@ -1033,7 +1033,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.158";
+const APP_VERSION = "beta 5.159";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22731,6 +22731,20 @@ function buildMailThreads(messages) {
   }).sort((a,b)=>new Date(b.lastDate)-new Date(a.lastDate));
 }
 
+// The most recent message in a thread doesn't always carry a usable
+// counterparty — some sent messages come back from IMAP with an empty
+// "To" (BCC-only sends, or a header the parser couldn't read) — so scan
+// the whole thread for the first message that actually has one instead
+// of just showing a dash.
+function threadCounterparty(thread) {
+  for(let i=thread.messages.length-1;i>=0;i--){
+    const m = thread.messages[i];
+    if(m.box==="inbox" && (m.from_name||m.from_email)) return m.from_name||m.from_email;
+    if(m.box==="sent" && m.to?.length) return m.to.join(", ");
+  }
+  return "Unknown";
+}
+
 function RecruitmentMailboxTab({appSettings}) {
   const {isMobile} = useResponsive();
   const [messages, setMessages] = useState([]);
@@ -22838,7 +22852,7 @@ function RecruitmentMailboxTab({appSettings}) {
             <div>
               {threads.map((t,i)=>{
                 const last = t.lastMsg;
-                const counterparty = last.box==="sent" ? (last.to?.join(", ")||"—") : (last.from_name||last.from_email||"Unknown");
+                const counterparty = threadCounterparty(t);
                 return (
                   <div key={t.key} onClick={()=>setSelectedKey(t.key)} style={{padding:"12px 16px",borderBottom:i<threads.length-1?"1px solid var(--border)":"none",cursor:"pointer",background:selectedKey===t.key?"var(--surface2)":"transparent"}}
                     onMouseEnter={e=>{ if(selectedKey!==t.key) e.currentTarget.style.background="var(--surface2)"; }}
