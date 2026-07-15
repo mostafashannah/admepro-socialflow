@@ -210,7 +210,7 @@ function speedTokens(speed,base){if(speed==="low")return Math.max(300,Math.round
 function logActivity(action,category,details="",status="success",errorMsg="",user="system"){const entry={action,category,details,status,error_message:errorMsg,performed_by:user,performed_at:new Date().toISOString()};ce("ActivityLog",[entry]).then(({entities})=>{const saved=entities===null||entities===void 0?void 0:entities[0];// Push the freshly-saved row (with real id) into the live UI immediately,
 // otherwise System Log only reflects what was loaded at page load.
 if(saved&&!saved._saveError)window.dispatchEvent(new CustomEvent("sf:activitylog",{detail:saved}));}).catch(()=>{});}// ── Email HTML templates ─────────────────────────────────────────
-const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 5.164";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 5.165";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
 <tr><td align="center">
@@ -2169,9 +2169,13 @@ const mailboxEmail=((appSettings===null||appSettings===void 0||(_appSettings$rec
 // decides whether it's due to re-sync from IMAP (self-throttled to
 // once per 5 minutes) unless forceSync bypasses that for an explicit
 // Refresh click.
-const fetchMailbox=forceSync=>fetch(`${RECRUITMENT_MAILBOX_ENDPOINT}${forceSync?"?force_sync=1":""}`).then(r=>r.json());const load=forceSync=>{setLoading(true);setError("");fetchMailbox(forceSync).then(json=>{if(!json.ok)throw new Error(json.error||"Failed to load mailbox");MAILBOX_CACHE={messages:json.messages||[],loadedAt:Date.now()};setMessages(MAILBOX_CACHE.messages);}).catch(e=>setError(e.message||"Failed to load mailbox")).finally(()=>setLoading(false));};useEffect(()=>{// Cache already has something reasonably fresh (<30s old) — show it
-// instantly, no spinner, no extra request on this visit.
-if(MAILBOX_CACHE.messages!==null&&Date.now()-MAILBOX_CACHE.loadedAt<30000)return;load(false);},[]);// Auto-refresh so new inbound/replied emails show up without a manual
+const fetchMailbox=forceSync=>fetch(`${RECRUITMENT_MAILBOX_ENDPOINT}${forceSync?"?force_sync=1":""}`).then(r=>r.json());const load=forceSync=>{setLoading(true);setError("");fetchMailbox(forceSync).then(json=>{if(!json.ok)throw new Error(json.error||"Failed to load mailbox");MAILBOX_CACHE={messages:json.messages||[],loadedAt:Date.now()};setMessages(MAILBOX_CACHE.messages);}).catch(e=>setError(e.message||"Failed to load mailbox")).finally(()=>setLoading(false));};useEffect(()=>{if(MAILBOX_CACHE.messages!==null){// Already have something cached from a previous visit — old
+// messages stay on screen immediately, no reload flash, no
+// spinner. Only ever a quiet background check for anything new,
+// same as the 30s auto-poll below.
+setLoading(false);fetchMailbox(false).then(json=>{if(json.ok){MAILBOX_CACHE={messages:json.messages||[],loadedAt:Date.now()};setMessages(MAILBOX_CACHE.messages);}}).catch(()=>{});}else{// First ever visit this session — nothing to show yet, so this is
+// the only case with a real loading spinner.
+load(false);}},[]);// Auto-refresh so new inbound/replied emails show up without a manual
 // click — quiet (no spinner state reset) so it doesn't yank focus away
 // from whatever thread is open. Skips while composing/replying so an
 // in-progress draft the user is looking at doesn't visually shift.

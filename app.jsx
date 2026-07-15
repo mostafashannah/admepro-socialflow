@@ -1040,7 +1040,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.164";
+const APP_VERSION = "beta 5.165";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22788,10 +22788,22 @@ function RecruitmentMailboxTab({appSettings}) {
       .finally(()=>setLoading(false));
   };
   useEffect(()=>{
-    // Cache already has something reasonably fresh (<30s old) — show it
-    // instantly, no spinner, no extra request on this visit.
-    if(MAILBOX_CACHE.messages !== null && Date.now()-MAILBOX_CACHE.loadedAt < 30000) return;
-    load(false);
+    if(MAILBOX_CACHE.messages !== null) {
+      // Already have something cached from a previous visit — old
+      // messages stay on screen immediately, no reload flash, no
+      // spinner. Only ever a quiet background check for anything new,
+      // same as the 30s auto-poll below.
+      setLoading(false);
+      fetchMailbox(false)
+        .then(json=>{
+          if(json.ok) { MAILBOX_CACHE = { messages: json.messages||[], loadedAt: Date.now() }; setMessages(MAILBOX_CACHE.messages); }
+        })
+        .catch(()=>{});
+    } else {
+      // First ever visit this session — nothing to show yet, so this is
+      // the only case with a real loading spinner.
+      load(false);
+    }
   },[]);
   // Auto-refresh so new inbound/replied emails show up without a manual
   // click — quiet (no spinner state reset) so it doesn't yank focus away
