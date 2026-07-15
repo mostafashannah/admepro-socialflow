@@ -94,13 +94,14 @@ const ROLES = {
   content_creator: { label: "Content Creator", color: "#8b5cf6" },
   graphic_designer:{ label: "Graphic Designer",color: "#f59e0b" },
   accountant: { label: "Accountant", color: "#8b5cf6" },
+  office_boy: { label: "Office Boy", color: "#6b7280" },
   client_admin: { label: "Client Admin", color: "#0ea5e9" },
   client_member: { label: "Client Member", color: "#64748b" },
   client: { label: "Client", color: "#10b981" },
 };
 
 const CLIENT_ROLES = ["client_admin","client_member"];
-const INTERNAL_ROLES = ["admin","hr","account_manager","content_creator","graphic_designer","accountant"];
+const INTERNAL_ROLES = ["admin","hr","account_manager","content_creator","graphic_designer","accountant","office_boy"];
 
 // Granular permissions the Roles & Permissions settings page can toggle per
 // role. "admin" always implicitly has every permission regardless of what's
@@ -970,7 +971,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.143";
+const APP_VERSION = "beta 5.144";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11098,11 +11099,22 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   // else (Team Members, Invitations, Client Users, Leave, Roles, Attendance)
   // stays admin/HR-only.
   const isScopedAccountManager = currentUser?.role==="account_manager" && !hasPerm(currentUser,rolePerms,"hr.view_team");
+  // Office Boy has no team-directory access at all — pinned permanently to
+  // their own profile, no back button to a directory they can't see, no
+  // clicking into anyone else's (their own direct-reports list, if any,
+  // is disabled too).
+  const isOfficeBoy = currentUser?.role==="office_boy" && !hasPerm(currentUser,rolePerms,"hr.view_team");
+  const myOwnRecord = isOfficeBoy ? (team||[]).find(t=>t.email===currentUser.email) : null;
   // Every hook must run on every render regardless of the viewingMember early
   // return below — this useEffect used to sit after that return, so it was
   // skipped whenever a member's profile was open, violating the Rules of
   // Hooks (React error #300, "rendered fewer hooks than expected").
   React.useEffect(()=>{ if(isScopedAccountManager && tab!=="requests") setTab("requests"); },[isScopedAccountManager]);
+  React.useEffect(()=>{ if(isOfficeBoy && myOwnRecord && viewingMember?.id!==myOwnRecord.id) setViewingMember(myOwnRecord); },[isOfficeBoy, myOwnRecord?.id]);
+
+  if(isOfficeBoy && !myOwnRecord) {
+    return <div style={{padding:40,textAlign:"center",color:"var(--text2)"}}>Your team profile isn't set up yet — ask an admin to link your account.</div>;
+  }
 
   if(viewingMember) {
     const live = (team||[]).find(t=>t.id===viewingMember.id) || viewingMember;
@@ -11115,11 +11127,11 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
           leaveRequests={leaveRequests||[]}
           attendanceRecords={attendanceRecords||[]}
           expenses={expenses}
-          canEdit={hasPerm(currentUser,rolePerms,"hr.edit_team")}
-          canEditSalary={hasPerm(currentUser,rolePerms,"hr.edit_salary")}
-          onBack={()=>setViewingMember(null)}
+          canEdit={!isOfficeBoy && hasPerm(currentUser,rolePerms,"hr.edit_team")}
+          canEditSalary={!isOfficeBoy && hasPerm(currentUser,rolePerms,"hr.edit_salary")}
+          onBack={isOfficeBoy ? null : ()=>setViewingMember(null)}
           onEdit={()=>setEditingMember(live)}
-          onSelectMember={(m)=>setViewingMember(m)}
+          onSelectMember={isOfficeBoy ? null : (m)=>setViewingMember(m)}
           currentUser={currentUser}
           onImpersonate={onImpersonate}
         />
@@ -11434,7 +11446,6 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
   const myScheduled = myTasks.filter(p=>p.scheduled_date).sort((a,b)=>new Date(a.scheduled_date)-new Date(b.scheduled_date));
   const myLeave = (leaveRequests||[]).filter(r=>r.team_member_id===member.id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
   const allMyAttendance = (attendanceRecords||[]).filter(a=>a.team_member_id===member.id || a.member_name===member.name).sort((a,b)=>new Date(b.work_date)-new Date(a.work_date));
-  const myAttendance = allMyAttendance.slice(0,30);
   const overtime = calcExtraHours(allMyAttendance);
   const mySalaryRecords = (expenses||[]).filter(e=>e.team_member_id===member.id && e.category==="salaries").sort((a,b)=>new Date(b.date)-new Date(a.date));
   const totalPaid = mySalaryRecords.reduce((sum,e)=>sum+Number(e.amount||0),0);
@@ -11448,9 +11459,11 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
 
   return (
     <div style={{padding:"24px",width:"100%",display:"flex",flexDirection:"column",gap:16}} className="fade-in">
-      <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:700,color:"var(--text2)",background:"none",border:"none",cursor:"pointer",width:"fit-content"}}>
-        <Ico d={Icons.chevL} size={15} stroke="var(--text2)"/> Back to Team Members
-      </button>
+      {onBack&&(
+        <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:700,color:"var(--text2)",background:"none",border:"none",cursor:"pointer",width:"fit-content"}}>
+          <Ico d={Icons.chevL} size={15} stroke="var(--text2)"/> Back to Team Members
+        </button>
+      )}
 
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20,display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
         <div style={{width:56,height:56,borderRadius:"50%",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:20,flexShrink:0,overflow:"hidden"}}>
@@ -11469,7 +11482,7 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
       </div>
 
       <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)",alignSelf:"flex-start"}}>
-        {[["overview","Overview"],["tasks","Tasks & Scheduled"],["payroll","Payroll"]].map(([k,l])=>(
+        {[["overview","Overview"],["tasks","Tasks & Scheduled"],["attendance","Attendance"],["payroll","Payroll"]].map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)} style={{padding:"7px 16px",borderRadius:"var(--rxs)",fontSize:12,fontWeight:700,background:tab===k?"var(--accent)":"none",color:tab===k?"#fff":"var(--text2)"}}>{l}</button>
         ))}
       </div>
@@ -11549,6 +11562,29 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
       )}
       {tab==="payroll"&&!canEditSalary&&(
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:30,textAlign:"center",color:"var(--text2)",fontSize:13}}>You don't have permission to view salary information.</div>
+      )}
+
+      {tab==="attendance"&&(
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
+          <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <h3 style={{fontWeight:700,fontSize:14}}>All Attendance</h3>
+            <span style={{fontSize:12,color:"var(--text3)"}}>{allMyAttendance.length} record{allMyAttendance.length!==1?"s":""}</span>
+          </div>
+          {allMyAttendance.length===0?(
+            <div style={{padding:20,textAlign:"center",color:"var(--text2)",fontSize:13}}>No attendance records imported yet.</div>
+          ):allMyAttendance.map((a,i)=>{
+            const worked = workedHoursFor(a.check_in, a.check_out);
+            const extra = worked!=null ? Math.max(0, worked-9) : 0;
+            return (
+              <div key={a.id} style={{padding:"10px 18px",borderBottom:i<allMyAttendance.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12}}>
+                <span style={{fontSize:13,flex:1}}>{fmtDate(a.work_date)}</span>
+                {a.check_in&&<span style={{fontSize:12,color:"var(--text3)"}}>{a.check_in}{a.check_out?` – ${a.check_out}`:""}{worked!=null?` (${worked.toFixed(1)}h)`:""}</span>}
+                {extra>0&&<span style={{fontSize:11,fontWeight:700,color:"#f59e0b"}}>+{extra.toFixed(1)}h</span>}
+                <span style={{textTransform:"capitalize",fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:6,background:"var(--surface2)",color:"var(--text2)"}}>{a.status}</span>
+              </div>
+            );
+          })}
+        </div>
       )}
 
       {tab==="overview"&&(<>
@@ -11642,23 +11678,6 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
         ))}
       </div>
 
-      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
-        <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}><h3 style={{fontWeight:700,fontSize:14}}>Recent Attendance</h3></div>
-        {myAttendance.length===0?(
-          <div style={{padding:20,textAlign:"center",color:"var(--text2)",fontSize:13}}>No attendance records imported yet.</div>
-        ):myAttendance.map((a,i)=>{
-          const worked = workedHoursFor(a.check_in, a.check_out);
-          const extra = worked!=null ? Math.max(0, worked-9) : 0;
-          return (
-            <div key={a.id} style={{padding:"10px 18px",borderBottom:i<myAttendance.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12}}>
-              <span style={{fontSize:13,flex:1}}>{fmtDate(a.work_date)}</span>
-              {a.check_in&&<span style={{fontSize:12,color:"var(--text3)"}}>{a.check_in}{a.check_out?` – ${a.check_out}`:""}{worked!=null?` (${worked.toFixed(1)}h)`:""}</span>}
-              {extra>0&&<span style={{fontSize:11,fontWeight:700,color:"#f59e0b"}}>+{extra.toFixed(1)}h</span>}
-              <span style={{textTransform:"capitalize",fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:6,background:"var(--surface2)",color:"var(--text2)"}}>{a.status}</span>
-            </div>
-          );
-        })}
-      </div>
       </>)}
     </div>
   );
@@ -23001,6 +23020,12 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
       // (Team Members/Invitations/Roles), which stays behind canViewTeamNav.
       ...(!canViewTeamNav&&currentUser?.role==="account_manager"?[{key:"users", label:"Client Requests", ico:Icons.users}]:[]),
     ]}] : []),
+    // Office Boy: no team-directory access — just a scoped entry into
+    // their own profile (UsersPage detects this role and auto-opens it,
+    // hiding the directory/other tabs).
+    ...(!canViewTeamNav&&currentUser?.role==="office_boy" ? [{ group: "TEAM", icon: Icons.users, items: [
+      {key:"users", label:"My Profile", ico:Icons.users},
+    ]}] : []),
     ...((canFinance||(isAdmin||currentUser?.role==="account_manager")) ? [{ group: "FINANCE", icon: Icons.wallet, items: [
       ...((isAdmin||currentUser?.role==="account_manager"||canFinance)?[{key:"quotes", label:"Quotes", ico:Icons.receipt}]:[]),
       ...(canFinance?[
@@ -30196,7 +30221,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             onSaveClientNote={saveFinanceClientNote}
           />
         )}
-        {page==="users"&&(currentUser?.role==="admin"||currentUser?.role==="account_manager"||hasPerm(currentUser,rolePermsMap,"hr.view_team"))&&(
+        {page==="users"&&(currentUser?.role==="admin"||currentUser?.role==="account_manager"||currentUser?.role==="office_boy"||hasPerm(currentUser,rolePermsMap,"hr.view_team"))&&(
           <UsersPage
             currentUser={currentUser}
             team={data.team}
