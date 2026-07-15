@@ -1051,7 +1051,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.169";
+const APP_VERSION = "beta 5.170";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -14002,6 +14002,113 @@ function CompleteApplicationPage({token}) {
   );
 }
 
+// Public interview-time-picker — reached via the one-time link in the
+// "pick an interview time" email sent from ApplicationDetail. Candidate
+// either picks one of the proposed slots or, if none work, types a
+// suggestion of their own for staff to review and approve.
+function InterviewSchedulingPage({token}) {
+  const [isDark, setIsDark] = useState(()=>{
+    try { return window.matchMedia("(prefers-color-scheme: dark)").matches; } catch(e) { return false; }
+  });
+  useEffect(()=>{
+    try {
+      const mq = window.matchMedia("(prefers-color-scheme: dark)");
+      const onChange = e=>setIsDark(e.matches);
+      mq.addEventListener("change", onChange);
+      return ()=>mq.removeEventListener("change", onChange);
+    } catch(e) {}
+  },[]);
+  const [loading, setLoading] = useState(true);
+  const [application, setApplication] = useState(null);
+  const [notFound, setNotFound] = useState(false);
+  const [done, setDone] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState("");
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestion, setSuggestion] = useState("");
+
+  useEffect(()=>{
+    (async () => {
+      const res = await qe("JobApplication", {interview_scheduling_token: token});
+      const app = res.entities?.[0];
+      if(!app) { setNotFound(true); setLoading(false); return; }
+      setApplication(app);
+      setLoading(false);
+    })();
+  },[token]);
+
+  const slots = (() => { try { return JSON.parse(application?.interview_slots||"[]"); } catch(e) { return []; } })();
+
+  const handleSubmit = async () => {
+    if(!suggesting && !selectedSlot) return;
+    if(suggesting && !suggestion.trim()) return;
+    setSubmitting(true);
+    try {
+      const patch = suggesting
+        ? {interview_candidate_note: suggestion.trim(), interview_selected_slot: null}
+        : {interview_selected_slot: selectedSlot, interview_candidate_note: null};
+      await ue("JobApplication", application.id, patch);
+      logApplicationActivity(application.id, suggesting ? "Candidate suggested a different interview time" : `Candidate picked interview time: ${fmtDateTime(selectedSlot)}`, application.candidate_name||"Candidate");
+      setDone(true);
+    } catch(e) { alert("Something went wrong submitting your response. Please try again."); }
+    setSubmitting(false);
+  };
+
+  const wrapSt = {minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:24,background:isDark?"#0b0e14":"#f7f7f8"};
+  const cardSt = {width:"100%",maxWidth:480,background:isDark?"#161a23":"#fff",borderRadius:20,padding:32,border:`1px solid ${isDark?"#252b38":"#eee"}`};
+  const gstyle = <GStyle wallpaper={isDark?"dark":"light"} accentColor="#d90b2c" photoIsDark={isDark}/>;
+
+  if(loading) return <>{gstyle}<div style={wrapSt}><Spinner size={22}/></div></>;
+  if(notFound) return (
+    <>{gstyle}<div style={wrapSt}>
+      <div style={cardSt}>
+        <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
+        <p style={{fontSize:15,fontWeight:700,color:isDark?"#fff":"#111"}}>This link is invalid or has already been used.</p>
+      </div>
+    </div></>
+  );
+  if(done) return (
+    <>{gstyle}<div style={wrapSt}>
+      <div style={cardSt}>
+        <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
+        <p style={{fontSize:15,fontWeight:700,color:isDark?"#fff":"#111"}}>Thanks! {suggesting?"We'll review your suggested time and confirm shortly.":"We've noted your chosen time and will send a confirmation shortly."}</p>
+      </div>
+    </div></>
+  );
+
+  return (
+    <>{gstyle}<div style={wrapSt}>
+      <div style={cardSt}>
+        <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
+        <h2 style={{fontSize:19,fontWeight:800,color:isDark?"#fff":"#111",marginBottom:6}}>Pick an interview time</h2>
+        <p style={{fontSize:13,color:isDark?"#9099ab":"#666",marginBottom:20,lineHeight:1.5}}>Hi {application.candidate_name||"there"}, here are a few times that work for us for your {application.job_title||"role"} interview — pick whichever suits you.</p>
+
+        {!suggesting ? (
+          <>
+            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+              {slots.map(slot=>(
+                <label key={slot} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",borderRadius:12,border:`1px solid ${selectedSlot===slot?"#d90b2c":(isDark?"#252b38":"#eee")}`,background:selectedSlot===slot?(isDark?"#d90b2c22":"#d90b2c11"):"transparent",cursor:"pointer"}}>
+                  <input type="radio" name="slot" checked={selectedSlot===slot} onChange={()=>setSelectedSlot(slot)}/>
+                  <span style={{fontSize:14,fontWeight:600,color:isDark?"#fff":"#111"}}>{fmtDateTime(slot)}</span>
+                </label>
+              ))}
+            </div>
+            <Btn onClick={handleSubmit} disabled={submitting||!selectedSlot} style={{width:"100%",marginBottom:10}}>{submitting?"Submitting…":"Confirm This Time"}</Btn>
+            <button onClick={()=>setSuggesting(true)} style={{background:"none",border:"none",color:isDark?"#9099ab":"#666",fontSize:13,fontWeight:600,cursor:"pointer",textDecoration:"underline",width:"100%",textAlign:"center"}}>None of these work for me</button>
+          </>
+        ) : (
+          <>
+            <p style={{fontSize:13,color:isDark?"#9099ab":"#666",marginBottom:10}}>No worries — suggest a day/time that works better for you, and we'll get back to you to confirm.</p>
+            <textarea value={suggestion} onChange={e=>setSuggestion(e.target.value)} rows={3} placeholder="e.g. Any weekday after 3pm next week" style={{...inputSt,resize:"vertical",marginBottom:12}}/>
+            <Btn onClick={handleSubmit} disabled={submitting||!suggestion.trim()} style={{width:"100%",marginBottom:10}}>{submitting?"Submitting…":"Send Suggestion"}</Btn>
+            <button onClick={()=>setSuggesting(false)} style={{background:"none",border:"none",color:isDark?"#9099ab":"#666",fontSize:13,fontWeight:600,cursor:"pointer",textDecoration:"underline",width:"100%",textAlign:"center"}}>Back to time options</button>
+          </>
+        )}
+      </div>
+    </div></>
+  );
+}
+
 function CareersPage({appSettings}) {
   const [isDark, setIsDark] = useState(()=>{
     try { return window.matchMedia("(prefers-color-scheme: dark)").matches; } catch(e) { return true; }
@@ -22423,6 +22530,7 @@ const APPLICATION_STATUSES = [
   {key:"reviewing", label:"Reviewing", color:"#8b5cf6"},
   {key:"shortlisted", label:"Shortlisted", color:"#f59e0b"},
   {key:"interview", label:"Interview", color:"#d90b2c"},
+  {key:"offer", label:"Offer", color:"#a855f7"},
   {key:"hired", label:"Hired", color:"#10b981"},
   {key:"rejected", label:"Rejected", color:"#6b7280"},
 ];
@@ -22552,7 +22660,122 @@ function JobOpeningForm({opening, currentUser, onSave, onClose}) {
   );
 }
 
-function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader, onConvertCv, convertingCv, cvConvertFailed, onRateInterview, activityLog, onSendCompletionEmail, sendingCompletion}) {
+// Propose interview time slots to a candidate (emails a public picker
+// link), then shows whichever they picked — or a suggested alternative —
+// once they've responded, with a one-click confirm.
+function InterviewSchedulingSection({application, onSendTimes, sending, onConfirm, confirming}) {
+  const [editing, setEditing] = useState(false);
+  const [slots, setSlots] = useState(()=>{ try { return JSON.parse(application.interview_slots||"[]"); } catch(e) { return []; } });
+
+  const setSlot = (i,v) => setSlots(prev=>prev.map((s,idx)=>idx===i?v:s));
+  const addSlot = () => setSlots(prev=>[...prev,""]);
+  const removeSlot = (i) => setSlots(prev=>prev.filter((_,idx)=>idx!==i));
+
+  const hasResponse = application.interview_selected_slot || application.interview_candidate_note;
+
+  return (
+    <div style={{marginBottom:14,padding:14,background:"var(--surface2)",borderRadius:10,border:"1px solid var(--border)"}}>
+      <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Interview Scheduling</p>
+
+      {application.interview_confirmed_slot && (
+        <p style={{fontSize:13,color:"#10b981",fontWeight:700,marginBottom:10}}>✓ Confirmed for {fmtDateTime(application.interview_confirmed_slot)}</p>
+      )}
+
+      {!application.interview_confirmed_slot && hasResponse && (
+        <div style={{marginBottom:12,padding:"10px 12px",background:"var(--surface)",borderRadius:8,border:"1px solid var(--border2)"}}>
+          {application.interview_selected_slot ? (
+            <p style={{fontSize:13,color:"var(--text)"}}>Candidate picked: <strong>{fmtDateTime(application.interview_selected_slot)}</strong></p>
+          ) : (
+            <p style={{fontSize:13,color:"var(--text)"}}>Candidate suggested: <strong>{application.interview_candidate_note}</strong></p>
+          )}
+          <button onClick={()=>onConfirm(application, application.interview_selected_slot||application.interview_candidate_note)} disabled={confirming} style={{marginTop:8,padding:"6px 14px",borderRadius:8,background:"#10b981",border:"none",fontSize:12,fontWeight:700,color:"#fff",cursor:confirming?"not-allowed":"pointer"}}>
+            {confirming?"Confirming…":"Confirm This Time"}
+          </button>
+        </div>
+      )}
+
+      {!editing ? (
+        <button onClick={()=>setEditing(true)} style={{padding:"6px 14px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text2)",cursor:"pointer"}}>
+          {application.interview_slots ? "Propose New Times" : "Propose Interview Times"}
+        </button>
+      ) : (
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {slots.map((s,i)=>(
+            <div key={i} style={{display:"flex",gap:6,alignItems:"center"}}>
+              <input type="datetime-local" value={s} onChange={e=>setSlot(i,e.target.value)} style={{...inputSt,flex:1}}/>
+              <button onClick={()=>removeSlot(i)} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:16,padding:4}}>×</button>
+            </div>
+          ))}
+          <button onClick={addSlot} style={{alignSelf:"flex-start",padding:"5px 12px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>+ Add Time Option</button>
+          <div style={{display:"flex",gap:8,marginTop:4}}>
+            <button onClick={()=>setEditing(false)} style={{padding:"6px 14px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>Cancel</button>
+            <button onClick={()=>{ onSendTimes(application, slots.filter(Boolean)); setEditing(false); }} disabled={sending||slots.filter(Boolean).length===0} style={{padding:"6px 14px",borderRadius:8,background:"var(--accent)",border:"none",fontSize:12,fontWeight:700,color:"#fff",cursor:sending?"not-allowed":"pointer"}}>
+              {sending?"Sending…":"Send to Candidate"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Offer terms — salary during/after probation, start date, title, and a
+// few company-policy points (laptop, vacation/WFH allowance) — filled in
+// once, then optionally emailed to the candidate as a formatted offer.
+function OfferSection({application, opening, onSave, saving, onSend, sending}) {
+  const [form, setForm] = useState({
+    title: application.offer_title || opening?.title || application.job_title || "",
+    salary: application.offer_salary || "",
+    probation_months: application.offer_probation_months ?? 3,
+    post_probation_salary: application.offer_post_probation_salary || "",
+    start_date: application.offer_start_date || "",
+    laptop_provided: application.offer_laptop_provided || "",
+    vacation_days_annual: application.offer_vacation_days_annual ?? 15,
+    wfh_days_monthly: application.offer_wfh_days_monthly ?? 2,
+    notes: application.offer_notes || "",
+  });
+  const sf = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  return (
+    <div style={{marginBottom:14,padding:14,background:"var(--surface2)",borderRadius:10,border:"1px solid var(--border)"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+        <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Offer</p>
+        {application.offer_sent_at && <span style={{fontSize:11,fontWeight:700,color:"#10b981"}}>Sent {fmtDateTime(application.offer_sent_at)}</span>}
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        <Field label="Job Title"><input value={form.title} onChange={e=>sf("title",e.target.value)} style={inputSt}/></Field>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <Field label="Probation Salary"><input value={form.salary} onChange={e=>sf("salary",e.target.value)} placeholder="e.g. 8,000 EGP" style={inputSt}/></Field>
+          <Field label="Probation Period (months)"><input type="number" min="0" value={form.probation_months} onChange={e=>sf("probation_months",e.target.value)} style={inputSt}/></Field>
+        </div>
+        <Field label="Salary After Probation"><input value={form.post_probation_salary} onChange={e=>sf("post_probation_salary",e.target.value)} placeholder="e.g. 10,000 EGP" style={inputSt}/></Field>
+        <Field label="Start Date"><input type="date" value={form.start_date} onChange={e=>sf("start_date",e.target.value)} style={inputSt}/></Field>
+        <Field label="Laptop">
+          <select value={form.laptop_provided} onChange={e=>sf("laptop_provided",e.target.value)} style={inputSt}>
+            <option value="">— Not set —</option>
+            <option value="company">We provide a laptop</option>
+            <option value="personal">Works with personal laptop</option>
+          </select>
+        </Field>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <Field label="Annual Vacation Days"><input type="number" min="0" value={form.vacation_days_annual} onChange={e=>sf("vacation_days_annual",e.target.value)} style={inputSt}/></Field>
+          <Field label="Monthly WFH Days"><input type="number" min="0" value={form.wfh_days_monthly} onChange={e=>sf("wfh_days_monthly",e.target.value)} style={inputSt}/></Field>
+        </div>
+        <Field label="Notes" hint="Optional — shown to you only, not the candidate"><textarea value={form.notes} onChange={e=>sf("notes",e.target.value)} rows={2} style={{...inputSt,resize:"vertical"}}/></Field>
+      </div>
+      <div style={{display:"flex",gap:8,marginTop:12}}>
+        <button onClick={()=>onSave(application, form)} disabled={saving} style={{padding:"7px 14px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text2)",cursor:saving?"not-allowed":"pointer"}}>
+          {saving?"Saving…":"Save Offer Details"}
+        </button>
+        <button onClick={()=>onSend(application, form)} disabled={sending||!form.salary||!form.start_date} style={{padding:"7px 14px",borderRadius:8,background:"#a855f7",border:"none",fontSize:12,fontWeight:700,color:"#fff",cursor:sending?"not-allowed":"pointer"}}>
+          {sending?"Sending…":"Send Offer Email"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader, onConvertCv, convertingCv, cvConvertFailed, onRateInterview, activityLog, onSendCompletionEmail, sendingCompletion, onSendInterviewTimes, sendingInterviewTimes, onConfirmInterview, confirmingInterview, onSaveOffer, savingOffer, onSendOffer, sendingOffer}) {
   const [notes, setNotes] = useState(application.notes||"");
   const [rerunning, setRerunning] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -22750,6 +22973,14 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
             ))}
           </div>
         </div>
+
+        {onSendInterviewTimes&&["shortlisted","interview","offer","hired"].includes(application.status)&&(
+          <InterviewSchedulingSection application={application} onSendTimes={onSendInterviewTimes} sending={sendingInterviewTimes} onConfirm={onConfirmInterview} confirming={confirmingInterview}/>
+        )}
+
+        {onSaveOffer&&["interview","offer","hired"].includes(application.status)&&(
+          <OfferSection application={application} opening={opening} onSave={onSaveOffer} saving={savingOffer} onSend={onSendOffer} sending={sendingOffer}/>
+        )}
 
         {onRateInterview&&(["interview","hired","rejected"].includes(application.status)||application.interview_rating!=null)&&(
           <div style={{marginBottom:14}}>
@@ -23298,6 +23529,102 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
       setSendingCompletionId(null);
     }
   };
+
+  const [sendingInterviewTimesId, setSendingInterviewTimesId] = useState(null);
+  const handleSendInterviewTimes = async (app, slots) => {
+    if(!app.candidate_email || !slots.length) return;
+    setSendingInterviewTimesId(app.id);
+    try {
+      const token = uid().replace("local_","") + uid().replace("local_","");
+      const patch = {interview_slots: JSON.stringify(slots), interview_scheduling_token: token, interview_selected_slot: null, interview_candidate_note: null};
+      await ue("JobApplication", app.id, patch).catch(()=>{});
+      setApplications(prev=>prev.map(a=>a.id===app.id?{...a,...patch}:a));
+      setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,...patch}:prev);
+      const pickUrl = window.location.origin + "/careers/interview?token=" + token;
+      const jobTitle = openings.find(o=>o.id===app.job_opening_id)?.title || app.job_title || "the role";
+      const slotsHtml = slots.map(s=>`<li>${fmtDateTime(s)}</li>`).join("");
+      const bodyHtml = `
+        <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Hi ${app.candidate_name||"there"},</h2>
+        <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">We'd love to schedule an interview with you for the ${jobTitle} position. Here are a few times that work for us:</p>
+        <ul style="margin:0 0 16px;padding-left:18px;font-size:14px;line-height:1.8;color:#4b5563">${slotsHtml}</ul>
+        <p style="margin:0 0 20px"><a href="${pickUrl}" style="display:inline-block;padding:12px 24px;background:#d90b2c;color:#ffffff;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none">Pick a Time</a></p>
+        <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">If none of these work, the link lets you suggest a time that does.</p>
+        <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
+          <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
+        </td></tr></table>`;
+      const ok = await sendCareersEmail(app.candidate_email, `Pick an interview time — ${jobTitle}`, bodyHtml, "Admepro Careers").catch(()=>false);
+      logActivity(app.id, ok ? "Interview time options sent" : "Interview time options FAILED to send");
+    } finally {
+      setSendingInterviewTimesId(null);
+    }
+  };
+
+  const [confirmingInterviewId, setConfirmingInterviewId] = useState(null);
+  const handleConfirmInterview = async (app, slot) => {
+    setConfirmingInterviewId(app.id);
+    const patch = {interview_confirmed_slot: slot, status: "interview"};
+    setApplications(prev=>prev.map(a=>a.id===app.id?{...a,...patch}:a));
+    setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,...patch}:prev);
+    await ue("JobApplication", app.id, patch).catch(()=>{});
+    logActivity(app.id, `Interview confirmed — ${fmtDateTime(slot)||slot}`);
+    setConfirmingInterviewId(null);
+  };
+
+  const [savingOfferId, setSavingOfferId] = useState(null);
+  const offerPatchFromForm = (form) => ({
+    offer_title: form.title||null, offer_salary: form.salary||null,
+    offer_probation_months: form.probation_months===""?null:Number(form.probation_months),
+    offer_post_probation_salary: form.post_probation_salary||null, offer_start_date: form.start_date||null,
+    offer_laptop_provided: form.laptop_provided||null,
+    offer_vacation_days_annual: form.vacation_days_annual===""?null:Number(form.vacation_days_annual),
+    offer_wfh_days_monthly: form.wfh_days_monthly===""?null:Number(form.wfh_days_monthly),
+    offer_notes: form.notes||null,
+  });
+  const handleSaveOffer = async (app, form) => {
+    setSavingOfferId(app.id);
+    const patch = offerPatchFromForm(form);
+    setApplications(prev=>prev.map(a=>a.id===app.id?{...a,...patch}:a));
+    setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,...patch}:prev);
+    await ue("JobApplication", app.id, patch).catch(()=>{});
+    logActivity(app.id, "Offer details saved");
+    setSavingOfferId(null);
+  };
+
+  const [sendingOfferId, setSendingOfferId] = useState(null);
+  const handleSendOffer = async (app, form) => {
+    if(!app.candidate_email) return;
+    setSendingOfferId(app.id);
+    try {
+      const patch = {...offerPatchFromForm(form), offer_sent_at: new Date().toISOString(), status: "offer"};
+      await ue("JobApplication", app.id, patch).catch(()=>{});
+      setApplications(prev=>prev.map(a=>a.id===app.id?{...a,...patch}:a));
+      setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,...patch}:prev);
+      const laptopLine = form.laptop_provided==="company" ? "We'll provide you with a company laptop."
+        : form.laptop_provided==="personal" ? "This role works with your own personal laptop."
+        : "";
+      const bodyHtml = `
+        <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Hi ${app.candidate_name||"there"},</h2>
+        <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">We're excited to offer you the <strong>${form.title||"position"}</strong> role at Admepro. Here are the details:</p>
+        <table width="100%" style="border-collapse:collapse;margin:0 0 16px;font-size:14px;color:#374151">
+          <tr><td style="padding:6px 0;font-weight:700">Salary (probation period)</td><td style="padding:6px 0">${form.salary||"—"}</td></tr>
+          <tr><td style="padding:6px 0;font-weight:700">Probation period</td><td style="padding:6px 0">${form.probation_months||0} month(s)</td></tr>
+          <tr><td style="padding:6px 0;font-weight:700">Salary after probation</td><td style="padding:6px 0">${form.post_probation_salary||"—"}</td></tr>
+          <tr><td style="padding:6px 0;font-weight:700">Start date</td><td style="padding:6px 0">${form.start_date?fmtDate(form.start_date):"—"}</td></tr>
+          <tr><td style="padding:6px 0;font-weight:700">Annual vacation</td><td style="padding:6px 0">${form.vacation_days_annual||0} days/year</td></tr>
+          <tr><td style="padding:6px 0;font-weight:700">Work from home</td><td style="padding:6px 0">${form.wfh_days_monthly||0} days/month</td></tr>
+        </table>
+        ${laptopLine?`<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">${laptopLine}</p>`:""}
+        <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Let us know if you have any questions, and we look forward to hearing from you!</p>
+        <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
+          <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
+        </td></tr></table>`;
+      const ok = await sendCareersEmail(app.candidate_email, `Your offer — ${form.title||"Admepro"}`, bodyHtml, "Admepro Careers").catch(()=>false);
+      logActivity(app.id, ok ? "Offer sent" : "Offer FAILED to send");
+    } finally {
+      setSendingOfferId(null);
+    }
+  };
+
   const [fixingEmailApps, setFixingEmailApps] = useState(false);
   const [fixMsg, setFixMsg] = useState("");
   const [retryingAll, setRetryingAll] = useState(false);
@@ -23603,7 +23930,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   );
 
   if(selectedApp) return (
-    <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===selectedApp.id} cvConvertFailed={cvConvertFailedId===selectedApp.id} onRateInterview={handleRateInterview} activityLog={activityLogs.filter(l=>l.application_id===selectedApp.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===selectedApp.id}/>
+    <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===selectedApp.id} cvConvertFailed={cvConvertFailedId===selectedApp.id} onRateInterview={handleRateInterview} activityLog={activityLogs.filter(l=>l.application_id===selectedApp.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===selectedApp.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===selectedApp.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===selectedApp.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===selectedApp.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===selectedApp.id}/>
   );
 
   if(selectedGroup) {
@@ -23617,7 +23944,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:22,margin:0}}>{sortedGroup[0].candidate_name} · {sortedGroup.length} applications</h2>
         </div>
         {sortedGroup.map((app,i)=>(
-          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===app.id} cvConvertFailed={cvConvertFailedId===app.id} onRateInterview={handleRateInterview} activityLog={activityLogs.filter(l=>l.application_id===app.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===app.id}/>
+          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===app.id} cvConvertFailed={cvConvertFailedId===app.id} onRateInterview={handleRateInterview} activityLog={activityLogs.filter(l=>l.application_id===app.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===app.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===app.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===app.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===app.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===app.id}/>
         ))}
       </div>
     );
@@ -28589,6 +28916,10 @@ function App() {
   const [completeToken] = useState(()=>{
     try { return window.location.pathname==="/careers/complete" ? new URLSearchParams(window.location.search).get("token") : null; } catch(e) { return null; }
   });
+  // Public interview-time-picker page — socialflow.admepro.com/careers/interview?token=...
+  const [interviewToken] = useState(()=>{
+    try { return window.location.pathname==="/careers/interview" ? new URLSearchParams(window.location.search).get("token") : null; } catch(e) { return null; }
+  });
   // Handle OAuth callback (Supabase redirects back with #access_token=...)
   const [oauthEmail] = useState(()=>{
     try {
@@ -30643,6 +30974,9 @@ Return ONLY valid JSON (no markdown, no explanation):
   // the logged-in app's theme).
   if(isCareersPath) {
     return <CareersPage appSettings={appSettings}/>;
+  }
+  if(interviewToken) {
+    return <InterviewSchedulingPage token={interviewToken}/>;
   }
   if(completeToken) {
     return <CompleteApplicationPage token={completeToken}/>;
