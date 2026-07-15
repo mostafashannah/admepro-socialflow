@@ -1051,7 +1051,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.184";
+const APP_VERSION = "beta 5.185";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -29966,7 +29966,7 @@ function App() {
       status:"pending", invited_by:currentUser?.email,
       created_at:new Date().toISOString()
     };
-    const payload = {...formData, token, expires_at:expiresAt, status:"pending", invited_by:currentUser?.email};
+    const payload = {...formData, salary: formData.salary===""||formData.salary==null?null:formData.salary, token, expires_at:expiresAt, status:"pending", invited_by:currentUser?.email};
     setData(d=>({...d, invitations:[local,...(d.invitations||[])]}));
     ce("UserInvitation",[payload]).then(res=>{
       const real=res.entities?.[0];
