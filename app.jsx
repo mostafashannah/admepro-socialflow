@@ -1051,7 +1051,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.166";
+const APP_VERSION = "beta 5.167";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11303,6 +11303,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   const [tab, setTab] = usePersistentState("sf_tab_users","team");
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showClientUserModal, setShowClientUserModal] = useState(false);
+  const [editingClientUser, setEditingClientUser] = useState(null);
   const [showRejectModal, setShowRejectModal] = useState(null);
   const [editingMember, setEditingMember] = useState(null);
   const [approvalRole, setApprovalRole] = useState("content_creator");
@@ -11587,6 +11588,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
                 color:cu.status==="active"?"#10b981":cu.status==="blocked"?"#ef4444":"#f59e0b",
                 borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600
               }}>{cu.status}</span>
+              <button onClick={()=>setEditingClientUser(cu)} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:12,fontWeight:600,color:"var(--text2)"}}>Edit</button>
               <button onClick={()=>onDeleteClientUser&&onDeleteClientUser(cu.id)} style={{background:"none",border:"none",color:"var(--text2)",cursor:"pointer",fontSize:18,padding:4}}>×</button>
             </div>
           ))}
@@ -11595,6 +11597,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
 
       {showInviteModal&&<InviteUserModal onClose={()=>setShowInviteModal(false)} onSubmit={onInviteUser} clients={clients} team={team}/>}
       {showClientUserModal&&<AddClientUserModal onClose={()=>setShowClientUserModal(false)} onSubmit={onAddClientUser} clients={clients}/>}
+      {editingClientUser&&<EditClientUserModal clientUser={editingClientUser} onClose={()=>setEditingClientUser(null)} onSubmit={onUpdateClientUser} clients={clients}/>}
       {editingMember&&(
         <EditMemberModal
           member={editingMember}
@@ -12488,6 +12491,67 @@ function AddClientUserModal({onClose, onSubmit, clients}) {
           <button onClick={onClose} style={{background:"var(--surface2)",border:"none",borderRadius:8,padding:"9px 18px",cursor:"pointer",color:"var(--text)",fontWeight:500}}>Cancel</button>
           <button onClick={handleSubmit} disabled={loading||!form.email||!form.client_id} style={{background:"var(--accent)",color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",cursor:"pointer",fontWeight:600,opacity:loading||!form.email||!form.client_id?0.6:1}}>
             {loading?"Adding...":"Add User"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditClientUserModal({clientUser, onClose, onSubmit, clients}) {
+  const [form, setForm] = useState({name:clientUser.name||"", email:clientUser.email||"", role:clientUser.role||"client_member", client_id:clientUser.client_id||"", status:clientUser.status||"active"});
+  const [loading, setLoading] = useState(false);
+  const sf = (k,v)=>setForm(p=>({...p,[k]:v}));
+
+  const handleSubmit = async ()=>{
+    if(!form.email||!form.client_id) return;
+    setLoading(true);
+    const client = (clients||[]).find(c=>c.id===form.client_id);
+    await onSubmit(clientUser.id, {...form, client_name: client?.name||clientUser.client_name||""});
+    setLoading(false);
+    onClose();
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{background:"var(--surface)",borderRadius:16,padding:28,width:440,border:"1px solid var(--border)"}}>
+        <h3 style={{fontWeight:700,fontSize:17,color:"var(--text)",marginBottom:20}}>Edit Client User</h3>
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <div>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Client *</label>
+            <select value={form.client_id} onChange={e=>sf("client_id",e.target.value)} style={inputSt}>
+              <option value="">Select client...</option>
+              {(clients||[]).map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Full Name</label>
+            <input value={form.name} onChange={e=>sf("name",e.target.value)} placeholder="Jane Smith" style={inputSt}/>
+          </div>
+          <div>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Email *</label>
+            <input type="email" value={form.email} onChange={e=>sf("email",e.target.value)} style={inputSt}/>
+          </div>
+          <div>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Role</label>
+            <select value={form.role} onChange={e=>sf("role",e.target.value)} style={inputSt}>
+              <option value="client_admin">Client Admin — full access + financials</option>
+              <option value="client_member">Client Member — tasks & approvals only</option>
+            </select>
+          </div>
+          <div>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Status</label>
+            <select value={form.status} onChange={e=>sf("status",e.target.value)} style={inputSt}>
+              <option value="active">Active</option>
+              <option value="blocked">Blocked</option>
+              <option value="pending">Pending</option>
+            </select>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8,marginTop:20,justifyContent:"flex-end"}}>
+          <button onClick={onClose} style={{background:"var(--surface2)",border:"none",borderRadius:8,padding:"9px 18px",cursor:"pointer",color:"var(--text)",fontWeight:500}}>Cancel</button>
+          <button onClick={handleSubmit} disabled={loading||!form.email||!form.client_id} style={{background:"var(--accent)",color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",cursor:"pointer",fontWeight:600,opacity:loading||!form.email||!form.client_id?0.6:1}}>
+            {loading?"Saving...":"Save Changes"}
           </button>
         </div>
       </div>
@@ -29240,6 +29304,13 @@ function App() {
     setToast(`Client user ${cuData.email} added`);
   };
 
+  const updateClientUser = async (cuId, patch) => {
+    setData(d=>({...d, clientUsers:(d.clientUsers||[]).map(u=>u.id===cuId?{...u,...patch}:u)}));
+    await ue("ClientUser", cuId, patch).catch(()=>{});
+    logActivity("Client User Updated","clients",patch.email||cuId,"success","",currentUser?.email||"admin");
+    setToast("Client user updated");
+  };
+
   const deleteClientUser = async (cuId) => {
     const cu = (data.clientUsers||[]).find(u=>u.id===cuId);
     setData(d=>({...d, clientUsers:(d.clientUsers||[]).filter(u=>u.id!==cuId)}));
@@ -30967,6 +31038,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             onApproveRequest={approveRequest}
             onRejectRequest={rejectRequest}
             onAddClientUser={addClientUser}
+            onUpdateClientUser={updateClientUser}
             onDeleteClientUser={deleteClientUser}
             onResendInvitation={(inv)=>setToast("Invitation link updated — copy it again")}
             rolePerms={rolePermsMap}
