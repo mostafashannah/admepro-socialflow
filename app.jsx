@@ -614,6 +614,7 @@ async function de(entityName, id) {
 const AI_ENDPOINT = window.location.origin + "/ai-proxy.php";
 const MAIL_ENDPOINT = window.location.origin + "/mail.php";
 const CAREERS_MAIL_ENDPOINT = window.location.origin + "/careers-mail.php";
+const RECRUITMENT_MAILBOX_ENDPOINT = window.location.origin + "/recruitment-mailbox.php";
 const WA_ENDPOINT = window.location.origin + "/whatsapp.php";
 const PUBLISH_ENDPOINT      = window.location.origin + "/social-publish.php";
 const REEL_STATUS_ENDPOINT  = window.location.origin + "/reel-status.php";
@@ -1032,7 +1033,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.156";
+const APP_VERSION = "beta 5.157";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22675,6 +22676,95 @@ const RECRUITMENT_EMAIL_DEFAULTS = {
   completion_message: "Thanks for applying! To finish reviewing your application, could you fill in a few more details:",
 };
 
+// Read-only inbox/sent viewer for the recruitment mailbox — lets staff
+// glance at the actual conversation (including replies to candidates,
+// bounces, anything the auto-capture cron skipped) without switching to
+// webmail. Fetches on demand via recruitment-mailbox.php, which talks
+// IMAP directly using the same credentials as the auto-capture cron.
+function RecruitmentMailboxTab() {
+  const [box, setBox] = useState("inbox");
+  const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [selected, setSelected] = useState(null);
+
+  const load = (b) => {
+    setLoading(true); setError(""); setSelected(null);
+    fetch(`${RECRUITMENT_MAILBOX_ENDPOINT}?box=${b}&limit=100`)
+      .then(r=>r.json())
+      .then(json=>{
+        if(!json.ok) throw new Error(json.error||"Failed to load mailbox");
+        setMessages(json.messages||[]);
+      })
+      .catch(e=>setError(e.message||"Failed to load mailbox"))
+      .finally(()=>setLoading(false));
+  };
+  useEffect(()=>{ load(box); },[box]);
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+        <div style={{display:"flex",gap:6}}>
+          {[["inbox","Inbox"],["sent","Sent"]].map(([k,l])=>(
+            <button key={k} onClick={()=>setBox(k)} style={{padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,background:box===k?"var(--accent)":"var(--surface2)",color:box===k?"#fff":"var(--text2)",border:`1px solid ${box===k?"var(--accent)":"var(--border2)"}`,cursor:"pointer"}}>{l}</button>
+          ))}
+        </div>
+        <button onClick={()=>load(box)} disabled={loading} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text2)",cursor:loading?"not-allowed":"pointer"}}>
+            {loading?<Spinner size={12}/>:<Ico d={Icons.refresh||Icons.repeat} size={12}/>} Refresh
+        </button>
+      </div>
+
+      {error&&(
+        <div style={{padding:"10px 14px",background:"#ef444411",border:"1px solid #ef444433",borderRadius:8,fontSize:12,color:"var(--text2)"}}>{error}</div>
+      )}
+
+      <div style={{display:"grid",gridTemplateColumns:selected?"340px 1fr":"1fr",gap:14,alignItems:"flex-start"}}>
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+          {loading ? (
+            <div style={{padding:30,display:"flex",justifyContent:"center"}}><Spinner size={18}/></div>
+          ) : messages.length===0 ? (
+            <EmptyState icon={Icons.link2} title={`No ${box==="sent"?"sent":"inbox"} messages found`} sub={error?"":"This mailbox may be empty, or the connection needs to be set up in Email Settings."}/>
+          ) : (
+            <div>
+              {messages.map((m,i)=>(
+                <div key={m.uid} onClick={()=>setSelected(m)} style={{padding:"12px 16px",borderBottom:i<messages.length-1?"1px solid var(--border)":"none",cursor:"pointer",background:selected?.uid===m.uid?"var(--surface2)":"transparent"}}
+                  onMouseEnter={e=>{ if(selected?.uid!==m.uid) e.currentTarget.style.background="var(--surface2)"; }}
+                  onMouseLeave={e=>{ if(selected?.uid!==m.uid) e.currentTarget.style.background="transparent"; }}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                    <p style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>
+                      {box==="sent" ? (m.to?.join(", ")||"—") : (m.from_name||m.from_email||"Unknown")}
+                    </p>
+                    <span style={{fontSize:10,color:"var(--text3)",flexShrink:0}}>{m.date?fmtDate(m.date):""}</span>
+                  </div>
+                  <p style={{fontSize:12,fontWeight:600,color:"var(--text2)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.subject||"(no subject)"}{m.has_attachments&&<Ico d={Icons.paperclip||Icons.link2} size={11} style={{display:"inline",marginLeft:6,verticalAlign:"middle"}}/>}</p>
+                  <p style={{fontSize:11,color:"var(--text3)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.snippet}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {selected&&(
+          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
+            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,marginBottom:14}}>
+              <div>
+                <p style={{fontWeight:700,fontSize:16}}>{selected.subject||"(no subject)"}</p>
+                <p style={{fontSize:12,color:"var(--text3)",marginTop:4}}>
+                  {box==="sent" ? `To: ${selected.to?.join(", ")||"—"}` : `From: ${selected.from_name?`${selected.from_name} <${selected.from_email}>`:selected.from_email}`}
+                </p>
+                <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{selected.date?fmtDateTime(selected.date):""}</p>
+              </div>
+              <button onClick={()=>setSelected(null)} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer"}}><Ico d={Icons.x||Icons.close} size={16}/></button>
+            </div>
+            <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{selected.snippet}{selected.snippet?.length>=160?"…":""}</p>
+            {selected.has_attachments&&<p style={{fontSize:11,color:"var(--text3)",marginTop:12}}>📎 Has attachment(s) — open in webmail to download.</p>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function RecruitmentEmailSettingsTab({appSettings, onSaveSettings}) {
   const saved = appSettings?.recruitment_email_settings || {};
   const [f, setF] = useState({...RECRUITMENT_EMAIL_DEFAULTS, ...saved});
@@ -23196,7 +23286,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
       </div>
 
       <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)",alignSelf:"flex-start"}}>
-        {[["openings","Job Openings"],["applications","Applications"],["email","Email Settings"]].map(([k,l])=>(
+        {[["openings","Job Openings"],["applications","Applications"],["inbox","Inbox"],["email","Email Settings"]].map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)} style={{padding:"7px 16px",borderRadius:"var(--rxs)",fontSize:12,fontWeight:700,background:tab===k?"var(--accent)":"none",color:tab===k?"#fff":"var(--text2)"}}>{l}</button>
         ))}
       </div>
@@ -23315,6 +23405,8 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
           })()}
         </div>
       )}
+
+      {tab==="inbox"&&<RecruitmentMailboxTab/>}
 
       {tab==="email"&&<RecruitmentEmailSettingsTab appSettings={appSettings} onSaveSettings={onSaveSettings}/>}
     </div>
