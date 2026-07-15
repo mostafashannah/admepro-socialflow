@@ -1051,7 +1051,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.176";
+const APP_VERSION = "beta 5.177";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22613,6 +22613,17 @@ function applicationRank(a) {
 // JSON.parse() on an already-decoded array/object throws (it gets
 // coerced to a string first), so any array-shaped field from the API
 // needs this instead of a plain JSON.parse.
+// A "slot" value is only ever a real date when it came from one of the
+// proposed options — a candidate-suggested alternative (free text like
+// "any weekday after 3pm") isn't parseable at all, and new Date() on it
+// doesn't throw, it just silently produces the string "Invalid Date"
+// which then looks like a real (broken) value instead of the original text.
+function fmtDateOrText(v) {
+  if(!v) return "";
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? v : fmtDateTime(v);
+}
+
 function parseMaybeJson(v, fallback) {
   if (v == null) return fallback;
   if (typeof v !== "string") return v;
@@ -22798,13 +22809,13 @@ function InterviewSchedulingSection({application, onSendTimes, sending, onConfir
       <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Interview Scheduling</p>
 
       {application.interview_confirmed_slot && (
-        <p style={{fontSize:13,color:"#10b981",fontWeight:700,marginBottom:10}}>✓ Confirmed for {fmtDateTime(application.interview_confirmed_slot)}</p>
+        <p style={{fontSize:13,color:"#10b981",fontWeight:700,marginBottom:10}}>✓ Confirmed for {fmtDateOrText(application.interview_confirmed_slot)}</p>
       )}
 
       {!application.interview_confirmed_slot && hasResponse && (
         <div style={{marginBottom:12,padding:"10px 12px",background:"var(--surface)",borderRadius:8,border:"1px solid var(--border2)"}}>
           {application.interview_selected_slot ? (
-            <p style={{fontSize:13,color:"var(--text)"}}>Candidate picked: <strong>{fmtDateTime(application.interview_selected_slot)}</strong></p>
+            <p style={{fontSize:13,color:"var(--text)"}}>Candidate picked: <strong>{fmtDateOrText(application.interview_selected_slot)}</strong></p>
           ) : (
             <p style={{fontSize:13,color:"var(--text)"}}>Candidate suggested: <strong>{application.interview_candidate_note}</strong></p>
           )}
@@ -22814,9 +22825,16 @@ function InterviewSchedulingSection({application, onSendTimes, sending, onConfir
         </div>
       )}
 
+      {(() => {
+        const history = parseMaybeJson(application.interview_slot_history, []);
+        return history.length>0 && (
+          <p style={{fontSize:11,color:"var(--text3)",marginBottom:10}}>Previously confirmed: {history.map(h=>fmtDateOrText(h)).join(", ")} (superseded)</p>
+        );
+      })()}
+
       {!editing ? (
         <button onClick={()=>setEditing(true)} style={{padding:"6px 14px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text2)",cursor:"pointer"}}>
-          {application.interview_slots ? "Propose New Times" : "Propose Interview Times"}
+          {application.interview_confirmed_slot ? "Change Interview Time" : application.interview_slots ? "Propose New Times" : "Propose Interview Times"}
         </button>
       ) : (
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -23686,17 +23704,26 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     if(!app.candidate_email || !slots.length) return;
     setSendingInterviewTimesId(app.id);
     try {
+      // Sending new options after an interview was already confirmed is a
+      // reschedule, not a first invite — the old confirmed time moves into
+      // a history record (never silently overwritten) and the email tone
+      // apologizes instead of reading like a fresh invitation.
+      const isReschedule = !!app.interview_confirmed_slot;
+      const history = isReschedule ? [...parseMaybeJson(app.interview_slot_history,[]), app.interview_confirmed_slot] : parseMaybeJson(app.interview_slot_history,[]);
       const token = uid().replace("local_","") + uid().replace("local_","");
-      const patch = {interview_slots: JSON.stringify(slots), interview_scheduling_token: token, interview_selected_slot: null, interview_candidate_note: null};
+      const patch = {interview_slots: JSON.stringify(slots), interview_scheduling_token: token, interview_selected_slot: null, interview_candidate_note: null, interview_confirmed_slot: null, interview_slot_history: JSON.stringify(history)};
       await ue("JobApplication", app.id, patch).catch(()=>{});
       setApplications(prev=>prev.map(a=>a.id===app.id?{...a,...patch}:a));
       setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,...patch}:prev);
       const pickUrl = window.location.origin + "/careers/interview?token=" + token;
       const jobTitle = openings.find(o=>o.id===app.job_opening_id)?.title || app.job_title || "the role";
       const slotsHtml = slots.map(s=>`<li>${fmtDateTime(s)}</li>`).join("");
+      const introText = isReschedule
+        ? `We're sorry, but we need to reschedule your interview for the ${jobTitle} position${app.interview_confirmed_slot?` (originally confirmed for ${fmtDateOrText(app.interview_confirmed_slot)})`:""}. Here are some new times that work for us:`
+        : `We'd love to schedule an interview with you for the ${jobTitle} position. Here are a few times that work for us:`;
       const bodyHtml = `
         <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Hi ${app.candidate_name||"there"},</h2>
-        <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">We'd love to schedule an interview with you for the ${jobTitle} position. Here are a few times that work for us:</p>
+        <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">${introText}</p>
         <ul style="margin:0 0 16px;padding-left:18px;font-size:14px;line-height:1.8;color:#4b5563">${slotsHtml}</ul>
         <p style="margin:0 0 20px"><a href="${pickUrl}" style="display:inline-block;padding:12px 24px;background:#d90b2c;color:#ffffff;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none">Pick a Time</a></p>
         <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">If none of these work, the link lets you suggest a time that does.</p>
@@ -23705,8 +23732,8 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
           <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
           <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
         </td></tr></table>`;
-      const ok = await sendCareersEmail(app.candidate_email, `Pick an interview time — ${jobTitle}`, bodyHtml, "Admepro Careers").catch(()=>false);
-      logActivity(app.id, ok ? "Interview time options sent" : "Interview time options FAILED to send");
+      const ok = await sendCareersEmail(app.candidate_email, isReschedule ? `Interview Rescheduled — ${jobTitle}` : `Pick an interview time — ${jobTitle}`, bodyHtml, "Admepro Careers").catch(()=>false);
+      logActivity(app.id, ok ? (isReschedule ? "Interview rescheduled — new times sent" : "Interview time options sent") : "Interview time options FAILED to send");
     } finally {
       setSendingInterviewTimesId(null);
     }
@@ -23719,14 +23746,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     setApplications(prev=>prev.map(a=>a.id===app.id?{...a,...patch}:a));
     setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,...patch}:prev);
     await ue("JobApplication", app.id, patch).catch(()=>{});
-    // `slot` is only a real date/time when it came from one of the
-    // proposed options — a candidate-suggested alternative (free text
-    // like "any weekday after 3pm") isn't a parseable date at all, and
-    // new Date() on it doesn't throw, it just silently returns an
-    // "Invalid Date" string that then looked like a real (broken) value
-    // instead of falling back to the original text.
-    const parsedDate = new Date(slot);
-    const slotLabel = !isNaN(parsedDate.getTime()) ? fmtDateTime(slot) : slot;
+    const slotLabel = fmtDateOrText(slot);
     logActivity(app.id, `Interview confirmed — ${slotLabel}`);
 
     if(app.candidate_email) {
