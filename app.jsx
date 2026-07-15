@@ -970,7 +970,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.141";
+const APP_VERSION = "beta 5.142";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -18850,7 +18850,7 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial,clientNames=[],team=
           </select>
         </Field>
         {isSalary&&(
-          <Field label="For (Team Member)" hint="Optional — links this to their Payroll history">
+          <Field label="For (Team Member)" hint="Optional — links this to their Payroll history. No account? Leave this as — and just type their name in Description below.">
             <select value={teamMemberId} onChange={e=>setTeamMemberId(e.target.value)} style={inputSt}>
               <option value="">—</option>
               {team.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
@@ -18957,6 +18957,14 @@ function AddTransactionPage({onBack,onAdd,clientNames=[],team=[]}) {
             {cats.map(c=><option key={c.k} value={c.k}>{c.l}</option>)}
           </select>
         </Field>
+        {isSalary&&(
+          <Field label="For (Team Member)" hint="Optional — links this to their Payroll history. No account? Leave this as — and just type their name in Description below.">
+            <select value={teamMemberId} onChange={e=>setTeamMemberId(e.target.value)} style={inputSt}>
+              <option value="">—</option>
+              {team.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </Field>
+        )}
         {isClientPayment ? (
           <Field label="Client" required hint={clientMode==="select"?"From payment history":"Not in the list? Type it manually"}>
             {clientMode==="select" ? (
