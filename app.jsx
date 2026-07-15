@@ -1032,7 +1032,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.149";
+const APP_VERSION = "beta 5.150";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19772,6 +19772,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const [selectedId,setSelectedId] = useState(null);
   const [selectedClient,setSelectedClient] = useState(null);
   const [selectedPartner,setSelectedPartner] = useState(null);
+  const [selectedPayrollMember,setSelectedPayrollMember] = useState(null);
   const [typeFilter,setTypeFilter] = useState("all");
   const [categoryFilter,setCategoryFilter] = useState("all");
   const [clientFilter,setClientFilter] = useState("all");
@@ -19789,14 +19790,16 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const applyingHistory = React.useRef(false);
   const pushFinanceHistory = (patch) => {
     if(applyingHistory.current) return;
-    const state = {sfPage:"finance", sfView: "view" in patch?patch.view:view, sfClient: "selectedClient" in patch?patch.selectedClient:selectedClient, sfPartner: "selectedPartner" in patch?patch.selectedPartner:selectedPartner, sfSelectedId: "selectedId" in patch?patch.selectedId:selectedId};
+    const state = {sfPage:"finance", sfView: "view" in patch?patch.view:view, sfClient: "selectedClient" in patch?patch.selectedClient:selectedClient, sfPartner: "selectedPartner" in patch?patch.selectedPartner:selectedPartner, sfPayrollMember: "selectedPayrollMember" in patch?patch.selectedPayrollMember:selectedPayrollMember, sfSelectedId: "selectedId" in patch?patch.selectedId:selectedId};
     try{ window.history.pushState(state,""); }catch(e){}
   };
   const openTransaction = (id) => { pushFinanceHistory({selectedId:id}); setSelectedId(id); };
   const openClient = (name) => { pushFinanceHistory({selectedClient:name}); setSelectedClient(name); };
   const openPartner = (key) => { pushFinanceHistory({selectedPartner:key}); setSelectedPartner(key); };
+  const openPayrollMember = (key) => { pushFinanceHistory({selectedPayrollMember:key}); setSelectedPayrollMember(key); };
   const openClientsTab = () => { pushFinanceHistory({view:"clients"}); setView("clients"); };
   const openPartnersTab = () => { pushFinanceHistory({view:"partners"}); setView("partners"); };
+  const openPayrollTab = () => { pushFinanceHistory({view:"payroll"}); setView("payroll"); };
   const openAiTab = () => { pushFinanceHistory({view:"ai"}); setView("ai"); };
   const openOverviewTab = () => { pushFinanceHistory({view:"overview"}); setView("overview"); };
   const openAddTransaction = () => {
@@ -19810,6 +19813,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
       setView(e.state.sfView||"overview");
       setSelectedClient(e.state.sfClient||null);
       setSelectedPartner(e.state.sfPartner||null);
+      setSelectedPayrollMember(e.state.sfPayrollMember||null);
       setSelectedId(e.state.sfSelectedId||null);
       setShowAdd(!!e.state.sfAdd);
       applyingHistory.current = false;
@@ -19927,6 +19931,24 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
     };
   }).filter(p=>p.count>0||p.contributionCount>0).sort((a,b)=>b.total-a.total);
 
+  // Payroll — every "Salaries & Payroll" expense grouped by the team member
+  // it's linked to (or the manually-typed name for someone without an
+  // account), so admins/accountants can see everyone's salary history in
+  // one place instead of digging through each profile separately.
+  const payrollTxns = ledger.filter(l=>l.type==="out"&&l.category==="salaries");
+  const payrollByMember = {};
+  payrollTxns.forEach(l=>{
+    const memberId = l.raw?.team_member_id||null;
+    const member = memberId ? team.find(t=>t.id===memberId) : null;
+    const key = memberId || `other:${l.sub||l.label}`;
+    const name = member?.name || l.sub || "Unlinked";
+    if(!payrollByMember[key]) payrollByMember[key] = {key, memberId, name, title:member?.title||"", total:0, count:0, lastDate:null, txns:[]};
+    const p = payrollByMember[key];
+    p.total += l.amount; p.count += 1; p.txns.push(l);
+    if(!p.lastDate || new Date(l.date)>new Date(p.lastDate)) p.lastDate = l.date;
+  });
+  const payrollRows = Object.values(payrollByMember).sort((a,b)=>b.total-a.total);
+
   // Month picker options — every calendar month from the earliest transaction
   // through the current month, newest first, e.g. {value:"2026-07",label:"Jul 2026"}.
   const allDates = [...payments.map(p=>p.payment_date),...subscriptionPayments.map(p=>p.payment_date),...expenses.map(e=>e.date)].filter(Boolean).map(d=>new Date(d));
@@ -20043,7 +20065,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
 
       {/* View tabs */}
       <div style={{display:"flex",flexDirection:"row",flexWrap:"wrap",gap:6,width:"100%",minHeight:36,paddingBottom:2,borderBottom:"1px solid var(--border, #e5e7eb)"}}>
-        {[["overview","Overview",openOverviewTab],["clients","Clients",openClientsTab],["partners","Partners",openPartnersTab],["ai","AI",openAiTab]].map(([k,l,fn])=>(
+        {[["overview","Overview",openOverviewTab],["clients","Clients",openClientsTab],["partners","Partners",openPartnersTab],["payroll","Payroll",openPayrollTab],["ai","AI",openAiTab]].map(([k,l,fn])=>(
           <button key={k} type="button" onClick={fn} style={{display:"inline-block",flexShrink:0,whiteSpace:"nowrap",padding:"9px 18px",fontSize:13,fontWeight:600,background:"transparent",borderWidth:"0 0 2px 0",borderStyle:"solid",borderColor:view===k?"var(--accent, #d90b2c)":"transparent",color:view===k?"var(--accent, #d90b2c)":"var(--text2, #6b7280)",cursor:"pointer"}}>{l}</button>
         ))}
       </div>
@@ -20138,6 +20160,65 @@ No markdown, no explanation.`;
             </div>
           )}
         </div>
+      ) : view==="payroll" ? (
+        selectedPayrollMember ? (() => {
+          const row = payrollRows.find(r=>r.key===selectedPayrollMember);
+          if(!row) return <EmptyState icon={Icons.wallet} title="Not found" sub="This payroll record no longer exists."/>;
+          return (
+            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+              <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:10}}>
+                <button onClick={()=>{ setSelectedPayrollMember(null); try{window.history.back();}catch(e){} }} style={{width:32,height:32,borderRadius:"50%",border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
+                  <Ico d={Icons.chevL||Icons.arrowLeft} size={14} stroke="var(--text2)"/>
+                </button>
+                <Avatar name={row.name} size={34}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <h3 style={{fontWeight:700,fontSize:14}}>{row.name}</h3>
+                  <p style={{fontSize:12,color:"var(--text3)"}}>{row.title?`${row.title} · `:""}{row.count} payment{row.count!==1?"s":""} · Total EGP {Math.round(row.total).toLocaleString()}</p>
+                </div>
+              </div>
+              <div>
+                {row.txns.sort((a,b)=>new Date(b.date)-new Date(a.date)).map((l,i)=>(
+                  <div key={l.id} onClick={()=>openTransaction(l.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 18px",borderBottom:i<row.txns.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
+                    onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
+                    onMouseLeave={e=>e.currentTarget.style.background=""}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <p style={{fontSize:13,fontWeight:700}}>{l.sub||l.label}{l.raw?.salary_month&&<span style={{fontWeight:400,color:"var(--text3)"}}> — {new Date(l.raw.salary_month+"-01").toLocaleDateString("en-US",{month:"long",year:"numeric"})}</span>}</p>
+                      <p style={{fontSize:11,color:"var(--text3)"}}>{fmtDate(l.date)}{l.method?` · ${l.method}`:""}</p>
+                    </div>
+                    <p style={{fontSize:14,fontWeight:800,color:"#ef4444",flexShrink:0}}>−{l.currency} {Math.round(l.amount).toLocaleString()}</p>
+                    <Ico d={Icons.chevR} size={14} stroke="var(--text3)"/>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })() : (
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+          <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
+            <h3 style={{fontWeight:700,fontSize:14}}>Payroll</h3>
+            <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>{payrollRows.length} member{payrollRows.length!==1?"s":""} paid · Total EGP {Math.round(payrollRows.reduce((a,r)=>a+r.total,0)).toLocaleString()}</p>
+          </div>
+          {payrollRows.length===0 ? (
+            <EmptyState icon={Icons.wallet} title="No salary payments yet" sub="Salaries & Payroll transactions linked to a team member will show up here."/>
+          ) : (
+            <div>
+              {payrollRows.map((r,i)=>(
+                <div key={r.key} onClick={()=>openPayrollMember(r.key)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 18px",borderBottom:i<payrollRows.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
+                  onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
+                  onMouseLeave={e=>e.currentTarget.style.background=""}>
+                  <Avatar name={r.name} size={34}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <p style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name}</p>
+                    <p style={{fontSize:11,color:"var(--text3)"}}>{r.title?`${r.title} · `:""}{r.count} payment{r.count!==1?"s":""} · last {fmtDate(r.lastDate)}</p>
+                  </div>
+                  <p style={{fontSize:14,fontWeight:800,color:"#ef4444",flexShrink:0}}>−EGP {Math.round(r.total).toLocaleString()}</p>
+                  <Ico d={Icons.chevR} size={14} stroke="var(--text3)"/>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        )
       ) : view==="clients" ? (
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
           <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
