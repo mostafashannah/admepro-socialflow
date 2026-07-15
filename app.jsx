@@ -1033,7 +1033,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.157";
+const APP_VERSION = "beta 5.158";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13775,14 +13775,7 @@ function CompleteApplicationPage({token}) {
     })();
   },[token]);
 
-  const missing = application ? {
-    cv: !application.cv_url,
-    phone: !application.candidate_phone,
-    name: !application.candidate_name || application.candidate_name.toLowerCase()===(application.candidate_email||"").toLowerCase(),
-    expected_salary: !application.expected_salary,
-    available_start_date: !application.available_start_date,
-    open_to_task: !application.open_to_task,
-  } : {};
+  const missing = applicationMissingFields(application);
 
   const sf = (k,v) => setForm(prev=>({...prev,[k]:v}));
 
@@ -22298,6 +22291,28 @@ function applicationRank(a) {
   return base + a.interview_rating * 20;
 }
 
+// Same "what's missing" rules imap-recruitment-cron.php uses when deciding
+// whether to send a "complete your application" email — kept in sync so
+// the manual "Send Complete Your Application" button in ApplicationDetail
+// and the public CompleteApplicationPage form always agree on what still
+// needs filling in.
+function applicationMissingFields(application) {
+  if (!application) return {};
+  return {
+    cv: !application.cv_url,
+    phone: !application.candidate_phone,
+    name: !application.candidate_name || application.candidate_name.toLowerCase()===(application.candidate_email||"").toLowerCase(),
+    expected_salary: !application.expected_salary,
+    available_start_date: !application.available_start_date,
+    open_to_task: !application.open_to_task,
+  };
+}
+const MISSING_FIELD_LABELS = {
+  cv: "Your CV", phone: "Your phone number", name: "Your full name",
+  expected_salary: "Your expected salary", available_start_date: "Your available start date",
+  open_to_task: "Whether you're open to a paid test task",
+};
+
 // Shared activity-log writer for job_applications — status changes,
 // reassignments, ratings, emails sent, candidate form submissions —
 // anything worth showing on the "Activity Log" section of the detail
@@ -22441,7 +22456,7 @@ function JobOpeningForm({opening, currentUser, onSave, onClose}) {
   );
 }
 
-function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader, onConvertCv, convertingCv, cvConvertFailed, onRateInterview, activityLog}) {
+function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader, onConvertCv, convertingCv, cvConvertFailed, onRateInterview, activityLog, onSendCompletionEmail, sendingCompletion}) {
   const [notes, setNotes] = useState(application.notes||"");
   const [rerunning, setRerunning] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -22617,6 +22632,15 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
           </div>
         )}
 
+        {onSendCompletionEmail && application.source==="email" && Object.values(applicationMissingFields(application)).some(Boolean) && (
+          <div style={{marginBottom:14,padding:"10px 14px",background:"#f59e0b1a",border:"1px solid #f59e0b44",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+            <span style={{fontSize:12,color:"var(--text2)"}}>This application is missing some required info.</span>
+            <button onClick={()=>onSendCompletionEmail(application)} disabled={sendingCompletion} style={{padding:"7px 14px",borderRadius:8,background:"#f59e0b",border:"none",fontSize:12,fontWeight:700,color:"#fff",cursor:sendingCompletion?"not-allowed":"pointer",flexShrink:0}}>
+              {sendingCompletion?"Sending…":"Send Complete Your Application"}
+            </button>
+          </div>
+        )}
+
         <div style={{marginBottom:14}}>
           <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Status</p>
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -22681,16 +22705,50 @@ const RECRUITMENT_EMAIL_DEFAULTS = {
 // bounces, anything the auto-capture cron skipped) without switching to
 // webmail. Fetches on demand via recruitment-mailbox.php, which talks
 // IMAP directly using the same credentials as the auto-capture cron.
-function RecruitmentMailboxTab() {
-  const [box, setBox] = useState("inbox");
+// Mirrors the PHP threadKey() in recruitment-mailbox.php — used only for
+// a freshly-composed email so it lands in the right thread group locally
+// before the next refresh confirms it against the server's own grouping.
+function threadKeyClient(subject) {
+  let s = (subject||"").trim();
+  while(/^\s*(re|fwd?)\s*:\s*/i.test(s)) s = s.replace(/^\s*(re|fwd?)\s*:\s*/i,"");
+  s = s.replace(/\s+/g," ").trim();
+  return s===""?"(no subject)":s.toLowerCase();
+}
+
+// Groups raw IMAP messages (already tagged box:"inbox"|"sent" and
+// thread_key by the backend) into conversations, newest-first, with each
+// thread's own messages sorted oldest-first (chat-log order).
+function buildMailThreads(messages) {
+  const byKey = {};
+  messages.forEach(m=>{
+    if(!byKey[m.thread_key]) byKey[m.thread_key] = [];
+    byKey[m.thread_key].push(m);
+  });
+  return Object.entries(byKey).map(([key,msgs])=>{
+    const sorted = [...msgs].sort((a,b)=>new Date(a.date)-new Date(b.date));
+    const last = sorted[sorted.length-1];
+    return {key, subject: sorted[0].subject||"(no subject)", messages: sorted, lastDate: last.date, lastMsg: last};
+  }).sort((a,b)=>new Date(b.lastDate)-new Date(a.lastDate));
+}
+
+function RecruitmentMailboxTab({appSettings}) {
+  const {isMobile} = useResponsive();
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [selected, setSelected] = useState(null);
+  const [selectedKey, setSelectedKey] = useState(null);
+  const [replyText, setReplyText] = useState("");
+  const [sendingReply, setSendingReply] = useState(false);
+  const [showCompose, setShowCompose] = useState(false);
+  const [compose, setCompose] = useState({to:"",subject:"",body:""});
+  const [sendingCompose, setSendingCompose] = useState(false);
 
-  const load = (b) => {
-    setLoading(true); setError(""); setSelected(null);
-    fetch(`${RECRUITMENT_MAILBOX_ENDPOINT}?box=${b}&limit=100`)
+  const mailboxEmail = (appSettings?.recruitment_email_settings?.imap_email||"").toLowerCase();
+  const fromName = appSettings?.recruitment_email_settings?.confirmation_from_name || "Admepro Careers";
+
+  const load = () => {
+    setLoading(true); setError("");
+    fetch(`${RECRUITMENT_MAILBOX_ENDPOINT}?box=all&limit=100`)
       .then(r=>r.json())
       .then(json=>{
         if(!json.ok) throw new Error(json.error||"Failed to load mailbox");
@@ -22699,68 +22757,150 @@ function RecruitmentMailboxTab() {
       .catch(e=>setError(e.message||"Failed to load mailbox"))
       .finally(()=>setLoading(false));
   };
-  useEffect(()=>{ load(box); },[box]);
+  useEffect(()=>{ load(); },[]);
+
+  const threads = buildMailThreads(messages);
+  const selectedThread = threads.find(t=>t.key===selectedKey) || null;
+
+  // Who to actually send a reply/new email to: the other party in the
+  // conversation, i.e. whichever address in the thread isn't our own mailbox.
+  const otherPartyOf = (thread) => {
+    if(!thread) return "";
+    for(let i=thread.messages.length-1;i>=0;i--){
+      const m = thread.messages[i];
+      if(m.box==="inbox" && m.from_email) return m.from_email;
+      if(m.box==="sent" && m.to?.[0]) return m.to[0];
+    }
+    return "";
+  };
+
+  const sendReply = async () => {
+    if(!replyText.trim()||!selectedThread) return;
+    setSendingReply(true);
+    const to = otherPartyOf(selectedThread);
+    const subject = /^\s*re\s*:/i.test(selectedThread.lastMsg.subject) ? selectedThread.lastMsg.subject : `Re: ${selectedThread.subject}`;
+    const html = `<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#111827;white-space:pre-wrap">${replyText.trim().replace(/</g,"&lt;")}</p>`;
+    const ok = await sendCareersEmail(to, subject, html, fromName).catch(()=>false);
+    if(ok) {
+      const newMsg = {uid:`local-${Date.now()}`, box:"sent", thread_key:selectedThread.key, subject, from_email:mailboxEmail, from_name:fromName, to:[to], date:new Date().toISOString(), body:replyText.trim(), snippet:replyText.trim().slice(0,160), has_attachments:false};
+      setMessages(prev=>[newMsg,...prev]);
+      setReplyText("");
+    } else {
+      setError("Failed to send reply — check SMTP settings.");
+    }
+    setSendingReply(false);
+  };
+
+  const sendCompose = async () => {
+    if(!compose.to.trim()||!compose.subject.trim()||!compose.body.trim()) return;
+    setSendingCompose(true);
+    const html = `<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#111827;white-space:pre-wrap">${compose.body.trim().replace(/</g,"&lt;")}</p>`;
+    const ok = await sendCareersEmail(compose.to.trim(), compose.subject.trim(), html, fromName).catch(()=>false);
+    if(ok) {
+      const key = threadKeyClient(compose.subject.trim());
+      const newMsg = {uid:`local-${Date.now()}`, box:"sent", thread_key:key, subject:compose.subject.trim(), from_email:mailboxEmail, from_name:fromName, to:[compose.to.trim()], date:new Date().toISOString(), body:compose.body.trim(), snippet:compose.body.trim().slice(0,160), has_attachments:false};
+      setMessages(prev=>[newMsg,...prev]);
+      setSelectedKey(key);
+      setShowCompose(false);
+      setCompose({to:"",subject:"",body:""});
+    } else {
+      setError("Failed to send email — check SMTP settings.");
+    }
+    setSendingCompose(false);
+  };
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
-        <div style={{display:"flex",gap:6}}>
-          {[["inbox","Inbox"],["sent","Sent"]].map(([k,l])=>(
-            <button key={k} onClick={()=>setBox(k)} style={{padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,background:box===k?"var(--accent)":"var(--surface2)",color:box===k?"#fff":"var(--text2)",border:`1px solid ${box===k?"var(--accent)":"var(--border2)"}`,cursor:"pointer"}}>{l}</button>
-          ))}
+        <p style={{fontSize:12,color:"var(--text3)"}}>{threads.length} conversation{threads.length!==1?"s":""}</p>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>setShowCompose(true)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:8,background:"var(--accent)",border:"none",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer"}}>
+            <Ico d={Icons.plus} size={12}/> New Email
+          </button>
+          <button onClick={load} disabled={loading} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text2)",cursor:loading?"not-allowed":"pointer"}}>
+              {loading?<Spinner size={12}/>:<Ico d={Icons.refresh||Icons.repeat} size={12}/>} Refresh
+          </button>
         </div>
-        <button onClick={()=>load(box)} disabled={loading} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text2)",cursor:loading?"not-allowed":"pointer"}}>
-            {loading?<Spinner size={12}/>:<Ico d={Icons.refresh||Icons.repeat} size={12}/>} Refresh
-        </button>
       </div>
 
       {error&&(
         <div style={{padding:"10px 14px",background:"#ef444411",border:"1px solid #ef444433",borderRadius:8,fontSize:12,color:"var(--text2)"}}>{error}</div>
       )}
 
-      <div style={{display:"grid",gridTemplateColumns:selected?"340px 1fr":"1fr",gap:14,alignItems:"flex-start"}}>
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":(selectedThread?"340px 1fr":"1fr"),gap:14,alignItems:"flex-start"}}>
+        {(!isMobile||!selectedThread)&&(
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
           {loading ? (
             <div style={{padding:30,display:"flex",justifyContent:"center"}}><Spinner size={18}/></div>
-          ) : messages.length===0 ? (
-            <EmptyState icon={Icons.link2} title={`No ${box==="sent"?"sent":"inbox"} messages found`} sub={error?"":"This mailbox may be empty, or the connection needs to be set up in Email Settings."}/>
+          ) : threads.length===0 ? (
+            <EmptyState icon={Icons.link2} title="No messages found" sub={error?"":"This mailbox may be empty, or the connection needs to be set up in Email Settings."}/>
           ) : (
             <div>
-              {messages.map((m,i)=>(
-                <div key={m.uid} onClick={()=>setSelected(m)} style={{padding:"12px 16px",borderBottom:i<messages.length-1?"1px solid var(--border)":"none",cursor:"pointer",background:selected?.uid===m.uid?"var(--surface2)":"transparent"}}
-                  onMouseEnter={e=>{ if(selected?.uid!==m.uid) e.currentTarget.style.background="var(--surface2)"; }}
-                  onMouseLeave={e=>{ if(selected?.uid!==m.uid) e.currentTarget.style.background="transparent"; }}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-                    <p style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>
-                      {box==="sent" ? (m.to?.join(", ")||"—") : (m.from_name||m.from_email||"Unknown")}
+              {threads.map((t,i)=>{
+                const last = t.lastMsg;
+                const counterparty = last.box==="sent" ? (last.to?.join(", ")||"—") : (last.from_name||last.from_email||"Unknown");
+                return (
+                  <div key={t.key} onClick={()=>setSelectedKey(t.key)} style={{padding:"12px 16px",borderBottom:i<threads.length-1?"1px solid var(--border)":"none",cursor:"pointer",background:selectedKey===t.key?"var(--surface2)":"transparent"}}
+                    onMouseEnter={e=>{ if(selectedKey!==t.key) e.currentTarget.style.background="var(--surface2)"; }}
+                    onMouseLeave={e=>{ if(selectedKey!==t.key) e.currentTarget.style.background="transparent"; }}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                      <p style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>{counterparty}</p>
+                      <span style={{fontSize:10,color:"var(--text3)",flexShrink:0}}>{t.lastDate?fmtDate(t.lastDate):""}</span>
+                    </div>
+                    <p style={{fontSize:12,fontWeight:600,color:"var(--text2)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                      {t.subject}{t.messages.length>1&&<span style={{fontWeight:700,color:"var(--accent)"}}> ({t.messages.length})</span>}
+                      {last.has_attachments&&<Ico d={Icons.paperclip} size={11} style={{display:"inline",marginLeft:6,verticalAlign:"middle"}}/>}
                     </p>
-                    <span style={{fontSize:10,color:"var(--text3)",flexShrink:0}}>{m.date?fmtDate(m.date):""}</span>
+                    <p style={{fontSize:11,color:"var(--text3)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{last.snippet}</p>
                   </div>
-                  <p style={{fontSize:12,fontWeight:600,color:"var(--text2)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.subject||"(no subject)"}{m.has_attachments&&<Ico d={Icons.paperclip||Icons.link2} size={11} style={{display:"inline",marginLeft:6,verticalAlign:"middle"}}/>}</p>
-                  <p style={{fontSize:11,color:"var(--text3)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.snippet}</p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
+        )}
 
-        {selected&&(
-          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
-            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,marginBottom:14}}>
-              <div>
-                <p style={{fontWeight:700,fontSize:16}}>{selected.subject||"(no subject)"}</p>
-                <p style={{fontSize:12,color:"var(--text3)",marginTop:4}}>
-                  {box==="sent" ? `To: ${selected.to?.join(", ")||"—"}` : `From: ${selected.from_name?`${selected.from_name} <${selected.from_email}>`:selected.from_email}`}
-                </p>
-                <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{selected.date?fmtDateTime(selected.date):""}</p>
-              </div>
-              <button onClick={()=>setSelected(null)} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer"}}><Ico d={Icons.x||Icons.close} size={16}/></button>
+        {selectedThread&&(
+          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:14}}>
+            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
+              <p style={{fontWeight:700,fontSize:16}}>{selectedThread.subject}</p>
+              <button onClick={()=>setSelectedKey(null)} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",flexShrink:0}}><Ico d={Icons.x} size={16}/></button>
             </div>
-            <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{selected.snippet}{selected.snippet?.length>=160?"…":""}</p>
-            {selected.has_attachments&&<p style={{fontSize:11,color:"var(--text3)",marginTop:12}}>📎 Has attachment(s) — open in webmail to download.</p>}
+
+            <div style={{display:"flex",flexDirection:"column",gap:10,maxHeight:420,overflowY:"auto"}}>
+              {selectedThread.messages.map(m=>(
+                <div key={m.uid} style={{alignSelf:m.box==="sent"?"flex-end":"flex-start",maxWidth:"80%",background:m.box==="sent"?"var(--accentbg)":"var(--surface2)",border:`1px solid ${m.box==="sent"?"var(--accent)":"var(--border2)"}33`,borderRadius:12,padding:"10px 14px"}}>
+                  <p style={{fontSize:11,fontWeight:700,color:m.box==="sent"?"var(--accent)":"var(--text2)",marginBottom:4}}>
+                    {m.box==="sent" ? `To: ${m.to?.join(", ")||"—"}` : (m.from_name||m.from_email)}
+                    <span style={{fontWeight:400,color:"var(--text3)",marginLeft:8}}>{fmtDateTime(m.date)}</span>
+                  </p>
+                  <p style={{fontSize:13,color:"var(--text)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{m.body||m.snippet}</p>
+                  {m.has_attachments&&<p style={{fontSize:11,color:"var(--text3)",marginTop:8}}>📎 Has attachment(s) — open in webmail to download.</p>}
+                </div>
+              ))}
+            </div>
+
+            <div style={{borderTop:"1px solid var(--border)",paddingTop:14,display:"flex",flexDirection:"column",gap:8}}>
+              <textarea value={replyText} onChange={e=>setReplyText(e.target.value)} placeholder={`Reply to ${otherPartyOf(selectedThread)}…`} rows={3} style={{...inputSt,resize:"vertical"}}/>
+              <Btn onClick={sendReply} disabled={sendingReply||!replyText.trim()} style={{alignSelf:"flex-end"}}>{sendingReply?<Spinner size={13}/>:"Send Reply"}</Btn>
+            </div>
           </div>
         )}
       </div>
+
+      {showCompose&&(
+        <Modal open={showCompose} onClose={()=>setShowCompose(false)} title="New Email" width={480}
+          footer={<>
+            <Btn variant="secondary" onClick={()=>setShowCompose(false)}>Cancel</Btn>
+            <Btn onClick={sendCompose} disabled={sendingCompose||!compose.to.trim()||!compose.subject.trim()||!compose.body.trim()}>{sendingCompose?<Spinner size={13}/>:"Send"}</Btn>
+          </>}>
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <Field label="To" required><input type="email" value={compose.to} onChange={e=>setCompose(p=>({...p,to:e.target.value}))} placeholder="candidate@example.com" style={inputSt}/></Field>
+            <Field label="Subject" required><input value={compose.subject} onChange={e=>setCompose(p=>({...p,subject:e.target.value}))} style={inputSt}/></Field>
+            <Field label="Message" required><textarea value={compose.body} onChange={e=>setCompose(p=>({...p,body:e.target.value}))} rows={6} style={{...inputSt,resize:"vertical"}}/></Field>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -22940,6 +23080,42 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,interview_rating:nextRating}:prev);
     await ue("JobApplication", app.id, {interview_rating: nextRating}).catch(()=>{});
     logActivity(app.id, nextRating==null ? "Interview rating cleared" : `Rated ${nextRating} star${nextRating!==1?"s":""} after interview`);
+  };
+  const [sendingCompletionId, setSendingCompletionId] = useState(null);
+  const handleSendCompletionEmail = async (app) => {
+    if(!app.candidate_email) return;
+    setSendingCompletionId(app.id);
+    try {
+      const missing = applicationMissingFields(app);
+      const missingList = Object.entries(missing).filter(([,v])=>v).map(([k])=>MISSING_FIELD_LABELS[k]).filter(Boolean);
+      const token = app.completion_token || (uid().replace("local_","") + uid().replace("local_",""));
+      if(!app.completion_token) {
+        await ue("JobApplication", app.id, {completion_token: token}).catch(()=>{});
+        setApplications(prev=>prev.map(a=>a.id===app.id?{...a,completion_token:token}:a));
+        setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,completion_token:token}:prev);
+      }
+      const completeUrl = window.location.origin + "/careers/complete?token=" + token;
+      const settings = appSettings?.recruitment_email_settings || {};
+      const subject = settings.completion_subject || "Please complete your Admepro application";
+      const introRaw = settings.completion_message || "Thanks for applying! To finish reviewing your application, could you fill in a few more details:";
+      const jobTitle = openings.find(o=>o.id===app.job_opening_id)?.title || "";
+      const intro = introRaw.replace("{{job}}", jobTitle);
+      const missingListHtml = missingList.length
+        ? `<ul style="margin:0 0 16px;padding-left:18px;font-size:14px;line-height:1.8;color:#4b5563">${missingList.map(m=>`<li>${m}</li>`).join("")}</ul>`
+        : "";
+      const bodyHtml = `
+        <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Hi ${app.candidate_name||"there"},</h2>
+        <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">${intro}</p>
+        ${missingListHtml}
+        <p style="margin:0 0 20px"><a href="${completeUrl}" style="display:inline-block;padding:12px 24px;background:#d90b2c;color:#ffffff;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none">Complete My Application</a></p>
+        <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
+          <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
+        </td></tr></table>`;
+      const ok = await sendCareersEmail(app.candidate_email, subject, bodyHtml, settings.confirmation_from_name||"Admepro Careers").catch(()=>false);
+      logActivity(app.id, ok ? "Complete-your-application email sent (manual)" : "Complete-your-application email FAILED to send");
+    } finally {
+      setSendingCompletionId(null);
+    }
   };
   const [fixingEmailApps, setFixingEmailApps] = useState(false);
   const [fixMsg, setFixMsg] = useState("");
@@ -23246,7 +23422,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   );
 
   if(selectedApp) return (
-    <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===selectedApp.id} cvConvertFailed={cvConvertFailedId===selectedApp.id} onRateInterview={handleRateInterview} activityLog={activityLogs.filter(l=>l.application_id===selectedApp.id)}/>
+    <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===selectedApp.id} cvConvertFailed={cvConvertFailedId===selectedApp.id} onRateInterview={handleRateInterview} activityLog={activityLogs.filter(l=>l.application_id===selectedApp.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===selectedApp.id}/>
   );
 
   if(selectedGroup) {
@@ -23260,7 +23436,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:22,margin:0}}>{sortedGroup[0].candidate_name} · {sortedGroup.length} applications</h2>
         </div>
         {sortedGroup.map((app,i)=>(
-          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===app.id} cvConvertFailed={cvConvertFailedId===app.id} onRateInterview={handleRateInterview} activityLog={activityLogs.filter(l=>l.application_id===app.id)}/>
+          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===app.id} cvConvertFailed={cvConvertFailedId===app.id} onRateInterview={handleRateInterview} activityLog={activityLogs.filter(l=>l.application_id===app.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===app.id}/>
         ))}
       </div>
     );
@@ -23406,7 +23582,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
         </div>
       )}
 
-      {tab==="inbox"&&<RecruitmentMailboxTab/>}
+      {tab==="inbox"&&<RecruitmentMailboxTab appSettings={appSettings}/>}
 
       {tab==="email"&&<RecruitmentEmailSettingsTab appSettings={appSettings} onSaveSettings={onSaveSettings}/>}
     </div>

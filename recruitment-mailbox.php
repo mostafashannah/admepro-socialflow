@@ -2,11 +2,12 @@
 // ================================================================
 // SocialFlow — Recruitment mailbox viewer (read-only)
 //
-// Lists messages from the recruitment mailbox's Inbox or Sent folder via
-// IMAP (webklex/php-imap, same package/credentials as
+// Lists messages from the recruitment mailbox's Inbox and/or Sent folder
+// via IMAP (webklex/php-imap, same package/credentials as
 // imap-recruitment-cron.php) so staff can see the actual inbox/sent
-// conversation without logging into webmail separately. Read-only —
-// never writes, moves, or deletes anything.
+// conversation, grouped into threads, without logging into webmail
+// separately. Read-only — never writes, moves, or deletes anything.
+// Sending replies/new emails goes through careers-mail.php instead.
 // ================================================================
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, OPTIONS");
@@ -69,58 +70,77 @@ try {
     exit;
 }
 
-$box = isset($_GET['box']) && $_GET['box'] === 'sent' ? 'sent' : 'inbox';
-$limit = min(max((int) ($_GET['limit'] ?? 50), 1), 200);
+// Thread key: the subject with any number of leading Re:/Fwd: prefixes
+// stripped and whitespace normalized — good enough to group a real
+// back-and-forth conversation without needing to walk Message-ID/
+// References header chains (which some senders don't set consistently).
+function threadKey($subject) {
+    $s = trim((string) $subject);
+    $s = preg_replace('/^\s*(re|fwd?)\s*:\s*/i', '', $s);
+    while (preg_match('/^\s*(re|fwd?)\s*:\s*/i', $s)) {
+        $s = preg_replace('/^\s*(re|fwd?)\s*:\s*/i', '', $s);
+    }
+    $s = preg_replace('/\s+/', ' ', trim($s));
+    return $s === '' ? '(no subject)' : strtolower($s);
+}
 
-$folder = null;
-if ($box === 'inbox') {
-    $folder = $client->getFolder('INBOX');
-} else {
-    // Sent folder name varies by mail server — try the common ones in order.
-    foreach (['Sent', 'INBOX.Sent', 'Sent Items', 'INBOX/Sent', 'Sent Messages'] as $name) {
+function fetchBox($client, $box, $limit) {
+    $folder = null;
+    if ($box === 'inbox') {
+        $folder = $client->getFolder('INBOX');
+    } else {
+        foreach (['Sent', 'INBOX.Sent', 'Sent Items', 'INBOX/Sent', 'Sent Messages'] as $name) {
+            try {
+                $f = $client->getFolder($name);
+                if ($f) { $folder = $f; break; }
+            } catch (Throwable $e) { continue; }
+        }
+    }
+    if (!$folder) return [];
+
+    try {
+        $messages = $folder->messages()->all()->limit($limit)->setFetchOrderDesc()->get();
+    } catch (Throwable $e) {
+        return [];
+    }
+
+    $out = [];
+    foreach ($messages as $message) {
         try {
-            $f = $client->getFolder($name);
-            if ($f) { $folder = $f; break; }
+            $fromList = $message->getFrom();
+            $from = $fromList && $fromList->count() ? $fromList[0] : null;
+            $toList = $message->getTo();
+            $to = [];
+            if ($toList) { foreach ($toList as $t) { $to[] = trim((string) $t->mail); } }
+            $bodyText = trim((string) $message->getTextBody());
+            $bodyText = preg_replace('/\n{3,}/', "\n\n", $bodyText);
+            $subject = (string) $message->getSubject();
+            $out[] = [
+                'uid' => $message->getUid(),
+                'box' => $box,
+                'message_id' => (string) $message->getMessageId(),
+                'thread_key' => threadKey($subject),
+                'subject' => $subject,
+                'from_email' => $from ? trim((string) $from->mail) : '',
+                'from_name' => $from && !empty($from->personal) ? trim((string) $from->personal) : '',
+                'to' => $to,
+                'date' => $message->getDate() ? $message->getDate()->toDate()->format(DATE_ATOM) : null,
+                'body' => mb_substr($bodyText, 0, 4000),
+                'snippet' => mb_substr(preg_replace('/\s+/', ' ', $bodyText), 0, 160),
+                'has_attachments' => $message->getAttachments()->count() > 0,
+            ];
         } catch (Throwable $e) { continue; }
     }
+    return $out;
 }
 
-if (!$folder) {
-    http_response_code(404);
-    echo json_encode(['error' => $box === 'sent' ? 'Could not find a Sent folder on this mailbox' : 'Could not find INBOX']);
-    exit;
-}
+$box = $_GET['box'] ?? 'all';
+$limit = min(max((int) ($_GET['limit'] ?? 60), 1), 200);
 
-try {
-    $messages = $folder->messages()->all()->limit($limit)->setFetchOrderDesc()->get();
-} catch (Throwable $e) {
-    http_response_code(502);
-    echo json_encode(['error' => 'Failed to fetch messages: ' . $e->getMessage()]);
-    exit;
-}
+$messages = [];
+if ($box === 'inbox' || $box === 'all') $messages = array_merge($messages, fetchBox($client, 'inbox', $limit));
+if ($box === 'sent' || $box === 'all') $messages = array_merge($messages, fetchBox($client, 'sent', $limit));
 
-$out = [];
-foreach ($messages as $message) {
-    try {
-        $fromList = $message->getFrom();
-        $from = $fromList && $fromList->count() ? $fromList[0] : null;
-        $toList = $message->getTo();
-        $to = [];
-        if ($toList) { foreach ($toList as $t) { $to[] = trim((string) $t->mail); } }
-        $bodyText = trim((string) $message->getTextBody());
-        $snippet = mb_substr(preg_replace('/\s+/', ' ', $bodyText), 0, 160);
-        $out[] = [
-            'uid' => $message->getUid(),
-            'message_id' => (string) $message->getMessageId(),
-            'subject' => (string) $message->getSubject(),
-            'from_email' => $from ? trim((string) $from->mail) : '',
-            'from_name' => $from && !empty($from->personal) ? trim((string) $from->personal) : '',
-            'to' => $to,
-            'date' => $message->getDate() ? $message->getDate()->toDate()->format(DATE_ATOM) : null,
-            'snippet' => $snippet,
-            'has_attachments' => $message->getAttachments()->count() > 0,
-        ];
-    } catch (Throwable $e) { continue; }
-}
+usort($messages, fn($a, $b) => strcmp($b['date'] ?? '', $a['date'] ?? ''));
 
-echo json_encode(['ok' => true, 'box' => $box, 'count' => count($out), 'messages' => $out]);
+echo json_encode(['ok' => true, 'box' => $box, 'count' => count($messages), 'messages' => $messages]);
