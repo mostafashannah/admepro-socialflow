@@ -1051,7 +1051,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.182";
+const APP_VERSION = "beta 5.183";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23256,7 +23256,7 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
               )}
             </div>
             {!application.linked_team_member_id&&(
-              <button onClick={()=>{ try{ onMakeTeamMember(application); }catch(e){ console.error("Make Team Member failed:",e); alert("Something went wrong opening the invite form: "+(e?.message||e)); } }} style={{padding:"8px 16px",borderRadius:8,background:"var(--accent)",border:"none",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer",flexShrink:0}}>
+              <button onClick={()=>{ alert("Button clicked — opening invite form for "+(application.candidate_name||application.candidate_email||"this candidate")); try{ onMakeTeamMember(application); }catch(e){ console.error("Make Team Member failed:",e); alert("Something went wrong opening the invite form: "+(e?.message||e)); } }} style={{padding:"8px 16px",borderRadius:8,background:"var(--accent)",border:"none",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer",flexShrink:0}}>
                 {application.team_member_invited_at?"Resend Invitation":"Make Team Member"}
               </button>
             )}
