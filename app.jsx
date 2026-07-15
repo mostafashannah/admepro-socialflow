@@ -1033,7 +1033,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.159";
+const APP_VERSION = "beta 5.160";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22756,6 +22756,7 @@ function RecruitmentMailboxTab({appSettings}) {
   const [showCompose, setShowCompose] = useState(false);
   const [compose, setCompose] = useState({to:"",subject:"",body:""});
   const [sendingCompose, setSendingCompose] = useState(false);
+  const [boxFilter, setBoxFilter] = useState("all"); // all | inbox | sent — filters which threads show, threading itself always spans both
 
   const mailboxEmail = (appSettings?.recruitment_email_settings?.imap_email||"").toLowerCase();
   const fromName = appSettings?.recruitment_email_settings?.confirmation_from_name || "Admepro Careers";
@@ -22773,8 +22774,12 @@ function RecruitmentMailboxTab({appSettings}) {
   };
   useEffect(()=>{ load(); },[]);
 
-  const threads = buildMailThreads(messages);
-  const selectedThread = threads.find(t=>t.key===selectedKey) || null;
+  const allThreads = buildMailThreads(messages);
+  // The filter picks which threads to LIST (a thread must have at least
+  // one message in that box), but a selected thread still shows its full
+  // back-and-forth from both boxes — filtering only narrows the list.
+  const threads = boxFilter==="all" ? allThreads : allThreads.filter(t=>t.messages.some(m=>m.box===boxFilter));
+  const selectedThread = allThreads.find(t=>t.key===selectedKey) || null;
 
   // Who to actually send a reply/new email to: the other party in the
   // conversation, i.e. whichever address in the thread isn't our own mailbox.
@@ -22826,7 +22831,11 @@ function RecruitmentMailboxTab({appSettings}) {
   return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
-        <p style={{fontSize:12,color:"var(--text3)"}}>{threads.length} conversation{threads.length!==1?"s":""}</p>
+        <div style={{display:"flex",gap:6}}>
+          {[["all","All"],["inbox","Inbox"],["sent","Sent"]].map(([k,l])=>(
+            <button key={k} onClick={()=>setBoxFilter(k)} style={{padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,background:boxFilter===k?"var(--accent)":"var(--surface2)",color:boxFilter===k?"#fff":"var(--text2)",border:`1px solid ${boxFilter===k?"var(--accent)":"var(--border2)"}`,cursor:"pointer"}}>{l}</button>
+          ))}
+        </div>
         <div style={{display:"flex",gap:8}}>
           <button onClick={()=>setShowCompose(true)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:8,background:"var(--accent)",border:"none",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer"}}>
             <Ico d={Icons.plus} size={12}/> New Email
@@ -22836,6 +22845,7 @@ function RecruitmentMailboxTab({appSettings}) {
           </button>
         </div>
       </div>
+      <p style={{fontSize:12,color:"var(--text3)",marginTop:-8}}>{threads.length} conversation{threads.length!==1?"s":""}</p>
 
       {error&&(
         <div style={{padding:"10px 14px",background:"#ef444411",border:"1px solid #ef444433",borderRadius:8,fontSize:12,color:"var(--text2)"}}>{error}</div>
