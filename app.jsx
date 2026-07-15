@@ -124,6 +124,43 @@ function egyptFixedHolidaysForYear(year) {
   ];
 }
 
+// Islamic/Hijri national holidays — these genuinely can't be computed by a
+// fixed formula (they run on the lunar calendar and shift ~11 days earlier
+// every Gregorian year), and no free public API reliably has correct dates
+// for Egypt specifically. These are the widely-published estimated dates
+// (based on standard Hijri calendar projection) for the next few years —
+// Egypt's government confirms the exact day by moon sighting shortly
+// before each holiday, so a date here can end up off by a day.
+const EGYPT_ISLAMIC_HOLIDAYS_BY_YEAR = {
+  2025: [
+    {date:"2025-03-30", name:"Eid al-Fitr (estimated)"},
+    {date:"2025-03-31", name:"Eid al-Fitr Holiday (estimated)"},
+    {date:"2025-06-06", name:"Eid al-Adha (estimated)"},
+    {date:"2025-06-07", name:"Eid al-Adha Holiday (estimated)"},
+    {date:"2025-06-26", name:"Islamic New Year (estimated)"},
+    {date:"2025-09-04", name:"Prophet's Birthday (estimated)"},
+  ],
+  2026: [
+    {date:"2026-03-20", name:"Eid al-Fitr (estimated)"},
+    {date:"2026-03-21", name:"Eid al-Fitr Holiday (estimated)"},
+    {date:"2026-05-27", name:"Eid al-Adha (estimated)"},
+    {date:"2026-05-28", name:"Eid al-Adha Holiday (estimated)"},
+    {date:"2026-06-16", name:"Islamic New Year (estimated)"},
+    {date:"2026-08-25", name:"Prophet's Birthday (estimated)"},
+  ],
+  2027: [
+    {date:"2027-03-09", name:"Eid al-Fitr (estimated)"},
+    {date:"2027-03-10", name:"Eid al-Fitr Holiday (estimated)"},
+    {date:"2027-05-16", name:"Eid al-Adha (estimated)"},
+    {date:"2027-05-17", name:"Eid al-Adha Holiday (estimated)"},
+    {date:"2027-06-06", name:"Islamic New Year (estimated)"},
+    {date:"2027-08-14", name:"Prophet's Birthday (estimated)"},
+  ],
+};
+function egyptIslamicHolidaysForYear(year) {
+  return EGYPT_ISLAMIC_HOLIDAYS_BY_YEAR[year] || [];
+}
+
 const CLIENT_ROLES = ["client_admin","client_member"];
 const INTERNAL_ROLES = ["admin","hr","account_manager","content_creator","graphic_designer","accountant","office_boy"];
 
@@ -577,7 +614,6 @@ async function de(entityName, id) {
 const AI_ENDPOINT = window.location.origin + "/ai-proxy.php";
 const MAIL_ENDPOINT = window.location.origin + "/mail.php";
 const CAREERS_MAIL_ENDPOINT = window.location.origin + "/careers-mail.php";
-const HOLIDAYS_FETCH_ENDPOINT = window.location.origin + "/holidays-fetch.php";
 const WA_ENDPOINT = window.location.origin + "/whatsapp.php";
 const PUBLISH_ENDPOINT      = window.location.origin + "/social-publish.php";
 const REEL_STATUS_ENDPOINT  = window.location.origin + "/reel-status.php";
@@ -996,7 +1032,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.148";
+const APP_VERSION = "beta 5.149";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11964,26 +12000,18 @@ function AttendanceRulesPanel({appSettings, onSaveSettings, onDeclareCompanyDayO
   };
   const missingThisYear = egyptFixedHolidaysForYear(currentYear).some(h=>!form.holidays.some(existing=>existing.date===h.date));
 
-  // Fetches the FULL official Egypt public-holiday list for a year (fixed
-  // dates + Islamic/lunar ones like Eid al-Fitr, Eid al-Adha) from a public
-  // holidays API via the server (the frontend has no direct internet
-  // access) — Islamic dates returned are estimates until confirmed by
-  // moon sighting, same caveat as typing them in by hand.
-  const [fetchingHolidays, setFetchingHolidays] = useState(false);
-  const [fetchHolidaysError, setFetchHolidaysError] = useState("");
-  const fetchHolidaysOnline = async (year) => {
-    setFetchingHolidays(true); setFetchHolidaysError("");
-    try {
-      const res = await fetch(`${HOLIDAYS_FETCH_ENDPOINT}?year=${year}`);
-      const json = await res.json();
-      if (!res.ok || !json.ok) throw new Error(json.error||"Failed to fetch holidays");
-      const toAdd = (json.holidays||[]).filter(h=>!form.holidays.some(existing=>existing.date===h.date));
-      if (toAdd.length) setForm(p=>({...p, holidays:[...p.holidays,...toAdd].sort((a,b)=>a.date.localeCompare(b.date))}));
-    } catch(e) {
-      setFetchHolidaysError(e.message||"Failed to fetch holidays online");
-    }
-    setFetchingHolidays(false);
+  // Islamic/Hijri holidays (Eid al-Fitr, Eid al-Adha, Islamic New Year,
+  // Prophet's Birthday) can't be reliably computed or pulled from a free
+  // public API for Egypt specifically (tried — the API's Egypt data was
+  // wrong/incomplete, including Islamic dates missing entirely), so these
+  // come from a maintained lookup table of known/estimated dates instead.
+  const islamicHolidaysThisYear = egyptIslamicHolidaysForYear(currentYear);
+  const addIslamicHolidaysForYear = (year) => {
+    const toAdd = egyptIslamicHolidaysForYear(year).filter(h=>!form.holidays.some(existing=>existing.date===h.date));
+    if(!toAdd.length) return;
+    setForm(p=>({...p, holidays:[...p.holidays,...toAdd].sort((a,b)=>a.date.localeCompare(b.date))}));
   };
+  const missingIslamicThisYear = islamicHolidaysThisYear.length>0 && islamicHolidaysThisYear.some(h=>!form.holidays.some(existing=>existing.date===h.date));
 
   const handleSave = async () => {
     setSaving(true);
@@ -12049,16 +12077,20 @@ function AttendanceRulesPanel({appSettings, onSaveSettings, onDeclareCompanyDayO
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
           <p style={{fontWeight:700,fontSize:13}}>National Holidays</p>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-            <button onClick={()=>fetchHolidaysOnline(currentYear)} disabled={fetchingHolidays} style={{padding:"5px 12px",borderRadius:8,background:"var(--accent)",border:"none",fontSize:11,fontWeight:700,color:"#fff",cursor:fetchingHolidays?"not-allowed":"pointer",opacity:fetchingHolidays?0.6:1}}>{fetchingHolidays?"Fetching…":`⟳ Fetch ${currentYear} Holidays Online`}</button>
             <button onClick={()=>addFixedHolidaysForYear(currentYear)} style={{padding:"5px 12px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:11,fontWeight:700,color:"var(--accent)",cursor:"pointer"}}>+ Add {currentYear} Fixed Holidays</button>
+            {islamicHolidaysThisYear.length>0&&(
+              <button onClick={()=>addIslamicHolidaysForYear(currentYear)} style={{padding:"5px 12px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:11,fontWeight:700,color:"var(--accent)",cursor:"pointer"}}>+ Add {currentYear} Islamic Holidays (Est.)</button>
+            )}
           </div>
         </div>
-        <p style={{fontSize:12,color:"var(--text3)"}}>Specific dates that are never counted as an absence or vacation day either, on top of the weekly weekend above. "Fetch Online" pulls the full official Egypt list — fixed dates plus Islamic/lunar ones (Eid al-Fitr, Eid al-Adha, etc., estimated until confirmed by moon sighting). Optionally also declare it a day off or WFH day for the whole team at once — this shows up on everyone's Leave & WFH history but never deducts from their personal vacation/WFH credit.</p>
-        {fetchHolidaysError&&(<p style={{fontSize:12,color:"#ef4444"}}>{fetchHolidaysError}</p>)}
-        {missingThisYear&&(
+        <p style={{fontSize:12,color:"var(--text3)"}}>Specific dates that are never counted as an absence or vacation day either, on top of the weekly weekend above. Islamic holiday dates (Eid al-Fitr, Eid al-Adha, etc.) are estimates — Egypt confirms the exact day by moon sighting shortly before each one, so a date can shift by a day once officially announced. Optionally also declare it a day off or WFH day for the whole team at once — this shows up on everyone's Leave & WFH history but never deducts from their personal vacation/WFH credit.</p>
+        {(missingThisYear||missingIslamicThisYear)&&(
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"8px 12px",background:"#f59e0b1a",border:"1px solid #f59e0b44",borderRadius:8,flexWrap:"wrap"}}>
-            <span style={{fontSize:12,color:"var(--text2)"}}>{currentYear}'s fixed national holidays (Jan 25, Apr 25, May 1, Jun 30, Jul 23, Oct 6, Coptic Christmas) aren't all added yet — use "Fetch {currentYear} Holidays Online" above to also pick up Islamic holidays automatically.</span>
-            <button onClick={()=>addFixedHolidaysForYear(currentYear)} style={{padding:"5px 12px",borderRadius:8,background:"#f59e0b",border:"none",fontSize:11,fontWeight:700,color:"#fff",cursor:"pointer",flexShrink:0}}>Add Now</button>
+            <span style={{fontSize:12,color:"var(--text2)"}}>{currentYear}'s national holidays aren't all added yet — use the buttons above to add the fixed-date and estimated Islamic holidays.</span>
+            <div style={{display:"flex",gap:8,flexShrink:0}}>
+              {missingThisYear&&<button onClick={()=>addFixedHolidaysForYear(currentYear)} style={{padding:"5px 12px",borderRadius:8,background:"#f59e0b",border:"none",fontSize:11,fontWeight:700,color:"#fff",cursor:"pointer"}}>Add Fixed</button>}
+              {missingIslamicThisYear&&<button onClick={()=>addIslamicHolidaysForYear(currentYear)} style={{padding:"5px 12px",borderRadius:8,background:"#f59e0b",border:"none",fontSize:11,fontWeight:700,color:"#fff",cursor:"pointer"}}>Add Islamic</button>}
+            </div>
           </div>
         )}
         {form.holidays.length>0&&(
