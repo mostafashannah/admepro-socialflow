@@ -927,7 +927,10 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
 }
 
 function sendWhatsAppReply($to, $body) {
-    if (!defined('WA_PHONE_ID') || !defined('WA_ACCESS_TOKEN') || !WA_PHONE_ID || !WA_ACCESS_TOKEN) return;
+    if (!defined('WA_PHONE_ID') || !defined('WA_ACCESS_TOKEN') || !WA_PHONE_ID || !WA_ACCESS_TOKEN) {
+        error_log('[wa-webhook] sendWhatsAppReply: WA_PHONE_ID/WA_ACCESS_TOKEN not configured');
+        return;
+    }
     $to = preg_replace('/[\s\-\(\)]+/', '', $to);
     if (!str_starts_with($to, '+')) $to = '+' . $to;
     $to = '+' . preg_replace('/\D/', '', $to);
@@ -950,6 +953,11 @@ function sendWhatsAppReply($to, $body) {
             'Authorization: Bearer ' . WA_ACCESS_TOKEN,
         ],
     ]);
-    curl_exec($ch);
+    $res = curl_exec($ch);
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err = curl_error($ch);
     curl_close($ch);
+    if ($status < 200 || $status >= 300) {
+        error_log('[wa-webhook] sendWhatsAppReply failed: HTTP ' . $status . ' ' . ($err ?: $res));
+    }
 }

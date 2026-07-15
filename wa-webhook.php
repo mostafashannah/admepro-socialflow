@@ -131,6 +131,7 @@ try {
     // client's customer inbox — those messages are stored and handed to the reply bot,
     // exactly like Messenger/Instagram, instead of going to Pro.
     $proPhoneId = defined('WA_PHONE_ID') ? (string)WA_PHONE_ID : '';
+    error_log("[wa-webhook] routing: incoming phone_number_id={$phoneNumberId} configured WA_PHONE_ID={$proPhoneId} from={$from}");
     if ($phoneNumberId && $phoneNumberId !== $proPhoneId) {
         // Match the receiving number to a client's WhatsApp integration.
         $rows = $pdo->query("SELECT client_id, client_name, credentials FROM integrations WHERE app_key='whatsapp' AND status='active' AND client_id IS NOT NULL")->fetchAll(PDO::FETCH_ASSOC);
@@ -161,7 +162,9 @@ try {
         try { maybeCreateLeadFromMessage($pdo, 'whatsapp', $from, $contactName, $text, $from); }
         catch (\Throwable $e) { error_log('[wa-webhook] lead-capture EXCEPTION: ' . $e->getMessage()); }
     }
+    error_log("[wa-webhook] routing to Pro: senderName=" . var_export($senderName, true) . " senderRole=" . var_export($senderRole, true));
     $reply = askPro($pdo, $senderName, $senderRole, $contextBlock, $text, $senderId, $isVoiceNote ? $text : null, $from);
+    error_log("[wa-webhook] askPro returned: " . var_export($reply, true));
     if ($reply) sendWhatsAppReply($from, $reply);
 } catch (Throwable $e) {
     error_log('[wa-webhook] ' . $e->getMessage() . ' | ' . $e->getFile() . ':' . $e->getLine(), 3, '/var/www/socialflow/pro-error.log');
