@@ -1051,7 +1051,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.172";
+const APP_VERSION = "beta 5.173";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -14037,7 +14037,7 @@ function InterviewSchedulingPage({token}) {
     })();
   },[token]);
 
-  const slots = (() => { try { return JSON.parse(application?.interview_slots||"[]"); } catch(e) { return []; } })();
+  const slots = parseMaybeJson(application?.interview_slots, []);
 
   const handleSubmit = async () => {
     if(!suggesting && !selectedSlot) return;
@@ -22606,6 +22606,19 @@ function applicationRank(a) {
 // the manual "Send Complete Your Application" button in ApplicationDetail
 // and the public CompleteApplicationPage form always agree on what still
 // needs filling in.
+// api.php's castRow() auto-decodes any TEXT column whose value looks like
+// JSON (starts with [ or {) into a real array/object before the response
+// ever reaches the browser — so a field can arrive either as a raw JSON
+// string OR as already-decoded data depending on what's stored. Calling
+// JSON.parse() on an already-decoded array/object throws (it gets
+// coerced to a string first), so any array-shaped field from the API
+// needs this instead of a plain JSON.parse.
+function parseMaybeJson(v, fallback) {
+  if (v == null) return fallback;
+  if (typeof v !== "string") return v;
+  try { return JSON.parse(v); } catch(e) { return fallback; }
+}
+
 function applicationMissingFields(application) {
   if (!application) return {};
   return {
@@ -22772,7 +22785,7 @@ function JobOpeningForm({opening, currentUser, onSave, onClose}) {
 // once they've responded, with a one-click confirm.
 function InterviewSchedulingSection({application, onSendTimes, sending, onConfirm, confirming}) {
   const [editing, setEditing] = useState(false);
-  const [slots, setSlots] = useState(()=>{ try { return JSON.parse(application.interview_slots||"[]"); } catch(e) { return []; } });
+  const [slots, setSlots] = useState(()=>parseMaybeJson(application.interview_slots, []));
 
   const setSlot = (i,v) => setSlots(prev=>prev.map((s,idx)=>idx===i?v:s));
   const addSlot = () => setSlots(prev=>[...prev,""]);
@@ -22915,7 +22928,7 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
   const [notes, setNotes] = useState(application.notes||"");
   const [rerunning, setRerunning] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const extracted = (() => { try { return JSON.parse(application.ai_extracted||"{}"); } catch(e) { return {}; } })();
+  const extracted = parseMaybeJson(application.ai_extracted, {});
   const cvIsDocx = /\.docx?(?:[?#]|$)/i.test(application.cv_url||"");
   const cvIsExternal = !!application.cv_url && !application.cv_url.startsWith(window.location.origin);
   // A file stored with no recognized extension at all (an earlier bug —
