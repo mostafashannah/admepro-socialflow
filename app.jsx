@@ -179,7 +179,7 @@ const HR_PERMISSIONS = [
   { key: "hr.manage_recruitment",label:"Manage job openings & applications" },
 ];
 const DEFAULT_ROLE_PERMISSIONS = {
-  hr: ["hr.view_team","hr.edit_team","hr.manage_roles","hr.view_salary","hr.edit_salary","hr.view_performance","hr.approve_leave","hr.upload_attendance"],
+  hr: ["hr.view_team","hr.edit_team","hr.manage_roles","hr.view_salary","hr.edit_salary","hr.view_performance","hr.approve_leave","hr.upload_attendance","hr.manage_recruitment"],
   account_manager: ["hr.view_team","hr.view_performance"],
 };
 // Converts the flat role_permissions rows fetched from the API into
@@ -1032,7 +1032,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.154";
+const APP_VERSION = "beta 5.155";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23199,6 +23199,8 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
   const canFinance = isAdmin||isAccountant;
   const canAgency = isAdmin||["account_manager","content_creator","graphic_designer"].includes(currentUser?.role);
   const isClientRole = currentUser?.role === "client";
+  const isHR = currentUser?.role === "hr";
+  const canViewPerformance = isAdmin || hasPerm(currentUser, rolePerms, "hr.view_performance");
 
   // ── Nav structure ─────────────────────────────────────────────
   // Accountants get a stripped-down nav — only the financial pages, no Pro,
@@ -23222,15 +23224,15 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     { group: "ACCOUNT", icon: Icons.person, items: [{key:"account", label:"My Account", ico:Icons.person}] },
   ] : [
     { group: null, icon: null, items: [
-      {key:"home", label:"Pro", ico:Icons.robot},
+      ...(isHR?[]:[{key:"home", label:"Pro", ico:Icons.robot}]),
       {key:"dashboard", label:"Dashboard", ico:Icons.home},
     ]},
-    { group: "MY WORK", icon: Icons.briefcase, items: [
+    ...(isHR ? [] : [{ group: "MY WORK", icon: Icons.briefcase, items: [
       {key:"my_tasks", label:"My Tasks", ico:Icons.tasks},
       {key:"my_calendar", label:"My Calendar", ico:Icons.calendar},
       {key:"my_timeline", label:"My Timeline", ico:Icons.clock},
       {key:"my_performance", label:"My Performance", ico:Icons.trendUp},
-    ]},
+    ]}]),
     ...(canAgency ? [{ group: "CLIENTS", icon: Icons.clients, items: [
       {key:"clients", label:"Clients", ico:Icons.clients},
       {key:"projects", label:"Projects", ico:Icons.projects},
@@ -23261,7 +23263,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     ]}] : []),
     ...(canViewTeamNav ? [{ group: "TEAM", icon: Icons.users, items: [
       {key:"users", label:"User Management", ico:Icons.users},
-      ...(isAdmin?[{key:"performance", label:"Performance", ico:Icons.award}]:[]),
+      ...(canViewPerformance?[{key:"performance", label:"Team Performance", ico:Icons.award}]:[]),
       ...(canManageRecruitment?[{key:"recruitment", label:"Recruitment", ico:Icons.briefcase}]:[]),
     ]}] : []),
     ...((canAgency||isAdmin) ? [{ group: "TOOLS", icon: Icons.wand, items: [
@@ -30475,7 +30477,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             onDeclareCompanyDayOff={declareCompanyDayOff}
           />
         )}
-        {page==="performance"&&currentUser?.role==="admin"&&(
+        {page==="performance"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.view_performance"))&&(
           <TeamPerformancePage
             currentUser={currentUser}
             perfLogs={data.perfLogs||[]}
