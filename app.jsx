@@ -615,6 +615,13 @@ const AI_ENDPOINT = window.location.origin + "/ai-proxy.php";
 const MAIL_ENDPOINT = window.location.origin + "/mail.php";
 const CAREERS_MAIL_ENDPOINT = window.location.origin + "/careers-mail.php";
 const RECRUITMENT_MAILBOX_ENDPOINT = window.location.origin + "/recruitment-mailbox.php";
+// Module-level (survives switching away from the Inbox tab and back, or
+// closing/reopening Recruitment, without a full page reload) so
+// re-visiting the tab shows what's already loaded instantly instead of
+// re-hitting IMAP and re-showing a spinner every single time — a real
+// IMAP round trip only happens on first load, the 30s background poll,
+// or a manual Refresh click.
+let MAILBOX_CACHE = { messages: null, loadedAt: 0 };
 const WA_ENDPOINT = window.location.origin + "/whatsapp.php";
 const PUBLISH_ENDPOINT      = window.location.origin + "/social-publish.php";
 const REEL_STATUS_ENDPOINT  = window.location.origin + "/reel-status.php";
@@ -1033,7 +1040,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.161";
+const APP_VERSION = "beta 5.162";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22747,8 +22754,8 @@ function threadCounterparty(thread) {
 
 function RecruitmentMailboxTab({appSettings}) {
   const {isMobile} = useResponsive();
-  const [messages, setMessages] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [messages, setMessages] = useState(MAILBOX_CACHE.messages || []);
+  const [loading, setLoading] = useState(MAILBOX_CACHE.messages === null);
   const [error, setError] = useState("");
   const [selectedKey, setSelectedKey] = useState(null);
   const [replyText, setReplyText] = useState("");
@@ -22761,18 +22768,25 @@ function RecruitmentMailboxTab({appSettings}) {
   const mailboxEmail = (appSettings?.recruitment_email_settings?.imap_email||"").toLowerCase();
   const fromName = appSettings?.recruitment_email_settings?.confirmation_from_name || "Admepro Careers";
 
+  const fetchMailbox = () => fetch(`${RECRUITMENT_MAILBOX_ENDPOINT}?box=all&limit=100`).then(r=>r.json());
+
   const load = () => {
     setLoading(true); setError("");
-    fetch(`${RECRUITMENT_MAILBOX_ENDPOINT}?box=all&limit=100`)
-      .then(r=>r.json())
+    fetchMailbox()
       .then(json=>{
         if(!json.ok) throw new Error(json.error||"Failed to load mailbox");
-        setMessages(json.messages||[]);
+        MAILBOX_CACHE = { messages: json.messages||[], loadedAt: Date.now() };
+        setMessages(MAILBOX_CACHE.messages);
       })
       .catch(e=>setError(e.message||"Failed to load mailbox"))
       .finally(()=>setLoading(false));
   };
-  useEffect(()=>{ load(); },[]);
+  useEffect(()=>{
+    // Cache already has something reasonably fresh (<30s old) — show it
+    // instantly, no spinner, no IMAP round trip on this visit.
+    if(MAILBOX_CACHE.messages !== null && Date.now()-MAILBOX_CACHE.loadedAt < 30000) return;
+    load();
+  },[]);
   // Auto-refresh so new inbound/replied emails show up without a manual
   // click — quiet (no spinner state reset) so it doesn't yank focus away
   // from whatever thread is open. Skips while composing/replying so an
@@ -22780,9 +22794,13 @@ function RecruitmentMailboxTab({appSettings}) {
   useEffect(()=>{
     const t = setInterval(()=>{
       if(showCompose||sendingReply) return;
-      fetch(`${RECRUITMENT_MAILBOX_ENDPOINT}?box=all&limit=100`)
-        .then(r=>r.json())
-        .then(json=>{ if(json.ok) setMessages(json.messages||[]); })
+      fetchMailbox()
+        .then(json=>{
+          if(json.ok) {
+            MAILBOX_CACHE = { messages: json.messages||[], loadedAt: Date.now() };
+            setMessages(MAILBOX_CACHE.messages);
+          }
+        })
         .catch(()=>{});
     }, 30000);
     return ()=>clearInterval(t);
@@ -22816,6 +22834,7 @@ function RecruitmentMailboxTab({appSettings}) {
     const ok = await sendCareersEmail(to, subject, html, fromName).catch(()=>false);
     if(ok) {
       const newMsg = {uid:`local-${Date.now()}`, box:"sent", thread_key:selectedThread.key, subject, from_email:mailboxEmail, from_name:fromName, to:[to], date:new Date().toISOString(), body:replyText.trim(), snippet:replyText.trim().slice(0,160), has_attachments:false};
+      MAILBOX_CACHE = { messages: [newMsg,...MAILBOX_CACHE.messages||[]], loadedAt: MAILBOX_CACHE.loadedAt };
       setMessages(prev=>[newMsg,...prev]);
       setReplyText("");
     } else {
@@ -22832,6 +22851,7 @@ function RecruitmentMailboxTab({appSettings}) {
     if(ok) {
       const key = threadKeyClient(compose.subject.trim());
       const newMsg = {uid:`local-${Date.now()}`, box:"sent", thread_key:key, subject:compose.subject.trim(), from_email:mailboxEmail, from_name:fromName, to:[compose.to.trim()], date:new Date().toISOString(), body:compose.body.trim(), snippet:compose.body.trim().slice(0,160), has_attachments:false};
+      MAILBOX_CACHE = { messages: [newMsg,...MAILBOX_CACHE.messages||[]], loadedAt: MAILBOX_CACHE.loadedAt };
       setMessages(prev=>[newMsg,...prev]);
       setSelectedKey(key);
       setShowCompose(false);
