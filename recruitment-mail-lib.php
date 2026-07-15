@@ -34,6 +34,48 @@ function recruitment_smtp_settings(PDO $pdo) {
     ];
 }
 
+function recruitment_imap_settings(PDO $pdo) {
+    $emailSettings = [];
+    $row = $pdo->query("SELECT recruitment_email_settings FROM app_settings LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+    if ($row && !empty($row['recruitment_email_settings'])) {
+        $decoded = json_decode($row['recruitment_email_settings'], true);
+        if (is_array($decoded)) $emailSettings = $decoded;
+    }
+    return [
+        'host'     => !empty($emailSettings['imap_host']) ? $emailSettings['imap_host'] : (defined('RECRUITMENT_IMAP_HOST') ? RECRUITMENT_IMAP_HOST : ''),
+        'port'     => !empty($emailSettings['imap_port']) ? (int) $emailSettings['imap_port'] : (defined('RECRUITMENT_IMAP_PORT') ? RECRUITMENT_IMAP_PORT : 993),
+        'username' => !empty($emailSettings['imap_email']) ? $emailSettings['imap_email'] : (defined('RECRUITMENT_IMAP_EMAIL') ? RECRUITMENT_IMAP_EMAIL : ''),
+        'password' => !empty($emailSettings['imap_password']) ? $emailSettings['imap_password'] : (defined('RECRUITMENT_IMAP_PASSWORD') ? RECRUITMENT_IMAP_PASSWORD : ''),
+    ];
+}
+
+// SMTP submission alone never puts a copy in the mailbox's Sent folder —
+// that only happens when a webmail client or desktop mail app does it
+// explicitly. Without this, every email our system sends (auto
+// confirmation/completion emails, and manual replies from the Inbox tab)
+// would be invisible in Sent and never show up in the mailbox viewer.
+// Best-effort: failure here never fails the actual send.
+function recruitment_save_to_sent(PDO $pdo, string $rawMime) {
+    if (!class_exists('Webklex\\PHPIMAP\\ClientManager')) return;
+    $s = recruitment_imap_settings($pdo);
+    if (!$s['host'] || !$s['username'] || !$s['password']) return;
+    try {
+        $cm = new \Webklex\PHPIMAP\ClientManager();
+        $client = $cm->make([
+            'host' => $s['host'], 'port' => $s['port'], 'encryption' => 'ssl', 'validate_cert' => true,
+            'username' => $s['username'], 'password' => $s['password'], 'protocol' => 'imap', 'timeout' => 20,
+        ]);
+        $client->connect();
+        $sentFolder = null;
+        foreach (['Sent', 'INBOX.Sent', 'Sent Items', 'INBOX/Sent', 'Sent Messages'] as $name) {
+            try { $f = $client->getFolder($name); if ($f) { $sentFolder = $f; break; } } catch (Throwable $e) { continue; }
+        }
+        if ($sentFolder) $sentFolder->appendMessage($rawMime, ['\\Seen']);
+    } catch (Throwable $e) {
+        error_log('[recruitment-mail] Sent-folder append failed: ' . $e->getMessage());
+    }
+}
+
 // Returns true/false; never throws — a mail failure should never break
 // the calling flow (application capture, form submission).
 function send_recruitment_email(PDO $pdo, $to, $subject, $html, $fromName = 'Admepro Careers') {
@@ -62,6 +104,7 @@ function send_recruitment_email(PDO $pdo, $to, $subject, $html, $fromName = 'Adm
         $mail->Subject = $subject;
         $mail->Body    = $html;
         $mail->send();
+        recruitment_save_to_sent($pdo, $mail->getSentMIMEMessage());
         return true;
     } catch (PHPMailerException $e) {
         error_log('[recruitment-mail] send failed: ' . $mail->ErrorInfo);
