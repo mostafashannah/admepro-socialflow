@@ -1051,7 +1051,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.168";
+const APP_VERSION = "beta 5.169";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5551,7 +5551,13 @@ function computePerformance(team, posts, timelogs, perfLogs) {
     const prodScore = Math.min(100,completed.length*20);
     const consistScore = myLogs.length ? Math.round(onTime/myLogs.length*100) : 50;
     const qualityScore = Math.round(avgQuality);
-    const perfScore = Math.round((speedScore*0.25)+(prodScore*0.3)+(consistScore*0.2)+(qualityScore*0.25));
+    // With zero logged activity, consistScore/speedScore fall back to
+    // "neutral" defaults (50/100) that aren't real measurements — without
+    // this guard that produces a nonzero "baseline" score for someone
+    // with literally no data, which contradicts calcUserPerf's score
+    // (used on the Team Performance page) correctly showing 0 for the
+    // exact same person.
+    const perfScore = myLogs.length ? Math.round((speedScore*0.25)+(prodScore*0.3)+(consistScore*0.2)+(qualityScore*0.25)) : 0;
     return {
       ...member,
       assigned:assigned.length, completed:completed.length, rejected:rejected.length,
