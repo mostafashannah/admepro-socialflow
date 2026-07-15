@@ -1051,7 +1051,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.185";
+const APP_VERSION = "beta 5.186";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12371,7 +12371,7 @@ function AttendanceRulesPanel({appSettings, onSaveSettings, onDeclareCompanyDayO
 }
 
 function InviteUserModal({onClose, onSubmit, clients, team, initial}) {
-  const [form, setForm] = useState({name:"",email:"",role:"content_creator",title:"",user_type:"internal",client_id:"",permissions:"",whatsapp_number:"",manager_id:"",salary:"",vacation_days_total:21,wfh_days_total:12,id_photo_front_url:"",id_photo_back_url:"",source_application_id:"",...initial});
+  const [form, setForm] = useState({name:"",email:"",role:"content_creator",title:"",user_type:"internal",client_id:"",permissions:"",whatsapp_number:"",manager_id:"",salary:"",probation_salary:"",probation_months:"",vacation_days_total:21,wfh_days_total:12,id_photo_front_url:"",id_photo_back_url:"",source_application_id:"",...initial});
   const [loading, setLoading] = useState(false);
   const [uploadingIdFront, setUploadingIdFront] = useState(false);
   const [uploadingIdBack, setUploadingIdBack] = useState(false);
@@ -12473,8 +12473,18 @@ function InviteUserModal({onClose, onSubmit, clients, team, initial}) {
               </div>
               <div style={{display:"flex",gap:10}}>
                 <div style={{flex:1}}>
-                  <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Salary</label>
+                  <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Salary <span style={{fontWeight:400,color:"var(--text3)"}}>(after probation)</span></label>
                   <input type="number" value={form.salary} onChange={e=>sf("salary",e.target.value)} placeholder="Monthly salary" style={inputSt}/>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                <div style={{flex:1}}>
+                  <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Probation Salary</label>
+                  <input type="number" value={form.probation_salary} onChange={e=>sf("probation_salary",e.target.value)} placeholder="Salary during probation" style={inputSt}/>
+                </div>
+                <div style={{flex:1}}>
+                  <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Probation Period (months)</label>
+                  <input type="number" min="0" value={form.probation_months} onChange={e=>sf("probation_months",e.target.value)} placeholder="e.g. 3" style={inputSt}/>
                 </div>
               </div>
               <div style={{display:"flex",gap:10}}>
@@ -13574,6 +13584,8 @@ function AcceptInvitationPage({token, onAccepted}) {
           whatsapp_number: invitation.whatsapp_number || form.mobile || null,
           manager_id: invitation.manager_id || null,
           salary: invitation.salary || null,
+          probation_salary: invitation.probation_salary || null,
+          probation_months: invitation.probation_months || null,
           vacation_days_total: invitation.vacation_days_total || 21,
           wfh_days_total: invitation.wfh_days_total || 12,
           id_photo_front_url: invitation.id_photo_front_url || null,
@@ -24290,6 +24302,9 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
         name: makeTeamMemberApp.candidate_name||"",
         email: makeTeamMemberApp.candidate_email||"",
         title: makeTeamMemberApp.offer_title||makeTeamMemberApp.job_title||"",
+        salary: makeTeamMemberApp.offer_post_probation_salary||"",
+        probation_salary: makeTeamMemberApp.offer_salary||"",
+        probation_months: makeTeamMemberApp.offer_probation_months??"",
         source_application_id: makeTeamMemberApp.id,
       }}
     />
@@ -29966,7 +29981,11 @@ function App() {
       status:"pending", invited_by:currentUser?.email,
       created_at:new Date().toISOString()
     };
-    const payload = {...formData, salary: formData.salary===""||formData.salary==null?null:formData.salary, token, expires_at:expiresAt, status:"pending", invited_by:currentUser?.email};
+    const payload = {...formData,
+      salary: formData.salary===""||formData.salary==null?null:formData.salary,
+      probation_salary: formData.probation_salary===""||formData.probation_salary==null?null:formData.probation_salary,
+      probation_months: formData.probation_months===""||formData.probation_months==null?null:formData.probation_months,
+      token, expires_at:expiresAt, status:"pending", invited_by:currentUser?.email};
     setData(d=>({...d, invitations:[local,...(d.invitations||[])]}));
     ce("UserInvitation",[payload]).then(res=>{
       const real=res.entities?.[0];
