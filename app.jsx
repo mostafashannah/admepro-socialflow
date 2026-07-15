@@ -1051,7 +1051,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.186";
+const APP_VERSION = "beta 5.187";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11901,6 +11901,8 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
           {row("Manager", manager?.name)}
           {row("Mobile / WhatsApp", member.whatsapp_number)}
           {canEditSalary&&row("Salary", member.salary?`EGP ${Number(member.salary).toLocaleString()}`:null)}
+          {canEditSalary&&row("Probation Salary", member.probation_salary?`EGP ${Number(member.probation_salary).toLocaleString()}`:null)}
+          {canEditSalary&&row("Probation Period", member.probation_months?`${member.probation_months} month(s)`:null)}
           {row("Joined", member.created_at?fmtDate(member.created_at):null)}
         </div>
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
@@ -11993,7 +11995,8 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
   const [f,setF] = useState({
     name:member.name, email:member.email, role:member.role, department:member.department||"", title:member.title||"",
     status:member.status||"active", manager_id:member.manager_id||"", whatsapp_number:member.whatsapp_number||"",
-    salary:member.salary??"", vacation_days_total:member.vacation_days_total??21, wfh_days_total:member.wfh_days_total??12,
+    salary:member.salary??"", probation_salary:member.probation_salary??"", probation_months:member.probation_months??"",
+    vacation_days_total:member.vacation_days_total??21, wfh_days_total:member.wfh_days_total??12,
   });
   const s = (k,v) => setF(p=>({...p,[k]:v}));
   const managers = (team||[]).filter(t=>t.id!==member.id && t.role!=="client");
@@ -12005,8 +12008,10 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
 
   const handleSave = () => {
     const updates = {...f};
-    if(!canEditSalary) delete updates.salary; // don't send a stale/blanked salary if the field wasn't editable
+    if(!canEditSalary) { delete updates.salary; delete updates.probation_salary; delete updates.probation_months; } // don't send a stale/blanked salary if the field wasn't editable
     if(updates.salary==="") updates.salary = null;
+    if(updates.probation_salary==="") updates.probation_salary = null;
+    if(updates.probation_months==="") updates.probation_months = null;
     onSave(updates);
   };
 
@@ -12050,6 +12055,12 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
           </Field>
           {canEditSalary&&(
             <Field label="Salary"><input type="number" value={f.salary} onChange={e=>s("salary",e.target.value)} placeholder="Monthly salary" style={inputSt}/></Field>
+          )}
+          {canEditSalary&&(
+            <Field label="Probation Salary"><input type="number" value={f.probation_salary} onChange={e=>s("probation_salary",e.target.value)} placeholder="Salary during probation" style={inputSt}/></Field>
+          )}
+          {canEditSalary&&(
+            <Field label="Probation Period (months)"><input type="number" min="0" value={f.probation_months} onChange={e=>s("probation_months",e.target.value)} placeholder="e.g. 3" style={inputSt}/></Field>
           )}
           <div style={{display:"flex",gap:10}}>
             <Field label={`Vacation Days/Year (used: ${vacUsed})`}><input type="number" value={f.vacation_days_total} onChange={e=>s("vacation_days_total",e.target.value)} style={inputSt}/></Field>
