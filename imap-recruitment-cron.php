@@ -501,8 +501,12 @@ foreach ($messages as $message) {
                 . '<p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>'
                 . '<p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>'
                 . '</td></tr></table>';
-            send_recruitment_email($pdo, $candidateEmail, $emailSubject, email_base($bodyHtml), $confirmationFromName);
-            log_activity($pdo, $newId, empty($missing) ? 'Welcome email sent' : 'Welcome + complete-your-application email sent');
+            $emailSent = send_recruitment_email($pdo, $candidateEmail, $emailSubject, email_base($bodyHtml), $confirmationFromName);
+            if ($emailSent) {
+                log_activity($pdo, $newId, empty($missing) ? 'Welcome email sent' : 'Welcome + complete-your-application email sent');
+            } else {
+                log_activity($pdo, $newId, 'Welcome email FAILED to send (see server error log)');
+            }
         }
 
         $message->setFlag('Seen');
