@@ -106,6 +106,24 @@ const ROLES = {
 // free-typed value.
 const TEAM_TITLES = ["Creative","Senior Creative","Creative Director","Content Creator","Senior Content Creator","Graphic Designer","Senior Graphic Designer","Art Director","Account Manager","Senior Account Manager","Account Director"];
 
+// Egypt's fixed-date national holidays — same month/day every year, so
+// these can be generated automatically. Islamic holidays (Eid al-Fitr,
+// Eid al-Adha, Islamic New Year, Prophet's Birthday) shift ~11 days
+// earlier each year on the lunar calendar and are announced by moon
+// sighting, not a fixed formula — those still need to be added by hand
+// once the dates are confirmed for the year.
+function egyptFixedHolidaysForYear(year) {
+  return [
+    {date:`${year}-01-07`, name:"Coptic Christmas"},
+    {date:`${year}-01-25`, name:"Revolution Day (Jan 25) / Police Day"},
+    {date:`${year}-04-25`, name:"Sinai Liberation Day"},
+    {date:`${year}-05-01`, name:"Labour Day"},
+    {date:`${year}-06-30`, name:"June 30 Revolution"},
+    {date:`${year}-07-23`, name:"Revolution Day (Jul 23)"},
+    {date:`${year}-10-06`, name:"Armed Forces Day"},
+  ];
+}
+
 const CLIENT_ROLES = ["client_admin","client_member"];
 const INTERNAL_ROLES = ["admin","hr","account_manager","content_creator","graphic_designer","accountant","office_boy"];
 
@@ -977,7 +995,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.146";
+const APP_VERSION = "beta 5.147";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11927,6 +11945,18 @@ function AttendanceRulesPanel({appSettings, onSaveSettings, onDeclareCompanyDayO
   };
   const removeHoliday = (date) => setForm(p=>({...p, holidays: p.holidays.filter(h=>h.date!==date)}));
 
+  // Fixed-date Egyptian national holidays (same every year) can be added
+  // in one click instead of typing all seven in by hand — and re-adding
+  // them at the start of a new year is exactly the same click, since any
+  // already present for that year are skipped rather than duplicated.
+  const currentYear = new Date().getFullYear();
+  const addFixedHolidaysForYear = (year) => {
+    const toAdd = egyptFixedHolidaysForYear(year).filter(h=>!form.holidays.some(existing=>existing.date===h.date));
+    if(!toAdd.length) return;
+    setForm(p=>({...p, holidays:[...p.holidays,...toAdd].sort((a,b)=>a.date.localeCompare(b.date))}));
+  };
+  const missingThisYear = egyptFixedHolidaysForYear(currentYear).some(h=>!form.holidays.some(existing=>existing.date===h.date));
+
   const handleSave = async () => {
     setSaving(true);
     await onSaveSettings({attendance_rules: form});
@@ -11988,8 +12018,17 @@ function AttendanceRulesPanel({appSettings, onSaveSettings, onDeclareCompanyDayO
 
       {/* National holidays */}
       <div style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",padding:16,display:"flex",flexDirection:"column",gap:10}}>
-        <p style={{fontWeight:700,fontSize:13}}>National Holidays</p>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+          <p style={{fontWeight:700,fontSize:13}}>National Holidays</p>
+          <button onClick={()=>addFixedHolidaysForYear(currentYear)} style={{padding:"5px 12px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:11,fontWeight:700,color:"var(--accent)",cursor:"pointer"}}>+ Add {currentYear} Fixed Holidays</button>
+        </div>
         <p style={{fontSize:12,color:"var(--text3)"}}>Specific dates that are never counted as an absence or vacation day either, on top of the weekly weekend above. Optionally also declare it a day off or WFH day for the whole team at once — this shows up on everyone's Leave & WFH history but never deducts from their personal vacation/WFH credit.</p>
+        {missingThisYear&&(
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"8px 12px",background:"#f59e0b1a",border:"1px solid #f59e0b44",borderRadius:8,flexWrap:"wrap"}}>
+            <span style={{fontSize:12,color:"var(--text2)"}}>{currentYear}'s fixed national holidays (Jan 25, Apr 25, May 1, Jun 30, Jul 23, Oct 6, Coptic Christmas) aren't all added yet — Islamic holidays (Eid, etc.) still need to be entered by hand once their exact dates are announced.</span>
+            <button onClick={()=>addFixedHolidaysForYear(currentYear)} style={{padding:"5px 12px",borderRadius:8,background:"#f59e0b",border:"none",fontSize:11,fontWeight:700,color:"#fff",cursor:"pointer",flexShrink:0}}>Add Now</button>
+          </div>
+        )}
         {form.holidays.length>0&&(
           <div style={{display:"flex",flexDirection:"column",gap:6}}>
             {form.holidays.map(h=>(
