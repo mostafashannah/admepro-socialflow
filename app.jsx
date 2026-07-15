@@ -1051,7 +1051,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.180";
+const APP_VERSION = "beta 5.181";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23022,7 +23022,7 @@ function OfferSection({application, opening, onSave, saving, onSend, sending, on
           <Field label="Annual Vacation Days"><input type="number" min="0" value={form.vacation_days_annual} onChange={e=>sf("vacation_days_annual",e.target.value)} style={inputSt}/></Field>
           <Field label="Monthly WFH Days"><input type="number" min="0" value={form.wfh_days_monthly} onChange={e=>sf("wfh_days_monthly",e.target.value)} style={inputSt}/></Field>
         </div>
-        <Field label="Notes" hint="Optional — shown to you only, not the candidate"><textarea value={form.notes} onChange={e=>sf("notes",e.target.value)} rows={2} style={{...inputSt,resize:"vertical"}}/></Field>
+        <Field label="Notes" hint="Optional — included as a message to the candidate in the offer email"><textarea value={form.notes} onChange={e=>sf("notes",e.target.value)} rows={2} style={{...inputSt,resize:"vertical"}}/></Field>
       </div>
       <div style={{display:"flex",gap:8,marginTop:12}}>
         <button onClick={()=>onSave(application, form)} disabled={saving} style={{padding:"7px 14px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text2)",cursor:saving?"not-allowed":"pointer"}}>
@@ -23948,6 +23948,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
           ${offerRow("Work from home", `${form.wfh_days_monthly||0} days/month`)}
         </table>
         ${laptopLine?`<p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563">${laptopLine}</p>`:""}
+        ${form.notes?.trim()?`<p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563">${form.notes.trim().replace(/</g,"&lt;")}</p>`:""}
         <p style="margin:0 0 20px;text-align:center"><a href="${offerUrl}" style="display:inline-block;padding:14px 32px;background:#d90b2c;color:#ffffff;border-radius:10px;font-weight:800;font-size:15px;text-decoration:none">Respond to This Offer</a></p>
         <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563;text-align:center">Accept, decline, or let us know if you'd like to talk through any of the terms — we're happy to chat.</p>
         <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
