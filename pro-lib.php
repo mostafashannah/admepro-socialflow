@@ -879,7 +879,13 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
 
         [$status, $data, $raw] = callClaude($payload);
         if ($status < 200 || $status >= 300) {
-            return null;
+            // A failed API call used to return null here directly, which
+            // skipped the friendly fallback message below (only reached via
+            // the loop ending naturally) — the caller's `if ($reply)` check
+            // then silently dropped the whole reply, with no message sent
+            // to the user and no trace of why beyond "askPro returned NULL".
+            error_log('[askPro] Claude API call failed: HTTP ' . $status . ' ' . substr((string)$raw, 0, 500));
+            break;
         }
 
         $content = $data['content'] ?? [];
