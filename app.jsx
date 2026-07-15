@@ -1032,7 +1032,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.155";
+const APP_VERSION = "beta 5.156";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5544,7 +5544,142 @@ function computePerformance(team, posts, timelogs, perfLogs) {
   }).sort((a,b)=>b.perfScore-a.perfScore);
 }
 
+// HR gets a dashboard scoped to what they actually manage — headcount and
+// team performance, plus recruitment activity (open roles, new applicants)
+// — instead of the agency-wide task/post/client metrics built for
+// content-production roles.
+function HRDashboard({team,perfLogs,currentUser,setPage}) {
+  const {isMobile} = useResponsive();
+  const [openings,setOpenings] = useState([]);
+  const [applications,setApplications] = useState([]);
+  const [loading,setLoading] = useState(true);
+
+  useEffect(()=>{
+    Promise.all([
+      qe("JobOpening",{status:"open"},"-created_date",50).catch(()=>({entities:[]})),
+      qe("JobApplication",{},"-created_date",500).catch(()=>({entities:[]})),
+    ]).then(([oRes,aRes])=>{
+      setOpenings(oRes.entities||[]);
+      setApplications(aRes.entities||[]);
+      setLoading(false);
+    });
+  },[]);
+
+  const activeTeam = (team||[]).filter(t=>t.status!=="inactive" && !CLIENT_ROLES.includes(t.role) && t.role!=="client");
+  const ranked = calcAllPerf(team||[], perfLogs||[]);
+  const teamAvgScore = ranked.length ? Math.round(ranked.reduce((a,m)=>a+m.perf.score,0)/ranked.length) : 0;
+  const newApplications = applications.filter(a=>a.status==="new");
+  const recentApplications = [...applications].sort((a,b)=>new Date(b.created_date)-new Date(a.created_date)).slice(0,6);
+
+  const kpis = [
+    {label:"Team Members", value:activeTeam.length, color:"#3b82f6"},
+    {label:"Avg Performance", value:`${teamAvgScore}/100`, color:perfColor(teamAvgScore)},
+    {label:"Open Positions", value:openings.length, color:"#f59e0b"},
+    {label:"New Applications", value:newApplications.length, color:"#ef4444"},
+  ];
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
+      <div>
+        <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:"clamp(20px,5vw,28px)",fontWeight:800,lineHeight:1.2}}>Dashboard</h1>
+        <p style={{color:"var(--text2)",marginTop:4,fontSize:14}}>Welcome back, {currentUser.name.split(" ")[0]}</p>
+      </div>
+
+      <div className="grid-4" style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,minmax(0,1fr))":"repeat(auto-fill,minmax(200px,1fr))",gap:isMobile?6:12}}>
+        {kpis.map(s=>(
+          <div key={s.label} style={{padding:isMobile?"10px 6px":"18px 20px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:isMobile?"var(--rs)":"var(--r)",textAlign:isMobile?"center":"left"}}>
+            <p style={{fontSize:isMobile?9:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.05em",textTransform:"uppercase",marginBottom:isMobile?4:6}}>{s.label}</p>
+            <p style={{fontSize:isMobile?16:24,fontWeight:800,fontFamily:"'Montserrat',sans-serif",color:s.color,lineHeight:1}}>{s.value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:14}}>
+        {/* Team performance leaderboard */}
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+          <div onClick={()=>setPage("performance")} style={{padding:"14px 18px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}>
+            <h3 style={{fontWeight:700,fontSize:14}}>Team Performance</h3>
+            <span style={{fontSize:12,fontWeight:700,color:"var(--accent)"}}>View all →</span>
+          </div>
+          {ranked.length===0 ? (
+            <div style={{padding:20}}><EmptyState icon={Icons.award} title="No performance data yet" sub="Scores build up as the team completes work."/></div>
+          ) : (
+            <div>
+              {ranked.slice(0,6).map((m,i)=>(
+                <div key={m.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 18px",borderBottom:i<Math.min(ranked.length,6)-1?"1px solid var(--border)":"none"}}>
+                  <Avatar name={m.name} size={30}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <p style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name}</p>
+                    <p style={{fontSize:11,color:"var(--text3)"}}>{m.title||ROLES[m.role]?.label||m.role}</p>
+                  </div>
+                  <span style={{fontSize:14,fontWeight:800,color:perfColor(m.perf.score),flexShrink:0}}>{m.perf.score}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Open positions */}
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+          <div onClick={()=>setPage("recruitment")} style={{padding:"14px 18px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}>
+            <h3 style={{fontWeight:700,fontSize:14}}>Open Positions</h3>
+            <span style={{fontSize:12,fontWeight:700,color:"var(--accent)"}}>View all →</span>
+          </div>
+          {loading ? (
+            <div style={{padding:30,display:"flex",justifyContent:"center"}}><Spinner size={18}/></div>
+          ) : openings.length===0 ? (
+            <div style={{padding:20}}><EmptyState icon={Icons.briefcase} title="No open positions" sub="Job openings will show up here once posted."/></div>
+          ) : (
+            <div>
+              {openings.slice(0,6).map((o,i)=>(
+                <div key={o.id} onClick={()=>setPage("recruitment")} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 18px",borderBottom:i<Math.min(openings.length,6)-1?"1px solid var(--border)":"none",cursor:"pointer"}}
+                  onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
+                  onMouseLeave={e=>e.currentTarget.style.background=""}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <p style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o.title}</p>
+                    <p style={{fontSize:11,color:"var(--text3)"}}>{[o.department,o.location].filter(Boolean).join(" · ")||"—"}</p>
+                  </div>
+                  <span style={{fontSize:11,fontWeight:700,color:"var(--text3)",flexShrink:0}}>{applications.filter(a=>a.job_opening_id===o.id).length} applicant{applications.filter(a=>a.job_opening_id===o.id).length!==1?"s":""}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Recent applications */}
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+        <div onClick={()=>setPage("recruitment")} style={{padding:"14px 18px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}>
+          <h3 style={{fontWeight:700,fontSize:14}}>Recent Applications</h3>
+          <span style={{fontSize:12,fontWeight:700,color:"var(--accent)"}}>View all →</span>
+        </div>
+        {loading ? (
+          <div style={{padding:30,display:"flex",justifyContent:"center"}}><Spinner size={18}/></div>
+        ) : recentApplications.length===0 ? (
+          <div style={{padding:20}}><EmptyState icon={Icons.users} title="No applications yet" sub="New candidate applications will show up here."/></div>
+        ) : (
+          <div>
+            {recentApplications.map((a,i)=>(
+              <div key={a.id} onClick={()=>setPage("recruitment")} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 18px",borderBottom:i<recentApplications.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
+                onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
+                onMouseLeave={e=>e.currentTarget.style.background=""}>
+                <Avatar name={a.candidate_name||a.candidate_email} size={30}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <p style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.candidate_name||a.candidate_email}</p>
+                  <p style={{fontSize:11,color:"var(--text3)"}}>{a.job_title||"—"} · {fmtDate(a.created_date)}</p>
+                </div>
+                <Badge label={a.status} color={a.status==="new"?"#ef4444":a.status==="hired"?"#10b981":a.status==="rejected"?"#6b7280":"#f59e0b"} xs/>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAddTask,onCreateInvoice,onAddProject,onOpenPost,onMarkNotifRead}) {
+  if(currentUser?.role==="hr") return <HRDashboard team={data.team} perfLogs={data.perfLogs||[]} currentUser={currentUser} setPage={setPage}/>;
   const {posts,projects,clients,team,timelogs,notifications} = data;
   const perfLogs = data.perfLogs||[];
   const aiInsights = data.aiInsights||[];
