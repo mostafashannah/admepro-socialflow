@@ -944,7 +944,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.133";
+const APP_VERSION = "beta 5.134";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22117,14 +22117,22 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   const openGroup = (group) => { try{ window.history.pushState({recruitmentGroup:true}, ""); }catch(e){} setSelectedGroup(group); };
   const closeGroup = () => { window.history.back(); };
 
-  const load = async () => {
-    setLoading(true);
+  const load = async (quiet) => {
+    if(!quiet) setLoading(true);
     const [oRes, aRes] = await Promise.all([qe("JobOpening",{},"-created_date",200), qe("JobApplication",{},"-created_date",500)]);
     setOpenings(oRes.entities||[]);
     setApplications(aRes.entities||[]);
-    setLoading(false);
+    if(!quiet) setLoading(false);
   };
   useEffect(()=>{ load(); },[]);
+  // The recruitment email cron can capture a new application at any time
+  // while this page is sitting open — without a poll, staff would only
+  // ever see it after leaving and reopening the page (or a manual
+  // browser refresh). Quiet background refresh, no loading spinner.
+  useEffect(()=>{
+    const t = setInterval(()=>load(true), 30000);
+    return ()=>clearInterval(t);
+  },[]);
 
   const handleSaveOpening = async (id, payload) => {
     if(id) await ue("JobOpening", id, payload);
