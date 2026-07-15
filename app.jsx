@@ -100,6 +100,12 @@ const ROLES = {
   client: { label: "Client", color: "#10b981" },
 };
 
+// Job title / seniority shown on a profile — separate from `role` above,
+// which controls system permissions and must stay one of the fixed
+// functional roles. Quick-pick suggestions; the field also accepts any
+// free-typed value.
+const TEAM_TITLES = ["Creative","Senior Creative","Creative Director","Content Creator","Senior Content Creator","Graphic Designer","Senior Graphic Designer","Art Director","Account Manager","Senior Account Manager","Account Director"];
+
 const CLIENT_ROLES = ["client_admin","client_member"];
 const INTERNAL_ROLES = ["admin","hr","account_manager","content_creator","graphic_designer","accountant","office_boy"];
 
@@ -971,7 +977,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.145";
+const APP_VERSION = "beta 5.146";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11211,7 +11217,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
               </div>
               <div style={{flex:1}}>
                 <div style={{fontWeight:600,fontSize:14,color:"var(--text)"}}>{m.name}</div>
-                <div style={{color:"var(--text2)",fontSize:12}}>{m.email}</div>
+                <div style={{color:"var(--text2)",fontSize:12}}>{m.title?`${m.title} · `:""}{m.email}</div>
               </div>
               <span style={{background:ROLES[m.role]?.color+"22",color:ROLES[m.role]?.color,borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600}}>
                 {ROLES[m.role]?.label||m.role}
@@ -11472,7 +11478,7 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
         </div>
         <div style={{flex:1,minWidth:0}}>
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:20,fontWeight:800}}>{member.name}</h2>
-          <p style={{fontSize:13,color:"var(--text2)"}}>{member.email}</p>
+          <p style={{fontSize:13,color:"var(--text2)"}}>{member.title?`${member.title} · `:""}{member.email}</p>
         </div>
         <span style={{background:ROLES[member.role]?.color+"22",color:ROLES[member.role]?.color,borderRadius:6,padding:"4px 12px",fontSize:12,fontWeight:600}}>{ROLES[member.role]?.label||member.role}</span>
         <span style={{background:member.status==="active"?"#10b98122":"#f59e0b22",color:member.status==="active"?"#10b981":"#f59e0b",borderRadius:6,padding:"4px 12px",fontSize:12,fontWeight:600}}>{member.status||"active"}</span>
@@ -11592,6 +11598,7 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
           <h3 style={{fontWeight:700,fontSize:14,marginBottom:8}}>Details</h3>
+          {row("Title", member.title)}
           {row("Department", member.department)}
           {row("Manager", manager?.name)}
           {row("Mobile / WhatsApp", member.whatsapp_number)}
@@ -11686,7 +11693,7 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
 
 function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
   const [f,setF] = useState({
-    name:member.name, email:member.email, role:member.role, department:member.department||"",
+    name:member.name, email:member.email, role:member.role, department:member.department||"", title:member.title||"",
     status:member.status||"active", manager_id:member.manager_id||"", whatsapp_number:member.whatsapp_number||"",
     salary:member.salary??"", vacation_days_total:member.vacation_days_total??21, wfh_days_total:member.wfh_days_total??12,
   });
@@ -11716,6 +11723,10 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
             </select>
           </Field>
           <Field label="Department"><input value={f.department} onChange={e=>s("department",e.target.value)} placeholder="Creative" style={inputSt}/></Field>
+          <Field label="Title" hint="Job title / seniority — doesn't affect permissions">
+            <input value={f.title} onChange={e=>s("title",e.target.value)} placeholder="e.g. Senior Account Manager" list="team-titles" style={inputSt}/>
+            <datalist id="team-titles">{TEAM_TITLES.map(t=><option key={t} value={t}/>)}</datalist>
+          </Field>
           <Field label="Mobile Number"><input value={f.whatsapp_number} onChange={e=>s("whatsapp_number",e.target.value)} placeholder="+20 100 000 0000" style={inputSt}/></Field>
           <Field label="Manager">
             <select value={f.manager_id} onChange={e=>s("manager_id",e.target.value)} style={inputSt}>
@@ -12010,7 +12021,7 @@ function AttendanceRulesPanel({appSettings, onSaveSettings, onDeclareCompanyDayO
 }
 
 function InviteUserModal({onClose, onSubmit, clients, team}) {
-  const [form, setForm] = useState({name:"",email:"",role:"content_creator",user_type:"internal",client_id:"",permissions:"",whatsapp_number:"",manager_id:"",salary:"",vacation_days_total:21,wfh_days_total:12,id_photo_front_url:"",id_photo_back_url:""});
+  const [form, setForm] = useState({name:"",email:"",role:"content_creator",title:"",user_type:"internal",client_id:"",permissions:"",whatsapp_number:"",manager_id:"",salary:"",vacation_days_total:21,wfh_days_total:12,id_photo_front_url:"",id_photo_back_url:""});
   const [loading, setLoading] = useState(false);
   const [uploadingIdFront, setUploadingIdFront] = useState(false);
   const [uploadingIdBack, setUploadingIdBack] = useState(false);
@@ -12073,6 +12084,13 @@ function InviteUserModal({onClose, onSubmit, clients, team}) {
               )}
             </select>
           </div>
+          {form.user_type==="internal"&&(
+            <div>
+              <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Title <span style={{fontWeight:400,color:"var(--text3)"}}>(job title / seniority, doesn't affect permissions)</span></label>
+              <input value={form.title} onChange={e=>sf("title",e.target.value)} placeholder="e.g. Senior Account Manager" list="team-titles" style={inputSt}/>
+              <datalist id="team-titles">{TEAM_TITLES.map(t=><option key={t} value={t}/>)}</datalist>
+            </div>
+          )}
           {form.user_type==="client"&&(
             <div>
               <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Assign to Client</label>
