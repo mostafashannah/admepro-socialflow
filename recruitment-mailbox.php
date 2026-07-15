@@ -59,13 +59,22 @@ if ($syncDue && class_exists('Webklex\\PHPIMAP\\ClientManager')) {
     $syncError = syncMailboxFromImap($pdo, $emailSettings, $retentionDays);
 }
 
-function threadKey($subject) {
+function normalizeSubject($subject) {
     $s = trim((string) $subject);
     while (preg_match('/^\s*(re|fwd?)\s*:\s*/i', $s)) {
         $s = preg_replace('/^\s*(re|fwd?)\s*:\s*/i', '', $s);
     }
     $s = preg_replace('/\s+/', ' ', trim($s));
     return $s === '' ? '(no subject)' : strtolower($s);
+}
+
+// Subject alone isn't a safe thread key — templated emails (confirmation,
+// completion, etc.) reuse the exact same subject for every candidate, so
+// grouping by subject only would merge different people's separate
+// conversations into one thread. Always combine with the other party's
+// email address too.
+function threadKey($subject, $counterpartyEmail) {
+    return normalizeSubject($subject) . '|' . strtolower(trim((string) $counterpartyEmail));
 }
 
 function syncMailboxFromImap(PDO $pdo, array $emailSettings, int $retentionDays) {
@@ -92,7 +101,7 @@ function syncMailboxFromImap(PDO $pdo, array $emailSettings, int $retentionDays)
     $upsert = $pdo->prepare(
         "INSERT INTO recruitment_mailbox_messages (box, message_id, thread_key, subject, from_email, from_name, to_emails, message_date, body, has_attachments)
          VALUES (:box, :message_id, :thread_key, :subject, :from_email, :from_name, :to_emails, :message_date, :body, :has_attachments)
-         ON DUPLICATE KEY UPDATE subject=VALUES(subject), body=VALUES(body), has_attachments=VALUES(has_attachments), to_emails=VALUES(to_emails)"
+         ON DUPLICATE KEY UPDATE subject=VALUES(subject), body=VALUES(body), has_attachments=VALUES(has_attachments), to_emails=VALUES(to_emails), thread_key=VALUES(thread_key)"
     );
 
     foreach (['inbox', 'sent'] as $box) {
@@ -134,9 +143,10 @@ function syncMailboxFromImap(PDO $pdo, array $emailSettings, int $retentionDays)
                 $bodyText = preg_replace('/\n{3,}/', "\n\n", $bodyText);
                 $subject = (string) $message->getSubject();
                 $msgDate = $message->getDate() ? $message->getDate()->toDate() : new DateTime();
+                $counterparty = $box === 'inbox' ? ($from ? trim((string) $from->mail) : '') : ($to[0] ?? '');
 
                 $upsert->execute([
-                    ':box' => $box, ':message_id' => $messageId, ':thread_key' => threadKey($subject),
+                    ':box' => $box, ':message_id' => $messageId, ':thread_key' => threadKey($subject, $counterparty),
                     ':subject' => $subject, ':from_email' => $from ? trim((string) $from->mail) : '',
                     ':from_name' => $from && !empty($from->personal) ? trim((string) $from->personal) : '',
                     ':to_emails' => json_encode($to), ':message_date' => $msgDate->format('Y-m-d H:i:s'),
@@ -162,7 +172,7 @@ $autoSubjects = array_filter(array_map('strtolower', array_map('trim', [
 $stmt = $pdo->query("SELECT * FROM recruitment_mailbox_messages ORDER BY message_date DESC LIMIT 1000");
 $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $messages = array_map(function ($r) use ($autoSubjects) {
-    $isSystem = $r['box'] === 'sent' && in_array(threadKey($r['subject']), $autoSubjects, true);
+    $isSystem = $r['box'] === 'sent' && in_array(normalizeSubject($r['subject']), $autoSubjects, true);
     return [
         'uid' => $r['id'],
         'box' => $r['box'],

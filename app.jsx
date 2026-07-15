@@ -1040,7 +1040,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.163";
+const APP_VERSION = "beta 5.164";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22716,11 +22716,12 @@ const RECRUITMENT_EMAIL_DEFAULTS = {
 // Mirrors the PHP threadKey() in recruitment-mailbox.php — used only for
 // a freshly-composed email so it lands in the right thread group locally
 // before the next refresh confirms it against the server's own grouping.
-function threadKeyClient(subject) {
+function threadKeyClient(subject, counterpartyEmail) {
   let s = (subject||"").trim();
   while(/^\s*(re|fwd?)\s*:\s*/i.test(s)) s = s.replace(/^\s*(re|fwd?)\s*:\s*/i,"");
   s = s.replace(/\s+/g," ").trim();
-  return s===""?"(no subject)":s.toLowerCase();
+  const norm = s===""?"(no subject)":s.toLowerCase();
+  return `${norm}|${(counterpartyEmail||"").trim().toLowerCase()}`;
 }
 
 // Groups raw IMAP messages (already tagged box:"inbox"|"sent" and
@@ -22856,7 +22857,7 @@ function RecruitmentMailboxTab({appSettings}) {
     const html = `<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#111827;white-space:pre-wrap">${compose.body.trim().replace(/</g,"&lt;")}</p>`;
     const ok = await sendCareersEmail(compose.to.trim(), compose.subject.trim(), html, fromName).catch(()=>false);
     if(ok) {
-      const key = threadKeyClient(compose.subject.trim());
+      const key = threadKeyClient(compose.subject.trim(), compose.to.trim());
       const newMsg = {uid:`local-${Date.now()}`, box:"sent", thread_key:key, subject:compose.subject.trim(), from_email:mailboxEmail, from_name:fromName, to:[compose.to.trim()], date:new Date().toISOString(), body:compose.body.trim(), snippet:compose.body.trim().slice(0,160), has_attachments:false};
       MAILBOX_CACHE = { messages: [newMsg,...MAILBOX_CACHE.messages||[]], loadedAt: MAILBOX_CACHE.loadedAt };
       setMessages(prev=>[newMsg,...prev]);
