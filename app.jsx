@@ -1051,7 +1051,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.173";
+const APP_VERSION = "beta 5.174";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23719,7 +23719,29 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     setApplications(prev=>prev.map(a=>a.id===app.id?{...a,...patch}:a));
     setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,...patch}:prev);
     await ue("JobApplication", app.id, patch).catch(()=>{});
-    logActivity(app.id, `Interview confirmed — ${fmtDateTime(slot)||slot}`);
+    // `slot` is only a real date/time when it came from one of the
+    // proposed options — a candidate-suggested alternative (free text
+    // like "any weekday after 3pm") isn't a parseable date at all, and
+    // new Date() on it doesn't throw, it just silently returns an
+    // "Invalid Date" string that then looked like a real (broken) value
+    // instead of falling back to the original text.
+    const parsedDate = new Date(slot);
+    const slotLabel = !isNaN(parsedDate.getTime()) ? fmtDateTime(slot) : slot;
+    logActivity(app.id, `Interview confirmed — ${slotLabel}`);
+
+    if(app.candidate_email) {
+      const jobTitle = openings.find(o=>o.id===app.job_opening_id)?.title || app.job_title || "the role";
+      const bodyHtml = `
+        <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Hi ${app.candidate_name||"there"},</h2>
+        <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Your interview for the ${jobTitle} position is confirmed for <strong>${slotLabel}</strong>. We look forward to speaking with you!</p>
+        <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
+          <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
+          <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
+          <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
+        </td></tr></table>`;
+      const ok = await sendCareersEmail(app.candidate_email, `Interview confirmed — ${jobTitle}`, bodyHtml, "Admepro Careers").catch(()=>false);
+      logActivity(app.id, ok ? "Interview confirmation email sent" : "Interview confirmation email FAILED to send");
+    }
     setConfirmingInterviewId(null);
   };
 
