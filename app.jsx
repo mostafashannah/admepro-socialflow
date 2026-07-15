@@ -1051,7 +1051,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.179";
+const APP_VERSION = "beta 5.180";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11675,6 +11675,25 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
   const mySalaryRecords = (expenses||[]).filter(e=>e.team_member_id===member.id && e.category==="salaries").sort((a,b)=>new Date(b.date)-new Date(a.date));
   const totalPaid = mySalaryRecords.reduce((sum,e)=>sum+Number(e.amount||0),0);
   const docs = [member.id_photo_front_url&&{label:"ID Photo — Front", url:member.id_photo_front_url}, member.id_photo_back_url&&{label:"ID Photo — Back", url:member.id_photo_back_url}].filter(Boolean);
+
+  // The original job application this person was hired from — CV,
+  // portfolio, cover letter, AI review, and the full activity log all
+  // carry over onto their profile once they're a real team member.
+  const [sourceApplication, setSourceApplication] = useState(null);
+  const [sourceActivity, setSourceActivity] = useState([]);
+  const [loadingHiring, setLoadingHiring] = useState(false);
+  useEffect(()=>{
+    if(!member.source_application_id) return;
+    setLoadingHiring(true);
+    Promise.all([
+      qe("JobApplication", {id: member.source_application_id}),
+      qe("JobApplicationActivity", {application_id: member.source_application_id}, "-created_at", 500),
+    ]).then(([appRes, actRes])=>{
+      setSourceApplication(appRes.entities?.[0]||null);
+      setSourceActivity(actRes.entities||[]);
+      setLoadingHiring(false);
+    });
+  },[member.source_application_id]);
   const row = (label,value) => value==null||value===""?null:(
     <div style={{display:"flex",justifyContent:"space-between",padding:"9px 0",borderBottom:"1px solid var(--border)"}}>
       <span style={{fontSize:12,color:"var(--text2)"}}>{label}</span>
@@ -11707,7 +11726,7 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
       </div>
 
       <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)",alignSelf:"flex-start"}}>
-        {[["overview","Overview"],["tasks","Tasks & Scheduled"],["attendance","Attendance"],["payroll","Payroll"]].map(([k,l])=>(
+        {[["overview","Overview"],["tasks","Tasks & Scheduled"],["attendance","Attendance"],["payroll","Payroll"],...(member.source_application_id?[["hiring","Hiring"]]:[])].map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)} style={{padding:"7px 16px",borderRadius:"var(--rxs)",fontSize:12,fontWeight:700,background:tab===k?"var(--accent)":"none",color:tab===k?"#fff":"var(--text2)"}}>{l}</button>
         ))}
       </div>
@@ -11787,6 +11806,67 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
       )}
       {tab==="payroll"&&!canEditSalary&&(
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:30,textAlign:"center",color:"var(--text2)",fontSize:13}}>You don't have permission to view salary information.</div>
+      )}
+
+      {tab==="hiring"&&(
+        loadingHiring ? (
+          <div style={{padding:30,display:"flex",justifyContent:"center"}}><Spinner size={18}/></div>
+        ) : !sourceApplication ? (
+          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:30,textAlign:"center",color:"var(--text2)",fontSize:13}}>Original application record not found.</div>
+        ) : (
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
+              <h3 style={{fontWeight:700,fontSize:14,marginBottom:12}}>Application Details</h3>
+              {row("Applied For", sourceApplication.job_title)}
+              {row("Applied On", fmtDate(sourceApplication.created_date||sourceApplication.created_at))}
+              {row("Source", sourceApplication.source==="email"?"Email":"Careers Page")}
+              {sourceApplication.ai_score!=null&&row("AI Score", sourceApplication.ai_score)}
+              {sourceApplication.interview_rating!=null&&row("Interview Rating", `${sourceApplication.interview_rating}/5 ★`)}
+              {row("Expected Salary", sourceApplication.expected_salary)}
+              {sourceApplication.cover_letter&&(
+                <div style={{marginTop:10}}>
+                  <p style={{fontSize:12,color:"var(--text2)",marginBottom:4}}>Cover Letter</p>
+                  <p style={{fontSize:13,color:"var(--text)",whiteSpace:"pre-wrap",lineHeight:1.6}}>{sourceApplication.cover_letter}</p>
+                </div>
+              )}
+            </div>
+
+            {(sourceApplication.cv_url||sourceApplication.portfolio_url||sourceApplication.portfolio_attachment_url||sourceApplication.linkedin_url)&&(
+              <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
+                <h3 style={{fontWeight:700,fontSize:14,marginBottom:12}}>Files & Links</h3>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {sourceApplication.cv_url&&<a href={sourceApplication.cv_url} target="_blank" rel="noreferrer" style={{fontSize:13,fontWeight:600,color:"var(--accent)"}}>Download CV</a>}
+                  {sourceApplication.portfolio_url&&<a href={sourceApplication.portfolio_url} target="_blank" rel="noreferrer" style={{fontSize:13,fontWeight:600,color:"var(--accent)"}}>Portfolio Link</a>}
+                  {sourceApplication.portfolio_attachment_url&&<a href={typeof sourceApplication.portfolio_attachment_url==="string"?sourceApplication.portfolio_attachment_url:sourceApplication.portfolio_attachment_url?.url} target="_blank" rel="noreferrer" style={{fontSize:13,fontWeight:600,color:"var(--accent)"}}>Portfolio Attachment</a>}
+                  {sourceApplication.linkedin_url&&<a href={sourceApplication.linkedin_url} target="_blank" rel="noreferrer" style={{fontSize:13,fontWeight:600,color:"var(--accent)"}}>LinkedIn Profile</a>}
+                </div>
+              </div>
+            )}
+
+            {sourceApplication.ai_summary&&(
+              <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
+                <h3 style={{fontWeight:700,fontSize:14,marginBottom:8}}>AI Summary</h3>
+                <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6}}>{sourceApplication.ai_summary}</p>
+              </div>
+            )}
+
+            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
+              <h3 style={{fontWeight:700,fontSize:14,marginBottom:12}}>Hiring Activity Log</h3>
+              {sourceActivity.length===0?(
+                <p style={{fontSize:13,color:"var(--text2)"}}>No activity recorded.</p>
+              ):(
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {sourceActivity.map(l=>(
+                    <div key={l.id} style={{display:"flex",justifyContent:"space-between",gap:10,padding:"6px 0",borderBottom:"1px solid var(--border)",fontSize:12}}>
+                      <span style={{color:"var(--text)"}}>{l.action} — <span style={{color:"var(--text3)"}}>{l.actor_name}</span></span>
+                      <span style={{color:"var(--text3)",flexShrink:0}}>{fmtDateTime(l.created_at)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )
       )}
 
       {tab==="attendance"&&(
@@ -12290,8 +12370,8 @@ function AttendanceRulesPanel({appSettings, onSaveSettings, onDeclareCompanyDayO
   );
 }
 
-function InviteUserModal({onClose, onSubmit, clients, team}) {
-  const [form, setForm] = useState({name:"",email:"",role:"content_creator",title:"",user_type:"internal",client_id:"",permissions:"",whatsapp_number:"",manager_id:"",salary:"",vacation_days_total:21,wfh_days_total:12,id_photo_front_url:"",id_photo_back_url:""});
+function InviteUserModal({onClose, onSubmit, clients, team, initial}) {
+  const [form, setForm] = useState({name:"",email:"",role:"content_creator",title:"",user_type:"internal",client_id:"",permissions:"",whatsapp_number:"",manager_id:"",salary:"",vacation_days_total:21,wfh_days_total:12,id_photo_front_url:"",id_photo_back_url:"",source_application_id:"",...initial});
   const [loading, setLoading] = useState(false);
   const [uploadingIdFront, setUploadingIdFront] = useState(false);
   const [uploadingIdBack, setUploadingIdBack] = useState(false);
@@ -13488,7 +13568,7 @@ function AcceptInvitationPage({token, onAccepted}) {
         // team_members has no "mobile" column — whatsapp_number/salary/leave credits/ID
         // photo were already set by the admin at invite time (see InviteUserModal), so
         // carry those through instead of the old (broken) self-entered mobile field.
-        await ce("TeamMember",[{
+        const tmRes = await ce("TeamMember",[{
           ...memberPayload,
           title: invitation.title || null,
           whatsapp_number: invitation.whatsapp_number || form.mobile || null,
@@ -13498,7 +13578,14 @@ function AcceptInvitationPage({token, onAccepted}) {
           wfh_days_total: invitation.wfh_days_total || 12,
           id_photo_front_url: invitation.id_photo_front_url || null,
           id_photo_back_url: invitation.id_photo_back_url || null,
+          source_application_id: invitation.source_application_id || null,
         }]);
+        // Links back to the job application this hire came from, so
+        // their profile can show the original CV/portfolio/activity log.
+        const newMemberId = tmRes?.entities?.[0]?.id;
+        if(invitation.source_application_id && newMemberId) {
+          await ue("JobApplication", invitation.source_application_id, {linked_team_member_id: newMemberId}).catch(()=>{});
+        }
       }
       await ue("UserInvitation", invitation.id, {status:"accepted"});
     } catch(e) { console.error("Setup error:",e); }
@@ -22949,7 +23036,7 @@ function OfferSection({application, opening, onSave, saving, onSend, sending, on
   );
 }
 
-function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader, onConvertCv, convertingCv, cvConvertFailed, onRateInterview, activityLog, onSendCompletionEmail, sendingCompletion, onSendInterviewTimes, sendingInterviewTimes, onConfirmInterview, confirmingInterview, onSaveOffer, savingOffer, onSendOffer, sendingOffer}) {
+function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader, onConvertCv, convertingCv, cvConvertFailed, onRateInterview, activityLog, onSendCompletionEmail, sendingCompletion, onSendInterviewTimes, sendingInterviewTimes, onConfirmInterview, confirmingInterview, onSaveOffer, savingOffer, onSendOffer, sendingOffer, onMakeTeamMember}) {
   const [notes, setNotes] = useState(application.notes||"");
   const [rerunning, setRerunning] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -23154,6 +23241,26 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
 
         {onSaveOffer&&["interview","offer","hired"].includes(application.status)&&(
           <OfferSection application={application} opening={opening} onSave={onSaveOffer} saving={savingOffer} onSend={onSendOffer} sending={sendingOffer} onUpdateStatus={onUpdateStatus}/>
+        )}
+
+        {onMakeTeamMember&&application.status==="hired"&&(
+          <div style={{marginBottom:14,padding:14,background:"var(--surface2)",borderRadius:10,border:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+            <div>
+              <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4}}>Team Member</p>
+              {application.linked_team_member_id ? (
+                <p style={{fontSize:13,color:"#10b981",fontWeight:700}}>✓ Linked to a team member profile</p>
+              ) : application.team_member_invited_at ? (
+                <p style={{fontSize:13,color:"var(--text2)"}}>Invitation sent {fmtDateTime(application.team_member_invited_at)}</p>
+              ) : (
+                <p style={{fontSize:13,color:"var(--text2)"}}>Hired — turn this application into a team member account with their CV, portfolio, and hiring history carried over.</p>
+              )}
+            </div>
+            {!application.linked_team_member_id&&(
+              <button onClick={()=>onMakeTeamMember(application)} style={{padding:"8px 16px",borderRadius:8,background:"var(--accent)",border:"none",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer",flexShrink:0}}>
+                {application.team_member_invited_at?"Resend Invitation":"Make Team Member"}
+              </button>
+            )}
+          </div>
         )}
 
         {onRateInterview&&(["interview","hired","rejected"].includes(application.status)||application.interview_rating!=null)&&(
@@ -23579,7 +23686,7 @@ function RecruitmentEmailSettingsTab({appSettings, onSaveSettings}) {
   );
 }
 
-function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
+function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, clients, onInviteUser}) {
   const [tab, setTab] = usePersistentState("sf_tab_recruitment","openings");
   const [openings, setOpenings] = useState([]);
   const [applications, setApplications] = useState([]);
@@ -23852,6 +23959,19 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
       logActivity(app.id, ok ? "Offer sent" : "Offer FAILED to send");
     } finally {
       setSendingOfferId(null);
+    }
+  };
+
+  const [makeTeamMemberApp, setMakeTeamMemberApp] = useState(null);
+  const handleInviteFromApplication = async (formData) => {
+    await onInviteUser(formData);
+    const appId = makeTeamMemberApp?.id;
+    if(appId) {
+      const patch = {team_member_invited_at: new Date().toISOString()};
+      setApplications(prev=>prev.map(a=>a.id===appId?{...a,...patch}:a));
+      setSelectedApp(prev=>prev&&prev.id===appId?{...prev,...patch}:prev);
+      await ue("JobApplication", appId, patch).catch(()=>{});
+      logActivity(appId, "Invited as team member");
     }
   };
 
@@ -24160,7 +24280,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
   );
 
   if(selectedApp) return (
-    <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===selectedApp.id} cvConvertFailed={cvConvertFailedId===selectedApp.id} onRateInterview={handleRateInterview} activityLog={activityLogs.filter(l=>l.application_id===selectedApp.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===selectedApp.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===selectedApp.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===selectedApp.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===selectedApp.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===selectedApp.id}/>
+    <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===selectedApp.id} cvConvertFailed={cvConvertFailedId===selectedApp.id} onRateInterview={handleRateInterview} activityLog={activityLogs.filter(l=>l.application_id===selectedApp.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===selectedApp.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===selectedApp.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===selectedApp.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===selectedApp.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===selectedApp.id} onMakeTeamMember={setMakeTeamMemberApp}/>
   );
 
   if(selectedGroup) {
@@ -24174,7 +24294,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:22,margin:0}}>{sortedGroup[0].candidate_name} · {sortedGroup.length} applications</h2>
         </div>
         {sortedGroup.map((app,i)=>(
-          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===app.id} cvConvertFailed={cvConvertFailedId===app.id} onRateInterview={handleRateInterview} activityLog={activityLogs.filter(l=>l.application_id===app.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===app.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===app.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===app.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===app.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===app.id}/>
+          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===app.id} cvConvertFailed={cvConvertFailedId===app.id} onRateInterview={handleRateInterview} activityLog={activityLogs.filter(l=>l.application_id===app.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===app.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===app.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===app.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===app.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===app.id} onMakeTeamMember={setMakeTeamMemberApp}/>
         ))}
       </div>
     );
@@ -24323,6 +24443,21 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
       {tab==="inbox"&&<RecruitmentMailboxTab appSettings={appSettings}/>}
 
       {tab==="email"&&<RecruitmentEmailSettingsTab appSettings={appSettings} onSaveSettings={onSaveSettings}/>}
+
+      {makeTeamMemberApp&&(
+        <InviteUserModal
+          onClose={()=>setMakeTeamMemberApp(null)}
+          onSubmit={handleInviteFromApplication}
+          clients={clients}
+          team={team}
+          initial={{
+            name: makeTeamMemberApp.candidate_name||"",
+            email: makeTeamMemberApp.candidate_email||"",
+            title: makeTeamMemberApp.offer_title||makeTeamMemberApp.job_title||"",
+            source_application_id: makeTeamMemberApp.id,
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -31649,7 +31784,7 @@ Return ONLY valid JSON (no markdown, no explanation):
           />
         )}
         {page==="recruitment"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.manage_recruitment"))&&(
-          <RecruitmentPage currentUser={currentUser} appSettings={appSettings} onSaveSettings={saveAppSettings}/>
+          <RecruitmentPage currentUser={currentUser} appSettings={appSettings} onSaveSettings={saveAppSettings} team={data.team||[]} clients={data.clients||[]} onInviteUser={inviteUser}/>
         )}
         {page==="agents"&&currentUser?.role==="admin"&&(
           <AgentsPage
