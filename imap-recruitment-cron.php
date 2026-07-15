@@ -462,25 +462,15 @@ foreach ($messages as $message) {
             $pdo->prepare("UPDATE job_applications SET ai_score=0, ai_summary='No CV attached.' WHERE id=:id")->execute([':id' => $newId]);
         }
 
-        if ($confirmationEnabled) {
-            $confirmMessage = str_replace('{{job}}', $matchedOpening ? htmlspecialchars($matchedOpening['title']) : '', $confirmationMessage);
-            $confirmHtml = email_base(
-                '<h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Thanks for applying, ' . htmlspecialchars($candidateName ?: 'there') . '!</h2>'
-                . '<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">' . $confirmMessage . '</p>'
-                . '<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Thanks again for your interest in joining us — we appreciate the time you took to apply.</p>'
-                . '<table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>'
-                . '<p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>'
-                . '<p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>'
-                . '<p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>'
-                . '</td></tr></table>'
-            );
-            send_via_resend($candidateEmail, $confirmationSubject, $confirmHtml, $confirmationFromName);
-        }
-
-        // Email-only captures skip most of the public form's fields —
-        // check what's missing and, if anything is, send a one-time link
-        // to a short completion form asking only for those fields.
-        if ($newId) {
+        // One email, not two: a plain "thanks for applying" if we already
+        // have everything we need, or a single combined "thanks — and
+        // please complete these details" when something's missing.
+        // Sending two separate emails per application (previously: an
+        // always-on confirmation, then a second completion email if
+        // needed) doubled the outbound volume for no benefit — the
+        // completion request reads naturally as an extra paragraph on the
+        // same email.
+        if ($newId && $confirmationEnabled) {
             $missing = [];
             if (!$cvUrl) $missing['cv'] = 'Your CV';
             if (!$candidatePhone) $missing['phone'] = 'Your phone number';
@@ -488,6 +478,12 @@ foreach ($messages as $message) {
             $missing['expected_salary'] = 'Your expected salary';
             $missing['available_start_date'] = 'Your available start date';
             $missing['open_to_task'] = 'Whether you\'re open to a paid test task';
+
+            $confirmMessage = str_replace('{{job}}', $matchedOpening ? htmlspecialchars($matchedOpening['title']) : '', $confirmationMessage);
+            $bodyHtml = '<h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Thanks for applying, ' . htmlspecialchars($candidateName ?: 'there') . '!</h2>'
+                . '<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">' . $confirmMessage . '</p>';
+
+            $emailSubject = $confirmationSubject;
             if (!empty($missing)) {
                 $token = bin2hex(random_bytes(24));
                 $pdo->prepare("UPDATE job_applications SET completion_token=:t WHERE id=:id")->execute([':t' => $token, ':id' => $newId]);
@@ -496,19 +492,20 @@ foreach ($messages as $message) {
                     . implode('', array_map(fn($m) => '<li>' . htmlspecialchars($m) . '</li>', $missing))
                     . '</ul>';
                 $completeIntro = str_replace('{{job}}', $matchedOpening ? htmlspecialchars($matchedOpening['title']) : '', $completionMessage);
-                $completeHtml = email_base(
-                    '<h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">A few more details, ' . htmlspecialchars($candidateName ?: 'there') . '</h2>'
-                    . '<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">' . $completeIntro . '</p>'
+                $bodyHtml .= '<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">' . $completeIntro . '</p>'
                     . $missingListHtml
-                    . '<p style="margin:0 0 20px"><a href="' . htmlspecialchars($completeUrl) . '" style="display:inline-block;padding:12px 24px;background:#d90b2c;color:#ffffff;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none">Complete My Application</a></p>'
-                    . '<table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>'
-                    . '<p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>'
-                    . '<p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>'
-                    . '<p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>'
-                    . '</td></tr></table>'
-                );
-                send_via_resend($candidateEmail, $completionSubject, $completeHtml, $confirmationFromName);
+                    . '<p style="margin:0 0 20px"><a href="' . htmlspecialchars($completeUrl) . '" style="display:inline-block;padding:12px 24px;background:#d90b2c;color:#ffffff;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none">Complete My Application</a></p>';
+                $emailSubject = $completionSubject;
+            } else {
+                $bodyHtml .= '<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Thanks again for your interest in joining us — we appreciate the time you took to apply.</p>';
             }
+
+            $bodyHtml .= '<table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>'
+                . '<p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>'
+                . '<p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>'
+                . '<p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>'
+                . '</td></tr></table>';
+            send_via_resend($candidateEmail, $emailSubject, email_base($bodyHtml), $confirmationFromName);
         }
 
         $message->setFlag('Seen');

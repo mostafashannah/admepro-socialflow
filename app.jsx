@@ -944,7 +944,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.135";
+const APP_VERSION = "beta 5.136";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13405,30 +13405,37 @@ function CompleteApplicationPage({token}) {
 
   const wrapSt = {minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:24,background:isDark?"#0b0e14":"#f7f7f8"};
   const cardSt = {width:"100%",maxWidth:480,background:isDark?"#161a23":"#fff",borderRadius:20,padding:32,border:`1px solid ${isDark?"#252b38":"#eee"}`};
+  // This page is reached via a public email link, outside the logged-in
+  // app shell — nothing sets the --accent/--surface2/--border2/etc CSS
+  // vars that Btn/inputSt rely on unless we render GStyle ourselves
+  // (missed originally, unlike CareersPage/AcceptInvitationPage which
+  // already do this — left the Submit button with no background or
+  // visible text).
+  const gstyle = <GStyle wallpaper={isDark?"dark":"light"} accentColor="#d90b2c" photoIsDark={isDark}/>;
 
-  if(loading) return <div style={wrapSt}><Spinner size={22}/></div>;
+  if(loading) return <>{gstyle}<div style={wrapSt}><Spinner size={22}/></div></>;
   if(notFound) return (
-    <div style={wrapSt}>
+    <>{gstyle}<div style={wrapSt}>
       <div style={cardSt}>
         <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
         <p style={{fontSize:15,fontWeight:700,color:isDark?"#fff":"#111"}}>This link is invalid or has already been used.</p>
       </div>
-    </div>
+    </div></>
   );
   if(done) return (
-    <div style={wrapSt}>
+    <>{gstyle}<div style={wrapSt}>
       <div style={cardSt}>
         <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
         <p style={{fontSize:17,fontWeight:800,color:isDark?"#fff":"#111",marginBottom:6}}>Thanks — you're all set!</p>
         <p style={{fontSize:13,color:isDark?"#9099ab":"#666"}}>We've updated your application. Our recruitment team will be in touch.</p>
       </div>
-    </div>
+    </div></>
   );
 
   const hasAnyMissing = Object.values(missing).some(Boolean);
 
   return (
-    <div style={wrapSt}>
+    <>{gstyle}<div style={wrapSt}>
       <div style={cardSt}>
         <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
         <p style={{fontSize:17,fontWeight:800,color:isDark?"#fff":"#111",marginBottom:4}}>Complete your application</p>
@@ -13467,7 +13474,7 @@ function CompleteApplicationPage({token}) {
           <Btn type="submit" disabled={submitting} style={{marginTop:4}}>{submitting?"Submitting…":"Submit"}</Btn>
         </form>
       </div>
-    </div>
+    </div></>
   );
 }
 
@@ -22284,8 +22291,16 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
     // email next run (the UNIQUE constraint that prevents duplicates only
     // protects rows that still exist). Record the message id here so the
     // cron can skip it permanently, same as a genuinely-seen duplicate.
+    // Silently swallowing a failure here (a missing table, a network
+    // blip) previously let a deleted application quietly get recreated —
+    // and re-emailed — by the next cron run with zero visible sign
+    // anything had gone wrong, so a failure here is now surfaced instead.
     if (app.source === "email" && app.email_message_id) {
-      await ce("DeletedEmailApplication", [{email_message_id: app.email_message_id}]).catch(()=>{});
+      try {
+        await ce("DeletedEmailApplication", [{email_message_id: app.email_message_id}]);
+      } catch(e) {
+        alert("Couldn't confirm this won't be re-captured from email — it may reappear on the next sync. Please tell the developer: " + String(e?.message||e));
+      }
     }
     await de("JobApplication", app.id).catch(()=>{});
   };
