@@ -1032,7 +1032,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.150";
+const APP_VERSION = "beta 5.151";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19940,14 +19940,21 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   payrollTxns.forEach(l=>{
     const memberId = l.raw?.team_member_id||null;
     const member = memberId ? team.find(t=>t.id===memberId) : null;
-    const key = memberId || `other:${l.sub||l.label}`;
-    const name = member?.name || l.sub || "Unlinked";
+    // Anyone not linked to an actual team member — including old records
+    // saved before that field existed — collapses into one "Other" bucket
+    // instead of a separate row per description.
+    const key = memberId || "__other__";
+    const name = member?.name || "Other";
     if(!payrollByMember[key]) payrollByMember[key] = {key, memberId, name, title:member?.title||"", total:0, count:0, lastDate:null, txns:[]};
     const p = payrollByMember[key];
     p.total += l.amount; p.count += 1; p.txns.push(l);
     if(!p.lastDate || new Date(l.date)>new Date(p.lastDate)) p.lastDate = l.date;
   });
-  const payrollRows = Object.values(payrollByMember).sort((a,b)=>b.total-a.total);
+  const payrollRows = Object.values(payrollByMember).sort((a,b)=>{
+    if(a.key==="__other__") return 1;
+    if(b.key==="__other__") return -1;
+    return b.total-a.total;
+  });
 
   // Month picker options — every calendar month from the earliest transaction
   // through the current month, newest first, e.g. {value:"2026-07",label:"Jul 2026"}.
