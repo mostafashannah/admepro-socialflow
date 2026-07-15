@@ -1051,7 +1051,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.175";
+const APP_VERSION = "beta 5.176";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23779,38 +23779,37 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings}) {
       setApplications(prev=>prev.map(a=>a.id===app.id?{...a,...patch}:a));
       setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,...patch}:prev);
       const offerUrl = window.location.origin + "/careers/offer?token=" + token;
-      const laptopLine = form.laptop_provided==="company" ? "🖥️ We'll set you up with a company laptop, ready to go from day one."
-        : form.laptop_provided==="personal" ? "🖥️ This role works with your own personal laptop."
+      const laptopLine = form.laptop_provided==="company" ? "We'll set you up with a company laptop, ready to go from day one."
+        : form.laptop_provided==="personal" ? "This role works with your own personal laptop."
         : "";
-      const offerRow = (icon,label,value) => `
+      const offerRow = (label,value) => `
         <tr>
-          <td style="padding:12px 16px;border-bottom:1px solid #f1f1f3;font-size:13px;color:#6b7280">${icon} ${label}</td>
+          <td style="padding:12px 16px;border-bottom:1px solid #f1f1f3;font-size:13px;color:#6b7280">${label}</td>
           <td style="padding:12px 16px;border-bottom:1px solid #f1f1f3;font-size:14px;font-weight:800;color:#111827;text-align:right">${value}</td>
         </tr>`;
       const bodyHtml = `
         <div style="background:linear-gradient(135deg,#d90b2c,#a80822);border-radius:16px;padding:28px 32px;margin-bottom:24px;text-align:center">
-          <p style="margin:0 0 6px;font-size:32px">🎉</p>
           <h1 style="margin:0 0 6px;font-size:22px;font-weight:800;color:#ffffff">Congratulations, ${app.candidate_name||"there"}!</h1>
           <p style="margin:0;font-size:14px;color:#ffe0e5">You're one step away from joining the Admepro team as <strong>${form.title||"our newest hire"}</strong></p>
         </div>
         <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563">We loved getting to know you through the process, and we're excited to bring you on board. Here's what we're offering:</p>
         <table width="100%" style="border-collapse:collapse;margin:0 0 20px;border:1px solid #f1f1f3;border-radius:12px;overflow:hidden">
-          ${offerRow("💰","Salary (probation period)", form.salary||"—")}
-          ${offerRow("⏳","Probation period", `${form.probation_months||0} month(s)`)}
-          ${offerRow("📈","Salary after probation", form.post_probation_salary||"—")}
-          ${offerRow("📅","Start date", form.start_date?fmtDate(form.start_date):"—")}
-          ${offerRow("🌴","Annual vacation", `${form.vacation_days_annual||0} days/year`)}
-          ${offerRow("🏠","Work from home", `${form.wfh_days_monthly||0} days/month`)}
+          ${offerRow("Salary (probation period)", form.salary||"—")}
+          ${offerRow("Probation period", `${form.probation_months||0} month(s)`)}
+          ${offerRow("Salary after probation", form.post_probation_salary||"—")}
+          ${offerRow("Start date", form.start_date?fmtDate(form.start_date):"—")}
+          ${offerRow("Annual vacation", `${form.vacation_days_annual||0} days/year`)}
+          ${offerRow("Work from home", `${form.wfh_days_monthly||0} days/month`)}
         </table>
         ${laptopLine?`<p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563">${laptopLine}</p>`:""}
-        <p style="margin:0 0 20px;text-align:center"><a href="${offerUrl}" style="display:inline-block;padding:14px 32px;background:#d90b2c;color:#ffffff;border-radius:10px;font-weight:800;font-size:15px;text-decoration:none">🚀 Respond to This Offer</a></p>
+        <p style="margin:0 0 20px;text-align:center"><a href="${offerUrl}" style="display:inline-block;padding:14px 32px;background:#d90b2c;color:#ffffff;border-radius:10px;font-weight:800;font-size:15px;text-decoration:none">Respond to This Offer</a></p>
         <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563;text-align:center">Accept, decline, or let us know if you'd like to talk through any of the terms — we're happy to chat.</p>
         <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
           <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
           <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
           <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
         </td></tr></table>`;
-      const ok = await sendCareersEmail(app.candidate_email, `🎉 We'd love to have you, ${(app.candidate_name||"").split(" ")[0]||"there"} — your Admepro offer is here!`, bodyHtml, "Admepro Careers").catch(()=>false);
+      const ok = await sendCareersEmail(app.candidate_email, `We'd love to have you, ${(app.candidate_name||"").split(" ")[0]||"there"} — your Admepro offer is here!`, bodyHtml, "Admepro Careers").catch(()=>false);
       logActivity(app.id, ok ? "Offer sent" : "Offer FAILED to send");
     } finally {
       setSendingOfferId(null);

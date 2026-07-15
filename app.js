@@ -210,7 +210,7 @@ function speedTokens(speed,base){if(speed==="low")return Math.max(300,Math.round
 function logActivity(action,category,details="",status="success",errorMsg="",user="system"){const entry={action,category,details,status,error_message:errorMsg,performed_by:user,performed_at:new Date().toISOString()};ce("ActivityLog",[entry]).then(({entities})=>{const saved=entities===null||entities===void 0?void 0:entities[0];// Push the freshly-saved row (with real id) into the live UI immediately,
 // otherwise System Log only reflects what was loaded at page load.
 if(saved&&!saved._saveError)window.dispatchEvent(new CustomEvent("sf:activitylog",{detail:saved}));}).catch(()=>{});}// ── Email HTML templates ─────────────────────────────────────────
-const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 5.175";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 5.176";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
 <tr><td align="center">
@@ -2255,33 +2255,32 @@ const parsedDate=new Date(slot);const slotLabel=!isNaN(parsedDate.getTime())?fmt
         </td></tr></table>`;const ok=await sendCareersEmail(app.candidate_email,`Interview confirmed — ${jobTitle}`,bodyHtml,"Admepro Careers").catch(()=>false);logActivity(app.id,ok?"Interview confirmation email sent":"Interview confirmation email FAILED to send");}setConfirmingInterviewId(null);};const[savingOfferId,setSavingOfferId]=useState(null);const offerPatchFromForm=form=>({offer_title:form.title||null,offer_salary:form.salary||null,offer_probation_months:form.probation_months===""?null:Number(form.probation_months),offer_post_probation_salary:form.post_probation_salary||null,offer_start_date:form.start_date||null,offer_laptop_provided:form.laptop_provided||null,offer_vacation_days_annual:form.vacation_days_annual===""?null:Number(form.vacation_days_annual),offer_wfh_days_monthly:form.wfh_days_monthly===""?null:Number(form.wfh_days_monthly),offer_notes:form.notes||null});const handleSaveOffer=async(app,form)=>{setSavingOfferId(app.id);const patch=offerPatchFromForm(form);setApplications(prev=>prev.map(a=>a.id===app.id?{...a,...patch}:a));setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,...patch}:prev);await ue("JobApplication",app.id,patch).catch(()=>{});logActivity(app.id,"Offer details saved");setSavingOfferId(null);};const[sendingOfferId,setSendingOfferId]=useState(null);const handleSendOffer=async(app,form)=>{if(!app.candidate_email)return;setSendingOfferId(app.id);try{const token=uid().replace("local_","")+uid().replace("local_","");// Resending (e.g. a revised offer after negotiation) clears any prior
 // response so the candidate sees a fresh accept/negotiate/reject
 // choice on the new terms, not a stale answer to the old ones.
-const patch={...offerPatchFromForm(form),offer_sent_at:new Date().toISOString(),status:"offer",offer_token:token,offer_candidate_response:null,offer_negotiation_letter:null,offer_responded_at:null};await ue("JobApplication",app.id,patch).catch(()=>{});setApplications(prev=>prev.map(a=>a.id===app.id?{...a,...patch}:a));setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,...patch}:prev);const offerUrl=window.location.origin+"/careers/offer?token="+token;const laptopLine=form.laptop_provided==="company"?"🖥️ We'll set you up with a company laptop, ready to go from day one.":form.laptop_provided==="personal"?"🖥️ This role works with your own personal laptop.":"";const offerRow=(icon,label,value)=>`
+const patch={...offerPatchFromForm(form),offer_sent_at:new Date().toISOString(),status:"offer",offer_token:token,offer_candidate_response:null,offer_negotiation_letter:null,offer_responded_at:null};await ue("JobApplication",app.id,patch).catch(()=>{});setApplications(prev=>prev.map(a=>a.id===app.id?{...a,...patch}:a));setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,...patch}:prev);const offerUrl=window.location.origin+"/careers/offer?token="+token;const laptopLine=form.laptop_provided==="company"?"We'll set you up with a company laptop, ready to go from day one.":form.laptop_provided==="personal"?"This role works with your own personal laptop.":"";const offerRow=(label,value)=>`
         <tr>
-          <td style="padding:12px 16px;border-bottom:1px solid #f1f1f3;font-size:13px;color:#6b7280">${icon} ${label}</td>
+          <td style="padding:12px 16px;border-bottom:1px solid #f1f1f3;font-size:13px;color:#6b7280">${label}</td>
           <td style="padding:12px 16px;border-bottom:1px solid #f1f1f3;font-size:14px;font-weight:800;color:#111827;text-align:right">${value}</td>
         </tr>`;const bodyHtml=`
         <div style="background:linear-gradient(135deg,#d90b2c,#a80822);border-radius:16px;padding:28px 32px;margin-bottom:24px;text-align:center">
-          <p style="margin:0 0 6px;font-size:32px">🎉</p>
           <h1 style="margin:0 0 6px;font-size:22px;font-weight:800;color:#ffffff">Congratulations, ${app.candidate_name||"there"}!</h1>
           <p style="margin:0;font-size:14px;color:#ffe0e5">You're one step away from joining the Admepro team as <strong>${form.title||"our newest hire"}</strong></p>
         </div>
         <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563">We loved getting to know you through the process, and we're excited to bring you on board. Here's what we're offering:</p>
         <table width="100%" style="border-collapse:collapse;margin:0 0 20px;border:1px solid #f1f1f3;border-radius:12px;overflow:hidden">
-          ${offerRow("💰","Salary (probation period)",form.salary||"—")}
-          ${offerRow("⏳","Probation period",`${form.probation_months||0} month(s)`)}
-          ${offerRow("📈","Salary after probation",form.post_probation_salary||"—")}
-          ${offerRow("📅","Start date",form.start_date?fmtDate(form.start_date):"—")}
-          ${offerRow("🌴","Annual vacation",`${form.vacation_days_annual||0} days/year`)}
-          ${offerRow("🏠","Work from home",`${form.wfh_days_monthly||0} days/month`)}
+          ${offerRow("Salary (probation period)",form.salary||"—")}
+          ${offerRow("Probation period",`${form.probation_months||0} month(s)`)}
+          ${offerRow("Salary after probation",form.post_probation_salary||"—")}
+          ${offerRow("Start date",form.start_date?fmtDate(form.start_date):"—")}
+          ${offerRow("Annual vacation",`${form.vacation_days_annual||0} days/year`)}
+          ${offerRow("Work from home",`${form.wfh_days_monthly||0} days/month`)}
         </table>
         ${laptopLine?`<p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563">${laptopLine}</p>`:""}
-        <p style="margin:0 0 20px;text-align:center"><a href="${offerUrl}" style="display:inline-block;padding:14px 32px;background:#d90b2c;color:#ffffff;border-radius:10px;font-weight:800;font-size:15px;text-decoration:none">🚀 Respond to This Offer</a></p>
+        <p style="margin:0 0 20px;text-align:center"><a href="${offerUrl}" style="display:inline-block;padding:14px 32px;background:#d90b2c;color:#ffffff;border-radius:10px;font-weight:800;font-size:15px;text-decoration:none">Respond to This Offer</a></p>
         <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563;text-align:center">Accept, decline, or let us know if you'd like to talk through any of the terms — we're happy to chat.</p>
         <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
           <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
           <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
           <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
-        </td></tr></table>`;const ok=await sendCareersEmail(app.candidate_email,`🎉 We'd love to have you, ${(app.candidate_name||"").split(" ")[0]||"there"} — your Admepro offer is here!`,bodyHtml,"Admepro Careers").catch(()=>false);logActivity(app.id,ok?"Offer sent":"Offer FAILED to send");}finally{setSendingOfferId(null);}};const[fixingEmailApps,setFixingEmailApps]=useState(false);const[fixMsg,setFixMsg]=useState("");const[retryingAll,setRetryingAll]=useState(false);const[retryMsg,setRetryMsg]=useState("");const handleFixEmailApplications=async()=>{setFixingEmailApps(true);let fixedCount=0;for(const app of applications){const patch={};const isEmail=app.source==="email";// Pull links out of the cover letter that weren't split into their
+        </td></tr></table>`;const ok=await sendCareersEmail(app.candidate_email,`We'd love to have you, ${(app.candidate_name||"").split(" ")[0]||"there"} — your Admepro offer is here!`,bodyHtml,"Admepro Careers").catch(()=>false);logActivity(app.id,ok?"Offer sent":"Offer FAILED to send");}finally{setSendingOfferId(null);}};const[fixingEmailApps,setFixingEmailApps]=useState(false);const[fixMsg,setFixMsg]=useState("");const[retryingAll,setRetryingAll]=useState(false);const[retryMsg,setRetryMsg]=useState("");const handleFixEmailApplications=async()=>{setFixingEmailApps(true);let fixedCount=0;for(const app of applications){const patch={};const isEmail=app.source==="email";// Pull links out of the cover letter that weren't split into their
 // own fields yet (older email captures, before link parsing was added).
 // A second non-LinkedIn link (e.g. a Google Drive CV link pasted
 // instead of attached) goes into portfolio_attachment_url.
