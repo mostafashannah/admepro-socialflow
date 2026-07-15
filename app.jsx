@@ -577,6 +577,7 @@ async function de(entityName, id) {
 const AI_ENDPOINT = window.location.origin + "/ai-proxy.php";
 const MAIL_ENDPOINT = window.location.origin + "/mail.php";
 const CAREERS_MAIL_ENDPOINT = window.location.origin + "/careers-mail.php";
+const HOLIDAYS_FETCH_ENDPOINT = window.location.origin + "/holidays-fetch.php";
 const WA_ENDPOINT = window.location.origin + "/whatsapp.php";
 const PUBLISH_ENDPOINT      = window.location.origin + "/social-publish.php";
 const REEL_STATUS_ENDPOINT  = window.location.origin + "/reel-status.php";
@@ -995,7 +996,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.147";
+const APP_VERSION = "beta 5.148";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11742,8 +11743,14 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
           </Field>
           <Field label="Department"><input value={f.department} onChange={e=>s("department",e.target.value)} placeholder="Creative" style={inputSt}/></Field>
           <Field label="Title" hint="Job title / seniority — doesn't affect permissions">
-            <input value={f.title} onChange={e=>s("title",e.target.value)} placeholder="e.g. Senior Account Manager" list="team-titles" style={inputSt}/>
-            <datalist id="team-titles">{TEAM_TITLES.map(t=><option key={t} value={t}/>)}</datalist>
+            <select value={TEAM_TITLES.includes(f.title)?f.title:(f.title?"__other__":"")} onChange={e=>s("title",e.target.value==="__other__"?" ":e.target.value)} style={inputSt}>
+              <option value="">— None —</option>
+              {TEAM_TITLES.map(t=><option key={t} value={t}>{t}</option>)}
+              <option value="__other__">Other (type below)</option>
+            </select>
+            {(!TEAM_TITLES.includes(f.title) && f.title!=="") && (
+              <input value={f.title.trim()===""?"":f.title} onChange={e=>s("title",e.target.value)} placeholder="Type a custom title" style={{...inputSt,marginTop:8}}/>
+            )}
           </Field>
           <Field label="Mobile Number"><input value={f.whatsapp_number} onChange={e=>s("whatsapp_number",e.target.value)} placeholder="+20 100 000 0000" style={inputSt}/></Field>
           <Field label="Manager">
@@ -11957,6 +11964,27 @@ function AttendanceRulesPanel({appSettings, onSaveSettings, onDeclareCompanyDayO
   };
   const missingThisYear = egyptFixedHolidaysForYear(currentYear).some(h=>!form.holidays.some(existing=>existing.date===h.date));
 
+  // Fetches the FULL official Egypt public-holiday list for a year (fixed
+  // dates + Islamic/lunar ones like Eid al-Fitr, Eid al-Adha) from a public
+  // holidays API via the server (the frontend has no direct internet
+  // access) — Islamic dates returned are estimates until confirmed by
+  // moon sighting, same caveat as typing them in by hand.
+  const [fetchingHolidays, setFetchingHolidays] = useState(false);
+  const [fetchHolidaysError, setFetchHolidaysError] = useState("");
+  const fetchHolidaysOnline = async (year) => {
+    setFetchingHolidays(true); setFetchHolidaysError("");
+    try {
+      const res = await fetch(`${HOLIDAYS_FETCH_ENDPOINT}?year=${year}`);
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error||"Failed to fetch holidays");
+      const toAdd = (json.holidays||[]).filter(h=>!form.holidays.some(existing=>existing.date===h.date));
+      if (toAdd.length) setForm(p=>({...p, holidays:[...p.holidays,...toAdd].sort((a,b)=>a.date.localeCompare(b.date))}));
+    } catch(e) {
+      setFetchHolidaysError(e.message||"Failed to fetch holidays online");
+    }
+    setFetchingHolidays(false);
+  };
+
   const handleSave = async () => {
     setSaving(true);
     await onSaveSettings({attendance_rules: form});
@@ -12020,12 +12048,16 @@ function AttendanceRulesPanel({appSettings, onSaveSettings, onDeclareCompanyDayO
       <div style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",padding:16,display:"flex",flexDirection:"column",gap:10}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
           <p style={{fontWeight:700,fontSize:13}}>National Holidays</p>
-          <button onClick={()=>addFixedHolidaysForYear(currentYear)} style={{padding:"5px 12px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:11,fontWeight:700,color:"var(--accent)",cursor:"pointer"}}>+ Add {currentYear} Fixed Holidays</button>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <button onClick={()=>fetchHolidaysOnline(currentYear)} disabled={fetchingHolidays} style={{padding:"5px 12px",borderRadius:8,background:"var(--accent)",border:"none",fontSize:11,fontWeight:700,color:"#fff",cursor:fetchingHolidays?"not-allowed":"pointer",opacity:fetchingHolidays?0.6:1}}>{fetchingHolidays?"Fetching…":`⟳ Fetch ${currentYear} Holidays Online`}</button>
+            <button onClick={()=>addFixedHolidaysForYear(currentYear)} style={{padding:"5px 12px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:11,fontWeight:700,color:"var(--accent)",cursor:"pointer"}}>+ Add {currentYear} Fixed Holidays</button>
+          </div>
         </div>
-        <p style={{fontSize:12,color:"var(--text3)"}}>Specific dates that are never counted as an absence or vacation day either, on top of the weekly weekend above. Optionally also declare it a day off or WFH day for the whole team at once — this shows up on everyone's Leave & WFH history but never deducts from their personal vacation/WFH credit.</p>
+        <p style={{fontSize:12,color:"var(--text3)"}}>Specific dates that are never counted as an absence or vacation day either, on top of the weekly weekend above. "Fetch Online" pulls the full official Egypt list — fixed dates plus Islamic/lunar ones (Eid al-Fitr, Eid al-Adha, etc., estimated until confirmed by moon sighting). Optionally also declare it a day off or WFH day for the whole team at once — this shows up on everyone's Leave & WFH history but never deducts from their personal vacation/WFH credit.</p>
+        {fetchHolidaysError&&(<p style={{fontSize:12,color:"#ef4444"}}>{fetchHolidaysError}</p>)}
         {missingThisYear&&(
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"8px 12px",background:"#f59e0b1a",border:"1px solid #f59e0b44",borderRadius:8,flexWrap:"wrap"}}>
-            <span style={{fontSize:12,color:"var(--text2)"}}>{currentYear}'s fixed national holidays (Jan 25, Apr 25, May 1, Jun 30, Jul 23, Oct 6, Coptic Christmas) aren't all added yet — Islamic holidays (Eid, etc.) still need to be entered by hand once their exact dates are announced.</span>
+            <span style={{fontSize:12,color:"var(--text2)"}}>{currentYear}'s fixed national holidays (Jan 25, Apr 25, May 1, Jun 30, Jul 23, Oct 6, Coptic Christmas) aren't all added yet — use "Fetch {currentYear} Holidays Online" above to also pick up Islamic holidays automatically.</span>
             <button onClick={()=>addFixedHolidaysForYear(currentYear)} style={{padding:"5px 12px",borderRadius:8,background:"#f59e0b",border:"none",fontSize:11,fontWeight:700,color:"#fff",cursor:"pointer",flexShrink:0}}>Add Now</button>
           </div>
         )}
@@ -12033,7 +12065,7 @@ function AttendanceRulesPanel({appSettings, onSaveSettings, onDeclareCompanyDayO
           <div style={{display:"flex",flexDirection:"column",gap:6}}>
             {form.holidays.map(h=>(
               <div key={h.date} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,fontSize:13,padding:"6px 10px",background:"var(--surface)",borderRadius:8,border:"1px solid var(--border2)"}}>
-                <span>{fmtDate(h.date)} — {h.name}</span>
+                <span>{fmtDate(h.date)} ({new Date(h.date+"T00:00:00").toLocaleDateString("en-US",{weekday:"short"})}) — {h.name}</span>
                 <button onClick={()=>removeHoliday(h.date)} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:12,fontWeight:700}}>Remove</button>
               </div>
             ))}
@@ -12126,8 +12158,14 @@ function InviteUserModal({onClose, onSubmit, clients, team}) {
           {form.user_type==="internal"&&(
             <div>
               <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Title <span style={{fontWeight:400,color:"var(--text3)"}}>(job title / seniority, doesn't affect permissions)</span></label>
-              <input value={form.title} onChange={e=>sf("title",e.target.value)} placeholder="e.g. Senior Account Manager" list="team-titles" style={inputSt}/>
-              <datalist id="team-titles">{TEAM_TITLES.map(t=><option key={t} value={t}/>)}</datalist>
+              <select value={TEAM_TITLES.includes(form.title)?form.title:(form.title?"__other__":"")} onChange={e=>sf("title",e.target.value==="__other__"?" ":e.target.value)} style={inputSt}>
+                <option value="">— None —</option>
+                {TEAM_TITLES.map(t=><option key={t} value={t}>{t}</option>)}
+                <option value="__other__">Other (type below)</option>
+              </select>
+              {(!TEAM_TITLES.includes(form.title) && form.title!=="") && (
+                <input value={form.title.trim()===""?"":form.title} onChange={e=>sf("title",e.target.value)} placeholder="Type a custom title" style={{...inputSt,marginTop:8}}/>
+              )}
             </div>
           )}
           {form.user_type==="client"&&(
