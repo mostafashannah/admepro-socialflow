@@ -1051,7 +1051,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.167";
+const APP_VERSION = "beta 5.168";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12499,8 +12499,9 @@ function AddClientUserModal({onClose, onSubmit, clients}) {
 }
 
 function EditClientUserModal({clientUser, onClose, onSubmit, clients}) {
-  const [form, setForm] = useState({name:clientUser.name||"", email:clientUser.email||"", role:clientUser.role||"client_member", client_id:clientUser.client_id||"", status:clientUser.status||"active"});
+  const [form, setForm] = useState({name:clientUser.name||"", email:clientUser.email||"", role:clientUser.role||"client_member", client_id:clientUser.client_id||"", status:clientUser.status||"active", password:clientUser.password||""});
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const sf = (k,v)=>setForm(p=>({...p,[k]:v}));
 
   const handleSubmit = async ()=>{
@@ -12546,6 +12547,13 @@ function EditClientUserModal({clientUser, onClose, onSubmit, clients}) {
               <option value="blocked">Blocked</option>
               <option value="pending">Pending</option>
             </select>
+          </div>
+          <div>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Password</label>
+            <div style={{display:"flex",gap:8}}>
+              <input type={showPassword?"text":"password"} value={form.password} onChange={e=>sf("password",e.target.value)} placeholder="No password set" style={{...inputSt,flex:1}}/>
+              <button type="button" onClick={()=>setShowPassword(p=>!p)} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"0 14px",cursor:"pointer",color:"var(--text2)",fontSize:12,fontWeight:600,flexShrink:0}}>{showPassword?"Hide":"Show"}</button>
+            </div>
           </div>
         </div>
         <div style={{display:"flex",gap:8,marginTop:20,justifyContent:"flex-end"}}>
