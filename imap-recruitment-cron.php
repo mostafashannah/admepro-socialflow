@@ -34,6 +34,13 @@
  * (5-field cron wildcard syntax — written out here so this docblock comment doesn't break PHP parsing)
  */
 
+// A mailbox with several days' worth of messages (each with real CV/
+// portfolio attachments actually being downloaded here, unlike the
+// read-only mailbox viewer) can exceed the shared hosting default of
+// 128M — confirmed via a fatal "Allowed memory size exhausted" on a
+// 6-day backfill run. Bump it for this script specifically.
+ini_set('memory_limit', '512M');
+
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/recruitment-mail-lib.php';
 
