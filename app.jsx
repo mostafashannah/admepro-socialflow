@@ -970,7 +970,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.139";
+const APP_VERSION = "beta 5.140";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11776,15 +11776,17 @@ function AttendanceImportTab({appSettings, onSaveSettings, isAdmin}) {
     <div style={{display:"flex",flexDirection:"column",gap:24,maxWidth:560}}>
       <div style={{display:"flex",flexDirection:"column",gap:16}}>
         <p style={{color:"var(--text2)",fontSize:13}}>
-          Upload a monthly attendance CSV with columns <code>name, date, status</code> (status: present, absent, late, half_day, leave, wfh),
-          plus optional <code>check_in, check_out, note</code>. Rows are matched to team members by exact name.
+          Upload a monthly attendance sheet — either a manual CSV with columns <code>name, date, status</code> (status: present, absent, late, half_day, leave, wfh)
+          plus optional <code>check_in, check_out, note</code>, or a raw biometric device export (.csv/.xls/.xlsx) with <code>Emp No., AC-No., Name, Date, Clock In 1, Clock Out 1</code> —
+          the format is detected automatically. Rows are matched to team members by exact name. Weekly weekend days and national holidays (configured below) are never counted
+          as absences or vacation days, even if a device export has no row for them.
         </p>
-        <input ref={fileRef} type="file" accept=".csv" onChange={handleUpload} disabled={uploading} style={{fontSize:13}}/>
+        <input ref={fileRef} type="file" accept=".csv,.xls,.xlsx" onChange={handleUpload} disabled={uploading} style={{fontSize:13}}/>
         {uploading&&<p style={{color:"var(--text2)",fontSize:13}}>Uploading...</p>}
         {result?.error&&<p style={{color:"#ef4444",fontSize:13}}>{result.error}</p>}
         {result?.ok&&(
           <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,padding:16,fontSize:13,color:"var(--text)"}}>
-            <p> Imported {result.imported} row(s){result.skipped?`, skipped ${result.skipped} invalid row(s)`:""}.</p>
+            <p> Imported {result.imported} row(s){result.skipped?`, skipped ${result.skipped} invalid row(s)`:""}{result.days_off_skipped?`, ${result.days_off_skipped} weekend/holiday day(s) not counted`:""}.</p>
             {result.unmatched_names?.length>0&&(
               <p style={{color:"#f59e0b",marginTop:8}}>Names not matched to a team member: {result.unmatched_names.join(", ")}</p>
             )}
@@ -11810,10 +11812,21 @@ function AttendanceRulesPanel({appSettings, onSaveSettings}) {
     lateTriggerCount: rules.lateTriggerCount ?? 3,
     absentEnabled: rules.absentEnabled ?? false,
     absentDeductDays: rules.absentDeductDays ?? 1,
+    weekendDays: rules.weekendDays ?? [5,6], // PHP date('N'): 1=Mon..7=Sun — default Fri+Sat
+    holidays: rules.holidays ?? [],
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [newHolidayDate, setNewHolidayDate] = useState("");
+  const [newHolidayName, setNewHolidayName] = useState("");
   const s = (k,v) => setForm(p=>({...p,[k]:v}));
+  const toggleWeekendDay = (n) => setForm(p=>({...p, weekendDays: p.weekendDays.includes(n) ? p.weekendDays.filter(d=>d!==n) : [...p.weekendDays,n]}));
+  const addHoliday = () => {
+    if(!newHolidayDate) return;
+    setForm(p=>({...p, holidays:[...p.holidays,{date:newHolidayDate,name:newHolidayName.trim()||"Holiday"}].sort((a,b)=>a.date.localeCompare(b.date))}));
+    setNewHolidayDate(""); setNewHolidayName("");
+  };
+  const removeHoliday = (date) => setForm(p=>({...p, holidays: p.holidays.filter(h=>h.date!==date)}));
 
   const handleSave = async () => {
     setSaving(true);
@@ -11860,6 +11873,38 @@ function AttendanceRulesPanel({appSettings, onSaveSettings}) {
           <span>If marked absent with no approved vacation/WFH request covering that day, deduct</span>
           <input type="number" min="0" step="0.5" value={form.absentDeductDays} onChange={e=>s("absentDeductDays",e.target.value)} disabled={!form.absentEnabled} style={numInput}/>
           <span>day(s) from their vacation credit.</span>
+        </div>
+      </div>
+
+      {/* Weekend days */}
+      <div style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",padding:16,display:"flex",flexDirection:"column",gap:10}}>
+        <p style={{fontWeight:700,fontSize:13}}>Weekly Weekend</p>
+        <p style={{fontSize:12,color:"var(--text3)"}}>These days are never counted as an absence or vacation day, even if a device export has no clock-in row for them.</p>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+          {[[1,"Mon"],[2,"Tue"],[3,"Wed"],[4,"Thu"],[5,"Fri"],[6,"Sat"],[7,"Sun"]].map(([n,label])=>(
+            <button key={n} onClick={()=>toggleWeekendDay(n)} style={{padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,background:form.weekendDays.includes(n)?"var(--accent)":"var(--surface)",color:form.weekendDays.includes(n)?"#fff":"var(--text2)",border:`1px solid ${form.weekendDays.includes(n)?"var(--accent)":"var(--border2)"}`,cursor:"pointer"}}>{label}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* National holidays */}
+      <div style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",padding:16,display:"flex",flexDirection:"column",gap:10}}>
+        <p style={{fontWeight:700,fontSize:13}}>National Holidays</p>
+        <p style={{fontSize:12,color:"var(--text3)"}}>Specific dates that are never counted as an absence or vacation day either, on top of the weekly weekend above.</p>
+        {form.holidays.length>0&&(
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {form.holidays.map(h=>(
+              <div key={h.date} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,fontSize:13,padding:"6px 10px",background:"var(--surface)",borderRadius:8,border:"1px solid var(--border2)"}}>
+                <span>{fmtDate(h.date)} — {h.name}</span>
+                <button onClick={()=>removeHoliday(h.date)} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:12,fontWeight:700}}>Remove</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{display:"flex",flexWrap:"wrap",gap:8,alignItems:"center"}}>
+          <input type="date" value={newHolidayDate} onChange={e=>setNewHolidayDate(e.target.value)} style={{...timeInput,width:150}}/>
+          <input type="text" value={newHolidayName} onChange={e=>setNewHolidayName(e.target.value)} placeholder="e.g. Eid al-Fitr" style={{...numInput,width:180}}/>
+          <button onClick={addHoliday} disabled={!newHolidayDate} style={{padding:"6px 14px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text2)",cursor:newHolidayDate?"pointer":"not-allowed"}}>Add</button>
         </div>
       </div>
 
