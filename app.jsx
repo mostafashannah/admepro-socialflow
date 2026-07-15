@@ -1032,7 +1032,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.152";
+const APP_VERSION = "beta 5.153";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11755,6 +11755,10 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
   const s = (k,v) => setF(p=>({...p,[k]:v}));
   const managers = (team||[]).filter(t=>t.id!==member.id && t.role!=="client");
   const vacUsed = Number(member.vacation_days_used||0), wfhUsed = Number(member.wfh_days_used||0);
+  // Any custom title already typed for someone else on the team becomes a
+  // selectable option too, not just the fixed starter list — so typing a
+  // new one via "Other" actually sticks around for next time.
+  const titleOptions = Array.from(new Set([...TEAM_TITLES, ...(team||[]).map(t=>t.title).filter(Boolean)])).sort();
 
   const handleSave = () => {
     const updates = {...f};
@@ -11779,12 +11783,12 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
           </Field>
           <Field label="Department"><input value={f.department} onChange={e=>s("department",e.target.value)} placeholder="Creative" style={inputSt}/></Field>
           <Field label="Title" hint="Job title / seniority — doesn't affect permissions">
-            <select value={TEAM_TITLES.includes(f.title)?f.title:(f.title?"__other__":"")} onChange={e=>s("title",e.target.value==="__other__"?" ":e.target.value)} style={inputSt}>
+            <select value={titleOptions.includes(f.title)?f.title:(f.title?"__other__":"")} onChange={e=>s("title",e.target.value==="__other__"?" ":e.target.value)} style={inputSt}>
               <option value="">— None —</option>
-              {TEAM_TITLES.map(t=><option key={t} value={t}>{t}</option>)}
+              {titleOptions.map(t=><option key={t} value={t}>{t}</option>)}
               <option value="__other__">Other (type below)</option>
             </select>
-            {(!TEAM_TITLES.includes(f.title) && f.title!=="") && (
+            {(!titleOptions.includes(f.title) && f.title!=="") && (
               <input value={f.title.trim()===""?"":f.title} onChange={e=>s("title",e.target.value)} placeholder="Type a custom title" style={{...inputSt,marginTop:8}}/>
             )}
           </Field>
@@ -12131,6 +12135,7 @@ function InviteUserModal({onClose, onSubmit, clients, team}) {
   const idPhotoFrontRef = useRef(null);
   const idPhotoBackRef = useRef(null);
   const sf = (k,v)=>setForm(p=>({...p,[k]:v}));
+  const titleOptions = Array.from(new Set([...TEAM_TITLES, ...(team||[]).map(t=>t.title).filter(Boolean)])).sort();
 
   const handleIdPhoto = async (file, side) => {
     if(!file) return;
@@ -12190,12 +12195,12 @@ function InviteUserModal({onClose, onSubmit, clients, team}) {
           {form.user_type==="internal"&&(
             <div>
               <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Title <span style={{fontWeight:400,color:"var(--text3)"}}>(job title / seniority, doesn't affect permissions)</span></label>
-              <select value={TEAM_TITLES.includes(form.title)?form.title:(form.title?"__other__":"")} onChange={e=>sf("title",e.target.value==="__other__"?" ":e.target.value)} style={inputSt}>
+              <select value={titleOptions.includes(form.title)?form.title:(form.title?"__other__":"")} onChange={e=>sf("title",e.target.value==="__other__"?" ":e.target.value)} style={inputSt}>
                 <option value="">— None —</option>
-                {TEAM_TITLES.map(t=><option key={t} value={t}>{t}</option>)}
+                {titleOptions.map(t=><option key={t} value={t}>{t}</option>)}
                 <option value="__other__">Other (type below)</option>
               </select>
-              {(!TEAM_TITLES.includes(form.title) && form.title!=="") && (
+              {(!titleOptions.includes(form.title) && form.title!=="") && (
                 <input value={form.title.trim()===""?"":form.title} onChange={e=>sf("title",e.target.value)} placeholder="Type a custom title" style={{...inputSt,marginTop:8}}/>
               )}
             </div>
