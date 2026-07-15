@@ -615,13 +615,24 @@ const AI_ENDPOINT = window.location.origin + "/ai-proxy.php";
 const MAIL_ENDPOINT = window.location.origin + "/mail.php";
 const CAREERS_MAIL_ENDPOINT = window.location.origin + "/careers-mail.php";
 const RECRUITMENT_MAILBOX_ENDPOINT = window.location.origin + "/recruitment-mailbox.php";
-// Module-level (survives switching away from the Inbox tab and back, or
-// closing/reopening Recruitment, without a full page reload) so
-// re-visiting the tab shows what's already loaded instantly instead of
-// re-hitting IMAP and re-showing a spinner every single time — a real
-// IMAP round trip only happens on first load, the 30s background poll,
-// or a manual Refresh click.
-let MAILBOX_CACHE = { messages: null, loadedAt: 0 };
+// Persisted to localStorage (not just a module variable) so it survives
+// a hard refresh/full page reload too, not only switching tabs within the
+// running app — re-visiting Inbox shows what's already loaded instantly
+// instead of re-fetching and re-showing a spinner every single time. A
+// real request only happens on the very first-ever visit (nothing cached
+// at all), the 30s background poll, or a manual Refresh click.
+const MAILBOX_CACHE_KEY = "sf_mailbox_cache";
+let MAILBOX_CACHE = (() => {
+  try {
+    const raw = localStorage.getItem(MAILBOX_CACHE_KEY);
+    if (raw) { const p = JSON.parse(raw); if (Array.isArray(p.messages)) return { messages: p.messages, loadedAt: p.loadedAt||0 }; }
+  } catch(e) {}
+  return { messages: null, loadedAt: 0 };
+})();
+function setMailboxCache(next) {
+  MAILBOX_CACHE = next;
+  try { localStorage.setItem(MAILBOX_CACHE_KEY, JSON.stringify(next)); } catch(e) {}
+}
 const WA_ENDPOINT = window.location.origin + "/whatsapp.php";
 const PUBLISH_ENDPOINT      = window.location.origin + "/social-publish.php";
 const REEL_STATUS_ENDPOINT  = window.location.origin + "/reel-status.php";
@@ -1040,7 +1051,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.165";
+const APP_VERSION = "beta 5.166";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22781,7 +22792,7 @@ function RecruitmentMailboxTab({appSettings}) {
     fetchMailbox(forceSync)
       .then(json=>{
         if(!json.ok) throw new Error(json.error||"Failed to load mailbox");
-        MAILBOX_CACHE = { messages: json.messages||[], loadedAt: Date.now() };
+        setMailboxCache({ messages: json.messages||[], loadedAt: Date.now() });
         setMessages(MAILBOX_CACHE.messages);
       })
       .catch(e=>setError(e.message||"Failed to load mailbox"))
@@ -22796,7 +22807,7 @@ function RecruitmentMailboxTab({appSettings}) {
       setLoading(false);
       fetchMailbox(false)
         .then(json=>{
-          if(json.ok) { MAILBOX_CACHE = { messages: json.messages||[], loadedAt: Date.now() }; setMessages(MAILBOX_CACHE.messages); }
+          if(json.ok) { setMailboxCache({ messages: json.messages||[], loadedAt: Date.now() }); setMessages(MAILBOX_CACHE.messages); }
         })
         .catch(()=>{});
     } else {
@@ -22815,7 +22826,7 @@ function RecruitmentMailboxTab({appSettings}) {
       fetchMailbox()
         .then(json=>{
           if(json.ok) {
-            MAILBOX_CACHE = { messages: json.messages||[], loadedAt: Date.now() };
+            setMailboxCache({ messages: json.messages||[], loadedAt: Date.now() });
             setMessages(MAILBOX_CACHE.messages);
           }
         })
@@ -22854,7 +22865,7 @@ function RecruitmentMailboxTab({appSettings}) {
     const ok = await sendCareersEmail(to, subject, html, fromName).catch(()=>false);
     if(ok) {
       const newMsg = {uid:`local-${Date.now()}`, box:"sent", thread_key:selectedThread.key, subject, from_email:mailboxEmail, from_name:fromName, to:[to], date:new Date().toISOString(), body:replyText.trim(), snippet:replyText.trim().slice(0,160), has_attachments:false};
-      MAILBOX_CACHE = { messages: [newMsg,...MAILBOX_CACHE.messages||[]], loadedAt: MAILBOX_CACHE.loadedAt };
+      setMailboxCache({ messages: [newMsg,...MAILBOX_CACHE.messages||[]], loadedAt: MAILBOX_CACHE.loadedAt });
       setMessages(prev=>[newMsg,...prev]);
       setReplyText("");
     } else {
@@ -22871,7 +22882,7 @@ function RecruitmentMailboxTab({appSettings}) {
     if(ok) {
       const key = threadKeyClient(compose.subject.trim(), compose.to.trim());
       const newMsg = {uid:`local-${Date.now()}`, box:"sent", thread_key:key, subject:compose.subject.trim(), from_email:mailboxEmail, from_name:fromName, to:[compose.to.trim()], date:new Date().toISOString(), body:compose.body.trim(), snippet:compose.body.trim().slice(0,160), has_attachments:false};
-      MAILBOX_CACHE = { messages: [newMsg,...MAILBOX_CACHE.messages||[]], loadedAt: MAILBOX_CACHE.loadedAt };
+      setMailboxCache({ messages: [newMsg,...MAILBOX_CACHE.messages||[]], loadedAt: MAILBOX_CACHE.loadedAt });
       setMessages(prev=>[newMsg,...prev]);
       setSelectedKey(key);
       setShowCompose(false);
