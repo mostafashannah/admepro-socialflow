@@ -201,7 +201,12 @@ $completionMessage = !empty($emailSettings['completion_message']) ? $emailSettin
 $pollIntervalMinutes = !empty($emailSettings['poll_interval_minutes']) ? (int) $emailSettings['poll_interval_minutes'] : 5;
 $lastRunFile = __DIR__ . '/imap-recruitment-cron.lastrun';
 $lastRun = file_exists($lastRunFile) ? (int) file_get_contents($lastRunFile) : 0;
-if (time() - $lastRun < $pollIntervalMinutes * 60) {
+// Manual one-off backfill (e.g. `?backfill_days=10`), for the rare case an
+// application needs to be recaptured from an email older than the normal
+// 2-day window (missed on first pass, tombstone was cleared, etc) — bypasses
+// the throttle so it runs immediately regardless of poll_interval_minutes.
+$backfillDays = isset($_GET['backfill_days']) ? max(1, min(90, (int) $_GET['backfill_days'])) : null;
+if (!$backfillDays && time() - $lastRun < $pollIntervalMinutes * 60) {
     echo json_encode(['skipped' => true, 'reason' => 'not due yet', 'poll_interval_minutes' => $pollIntervalMinutes]);
     exit(0);
 }
@@ -251,7 +256,8 @@ $folder = $client->getFolder('INBOX');
 // A wider window risks the IMAP server dropping the connection
 // mid-fetch on a large mailbox, so this is intentionally tight.
 try {
-    $messages = $folder->messages()->since((new DateTime())->modify('-2 days'))->get();
+    $sinceDays = $backfillDays ?: 2;
+    $messages = $folder->messages()->since((new DateTime())->modify("-{$sinceDays} days"))->get();
 } catch (Throwable $e) {
     echo json_encode(['error' => 'Failed to fetch messages: ' . $e->getMessage()]);
     exit(1);

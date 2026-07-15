@@ -459,6 +459,165 @@ function hrTools() {
     ];
 }
 
+// Mirrors app.jsx's hasPerm(): a role with ANY rows in role_permissions
+// uses exactly those (ignores hardcoded defaults entirely); a role with
+// no rows at all falls back to the hardcoded DEFAULT_ROLE_PERMISSIONS
+// list from app.jsx — currently only 'hr' has hr.manage_recruitment by
+// default, extend this array if that ever changes.
+function hasRecruitmentPermission(PDO $pdo, string $senderRole) {
+    if ($senderRole === 'team:admin') return true;
+    $role = str_replace('team:', '', $senderRole);
+    $stmt = $pdo->prepare("SELECT permission_key, allowed FROM role_permissions WHERE role = :r");
+    $stmt->execute([':r' => $role]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if ($rows) {
+        foreach ($rows as $row) {
+            if ($row['permission_key'] === 'hr.manage_recruitment') return (int) $row['allowed'] === 1;
+        }
+        return false; // has custom rows but recruitment permission isn't among the allowed ones
+    }
+    return in_array($role, ['hr'], true);
+}
+
+function recruitmentTools() {
+    return [
+        [
+            'name' => 'list_job_applications',
+            'description' => 'List/search recruitment applications. All filters optional and combinable. Use this to answer questions like "who applied for X", "any new applications", "show shortlisted candidates".',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'status'      => ['type' => 'string', 'enum' => ['new', 'reviewing', 'shortlisted', 'interview', 'offer', 'hired', 'rejected', 'rejected_after_offer']],
+                    'job_title'   => ['type' => 'string', 'description' => 'Partial match on the position applied for'],
+                    'name'        => ['type' => 'string', 'description' => 'Partial match on the candidate\'s name'],
+                ],
+                'required' => [],
+            ],
+        ],
+        [
+            'name' => 'get_job_application',
+            'description' => 'Get full details on one specific candidate\'s application — status, AI score/summary, salary expectations, notes, interview/offer info. Use when asked about a specific person by name.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => ['name_or_email' => ['type' => 'string', 'description' => 'Candidate name or email — best-effort match']],
+                'required' => ['name_or_email'],
+            ],
+        ],
+        [
+            'name' => 'update_application_status',
+            'description' => 'Move a candidate\'s application to a different pipeline stage — e.g. "shortlist Sarah", "move Ahmed to interview", "reject this one". Does not send any email — it only updates the stage shown in the app.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'name_or_email' => ['type' => 'string', 'description' => 'Candidate name or email — best-effort match'],
+                    'status'        => ['type' => 'string', 'enum' => ['new', 'reviewing', 'shortlisted', 'interview', 'offer', 'hired', 'rejected', 'rejected_after_offer']],
+                ],
+                'required' => ['name_or_email', 'status'],
+            ],
+        ],
+        [
+            'name' => 'add_application_note',
+            'description' => 'Add an internal note to a candidate\'s application (appended to any existing notes, not shown to the candidate).',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'name_or_email' => ['type' => 'string', 'description' => 'Candidate name or email — best-effort match'],
+                    'note'          => ['type' => 'string'],
+                ],
+                'required' => ['name_or_email', 'note'],
+            ],
+        ],
+        [
+            'name' => 'list_job_openings',
+            'description' => 'List job openings (title, department, status, application count). Use for "what positions are open", "how many people applied for X".',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => ['status' => ['type' => 'string', 'enum' => ['open', 'closed', 'draft']]],
+                'required' => [],
+            ],
+        ],
+    ];
+}
+
+function findJobApplication(PDO $pdo, string $query) {
+    $stmt = $pdo->prepare("SELECT * FROM job_applications WHERE candidate_name LIKE :q OR candidate_email LIKE :q ORDER BY created_at DESC LIMIT 5");
+    $stmt->execute([':q' => '%' . $query . '%']);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function runRecruitmentTool(PDO $pdo, string $name, array $input, string $senderRole, ?string $senderName) {
+    if (!hasRecruitmentPermission($pdo, $senderRole)) {
+        return ['error' => 'You do not have permission to access recruitment data. Ask an admin or HR to grant you the "Manage Recruitment" permission.'];
+    }
+
+    if ($name === 'list_job_applications') {
+        $sql = "SELECT candidate_name, candidate_email, job_title, status, ai_score, created_at FROM job_applications WHERE 1=1";
+        $params = [];
+        if (!empty($input['status']))    { $sql .= " AND status = :s";     $params[':s'] = $input['status']; }
+        if (!empty($input['job_title'])) { $sql .= " AND job_title LIKE :j"; $params[':j'] = '%' . $input['job_title'] . '%'; }
+        if (!empty($input['name']))      { $sql .= " AND candidate_name LIKE :n"; $params[':n'] = '%' . $input['name'] . '%'; }
+        $sql .= " ORDER BY created_at DESC LIMIT 25";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return $rows ?: ['message' => 'No applications match those filters.'];
+    }
+
+    if ($name === 'get_job_application') {
+        $matches = findJobApplication($pdo, trim($input['name_or_email'] ?? ''));
+        if (!$matches) return ['error' => 'No application found matching that name/email.'];
+        if (count($matches) > 1) return ['error' => 'Multiple candidates match — be more specific: ' . implode(', ', array_column($matches, 'candidate_name'))];
+        $a = $matches[0];
+        return [
+            'candidate_name' => $a['candidate_name'], 'candidate_email' => $a['candidate_email'], 'candidate_phone' => $a['candidate_phone'],
+            'job_title' => $a['job_title'], 'status' => $a['status'], 'ai_score' => $a['ai_score'], 'ai_summary' => $a['ai_summary'],
+            'expected_salary' => $a['expected_salary'], 'available_start_date' => $a['available_start_date'],
+            'interview_rating' => $a['interview_rating'], 'notes' => $a['notes'],
+            'offer_salary' => $a['offer_salary'], 'offer_candidate_response' => $a['offer_candidate_response'],
+            'applied_on' => $a['created_at'],
+        ];
+    }
+
+    if ($name === 'update_application_status') {
+        $matches = findJobApplication($pdo, trim($input['name_or_email'] ?? ''));
+        if (!$matches) return ['error' => 'No application found matching that name/email.'];
+        if (count($matches) > 1) return ['error' => 'Multiple candidates match — be more specific: ' . implode(', ', array_column($matches, 'candidate_name'))];
+        $a = $matches[0];
+        $status = $input['status'] ?? '';
+        $valid = ['new', 'reviewing', 'shortlisted', 'interview', 'offer', 'hired', 'rejected', 'rejected_after_offer'];
+        if (!in_array($status, $valid, true)) return ['error' => 'Invalid status.'];
+        $pdo->prepare("UPDATE job_applications SET status = :s WHERE id = :id")->execute([':s' => $status, ':id' => $a['id']]);
+        $log = $pdo->prepare("INSERT INTO job_application_activity (id, application_id, action, actor_name) VALUES (UUID(), :aid, :action, :actor)");
+        $log->execute([':aid' => $a['id'], ':action' => "Moved to " . ucfirst(str_replace('_', ' ', $status)) . " (via WhatsApp)", ':actor' => $senderName]);
+        return ['ok' => true, 'message' => "{$a['candidate_name']}'s application moved to {$status}."];
+    }
+
+    if ($name === 'add_application_note') {
+        $matches = findJobApplication($pdo, trim($input['name_or_email'] ?? ''));
+        if (!$matches) return ['error' => 'No application found matching that name/email.'];
+        if (count($matches) > 1) return ['error' => 'Multiple candidates match — be more specific: ' . implode(', ', array_column($matches, 'candidate_name'))];
+        $a = $matches[0];
+        $note = trim($input['note'] ?? '');
+        if (!$note) return ['error' => 'Missing note text.'];
+        $combined = trim(($a['notes'] ? $a['notes'] . "\n" : '') . "[{$senderName} via WhatsApp] {$note}");
+        $pdo->prepare("UPDATE job_applications SET notes = :n WHERE id = :id")->execute([':n' => $combined, ':id' => $a['id']]);
+        return ['ok' => true, 'message' => "Note added to {$a['candidate_name']}'s application."];
+    }
+
+    if ($name === 'list_job_openings') {
+        $sql = "SELECT o.title, o.department, o.status, (SELECT COUNT(*) FROM job_applications a WHERE a.job_opening_id = o.id) AS application_count FROM job_openings o WHERE 1=1";
+        $params = [];
+        if (!empty($input['status'])) { $sql .= " AND o.status = :s"; $params[':s'] = $input['status']; }
+        $sql .= " ORDER BY o.created_at DESC LIMIT 25";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        return $rows ?: ['message' => 'No job openings match those filters.'];
+    }
+
+    return ['error' => 'Unknown tool: ' . $name];
+}
+
 function generateProUuid() {
     $data = random_bytes(16);
     $data[6] = chr(ord($data[6]) & 0x0f | 0x40);
@@ -801,8 +960,13 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                       . "instead, answer it normally like any other message."
                     : '');
 
+        // Recruitment tools follow the app's own Roles & Permissions
+        // (hr.manage_recruitment) rather than a hardcoded role list — same
+        // check the app UI itself uses to show/hide the Recruitment page.
+        $canRecruit = $isTeam && hasRecruitmentPermission($pdo, $senderRole);
+
         if ($isAdmin) {
-            $tools = array_merge(proTools(), hrTools(), financeTools());
+            $tools = array_merge(proTools(), hrTools(), financeTools(), recruitmentTools());
             $system .= "\n\nAs admin, you have full tools to look up any client and search any task across the "
                      . "whole agency — use them whenever the question needs current data instead of guessing.";
         } elseif ($isAM) {
@@ -819,6 +983,16 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                      . "permission to browse the full client list or other people's tasks.";
         } else {
             $tools = [];
+        }
+        if ($canRecruit && !$isAdmin) {
+            $tools = array_merge($tools, recruitmentTools());
+        }
+        if ($canRecruit) {
+            $system .= "\n\nRecruitment: you can list/search job applications and openings, look up a specific "
+                     . "candidate, move an application to a new pipeline stage (list_job_applications, "
+                     . "get_job_application, update_application_status), and add an internal note "
+                     . "(add_application_note). These never send any email to the candidate — they only update "
+                     . "what's shown in the app's Recruitment page.";
         }
         if ($isAdmin || $isAccountant) {
             $system .= "\n\nFinancial data: you can answer any question about money in, money out, balance, or "
