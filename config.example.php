@@ -100,3 +100,13 @@ define('RECRUITMENT_IMAP_HOST',     'imap.hostinger.com');
 define('RECRUITMENT_IMAP_PORT',     993);
 define('RECRUITMENT_IMAP_EMAIL',    'hr@admepro.com');
 define('RECRUITMENT_IMAP_PASSWORD', 'CHANGE_ME');
+
+// Outgoing mail for careers/recruitment emails (confirmation, "complete
+// your application") — sent via SMTP through this same mailbox instead of
+// Resend, so sent + received mail live in one real inbox. Same
+// username/password as the IMAP settings above; Hostinger's SMTP host is
+// typically smtp.hostinger.com, port 465 (implicit SSL). All of this is
+// also editable from Recruitment → Email Settings in the app, which takes
+// priority over these fallback constants.
+define('RECRUITMENT_SMTP_HOST', 'smtp.hostinger.com');
+define('RECRUITMENT_SMTP_PORT', 465);

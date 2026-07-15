@@ -35,6 +35,7 @@
  */
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/recruitment-mail-lib.php';
 
 $autoload = __DIR__ . '/vendor/autoload.php';
 if (!file_exists($autoload)) {
@@ -67,24 +68,9 @@ function email_base($content) {
 </body></html>';
 }
 
-function send_via_resend($to, $subject, $html, $fromName = 'Admepro Careers') {
-    $payload = json_encode([
-        "from"    => "$fromName <noreply@admepro.com>",
-        "to"      => [$to],
-        "subject" => $subject,
-        "html"    => $html,
-    ]);
-    $ch = curl_init("https://api.resend.com/emails");
-    curl_setopt_array($ch, [
-        CURLOPT_POST => true, CURLOPT_POSTFIELDS => $payload, CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 30,
-        CURLOPT_HTTPHEADER => ["Authorization: Bearer " . RESEND_API_KEY, "Content-Type: application/json"],
-    ]);
-    curl_exec($ch);
-    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    return $status >= 200 && $status < 300;
-}
+// Careers/recruitment emails now send via SMTP through the actual
+// recruitment mailbox (send_recruitment_email(), recruitment-mail-lib.php)
+// instead of Resend, so sent + received mail live in the same inbox.
 
 function log_activity($pdo, $applicationId, $action, $actor = 'System') {
     try {
@@ -515,7 +501,7 @@ foreach ($messages as $message) {
                 . '<p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>'
                 . '<p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>'
                 . '</td></tr></table>';
-            send_via_resend($candidateEmail, $emailSubject, email_base($bodyHtml), $confirmationFromName);
+            send_recruitment_email($pdo, $candidateEmail, $emailSubject, email_base($bodyHtml), $confirmationFromName);
             log_activity($pdo, $newId, empty($missing) ? 'Welcome email sent' : 'Welcome + complete-your-application email sent');
         }
 

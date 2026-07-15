@@ -1,6 +1,7 @@
 {
     "require": {
         "minishlink/web-push": "^10.1",
-        "webklex/php-imap": "^6.2"
+        "webklex/php-imap": "^6.2",
+        "phpmailer/phpmailer": "^6.9"
     }
 }

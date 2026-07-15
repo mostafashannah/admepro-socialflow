@@ -551,6 +551,7 @@ async function de(entityName, id) {
 // ── AI endpoint — always use proxy on server ──
 const AI_ENDPOINT = window.location.origin + "/ai-proxy.php";
 const MAIL_ENDPOINT = window.location.origin + "/mail.php";
+const CAREERS_MAIL_ENDPOINT = window.location.origin + "/careers-mail.php";
 const WA_ENDPOINT = window.location.origin + "/whatsapp.php";
 const PUBLISH_ENDPOINT      = window.location.origin + "/social-publish.php";
 const REEL_STATUS_ENDPOINT  = window.location.origin + "/reel-status.php";
@@ -896,6 +897,29 @@ async function sendEmail(to, subject, html, fromName="SocialFlow") {
   }
 }
 
+// Careers/recruitment emails (public apply form confirmations) send via
+// SMTP through the actual recruitment mailbox instead of Resend, so
+// sent + received mail live in one real inbox — same as the recruitment
+// cron's confirmation/completion emails.
+async function sendCareersEmail(to, subject, html, fromName="Admepro Careers") {
+  const sentAt = new Date().toISOString();
+  try {
+    const r = await fetch(CAREERS_MAIL_ENDPOINT, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({to, subject, html, from_name:fromName}),
+    });
+    const d = await r.json();
+    const ok = r.ok && d.ok;
+    if(!ok) console.warn("[careers-mail] failed:", d);
+    ce("EmailLog",[{to:Array.isArray(to)?to.join(", "):to, subject, from_name:fromName, status:ok?"sent":"failed", error_message:ok?"":JSON.stringify(d), sent_at:sentAt}]).catch(()=>{});
+    return ok;
+  } catch(e) {
+    console.error("[careers-mail] error:", e);
+    ce("EmailLog",[{to:Array.isArray(to)?to.join(", "):to, subject, from_name:fromName, status:"error", error_message:String(e), sent_at:sentAt}]).catch(()=>{});
+    return false;
+  }
+}
+
 // ── Pro AI preferences (model + speed), set from Settings → AI & Tokens ──
 function getAIPrefs() {
   let model = "claude-haiku-4-5-20251001", speed = "medium";
@@ -946,7 +970,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.137";
+const APP_VERSION = "beta 5.138";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13586,7 +13610,7 @@ function CareersPage({appSettings}) {
       if(created?.id && cvContent) reviewApplication(created, cvContent, selected).catch(()=>{});
       const es = {...RECRUITMENT_EMAIL_DEFAULTS, ...(appSettings?.recruitment_email_settings||{})};
       if(es.confirmation_enabled!==false) {
-        sendEmail(form.email.trim(), es.confirmation_subject||"Thanks for applying to Admepro!", applicationReceivedEmail(form.name.trim(), selected.title, es.confirmation_message), es.confirmation_from_name||"Admepro Careers").catch(()=>{});
+        sendCareersEmail(form.email.trim(), es.confirmation_subject||"Thanks for applying to Admepro!", applicationReceivedEmail(form.name.trim(), selected.title, es.confirmation_message), es.confirmation_from_name||"Admepro Careers").catch(()=>{});
         if(created?.id) logApplicationActivity(created.id, "Welcome email sent", "System");
       }
     } catch(e) { alert("Something went wrong submitting your application. Please try again."); }
@@ -22074,6 +22098,7 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
 
 const RECRUITMENT_EMAIL_DEFAULTS = {
   imap_host: "", imap_port: 993, imap_email: "", imap_password: "",
+  smtp_host: "smtp.hostinger.com", smtp_port: 465,
   poll_interval_minutes: 5,
   strict_filtering: true,
   confirmation_enabled: true, confirmation_from_name: "Admepro Careers",
@@ -22128,6 +22153,15 @@ function RecruitmentEmailSettingsTab({appSettings, onSaveSettings}) {
               <span style={{position:"absolute",top:2,left:f.strict_filtering?20:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.15s"}}/>
             </button>
           </div>
+        </div>
+      </div>
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:24}}>
+        <p style={{fontSize:13,fontWeight:800,marginBottom:4}}>Outgoing Mail (SMTP)</p>
+        <p style={{fontSize:12,color:"var(--text3)",marginBottom:16}}>Confirmation and "complete your application" emails send via SMTP through the same mailbox above (not a separate transactional service) — so sent and received mail live in one real inbox. Same login as the Mailbox Email/Password above.</p>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <Field label="SMTP Host"><input value={f.smtp_host} onChange={e=>set("smtp_host",e.target.value)} placeholder="smtp.hostinger.com" style={inputSt}/></Field>
+          <Field label="SMTP Port"><input type="number" value={f.smtp_port} onChange={e=>set("smtp_port",Number(e.target.value)||465)} style={inputSt}/></Field>
         </div>
       </div>
 
