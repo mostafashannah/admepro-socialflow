@@ -970,7 +970,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.140";
+const APP_VERSION = "beta 5.141";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11083,7 +11083,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   onInviteUser, onCancelInvitation, onApproveRequest, onRejectRequest,
   onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation,
   rolePerms, onUpdateTeamMember, onToggleRolePermission, leaveRequests, onDecideLeaveRequest, attendanceRecords,
-  posts, onImpersonate, appSettings, onSaveSettings}) {
+  posts, onImpersonate, appSettings, onSaveSettings, expenses, onDeclareCompanyDayOff}) {
   const [tab, setTab] = usePersistentState("sf_tab_users","team");
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showClientUserModal, setShowClientUserModal] = useState(false);
@@ -11107,20 +11107,32 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   if(viewingMember) {
     const live = (team||[]).find(t=>t.id===viewingMember.id) || viewingMember;
     return (
-      <TeamMemberDetailPage
-        member={live}
-        team={team}
-        posts={posts}
-        leaveRequests={leaveRequests||[]}
-        attendanceRecords={attendanceRecords||[]}
-        canEdit={hasPerm(currentUser,rolePerms,"hr.edit_team")}
-        canEditSalary={hasPerm(currentUser,rolePerms,"hr.edit_salary")}
-        onBack={()=>setViewingMember(null)}
-        onEdit={()=>setEditingMember(live)}
-        onSelectMember={(m)=>setViewingMember(m)}
-        currentUser={currentUser}
-        onImpersonate={onImpersonate}
-      />
+      <>
+        <TeamMemberDetailPage
+          member={live}
+          team={team}
+          posts={posts}
+          leaveRequests={leaveRequests||[]}
+          attendanceRecords={attendanceRecords||[]}
+          expenses={expenses}
+          canEdit={hasPerm(currentUser,rolePerms,"hr.edit_team")}
+          canEditSalary={hasPerm(currentUser,rolePerms,"hr.edit_salary")}
+          onBack={()=>setViewingMember(null)}
+          onEdit={()=>setEditingMember(live)}
+          onSelectMember={(m)=>setViewingMember(m)}
+          currentUser={currentUser}
+          onImpersonate={onImpersonate}
+        />
+        {editingMember&&(
+          <EditMemberModal
+            member={editingMember}
+            team={team}
+            canEditSalary={hasPerm(currentUser,rolePerms,"hr.edit_salary")}
+            onClose={()=>setEditingMember(null)}
+            onSave={(updates)=>{onUpdateTeamMember(editingMember.id, updates); setEditingMember(null);}}
+          />
+        )}
+      </>
     );
   }
 
@@ -11213,7 +11225,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
       )}
 
       {tab==="attendance"&&canUploadAttendance&&(
-        <AttendanceImportTab appSettings={appSettings} onSaveSettings={onSaveSettings} isAdmin={currentUser?.role==="admin"}/>
+        <AttendanceImportTab appSettings={appSettings} onSaveSettings={onSaveSettings} isAdmin={currentUser?.role==="admin"} onDeclareCompanyDayOff={onDeclareCompanyDayOff}/>
       )}
 
       {tab==="invites"&&(
@@ -11414,7 +11426,8 @@ function calcExtraHours(records, threshold=9) {
   return {total, perMonth};
 }
 
-function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRecords, canEdit, canEditSalary, onBack, onEdit, onSelectMember, currentUser, onImpersonate}) {
+function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRecords, expenses, canEdit, canEditSalary, onBack, onEdit, onSelectMember, currentUser, onImpersonate}) {
+  const [tab, setTab] = useState("overview");
   const manager = (team||[]).find(t=>t.id===member.manager_id);
   const directReports = (team||[]).filter(t=>t.manager_id===member.id);
   const myTasks = (posts||[]).filter(p=>p.assigned_to===member.email);
@@ -11423,6 +11436,8 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
   const allMyAttendance = (attendanceRecords||[]).filter(a=>a.team_member_id===member.id || a.member_name===member.name).sort((a,b)=>new Date(b.work_date)-new Date(a.work_date));
   const myAttendance = allMyAttendance.slice(0,30);
   const overtime = calcExtraHours(allMyAttendance);
+  const mySalaryRecords = (expenses||[]).filter(e=>e.team_member_id===member.id && e.category==="salaries").sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const totalPaid = mySalaryRecords.reduce((sum,e)=>sum+Number(e.amount||0),0);
   const docs = [member.id_photo_front_url&&{label:"ID Photo — Front", url:member.id_photo_front_url}, member.id_photo_back_url&&{label:"ID Photo — Back", url:member.id_photo_back_url}].filter(Boolean);
   const row = (label,value) => value==null||value===""?null:(
     <div style={{display:"flex",justifyContent:"space-between",padding:"9px 0",borderBottom:"1px solid var(--border)"}}>
@@ -11453,6 +11468,13 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
         {canEdit&&<Btn size="sm" onClick={onEdit}>Edit</Btn>}
       </div>
 
+      <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)",alignSelf:"flex-start"}}>
+        {[["overview","Overview"],["tasks","Tasks & Scheduled"],["payroll","Payroll"]].map(([k,l])=>(
+          <button key={k} onClick={()=>setTab(k)} style={{padding:"7px 16px",borderRadius:"var(--rxs)",fontSize:12,fontWeight:700,background:tab===k?"var(--accent)":"none",color:tab===k?"#fff":"var(--text2)"}}>{l}</button>
+        ))}
+      </div>
+
+      {tab==="tasks"&&(
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:10}}>
           <h3 style={{fontWeight:700,fontSize:14}}>My Tasks</h3>
@@ -11495,7 +11517,41 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
           )}
         </div>
       </div>
+      )}
 
+      {tab==="payroll"&&canEditSalary&&(
+        <div style={{display:"flex",flexDirection:"column",gap:16}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
+              <p style={{fontSize:11,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Monthly Salary</p>
+              <p style={{fontSize:22,fontWeight:800,marginTop:4}}>{member.salary?`EGP ${Number(member.salary).toLocaleString()}`:"—"}</p>
+            </div>
+            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
+              <p style={{fontSize:11,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Total Paid ({mySalaryRecords.length} record{mySalaryRecords.length!==1?"s":""})</p>
+              <p style={{fontSize:22,fontWeight:800,marginTop:4}}>EGP {Math.round(totalPaid).toLocaleString()}</p>
+            </div>
+          </div>
+          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
+            <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}><h3 style={{fontWeight:700,fontSize:14}}>Salary Records</h3></div>
+            {mySalaryRecords.length===0?(
+              <div style={{padding:20,textAlign:"center",color:"var(--text2)",fontSize:13}}>No salary payments linked to {member.name} yet — link one by picking them as "For (Team Member)" when adding a Salaries & Payroll transaction on the Finance page.</div>
+            ):mySalaryRecords.map((e,i)=>(
+              <div key={e.id} style={{padding:"12px 18px",borderBottom:i<mySalaryRecords.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12}}>
+                <div style={{flex:1}}>
+                  <p style={{fontWeight:600,fontSize:13}}>{e.description}</p>
+                  <p style={{fontSize:11,color:"var(--text3)"}}>{fmtDate(e.date)}{e.method?` · ${e.method}`:""}</p>
+                </div>
+                <span style={{fontWeight:800,fontSize:14,color:"#ef4444"}}>-{e.currency||"EGP"} {Number(e.amount).toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {tab==="payroll"&&!canEditSalary&&(
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:30,textAlign:"center",color:"var(--text2)",fontSize:13}}>You don't have permission to view salary information.</div>
+      )}
+
+      {tab==="overview"&&(<>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
           <h3 style={{fontWeight:700,fontSize:14,marginBottom:8}}>Details</h3>
@@ -11578,8 +11634,8 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
         ):myLeave.map((r,i)=>(
           <div key={r.id} style={{padding:"12px 18px",borderBottom:i<myLeave.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12}}>
             <div style={{flex:1}}>
-              <div style={{fontWeight:600,fontSize:13}}>{r.type==="vacation"?"Vacation":"WFH"} — {r.start_date===r.end_date?r.start_date:`${r.start_date} → ${r.end_date}`}</div>
-              <div style={{fontSize:11,color:"var(--text3)"}}>{r.days} day(s){r.reason?` · "${r.reason}"`:""}</div>
+              <div style={{fontWeight:600,fontSize:13}}>{r.is_company_wide?(r.type==="wfh"?"WFH (Company)":"Day Off (Company)"):(r.type==="vacation"?"Vacation":"WFH")} — {r.start_date===r.end_date?r.start_date:`${r.start_date} → ${r.end_date}`}</div>
+              <div style={{fontSize:11,color:"var(--text3)"}}>{r.is_company_wide?"Doesn't count against personal credit":`${r.days} day(s)`}{r.reason?` · "${r.reason}"`:""}</div>
             </div>
             <span style={{background:r.status==="approved"?"#10b98122":r.status==="rejected"?"#ef444422":"#f59e0b22",color:r.status==="approved"?"#10b981":r.status==="rejected"?"#ef4444":"#f59e0b",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:600,textTransform:"capitalize"}}>{r.status}</span>
           </div>
@@ -11603,6 +11659,7 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
           );
         })}
       </div>
+      </>)}
     </div>
   );
 }
@@ -11750,7 +11807,7 @@ function RolesPermissionsTab({rolePerms, onToggle}) {
   );
 }
 
-function AttendanceImportTab({appSettings, onSaveSettings, isAdmin}) {
+function AttendanceImportTab({appSettings, onSaveSettings, isAdmin, onDeclareCompanyDayOff}) {
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState(null);
   const fileRef = useRef(null);
@@ -11798,12 +11855,12 @@ function AttendanceImportTab({appSettings, onSaveSettings, isAdmin}) {
           </div>
         )}
       </div>
-      {isAdmin&&<AttendanceRulesPanel appSettings={appSettings} onSaveSettings={onSaveSettings}/>}
+      {isAdmin&&<AttendanceRulesPanel appSettings={appSettings} onSaveSettings={onSaveSettings} onDeclareCompanyDayOff={onDeclareCompanyDayOff}/>}
     </div>
   );
 }
 
-function AttendanceRulesPanel({appSettings, onSaveSettings}) {
+function AttendanceRulesPanel({appSettings, onSaveSettings, onDeclareCompanyDayOff}) {
   const rules = appSettings?.attendance_rules || {};
   const [form, setForm] = useState({
     lateEnabled: rules.lateEnabled ?? false,
@@ -11819,11 +11876,22 @@ function AttendanceRulesPanel({appSettings, onSaveSettings}) {
   const [saved, setSaved] = useState(false);
   const [newHolidayDate, setNewHolidayDate] = useState("");
   const [newHolidayName, setNewHolidayName] = useState("");
+  const [newHolidayApplyAs, setNewHolidayApplyAs] = useState("off"); // "off" | "wfh" | "none"
+  const [applying, setApplying] = useState(false);
   const s = (k,v) => setForm(p=>({...p,[k]:v}));
   const toggleWeekendDay = (n) => setForm(p=>({...p, weekendDays: p.weekendDays.includes(n) ? p.weekendDays.filter(d=>d!==n) : [...p.weekendDays,n]}));
-  const addHoliday = () => {
+  const addHoliday = async () => {
     if(!newHolidayDate) return;
-    setForm(p=>({...p, holidays:[...p.holidays,{date:newHolidayDate,name:newHolidayName.trim()||"Holiday"}].sort((a,b)=>a.date.localeCompare(b.date))}));
+    const name = newHolidayName.trim()||"Holiday";
+    setForm(p=>({...p, holidays:[...p.holidays,{date:newHolidayDate,name}].sort((a,b)=>a.date.localeCompare(b.date))}));
+    // Applying to the whole team is a separate, immediate write (creates
+    // an already-approved leave/WFH record per person) — not deferred to
+    // "Save Rules" below, which only persists the holidays LIST itself.
+    if(newHolidayApplyAs!=="none" && onDeclareCompanyDayOff) {
+      setApplying(true);
+      await onDeclareCompanyDayOff(newHolidayDate, newHolidayApplyAs==="wfh"?"wfh":"vacation", name);
+      setApplying(false);
+    }
     setNewHolidayDate(""); setNewHolidayName("");
   };
   const removeHoliday = (date) => setForm(p=>({...p, holidays: p.holidays.filter(h=>h.date!==date)}));
@@ -11890,7 +11958,7 @@ function AttendanceRulesPanel({appSettings, onSaveSettings}) {
       {/* National holidays */}
       <div style={{background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",padding:16,display:"flex",flexDirection:"column",gap:10}}>
         <p style={{fontWeight:700,fontSize:13}}>National Holidays</p>
-        <p style={{fontSize:12,color:"var(--text3)"}}>Specific dates that are never counted as an absence or vacation day either, on top of the weekly weekend above.</p>
+        <p style={{fontSize:12,color:"var(--text3)"}}>Specific dates that are never counted as an absence or vacation day either, on top of the weekly weekend above. Optionally also declare it a day off or WFH day for the whole team at once — this shows up on everyone's Leave & WFH history but never deducts from their personal vacation/WFH credit.</p>
         {form.holidays.length>0&&(
           <div style={{display:"flex",flexDirection:"column",gap:6}}>
             {form.holidays.map(h=>(
@@ -11904,7 +11972,12 @@ function AttendanceRulesPanel({appSettings, onSaveSettings}) {
         <div style={{display:"flex",flexWrap:"wrap",gap:8,alignItems:"center"}}>
           <input type="date" value={newHolidayDate} onChange={e=>setNewHolidayDate(e.target.value)} style={{...timeInput,width:150}}/>
           <input type="text" value={newHolidayName} onChange={e=>setNewHolidayName(e.target.value)} placeholder="e.g. Eid al-Fitr" style={{...numInput,width:180}}/>
-          <button onClick={addHoliday} disabled={!newHolidayDate} style={{padding:"6px 14px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text2)",cursor:newHolidayDate?"pointer":"not-allowed"}}>Add</button>
+          <select value={newHolidayApplyAs} onChange={e=>setNewHolidayApplyAs(e.target.value)} style={{...numInput,width:170}}>
+            <option value="off">Apply: Day off for all</option>
+            <option value="wfh">Apply: WFH for all</option>
+            <option value="none">Apply: Just exclude date</option>
+          </select>
+          <button onClick={addHoliday} disabled={!newHolidayDate||applying} style={{padding:"6px 14px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text2)",cursor:newHolidayDate&&!applying?"pointer":"not-allowed"}}>{applying?"Applying…":"Add"}</button>
         </div>
       </div>
 
@@ -18719,7 +18792,7 @@ const INCOME_CATEGORIES = [
 ];
 const INCOME_CAT_MAP = Object.fromEntries(INCOME_CATEGORIES.map(c=>[c.k,c]));
 
-function AddExpenseModal({open,onClose,onAdd,onSave,initial,clientNames=[]}) {
+function AddExpenseModal({open,onClose,onAdd,onSave,initial,clientNames=[],team=[]}) {
   const isEdit = !!initial;
   const [type,setType] = useState(initial?.type||"out");
   const [category,setCategory] = useState(initial?.category||"other");
@@ -18728,26 +18801,28 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial,clientNames=[]}) {
   const [currency,setCurrency] = useState(initial?.currency||"EGP");
   const [date,setDate] = useState(initial?.date||new Date().toISOString().split("T")[0]);
   const [method,setMethod] = useState(initial?.method||"");
+  const [teamMemberId,setTeamMemberId] = useState(initial?.team_member_id||"");
   const [saving,setSaving] = useState(false);
   const isClientMatch = (d) => clientNames.includes(d);
   const [clientMode,setClientMode] = useState(initial?.description&&!isClientMatch(initial.description) ? "manual" : "select");
   const cats = type==="out" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
   const isClientPayment = category==="client_payment";
+  const isSalary = category==="salaries";
 
   React.useEffect(()=>{
     if(!open) return;
     setType(initial?.type||"out"); setCategory(initial?.category||"other");
     setDescription(initial?.description||""); setAmount(initial?.amount!=null?String(initial.amount):"");
     setCurrency(initial?.currency||"EGP"); setDate(initial?.date||new Date().toISOString().split("T")[0]);
-    setMethod(initial?.method||"");
+    setMethod(initial?.method||""); setTeamMemberId(initial?.team_member_id||"");
     setClientMode(initial?.description&&!isClientMatch(initial.description) ? "manual" : "select");
   },[open,initial]);
 
-  const reset = () => { setType("out"); setCategory("other"); setDescription(""); setAmount(""); setDate(new Date().toISOString().split("T")[0]); setMethod(""); setClientMode("select"); };
+  const reset = () => { setType("out"); setCategory("other"); setDescription(""); setAmount(""); setDate(new Date().toISOString().split("T")[0]); setMethod(""); setTeamMemberId(""); setClientMode("select"); };
   const submit = async () => {
     if(!amount||Number(amount)<=0||!description.trim()) return;
     setSaving(true);
-    const payload = {type,category,description:description.trim(),amount:Number(amount),currency,date,method:method||null};
+    const payload = {type,category,description:description.trim(),amount:Number(amount),currency,date,method:method||null,team_member_id:isSalary?(teamMemberId||null):null};
     if(isEdit) await onSave(initial.id,payload);
     else await onAdd(payload);
     setSaving(false);
@@ -18774,6 +18849,14 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial,clientNames=[]}) {
             {cats.map(c=><option key={c.k} value={c.k}>{c.l}</option>)}
           </select>
         </Field>
+        {isSalary&&(
+          <Field label="For (Team Member)" hint="Optional — links this to their Payroll history">
+            <select value={teamMemberId} onChange={e=>setTeamMemberId(e.target.value)} style={inputSt}>
+              <option value="">—</option>
+              {team.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </Field>
+        )}
         {isClientPayment ? (
           <Field label="Client" required hint={clientMode==="select"?"From payment history":"Not in the list? Type it manually"}>
             {clientMode==="select" ? (
@@ -18829,7 +18912,7 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial,clientNames=[]}) {
 // modal for transaction details mysteriously failed to render for some users
 // earlier; converting that to a full page fixed it for good, so the same
 // pattern is used here rather than risk the same unexplained failure.)
-function AddTransactionPage({onBack,onAdd,clientNames=[]}) {
+function AddTransactionPage({onBack,onAdd,clientNames=[],team=[]}) {
   const {isMobile} = useResponsive();
   const [type,setType] = useState("out");
   const [category,setCategory] = useState("other");
@@ -18838,15 +18921,17 @@ function AddTransactionPage({onBack,onAdd,clientNames=[]}) {
   const [currency,setCurrency] = useState("EGP");
   const [date,setDate] = useState(new Date().toISOString().split("T")[0]);
   const [method,setMethod] = useState("");
+  const [teamMemberId,setTeamMemberId] = useState("");
   const [saving,setSaving] = useState(false);
   const [clientMode,setClientMode] = useState("select");
   const cats = type==="out" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
   const isClientPayment = category==="client_payment";
+  const isSalary = category==="salaries";
 
   const submit = async () => {
     if(!amount||Number(amount)<=0||!description.trim()) return;
     setSaving(true);
-    await onAdd({type,category,description:description.trim(),amount:Number(amount),currency,date,method:method||null});
+    await onAdd({type,category,description:description.trim(),amount:Number(amount),currency,date,method:method||null,team_member_id:isSalary?(teamMemberId||null):null});
     setSaving(false);
     onBack();
   };
@@ -18927,7 +19012,7 @@ function AddTransactionPage({onBack,onAdd,clientNames=[]}) {
   );
 }
 
-function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,onDelete,onAddComment,clientNames=[]}) {
+function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,onDelete,onAddComment,clientNames=[],team=[]}) {
   const {isMobile} = useResponsive();
   const [showEdit,setShowEdit] = useState(false);
   const [comment,setComment] = useState("");
@@ -19099,8 +19184,9 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
         open={showEdit}
         onClose={()=>setShowEdit(false)}
         onSave={onEdit}
-        initial={txn.raw ? {id:txn.raw.id,type:txn.type,category:txn.category,description:txn.sub,amount:txn.amount,currency:txn.currency,date:txn.date,method:txn.method} : null}
+        initial={txn.raw ? {id:txn.raw.id,type:txn.type,category:txn.category,description:txn.sub,amount:txn.amount,currency:txn.currency,date:txn.date,method:txn.method,team_member_id:txn.raw.team_member_id} : null}
         clientNames={clientNames}
+        team={team}
       />
     </div>
 
@@ -19479,7 +19565,7 @@ function PartnerDetail({partnerKey,partnerInKey,partnerName,ledger,onBack,onOpen
   );
 }
 
-function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,clients=[],financeClientNotes=[],currentUser,onAddExpense,onDeleteExpense,onEditExpense,onAddExpenseComment,onRefresh,onRenameClient,onSaveClientNote}) {
+function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,clients=[],financeClientNotes=[],team=[],currentUser,onAddExpense,onDeleteExpense,onEditExpense,onAddExpenseComment,onRefresh,onRenameClient,onSaveClientNote}) {
   const {isMobile} = useResponsive();
   const [showAdd,setShowAdd] = useState(false);
   const [range,setRange] = useState("all");
@@ -19689,6 +19775,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         onBack={()=>{ setShowAdd(false); window.history.back(); }}
         onAdd={async(payload)=>{ await onAddExpense(payload); setShowAdd(false); }}
         clientNames={clientNames}
+        team={team}
       />
     );
   }
@@ -19706,6 +19793,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         onDelete={onDeleteExpense}
         onAddComment={onAddExpenseComment}
         clientNames={clientNames}
+        team={team}
       />
     );
   }
@@ -28242,6 +28330,28 @@ function App() {
     logActivity("Leave Request "+(status==="approved"?"Approved":"Rejected"),"users",`${req.member_name} — ${req.type} (${req.start_date})`,"success","",currentUser?.email||"admin");
   };
 
+  // Declares a company-wide day off/WFH day (e.g. a national holiday) for
+  // every active team member at once — creates an already-approved
+  // leave_requests row per person, marked is_company_wide so it shows up
+  // in their Leave & WFH history but, unlike decideLeaveRequest above,
+  // NEVER touches vacation_days_used/wfh_days_used: it's the agency
+  // closing/going remote for everyone, not anyone spending their personal
+  // credit.
+  const declareCompanyDayOff = async (dateStr, type, reason) => {
+    const activeMembers = (data.team||[]).filter(t=>t.status!=="inactive" && !CLIENT_ROLES.includes(t.role) && t.role!=="client");
+    if (!activeMembers.length) return;
+    const rows = activeMembers.map(m=>({
+      team_member_id: m.id, member_name: m.name, type,
+      start_date: dateStr, end_date: dateStr, days: 1,
+      reason: reason||"Company-wide day off", status: "approved",
+      manager_name: currentUser?.name||"admin", source: "app",
+      is_company_wide: true, decided_at: new Date().toISOString(),
+    }));
+    const res = await ce("LeaveRequest", rows).catch(()=>null);
+    if (res?.entities?.length) setData(d=>({...d, leaveRequests:[...(d.leaveRequests||[]), ...res.entities]}));
+    logActivity("Company Day Off Declared","users",`${type==="wfh"?"WFH":"Day off"} for ${activeMembers.length} member(s) — ${dateStr}${reason?` (${reason})`:""}`,"success","",currentUser?.email||"admin");
+  };
+
   // ── User Management Handlers ──────────────────────────────────
   const inviteUser = async (formData) => {
     const token = uid().replace("local_","") + uid().replace("local_","");
@@ -30026,6 +30136,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             expenses={data.expenses||[]}
             clients={data.clients||[]}
             financeClientNotes={data.financeClientNotes||[]}
+            team={data.team||[]}
             currentUser={currentUser}
             onAddExpense={addExpense}
             onDeleteExpense={deleteExpense}
@@ -30057,10 +30168,12 @@ Return ONLY valid JSON (no markdown, no explanation):
             leaveRequests={data.leaveRequests||[]}
             onDecideLeaveRequest={decideLeaveRequest}
             attendanceRecords={data.attendanceRecords||[]}
+            expenses={data.expenses||[]}
             posts={data.posts}
             onImpersonate={impersonateAs}
             appSettings={appSettings}
             onSaveSettings={saveAppSettings}
+            onDeclareCompanyDayOff={declareCompanyDayOff}
           />
         )}
         {page==="performance"&&currentUser?.role==="admin"&&(
