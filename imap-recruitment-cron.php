@@ -208,11 +208,20 @@ $completionMessage = !empty($emailSettings['completion_message']) ? $emailSettin
 $pollIntervalMinutes = !empty($emailSettings['poll_interval_minutes']) ? (int) $emailSettings['poll_interval_minutes'] : 5;
 $lastRunFile = __DIR__ . '/imap-recruitment-cron.lastrun';
 $lastRun = file_exists($lastRunFile) ? (int) file_get_contents($lastRunFile) : 0;
-// Manual one-off backfill (e.g. `?backfill_days=10`), for the rare case an
-// application needs to be recaptured from an email older than the normal
-// 2-day window (missed on first pass, tombstone was cleared, etc) — bypasses
+// Manual one-off backfill — `?backfill_days=10` over HTTP, or
+// `php imap-recruitment-cron.php backfill_days=10` from the CLI (a wide
+// backfill can run long enough to hit nginx's proxy read-timeout over
+// HTTP; the CLI has no such limit). For the rare case an application
+// needs to be recaptured from an email older than the normal 2-day
+// window (missed on first pass, tombstone was cleared, etc) — bypasses
 // the throttle so it runs immediately regardless of poll_interval_minutes.
-$backfillDays = isset($_GET['backfill_days']) ? max(1, min(90, (int) $_GET['backfill_days'])) : null;
+$backfillDaysRaw = $_GET['backfill_days'] ?? null;
+if ($backfillDaysRaw === null && PHP_SAPI === 'cli') {
+    foreach ($argv ?? [] as $arg) {
+        if (preg_match('/^backfill_days=(\d+)$/', $arg, $m)) { $backfillDaysRaw = $m[1]; break; }
+    }
+}
+$backfillDays = $backfillDaysRaw !== null ? max(1, min(90, (int) $backfillDaysRaw)) : null;
 if (!$backfillDays && time() - $lastRun < $pollIntervalMinutes * 60) {
     echo json_encode(['skipped' => true, 'reason' => 'not due yet', 'poll_interval_minutes' => $pollIntervalMinutes]);
     exit(0);
