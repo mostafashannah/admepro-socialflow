@@ -970,7 +970,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.138";
+const APP_VERSION = "beta 5.139";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19492,8 +19492,14 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const num = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
 
   // Transactions can be added from outside this session (WhatsApp Pro) — pull
-  // fresh data whenever this page is opened, not just on app startup.
+  // fresh data whenever this page is opened, not just on app startup, and
+  // keep polling quietly (no spinner) while it's left open so a Pro-added
+  // transaction shows up without needing a manual refresh or reload.
   React.useEffect(()=>{ onRefresh&&onRefresh(); },[]);
+  React.useEffect(()=>{
+    const t = setInterval(()=>{ onRefresh?.(); }, 30000);
+    return ()=>clearInterval(t);
+  },[]);
   const handleRefresh = async () => { setRefreshing(true); await onRefresh?.(); setRefreshing(false); };
 
   const inRange = (dateStr) => {
