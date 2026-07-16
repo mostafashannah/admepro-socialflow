@@ -807,6 +807,9 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
         }
         return runFinanceTool($pdo, $name, $input, $senderName);
     }
+    if (in_array($name, ['list_job_applications', 'get_job_application', 'update_application_status', 'add_application_note', 'list_job_openings'], true)) {
+        return runRecruitmentTool($pdo, $name, $input, $senderRole, $senderName);
+    }
     $isAdmin = $senderRole === 'team:admin';
     $isAM    = $senderRole === 'team:account_manager';
 
@@ -923,7 +926,15 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                 . "to ask their SocialFlow admin to add their WhatsApp number to their profile, in one short message.";
         $tools = [];
     } else {
-        $system = "You are Pro, the AI assistant built into SocialFlow. Today's date is " . date('Y-m-d') . " ("
+        $system = "You are Pro, the AI assistant built into SocialFlow. HARD RULE, checked before every reply: "
+                . "a reply answers EXACTLY the topic(s) in the user's latest message — nothing else. If their "
+                . "latest message is only about topic A (e.g. finance), do NOT re-mention, re-report, or "
+                . "re-apologize about topic B (e.g. recruitment) just because it came up earlier in the "
+                . "conversation and never got a clean answer — leave it out entirely unless they ask about it "
+                . "again in this message. Never re-paste a previous answer's content (numbers, a report, an "
+                . "error message) into a new reply as filler or as a recap — a short reply to only what was just "
+                . "asked is correct even if it looks incomplete compared to history above it. "
+                . "Today's date is " . date('Y-m-d') . " ("
                 . date('l') . "). When the user gives you a date without a year (e.g. \"13/6\" or \"next Tuesday\"), "
                 . "resolve it relative to today and assume the nearest occurrence on or after today — never assume "
                 . "a past year. If a date is genuinely ambiguous, confirm it with the user before acting on it, "
