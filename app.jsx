@@ -1059,7 +1059,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.190";
+const APP_VERSION = "beta 5.191";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -15148,8 +15148,17 @@ function QuoteFormModal({open,onClose,clients,existingQuotes,editQuote,onSave,cu
   );
 
   return (
-    <Modal open onClose={onClose} title={isEdit?`Edit ${f.quote_number}`:"Create New Quote"} width={780}>
-      <div style={{display:"flex",flexDirection:"column",gap:20}}>
+    <div style={{position:"fixed",inset:0,background:"var(--bg)",zIndex:1100,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      <div style={{padding:"14px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid var(--border)",flexShrink:0,background:"var(--surface)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <button onClick={onClose} aria-label="Back" style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:8,display:"flex",cursor:"pointer"}}>
+            <Ico d={Icons.chevL} size={16} stroke="var(--text2)"/>
+          </button>
+          <span style={{fontWeight:800,fontSize:16}}>{isEdit?`Edit ${f.quote_number}`:"Create New Quote"}</span>
+        </div>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"24px",display:"flex",justifyContent:"center"}}>
+      <div style={{display:"flex",flexDirection:"column",gap:20,width:"100%",maxWidth:780}}>
 
         {/* CLIENT INFO */}
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -15296,7 +15305,8 @@ function QuoteFormModal({open,onClose,clients,existingQuotes,editQuote,onSave,cu
           </Btn>
         </div>
       </div>
-    </Modal>
+      </div>
+    </div>
   );
 }
 
