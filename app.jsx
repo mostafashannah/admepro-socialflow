@@ -615,6 +615,14 @@ const AI_ENDPOINT = window.location.origin + "/ai-proxy.php";
 const MAIL_ENDPOINT = window.location.origin + "/mail.php";
 const CAREERS_MAIL_ENDPOINT = window.location.origin + "/careers-mail.php";
 const RECRUITMENT_MAILBOX_ENDPOINT = window.location.origin + "/recruitment-mailbox.php";
+const RECRUITMENT_NOTIFY_ENDPOINT = window.location.origin + "/recruitment-notify.php";
+// Fire-and-forget WhatsApp ping to Admin/HR — used from the public
+// interview-scheduling/offer-response pages so staff hear about a
+// candidate's response immediately, not just next time someone opens the
+// Recruitment page. Never blocks/breaks the candidate-facing flow if it fails.
+function notifyRecruitmentUpdate(message) {
+  fetch(RECRUITMENT_NOTIFY_ENDPOINT, {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({message})}).catch(()=>{});
+}
 // Persisted to localStorage (not just a module variable) so it survives
 // a hard refresh/full page reload too, not only switching tabs within the
 // running app — re-visiting Inbox shows what's already loaded instantly
@@ -1051,7 +1059,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.189";
+const APP_VERSION = "beta 5.190";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -14163,6 +14171,11 @@ function InterviewSchedulingPage({token}) {
         : {interview_selected_slot: selectedSlot, interview_candidate_note: null};
       await ue("JobApplication", application.id, patch);
       logApplicationActivity(application.id, suggesting ? "Candidate suggested a different interview time" : `Candidate picked interview time: ${fmtDateTime(selectedSlot)}`, application.candidate_name||"Candidate");
+      notifyRecruitmentUpdate(
+        suggesting
+          ? `📅 *Interview*: ${application.candidate_name||"A candidate"} (${application.job_title||"role"}) suggested a different time: "${suggestion.trim()}"`
+          : `📅 *Interview*: ${application.candidate_name||"A candidate"} (${application.job_title||"role"}) confirmed: ${fmtDateTime(selectedSlot)}`
+      );
       setDone(true);
     } catch(e) { alert("Something went wrong submitting your response. Please try again."); }
     setSubmitting(false);
@@ -14268,6 +14281,9 @@ function OfferResponsePage({token}) {
       if(kind==="rejected") patch.status = "rejected_after_offer";
       await ue("JobApplication", application.id, patch);
       logApplicationActivity(application.id, kind==="accepted"?"Candidate accepted the offer":kind==="rejected"?"Candidate rejected the offer":"Candidate wants to negotiate the offer", application.candidate_name||"Candidate");
+      const emoji = kind==="accepted"?"✅":kind==="rejected"?"❌":"💬";
+      const verb = kind==="accepted"?"accepted the offer":kind==="rejected"?"rejected the offer":"wants to negotiate the offer";
+      notifyRecruitmentUpdate(`${emoji} *Offer*: ${application.candidate_name||"A candidate"} (${application.offer_title||application.job_title||"role"}) ${verb}${negotiationLetter?`:\n"${negotiationLetter.slice(0,300)}"`:"."}`);
       setResponse(kind);
     } catch(e) { alert("Something went wrong submitting your response. Please try again."); }
     setSubmitting(false);
