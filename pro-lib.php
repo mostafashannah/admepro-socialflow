@@ -553,8 +553,10 @@ function recruitmentTools() {
 }
 
 function findJobApplication(PDO $pdo, string $query) {
-    $stmt = $pdo->prepare("SELECT * FROM job_applications WHERE candidate_name LIKE :q OR candidate_email LIKE :q ORDER BY created_at DESC LIMIT 5");
-    $stmt->execute([':q' => '%' . $query . '%']);
+    // Native (non-emulated) prepares don't allow reusing the same named
+    // placeholder twice in one query — needs a distinct one per occurrence.
+    $stmt = $pdo->prepare("SELECT * FROM job_applications WHERE candidate_name LIKE :q1 OR candidate_email LIKE :q2 ORDER BY created_at DESC LIMIT 5");
+    $stmt->execute([':q1' => '%' . $query . '%', ':q2' => '%' . $query . '%']);
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
