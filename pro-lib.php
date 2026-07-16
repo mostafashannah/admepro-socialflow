@@ -1070,7 +1070,14 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
     }
 
     $history = ($fromPhone && $senderName) ? loadRecentProMessages($pdo, $fromPhone) : [];
-    $messages = array_merge($history, [['role' => 'user', 'content' => $userText]]);
+    // Tag the message actually being answered so it's structurally
+    // distinguishable from history, not just distinguishable by an
+    // instruction buried in the system prompt — the model was observed
+    // latching onto an earlier unresolved question (e.g. answering a
+    // stale recruitment query) instead of the new one when both were
+    // just plain, identically-formatted "user" turns in the same list.
+    $taggedText = "[CURRENT MESSAGE — this is the ONLY thing to answer. Everything above is history for context only, never something to re-answer, recap, or continue]:\n" . $userText;
+    $messages = array_merge($history, [['role' => 'user', 'content' => $taggedText]]);
 
     $reply = null;
     for ($turn = 0; $turn < 4; $turn++) {
