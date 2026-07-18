@@ -1062,7 +1062,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.207";
+const APP_VERSION = "beta 5.208";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -20339,6 +20339,87 @@ function FinanceRangeFilter({range,setRange,customStart,setCustomStart,customEnd
   );
 }
 
+function CategoryDetail({categoryKey,ledger,onBack,onOpenTransaction}) {
+  const {isMobile} = useResponsive();
+  const [range,setRange] = useState("all");
+  const [customStart,setCustomStart] = useState("");
+  const [customEnd,setCustomEnd] = useState("");
+  const [selectedMonth,setSelectedMonth] = useState("");
+  const catInfo = EXPENSE_CAT_MAP[categoryKey] || {l: categoryKey, color: "var(--accent)"};
+  const monthOptions = buildFinanceMonthOptions(ledger.map(l=>l.date));
+
+  const catTxns = ledger.filter(l=>l.type==="out"&&l.category===categoryKey&&dateInFinanceRange(l.date,{range,customStart,customEnd,selectedMonth})).sort(sortTxnsRecent);
+  const catTotal = catTxns.reduce((a,l)=>a+l.countableAmount,0);
+
+  const monthKey = (d) => { const dt=new Date(d); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}`; };
+  const monthLabel = (k) => { const [y,m]=k.split("-"); return new Date(Number(y),Number(m)-1,1).toLocaleDateString("en-US",{month:"short",year:"2-digit"}); };
+  const monthTotals = {};
+  catTxns.forEach(l=>{ const k=monthKey(l.date); monthTotals[k]=(monthTotals[k]||0)+l.countableAmount; });
+  const months = Object.keys(monthTotals).sort().slice(-12);
+  const maxMonth = Math.max(...months.map(k=>monthTotals[k]),1);
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
+      <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:700,color:"var(--text2)"}}>
+        <Ico d={Icons.chevL} size={15} stroke="var(--text2)"/> Back to Finance
+      </button>
+
+      <FinanceRangeFilter range={range} setRange={setRange} customStart={customStart} setCustomStart={setCustomStart} customEnd={customEnd} setCustomEnd={setCustomEnd} selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth} monthOptions={monthOptions}/>
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
+        <div style={{display:"flex",alignItems:"center",gap:14}}>
+          <div style={{width:48,height:48,borderRadius:12,background:catInfo.color+"22",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+            <Ico d={Icons.wallet} size={22} stroke={catInfo.color}/>
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:20,fontWeight:800}}>{catInfo.l}</h2>
+            <p style={{fontSize:12,color:"var(--text3)"}}>{catTxns.length} transaction{catTxns.length!==1?"s":""}</p>
+          </div>
+          <p style={{fontSize:22,fontWeight:800,color:"#ef4444"}}>EGP {Math.round(catTotal).toLocaleString()}</p>
+        </div>
+      </div>
+
+      {months.length>0&&(
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:isMobile?16:20}}>
+          <h3 style={{fontWeight:700,fontSize:14,marginBottom:16}}>Spending by Month</h3>
+          <div style={{display:"flex",alignItems:"flex-end",gap:isMobile?4:10,height:140}}>
+            {months.map(k=>(
+              <div key={k} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:6,height:"100%",justifyContent:"flex-end"}}>
+                <span style={{fontSize:9,fontWeight:700,color:"var(--text3)"}}>{monthTotals[k]>=1000?Math.round(monthTotals[k]/1000)+"k":Math.round(monthTotals[k])}</span>
+                <div style={{width:"100%",maxWidth:32,height:Math.max(4,(monthTotals[k]/maxMonth)*90),background:catInfo.color,borderRadius:"4px 4px 0 0"}}/>
+                <span style={{fontSize:9,color:"var(--text3)",whiteSpace:"nowrap"}}>{monthLabel(k)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+        <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
+          <h3 style={{fontWeight:700,fontSize:14}}>Transactions</h3>
+        </div>
+        {catTxns.length===0 ? (
+          <EmptyState icon={Icons.wallet} title="No transactions" sub="Nothing recorded in this category yet."/>
+        ) : catTxns.map((l,i)=>(
+          <div key={l.id} onClick={()=>onOpenTransaction(l.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:i<catTxns.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
+            onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
+            onMouseLeave={e=>e.currentTarget.style.background=""}>
+            <div style={{width:30,height:30,borderRadius:8,background:l.isUnsettledOutstanding?"#f59e0b22":"#ef444422",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <Ico d={Icons.arrowUp||Icons.chevR} size={14} stroke={l.isUnsettledOutstanding?"#f59e0b":"#ef4444"}/>
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <p style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.sub}{l.isUnsettledOutstanding&&<span style={{marginLeft:6,fontSize:9,fontWeight:800,color:"#f59e0b",textTransform:"uppercase"}}>Outstanding</span>}</p>
+              <p style={{fontSize:11,color:"var(--text3)"}}>{fmtTxnDateTime(l)}{l.method?` · ${l.method}`:""}</p>
+            </div>
+            <p style={{fontSize:13,fontWeight:800,color:l.isUnsettledOutstanding?"#f59e0b":"#ef4444"}}>−{l.currency} {Math.round(l.amount).toLocaleString()}</p>
+            <Ico d={Icons.chevR} size={14} stroke="var(--text3)"/>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ClientPaymentDetail({clientName,ledger,note,canManage,onBack,onOpenTransaction,onRename,onSaveNote}) {
   const {isMobile} = useResponsive();
   const [editing,setEditing] = useState(false);
@@ -20746,6 +20827,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const [selectedMonth,setSelectedMonth] = useState("");
   const [selectedId,setSelectedId] = useState(null);
   const [selectedClient,setSelectedClient] = useState(null);
+  const [selectedCategory,setSelectedCategory] = useState(null);
   const [selectedPartner,setSelectedPartner] = useState(null);
   const [selectedPayrollMember,setSelectedPayrollMember] = useState(null);
   const [typeFilter,setTypeFilter] = useState("all");
@@ -20780,11 +20862,12 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const applyingHistory = React.useRef(false);
   const pushFinanceHistory = (patch) => {
     if(applyingHistory.current) return;
-    const state = {sfPage:"finance", sfView: "view" in patch?patch.view:view, sfClient: "selectedClient" in patch?patch.selectedClient:selectedClient, sfPartner: "selectedPartner" in patch?patch.selectedPartner:selectedPartner, sfPayrollMember: "selectedPayrollMember" in patch?patch.selectedPayrollMember:selectedPayrollMember, sfSelectedId: "selectedId" in patch?patch.selectedId:selectedId};
+    const state = {sfPage:"finance", sfView: "view" in patch?patch.view:view, sfClient: "selectedClient" in patch?patch.selectedClient:selectedClient, sfCategory: "selectedCategory" in patch?patch.selectedCategory:selectedCategory, sfPartner: "selectedPartner" in patch?patch.selectedPartner:selectedPartner, sfPayrollMember: "selectedPayrollMember" in patch?patch.selectedPayrollMember:selectedPayrollMember, sfSelectedId: "selectedId" in patch?patch.selectedId:selectedId};
     try{ window.history.pushState(state,""); }catch(e){}
   };
   const openTransaction = (id) => { pushFinanceHistory({selectedId:id}); setSelectedId(id); };
   const openClient = (name) => { pushFinanceHistory({selectedClient:name}); setSelectedClient(name); };
+  const openCategory = (key) => { pushFinanceHistory({selectedCategory:key}); setSelectedCategory(key); };
   const openPartner = (key) => { pushFinanceHistory({selectedPartner:key}); setSelectedPartner(key); };
   const openPayrollMember = (key) => { pushFinanceHistory({selectedPayrollMember:key}); setSelectedPayrollMember(key); };
   const openClientsTab = () => { pushFinanceHistory({view:"clients"}); setView("clients"); };
@@ -20803,6 +20886,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
       applyingHistory.current = true;
       setView(e.state.sfView||"overview");
       setSelectedClient(e.state.sfClient||null);
+      setSelectedCategory(e.state.sfCategory||null);
       setSelectedPartner(e.state.sfPartner||null);
       setSelectedPayrollMember(e.state.sfPayrollMember||null);
       setSelectedId(e.state.sfSelectedId||null);
@@ -21086,6 +21170,17 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
     );
   }
 
+  if(selectedCategory) {
+    return (
+      <CategoryDetail
+        categoryKey={selectedCategory}
+        ledger={ledger}
+        onBack={()=>window.history.back()}
+        onOpenTransaction={openTransaction}
+      />
+    );
+  }
+
   if(selectedPartner) {
     const partnerInfo = partnerTotals.find(p=>p.key===selectedPartner) || PARTNERS.find(p=>p.outKey===selectedPartner) || {name:EXPENSE_CAT_MAP[selectedPartner]?.l.replace("Partner Withdrawal — ","")||selectedPartner};
     return (
@@ -21364,7 +21459,7 @@ No markdown, no explanation.`;
             </div>
             <div style={{padding:"12px 16px",display:"flex",flexDirection:"column",gap:8}}>
               {byCategory.map(c=>(
-                <div key={c.k} onClick={()=>{setCategoryFilter(c.k); setTypeFilter("out");}} style={{display:"flex",alignItems:"center",gap:8,minWidth:0,cursor:"pointer",padding:"2px 4px",borderRadius:6}}
+                <div key={c.k} onClick={()=>openCategory(c.k)} style={{display:"flex",alignItems:"center",gap:8,minWidth:0,cursor:"pointer",padding:"2px 4px",borderRadius:6}}
                   onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"} onMouseLeave={e=>e.currentTarget.style.background=""}>
                   <span style={{fontSize:12,color:"var(--text2)",width:isMobile?70:110,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.l}</span>
                   <div style={{flex:1,minWidth:0}}><ProgressBar value={c.total} max={maxCat} color={c.color} height={5}/></div>
