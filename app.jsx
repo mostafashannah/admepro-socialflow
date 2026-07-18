@@ -1062,7 +1062,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.213";
+const APP_VERSION = "beta 5.214";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10098,10 +10098,14 @@ const INSIGHTS_METRIC_LABELS = {
 // instead of showing as zero.
 const OVERVIEW_TREND_METRICS = {
   reach: {
-    // page_impressions has been unreliable/zero for many apps under newer
-    // Graph API versions — page_impressions_unique (unique reach) is the
-    // metric actually meant to be compared against Instagram's "reach".
-    facebook: {arrKey:"page_insights", metric:"page_impressions_unique"},
+    // Confirmed via the actual stored snapshots: Meta's Graph API returns
+    // NO reach/impressions metric at all for these pages (page_impressions
+    // and page_impressions_unique are both silently rejected — likely
+    // deprecated/restricted at this API version) — only page_views_total,
+    // page_post_engagements, etc. actually come back with real numbers.
+    // page_views_total is the closest available real traffic signal, so
+    // it's used here instead of a metric that will always read 0.
+    facebook: {arrKey:"page_insights", metric:"page_views_total"},
     instagram: {arrKey:"ig_insights", metric:"reach"},
   },
   followers: {
