@@ -1060,7 +1060,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.196";
+const APP_VERSION = "beta 5.197";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11903,7 +11903,9 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
               {row("Applied On", fmtDate(sourceApplication.created_date||sourceApplication.created_at))}
               {row("Source", sourceApplication.source==="email"?"Email":"Careers Page")}
               {sourceApplication.ai_score!=null&&row("AI Score", sourceApplication.ai_score)}
-              {sourceApplication.interview_rating!=null&&row("Interview Rating", `${sourceApplication.interview_rating}/5 ★`)}
+              {sourceApplication.portfolio_score!=null&&row("Portfolio Score", sourceApplication.portfolio_score)}
+              {interviewOverallScore(sourceApplication)!=null&&row("Interview Score", interviewOverallScore(sourceApplication))}
+              {computeApplicationScore(sourceApplication)!=null&&row("Overall Score", computeApplicationScore(sourceApplication))}
               {row("Expected Salary", sourceApplication.expected_salary)}
               {sourceApplication.cover_letter&&(
                 <div style={{marginTop:10}}>
@@ -22805,16 +22807,31 @@ Give 3 specific, actionable recommendations to improve their performance. Be con
 // ════════════════════════════════════════════════════════════════
 // RECRUITMENT PAGE (admin / hr.manage_recruitment)
 // ════════════════════════════════════════════════════════════════
-// Combines the AI fit score with a post-interview human star rating (1-5)
-// for overall ranking — a candidate who's actually been interviewed and
-// rated should outrank one who only ever got an automated CV score, even
-// if the raw AI score is lower. Weighted so a top interview rating (5)
-// can outweigh a full AI score gap, but a candidate with no rating yet
-// still ranks purely on ai_score.
+// Interview is scored across 4 dimensions (dress/appearance, communication,
+// experience proven, creativity), each 1-5 — averaged and scaled to 0-100.
+// Returns null if none of the 4 have been scored yet.
+function interviewOverallScore(a) {
+  const parts = [a.interview_dress_score, a.interview_communication_score, a.interview_experience_score, a.interview_creativity_score].filter(v=>v!=null);
+  if (!parts.length) return null;
+  return Math.round((parts.reduce((s,v)=>s+v,0) / parts.length) * 20);
+}
+
+// Combines the AI CV score, a manually-entered portfolio score, and the
+// post-interview 4-dimension score into one overall application score —
+// a candidate only ever CV-scored shouldn't be ranked against one who's
+// also been interviewed/portfolio-reviewed using just the raw AI number.
+// Averages whichever of the 3 components are actually present, so a
+// candidate missing the later stages still ranks fairly on what exists.
+function computeApplicationScore(a) {
+  const interview = interviewOverallScore(a);
+  const parts = [a.ai_score, a.portfolio_score, interview].filter(v=>v!=null);
+  if (!parts.length) return null;
+  return Math.round(parts.reduce((s,v)=>s+v,0) / parts.length);
+}
+
 function applicationRank(a) {
-  const base = a.ai_score ?? -1;
-  if (a.interview_rating == null) return base;
-  return base + a.interview_rating * 20;
+  const score = computeApplicationScore(a);
+  return score ?? -1;
 }
 
 // Same "what's missing" rules imap-recruitment-cron.php uses when deciding
@@ -23159,7 +23176,7 @@ function OfferSection({application, opening, onSave, saving, onSend, sending, on
   );
 }
 
-function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader, onConvertCv, convertingCv, cvConvertFailed, onRateInterview, activityLog, onSendCompletionEmail, sendingCompletion, onSendInterviewTimes, sendingInterviewTimes, onConfirmInterview, confirmingInterview, onSaveOffer, savingOffer, onSendOffer, sendingOffer, onMakeTeamMember}) {
+function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader, onConvertCv, convertingCv, cvConvertFailed, onRateInterview, onSavePortfolioScore, activityLog, onSendCompletionEmail, sendingCompletion, onSendInterviewTimes, sendingInterviewTimes, onConfirmInterview, confirmingInterview, onSaveOffer, savingOffer, onSendOffer, sendingOffer, onMakeTeamMember}) {
   const [notes, setNotes] = useState(application.notes||"");
   const [rerunning, setRerunning] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -23219,12 +23236,32 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
             </select>
             <Badge label={application.source==="email"?"Email":"Web"} color={application.source==="email"?"#6366f1":"#0ea5e9"} xs/>
           </div>
-          {application.ai_score!=null&&(
-            <div style={{textAlign:"center",padding:"8px 16px",background:"var(--surface2)",borderRadius:12,border:"1px solid var(--border)"}}>
-              <p style={{fontSize:9,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>AI Score</p>
-              <p style={{fontSize:22,fontWeight:800,color:application.ai_score>=70?"#10b981":application.ai_score>=40?"#f59e0b":"#ef4444"}}>{application.ai_score}</p>
-            </div>
-          )}
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {application.ai_score!=null&&(
+              <div style={{textAlign:"center",padding:"8px 16px",background:"var(--surface2)",borderRadius:12,border:"1px solid var(--border)"}}>
+                <p style={{fontSize:9,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>AI Score</p>
+                <p style={{fontSize:22,fontWeight:800,color:application.ai_score>=70?"#10b981":application.ai_score>=40?"#f59e0b":"#ef4444"}}>{application.ai_score}</p>
+              </div>
+            )}
+            {application.portfolio_score!=null&&(
+              <div style={{textAlign:"center",padding:"8px 16px",background:"var(--surface2)",borderRadius:12,border:"1px solid var(--border)"}}>
+                <p style={{fontSize:9,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Portfolio</p>
+                <p style={{fontSize:22,fontWeight:800,color:application.portfolio_score>=70?"#10b981":application.portfolio_score>=40?"#f59e0b":"#ef4444"}}>{application.portfolio_score}</p>
+              </div>
+            )}
+            {interviewOverallScore(application)!=null&&(
+              <div style={{textAlign:"center",padding:"8px 16px",background:"var(--surface2)",borderRadius:12,border:"1px solid var(--border)"}}>
+                <p style={{fontSize:9,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Interview</p>
+                <p style={{fontSize:22,fontWeight:800,color:interviewOverallScore(application)>=70?"#10b981":interviewOverallScore(application)>=40?"#f59e0b":"#ef4444"}}>{interviewOverallScore(application)}</p>
+              </div>
+            )}
+            {computeApplicationScore(application)!=null&&(
+              <div style={{textAlign:"center",padding:"8px 16px",background:"var(--accentbg)",borderRadius:12,border:"1px solid var(--accent)"}}>
+                <p style={{fontSize:9,color:"var(--accent)",textTransform:"uppercase",letterSpacing:"0.05em",fontWeight:700}}>Overall</p>
+                <p style={{fontSize:22,fontWeight:800,color:"var(--accent)"}}>{computeApplicationScore(application)}</p>
+              </div>
+            )}
+          </div>
         </div>
 
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:18}}>
@@ -23396,13 +23433,33 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
           </div>
         )}
 
-        {onRateInterview&&(["interview","hired","rejected"].includes(application.status)||application.interview_rating!=null)&&(
-          <div style={{marginBottom:14}}>
-            <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Interview Rating</p>
-            <div style={{display:"flex",gap:4}}>
-              {[1,2,3,4,5].map(n=>(
-                <button key={n} onClick={()=>onRateInterview(application, n)} title={`Rate ${n} star${n!==1?"s":""}`} style={{background:"none",border:"none",padding:2,cursor:"pointer",fontSize:24,lineHeight:1,color:(application.interview_rating||0)>=n?"#f59e0b":"var(--border2)"}}>★</button>
+        {onRateInterview&&(["interview","hired","rejected"].includes(application.status)||[application.interview_dress_score,application.interview_communication_score,application.interview_experience_score,application.interview_creativity_score].some(v=>v!=null))&&(
+          <div style={{marginBottom:14,padding:14,background:"var(--surface2)",borderRadius:10,border:"1px solid var(--border)"}}>
+            <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:10}}>Interview Scoring</p>
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {[["dress","Dress / Appearance",application.interview_dress_score],["communication","Communication Skills",application.interview_communication_score],["experience","Experience Proven",application.interview_experience_score],["creativity","Creativity",application.interview_creativity_score]].map(([key,label,val])=>(
+                <div key={key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+                  <span style={{fontSize:12,color:"var(--text2)"}}>{label}</span>
+                  <div style={{display:"flex",gap:2}}>
+                    {[1,2,3,4,5].map(n=>(
+                      <button key={n} onClick={()=>onRateInterview(application, key, n)} title={`Rate ${n} star${n!==1?"s":""}`} style={{background:"none",border:"none",padding:2,cursor:"pointer",fontSize:18,lineHeight:1,color:(val||0)>=n?"#f59e0b":"var(--border2)"}}>★</button>
+                    ))}
+                  </div>
+                </div>
               ))}
+            </div>
+            {interviewOverallScore(application)!=null&&(
+              <p style={{fontSize:11,color:"var(--text3)",marginTop:10,paddingTop:10,borderTop:"1px solid var(--border)"}}>Interview score: <strong style={{color:"var(--text)"}}>{interviewOverallScore(application)}/100</strong> (feeds into overall application score)</p>
+            )}
+          </div>
+        )}
+
+        {onSavePortfolioScore&&(
+          <div style={{marginBottom:14,padding:14,background:"var(--surface2)",borderRadius:10,border:"1px solid var(--border)"}}>
+            <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Portfolio Score</p>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <input type="number" min="0" max="100" defaultValue={application.portfolio_score??""} onBlur={e=>{const v=e.target.value===""?null:Math.max(0,Math.min(100,Number(e.target.value))); onSavePortfolioScore(application, v);}} placeholder="0-100, after reviewing their portfolio" style={{...inputSt,maxWidth:140}}/>
+              <span style={{fontSize:11,color:"var(--text3)"}}>/ 100 — feeds into overall application score</span>
             </div>
           </div>
         )}
@@ -23923,13 +23980,23 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
     await ue("JobApplication", app.id, patch).catch(()=>{});
     logActivity(app.id, `Reassigned to ${opening?.title||"Unassigned"}`);
   };
-  const handleRateInterview = async (app, rating) => {
+  const INTERVIEW_SCORE_FIELDS = {dress:"interview_dress_score", communication:"interview_communication_score", experience:"interview_experience_score", creativity:"interview_creativity_score"};
+  const INTERVIEW_SCORE_LABELS = {dress:"Dress / Appearance", communication:"Communication Skills", experience:"Experience Proven", creativity:"Creativity"};
+  const handleRateInterview = async (app, dimension, rating) => {
+    const field = INTERVIEW_SCORE_FIELDS[dimension];
+    if(!field) return;
     // Toggle off by clicking the same star again, matching common star-picker UX.
-    const nextRating = app.interview_rating===rating ? null : rating;
-    setApplications(prev=>prev.map(a=>a.id===app.id?{...a,interview_rating:nextRating}:a));
-    setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,interview_rating:nextRating}:prev);
-    await ue("JobApplication", app.id, {interview_rating: nextRating}).catch(()=>{});
-    logActivity(app.id, nextRating==null ? "Interview rating cleared" : `Rated ${nextRating} star${nextRating!==1?"s":""} after interview`);
+    const nextRating = app[field]===rating ? null : rating;
+    setApplications(prev=>prev.map(a=>a.id===app.id?{...a,[field]:nextRating}:a));
+    setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,[field]:nextRating}:prev);
+    await ue("JobApplication", app.id, {[field]: nextRating}).catch(()=>{});
+    logActivity(app.id, nextRating==null ? `${INTERVIEW_SCORE_LABELS[dimension]} rating cleared` : `Rated ${nextRating} star${nextRating!==1?"s":""} for ${INTERVIEW_SCORE_LABELS[dimension]}`);
+  };
+  const handleSavePortfolioScore = async (app, score) => {
+    setApplications(prev=>prev.map(a=>a.id===app.id?{...a,portfolio_score:score}:a));
+    setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,portfolio_score:score}:prev);
+    await ue("JobApplication", app.id, {portfolio_score: score}).catch(()=>{});
+    logActivity(app.id, score==null ? "Portfolio score cleared" : `Portfolio score set to ${score}`);
   };
   const [sendingCompletionId, setSendingCompletionId] = useState(null);
   const handleSendCompletionEmail = async (app) => {
@@ -24445,7 +24512,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
 
   if(selectedApp) return (
     <>
-      <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===selectedApp.id} cvConvertFailed={cvConvertFailedId===selectedApp.id} onRateInterview={handleRateInterview} activityLog={activityLogs.filter(l=>l.application_id===selectedApp.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===selectedApp.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===selectedApp.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===selectedApp.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===selectedApp.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===selectedApp.id} onMakeTeamMember={setMakeTeamMemberApp}/>
+      <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===selectedApp.id} cvConvertFailed={cvConvertFailedId===selectedApp.id} onRateInterview={handleRateInterview} onSavePortfolioScore={handleSavePortfolioScore} activityLog={activityLogs.filter(l=>l.application_id===selectedApp.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===selectedApp.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===selectedApp.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===selectedApp.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===selectedApp.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===selectedApp.id} onMakeTeamMember={setMakeTeamMemberApp}/>
       {makeTeamMemberModal}
     </>
   );
@@ -24461,7 +24528,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:22,margin:0}}>{sortedGroup[0].candidate_name} · {sortedGroup.length} applications</h2>
         </div>
         {sortedGroup.map((app,i)=>(
-          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===app.id} cvConvertFailed={cvConvertFailedId===app.id} onRateInterview={handleRateInterview} activityLog={activityLogs.filter(l=>l.application_id===app.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===app.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===app.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===app.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===app.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===app.id} onMakeTeamMember={setMakeTeamMemberApp}/>
+          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===app.id} cvConvertFailed={cvConvertFailedId===app.id} onRateInterview={handleRateInterview} onSavePortfolioScore={handleSavePortfolioScore} activityLog={activityLogs.filter(l=>l.application_id===app.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===app.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===app.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===app.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===app.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===app.id} onMakeTeamMember={setMakeTeamMemberApp}/>
         ))}
         {makeTeamMemberModal}
       </div>
@@ -24572,7 +24639,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
                       {a.ai_review_status==="pending"&&<Spinner size={13}/>}
                       {a.ai_review_status==="no_cv"&&<Badge label="No CV" color="#6b7280" xs/>}
                       {a.ai_review_status==="cv_error"&&<Badge label="Crashed CV" color="#f59e0b" xs/>}
-                      {a.ai_score!=null&&<span style={{fontWeight:800,fontSize:16,color:a.ai_score>=70?"#10b981":a.ai_score>=40?"#f59e0b":"#ef4444"}}>{a.ai_score}</span>}
+                      {computeApplicationScore(a)!=null&&<span style={{fontWeight:800,fontSize:16,color:computeApplicationScore(a)>=70?"#10b981":computeApplicationScore(a)>=40?"#f59e0b":"#ef4444"}}>{computeApplicationScore(a)}</span>}
                       <Badge label={a.job_opening_id?"Assigned":"Unassigned"} color={a.job_opening_id?"#10b981":"#f59e0b"} xs/>
                       <Badge label={a.source==="email"?"Email":"Web"} color={a.source==="email"?"#6366f1":"#0ea5e9"} xs/>
                       <Badge label={statusInfo.label} color={statusInfo.color} xs/>
@@ -24581,7 +24648,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
                 );
               }
               const sortedGroup = [...group].sort((x,y)=>applicationRank(y)-applicationRank(x));
-              const bestScore = sortedGroup.find(app=>app.ai_score!=null)?.ai_score;
+              const bestScore = computeApplicationScore(sortedGroup[0]);
               const bestApp = sortedGroup[0];
               const bestStatusInfo = APPLICATION_STATUSES.find(s=>s.key===bestApp.status)||APPLICATION_STATUSES[0];
               return (
