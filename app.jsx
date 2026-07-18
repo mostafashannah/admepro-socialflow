@@ -1062,7 +1062,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.201";
+const APP_VERSION = "beta 5.202";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -20621,6 +20621,27 @@ function OutstandingTab({expenses, team, currentUser, canManage, onRecordPayment
     onPaymentRecorded&&onPaymentRecorded();
   };
 
+  // Any Fawry plan bought anywhere from the 1st to the end of a month
+  // becomes payable starting the 1st of the FOLLOWING month — so the
+  // first due date is always the 1st of next month relative to the
+  // purchase date, then one more installment on the 1st of each month
+  // after that. paidCount approximates how many installments are already
+  // covered from the running paid-so-far total (informational only —
+  // there's no hard link between a specific payment and a specific month).
+  const installmentSchedule = (e) => {
+    const months = Number(e.outstanding_months)||0;
+    const total = Number(e.outstanding_total_payable ?? e.amount);
+    const monthly = months ? total/months : total;
+    const purchase = new Date(e.date);
+    const paidCount = monthly ? Math.min(months, Math.round(paidSoFar(e.id)/monthly)) : 0;
+    const rows = [];
+    for(let i=0;i<months;i++) {
+      const due = new Date(purchase.getFullYear(), purchase.getMonth()+1+i, 1);
+      rows.push({index:i, due, amount:monthly, paid:i<paidCount});
+    }
+    return rows;
+  };
+
   // Grouped by who/what it's owed to, per the requested "under member name or Fawry" layout.
   const groups = {};
   outstandingExpenses.forEach(e=>{
@@ -20652,7 +20673,7 @@ function OutstandingTab({expenses, team, currentUser, canManage, onRecordPayment
                         <Badge label={e.outstanding_status} color={e.outstanding_status==="settled"?"#10b981":e.outstanding_status==="partial"?"#f59e0b":"#ef4444"} xs/>
                       </div>
                       <p style={{fontSize:14,fontWeight:700,marginTop:6}}>{e.description}</p>
-                      {e.outstanding_kind==="installment"&&<p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{e.outstanding_months} months @ {e.outstanding_monthly_interest_rate}%/mo — principal {Number(e.amount).toLocaleString()}</p>}
+                      {e.outstanding_kind==="installment"&&<p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{e.outstanding_months} months @ {e.outstanding_monthly_interest_rate}%/mo — principal {Number(e.outstanding_principal_amount??e.amount).toLocaleString()}</p>}
                     </div>
                     <div style={{textAlign:"right"}}>
                       <p style={{fontSize:11,color:"var(--text3)"}}>Remaining</p>
@@ -20660,7 +20681,37 @@ function OutstandingTab({expenses, team, currentUser, canManage, onRecordPayment
                       <p style={{fontSize:10,color:"var(--text3)"}}>of {total.toLocaleString()} · paid {paid.toLocaleString()}</p>
                     </div>
                   </div>
-                  {canManage&&e.outstanding_status!=="settled"&&(
+
+                  {e.outstanding_kind==="installment"&&e.outstanding_status!=="settled"&&(
+                    <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:4}}>
+                      {installmentSchedule(e).map(row=>{
+                        const label = row.due.toLocaleDateString("en-US",{day:"numeric",month:"long"});
+                        const isPayingRow = payingId===`${e.id}_${row.index}`;
+                        return (
+                          <div key={row.index}>
+                            <button disabled={!canManage||row.paid} onClick={()=>{setPayingId(`${e.id}_${row.index}`); setPayAmount(String(row.amount.toFixed(2))); setPayDate(row.due.toISOString().split("T")[0]);}}
+                              style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",borderRadius:8,background:row.paid?"#10b98111":"var(--surface2)",border:"1px solid var(--border2)",cursor:row.paid||!canManage?"default":"pointer",fontSize:12}}>
+                              <span style={{color:row.paid?"#10b981":"var(--text2)",fontWeight:600}}>{row.paid&&"✓ "}{label}</span>
+                              <span style={{fontWeight:700,color:row.paid?"#10b981":"var(--text)"}}>{row.amount.toLocaleString(undefined,{maximumFractionDigits:2})}</span>
+                            </button>
+                            {isPayingRow&&(
+                              <div style={{display:"flex",gap:8,marginTop:6,flexWrap:"wrap",alignItems:"center",padding:"0 4px"}}>
+                                <input type="number" value={payAmount} onChange={ev=>setPayAmount(ev.target.value)} placeholder="Amount" style={{...inputSt,maxWidth:120}}/>
+                                <input type="date" value={payDate} onChange={ev=>setPayDate(ev.target.value)} style={{...inputSt,maxWidth:150}}/>
+                                <select value={payMethod} onChange={ev=>setPayMethod(ev.target.value)} style={{...inputSt,maxWidth:130}}>
+                                  <option>Cash</option><option>Bank transfer</option><option>Card</option><option>Other</option>
+                                </select>
+                                <Btn size="sm" onClick={()=>handleRecordPayment(e)}>Save</Btn>
+                                <button onClick={()=>setPayingId(null)} style={{background:"none",border:"none",color:"var(--text3)",fontSize:12,cursor:"pointer"}}>Cancel</button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {e.outstanding_kind==="team_member"&&canManage&&e.outstanding_status!=="settled"&&(
                     payingId===e.id ? (
                       <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap",alignItems:"center"}}>
                         <input type="number" value={payAmount} onChange={ev=>setPayAmount(ev.target.value)} placeholder="Amount" style={{...inputSt,maxWidth:120}}/>
