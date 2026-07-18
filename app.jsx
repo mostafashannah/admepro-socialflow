@@ -1062,7 +1062,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.203";
+const APP_VERSION = "beta 5.204";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21367,8 +21367,8 @@ No markdown, no explanation.`;
       {/* Type / Category / Client filters + Export */}
       <div style={{display:"flex",gap:6,alignItems:"center",justifyContent:"space-between",flexWrap:"wrap"}}>
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-          {[["all","All"],["in","In"],["out","Out"]].map(([k,l])=>(
-            <button key={k} onClick={()=>setTypeFilter(k)} style={{padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,background:typeFilter===k?(k==="in"?"#10b981":k==="out"?"#ef4444":"var(--accent)"):"var(--surface2)",color:typeFilter===k?"#fff":"var(--text2)",border:`1px solid ${typeFilter===k?"transparent":"var(--border2)"}`}}>{l}</button>
+          {[["all","All"],["in","In"],["out","Out"],["outstanding","Outstanding"]].map(([k,l])=>(
+            <button key={k} onClick={()=>setTypeFilter(k)} style={{padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,background:typeFilter===k?(k==="in"?"#10b981":k==="out"?"#ef4444":k==="outstanding"?"#f59e0b":"var(--accent)"):"var(--surface2)",color:typeFilter===k?"#fff":"var(--text2)",border:`1px solid ${typeFilter===k?"transparent":"var(--border2)"}`}}>{l}</button>
           ))}
           <PillDropdown
             value={categoryFilter}
@@ -21387,7 +21387,7 @@ No markdown, no explanation.`;
           )}
         </div>
         <button onClick={()=>{
-          const filteredLedger = ledger.filter(l=>(typeFilter==="all"||l.type===typeFilter)&&(categoryFilter==="all"||l.category===categoryFilter)&&(clientFilter==="all"||l.clientName===clientFilter));
+          const filteredLedger = ledger.filter(l=>(typeFilter==="all"||(typeFilter==="outstanding"?l.isUnsettledOutstanding:l.type===typeFilter))&&(categoryFilter==="all"||l.category===categoryFilter)&&(clientFilter==="all"||l.clientName===clientFilter));
           downloadCsv(`finance_${range}_${typeFilter}_${new Date().toISOString().split("T")[0]}.csv`,
             filteredLedger.map(l=>({date:l.date,type:l.type==="in"?"In":"Out",category:l.label,description:l.sub||"",amount:l.amount,currency:l.currency,source:l.source,reference:l.ref||"",check_no:l.checkNo||""})),
             ["date","type","category","description","amount","currency","source","reference","check_no"]
@@ -21403,7 +21403,7 @@ No markdown, no explanation.`;
           <h3 style={{fontWeight:700,fontSize:14}}>Transactions</h3>
         </div>
         {(()=>{
-          const filteredLedger = ledger.filter(l=>(typeFilter==="all"||l.type===typeFilter)&&(categoryFilter==="all"||l.category===categoryFilter)&&(clientFilter==="all"||l.clientName===clientFilter));
+          const filteredLedger = ledger.filter(l=>(typeFilter==="all"||(typeFilter==="outstanding"?l.isUnsettledOutstanding:l.type===typeFilter))&&(categoryFilter==="all"||l.category===categoryFilter)&&(clientFilter==="all"||l.clientName===clientFilter));
           return filteredLedger.length===0 ? (
             <EmptyState icon={Icons.wallet} title="No transactions" sub="Payments, subscription income, and expenses will show up here."/>
           ) : (
