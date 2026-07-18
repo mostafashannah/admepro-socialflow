@@ -1062,7 +1062,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.199";
+const APP_VERSION = "beta 5.200";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6019,8 +6019,8 @@ No markdown, no explanation.`;
             const expenses = data.expenses||[];
             const totalIn = payments.reduce((a,p)=>a+num(p.amount),0)
               + subscriptionPayments.reduce((a,p)=>a+num(p.amount),0)
-              + expenses.filter(e=>(e.type||"out")!=="out").reduce((a,e)=>a+num(e.amount),0);
-            const totalOut = expenses.filter(e=>(e.type||"out")==="out").reduce((a,e)=>a+num(e.amount),0);
+              + expenses.filter(e=>(e.type||"out")!=="out"&&!isUnsettledOutstanding(e)).reduce((a,e)=>a+num(e.amount),0);
+            const totalOut = expenses.filter(e=>(e.type||"out")==="out"&&!isUnsettledOutstanding(e)).reduce((a,e)=>a+num(e.amount),0);
             const balance = totalIn-totalOut;
             const outstanding=invoices.filter(i=>i.status!=="paid").reduce((a,i)=>a+(i.balance_due||0),0);
             const overdueCount=invoices.filter(i=>isOverdueInvoice(i)&&i.status!=="paid").length;
@@ -19739,6 +19739,7 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial,clientNames=[],team=
             <option value="Cash">Cash</option>
             <option value="Bank transfer">Bank transfer</option>
             <option value="Card">Card</option>
+            <option value="Outstanding">Outstanding</option>
             <option value="Other">Other</option>
           </select>
         </Field>
@@ -19766,14 +19767,35 @@ function AddTransactionPage({onBack,onAdd,clientNames=[],team=[]}) {
   const [salaryMonth,setSalaryMonth] = useState("");
   const [saving,setSaving] = useState(false);
   const [clientMode,setClientMode] = useState("select");
+  const [outstandingKind,setOutstandingKind] = useState("team_member");
+  const [outstandingMemberId,setOutstandingMemberId] = useState("");
+  const [outstandingMonths,setOutstandingMonths] = useState(3);
+  const [outstandingRate,setOutstandingRate] = useState(FAWRY_INSTALLMENT_RATES[3]);
   const cats = type==="out" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
   const isClientPayment = category==="client_payment";
   const isSalary = category==="salaries";
+  const isOutstanding = method==="Outstanding";
+  const outstandingPlan = isOutstanding&&outstandingKind==="installment" ? computeInstallmentPlan(amount, outstandingRate, outstandingMonths) : null;
 
   const submit = async () => {
     if(!amount||Number(amount)<=0||!description.trim()) return;
+    if(isOutstanding&&outstandingKind==="team_member"&&!outstandingMemberId) return;
     setSaving(true);
-    await onAdd({type,category,description:description.trim(),amount:Number(amount),currency,date,method:method||null,team_member_id:isSalary&&teamMemberId!=="__other__"?(teamMemberId||null):null,salary_month:isSalary?(salaryMonth||null):null});
+    const payload = {type,category,description:description.trim(),amount:Number(amount),currency,date,method:method||null,team_member_id:isSalary&&teamMemberId!=="__other__"?(teamMemberId||null):null,salary_month:isSalary?(salaryMonth||null):null};
+    if(isOutstanding) {
+      payload.outstanding_kind = outstandingKind;
+      payload.outstanding_status = "outstanding";
+      if(outstandingKind==="team_member") {
+        payload.team_member_id = outstandingMemberId;
+        payload.outstanding_total_payable = Number(amount);
+      } else {
+        payload.outstanding_months = Number(outstandingMonths);
+        payload.outstanding_monthly_interest_rate = Number(outstandingRate);
+        payload.outstanding_total_payable = outstandingPlan.totalPayable;
+        payload.amount = outstandingPlan.totalPayable; // the real eventual cost including interest, not just the principal typed above
+      }
+    }
+    await onAdd(payload);
     setSaving(false);
     onBack();
   };
@@ -19861,9 +19883,48 @@ function AddTransactionPage({onBack,onAdd,clientNames=[],team=[]}) {
             <option value="Cash">Cash</option>
             <option value="Bank transfer">Bank transfer</option>
             <option value="Card">Card</option>
+            <option value="Outstanding">Outstanding</option>
             <option value="Other">Other</option>
           </select>
         </Field>
+
+        {isOutstanding&&(
+          <div style={{background:"var(--surface2)",borderRadius:10,padding:14,display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{display:"flex",gap:8}}>
+              <button type="button" onClick={()=>setOutstandingKind("team_member")} style={{flex:1,padding:"8px",borderRadius:8,border:"1px solid var(--border)",background:outstandingKind==="team_member"?"var(--accent)":"var(--surface)",color:outstandingKind==="team_member"?"#fff":"var(--text)",cursor:"pointer",fontWeight:600,fontSize:12}}>Owed to Team Member</button>
+              <button type="button" onClick={()=>setOutstandingKind("installment")} style={{flex:1,padding:"8px",borderRadius:8,border:"1px solid var(--border)",background:outstandingKind==="installment"?"var(--accent)":"var(--surface)",color:outstandingKind==="installment"?"#fff":"var(--text)",cursor:"pointer",fontWeight:600,fontSize:12}}>Fawry Installment</button>
+            </div>
+            {outstandingKind==="team_member" ? (
+              <Field label="Team Member">
+                <select value={outstandingMemberId} onChange={e=>setOutstandingMemberId(e.target.value)} style={inputSt}>
+                  <option value="">Select...</option>
+                  {(team||[]).filter(t=>t.role!=="client").map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              </Field>
+            ) : (
+              <>
+                <p style={{fontSize:11,color:"var(--text3)"}}>"Amount" above is the principal — the interest gets added on top automatically.</p>
+                <div style={{display:"flex",gap:10}}>
+                  <Field label="Months">
+                    <select value={outstandingMonths} onChange={e=>{const m=Number(e.target.value); setOutstandingMonths(m); if(FAWRY_INSTALLMENT_RATES[m]!=null) setOutstandingRate(FAWRY_INSTALLMENT_RATES[m]);}} style={inputSt}>
+                      {Object.keys(FAWRY_INSTALLMENT_RATES).map(m=><option key={m} value={m}>{m} months</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Monthly Interest %">
+                    <input type="number" step="0.01" value={outstandingRate} onChange={e=>setOutstandingRate(e.target.value)} style={inputSt}/>
+                  </Field>
+                </div>
+                {amount>0&&outstandingPlan&&(
+                  <div style={{background:"var(--surface)",borderRadius:8,padding:10,fontSize:12,color:"var(--text2)",display:"flex",flexDirection:"column",gap:4}}>
+                    <div style={{display:"flex",justifyContent:"space-between"}}><span>Total interest</span><strong style={{color:"var(--text)"}}>{outstandingPlan.totalInterest.toFixed(2)}</strong></div>
+                    <div style={{display:"flex",justifyContent:"space-between"}}><span>Total payable</span><strong style={{color:"var(--text)"}}>{outstandingPlan.totalPayable.toFixed(2)}</strong></div>
+                    <div style={{display:"flex",justifyContent:"space-between"}}><span>Monthly installment</span><strong style={{color:"var(--accent)"}}>{outstandingPlan.monthlyInstallment.toFixed(2)}</strong></div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:6}}>
           <Btn variant="secondary" onClick={onBack}>Cancel</Btn>
@@ -20442,174 +20503,112 @@ function computeInstallmentPlan(principal, monthlyRatePct, months) {
   return {totalInterest, totalPayable, monthlyInstallment};
 }
 
-function AddOutstandingModal({onClose, onSave, team}) {
-  const [kind, setKind] = useState("team_member");
-  const [description, setDescription] = useState("");
-  const [teamMemberId, setTeamMemberId] = useState("");
-  const [principal, setPrincipal] = useState("");
-  const [months, setMonths] = useState(3);
-  const [rate, setRate] = useState(FAWRY_INSTALLMENT_RATES[3]);
-  const [startDate, setStartDate] = useState(new Date().toISOString().split("T")[0]);
-  const [saving, setSaving] = useState(false);
-
-  const plan = kind==="installment" ? computeInstallmentPlan(principal, rate, months) : null;
-
-  const handleSave = async () => {
-    if(!principal || Number(principal)<=0) return;
-    if(kind==="team_member" && !teamMemberId) return;
-    setSaving(true);
-    const payload = kind==="team_member"
-      ? {kind, description, team_member_id: teamMemberId, principal_amount: Number(principal), total_payable: Number(principal), start_date: startDate||null, status:"outstanding"}
-      : {kind, description, principal_amount: Number(principal), monthly_interest_rate: Number(rate), months: Number(months), total_payable: plan.totalPayable, start_date: startDate||null, status:"outstanding"};
-    await onSave(payload);
-    setSaving(false);
-    onClose();
-  };
-
-  return (
-    <Modal open onClose={onClose} title="New Outstanding Liability" width={480}>
-      <div style={{display:"flex",flexDirection:"column",gap:14}}>
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={()=>setKind("team_member")} style={{flex:1,padding:"8px",borderRadius:8,border:"1px solid var(--border)",background:kind==="team_member"?"var(--accent)":"var(--surface2)",color:kind==="team_member"?"#fff":"var(--text)",cursor:"pointer",fontWeight:600,fontSize:13}}>Owed to Team Member</button>
-          <button onClick={()=>setKind("installment")} style={{flex:1,padding:"8px",borderRadius:8,border:"1px solid var(--border)",background:kind==="installment"?"var(--accent)":"var(--surface2)",color:kind==="installment"?"#fff":"var(--text)",cursor:"pointer",fontWeight:600,fontSize:13}}>Fawry Installment</button>
-        </div>
-        <Field label="Description"><input value={description} onChange={e=>setDescription(e.target.value)} placeholder="What was this for?" style={inputSt}/></Field>
-        {kind==="team_member" && (
-          <Field label="Team Member">
-            <select value={teamMemberId} onChange={e=>setTeamMemberId(e.target.value)} style={inputSt}>
-              <option value="">Select...</option>
-              {(team||[]).filter(t=>t.role!=="client").map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
-            </select>
-          </Field>
-        )}
-        <Field label={kind==="installment"?"Principal (purchase amount)":"Amount Owed"}>
-          <input type="number" value={principal} onChange={e=>setPrincipal(e.target.value)} placeholder="0.00" style={inputSt}/>
-        </Field>
-        {kind==="installment" && (
-          <>
-            <div style={{display:"flex",gap:10}}>
-              <Field label="Months">
-                <select value={months} onChange={e=>{const m=Number(e.target.value); setMonths(m); if(FAWRY_INSTALLMENT_RATES[m]!=null) setRate(FAWRY_INSTALLMENT_RATES[m]);}} style={inputSt}>
-                  {Object.keys(FAWRY_INSTALLMENT_RATES).map(m=><option key={m} value={m}>{m} months</option>)}
-                </select>
-              </Field>
-              <Field label="Monthly Interest %">
-                <input type="number" step="0.01" value={rate} onChange={e=>setRate(e.target.value)} style={inputSt}/>
-              </Field>
-            </div>
-            {principal>0 && (
-              <div style={{background:"var(--surface2)",borderRadius:10,padding:12,fontSize:12,color:"var(--text2)",display:"flex",flexDirection:"column",gap:4}}>
-                <div style={{display:"flex",justifyContent:"space-between"}}><span>Total interest</span><strong style={{color:"var(--text)"}}>{plan.totalInterest.toFixed(2)}</strong></div>
-                <div style={{display:"flex",justifyContent:"space-between"}}><span>Total payable</span><strong style={{color:"var(--text)"}}>{plan.totalPayable.toFixed(2)}</strong></div>
-                <div style={{display:"flex",justifyContent:"space-between"}}><span>Monthly installment</span><strong style={{color:"var(--accent)"}}>{plan.monthlyInstallment.toFixed(2)}</strong></div>
-              </div>
-            )}
-          </>
-        )}
-        <Field label="Start Date"><input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} style={inputSt}/></Field>
-        <Btn onClick={handleSave} disabled={saving}>{saving?"Saving…":"Save"}</Btn>
-      </div>
-    </Modal>
-  );
+// An expense marked "Outstanding" (owed to a team member, or a Fawry
+// installment) doesn't count toward totals/sums until it's fully settled —
+// it still shows up in the Transactions list (in yellow) so nothing's
+// hidden, it's just not counted as real money out yet.
+function isUnsettledOutstanding(e) {
+  return !!e?.outstanding_kind && e.outstanding_status!=="settled";
 }
 
-function OutstandingTab({currentUser, team, canManage}) {
-  const [liabilities, setLiabilities] = useState([]);
-  const [paymentsByLiability, setPaymentsByLiability] = useState({});
+// Outstanding is no longer a separate record type — it's an expense whose
+// payment method is "Outstanding", grouped here by who/what it's owed to
+// (a team member's name, or "Fawry" for installment plans) instead of
+// listed as a separate flow. Payments recorded here chip away at that
+// expense's amount until status flips to "settled".
+function OutstandingTab({expenses, team, currentUser, canManage, onRecordPayment}) {
+  const [paymentsByExpense, setPaymentsByExpense] = useState({});
   const [loading, setLoading] = useState(true);
-  const [showAdd, setShowAdd] = useState(false);
   const [payingId, setPayingId] = useState(null);
   const [payAmount, setPayAmount] = useState("");
   const [payDate, setPayDate] = useState(new Date().toISOString().split("T")[0]);
   const [payMethod, setPayMethod] = useState("Cash");
 
+  const outstandingExpenses = (expenses||[]).filter(e=>e.outstanding_kind);
+
   const load = async () => {
     setLoading(true);
-    const [lRes, pRes] = await Promise.all([
-      qe("OutstandingLiability", {}, "-created_at", 500).catch(()=>({entities:[]})),
-      qe("OutstandingPayment", {}, "-date", 1000).catch(()=>({entities:[]})),
-    ]);
-    setLiabilities(lRes.entities||[]);
-    const byLiability = {};
-    (pRes.entities||[]).forEach(p=>{ (byLiability[p.liability_id]=byLiability[p.liability_id]||[]).push(p); });
-    setPaymentsByLiability(byLiability);
+    const pRes = await qe("OutstandingPayment", {}, "-date", 1000).catch(()=>({entities:[]}));
+    const byExpense = {};
+    (pRes.entities||[]).forEach(p=>{ (byExpense[p.expense_id]=byExpense[p.expense_id]||[]).push(p); });
+    setPaymentsByExpense(byExpense);
     setLoading(false);
   };
   useEffect(()=>{ load(); },[]);
 
-  const paidSoFar = (liabilityId) => (paymentsByLiability[liabilityId]||[]).reduce((s,p)=>s+Number(p.amount||0),0);
+  const paidSoFar = (expenseId) => (paymentsByExpense[expenseId]||[]).reduce((s,p)=>s+Number(p.amount||0),0);
 
-  const handleAdd = async (payload) => {
-    await ce("OutstandingLiability", [{...payload, created_by: currentUser?.email}]);
-    load();
-  };
-
-  const handleRecordPayment = async (liability) => {
+  const handleRecordPayment = async (exp) => {
     if(!payAmount || Number(payAmount)<=0) return;
-    await ce("OutstandingPayment", [{liability_id: liability.id, amount: Number(payAmount), date: payDate, method: payMethod, recorded_by: currentUser?.email}]);
-    const total = Number(liability.total_payable);
-    const paid = paidSoFar(liability.id) + Number(payAmount);
+    await ce("OutstandingPayment", [{expense_id: exp.id, amount: Number(payAmount), date: payDate, method: payMethod, recorded_by: currentUser?.email}]);
+    const total = Number(exp.outstanding_total_payable ?? exp.amount);
+    const paid = paidSoFar(exp.id) + Number(payAmount);
     const status = paid >= total ? "settled" : "partial";
-    await ue("OutstandingLiability", liability.id, {status});
+    await onRecordPayment(exp.id, status);
     setPayingId(null); setPayAmount("");
     load();
   };
 
+  // Grouped by who/what it's owed to, per the requested "under member name or Fawry" layout.
+  const groups = {};
+  outstandingExpenses.forEach(e=>{
+    const key = e.outstanding_kind==="installment" ? "Fawry" : ((team||[]).find(t=>t.id===e.team_member_id)?.name || "Unknown Team Member");
+    (groups[key]=groups[key]||[]).push(e);
+  });
+
   if(loading) return <div style={{display:"flex",justifyContent:"center",padding:60}}><Spinner size={20}/></div>;
 
+  if(outstandingExpenses.length===0) {
+    return <EmptyState icon={Icons.wallet} title="No outstanding liabilities" sub={`Mark an expense's Payment Method as "Outstanding" to track money owed to a team member or a Fawry installment plan here.`}/>;
+  }
+
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      <div style={{display:"flex",justifyContent:"flex-end"}}>
-        {canManage&&<Btn size="sm" onClick={()=>setShowAdd(true)}><Ico d={Icons.plus} size={14}/> New Outstanding</Btn>}
-      </div>
-      {liabilities.length===0 ? (
-        <EmptyState icon={Icons.wallet} title="No outstanding liabilities" sub="Money owed to team members or Fawry installment plans will show up here."/>
-      ) : (
-        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
-          {liabilities.map((l,i)=>{
-            const paid = paidSoFar(l.id);
-            const total = Number(l.total_payable);
-            const remaining = Math.max(0, total-paid);
-            const member = l.kind==="team_member" ? (team||[]).find(t=>t.id===l.team_member_id) : null;
-            return (
-              <div key={l.id} style={{padding:"14px 18px",borderBottom:i<liabilities.length-1?"1px solid var(--border)":"none"}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
-                  <div>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <Badge label={l.kind==="team_member"?"Team Member":"Installment"} color={l.kind==="team_member"?"#3b82f6":"#f59e0b"} xs/>
-                      <Badge label={l.status} color={l.status==="settled"?"#10b981":l.status==="partial"?"#f59e0b":"#ef4444"} xs/>
+    <div style={{display:"flex",flexDirection:"column",gap:20}}>
+      {Object.entries(groups).map(([groupName, items])=>(
+        <div key={groupName}>
+          <p style={{fontSize:12,fontWeight:800,color:"var(--text3)",letterSpacing:"0.05em",textTransform:"uppercase",marginBottom:8}}>{groupName}</p>
+          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+            {items.map((e,i)=>{
+              const paid = paidSoFar(e.id);
+              const total = Number(e.outstanding_total_payable ?? e.amount);
+              const remaining = Math.max(0, total-paid);
+              return (
+                <div key={e.id} style={{padding:"14px 18px",borderBottom:i<items.length-1?"1px solid var(--border)":"none"}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+                    <div>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <Badge label={e.outstanding_status} color={e.outstanding_status==="settled"?"#10b981":e.outstanding_status==="partial"?"#f59e0b":"#ef4444"} xs/>
+                      </div>
+                      <p style={{fontSize:14,fontWeight:700,marginTop:6}}>{e.description}</p>
+                      {e.outstanding_kind==="installment"&&<p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{e.outstanding_months} months @ {e.outstanding_monthly_interest_rate}%/mo — principal {Number(e.amount).toLocaleString()}</p>}
                     </div>
-                    <p style={{fontSize:14,fontWeight:700,marginTop:6}}>{l.description||(l.kind==="team_member"?`Owed to ${member?.name||"team member"}`:"Installment plan")}</p>
-                    {l.kind==="installment"&&<p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{l.months} months @ {l.monthly_interest_rate}%/mo — principal {Number(l.principal_amount).toLocaleString()}</p>}
-                    {l.kind==="team_member"&&member&&<p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{member.name}</p>}
+                    <div style={{textAlign:"right"}}>
+                      <p style={{fontSize:11,color:"var(--text3)"}}>Remaining</p>
+                      <p style={{fontSize:18,fontWeight:800,color:remaining>0?"#ef4444":"#10b981"}}>{remaining.toLocaleString()}</p>
+                      <p style={{fontSize:10,color:"var(--text3)"}}>of {total.toLocaleString()} · paid {paid.toLocaleString()}</p>
+                    </div>
                   </div>
-                  <div style={{textAlign:"right"}}>
-                    <p style={{fontSize:11,color:"var(--text3)"}}>Remaining</p>
-                    <p style={{fontSize:18,fontWeight:800,color:remaining>0?"#ef4444":"#10b981"}}>{remaining.toLocaleString()}</p>
-                    <p style={{fontSize:10,color:"var(--text3)"}}>of {total.toLocaleString()} · paid {paid.toLocaleString()}</p>
-                  </div>
+                  {canManage&&e.outstanding_status!=="settled"&&(
+                    payingId===e.id ? (
+                      <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap",alignItems:"center"}}>
+                        <input type="number" value={payAmount} onChange={ev=>setPayAmount(ev.target.value)} placeholder="Amount" style={{...inputSt,maxWidth:120}}/>
+                        <input type="date" value={payDate} onChange={ev=>setPayDate(ev.target.value)} style={{...inputSt,maxWidth:150}}/>
+                        <select value={payMethod} onChange={ev=>setPayMethod(ev.target.value)} style={{...inputSt,maxWidth:130}}>
+                          <option>Cash</option><option>Bank transfer</option><option>Card</option><option>Other</option>
+                        </select>
+                        <Btn size="sm" onClick={()=>handleRecordPayment(e)}>Save</Btn>
+                        <button onClick={()=>setPayingId(null)} style={{background:"none",border:"none",color:"var(--text3)",fontSize:12,cursor:"pointer"}}>Cancel</button>
+                      </div>
+                    ) : (
+                      <button onClick={()=>{setPayingId(e.id); setPayAmount("");}} style={{marginTop:10,padding:"6px 12px",borderRadius:8,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>Record Payment</button>
+                    )
+                  )}
                 </div>
-                {canManage&&l.status!=="settled"&&(
-                  payingId===l.id ? (
-                    <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap",alignItems:"center"}}>
-                      <input type="number" value={payAmount} onChange={e=>setPayAmount(e.target.value)} placeholder="Amount" style={{...inputSt,maxWidth:120}}/>
-                      <input type="date" value={payDate} onChange={e=>setPayDate(e.target.value)} style={{...inputSt,maxWidth:150}}/>
-                      <select value={payMethod} onChange={e=>setPayMethod(e.target.value)} style={{...inputSt,maxWidth:130}}>
-                        <option>Cash</option><option>Bank transfer</option><option>Card</option><option>Other</option>
-                      </select>
-                      <Btn size="sm" onClick={()=>handleRecordPayment(l)}>Save</Btn>
-                      <button onClick={()=>setPayingId(null)} style={{background:"none",border:"none",color:"var(--text3)",fontSize:12,cursor:"pointer"}}>Cancel</button>
-                    </div>
-                  ) : (
-                    <button onClick={()=>{setPayingId(l.id); setPayAmount("");}} style={{marginTop:10,padding:"6px 12px",borderRadius:8,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>Record Payment</button>
-                  )
-                )}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
-      )}
-      {showAdd&&<AddOutstandingModal onClose={()=>setShowAdd(false)} onSave={handleAdd} team={team}/>}
+      ))}
     </div>
   );
 }
@@ -20742,9 +20741,13 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         source: isOut?"Manual expense":"Manual income", category:e.category, createdBy:e.created_by,
         checkNo:e.check_no, ref:e.ref, attachments:parseJ(e.attachments,[]), method:e.method,
         clientName: (!isOut&&e.category==="client_payment") ? e.description : null,
+        isUnsettledOutstanding: isUnsettledOutstanding(e),
       };
     }),
   ].sort(sortTxnsRecent);
+  // Outstanding (not yet settled) transactions show up in the list but
+  // don't count toward any totals/sums until they're fully paid off.
+  const countableLedger = ledger.filter(l=>!l.isUnsettledOutstanding);
 
   // Clients derived from actual payment history (not the Clients module) —
   // this is what the client dropdown/filter/tab are built from.
@@ -20814,20 +20817,20 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const allDates = [...payments.map(p=>p.payment_date),...subscriptionPayments.map(p=>p.payment_date),...expenses.map(e=>e.date)].filter(Boolean).map(d=>new Date(d));
   const monthOptions = buildFinanceMonthOptions(allDates);
 
-  const totalIn = ledger.filter(l=>l.type==="in").reduce((a,l)=>a+l.amount,0);
-  const totalOut = ledger.filter(l=>l.type==="out").reduce((a,l)=>a+l.amount,0);
+  const totalIn = countableLedger.filter(l=>l.type==="in").reduce((a,l)=>a+l.amount,0);
+  const totalOut = countableLedger.filter(l=>l.type==="out").reduce((a,l)=>a+l.amount,0);
   const balance = totalIn-totalOut;
-  const monthIn = ledger.filter(l=>l.type==="in"&&inThisMonth(l.date)).reduce((a,l)=>a+l.amount,0);
-  const monthOut = ledger.filter(l=>l.type==="out"&&inThisMonth(l.date)).reduce((a,l)=>a+l.amount,0);
-  const avgTxn = ledger.length ? (totalIn+totalOut)/ledger.length : 0;
-  const biggestExpense = ledger.filter(l=>l.type==="out").sort((a,b)=>b.amount-a.amount)[0];
+  const monthIn = countableLedger.filter(l=>l.type==="in"&&inThisMonth(l.date)).reduce((a,l)=>a+l.amount,0);
+  const monthOut = countableLedger.filter(l=>l.type==="out"&&inThisMonth(l.date)).reduce((a,l)=>a+l.amount,0);
+  const avgTxn = countableLedger.length ? (totalIn+totalOut)/countableLedger.length : 0;
+  const biggestExpense = countableLedger.filter(l=>l.type==="out").sort((a,b)=>b.amount-a.amount)[0];
 
   const byCategory = EXPENSE_CATEGORIES.map(c=>({
-    ...c, total: expenses.filter(e=>(e.type||"out")==="out"&&e.category===c.k&&inRange(e.date)).reduce((a,e)=>a+num(e.amount),0),
+    ...c, total: expenses.filter(e=>(e.type||"out")==="out"&&e.category===c.k&&inRange(e.date)&&!isUnsettledOutstanding(e)).reduce((a,e)=>a+num(e.amount),0),
   })).filter(c=>c.total>0).sort((a,b)=>b.total-a.total);
   const maxCat = Math.max(...byCategory.map(c=>c.total),1);
 
-  const bySource = ledger.filter(l=>l.type==="in").reduce((acc,l)=>{
+  const bySource = countableLedger.filter(l=>l.type==="in").reduce((acc,l)=>{
     const key = l.sub || l.label;
     acc[key] = (acc[key]||0)+l.amount;
     return acc;
@@ -21080,7 +21083,7 @@ No markdown, no explanation.`;
         </div>
         )
       ) : view==="outstanding" ? (
-        <OutstandingTab currentUser={currentUser} team={team} canManage={canManage}/>
+        <OutstandingTab expenses={expenses} currentUser={currentUser} team={team} canManage={canManage} onRecordPayment={(id,status)=>onEditExpense(id,{outstanding_status:status})}/>
       ) : view==="clients" ? (
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
           <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
@@ -21247,15 +21250,15 @@ No markdown, no explanation.`;
                 <div key={l.id} onClick={()=>openTransaction(l.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"11px 18px",borderBottom:i<filteredLedger.length-1?"1px solid var(--border)":"none",cursor:"pointer"}}
                   onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
                   onMouseLeave={e=>e.currentTarget.style.background=""}>
-                  <div style={{width:30,height:30,borderRadius:8,background:l.type==="in"?"#10b98122":"#ef444422",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                    <Ico d={l.type==="in"?Icons.arrowDown||Icons.chevD:Icons.arrowUp||Icons.chevR} size={14} stroke={l.type==="in"?"#10b981":"#ef4444"}/>
+                  <div style={{width:30,height:30,borderRadius:8,background:l.isUnsettledOutstanding?"#f59e0b22":l.type==="in"?"#10b98122":"#ef444422",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    <Ico d={l.type==="in"?Icons.arrowDown||Icons.chevD:Icons.arrowUp||Icons.chevR} size={14} stroke={l.isUnsettledOutstanding?"#f59e0b":l.type==="in"?"#10b981":"#ef4444"}/>
                   </div>
                   <div style={{flex:1,minWidth:0}}>
-                    <p style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.label}</p>
+                    <p style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.label}{l.isUnsettledOutstanding&&<span style={{marginLeft:6,fontSize:9,fontWeight:800,color:"#f59e0b",textTransform:"uppercase",letterSpacing:"0.04em"}}>Outstanding</span>}</p>
                     {l.sub&&<p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>{l.sub}{l.method?` · ${l.method}`:""}</p>}
                   </div>
                   <div style={{textAlign:"right",flexShrink:0}}>
-                    <p style={{fontSize:13,fontWeight:800,color:l.type==="in"?"#10b981":"#ef4444"}}>{l.type==="in"?"+":"−"}{l.currency} {Math.round(l.amount).toLocaleString()}</p>
+                    <p style={{fontSize:13,fontWeight:800,color:l.isUnsettledOutstanding?"#f59e0b":l.type==="in"?"#10b981":"#ef4444"}}>{l.type==="in"?"+":"−"}{l.currency} {Math.round(l.amount).toLocaleString()}</p>
                     <p style={{fontSize:10,color:"var(--text3)"}}>{fmtTxnDateTime(l)}</p>
                   </div>
                   <Ico d={Icons.chevR} size={14} stroke="var(--text3)"/>
