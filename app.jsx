@@ -1062,7 +1062,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.219";
+const APP_VERSION = "beta 5.220";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6164,7 +6164,7 @@ No markdown, no explanation.`;
                 {myNotifs.length>0&&<span style={{fontSize:11,background:"var(--accent)",color:"#fff",padding:"1px 8px",borderRadius:99,fontWeight:700}}>{myNotifs.length}</span>}
               </div>
               <div style={{maxHeight:"min(360px,40vh)",overflowY:"auto"}}>
-                {notifications.slice(0,8).map((n,i)=>{
+                {(()=>{ const myAllNotifs = notifications.filter(n=>n.recipient_email===currentUser.email); return myAllNotifs.slice(0,8).map((n,i)=>{
                   const c={info:"#3b82f6",approval:"#10b981",rejection:"#ef4444",assignment:"#8b5cf6",comment:"#f59e0b",stage_change:"#06b6d4",performance:"#8b5cf6",performance_alert:"#ef4444"}[n.type]||"#6b7280";
                   const isClickable = (n.link_type==="page"||n.link_type==="post") && n.link_id;
                   const handleClick = () => {
@@ -6175,7 +6175,7 @@ No markdown, no explanation.`;
                   };
                   return (
                     <div key={n.id} onClick={isClickable?handleClick:undefined}
-                      style={{padding:"10px 16px",borderBottom:i<notifications.length-1?"1px solid var(--border)":undefined,display:"flex",gap:10,opacity:n.is_read?0.5:1,cursor:isClickable?"pointer":"default"}}
+                      style={{padding:"10px 16px",borderBottom:i<myAllNotifs.length-1?"1px solid var(--border)":undefined,display:"flex",gap:10,opacity:n.is_read?0.5:1,cursor:isClickable?"pointer":"default"}}
                       onMouseEnter={isClickable?e=>{e.currentTarget.style.background="var(--surface2)"}:undefined}
                       onMouseLeave={isClickable?e=>{e.currentTarget.style.background=""}:undefined}>
                       <div style={{width:7,height:7,borderRadius:"50%",background:n.is_read?"var(--border)":c,flexShrink:0,marginTop:5}}/>
@@ -6186,8 +6186,8 @@ No markdown, no explanation.`;
                       {isClickable&&<Ico d={Icons.chevR} size={13} stroke="var(--text3)"/>}
                     </div>
                   );
-                })}
-                {notifications.length===0&&<p style={{padding:"30px",textAlign:"center",color:"var(--text3)",fontSize:13}}>All caught up!</p>}
+                }); })()}
+                {notifications.filter(n=>n.recipient_email===currentUser.email).length===0&&<p style={{padding:"30px",textAlign:"center",color:"var(--text3)",fontSize:13}}>All caught up!</p>}
               </div>
             </div>
           </div>
