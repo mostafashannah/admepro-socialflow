@@ -221,17 +221,22 @@ function financeTools() {
         ],
         [
             'name' => 'add_transaction',
-            'description' => 'Record a new income or expense transaction. Before calling this, make sure you have all required fields from the user — if anything is missing or ambiguous (especially amount or whether it is money in or out), ASK the user instead of guessing. Once saved, confirm back to the user exactly what was recorded (type, amount, category, description, date).',
+            'description' => 'Record a new income or expense transaction. Before calling this, make sure you have all required fields from the user — if anything is missing or ambiguous (especially amount or whether it is money in or out), ASK the user instead of guessing. Once saved, confirm back to the user exactly what was recorded (type, amount, category, description, date). '
+                . 'For an "outstanding" expense (money owed but not yet paid — e.g. "X is outstanding", "put this on Fawry installments", "so-and-so paid this for us, we owe them back"): set method to "Outstanding" and fill outstanding_kind. For outstanding_kind="team_member", set outstanding_team_member (their name) — no interest applies, amount is simply what\'s owed. For outstanding_kind="installment" (Fawry), set outstanding_months and, if not given, use Fawry\'s known flat monthly rates: 1mo=3.33%, 3mo=3.21%, 6/9/12/18/24mo=3.04% — ALWAYS tell the user the calculated total (principal + interest) and monthly installment before saving so they can confirm, since interest changes the real amount owed. For installment, treat the "amount" you were given as the PRINCIPAL — the tool computes and stores the true total automatically.',
             'input_schema' => [
                 'type' => 'object',
                 'properties' => [
                     'type'        => ['type' => 'string', 'enum' => ['in', 'out'], 'description' => '"in" = income/money received, "out" = expense/money spent'],
                     'category'    => ['type' => 'string', 'description' => 'For expenses (type=out): salaries, tools, rent (rent & utilities incl. electricity), ads, freelancers, general (general expenses), office_supplies (coffee, water, snacks, pantry items), debt_repayment, partner_mostafa (Mostafa\'s partner withdrawal), partner_radwa (Radwa\'s partner withdrawal), or other. For income (type=in): client_payment, partner_contribution_mostafa (Mostafa injecting cash into the company), partner_contribution_radwa (Radwa injecting cash into the company), or other_income.'],
                     'description' => ['type' => 'string', 'description' => 'Short description, e.g. "April office rent" or "Bank transfer — Acme Co."'],
-                    'amount'      => ['type' => 'number'],
+                    'amount'      => ['type' => 'number', 'description' => 'For an installment outstanding transaction, this is the PRINCIPAL — interest gets added on top automatically.'],
                     'currency'    => ['type' => 'string', 'description' => 'Defaults to EGP'],
                     'date'        => ['type' => 'string', 'description' => 'YYYY-MM-DD — defaults to today if omitted'],
-                    'method'      => ['type' => 'string', 'enum' => ['Cash', 'Bank transfer', 'Card', 'Other'], 'description' => 'How the money moved, if the user says (e.g. "cash", "bank transfer") — omit if not mentioned.'],
+                    'method'      => ['type' => 'string', 'enum' => ['Cash', 'Bank transfer', 'Card', 'Outstanding', 'Other'], 'description' => 'How the money moved. Use "Outstanding" for money owed but not yet paid.'],
+                    'outstanding_kind' => ['type' => 'string', 'enum' => ['team_member', 'installment'], 'description' => 'Required when method=Outstanding. "team_member" = owed back to whoever paid; "installment" = Fawry installment plan.'],
+                    'outstanding_team_member' => ['type' => 'string', 'description' => 'Name of the team member this is owed to — required when outstanding_kind=team_member.'],
+                    'outstanding_months' => ['type' => 'integer', 'description' => 'Installment plan length in months — required when outstanding_kind=installment.'],
+                    'outstanding_monthly_interest_rate' => ['type' => 'number', 'description' => 'Flat monthly interest %. If the user does not give one, use Fawry\'s known rate for that month count (see tool description).'],
                 ],
                 'required' => ['type', 'category', 'description', 'amount'],
             ],
@@ -405,16 +410,57 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
 
         $id = generateProUuid();
         $ref = 'TXN-' . strtoupper(substr($id, 0, 8));
-        $method = in_array($input['method'] ?? '', ['Cash', 'Bank transfer', 'Card', 'Other'], true) ? $input['method'] : null;
-        $ins = $pdo->prepare("INSERT INTO expenses (id, type, category, description, amount, currency, date, created_by, ref, method) VALUES (:id, :type, :cat, :desc, :amt, :cur, :date, :by, :ref, :method)");
+        $method = in_array($input['method'] ?? '', ['Cash', 'Bank transfer', 'Card', 'Outstanding', 'Other'], true) ? $input['method'] : null;
+
+        $outstandingKind = null; $outstandingStatus = null; $outstandingTeamMemberId = null;
+        $outstandingMonths = null; $outstandingRate = null; $outstandingPrincipal = null; $outstandingTotalPayable = null;
+        $storedAmount = (float)$amount;
+        $extraMessage = '';
+
+        if ($method === 'Outstanding') {
+            $outstandingKind = in_array($input['outstanding_kind'] ?? '', ['team_member', 'installment'], true) ? $input['outstanding_kind'] : null;
+            if (!$outstandingKind) {
+                return ['error' => 'method=Outstanding needs outstanding_kind ("team_member" or "installment") — ask the user which.'];
+            }
+            $outstandingStatus = 'outstanding';
+            if ($outstandingKind === 'team_member') {
+                $memberName = trim($input['outstanding_team_member'] ?? '');
+                if (!$memberName) return ['error' => 'Missing outstanding_team_member — ask the user who this is owed to.'];
+                $m = $pdo->prepare("SELECT id, name FROM team_members WHERE name LIKE :n LIMIT 1");
+                $m->execute([':n' => '%' . $memberName . '%']);
+                $match = $m->fetch(PDO::FETCH_ASSOC);
+                if (!$match) return ['error' => "Couldn't find a team member matching \"{$memberName}\" — ask the user to confirm the name."];
+                $outstandingTeamMemberId = $match['id'];
+                $outstandingPrincipal = $storedAmount;
+                $outstandingTotalPayable = $storedAmount;
+            } else {
+                $outstandingMonths = (int)($input['outstanding_months'] ?? 0);
+                if ($outstandingMonths <= 0) return ['error' => 'Missing outstanding_months — ask the user how many months the Fawry plan is.'];
+                $fawryRates = [1 => 3.33, 3 => 3.21, 6 => 3.04, 9 => 3.04, 12 => 3.04, 18 => 3.04, 24 => 3.04];
+                $outstandingRate = isset($input['outstanding_monthly_interest_rate']) ? (float)$input['outstanding_monthly_interest_rate'] : ($fawryRates[$outstandingMonths] ?? 3.04);
+                $outstandingPrincipal = $storedAmount;
+                $interest = $outstandingPrincipal * ($outstandingRate / 100) * $outstandingMonths;
+                $outstandingTotalPayable = $outstandingPrincipal + $interest;
+                $storedAmount = $outstandingTotalPayable; // the real eventual cost including interest, not just the principal given
+                $monthly = $outstandingTotalPayable / $outstandingMonths;
+                $extraMessage = sprintf(' Principal %.2f + %.2f%%/mo over %d months = %.2f total (%.2f/month).', $outstandingPrincipal, $outstandingRate, $outstandingMonths, $outstandingTotalPayable, $monthly);
+            }
+        }
+
+        $ins = $pdo->prepare("INSERT INTO expenses (id, type, category, description, amount, currency, date, created_by, ref, method,
+            outstanding_kind, outstanding_status, team_member_id, outstanding_months, outstanding_monthly_interest_rate, outstanding_principal_amount, outstanding_total_payable)
+            VALUES (:id, :type, :cat, :desc, :amt, :cur, :date, :by, :ref, :method,
+            :okind, :ostatus, :tmid, :omonths, :orate, :oprincipal, :ototal)");
         $ins->execute([
             ':id' => $id, ':type' => $type, ':cat' => $category, ':desc' => $description,
-            ':amt' => $amount, ':cur' => $currency, ':date' => $date, ':by' => $senderName, ':ref' => $ref, ':method' => $method,
+            ':amt' => $storedAmount, ':cur' => $currency, ':date' => $date, ':by' => $senderName, ':ref' => $ref, ':method' => $method,
+            ':okind' => $outstandingKind, ':ostatus' => $outstandingStatus, ':tmid' => $outstandingTeamMemberId,
+            ':omonths' => $outstandingMonths, ':orate' => $outstandingRate, ':oprincipal' => $outstandingPrincipal, ':ototal' => $outstandingTotalPayable,
         ]);
         return [
             'ok' => true, 'type' => $type, 'category' => $category, 'description' => $description,
-            'amount' => (float)$amount, 'currency' => $currency, 'date' => $date, 'reference' => $ref, 'method' => $method,
-            'message' => 'Saved to the Finance page.',
+            'amount' => $storedAmount, 'currency' => $currency, 'date' => $date, 'reference' => $ref, 'method' => $method,
+            'message' => 'Saved to the Finance page.' . $extraMessage,
         ];
     }
 
