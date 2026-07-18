@@ -136,10 +136,26 @@ foreach ($integrations as $integ) {
             $byDate = group_by_date($series);
         } else {
             $ig_host = str_starts_with($access_token, 'IGAA') ? 'graph.instagram.com' : 'graph.facebook.com';
+            // "reach" and "profile_views" are true day-by-day time series metrics.
+            // "accounts_engaged"/"total_interactions" changed to metric_type=total_value-only
+            // metrics on Meta's side — requesting them with period=day (no metric_type) either
+            // errors the whole call or silently returns nothing, which is why Engagement always
+            // read 0 on the trend chart. They only support ONE aggregated total over the whole
+            // since/until window, not a per-day breakdown, so we can't truly backfill 30 separate
+            // days of them — the best we can do is store that one window-total against today,
+            // same accepted gap as the lifetime follower/fan counts below.
             $series = insights_resilient("https://{$ig_host}/{$v}/{$page_id}/insights",
-                ["reach","profile_views","accounts_engaged","total_interactions"],
+                ["reach","profile_views"],
                 ["period" => "day", "since" => $since, "until" => $until, "access_token" => $access_token]);
             $byDate = group_by_date($series);
+            $engTotals = insights_resilient("https://{$ig_host}/{$v}/{$page_id}/insights",
+                ["accounts_engaged","total_interactions"],
+                ["period" => "day", "metric_type" => "total_value", "since" => $since, "until" => $until, "access_token" => $access_token]);
+            if ($engTotals) {
+                $byDate[$today] = array_merge($byDate[$today] ?? [], array_map(function($t){
+                    return ["name" => $t["name"] ?? "", "title" => $t["title"] ?? ($t["name"] ?? ""), "values" => [["value" => $t["total_value"]["value"] ?? 0]]];
+                }, $engTotals));
+            }
         }
         foreach ($byDate as $date => $dayMetrics) {
             $key = $platform === 'facebook' ? 'page_insights' : 'ig_insights';
@@ -167,9 +183,17 @@ foreach ($integrations as $integ) {
         $metrics['page_insights'] = array_merge($pageStats, $series);
     } else {
         $ig_host = str_starts_with($access_token, 'IGAA') ? 'graph.instagram.com' : 'graph.facebook.com';
+        // See the backfill branch above: accounts_engaged/total_interactions need
+        // metric_type=total_value or they come back empty (always reads as 0).
         $series = insights_resilient("https://{$ig_host}/{$v}/{$page_id}/insights",
-            ["reach","profile_views","accounts_engaged","total_interactions"],
+            ["reach","profile_views"],
             ["period" => "day", "access_token" => $access_token]);
+        $engTotals = insights_resilient("https://{$ig_host}/{$v}/{$page_id}/insights",
+            ["accounts_engaged","total_interactions"],
+            ["period" => "day", "metric_type" => "total_value", "access_token" => $access_token]);
+        $engSeries = array_map(function($t){
+            return ["name" => $t["name"] ?? "", "title" => $t["title"] ?? ($t["name"] ?? ""), "values" => [["value" => $t["total_value"]["value"] ?? 0]]];
+        }, $engTotals);
         [$ic, $iresp] = graph_get("https://{$ig_host}/{$v}/{$page_id}", [
             "fields" => "followers_count", "access_token" => $access_token,
         ]);
@@ -177,7 +201,7 @@ foreach ($integrations as $integ) {
         if ($ic === 200 && isset($iresp["followers_count"])) {
             $igStats[] = ["name"=>"followers_count","title"=>"Followers","values"=>[["value"=>$iresp["followers_count"]]]];
         }
-        $metrics['ig_insights'] = array_merge($igStats, $series);
+        $metrics['ig_insights'] = array_merge($igStats, $series, $engSeries);
     }
 
     if ($ad_account_id) {
