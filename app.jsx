@@ -1064,7 +1064,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.221";
+const APP_VERSION = "beta 5.222";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11533,6 +11533,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
           leaveRequests={leaveRequests||[]}
           attendanceRecords={attendanceRecords||[]}
           expenses={expenses}
+          onUpdateTeamMember={onUpdateTeamMember}
           canEdit={!isOfficeBoy && hasPerm(currentUser,rolePerms,"hr.edit_team")}
           canEditSalary={!isOfficeBoy && hasPerm(currentUser,rolePerms,"hr.edit_salary")}
           onBack={isOfficeBoy ? null : ()=>setViewingMember(null)}
@@ -11862,11 +11863,11 @@ const TEAM_EVENT_MAP = Object.fromEntries(TEAM_EVENT_TYPES.map(t=>[t.key,t]));
 // Lazy-fetched per profile (same pattern as the Hiring tab's application
 // activity log) rather than pulled into the app-wide data load, since it's
 // only ever looked at one member at a time.
-function TeamMemberHistoryTab({member, canEdit, currentUser}) {
+function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember}) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
-  const blankForm = {event_type:"salary_raise", title:"", previous_value:"", new_value:"", amount:"", effective_date:new Date().toISOString().slice(0,10), notes:""};
+  const blankForm = () => ({event_type:"salary_raise", title:"", previous_value:member.salary?String(member.salary):"", new_value:"", amount:"", effective_date:new Date().toISOString().slice(0,10), notes:""});
   const [form, setForm] = useState(blankForm);
   const [saving, setSaving] = useState(false);
 
@@ -11893,6 +11894,11 @@ function TeamMemberHistoryTab({member, canEdit, currentUser}) {
         effective_date: form.effective_date||"", notes: form.notes||"",
         recorded_by: currentUser?.name||currentUser?.email||"",
       }]);
+      // A salary raise isn't just a log entry — it should actually change
+      // what the member gets paid going forward.
+      if(form.event_type==="salary_raise" && form.new_value && !isNaN(Number(form.new_value)) && onUpdateTeamMember) {
+        await onUpdateTeamMember(member.id, {salary: Number(form.new_value)});
+      }
       setShowAdd(false); setForm(blankForm);
       load();
     } catch(e){ alert("Could not save this event."); }
@@ -11907,7 +11913,7 @@ function TeamMemberHistoryTab({member, canEdit, currentUser}) {
             <h3 style={{fontWeight:700,fontSize:14}}>Career History</h3>
             <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Salary raises, promotions, bonuses, and other recorded events</p>
           </div>
-          {canEdit&&<Btn size="sm" onClick={()=>setShowAdd(true)}><Ico d={Icons.plus} size={13}/> Add Event</Btn>}
+          {canEdit&&<Btn size="sm" onClick={()=>{setForm(blankForm()); setShowAdd(true);}}><Ico d={Icons.plus} size={13}/> Add Event</Btn>}
         </div>
         {loading?(
           <div style={{padding:30,display:"flex",justifyContent:"center"}}><Spinner size={18}/></div>
@@ -11991,7 +11997,7 @@ function TeamMemberHistoryTab({member, canEdit, currentUser}) {
   );
 }
 
-function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRecords, expenses, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate}) {
+function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRecords, expenses, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember}) {
   const [tab, setTab] = usePersistentState(`sf_tab_member_${member?.id}`,"overview");
   const manager = (team||[]).find(t=>t.id===member.manager_id);
   const directReports = (team||[]).filter(t=>t.manager_id===member.id);
@@ -12062,7 +12068,7 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
         ))}
       </div>
 
-      {tab==="history"&&<TeamMemberHistoryTab member={member} canEdit={canEdit} currentUser={currentUser}/>}
+      {tab==="history"&&<TeamMemberHistoryTab member={member} canEdit={canEdit} currentUser={currentUser} onUpdateTeamMember={onUpdateTeamMember}/>}
 
       {tab==="tasks"&&(
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
