@@ -1062,7 +1062,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.212";
+const APP_VERSION = "beta 5.213";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9352,7 +9352,7 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
 // ════════════════════════════════════════════════════════════════
 // ASSETS PAGE
 // ════════════════════════════════════════════════════════════════
-function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset,currentUser}) {
+function AssetsPage({assets,projects,clients=[],onAddAsset,onUpdateAsset,onDeleteAsset,currentUser}) {
   const [catF,setCatF] = useState("all");
   const [typeF,setTypeF] = useState("all");
   const [uploading,setUploading] = useState(false);
@@ -9369,6 +9369,13 @@ function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset,curr
 
   const clientNames = [...new Set(projects.map(p=>p.client_name).filter(Boolean))].sort();
   const projectClientMap = Object.fromEntries(projects.map(p=>[p.id,p.client_name]));
+  // Same `client_{id}` tag a client's own Assets tab already stamps onto
+  // anything uploaded there without a project link (see cAssets in
+  // ClientBrainTab) — reused here instead of inventing a second, separate
+  // scheme based on category-path prefixes, so a folder/file looks the
+  // same and stays attributed to the right client from BOTH the client's
+  // own page and this global library.
+  const clientTagMap = Object.fromEntries((clients||[]).map(c=>[`client_${c.id}`, c.name]));
 
   const filtered = assets.filter(a=>{
     if(catF!=="all"&&a.category!==catF) return false;
@@ -9376,14 +9383,10 @@ function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset,curr
     return true;
   });
 
-  // A project link is the primary signal, but a folder/file created directly
-  // inside a client's drill-down (no project involved at all) only carries
-  // that client's name as the first segment of its category path — fall
-  // back to matching that so it doesn't silently end up "Unassigned".
   const clientOf = (a) => {
     if(projectClientMap[a.project_id]) return projectClientMap[a.project_id];
-    const firstSeg = (a.category||"").split("/")[0];
-    return clientNames.includes(firstSeg) ? firstSeg : null;
+    const tag = (a.tags||[]).find(t=>clientTagMap[t]);
+    return tag ? clientTagMap[tag] : null;
   };
   const clientScopedAssets = selectedClientFolder==="__unassigned__"
     ? filtered.filter(a=>!clientOf(a))
@@ -9517,7 +9520,7 @@ function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset,curr
       ) : (
         <FolderBrowser assets={clientScopedAssets} projects={clientScopedProjects} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset} onDeleteAsset={onDeleteAsset}
           storagePrefix="assets" storageKey={`sf_extra_folders_lib_${selectedClientFolder}`} currentUser={currentUser}
-          categoryPrefix={selectedClientFolder==="__unassigned__"?"":selectedClientFolder}/>
+          extraTags={selectedClientFolder!=="__unassigned__" ? [`client_${(clients||[]).find(c=>c.name===selectedClientFolder)?.id}`] : []}/>
       )}
     </div>
   );
@@ -32463,7 +32466,7 @@ Return ONLY valid JSON (no markdown, no explanation):
 />}
         {page==="tasks"&&<TasksPage posts={data.posts} projects={data.projects} team={data.team} onPostClick={setSelectedPost} onAdd={addPost} clientTasks={(data.tasks||[])} onUpdateTask={updateClientTask} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} currentUser={currentUser} clients={data.clients}/>}
         {page==="calendar"&&<div className="fade-in"><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800,marginBottom:24}}>Content Calendar</h2><CalendarView posts={data.posts} onPostClick={setSelectedPost}/></div>}
-        {page==="assets"&&<AssetsPage assets={data.assets} projects={data.projects} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} currentUser={currentUser}/>}
+        {page==="assets"&&<AssetsPage assets={data.assets} projects={data.projects} clients={data.clients} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} currentUser={currentUser}/>}
         {page==="templates"&&<TemplatesPage templates={data.templates}/>}
         {page==="quotes"&&["admin","account_manager","accountant"].includes(currentUser?.role)&&(
           <QuotesPage
