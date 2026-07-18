@@ -1062,7 +1062,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.204";
+const APP_VERSION = "beta 5.205";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -20753,16 +20753,19 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const [view,setView] = usePersistentState("sf_finance_view","overview"); // overview | clients | partners | ai
   // Outstanding transactions only count toward totals for the portion
   // actually paid so far — loaded once here so both the totals and the
-  // Outstanding tab agree on the same paid-so-far numbers.
-  const [outstandingPaidByExpense, setOutstandingPaidByExpense] = useState({});
+  // Outstanding tab agree on the same paid-so-far numbers. Kept as the raw
+  // payment list (not just a per-expense sum) so "This Month" totals can
+  // attribute a payment to the month it was actually PAID, not the month
+  // the original Fawry/outstanding transaction was dated.
+  const [outstandingPayments, setOutstandingPayments] = useState([]);
   const reloadOutstandingPayments = () => {
     qe("OutstandingPayment", {}, "-date", 2000).then(res=>{
-      const byExpense = {};
-      (res.entities||[]).forEach(p=>{ byExpense[p.expense_id] = (byExpense[p.expense_id]||0) + Number(p.amount||0); });
-      setOutstandingPaidByExpense(byExpense);
+      setOutstandingPayments(res.entities||[]);
     }).catch(()=>{});
   };
   React.useEffect(()=>{ reloadOutstandingPayments(); },[]);
+  const outstandingPaidByExpense = {};
+  outstandingPayments.forEach(p=>{ outstandingPaidByExpense[p.expense_id] = (outstandingPaidByExpense[p.expense_id]||0) + Number(p.amount||0); });
   const [refreshing,setRefreshing] = useState(false);
   const [financeInsights,setFinanceInsights] = useState([]);
   const [genFinanceInsights,setGenFinanceInsights] = useState(false);
@@ -20963,8 +20966,18 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const totalIn = ledger.filter(l=>l.type==="in").reduce((a,l)=>a+l.countableAmount,0);
   const totalOut = ledger.filter(l=>l.type==="out").reduce((a,l)=>a+l.countableAmount,0);
   const balance = totalIn-totalOut;
-  const monthIn = ledger.filter(l=>l.type==="in"&&inThisMonth(l.date)).reduce((a,l)=>a+l.countableAmount,0);
-  const monthOut = ledger.filter(l=>l.type==="out"&&inThisMonth(l.date)).reduce((a,l)=>a+l.countableAmount,0);
+  // "This month" has to attribute an outstanding payment to the month it
+  // was actually PAID, not the month the original Fawry/outstanding
+  // transaction was dated — otherwise paying off an old installment this
+  // month would silently not show up here at all. So outstanding-kind
+  // ledger entries are excluded from the date-based sum below and replaced
+  // with a sum of this month's actual OutstandingPayment rows instead.
+  const outstandingTypeById = {};
+  expenses.forEach(e=>{ if(e.outstanding_kind) outstandingTypeById[e.id] = e.type||"out"; });
+  const monthOutstandingIn = outstandingPayments.filter(p=>inThisMonth(p.date)&&outstandingTypeById[p.expense_id]==="in").reduce((a,p)=>a+Number(p.amount||0),0);
+  const monthOutstandingOut = outstandingPayments.filter(p=>inThisMonth(p.date)&&outstandingTypeById[p.expense_id]==="out").reduce((a,p)=>a+Number(p.amount||0),0);
+  const monthIn = ledger.filter(l=>l.type==="in"&&inThisMonth(l.date)&&!l.raw?.outstanding_kind).reduce((a,l)=>a+l.countableAmount,0) + monthOutstandingIn;
+  const monthOut = ledger.filter(l=>l.type==="out"&&inThisMonth(l.date)&&!l.raw?.outstanding_kind).reduce((a,l)=>a+l.countableAmount,0) + monthOutstandingOut;
   const avgTxn = ledger.length ? (totalIn+totalOut)/ledger.length : 0;
   const biggestExpense = ledger.filter(l=>l.type==="out").sort((a,b)=>b.countableAmount-a.countableAmount)[0];
 
