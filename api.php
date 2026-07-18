@@ -51,6 +51,7 @@ $ALLOWED_TABLES = [
     'role_permissions','leave_requests','attendance_records','contact_reports',
     'lead_notify_settings','expenses','finance_client_notes',
     'job_openings','job_applications','deleted_email_applications','job_application_activity',
+    'outstanding_liabilities','outstanding_payments',
 ];
 
 $table = $_GET['table'] ?? '';

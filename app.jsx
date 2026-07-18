@@ -468,6 +468,8 @@ const SB_TABLE = {
   JobApplication:"job_applications",
   DeletedEmailApplication:"deleted_email_applications",
   JobApplicationActivity:"job_application_activity",
+  OutstandingLiability:"outstanding_liabilities",
+  OutstandingPayment:"outstanding_payments",
 };
 
 function sbTable(entityName) {
@@ -1060,7 +1062,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.198";
+const APP_VERSION = "beta 5.199";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -20427,6 +20429,191 @@ function PartnerDetail({partnerKey,partnerInKey,partnerName,ledger,onBack,onOpen
   );
 }
 
+// Fawry's flat monthly interest rate by plan length — flat means interest
+// is a fixed % of the principal per month, applied for the whole term (not
+// recalculated on a shrinking balance). Edit the rate per-plan if Fawry's
+// numbers change or for a length not listed here.
+const FAWRY_INSTALLMENT_RATES = {1:3.33, 3:3.21, 6:3.04, 9:3.04, 12:3.04, 18:3.04, 24:3.04};
+function computeInstallmentPlan(principal, monthlyRatePct, months) {
+  const p = Number(principal)||0, r = Number(monthlyRatePct)||0, m = Number(months)||0;
+  const totalInterest = p * (r/100) * m;
+  const totalPayable = p + totalInterest;
+  const monthlyInstallment = m ? totalPayable/m : totalPayable;
+  return {totalInterest, totalPayable, monthlyInstallment};
+}
+
+function AddOutstandingModal({onClose, onSave, team}) {
+  const [kind, setKind] = useState("team_member");
+  const [description, setDescription] = useState("");
+  const [teamMemberId, setTeamMemberId] = useState("");
+  const [principal, setPrincipal] = useState("");
+  const [months, setMonths] = useState(3);
+  const [rate, setRate] = useState(FAWRY_INSTALLMENT_RATES[3]);
+  const [startDate, setStartDate] = useState(new Date().toISOString().split("T")[0]);
+  const [saving, setSaving] = useState(false);
+
+  const plan = kind==="installment" ? computeInstallmentPlan(principal, rate, months) : null;
+
+  const handleSave = async () => {
+    if(!principal || Number(principal)<=0) return;
+    if(kind==="team_member" && !teamMemberId) return;
+    setSaving(true);
+    const payload = kind==="team_member"
+      ? {kind, description, team_member_id: teamMemberId, principal_amount: Number(principal), total_payable: Number(principal), start_date: startDate||null, status:"outstanding"}
+      : {kind, description, principal_amount: Number(principal), monthly_interest_rate: Number(rate), months: Number(months), total_payable: plan.totalPayable, start_date: startDate||null, status:"outstanding"};
+    await onSave(payload);
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <Modal open onClose={onClose} title="New Outstanding Liability" width={480}>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>setKind("team_member")} style={{flex:1,padding:"8px",borderRadius:8,border:"1px solid var(--border)",background:kind==="team_member"?"var(--accent)":"var(--surface2)",color:kind==="team_member"?"#fff":"var(--text)",cursor:"pointer",fontWeight:600,fontSize:13}}>Owed to Team Member</button>
+          <button onClick={()=>setKind("installment")} style={{flex:1,padding:"8px",borderRadius:8,border:"1px solid var(--border)",background:kind==="installment"?"var(--accent)":"var(--surface2)",color:kind==="installment"?"#fff":"var(--text)",cursor:"pointer",fontWeight:600,fontSize:13}}>Fawry Installment</button>
+        </div>
+        <Field label="Description"><input value={description} onChange={e=>setDescription(e.target.value)} placeholder="What was this for?" style={inputSt}/></Field>
+        {kind==="team_member" && (
+          <Field label="Team Member">
+            <select value={teamMemberId} onChange={e=>setTeamMemberId(e.target.value)} style={inputSt}>
+              <option value="">Select...</option>
+              {(team||[]).filter(t=>t.role!=="client").map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </Field>
+        )}
+        <Field label={kind==="installment"?"Principal (purchase amount)":"Amount Owed"}>
+          <input type="number" value={principal} onChange={e=>setPrincipal(e.target.value)} placeholder="0.00" style={inputSt}/>
+        </Field>
+        {kind==="installment" && (
+          <>
+            <div style={{display:"flex",gap:10}}>
+              <Field label="Months">
+                <select value={months} onChange={e=>{const m=Number(e.target.value); setMonths(m); if(FAWRY_INSTALLMENT_RATES[m]!=null) setRate(FAWRY_INSTALLMENT_RATES[m]);}} style={inputSt}>
+                  {Object.keys(FAWRY_INSTALLMENT_RATES).map(m=><option key={m} value={m}>{m} months</option>)}
+                </select>
+              </Field>
+              <Field label="Monthly Interest %">
+                <input type="number" step="0.01" value={rate} onChange={e=>setRate(e.target.value)} style={inputSt}/>
+              </Field>
+            </div>
+            {principal>0 && (
+              <div style={{background:"var(--surface2)",borderRadius:10,padding:12,fontSize:12,color:"var(--text2)",display:"flex",flexDirection:"column",gap:4}}>
+                <div style={{display:"flex",justifyContent:"space-between"}}><span>Total interest</span><strong style={{color:"var(--text)"}}>{plan.totalInterest.toFixed(2)}</strong></div>
+                <div style={{display:"flex",justifyContent:"space-between"}}><span>Total payable</span><strong style={{color:"var(--text)"}}>{plan.totalPayable.toFixed(2)}</strong></div>
+                <div style={{display:"flex",justifyContent:"space-between"}}><span>Monthly installment</span><strong style={{color:"var(--accent)"}}>{plan.monthlyInstallment.toFixed(2)}</strong></div>
+              </div>
+            )}
+          </>
+        )}
+        <Field label="Start Date"><input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} style={inputSt}/></Field>
+        <Btn onClick={handleSave} disabled={saving}>{saving?"Saving…":"Save"}</Btn>
+      </div>
+    </Modal>
+  );
+}
+
+function OutstandingTab({currentUser, team, canManage}) {
+  const [liabilities, setLiabilities] = useState([]);
+  const [paymentsByLiability, setPaymentsByLiability] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [payingId, setPayingId] = useState(null);
+  const [payAmount, setPayAmount] = useState("");
+  const [payDate, setPayDate] = useState(new Date().toISOString().split("T")[0]);
+  const [payMethod, setPayMethod] = useState("Cash");
+
+  const load = async () => {
+    setLoading(true);
+    const [lRes, pRes] = await Promise.all([
+      qe("OutstandingLiability", {}, "-created_at", 500).catch(()=>({entities:[]})),
+      qe("OutstandingPayment", {}, "-date", 1000).catch(()=>({entities:[]})),
+    ]);
+    setLiabilities(lRes.entities||[]);
+    const byLiability = {};
+    (pRes.entities||[]).forEach(p=>{ (byLiability[p.liability_id]=byLiability[p.liability_id]||[]).push(p); });
+    setPaymentsByLiability(byLiability);
+    setLoading(false);
+  };
+  useEffect(()=>{ load(); },[]);
+
+  const paidSoFar = (liabilityId) => (paymentsByLiability[liabilityId]||[]).reduce((s,p)=>s+Number(p.amount||0),0);
+
+  const handleAdd = async (payload) => {
+    await ce("OutstandingLiability", [{...payload, created_by: currentUser?.email}]);
+    load();
+  };
+
+  const handleRecordPayment = async (liability) => {
+    if(!payAmount || Number(payAmount)<=0) return;
+    await ce("OutstandingPayment", [{liability_id: liability.id, amount: Number(payAmount), date: payDate, method: payMethod, recorded_by: currentUser?.email}]);
+    const total = Number(liability.total_payable);
+    const paid = paidSoFar(liability.id) + Number(payAmount);
+    const status = paid >= total ? "settled" : "partial";
+    await ue("OutstandingLiability", liability.id, {status});
+    setPayingId(null); setPayAmount("");
+    load();
+  };
+
+  if(loading) return <div style={{display:"flex",justifyContent:"center",padding:60}}><Spinner size={20}/></div>;
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",justifyContent:"flex-end"}}>
+        {canManage&&<Btn size="sm" onClick={()=>setShowAdd(true)}><Ico d={Icons.plus} size={14}/> New Outstanding</Btn>}
+      </div>
+      {liabilities.length===0 ? (
+        <EmptyState icon={Icons.wallet} title="No outstanding liabilities" sub="Money owed to team members or Fawry installment plans will show up here."/>
+      ) : (
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+          {liabilities.map((l,i)=>{
+            const paid = paidSoFar(l.id);
+            const total = Number(l.total_payable);
+            const remaining = Math.max(0, total-paid);
+            const member = l.kind==="team_member" ? (team||[]).find(t=>t.id===l.team_member_id) : null;
+            return (
+              <div key={l.id} style={{padding:"14px 18px",borderBottom:i<liabilities.length-1?"1px solid var(--border)":"none"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+                  <div>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <Badge label={l.kind==="team_member"?"Team Member":"Installment"} color={l.kind==="team_member"?"#3b82f6":"#f59e0b"} xs/>
+                      <Badge label={l.status} color={l.status==="settled"?"#10b981":l.status==="partial"?"#f59e0b":"#ef4444"} xs/>
+                    </div>
+                    <p style={{fontSize:14,fontWeight:700,marginTop:6}}>{l.description||(l.kind==="team_member"?`Owed to ${member?.name||"team member"}`:"Installment plan")}</p>
+                    {l.kind==="installment"&&<p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{l.months} months @ {l.monthly_interest_rate}%/mo — principal {Number(l.principal_amount).toLocaleString()}</p>}
+                    {l.kind==="team_member"&&member&&<p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{member.name}</p>}
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <p style={{fontSize:11,color:"var(--text3)"}}>Remaining</p>
+                    <p style={{fontSize:18,fontWeight:800,color:remaining>0?"#ef4444":"#10b981"}}>{remaining.toLocaleString()}</p>
+                    <p style={{fontSize:10,color:"var(--text3)"}}>of {total.toLocaleString()} · paid {paid.toLocaleString()}</p>
+                  </div>
+                </div>
+                {canManage&&l.status!=="settled"&&(
+                  payingId===l.id ? (
+                    <div style={{display:"flex",gap:8,marginTop:10,flexWrap:"wrap",alignItems:"center"}}>
+                      <input type="number" value={payAmount} onChange={e=>setPayAmount(e.target.value)} placeholder="Amount" style={{...inputSt,maxWidth:120}}/>
+                      <input type="date" value={payDate} onChange={e=>setPayDate(e.target.value)} style={{...inputSt,maxWidth:150}}/>
+                      <select value={payMethod} onChange={e=>setPayMethod(e.target.value)} style={{...inputSt,maxWidth:130}}>
+                        <option>Cash</option><option>Bank transfer</option><option>Card</option><option>Other</option>
+                      </select>
+                      <Btn size="sm" onClick={()=>handleRecordPayment(l)}>Save</Btn>
+                      <button onClick={()=>setPayingId(null)} style={{background:"none",border:"none",color:"var(--text3)",fontSize:12,cursor:"pointer"}}>Cancel</button>
+                    </div>
+                  ) : (
+                    <button onClick={()=>{setPayingId(l.id); setPayAmount("");}} style={{marginTop:10,padding:"6px 12px",borderRadius:8,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>Record Payment</button>
+                  )
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {showAdd&&<AddOutstandingModal onClose={()=>setShowAdd(false)} onSave={handleAdd} team={team}/>}
+    </div>
+  );
+}
+
 function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,clients=[],financeClientNotes=[],team=[],currentUser,onAddExpense,onDeleteExpense,onEditExpense,onAddExpenseComment,onRefresh,onRenameClient,onSaveClientNote}) {
   const {isMobile} = useResponsive();
   const [showAdd,setShowAdd] = useState(false);
@@ -20467,6 +20654,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const openPayrollTab = () => { pushFinanceHistory({view:"payroll"}); setView("payroll"); };
   const openAiTab = () => { pushFinanceHistory({view:"ai"}); setView("ai"); };
   const openOverviewTab = () => { pushFinanceHistory({view:"overview"}); setView("overview"); };
+  const openOutstandingTab = () => { pushFinanceHistory({view:"outstanding"}); setView("outstanding"); };
   const openAddTransaction = () => {
     if(!applyingHistory.current) { try{ window.history.pushState({sfPage:"finance", sfView:view, sfClient:selectedClient, sfPartner:selectedPartner, sfSelectedId:selectedId, sfAdd:true},""); }catch(e){} }
     setShowAdd(true);
@@ -20737,7 +20925,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
 
       {/* View tabs */}
       <div style={{display:"flex",flexDirection:"row",flexWrap:"wrap",gap:6,width:"100%",minHeight:36,paddingBottom:2,borderBottom:"1px solid var(--border, #e5e7eb)"}}>
-        {[["overview","Overview",openOverviewTab],["clients","Clients",openClientsTab],["partners","Partners",openPartnersTab],["payroll","Payroll",openPayrollTab],["ai","AI",openAiTab]].map(([k,l,fn])=>(
+        {[["overview","Overview",openOverviewTab],["clients","Clients",openClientsTab],["partners","Partners",openPartnersTab],["payroll","Payroll",openPayrollTab],["outstanding","Outstanding",openOutstandingTab],["ai","AI",openAiTab]].map(([k,l,fn])=>(
           <button key={k} type="button" onClick={fn} style={{display:"inline-block",flexShrink:0,whiteSpace:"nowrap",padding:"9px 18px",fontSize:13,fontWeight:600,background:"transparent",borderWidth:"0 0 2px 0",borderStyle:"solid",borderColor:view===k?"var(--accent, #d90b2c)":"transparent",color:view===k?"var(--accent, #d90b2c)":"var(--text2, #6b7280)",cursor:"pointer"}}>{l}</button>
         ))}
       </div>
@@ -20891,6 +21079,8 @@ No markdown, no explanation.`;
           )}
         </div>
         )
+      ) : view==="outstanding" ? (
+        <OutstandingTab currentUser={currentUser} team={team} canManage={canManage}/>
       ) : view==="clients" ? (
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
           <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
