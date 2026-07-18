@@ -1062,7 +1062,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.218";
+const APP_VERSION = "beta 5.219";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22553,13 +22553,23 @@ function TeamPerformancePage({currentUser, perfLogs, aiInsights, team}) {
 // ════════════════════════════════════════════════════════════════
 // MY TASKS PAGE - Team member's personal task list
 // ════════════════════════════════════════════════════════════════
-function MyTasksPage({posts,team,projects,currentUser,onStageChange,onPostClick}) {
+function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,onPostClick}) {
   const {isMobile} = useResponsive();
   const [filterStage, setFilterStage] = useState(null);
   const [myView, setMyView] = usePersistentState("sf_my_tasks_view","list");
 
-  // Get only posts assigned to current user
-  const myPosts = posts.filter(p => p.assigned_to === currentUser?.email);
+  // Post IDs where the current user was @mentioned in a comment — same
+  // @Name-matching convention used when firing mention notifications
+  // (see the addComment handler), so "My Tasks" doesn't just mean "assigned
+  // to me" but also "someone looped me in on this".
+  const mentionedPostIds = new Set(
+    (comments||[])
+      .filter(c => currentUser?.name && (c.content||"").match(new RegExp(`@${currentUser.name.split(" ")[0]}\\b`,"i")))
+      .map(c => c.post_id)
+  );
+
+  // Posts assigned to the current user OR where they were @mentioned
+  const myPosts = posts.filter(p => p.assigned_to === currentUser?.email || mentionedPostIds.has(p.id));
   const filteredPosts = filterStage ? myPosts.filter(p => p.stage === filterStage) : myPosts;
 
   // Group by stage
@@ -25321,6 +25331,11 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
   const isAccountant = currentUser?.role==="accountant";
   const canFinance = isAdmin||isAccountant;
   const canAgency = isAdmin||["account_manager","content_creator","graphic_designer"].includes(currentUser?.role);
+  // Creative/Design (content_creator/graphic_designer) do full production work
+  // but shouldn't see the client roster/detail pages, project list, the
+  // full cross-client task board, or the clients-wide calendar — they only
+  // work from My Tasks (assigned to them, or where they're @mentioned).
+  const canViewClientsNav = isAdmin||currentUser?.role==="account_manager";
   const isClientRole = currentUser?.role === "client";
   const isHR = currentUser?.role === "hr";
   const canViewPerformance = isAdmin || hasPerm(currentUser, rolePerms, "hr.view_performance");
@@ -25356,7 +25371,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
       {key:"my_timeline", label:"My Timeline", ico:Icons.clock},
       {key:"my_performance", label:"My Performance", ico:Icons.trendUp},
     ]}]),
-    ...(canAgency ? [{ group: "CLIENTS", icon: Icons.clients, items: [
+    ...(canViewClientsNav ? [{ group: "CLIENTS", icon: Icons.clients, items: [
       {key:"clients", label:"Clients", ico:Icons.clients},
       {key:"projects", label:"Projects", ico:Icons.projects},
       {key:"tasks", label:"All Posts & Tasks", ico:Icons.tasks},
@@ -29937,6 +29952,17 @@ function App() {
     }catch(e){return "home";}
   });
 
+  // Creative/Design roles lost nav access to the client roster/projects/full
+  // task board/clients calendar — bounce them to My Tasks if they land on one
+  // of those pages anyway (a stale localStorage/hash from before this change,
+  // or a direct link), instead of just hiding the nav link and leaving the
+  // page itself still reachable.
+  React.useEffect(()=>{
+    if(["content_creator","graphic_designer"].includes(currentUser?.role) && ["clients","projects","tasks","calendar"].includes(page)){
+      setPage("my_tasks");
+    }
+  },[currentUser?.role, page]);
+
   // Web Push: subscribe this device once logged in, and re-subscribe whenever
   // the app gets installed to the home screen (task-assignment alerts need this).
   React.useEffect(()=>{
@@ -32711,6 +32737,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             team={data.team}
             projects={data.projects}
             currentUser={currentUser}
+            comments={data.comments||[]}
             onStageChange={handleStageChange}
             onPostClick={setSelectedPost}
           />
