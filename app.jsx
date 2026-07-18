@@ -1064,7 +1064,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.222";
+const APP_VERSION = "beta 5.223";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11488,7 +11488,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
 function UsersPage({currentUser, team, invitations, accessRequests, clientUsers, clients,
   onInviteUser, onCancelInvitation, onApproveRequest, onRejectRequest,
   onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation,
-  rolePerms, onUpdateTeamMember, onRemoveMember, onToggleRolePermission, leaveRequests, onDecideLeaveRequest, attendanceRecords,
+  rolePerms, onUpdateTeamMember, onRemoveMember, onToggleRolePermission, onAddExpense, leaveRequests, onDecideLeaveRequest, attendanceRecords,
   posts, onImpersonate, appSettings, onSaveSettings, expenses, onDeclareCompanyDayOff}) {
   const [tab, setTab] = usePersistentState("sf_tab_users","team");
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -11534,6 +11534,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
           attendanceRecords={attendanceRecords||[]}
           expenses={expenses}
           onUpdateTeamMember={onUpdateTeamMember}
+          onAddExpense={onAddExpense}
           canEdit={!isOfficeBoy && hasPerm(currentUser,rolePerms,"hr.edit_team")}
           canEditSalary={!isOfficeBoy && hasPerm(currentUser,rolePerms,"hr.edit_salary")}
           onBack={isOfficeBoy ? null : ()=>setViewingMember(null)}
@@ -11863,7 +11864,7 @@ const TEAM_EVENT_MAP = Object.fromEntries(TEAM_EVENT_TYPES.map(t=>[t.key,t]));
 // Lazy-fetched per profile (same pattern as the Hiring tab's application
 // activity log) rather than pulled into the app-wide data load, since it's
 // only ever looked at one member at a time.
-function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember}) {
+function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember, onAddExpense}) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
@@ -11898,6 +11899,19 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember}
       // what the member gets paid going forward.
       if(form.event_type==="salary_raise" && form.new_value && !isNaN(Number(form.new_value)) && onUpdateTeamMember) {
         await onUpdateTeamMember(member.id, {salary: Number(form.new_value)});
+      }
+      // A bonus is real money paid out — record it as a Salaries & Payroll
+      // expense linked to this member so it actually counts toward this
+      // month's payroll total (Finance page + this profile's Payroll tab),
+      // not just a note in the history log.
+      if(form.event_type==="bonus" && form.amount && !isNaN(Number(form.amount)) && onAddExpense) {
+        await onAddExpense({
+          type:"out", category:"salaries",
+          description:`Bonus — ${form.title.trim()}`,
+          amount: Number(form.amount), currency:"EGP",
+          date: form.effective_date || new Date().toISOString().slice(0,10),
+          method: null, team_member_id: member.id, salary_month: null,
+        });
       }
       setShowAdd(false); setForm(blankForm);
       load();
@@ -11997,7 +12011,7 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember}
   );
 }
 
-function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRecords, expenses, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember}) {
+function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRecords, expenses, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense}) {
   const [tab, setTab] = usePersistentState(`sf_tab_member_${member?.id}`,"overview");
   const manager = (team||[]).find(t=>t.id===member.manager_id);
   const directReports = (team||[]).filter(t=>t.manager_id===member.id);
@@ -12068,7 +12082,7 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
         ))}
       </div>
 
-      {tab==="history"&&<TeamMemberHistoryTab member={member} canEdit={canEdit} currentUser={currentUser} onUpdateTeamMember={onUpdateTeamMember}/>}
+      {tab==="history"&&<TeamMemberHistoryTab member={member} canEdit={canEdit} currentUser={currentUser} onUpdateTeamMember={onUpdateTeamMember} onAddExpense={onAddExpense}/>}
 
       {tab==="tasks"&&(
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
@@ -12252,6 +12266,24 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
           {row("WFH Days", `${Number(member.wfh_days_used||0)} used / ${Number(member.wfh_days_total??12)} total`)}
         </div>
       </div>
+
+      {canEditSalary&&(()=>{
+        const now = new Date();
+        const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+        const thisMonthRecords = mySalaryRecords.filter(e=>(e.date||"").slice(0,7)===thisMonthKey);
+        const thisMonthBonuses = thisMonthRecords.filter(e=>(e.description||"").startsWith("Bonus —"));
+        const thisMonthBase = thisMonthRecords.filter(e=>!(e.description||"").startsWith("Bonus —"));
+        const bonusTotal = thisMonthBonuses.reduce((s,e)=>s+Number(e.amount||0),0);
+        const baseTotal = thisMonthBase.reduce((s,e)=>s+Number(e.amount||0),0);
+        return (
+          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
+            <h3 style={{fontWeight:700,fontSize:14,marginBottom:8}}>This Month Payroll</h3>
+            {row("Base Salary Paid", baseTotal?`EGP ${Math.round(baseTotal).toLocaleString()}`:"—")}
+            {row("Bonuses", bonusTotal?`EGP ${Math.round(bonusTotal).toLocaleString()}`:"—")}
+            {row("Total This Month", `EGP ${Math.round(baseTotal+bonusTotal).toLocaleString()}`)}
+          </div>
+        );
+      })()}
 
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
         <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
@@ -32819,6 +32851,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             onUpdateTeamMember={updateTeamMember}
             onRemoveMember={removeTeamMember}
             onToggleRolePermission={toggleRolePermission}
+            onAddExpense={addExpense}
             leaveRequests={data.leaveRequests||[]}
             onDecideLeaveRequest={decideLeaveRequest}
             attendanceRecords={data.attendanceRecords||[]}
