@@ -1062,7 +1062,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.202";
+const APP_VERSION = "beta 5.203";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -20987,17 +20987,30 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const topSources = Object.entries(bySource).sort((a,b)=>b[1]-a[1]).slice(0,6);
   const maxSource = Math.max(...topSources.map(s=>s[1]),1);
 
+  // Remaining unpaid balance across all outstanding (owed-to-team-member and
+  // Fawry) transactions — this is separate from totalOut/monthOut, which
+  // already exclude the unpaid portion entirely.
+  const outstandingRemainingFor = (e) => {
+    const total = Number(e.outstanding_total_payable ?? e.amount);
+    const paid = Math.min(outstandingPaidByExpense[e.id]||0, total);
+    return Math.max(0, total-paid);
+  };
+  const totalOutstanding = expenses.filter(isUnsettledOutstanding).reduce((a,e)=>a+outstandingRemainingFor(e),0);
+  const monthOutstanding = expenses.filter(e=>isUnsettledOutstanding(e)&&inThisMonth(e.date)).reduce((a,e)=>a+outstandingRemainingFor(e),0);
+
   const kpis = [
     {label:"Money In",value:`EGP ${Math.round(totalIn).toLocaleString()}`,color:"#10b981"},
     {label:"Money Out",value:`EGP ${Math.round(totalOut).toLocaleString()}`,color:"#ef4444"},
     {label:"Balance",value:`EGP ${Math.round(balance).toLocaleString()}`,color:balance>=0?"#3b82f6":"#ef4444"},
     {label:"Transactions",value:ledger.length,color:"#8b5cf6"},
+    {label:"Total Outstanding",value:`EGP ${Math.round(totalOutstanding).toLocaleString()}`,color:"#f59e0b"},
   ];
   const insights = [
     {label:"This Month In",value:`EGP ${Math.round(monthIn).toLocaleString()}`,color:"#10b981"},
     {label:"This Month Out",value:`EGP ${Math.round(monthOut).toLocaleString()}`,color:"#ef4444"},
     {label:"This Month Net",value:`EGP ${Math.round(monthIn-monthOut).toLocaleString()}`,color:(monthIn-monthOut)>=0?"#3b82f6":"#ef4444"},
     {label:"Avg Transaction",value:`EGP ${Math.round(avgTxn).toLocaleString()}`,color:"#8b5cf6"},
+    {label:"This Month Outstanding",value:`EGP ${Math.round(monthOutstanding).toLocaleString()}`,color:"#f59e0b"},
   ];
 
   if(showAdd) {
