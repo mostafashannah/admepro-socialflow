@@ -1059,7 +1059,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.192";
+const APP_VERSION = "beta 5.193";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23358,13 +23358,13 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
     </div>
     {cvViewerUrl&&(
       <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:1200,display:"flex",flexDirection:"column"}}>
-        <div style={{background:"var(--surface)",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid var(--border)"}}>
-          <span style={{fontWeight:700,fontSize:14}}>CV — {application.candidate_name}</span>
-          <button onClick={()=>setCvViewerUrl(null)} style={{padding:"7px 14px",borderRadius:8,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text)",cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+        <div style={{background:"var(--surface)",padding:"max(env(safe-area-inset-top),12px) 14px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,borderBottom:"1px solid var(--border)",flexShrink:0}}>
+          <span style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>CV — {application.candidate_name}</span>
+          <button onClick={()=>setCvViewerUrl(null)} style={{padding:"7px 14px",borderRadius:8,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text)",cursor:"pointer",display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
             <Ico d={Icons.x} size={14}/> Close
           </button>
         </div>
-        <iframe src={cvViewerUrl} style={{flex:1,border:"none",background:"#fff"}} title="CV"/>
+        <iframe src={`${cvViewerUrl}#toolbar=0&navpanes=0&view=FitH`} style={{flex:1,width:"100%",border:"none",background:"#fff"}} title="CV"/>
       </div>
     )}
     </>
