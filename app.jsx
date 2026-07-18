@@ -1062,7 +1062,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.205";
+const APP_VERSION = "beta 5.206";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -20098,6 +20098,7 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
           {txn.sub && row("Description", txn.sub)}
           {row("Date", fmtTxnDateTime(txn))}
           {row("Source", txn.source)}
+          {txn.channelSource && row("Recorded Via", txn.channelSource==="whatsapp"?"WhatsApp Pro":"App")}
           {txn.ref && row("Reference", txn.ref)}
           {txn.method && row("Payment Method", txn.method)}
           {txn.raw?.team_member_id && row("Team Member", team.find(t=>t.id===txn.raw.team_member_id)?.name||"—")}
@@ -20884,7 +20885,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         id:"exp_"+e.id, type:isOut?"out":"in", date:e.date, createdAt:e.created_at, amount:num(e.amount), currency:e.currency||"EGP",
         countableAmount: unsettled ? paidSoFar : num(e.amount),
         label:catMap[e.category]?.l||e.category, sub:e.description, raw:e,
-        source: isOut?"Manual expense":"Manual income", category:e.category, createdBy:e.created_by,
+        source: isOut?"Manual expense":"Manual income", channelSource: e.source||"app", category:e.category, createdBy:e.created_by,
         checkNo:e.check_no, ref:e.ref, attachments:parseJ(e.attachments,[]), method:e.method,
         clientName: (!isOut&&e.category==="client_payment") ? e.description : null,
         isUnsettledOutstanding: unsettled,
@@ -21430,7 +21431,7 @@ No markdown, no explanation.`;
                   </div>
                   <div style={{flex:1,minWidth:0}}>
                     <p style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.label}{l.isUnsettledOutstanding&&<span style={{marginLeft:6,fontSize:9,fontWeight:800,color:"#f59e0b",textTransform:"uppercase",letterSpacing:"0.04em"}}>Outstanding</span>}</p>
-                    {l.sub&&<p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>{l.sub}{l.method?` · ${l.method}`:""}</p>}
+                    {l.sub&&<p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:1}}>{l.sub}{l.method?` · ${l.method}`:""}{l.channelSource==="whatsapp"?" · WhatsApp":""}</p>}
                   </div>
                   <div style={{textAlign:"right",flexShrink:0}}>
                     <p style={{fontSize:13,fontWeight:800,color:l.isUnsettledOutstanding?"#f59e0b":l.type==="in"?"#10b981":"#ef4444"}}>{l.type==="in"?"+":"−"}{l.currency} {Math.round(l.amount).toLocaleString()}</p>

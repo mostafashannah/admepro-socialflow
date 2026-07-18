@@ -447,9 +447,9 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
             }
         }
 
-        $ins = $pdo->prepare("INSERT INTO expenses (id, type, category, description, amount, currency, date, created_by, ref, method,
+        $ins = $pdo->prepare("INSERT INTO expenses (id, type, category, description, amount, currency, date, created_by, ref, method, source,
             outstanding_kind, outstanding_status, team_member_id, outstanding_months, outstanding_monthly_interest_rate, outstanding_principal_amount, outstanding_total_payable)
-            VALUES (:id, :type, :cat, :desc, :amt, :cur, :date, :by, :ref, :method,
+            VALUES (:id, :type, :cat, :desc, :amt, :cur, :date, :by, :ref, :method, 'whatsapp',
             :okind, :ostatus, :tmid, :omonths, :orate, :oprincipal, :ototal)");
         $ins->execute([
             ':id' => $id, ':type' => $type, ':cat' => $category, ':desc' => $description,
