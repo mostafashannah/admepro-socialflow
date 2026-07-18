@@ -1062,7 +1062,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.215";
+const APP_VERSION = "beta 5.216";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10118,6 +10118,10 @@ const OVERVIEW_TREND_METRICS = {
     facebook: {arrKey:"page_insights", metric:"followers_count"},
     instagram: {arrKey:"ig_insights", metric:"followers_count"},
   },
+  engagement: {
+    facebook: {arrKey:"page_insights", metric:"page_post_engagements"},
+    instagram: {arrKey:"ig_insights", metric:"total_interactions"},
+  },
 };
 function ClientPerformanceTrend({clientId}) {
   const [snapshots,setSnapshots] = useState([]);
@@ -10185,7 +10189,7 @@ function ClientPerformanceTrend({clientId}) {
       <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",alignItems:"center",gap:10}}>
         <h4 style={{fontWeight:700,fontSize:14}}>30-Day Performance</h4>
         <div style={{display:"flex",gap:2,background:"var(--surface2)",padding:2,borderRadius:99,border:"1px solid var(--border2)",justifySelf:"center"}}>
-          {[["reach","Reach"],["followers","Followers"]].map(([k,l])=>(
+          {[["reach","Reach"],["followers","Followers"],["engagement","Engagement"]].map(([k,l])=>(
             <button key={k} onClick={()=>setMetricMode(k)} style={{padding:"3px 12px",borderRadius:99,fontSize:11,fontWeight:700,border:"none",cursor:"pointer",background:metricMode===k?"var(--accent)":"transparent",color:metricMode===k?"#fff":"var(--text2)"}}>{l}</button>
           ))}
         </div>
@@ -13192,6 +13196,8 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                 <span>You have <strong>{dashStats.pendingApproval}</strong> piece{dashStats.pendingApproval!==1?"s":""} of content waiting for your approval. <span style={{color:"var(--accent)",fontWeight:700}}>Review now →</span></span>
               </div>
             )}
+
+            {(integrations||[]).length>0&&<ClientPerformanceTrend clientId={client.id}/>}
 
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:16}}>
               <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16}}>
@@ -32142,7 +32148,18 @@ Return ONLY valid JSON (no markdown, no explanation):
   // Client portal
   if(currentUser?.isClient) {
     const clientRecord = data.clients.find(c=>c.email===currentUser.email)||currentUser;
-    return (<><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/><ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]}/></>);
+    return (<>
+      <GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/>
+      {impersonatorUser&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,zIndex:9999,background:"#111827",color:"#fff",padding:"8px 16px",display:"flex",alignItems:"center",justifyContent:"center",gap:12,fontSize:13,fontWeight:600}}>
+          <span>Viewing as <strong>{clientRecord?.name}</strong> (Client Portal)</span>
+          <button onClick={stopImpersonating} style={{background:"#fff",color:"#111827",border:"none",borderRadius:6,padding:"4px 12px",fontWeight:700,fontSize:12,cursor:"pointer"}}>Return to my account</button>
+        </div>
+      )}
+      <div style={impersonatorUser?{marginTop:36}:{}}>
+        <ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]}/>
+      </div>
+    </>);
   }
 
   // Public careers/job-application page — /careers, no login required.
