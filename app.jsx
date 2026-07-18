@@ -1059,7 +1059,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.193";
+const APP_VERSION = "beta 5.194";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -2448,6 +2448,66 @@ const Icons = {
 const Spinner = ({size=24}) => (
   <div style={{width:size,height:size,border:`2.5px solid var(--border2)`,borderTopColor:"var(--accent)",borderRadius:"50%",animation:"spin 0.7s linear infinite"}}/>
 );
+
+// Renders a PDF's pages onto stacked <canvas> elements via pdf.js, instead
+// of an iframe (which hands off to the browser/OS's native PDF plugin —
+// on mobile that renders at a fixed intrinsic zoom that crops the page
+// width, and multi-page scrolling inside a nested iframe is unreliable).
+// This gives full control over fit-to-width scaling and normal div scrolling.
+function PdfViewer({url}) {
+  const containerRef = useRef(null);
+  const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(false);
+    (async () => {
+      try {
+        if (!window.pdfjsLib) throw new Error("pdf.js not loaded");
+        const res = await fetch(url);
+        const buf = await res.arrayBuffer();
+        const pdf = await window.pdfjsLib.getDocument({data: buf}).promise;
+        if (cancelled || !containerRef.current) return;
+        containerRef.current.innerHTML = "";
+        const containerWidth = containerRef.current.clientWidth - 24;
+        for (let i = 1; i <= pdf.numPages; i++) {
+          if (cancelled) return;
+          const page = await pdf.getPage(i);
+          const unscaled = page.getViewport({scale: 1});
+          const scale = containerWidth / unscaled.width;
+          const viewport = page.getViewport({scale});
+          const canvas = document.createElement("canvas");
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          canvas.style.display = "block";
+          canvas.style.margin = "0 auto 12px";
+          canvas.style.boxShadow = "0 1px 6px rgba(0,0,0,0.25)";
+          if (containerRef.current) containerRef.current.appendChild(canvas);
+          await page.render({canvasContext: canvas.getContext("2d"), viewport}).promise;
+        }
+        if (!cancelled) setLoading(false);
+      } catch (e) {
+        if (!cancelled) { setError(true); setLoading(false); }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [url]);
+
+  if (error) return (
+    <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12,padding:24,color:"#fff"}}>
+      <p style={{fontSize:14}}>Couldn't render this PDF here.</p>
+      <a href={url} target="_blank" rel="noreferrer" style={{color:"#fff",textDecoration:"underline",fontSize:13}}>Open in a new tab instead</a>
+    </div>
+  );
+  return (
+    <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",background:"#525659",padding:"12px 12px 40px"}}>
+      {loading && <div style={{display:"flex",justifyContent:"center",padding:40}}><Spinner size={22}/></div>}
+      <div ref={containerRef}/>
+    </div>
+  );
+}
 
 // ── EMPTY STATE ──────────────────────────────────────────────────
 function EmptyState({icon=Icons.folder2, title="Nothing here yet", sub="", action, actionLabel="Add"}) {
@@ -23364,7 +23424,7 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
             <Ico d={Icons.x} size={14}/> Close
           </button>
         </div>
-        <iframe src={`${cvViewerUrl}#toolbar=0&navpanes=0&view=FitH`} style={{flex:1,width:"100%",border:"none",background:"#fff"}} title="CV"/>
+        <PdfViewer url={cvViewerUrl}/>
       </div>
     )}
     </>

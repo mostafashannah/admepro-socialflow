@@ -85,6 +85,13 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline-offset:0
      real text, not screenshotting HTML via html2canvas), so load it on
      its own too. Exposes window.jspdf.jsPDF. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="/app.js?v=534"></script>
+<!-- Renders PDFs (CV viewer) ourselves via canvas instead of relying on the
+     browser/OS's native PDF plugin inside an iframe — that plugin behaves
+     inconsistently on mobile (fixed zoom cropping the page width, broken
+     touch-scrolling for multi-page docs inside a nested iframe). Exposes
+     window.pdfjsLib. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";}</script>
+<script src="/app.js?v=535"></script>
 </body>
 </html>
