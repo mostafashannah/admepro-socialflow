@@ -496,7 +496,7 @@ function recruitmentTools() {
     return [
         [
             'name' => 'list_job_applications',
-            'description' => 'List/search recruitment applications. All filters optional and combinable. Use this to answer questions like "who applied for X", "any new applications", "show shortlisted candidates".',
+            'description' => 'List/search recruitment applications. All filters optional and combinable. Use this to answer questions like "who applied for X", "any new applications", "show shortlisted candidates", or "give me their portfolio/Behance/LinkedIn links" (each result includes portfolio_url and linkedin_url when the candidate submitted one).',
             'input_schema' => [
                 'type' => 'object',
                 'properties' => [
@@ -566,7 +566,7 @@ function runRecruitmentTool(PDO $pdo, string $name, array $input, string $sender
     }
 
     if ($name === 'list_job_applications') {
-        $sql = "SELECT candidate_name, candidate_email, job_title, status, ai_score, created_at FROM job_applications WHERE 1=1";
+        $sql = "SELECT candidate_name, candidate_email, job_title, status, ai_score, portfolio_url, linkedin_url, created_at FROM job_applications WHERE 1=1";
         $params = [];
         if (!empty($input['status']))    { $sql .= " AND status = :s";     $params[':s'] = $input['status']; }
         if (!empty($input['job_title'])) { $sql .= " AND job_title LIKE :j"; $params[':j'] = '%' . $input['job_title'] . '%'; }
