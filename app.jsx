@@ -1062,7 +1062,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.214";
+const APP_VERSION = "beta 5.215";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7910,7 +7910,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
   );
 }
 
-function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[]}) {
+function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient}) {
   const {isMobile} = useResponsive();
   const [tab,setTab] = usePersistentState(`sf_tab_client_${client?.id}`,"overview");
   const [showEdit,setShowEdit] = useState(false);
@@ -7973,6 +7973,12 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
             </div>
           </div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",justifyContent:"flex-end",position:"relative"}}>
+          {isAdmin&&onImpersonateClient&&(
+            <button onClick={()=>onImpersonateClient(client)} aria-label="View Client Portal" title="View Client Portal"
+              style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
+              <Ico d={Icons.eye} size={15} stroke="var(--text2)"/>
+            </button>
+          )}
           {isPriv&&(
             <button onClick={()=>setShowEdit(true)} aria-label="Edit" title="Edit"
               style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
@@ -29839,6 +29845,17 @@ function App() {
     setCurrentUser(u);
     setPage("dashboard");
   };
+  const impersonateClient = (client) => {
+    if(currentUser?.role!=="admin" || !client) return;
+    try{
+      localStorage.setItem("sf_impersonator", JSON.stringify(currentUser));
+      localStorage.setItem("sf_impersonator_return_page", page);
+    }catch(e){}
+    setImpersonatorUser(currentUser);
+    const u = {...client, isClient:true, role:"client_admin"};
+    try{ localStorage.setItem("sf_user", JSON.stringify(u)); }catch(e){}
+    setCurrentUser(u);
+  };
   const stopImpersonating = () => {
     if(!impersonatorUser) return;
     try{ localStorage.setItem("sf_user", JSON.stringify(impersonatorUser)); }catch(e){}
@@ -32416,7 +32433,7 @@ Return ONLY valid JSON (no markdown, no explanation):
               currentUser={currentUser} onToggleHide={toggleHideClient}/>
           );
           return (
-            <ClientDetailPage client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} onAddAsset={addAsset} currentUser={currentUser}
+            <ClientDetailPage client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} onAddAsset={addAsset} currentUser={currentUser} onImpersonateClient={impersonateClient}
               contactReports={data.contactReports||[]}
               integrations={data.integrations||[]}
               invoices={data.invoices||[]}
