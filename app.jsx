@@ -1062,7 +1062,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.209";
+const APP_VERSION = "beta 5.210";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10161,9 +10161,10 @@ function ClientPerformanceTrend({clientId}) {
 // dot for every single day — not just a bare line.
 function MultiLineChart({series, height=260}) {
   const w = 1400;
-  const padL = 10, padR = 10, padT = 12, padB = 26;
+  const padL = 52, padR = 10, padT = 12, padB = 26;
   const allVals = series.flatMap(s=>s.data.map(d=>d.value));
   const maxVal = Math.max(1, ...allVals);
+  const fmtAxisVal = (v) => v>=1000 ? `${(v/1000).toLocaleString(undefined,{maximumFractionDigits:1})}k` : Math.round(v).toLocaleString();
   const len = series[0]?.data.length || 0;
   const wrapRef = useRef(null);
   const [hoverIdx, setHoverIdx] = useState(null);
@@ -10191,7 +10192,12 @@ function MultiLineChart({series, height=260}) {
       <svg viewBox={`0 0 ${w} ${height}`} style={{width:"100%",height,display:"block"}}>
         {ticks.map(t=>{
           const y = padT + t*(height-padT-padB);
-          return <line key={t} x1={padL} x2={w-padR} y1={y} y2={y} stroke="var(--border)" strokeWidth={1}/>;
+          return (
+            <g key={t}>
+              <line x1={padL} x2={w-padR} y1={y} y2={y} stroke="var(--border)" strokeWidth={1}/>
+              <text x={padL-8} y={y+4} fontSize={11} fill="var(--text3)" textAnchor="end">{fmtAxisVal(maxVal*(1-t))}</text>
+            </g>
+          );
         })}
         {hoverIdx!==null && (
           <line x1={toPoints(firstData)[hoverIdx]?.[0]} x2={toPoints(firstData)[hoverIdx]?.[0]} y1={padT} y2={height-padB} stroke="var(--text3)" strokeWidth={1} strokeDasharray="3,3"/>
