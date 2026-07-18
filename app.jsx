@@ -1062,7 +1062,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.210";
+const APP_VERSION = "beta 5.211";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9087,7 +9087,7 @@ function AssetCard({asset:a, proj, allFolders=[], onUpdate, onDelete, selected, 
 // new (empty) folders, drag-and-drop to move files between folders, and
 // drag-and-drop of OS files onto the panel to upload into the open folder.
 // ════════════════════════════════════════════════════════════════
-function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAsset, storagePrefix="assets", storageKey="sf_extra_folders", extraTags=[], currentUser}) {
+function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAsset, storagePrefix="assets", storageKey="sf_extra_folders", extraTags=[], currentUser, categoryPrefix=""}) {
   const isAdmin = currentUser?.role==="admin";
   const fileInputRef = useRef(null);
   const [path, setPath] = useState([]);
@@ -9105,6 +9105,23 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
   const [bulkPicker, setBulkPicker] = useState(false);
 
   const currentPath = path.join("/");
+  // When this browser is opened scoped to a specific client (the Global
+  // Assets Library's per-client drill-down), every category/folder path
+  // written here needs to actually start with that client's name — a
+  // folder created (or a file uploaded) directly here, with no project
+  // link, otherwise carries no trace of which client it belongs to and
+  // silently ends up bucketed as "Unassigned" back on the library's main
+  // screen. `path`/`currentPath` stay relative (unprefixed) for display
+  // and internal navigation; withPrefix()/stripPrefix() are the only two
+  // places the prefix is added or removed, at the read/write boundary.
+  const withPrefix = (rel) => categoryPrefix ? [categoryPrefix, rel].filter(Boolean).join("/") : rel;
+  const stripPrefix = (cat) => {
+    const c = cat || "";
+    if (!categoryPrefix) return c;
+    if (c === categoryPrefix) return "";
+    if (c.startsWith(categoryPrefix + "/")) return c.slice(categoryPrefix.length + 1);
+    return null; // belongs to a different client/scope entirely — not shown here
+  };
   // Selection is per-folder — clear it whenever the open folder changes so
   // stale ids from a previous folder can't get silently bulk-acted on.
   useEffect(()=>{ setSelected(new Set()); setSelectedFolders(new Set()); },[currentPath]);
@@ -9114,14 +9131,14 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
   const totalSelected = selected.size + selectedFolders.size;
 
   const bulkMoveTo = (folderPath) => {
-    selected.forEach(id=>onUpdateAsset&&onUpdateAsset(id,{category:folderPath}));
+    selected.forEach(id=>onUpdateAsset&&onUpdateAsset(id,{category:withPrefix(folderPath)}));
     selectedFolders.forEach(name=>{
       const oldPrefix = [...path,name].join("/");
       const newPrefix = [folderPath,name].filter(Boolean).join("/");
-      assets.filter(a=>(a.category||"")===oldPrefix || (a.category||"").startsWith(oldPrefix+"/"))
-        .forEach(a=>onUpdateAsset&&onUpdateAsset(a.id,{category:newPrefix+a.category.slice(oldPrefix.length)}));
-      const migrated = extraFolders.filter(fp=>fp===oldPrefix||fp.startsWith(oldPrefix+"/")).map(fp=>newPrefix+fp.slice(oldPrefix.length));
-      const remaining = extraFolders.filter(fp=>!(fp===oldPrefix||fp.startsWith(oldPrefix+"/")));
+      assets.filter(a=>{ const rel=stripPrefix(a.category); return rel===oldPrefix || (rel||"").startsWith(oldPrefix+"/"); })
+        .forEach(a=>onUpdateAsset&&onUpdateAsset(a.id,{category:withPrefix(newPrefix+stripPrefix(a.category).slice(oldPrefix.length))}));
+      const migrated = extraFolders.map(stripPrefix).filter(fp=>fp!=null&&(fp===oldPrefix||fp.startsWith(oldPrefix+"/"))).map(fp=>withPrefix(newPrefix+fp.slice(oldPrefix.length)));
+      const remaining = extraFolders.filter(fp=>{ const rel=stripPrefix(fp); return rel==null||!(rel===oldPrefix||rel.startsWith(oldPrefix+"/")); });
       persistExtra([...remaining, ...migrated]);
     });
     clearSelection();
@@ -9131,8 +9148,8 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
     selected.forEach(id=>onDeleteAsset&&onDeleteAsset(id));
     selectedFolders.forEach(name=>{
       const prefix = [...path,name].join("/");
-      assets.filter(a=>(a.category||"")===prefix || (a.category||"").startsWith(prefix+"/")).forEach(a=>onDeleteAsset&&onDeleteAsset(a.id));
-      persistExtra(extraFolders.filter(fp=>!(fp===prefix||fp.startsWith(prefix+"/"))));
+      assets.filter(a=>{ const rel=stripPrefix(a.category); return rel===prefix || (rel||"").startsWith(prefix+"/"); }).forEach(a=>onDeleteAsset&&onDeleteAsset(a.id));
+      persistExtra(extraFolders.filter(fp=>{ const rel=stripPrefix(fp); return rel==null||!(rel===prefix||rel.startsWith(prefix+"/")); }));
     });
     clearSelection();
   };
@@ -9146,26 +9163,29 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
   // Every known folder path across the whole library (not just the currently
   // open one) — feeds FolderPickerModal's "Move" browser so it can start at
   // the top level and let the user drill into any subfolder, not just move
-  // within the folder the card happens to be sitting in.
+  // within the folder the card happens to be sitting in. Shown relative
+  // (prefix stripped) since the picker only ever browses within this scope.
   const allFolders = [...new Set([
-    ...assets.map(a=>a.category).filter(Boolean),
-    ...extraFolders, ...projectFolders,
+    ...assets.map(a=>stripPrefix(a.category)).filter(Boolean),
+    ...extraFolders.map(stripPrefix).filter(Boolean), ...projectFolders,
   ])];
 
   const childFolders = (() => {
     const set = new Set();
     assets.forEach(a=>{
-      const segs = (a.category||"").split("/").filter(Boolean);
+      const rel = stripPrefix(a.category);
+      if(rel==null) return;
+      const segs = rel.split("/").filter(Boolean);
       if(segs.length>path.length && path.every((p,i)=>segs[i]===p)) set.add(segs[path.length]);
     });
-    [...extraFolders, ...projectFolders].forEach(fp=>{
+    [...extraFolders.map(stripPrefix).filter(fp=>fp!=null), ...projectFolders].forEach(fp=>{
       const segs = fp.split("/").filter(Boolean);
       if(segs.length>path.length && path.every((p,i)=>segs[i]===p)) set.add(segs[path.length]);
     });
     return [...set].sort();
   })();
 
-  const filesHere = assets.filter(a=>(a.category||"").split("/").filter(Boolean).join("/")===currentPath);
+  const filesHere = assets.filter(a=>{ const rel=stripPrefix(a.category); return rel!=null && rel.split("/").filter(Boolean).join("/")===currentPath; });
 
   const goto = (i) => setPath(path.slice(0,i));
   const openFolder = (name) => setPath([...path, name]);
@@ -9173,12 +9193,12 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
   const createFolder = () => {
     const name = newFolderName.trim();
     if(!name) return;
-    const fp = [...path, name].join("/");
+    const fp = withPrefix([...path, name].join("/"));
     if(!extraFolders.includes(fp)) persistExtra([...extraFolders, fp]);
     setNewFolderName(""); setShowNewFolder(false);
   };
 
-  const moveAssetTo = (assetId, folderPath) => { onUpdateAsset && onUpdateAsset(assetId, {category: folderPath}); };
+  const moveAssetTo = (assetId, folderPath) => { onUpdateAsset && onUpdateAsset(assetId, {category: withPrefix(folderPath)}); };
 
   const handleDropFiles = async (fileList) => {
     const files = Array.from(fileList||[]);
@@ -9186,9 +9206,10 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
     setUploading(true);
     try {
       const resolvedProjectId = path.length>=2 ? (projects.find(p=>p.title===path[1])?.id ?? null) : null;
+      const fullCategory = withPrefix(currentPath);
       for(const file of files) {
-        const url = await uploadToStorage(file, `${storagePrefix}/${currentPath||"root"}`);
-        await onAddAsset({name:file.name, file_url:url, file_type:file.type.startsWith("video")?"video":file.type.startsWith("image")?"image":"file", category:currentPath, project_id:resolvedProjectId, tags:[...extraTags], file_size:file.size});
+        const url = await uploadToStorage(file, `${storagePrefix}/${fullCategory||"root"}`);
+        await onAddAsset({name:file.name, file_url:url, file_type:file.type.startsWith("video")?"video":file.type.startsWith("image")?"image":"file", category:fullCategory, project_id:resolvedProjectId, tags:[...extraTags], file_size:file.size});
       }
     } catch(e){}
     setUploading(false);
@@ -9355,7 +9376,15 @@ function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset,curr
     return true;
   });
 
-  const clientOf = (a) => projectClientMap[a.project_id] || null;
+  // A project link is the primary signal, but a folder/file created directly
+  // inside a client's drill-down (no project involved at all) only carries
+  // that client's name as the first segment of its category path — fall
+  // back to matching that so it doesn't silently end up "Unassigned".
+  const clientOf = (a) => {
+    if(projectClientMap[a.project_id]) return projectClientMap[a.project_id];
+    const firstSeg = (a.category||"").split("/")[0];
+    return clientNames.includes(firstSeg) ? firstSeg : null;
+  };
   const clientScopedAssets = selectedClientFolder==="__unassigned__"
     ? filtered.filter(a=>!clientOf(a))
     : selectedClientFolder
@@ -9487,7 +9516,8 @@ function AssetsPage({assets,projects,onAddAsset,onUpdateAsset,onDeleteAsset,curr
         </div>
       ) : (
         <FolderBrowser assets={clientScopedAssets} projects={clientScopedProjects} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset} onDeleteAsset={onDeleteAsset}
-          storagePrefix="assets" storageKey={`sf_extra_folders_lib_${selectedClientFolder}`} currentUser={currentUser}/>
+          storagePrefix="assets" storageKey={`sf_extra_folders_lib_${selectedClientFolder}`} currentUser={currentUser}
+          categoryPrefix={selectedClientFolder==="__unassigned__"?"":selectedClientFolder}/>
       )}
     </div>
   );
