@@ -1062,7 +1062,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.217";
+const APP_VERSION = "beta 5.218";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3751,7 +3751,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
   };
 
   return (
-    <Modal open onClose={onClose} title="" width={700}>
+    <Modal open onClose={onClose} title="" width={1040}>
       <div style={{display:"flex",flexDirection:"column",gap:18}}>
         {/* Header */}
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -3877,14 +3877,60 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
           </div>
         </div>
 
-        {/* Caption */}
-        {post.caption&&<div style={{display:"flex",flexDirection:"column",gap:6}}>
-          <label style={{fontSize:11,fontWeight:700,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Caption</label>
-          <div style={{padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
-            <p style={{fontSize:13,lineHeight:1.7}}>{post.caption}</p>
-            {post.hashtags&&<p style={{fontSize:12,color:"var(--accent)",marginTop:8,fontWeight:500}}>{post.hashtags}</p>}
-          </div>
-        </div>}
+        {/* Caption + Media side by side on wide screens so the caption isn't
+            squeezed into a tall narrow column above/below the image */}
+        {(post.caption || (()=>{
+          const du = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
+          const da = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
+          return (da.length ? da : du).length > 0;
+        })()) && (
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(320px,1fr))",gap:16,alignItems:"start"}}>
+          {post.caption&&<div style={{display:"flex",flexDirection:"column",gap:6}}>
+            <label style={{fontSize:11,fontWeight:700,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Caption</label>
+            <div style={{padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
+              <p style={{fontSize:13,lineHeight:1.7}}>{post.caption}</p>
+              {post.hashtags&&<p style={{fontSize:12,color:"var(--accent)",marginTop:8,fontWeight:500}}>{post.hashtags}</p>}
+            </div>
+          </div>}
+
+          {/* Attached Media — always visible regardless of stage (the editable
+              uploader below only renders during the "design" stage) */}
+          {(()=>{
+            const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
+            const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
+            const media = designAssets.length ? designAssets : designUrls.map(url=>({url}));
+            if(!media.length) return null;
+            const isVertical = ["reel","story"].includes(post.post_type);
+            const aspect = isVertical ? "9/16" : "1/1";
+            const colWidth = isVertical ? "130px" : "150px";
+            return (
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                <label style={{fontSize:11,fontWeight:700,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Media</label>
+                <div style={{display:"grid",gridTemplateColumns:`repeat(auto-fill,minmax(${colWidth},1fr))`,gap:10}}>
+                  {media.map((asset,i)=>{
+                    const url = asset.url||asset.file_url||asset.data||"";
+                    const isVideo = (asset.type||"").startsWith("video")||url.match(/\.(mp4|mov|webm|m4v)/i);
+                    return (
+                      <a key={i} href={url} target="_blank" rel="noreferrer" style={{position:"relative",aspectRatio:aspect,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",overflow:"hidden",display:"block"}}>
+                        {isVideo
+                          ? <video src={url+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
+                          : <img src={url} style={{width:"100%",height:"100%",objectFit:"contain"}} alt={asset.name||post.title}/>}
+                        {isVideo&&(
+                          <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.15)"}}>
+                            <div style={{width:36,height:36,borderRadius:"50%",background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                              <Ico d={Icons.play} size={15} stroke="#fff"/>
+                            </div>
+                          </div>
+                        )}
+                      </a>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+        )}
 
         {/* Content Phase Generator */}
         {post.stage==="content_creation"&&(
@@ -3920,44 +3966,6 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
             <p style={{fontSize:13}}>{post.rejection_reason}</p>
           </div>
         </div>}
-
-        {/* Attached Media — always visible regardless of stage (the editable
-            uploader below only renders during the "design" stage) */}
-        {(()=>{
-          const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
-          const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
-          const media = designAssets.length ? designAssets : designUrls.map(url=>({url}));
-          if(!media.length) return null;
-          // Match the real published shape instead of forcing every tile into a
-          // fixed box: Reels/Stories are vertical 9:16, everything else (feed
-          // image/carousel/video) is the standard square 1:1 Instagram/Facebook
-          // uses — objectFit:contain so nothing gets cropped either way.
-          const isVertical = ["reel","story"].includes(post.post_type);
-          const aspect = isVertical ? "9/16" : "1/1";
-          const colWidth = isVertical ? "150px" : "220px";
-          return (
-            <div style={{display:"grid",gridTemplateColumns:`repeat(auto-fill,minmax(${colWidth},1fr))`,gap:10}}>
-              {media.map((asset,i)=>{
-                const url = asset.url||asset.file_url||asset.data||"";
-                const isVideo = (asset.type||"").startsWith("video")||url.match(/\.(mp4|mov|webm|m4v)/i);
-                return (
-                  <a key={i} href={url} target="_blank" rel="noreferrer" style={{position:"relative",aspectRatio:aspect,maxWidth:isVertical?220:"none",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",overflow:"hidden",display:"block"}}>
-                    {isVideo
-                      ? <video src={url+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
-                      : <img src={url} style={{width:"100%",height:"100%",objectFit:"contain"}} alt={asset.name||post.title}/>}
-                    {isVideo&&(
-                      <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.15)"}}>
-                        <div style={{width:44,height:44,borderRadius:"50%",background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                          <Ico d={Icons.play} size={18} stroke="#fff"/>
-                        </div>
-                      </div>
-                    )}
-                  </a>
-                );
-              })}
-            </div>
-          );
-        })()}
 
         {/* Schedule */}
         {(post.scheduled_date||post.scheduled_time)&&<div style={{display:"flex",gap:10}}>
