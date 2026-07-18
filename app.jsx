@@ -1060,7 +1060,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.197";
+const APP_VERSION = "beta 5.198";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23292,6 +23292,16 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
           {application.video_url&&<a href={application.video_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",textDecoration:"none"}}>Video</a>}
         </div>
 
+        {onSavePortfolioScore&&(
+          <div style={{marginBottom:14,padding:14,background:"var(--surface2)",borderRadius:10,border:"1px solid var(--border)"}}>
+            <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Portfolio Score</p>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <input type="number" min="0" max="100" defaultValue={application.portfolio_score??""} onBlur={e=>{const v=e.target.value===""?null:Math.max(0,Math.min(100,Number(e.target.value))); onSavePortfolioScore(application, v);}} placeholder="0-100, after reviewing their portfolio" style={{...inputSt,maxWidth:140}}/>
+              <span style={{fontSize:11,color:"var(--text3)"}}>/ 100 — feeds into overall application score</span>
+            </div>
+          </div>
+        )}
+
         {application.ai_review_status==="pending"&&(
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:14}}>
             <p style={{fontSize:12,color:"var(--text3)"}}><Spinner size={12}/> AI review in progress… (stuck? click retry)</p>
@@ -23451,16 +23461,6 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
             {interviewOverallScore(application)!=null&&(
               <p style={{fontSize:11,color:"var(--text3)",marginTop:10,paddingTop:10,borderTop:"1px solid var(--border)"}}>Interview score: <strong style={{color:"var(--text)"}}>{interviewOverallScore(application)}/100</strong> (feeds into overall application score)</p>
             )}
-          </div>
-        )}
-
-        {onSavePortfolioScore&&(
-          <div style={{marginBottom:14,padding:14,background:"var(--surface2)",borderRadius:10,border:"1px solid var(--border)"}}>
-            <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Portfolio Score</p>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <input type="number" min="0" max="100" defaultValue={application.portfolio_score??""} onBlur={e=>{const v=e.target.value===""?null:Math.max(0,Math.min(100,Number(e.target.value))); onSavePortfolioScore(application, v);}} placeholder="0-100, after reviewing their portfolio" style={{...inputSt,maxWidth:140}}/>
-              <span style={{fontSize:11,color:"var(--text3)"}}>/ 100 — feeds into overall application score</span>
-            </div>
           </div>
         )}
 
