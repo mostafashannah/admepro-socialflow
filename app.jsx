@@ -1059,7 +1059,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.194";
+const APP_VERSION = "beta 5.195";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -2472,6 +2472,11 @@ function PdfViewer({url}) {
         if (cancelled || !containerRef.current) return;
         containerRef.current.innerHTML = "";
         const containerWidth = containerRef.current.clientWidth - 24;
+        // Render at devicePixelRatio so retina/high-DPI phone screens get a
+        // sharp bitmap — sizing the canvas's backing store to CSS pixels
+        // 1:1 (the previous bug) makes the browser upscale it, which looks
+        // blurry/low-res on any screen denser than 1x.
+        const dpr = window.devicePixelRatio || 1;
         for (let i = 1; i <= pdf.numPages; i++) {
           if (cancelled) return;
           const page = await pdf.getPage(i);
@@ -2479,13 +2484,17 @@ function PdfViewer({url}) {
           const scale = containerWidth / unscaled.width;
           const viewport = page.getViewport({scale});
           const canvas = document.createElement("canvas");
-          canvas.width = viewport.width;
-          canvas.height = viewport.height;
+          canvas.width = Math.ceil(viewport.width * dpr);
+          canvas.height = Math.ceil(viewport.height * dpr);
+          canvas.style.width = viewport.width + "px";
+          canvas.style.height = viewport.height + "px";
           canvas.style.display = "block";
           canvas.style.margin = "0 auto 12px";
           canvas.style.boxShadow = "0 1px 6px rgba(0,0,0,0.25)";
           if (containerRef.current) containerRef.current.appendChild(canvas);
-          await page.render({canvasContext: canvas.getContext("2d"), viewport}).promise;
+          const ctx = canvas.getContext("2d");
+          ctx.scale(dpr, dpr);
+          await page.render({canvasContext: ctx, viewport}).promise;
         }
         if (!cancelled) setLoading(false);
       } catch (e) {
