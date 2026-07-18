@@ -496,7 +496,7 @@ function recruitmentTools() {
     return [
         [
             'name' => 'list_job_applications',
-            'description' => 'List/search recruitment applications. All filters optional and combinable. Use this to answer questions like "who applied for X", "any new applications", "show shortlisted candidates", or "give me their portfolio/Behance/LinkedIn links" (each result includes portfolio_url and linkedin_url when the candidate submitted one).',
+            'description' => 'List/search recruitment applications. All filters optional and combinable. Use this to answer questions like "who applied for X", "any new applications", "show shortlisted candidates", or "give me their portfolio/Behance/LinkedIn links" — each result includes portfolio_url (a link the candidate pasted, e.g. Behance/Canva/Drive) and, separately, portfolio_attachment_url (a file they uploaded instead of pasting a link) — check both before saying there\'s no portfolio.',
             'input_schema' => [
                 'type' => 'object',
                 'properties' => [
@@ -566,7 +566,7 @@ function runRecruitmentTool(PDO $pdo, string $name, array $input, string $sender
     }
 
     if ($name === 'list_job_applications') {
-        $sql = "SELECT candidate_name, candidate_email, job_title, status, ai_score, portfolio_url, linkedin_url, created_at FROM job_applications WHERE 1=1";
+        $sql = "SELECT candidate_name, candidate_email, job_title, status, ai_score, portfolio_url, portfolio_attachment_url, linkedin_url, created_at FROM job_applications WHERE 1=1";
         $params = [];
         if (!empty($input['status']))    { $sql .= " AND status = :s";     $params[':s'] = $input['status']; }
         if (!empty($input['job_title'])) { $sql .= " AND job_title LIKE :j"; $params[':j'] = '%' . $input['job_title'] . '%'; }
@@ -588,6 +588,7 @@ function runRecruitmentTool(PDO $pdo, string $name, array $input, string $sender
             'job_title' => $a['job_title'], 'status' => $a['status'], 'ai_score' => $a['ai_score'], 'ai_summary' => $a['ai_summary'],
             'expected_salary' => $a['expected_salary'], 'available_start_date' => $a['available_start_date'],
             'interview_rating' => $a['interview_rating'], 'notes' => $a['notes'],
+            'portfolio_url' => $a['portfolio_url'], 'portfolio_attachment_url' => $a['portfolio_attachment_url'], 'linkedin_url' => $a['linkedin_url'],
             'offer_salary' => $a['offer_salary'], 'offer_candidate_response' => $a['offer_candidate_response'],
             'applied_on' => $a['created_at'],
         ];
