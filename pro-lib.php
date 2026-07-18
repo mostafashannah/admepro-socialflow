@@ -1,5 +1,23 @@
 <?php
 // Shared "Pro" assistant logic used by wa-webhook.php and CLI test scripts.
+require_once __DIR__ . '/recruitment-mail-lib.php';
+
+// Lightweight HTML email wrapper for recruitment action emails triggered
+// from WhatsApp — deliberately simple (not the full branded template used
+// by the app/cron) since these are one-off action emails, not the polished
+// candidate-facing confirmation flow.
+function proEmailBase(string $bodyHtml): string {
+    return '<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px">'
+        . $bodyHtml
+        . '<table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>'
+        . '<p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>'
+        . '<p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>'
+        . '<p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>'
+        . '</td></tr></table></div>';
+}
+function proEmailBtn(string $url, string $label): string {
+    return '<p style="margin:0 0 20px"><a href="' . htmlspecialchars($url) . '" style="display:inline-block;padding:12px 24px;background:#d90b2c;color:#ffffff;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none">' . htmlspecialchars($label) . '</a></p>';
+}
 
 // Downloads a WhatsApp media object (voice note, etc) by its media id and
 // returns [bytes, mime_type] — or [null, null] on any failure. Two-step
@@ -541,6 +559,47 @@ function recruitmentTools() {
             ],
         ],
         [
+            'name' => 'send_completion_reminder',
+            'description' => 'Email a candidate a link to fill in whatever is still missing from their application (CV, phone, expected salary, start date, etc). Use for "send Salma the complete your application link/email".',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => ['name_or_email' => ['type' => 'string', 'description' => 'Candidate name or email — best-effort match']],
+                'required' => ['name_or_email'],
+            ],
+        ],
+        [
+            'name' => 'send_interview_invite',
+            'description' => 'Email a candidate a link to pick an interview time from a list of slots you propose. ALWAYS ask the user for the actual date/time options first if they haven\'t given any — never invent times yourself.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'name_or_email' => ['type' => 'string', 'description' => 'Candidate name or email — best-effort match'],
+                    'slots' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Proposed interview slots as ISO datetimes, e.g. "2026-07-20T14:00:00". At least one required.'],
+                ],
+                'required' => ['name_or_email', 'slots'],
+            ],
+        ],
+        [
+            'name' => 'send_job_offer',
+            'description' => 'Email a candidate a formal job offer with salary/probation/start-date terms and an accept/negotiate/reject link. ALWAYS ask the user for any of the required terms they have not already given you — never guess a salary or start date. offer_title defaults to the position applied for if not given.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'name_or_email' => ['type' => 'string', 'description' => 'Candidate name or email — best-effort match'],
+                    'offer_title' => ['type' => 'string', 'description' => 'Job title for the offer — defaults to the position they applied for'],
+                    'offer_salary' => ['type' => 'string', 'description' => 'Salary during the probation period, e.g. "12,000 EGP"'],
+                    'offer_probation_months' => ['type' => 'integer', 'description' => 'Probation length in months, e.g. 3'],
+                    'offer_post_probation_salary' => ['type' => 'string', 'description' => 'Salary after probation ends, e.g. "15,000 EGP"'],
+                    'offer_start_date' => ['type' => 'string', 'description' => 'Proposed start date, YYYY-MM-DD'],
+                    'offer_laptop_provided' => ['type' => 'string', 'enum' => ['company', 'personal']],
+                    'offer_vacation_days_annual' => ['type' => 'integer', 'description' => 'Defaults to 15 if not given'],
+                    'offer_wfh_days_monthly' => ['type' => 'integer', 'description' => 'Defaults to 2 if not given'],
+                    'offer_notes' => ['type' => 'string', 'description' => 'Any extra note to include in the offer email'],
+                ],
+                'required' => ['name_or_email', 'offer_salary', 'offer_post_probation_salary', 'offer_start_date'],
+            ],
+        ],
+        [
             'name' => 'list_job_openings',
             'description' => 'List job openings (title, department, status, application count). Use for "what positions are open", "how many people applied for X".',
             'input_schema' => [
@@ -618,6 +677,122 @@ function runRecruitmentTool(PDO $pdo, string $name, array $input, string $sender
         $combined = trim(($a['notes'] ? $a['notes'] . "\n" : '') . "[{$senderName} via WhatsApp] {$note}");
         $pdo->prepare("UPDATE job_applications SET notes = :n WHERE id = :id")->execute([':n' => $combined, ':id' => $a['id']]);
         return ['ok' => true, 'message' => "Note added to {$a['candidate_name']}'s application."];
+    }
+
+    if ($name === 'send_completion_reminder') {
+        $matches = findJobApplication($pdo, trim($input['name_or_email'] ?? ''));
+        if (!$matches) return ['error' => 'No application found matching that name/email.'];
+        if (count($matches) > 1) return ['error' => 'Multiple candidates match — be more specific: ' . implode(', ', array_column($matches, 'candidate_name'))];
+        $a = $matches[0];
+        if (!$a['candidate_email']) return ['error' => 'This application has no email on file — cannot send.'];
+
+        $missing = [];
+        if (!$a['cv_url']) $missing[] = 'Your CV';
+        if (!$a['candidate_phone']) $missing[] = 'Your phone number';
+        if (!$a['expected_salary']) $missing[] = 'Your expected salary';
+        if (!$a['available_start_date']) $missing[] = 'Your available start date';
+        if (!$missing) return ['error' => "{$a['candidate_name']}'s application already has everything filled in — nothing to request."];
+
+        $token = bin2hex(random_bytes(24));
+        $pdo->prepare("UPDATE job_applications SET completion_token = :t WHERE id = :id")->execute([':t' => $token, ':id' => $a['id']]);
+        $completeUrl = 'https://socialflow.admepro.com/careers/complete?token=' . $token;
+        $missingListHtml = '<ul style="margin:0 0 16px;padding-left:18px;font-size:14px;line-height:1.8;color:#4b5563">'
+            . implode('', array_map(fn($m) => '<li>' . htmlspecialchars($m) . '</li>', $missing)) . '</ul>';
+        $body = '<h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Hi ' . htmlspecialchars($a['candidate_name'] ?: 'there') . ',</h2>'
+            . '<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">A few things are still missing from your application for the ' . htmlspecialchars($a['job_title'] ?: 'role') . ' role:</p>'
+            . $missingListHtml
+            . proEmailBtn($completeUrl, 'Complete My Application');
+        $sent = send_recruitment_email($pdo, $a['candidate_email'], 'Please complete your Admepro application', proEmailBase($body), 'Admepro Careers');
+        if (!$sent) return ['error' => 'Email send failed — check the mail server configuration.'];
+        $log = $pdo->prepare("INSERT INTO job_application_activity (id, application_id, action, actor_name) VALUES (UUID(), :aid, :action, :actor)");
+        $log->execute([':aid' => $a['id'], ':action' => 'Completion reminder sent (via WhatsApp)', ':actor' => $senderName]);
+        return ['ok' => true, 'message' => "Completion reminder sent to {$a['candidate_name']} — missing: " . implode(', ', $missing) . '.'];
+    }
+
+    if ($name === 'send_interview_invite') {
+        $matches = findJobApplication($pdo, trim($input['name_or_email'] ?? ''));
+        if (!$matches) return ['error' => 'No application found matching that name/email.'];
+        if (count($matches) > 1) return ['error' => 'Multiple candidates match — be more specific: ' . implode(', ', array_column($matches, 'candidate_name'))];
+        $a = $matches[0];
+        if (!$a['candidate_email']) return ['error' => 'This application has no email on file — cannot send.'];
+        $slots = array_values(array_filter(array_map('trim', $input['slots'] ?? [])));
+        if (!$slots) return ['error' => 'No interview slots given — ask the user for at least one proposed date/time first.'];
+
+        $token = bin2hex(random_bytes(24));
+        $pdo->prepare("UPDATE job_applications SET interview_scheduling_token = :t, interview_slots = :s, interview_selected_slot = NULL, interview_confirmed_slot = NULL WHERE id = :id")
+            ->execute([':t' => $token, ':s' => json_encode($slots), ':id' => $a['id']]);
+        $pickUrl = 'https://socialflow.admepro.com/careers/interview?token=' . $token;
+        $slotsHtml = '<ul style="margin:0 0 16px;padding-left:18px;font-size:14px;line-height:1.8;color:#4b5563">'
+            . implode('', array_map(fn($s) => '<li>' . htmlspecialchars(date('l, d M Y \a\t g:i A', strtotime($s))) . '</li>', $slots)) . '</ul>';
+        $body = '<h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Hi ' . htmlspecialchars($a['candidate_name'] ?: 'there') . ',</h2>'
+            . '<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">We would like to schedule an interview for the ' . htmlspecialchars($a['job_title'] ?: 'role') . ' role. Here are some times that work for us:</p>'
+            . $slotsHtml
+            . '<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Pick whichever suits you, or suggest another time if none work.</p>'
+            . proEmailBtn($pickUrl, 'Pick a Time');
+        $sent = send_recruitment_email($pdo, $a['candidate_email'], 'Pick an interview time — ' . ($a['job_title'] ?: 'Admepro'), proEmailBase($body), 'Admepro Careers');
+        if (!$sent) return ['error' => 'Email send failed — check the mail server configuration.'];
+        $pdo->prepare("UPDATE job_applications SET status = 'interview' WHERE id = :id")->execute([':id' => $a['id']]);
+        $log = $pdo->prepare("INSERT INTO job_application_activity (id, application_id, action, actor_name) VALUES (UUID(), :aid, :action, :actor)");
+        $log->execute([':aid' => $a['id'], ':action' => 'Interview time options sent (via WhatsApp)', ':actor' => $senderName]);
+        return ['ok' => true, 'message' => "Interview invite with " . count($slots) . " time option(s) sent to {$a['candidate_name']}."];
+    }
+
+    if ($name === 'send_job_offer') {
+        $matches = findJobApplication($pdo, trim($input['name_or_email'] ?? ''));
+        if (!$matches) return ['error' => 'No application found matching that name/email.'];
+        if (count($matches) > 1) return ['error' => 'Multiple candidates match — be more specific: ' . implode(', ', array_column($matches, 'candidate_name'))];
+        $a = $matches[0];
+        if (!$a['candidate_email']) return ['error' => 'This application has no email on file — cannot send.'];
+
+        $offerTitle = trim($input['offer_title'] ?? '') ?: ($a['job_title'] ?: 'the role');
+        $offerSalary = trim($input['offer_salary'] ?? '');
+        $offerPostProbationSalary = trim($input['offer_post_probation_salary'] ?? '');
+        $offerStartDate = trim($input['offer_start_date'] ?? '');
+        if (!$offerSalary || !$offerPostProbationSalary || !$offerStartDate) {
+            return ['error' => 'Missing required offer terms — ask the user for: ' . implode(', ', array_filter([
+                !$offerSalary ? 'salary during probation' : null,
+                !$offerPostProbationSalary ? 'salary after probation' : null,
+                !$offerStartDate ? 'start date' : null,
+            ])) . '. Never guess these.'];
+        }
+        $probationMonths = isset($input['offer_probation_months']) ? (int)$input['offer_probation_months'] : 3;
+        $vacationDays = isset($input['offer_vacation_days_annual']) ? (int)$input['offer_vacation_days_annual'] : 15;
+        $wfhDays = isset($input['offer_wfh_days_monthly']) ? (int)$input['offer_wfh_days_monthly'] : 2;
+        $laptop = in_array($input['offer_laptop_provided'] ?? '', ['company', 'personal'], true) ? $input['offer_laptop_provided'] : null;
+        $notes = trim($input['offer_notes'] ?? '');
+
+        $token = bin2hex(random_bytes(24));
+        $pdo->prepare("UPDATE job_applications SET offer_token = :tok, offer_title = :title, offer_salary = :sal, offer_probation_months = :pm,
+            offer_post_probation_salary = :pps, offer_start_date = :sd, offer_laptop_provided = :lap, offer_vacation_days_annual = :vac,
+            offer_wfh_days_monthly = :wfh, offer_notes = :notes, offer_sent_at = NOW(), offer_candidate_response = NULL, status = 'offer'
+            WHERE id = :id")->execute([
+            ':tok' => $token, ':title' => $offerTitle, ':sal' => $offerSalary, ':pm' => $probationMonths,
+            ':pps' => $offerPostProbationSalary, ':sd' => $offerStartDate, ':lap' => $laptop, ':vac' => $vacationDays,
+            ':wfh' => $wfhDays, ':notes' => $notes ?: null, ':id' => $a['id'],
+        ]);
+        $offerUrl = 'https://socialflow.admepro.com/careers/offer?token=' . $token;
+        $rows = [
+            ['Salary (probation)', $offerSalary],
+            ['Probation period', $probationMonths . ' month(s)'],
+            ['Salary after probation', $offerPostProbationSalary],
+            ['Start date', date('d M Y', strtotime($offerStartDate))],
+            ['Annual vacation', $vacationDays . ' days/year'],
+            ['Work from home', $wfhDays . ' days/month'],
+        ];
+        if ($laptop) $rows[] = ['Laptop', $laptop === 'company' ? 'Company-provided' : 'Personal laptop'];
+        $rowsHtml = '<table width="100%" style="margin:0 0 16px;font-size:14px;color:#4b5563;border-collapse:collapse">'
+            . implode('', array_map(fn($r) => '<tr><td style="padding:6px 0;border-bottom:1px solid #f0f0f0">' . htmlspecialchars($r[0]) . '</td><td style="padding:6px 0;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;color:#111827">' . htmlspecialchars($r[1]) . '</td></tr>', $rows))
+            . '</table>';
+        $body = '<h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Congratulations, ' . htmlspecialchars($a['candidate_name'] ?: 'there') . '!</h2>'
+            . '<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">We would like to offer you the ' . htmlspecialchars($offerTitle) . ' position. Here is a summary of the offer:</p>'
+            . $rowsHtml
+            . ($notes ? '<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">' . nl2br(htmlspecialchars($notes)) . '</p>' : '')
+            . proEmailBtn($offerUrl, 'View & Respond to Offer');
+        $sent = send_recruitment_email($pdo, $a['candidate_email'], 'Your job offer — ' . $offerTitle, proEmailBase($body), 'Admepro Careers');
+        if (!$sent) return ['error' => 'Email send failed — check the mail server configuration.'];
+        $log = $pdo->prepare("INSERT INTO job_application_activity (id, application_id, action, actor_name) VALUES (UUID(), :aid, :action, :actor)");
+        $log->execute([':aid' => $a['id'], ':action' => 'Job offer sent (via WhatsApp)', ':actor' => $senderName]);
+        return ['ok' => true, 'message' => "Job offer sent to {$a['candidate_name']} for {$offerTitle}."];
     }
 
     if ($name === 'list_job_openings') {
@@ -810,7 +985,7 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
         }
         return runFinanceTool($pdo, $name, $input, $senderName);
     }
-    if (in_array($name, ['list_job_applications', 'get_job_application', 'update_application_status', 'add_application_note', 'list_job_openings'], true)) {
+    if (in_array($name, ['list_job_applications', 'get_job_application', 'update_application_status', 'add_application_note', 'list_job_openings', 'send_completion_reminder', 'send_interview_invite', 'send_job_offer'], true)) {
         return runRecruitmentTool($pdo, $name, $input, $senderRole, $senderName);
     }
     $isAdmin = $senderRole === 'team:admin';
@@ -1018,8 +1193,15 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
             $system .= "\n\nRecruitment: you can list/search job applications and openings, look up a specific "
                      . "candidate, move an application to a new pipeline stage (list_job_applications, "
                      . "get_job_application, update_application_status), and add an internal note "
-                     . "(add_application_note). These never send any email to the candidate — they only update "
-                     . "what's shown in the app's Recruitment page.";
+                     . "(add_application_note) — these never email the candidate, they only update the app. "
+                     . "You can ALSO actually email a candidate: send_completion_reminder (asks them to fill in "
+                     . "whatever is missing from their application), send_interview_invite (send a pick-a-time "
+                     . "link for interview slots you propose), and send_job_offer (a formal offer with salary/"
+                     . "probation/start date terms and an accept/negotiate/reject link). For interview slots and "
+                     . "offer terms, ALWAYS ask the user for the specifics first if they haven't already given "
+                     . "them in this conversation — never invent a time, salary, or start date yourself. If a "
+                     . "tool call comes back listing missing required info, ask the user for exactly that, then "
+                     . "retry once they answer.";
         }
         if ($isAdmin || $isAccountant) {
             $system .= "\n\nFinancial data: you can answer any question about money in, money out, balance, or "
