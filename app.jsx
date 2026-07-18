@@ -1062,7 +1062,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.206";
+const APP_VERSION = "beta 5.207";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21001,6 +21001,21 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const topSources = Object.entries(bySource).sort((a,b)=>b[1]-a[1]).slice(0,6);
   const maxSource = Math.max(...topSources.map(s=>s[1]),1);
 
+  // Money in/out trend across months — last 12 calendar months that
+  // actually have data, oldest first.
+  const monthlyTotals = {};
+  ledger.forEach(l=>{
+    if(!l.date) return;
+    const d = new Date(l.date);
+    if(isNaN(d.getTime())) return;
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+    if(!monthlyTotals[key]) monthlyTotals[key] = {in:0, out:0, label: d.toLocaleDateString("en-US",{month:"short",year:"2-digit"})};
+    monthlyTotals[key][l.type] += l.countableAmount;
+  });
+  const monthlyKeys = Object.keys(monthlyTotals).sort().slice(-12);
+  const monthlyChartData = monthlyKeys.map(k=>monthlyTotals[k]);
+  const maxMonthly = Math.max(1, ...monthlyChartData.flatMap(m=>[m.in,m.out]));
+
   // Remaining unpaid balance across all outstanding (owed-to-team-member and
   // Fawry) transactions — this is separate from totalOut/monthOut, which
   // already exclude the unpaid portion entirely.
@@ -21349,7 +21364,8 @@ No markdown, no explanation.`;
             </div>
             <div style={{padding:"12px 16px",display:"flex",flexDirection:"column",gap:8}}>
               {byCategory.map(c=>(
-                <div key={c.k} style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
+                <div key={c.k} onClick={()=>{setCategoryFilter(c.k); setTypeFilter("out");}} style={{display:"flex",alignItems:"center",gap:8,minWidth:0,cursor:"pointer",padding:"2px 4px",borderRadius:6}}
+                  onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"} onMouseLeave={e=>e.currentTarget.style.background=""}>
                   <span style={{fontSize:12,color:"var(--text2)",width:isMobile?70:110,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.l}</span>
                   <div style={{flex:1,minWidth:0}}><ProgressBar value={c.total} max={maxCat} color={c.color} height={5}/></div>
                   <span style={{fontSize:11,fontWeight:700,color:c.color,flexShrink:0,whiteSpace:"nowrap"}}>{isMobile?`${Math.round(c.total/1000)}k`:`EGP ${Math.round(c.total).toLocaleString()}`}</span>
@@ -21367,7 +21383,8 @@ No markdown, no explanation.`;
             </div>
             <div style={{padding:"12px 16px",display:"flex",flexDirection:"column",gap:8}}>
               {topSources.map(([name,total])=>(
-                <div key={name} style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
+                <div key={name} onClick={()=>openClient(name)} style={{display:"flex",alignItems:"center",gap:8,minWidth:0,cursor:"pointer",padding:"2px 4px",borderRadius:6}}
+                  onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"} onMouseLeave={e=>e.currentTarget.style.background=""}>
                   <span style={{fontSize:12,color:"var(--text2)",width:isMobile?70:110,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{name}</span>
                   <div style={{flex:1,minWidth:0}}><ProgressBar value={total} max={maxSource} color="#10b981" height={5}/></div>
                   <span style={{fontSize:11,fontWeight:700,color:"#10b981",flexShrink:0,whiteSpace:"nowrap"}}>{isMobile?`${Math.round(total/1000)}k`:`EGP ${Math.round(total).toLocaleString()}`}</span>
@@ -21377,6 +21394,29 @@ No markdown, no explanation.`;
           </div>
         )}
       </div>
+
+      {monthlyChartData.length>1&&(
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+          <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:14}}>
+            <h3 style={{fontWeight:700,fontSize:14}}>Money In / Out by Month</h3>
+            <div style={{display:"flex",gap:12,fontSize:11,color:"var(--text3)"}}>
+              <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:8,height:8,borderRadius:2,background:"#10b981",display:"inline-block"}}/>In</span>
+              <span style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:8,height:8,borderRadius:2,background:"#ef4444",display:"inline-block"}}/>Out</span>
+            </div>
+          </div>
+          <div style={{padding:"18px 16px",display:"flex",alignItems:"flex-end",gap:isMobile?6:14,overflowX:"auto"}}>
+            {monthlyChartData.map((m,i)=>(
+              <div key={i} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,flexShrink:0,minWidth:isMobile?34:46}}>
+                <div style={{display:"flex",alignItems:"flex-end",gap:2,height:110}}>
+                  <div title={`In: EGP ${Math.round(m.in).toLocaleString()}`} style={{width:isMobile?9:14,height:`${Math.max(2,(m.in/maxMonthly)*110)}px`,background:"#10b981",borderRadius:"3px 3px 0 0"}}/>
+                  <div title={`Out: EGP ${Math.round(m.out).toLocaleString()}`} style={{width:isMobile?9:14,height:`${Math.max(2,(m.out/maxMonthly)*110)}px`,background:"#ef4444",borderRadius:"3px 3px 0 0"}}/>
+                </div>
+                <span style={{fontSize:10,color:"var(--text3)",whiteSpace:"nowrap"}}>{m.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Type / Category / Client filters + Export */}
       <div style={{display:"flex",gap:6,alignItems:"center",justifyContent:"space-between",flexWrap:"wrap"}}>
