@@ -1059,7 +1059,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.191";
+const APP_VERSION = "beta 5.192";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23093,6 +23093,7 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
   const [notes, setNotes] = useState(application.notes||"");
   const [rerunning, setRerunning] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [cvViewerUrl, setCvViewerUrl] = useState(null);
   const extracted = parseMaybeJson(application.ai_extracted, {});
   const cvIsDocx = /\.docx?(?:[?#]|$)/i.test(application.cv_url||"");
   const cvIsExternal = !!application.cv_url && !application.cv_url.startsWith(window.location.origin);
@@ -23117,6 +23118,7 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
   },[application.id, application.cv_url]);
 
   return (
+    <>
     <div className="fade-in" style={{maxWidth:700}}>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
         {!hideHeader&&(
@@ -23162,7 +23164,15 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
         </div>
 
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:18}}>
-          {application.cv_url&&<a href={application.cv_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--accentbg)",border:"1px solid var(--accent)33",fontSize:12,fontWeight:700,color:"var(--accent)",textDecoration:"none"}}>{convertingCv?"Saving local copy…":cvIsDocx?"View CV (Word)":cvIsExternal?"View CV (external link)":"View CV"}</a>}
+          {application.cv_url&&(cvNeedsLocalCopy ? (
+            <a href={application.cv_url} target="_blank" rel="noreferrer" style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--accentbg)",border:"1px solid var(--accent)33",fontSize:12,fontWeight:700,color:"var(--accent)",textDecoration:"none"}}>{convertingCv?"Saving local copy…":cvIsDocx?"View CV (Word)":"View CV (external link)"}</a>
+          ) : (
+            // Opened in-app (not a new tab/window) because on a home-screen
+            // PWA, target="_blank" for a PDF opens inside the same standalone
+            // container with no browser chrome at all — no back/close button,
+            // trapping the user on the CV with no way back to the app.
+            <button onClick={()=>setCvViewerUrl(application.cv_url)} style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--accentbg)",border:"1px solid var(--accent)33",fontSize:12,fontWeight:700,color:"var(--accent)",cursor:"pointer"}}>View CV</button>
+          ))}
           {cvNeedsLocalCopy&&!convertingCv&&cvConvertFailed&&onConvertCv&&(
             <button onClick={()=>onConvertCv(application)} style={{padding:"7px 14px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>Retry Saving Local Copy</button>
           )}
@@ -23346,6 +23356,18 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
         )}
       </div>
     </div>
+    {cvViewerUrl&&(
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:1200,display:"flex",flexDirection:"column"}}>
+        <div style={{background:"var(--surface)",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",borderBottom:"1px solid var(--border)"}}>
+          <span style={{fontWeight:700,fontSize:14}}>CV — {application.candidate_name}</span>
+          <button onClick={()=>setCvViewerUrl(null)} style={{padding:"7px 14px",borderRadius:8,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text)",cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+            <Ico d={Icons.x} size={14}/> Close
+          </button>
+        </div>
+        <iframe src={cvViewerUrl} style={{flex:1,border:"none",background:"#fff"}} title="CV"/>
+      </div>
+    )}
+    </>
   );
 }
 
