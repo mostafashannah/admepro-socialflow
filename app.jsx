@@ -479,7 +479,7 @@ function sbTable(entityName) {
 // Known columns per table — used to strip unknown fields before POST/PATCH
 const SB_SCHEMA = {
   projects: ["title","description","client_id","client_name","status","start_date","end_date","platforms","team_members","project_type","posting_start","posting_end"],
-  posts: ["project_id","client_id","client_name","title","description","stage","platform","post_type","caption","hashtags","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes"],
+  posts: ["project_id","client_id","client_name","title","description","stage","platform","post_type","caption","hashtags","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id"],
   // address/website/contact_person were never real columns on the clients
   // table (mysql-schema.sql only has name/email/phone/logo_url/industry/
   // status/account_manager_id/notes/platforms/portal_password/username) —
@@ -1062,7 +1062,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.216";
+const APP_VERSION = "beta 5.217";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3721,6 +3721,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
       const res = await publishPost(post, socialIntegration);
       const postId = res.id || res.post_id || res.creation_id;
       setPublishResult({ok:true, msg:`Published! Post ID: ${postId||"success"}`});
+      if(postId) await ue("Post", post.id, {external_post_id: postId}).catch(()=>{});
       onStageChange(post, "published");
     } catch(e) {
       setPublishResult({ok:false, msg: e.message||"Publish failed"});
@@ -10294,6 +10295,41 @@ function MultiLineChart({series, height=260}) {
   );
 }
 
+// Ranks published posts by a simple weighted engagement score (comments and
+// shares count for more than a bare like — they're a stronger buy-in signal),
+// using the insight_likes/insight_comments/insight_shares/insight_reach columns
+// that post-insights-cron.php refreshes daily from Meta. Posts with no insight
+// data yet (not refreshed, or not published to a connected platform) are excluded.
+function BestPerformingPosts({posts}) {
+  const scored = (posts||[])
+    .filter(p=>p.stage==="published" && (p.insight_likes!=null||p.insight_comments!=null||p.insight_reach!=null))
+    .map(p=>({...p, score:(p.insight_likes||0)+(p.insight_comments||0)*2+(p.insight_shares||0)*3}))
+    .sort((a,b)=>b.score-a.score)
+    .slice(0,5);
+  if(scored.length===0) return null;
+  return (
+    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"16px 20px"}}>
+      <h4 style={{fontWeight:700,fontSize:14,marginBottom:12}}>Best Performing Posts</h4>
+      <div style={{display:"flex",flexDirection:"column",gap:2}}>
+        {scored.map((p,i)=>(
+          <div key={p.id} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 0",borderBottom:i<scored.length-1?"1px solid var(--border)":"none"}}>
+            <span style={{fontSize:13,fontWeight:800,color:"var(--text3)",width:18,flexShrink:0}}>#{i+1}</span>
+            <div style={{minWidth:0,flex:1}}>
+              <p style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}</p>
+              <p style={{fontSize:11,color:"var(--text3)",marginTop:2,textTransform:"capitalize"}}>{p.platform}{p.scheduled_date?` · ${new Date(p.scheduled_date).toLocaleDateString()}`:""}</p>
+            </div>
+            <div style={{display:"flex",gap:14,flexShrink:0,fontSize:12,color:"var(--text2)",whiteSpace:"nowrap"}}>
+              <span><strong style={{color:"var(--text)"}}>{p.insight_likes??0}</strong> Likes</span>
+              <span><strong style={{color:"var(--text)"}}>{p.insight_comments??0}</strong> Comments</span>
+              {p.insight_reach!=null&&<span><strong style={{color:"var(--text)"}}>{p.insight_reach}</strong> Reach</span>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ClientOverviewTab({client, cProjects, cPosts, cMessages, cLeads, integrations}) {
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState(null);
@@ -10363,6 +10399,8 @@ No markdown, no explanation, just the JSON array.`;
       </div>
 
       <ClientPerformanceTrend clientId={client.id}/>
+
+      <BestPerformingPosts posts={cPosts}/>
 
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"16px 20px"}}>
         <h4 style={{fontWeight:700,fontSize:14,marginBottom:14}}>Workflow Pipeline</h4>
@@ -13198,6 +13236,8 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
             )}
 
             {(integrations||[]).length>0&&<ClientPerformanceTrend clientId={client.id}/>}
+
+            <BestPerformingPosts posts={allCPosts}/>
 
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:16}}>
               <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16}}>
@@ -31951,7 +31991,9 @@ Return ONLY valid JSON (no markdown, no explanation):
           || (data.integrations||[]).find(i=>i.status==="active" && i.app_key===pd.platform && !i.client_id);
         if(!integ) { failedCount++; continue; }
         try {
-          await publishPost(real, integ);
+          const res = await publishPost(real, integ);
+          const postId = res?.id || res?.post_id || res?.creation_id;
+          if(postId) await ue("Post", real.id, {external_post_id: postId}).catch(()=>{});
           handleStageChange(real,"published");
           publishedCount++;
         } catch(e) {
