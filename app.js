@@ -180,6 +180,7 @@ const otherOpeningsForCompare=(otherOpenOpenings||[]).filter(o=>o.id!==(opening=
 Also consider these OTHER currently open positions:
 ${otherOpeningsForCompare.map(o=>`- "${o.title}": ${(o.description||"").slice(0,300)}`).join("\n")}
 If the candidate would score meaningfully better against one of these other roles than against "${(opening===null||opening===void 0?void 0:opening.title)||application.job_title||"this role"}", also include "better_fit_title" (the exact title from the list above) and "better_fit_reason" (one sentence) in your JSON. If none fit clearly better, set both to null. Only recommend a switch if it's a clear, meaningful improvement — not a marginal one.`:"";const sys=`You are an HR screening assistant reviewing a candidate's CV (attached below, as a PDF document or as extracted text from a Word document) for the position "${(opening===null||opening===void 0?void 0:opening.title)||application.job_title||"this role"}".
+Today's date is ${new Date().toISOString().split("T")[0]} — use this as the reference point for judging whether dates in the CV (employment, education, certifications) are past, current, or future. Do not assume any other "current date" from your own training.
 Job description: ${((opening===null||opening===void 0?void 0:opening.description)||"").slice(0,1500)}
 Requirements: ${((opening===null||opening===void 0?void 0:opening.requirements)||"").slice(0,1500)}
 
@@ -190,7 +191,7 @@ ${AI_REVIEW_JSON_SHAPE}
 // best, instead of leaving it unassigned or generically scored against
 // "this role". Falls back to reviewApplication()'s generic scoring if
 // there are no open openings to compare against.
-async function reviewApplicationBestFit(application,cvContent,openOpenings){var _application;if(!((_application=application)!==null&&_application!==void 0&&_application.id)||!cvContent)return null;if(!(openOpenings!==null&&openOpenings!==void 0&&openOpenings.length))return reviewApplication(application,cvContent,null);const openingsList=openOpenings.map((o,i)=>`${i+1}. "${o.title}"\nDescription: ${(o.description||"").slice(0,600)}\nRequirements: ${(o.requirements||"").slice(0,600)}`).join("\n\n");const sys=`You are an HR screening assistant. This candidate's application wasn't tied to a specific job opening — read their CV (attached below, as a PDF document or as extracted text from a Word document) and decide which of these OPEN positions they fit best:
+async function reviewApplicationBestFit(application,cvContent,openOpenings){var _application;if(!((_application=application)!==null&&_application!==void 0&&_application.id)||!cvContent)return null;if(!(openOpenings!==null&&openOpenings!==void 0&&openOpenings.length))return reviewApplication(application,cvContent,null);const openingsList=openOpenings.map((o,i)=>`${i+1}. "${o.title}"\nDescription: ${(o.description||"").slice(0,600)}\nRequirements: ${(o.requirements||"").slice(0,600)}`).join("\n\n");const sys=`You are an HR screening assistant. Today's date is ${new Date().toISOString().split("T")[0]} — use this as the reference point for judging whether dates in the CV (employment, education, certifications) are past, current, or future. Do not assume any other "current date" from your own training. This candidate's application wasn't tied to a specific job opening — read their CV (attached below, as a PDF document or as extracted text from a Word document) and decide which of these OPEN positions they fit best:
 
 ${openingsList}
 
@@ -214,7 +215,7 @@ function speedTokens(speed,base){if(speed==="low")return Math.max(300,Math.round
 function logActivity(action,category,details="",status="success",errorMsg="",user="system"){const entry={action,category,details,status,error_message:errorMsg,performed_by:user,performed_at:new Date().toISOString()};ce("ActivityLog",[entry]).then(({entities})=>{const saved=entities===null||entities===void 0?void 0:entities[0];// Push the freshly-saved row (with real id) into the live UI immediately,
 // otherwise System Log only reflects what was loaded at page load.
 if(saved&&!saved._saveError)window.dispatchEvent(new CustomEvent("sf:activitylog",{detail:saved}));}).catch(()=>{});}// ── Email HTML templates ─────────────────────────────────────────
-const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 5.195";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+const APP_URL="https://socialflow.admepro.com";const APP_VERSION="beta 5.196";function emailBase(content){return`<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
 <tr><td align="center">

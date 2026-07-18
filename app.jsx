@@ -886,6 +886,7 @@ Also consider these OTHER currently open positions:
 ${otherOpeningsForCompare.map(o=>`- "${o.title}": ${(o.description||"").slice(0,300)}`).join("\n")}
 If the candidate would score meaningfully better against one of these other roles than against "${opening?.title||application.job_title||"this role"}", also include "better_fit_title" (the exact title from the list above) and "better_fit_reason" (one sentence) in your JSON. If none fit clearly better, set both to null. Only recommend a switch if it's a clear, meaningful improvement — not a marginal one.` : "";
   const sys = `You are an HR screening assistant reviewing a candidate's CV (attached below, as a PDF document or as extracted text from a Word document) for the position "${opening?.title||application.job_title||"this role"}".
+Today's date is ${new Date().toISOString().split("T")[0]} — use this as the reference point for judging whether dates in the CV (employment, education, certifications) are past, current, or future. Do not assume any other "current date" from your own training.
 Job description: ${(opening?.description||"").slice(0,1500)}
 Requirements: ${(opening?.requirements||"").slice(0,1500)}
 
@@ -922,7 +923,7 @@ async function reviewApplicationBestFit(application, cvContent, openOpenings) {
   if(!application?.id || !cvContent) return null;
   if(!openOpenings?.length) return reviewApplication(application, cvContent, null);
   const openingsList = openOpenings.map((o,i)=>`${i+1}. "${o.title}"\nDescription: ${(o.description||"").slice(0,600)}\nRequirements: ${(o.requirements||"").slice(0,600)}`).join("\n\n");
-  const sys = `You are an HR screening assistant. This candidate's application wasn't tied to a specific job opening — read their CV (attached below, as a PDF document or as extracted text from a Word document) and decide which of these OPEN positions they fit best:
+  const sys = `You are an HR screening assistant. Today's date is ${new Date().toISOString().split("T")[0]} — use this as the reference point for judging whether dates in the CV (employment, education, certifications) are past, current, or future. Do not assume any other "current date" from your own training. This candidate's application wasn't tied to a specific job opening — read their CV (attached below, as a PDF document or as extracted text from a Word document) and decide which of these OPEN positions they fit best:
 
 ${openingsList}
 
@@ -1059,7 +1060,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.195";
+const APP_VERSION = "beta 5.196";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
