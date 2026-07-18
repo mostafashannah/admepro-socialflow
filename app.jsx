@@ -1062,7 +1062,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.211";
+const APP_VERSION = "beta 5.212";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10095,7 +10095,10 @@ const INSIGHTS_METRIC_LABELS = {
 // instead of showing as zero.
 const OVERVIEW_TREND_METRICS = {
   reach: {
-    facebook: {arrKey:"page_insights", metric:"page_impressions"},
+    // page_impressions has been unreliable/zero for many apps under newer
+    // Graph API versions — page_impressions_unique (unique reach) is the
+    // metric actually meant to be compared against Instagram's "reach".
+    facebook: {arrKey:"page_insights", metric:"page_impressions_unique"},
     instagram: {arrKey:"ig_insights", metric:"reach"},
   },
   followers: {
