@@ -1117,7 +1117,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.293";
+const APP_VERSION = "beta 5.294";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -14210,12 +14210,15 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                     const pUrls = Array.isArray(p.design_urls)?p.design_urls:parseJ(p.design_urls||"[]");
                     const pAssets = Array.isArray(p.design_assets)?p.design_assets:parseJ(p.design_assets||"[]");
                     const pThumb = pUrls[0]||pAssets[0]?.url||"";
+                    const pThumbIsVideo = (pAssets[0]?.type||"").startsWith("video") || (pThumb||"").match(/\.(mp4|mov|webm|m4v)/i);
                     return (
                     <div key={p.id} onClick={()=>setSel(p)} style={{background:"var(--surface)",borderRadius:"var(--rs)",padding:"10px 14px",cursor:"pointer",border:"1px solid #ec489944",display:"flex",alignItems:"center",gap:10}}
                     onMouseEnter={e=>e.currentTarget.style.borderColor="#ec4899"}
                     onMouseLeave={e=>e.currentTarget.style.borderColor="#ec489944"}>
                       {pThumb?(
-                        <img src={pThumb} alt="" style={{width:44,height:44,borderRadius:8,objectFit:"cover",flexShrink:0,background:"var(--surface2)"}}/>
+                        pThumbIsVideo
+                          ? <video src={pThumb+"#t=0.1"} muted playsInline preload="metadata" style={{width:44,height:44,borderRadius:8,objectFit:"cover",flexShrink:0,background:"var(--surface2)"}}/>
+                          : <img src={pThumb} alt="" style={{width:44,height:44,borderRadius:8,objectFit:"cover",flexShrink:0,background:"var(--surface2)"}}/>
                       ):(
                         <div style={{width:44,height:44,borderRadius:8,background:`${PLT_COLOR[p.platform]}22`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                           <span style={{fontSize:16,fontWeight:800,color:PLT_COLOR[p.platform]}}>{PLT_ICON[p.platform]}</span>
@@ -14263,10 +14266,15 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                             const pUrls = Array.isArray(p.design_urls)?p.design_urls:parseJ(p.design_urls||"[]");
                             const pAssets = Array.isArray(p.design_assets)?p.design_assets:parseJ(p.design_assets||"[]");
                             const pThumb = pUrls[0]||pAssets[0]?.url||"";
+                            const pThumbIsVideo = (pAssets[0]?.type||"").startsWith("video") || (pThumb||"").match(/\.(mp4|mov|webm|m4v)/i);
                             return (
                               <div key={p.id} onClick={()=>setSel(p)} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--rs)",overflow:"hidden",cursor:"pointer"}}>
                                 {pThumb?(
-                                  <div style={{height:90,overflow:"hidden",background:"var(--surface2)"}}><img src={pThumb} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/></div>
+                                  <div style={{height:90,overflow:"hidden",background:"var(--surface2)"}}>
+                                    {pThumbIsVideo
+                                      ? <video src={pThumb+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                                      : <img src={pThumb} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
+                                  </div>
                                 ):(
                                   <div style={{height:60,background:`linear-gradient(135deg,${PLT_COLOR[p.platform]}33,${PLT_COLOR[p.platform]}11)`,display:"flex",alignItems:"center",justifyContent:"center"}}>
                                     <span style={{fontSize:18,fontWeight:800,color:PLT_COLOR[p.platform]}}>{PLT_ICON[p.platform]}</span>
@@ -14301,12 +14309,15 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                     const pUrls = Array.isArray(p.design_urls)?p.design_urls:parseJ(p.design_urls||"[]");
                     const pAssets = Array.isArray(p.design_assets)?p.design_assets:parseJ(p.design_assets||"[]");
                     const pThumb = pUrls[0]||pAssets[0]?.url||"";
+                    const pThumbIsVideo = (pAssets[0]?.type||"").startsWith("video") || (pThumb||"").match(/\.(mp4|mov|webm|m4v)/i);
                     return (
                       <div key={p.id} onClick={()=>setSel(p)} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"12px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:12,minHeight:56,transition:"background 0.15s,border-color 0.15s"}}
                       onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--border2)";e.currentTarget.style.background="var(--surface2)";}}
                       onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border)";e.currentTarget.style.background="var(--surface)";}}>
                         {pThumb?(
-                          <img src={pThumb} alt="" style={{width:44,height:44,borderRadius:8,objectFit:"cover",flexShrink:0,background:"var(--surface2)"}}/>
+                          pThumbIsVideo
+                            ? <video src={pThumb+"#t=0.1"} muted playsInline preload="metadata" style={{width:44,height:44,borderRadius:8,objectFit:"cover",flexShrink:0,background:"var(--surface2)"}}/>
+                            : <img src={pThumb} alt="" style={{width:44,height:44,borderRadius:8,objectFit:"cover",flexShrink:0,background:"var(--surface2)"}}/>
                         ):(
                           <div style={{width:44,height:44,borderRadius:8,background:`${PLT_COLOR[p.platform]}22`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                             <span style={{fontSize:16,fontWeight:800,color:PLT_COLOR[p.platform]}}>{PLT_ICON[p.platform]}</span>
