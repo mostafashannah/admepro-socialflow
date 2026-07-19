@@ -1064,7 +1064,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.226";
+const APP_VERSION = "beta 5.227";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1213,6 +1213,42 @@ const EMAIL_TEMPLATES = {
     ${emailCard([["Task",taskTitle],["Project",projectName||"—"],["From",mentionerName||"—"]])}
     ${emailBtn(APP_URL,"Reply in SocialFlow")}
   `),
+
+  // ─── CAREER EVENTS ─────────────────────────────────────────────
+  // One shared template covering every Career History event type — tone and
+  // headline change per type (celebratory for raises/promotions/bonuses,
+  // neutral/formal for deductions/warnings) but the layout stays consistent.
+  careerEvent: (memberName, event) => {
+    const t = event.event_type;
+    const amt = event.amount!=null && event.amount!=="" ? `EGP ${Number(event.amount).toLocaleString()}` : null;
+    const rows = [];
+    if(event.previous_value) rows.push(["Previous", event.previous_value]);
+    if(event.new_value) rows.push(["New", event.new_value, "#10b981"]);
+    if(amt) rows.push(["Amount", amt, t==="deduction"?"#ef4444":"#10b981"]);
+    if(event.effective_date) rows.push(["Effective", fmtDate(event.effective_date)]);
+
+    const copy = {
+      salary_raise: {h:"Your salary has been updated", p:`Hi <strong>${memberName||"there"}</strong>, we're happy to let you know your salary has been updated.`, color:"#10b981"},
+      promotion: {h:"Congratulations on your promotion!", p:`Hi <strong>${memberName||"there"}</strong>, congratulations — you've been promoted.`, color:"#8b5cf6"},
+      bonus: {h:"You've received a bonus", p:`Hi <strong>${memberName||"there"}</strong>, great news — you've been awarded a bonus.`, color:"#f59e0b"},
+      commission: {h:"You've earned a commission", p:`Hi <strong>${memberName||"there"}</strong>, you've earned a commission.`, color:"#06b6d4"},
+      deduction: {h:"Salary deduction notice", p:`Hi <strong>${memberName||"there"}</strong>, this is to inform you of a deduction applied to your salary.`, color:"#ef4444"},
+      warning: {h:"Formal notice", p:`Hi <strong>${memberName||"there"}</strong>, this is a formal notice regarding your conduct or performance.`, color:"#ef4444"},
+      demotion: {h:"Notice of role change", p:`Hi <strong>${memberName||"there"}</strong>, this is to inform you of a change to your role.`, color:"#ef4444"},
+      other: {h:"An update regarding your employment", p:`Hi <strong>${memberName||"there"}</strong>,`, color:"#6b7280"},
+    }[t] || {h:"An update regarding your employment", p:`Hi <strong>${memberName||"there"}</strong>,`, color:"#6b7280"};
+
+    return emailBase(`
+      ${emailH(copy.h)}
+      ${emailP(copy.p)}
+      <div style="background:#f9fafb;border-left:4px solid ${copy.color};padding:14px 18px;border-radius:0 10px 10px 0;margin:16px 0">
+        <p style="margin:0;font-size:15px;font-weight:800;color:#111827">${event.title}</p>
+      </div>
+      ${rows.length?emailCard(rows):""}
+      ${event.notes?emailP(event.notes):""}
+      ${emailP(`If you have any questions, reach out to your manager or HR.`)}
+    `);
+  },
 
   commentAdded: (recipientName, commenterName, taskTitle, commentText, projectName) => emailBase(`
     ${emailH("New comment on your task")}
@@ -11893,6 +11929,8 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
+  const [emailingId, setEmailingId] = useState(null);
+  const [emailedIds, setEmailedIds] = useState(new Set());
   const blankForm = () => ({event_type:"salary_raise", title:"", previous_value:member.salary?String(member.salary):"", new_value:"", amount:"", deduction_mode:"fixed", deduction_days:"", effective_date:new Date().toISOString().slice(0,10), notes:""});
   const [form, setForm] = useState(blankForm);
   const [saving, setSaving] = useState(false);
@@ -11958,6 +11996,23 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
     setSaving(false);
   };
 
+  const sendEventEmail = async (e) => {
+    if(!member.email) { alert("This team member has no email on file."); return; }
+    setEmailingId(e.id);
+    try {
+      const t = TEAM_EVENT_MAP[e.event_type]||TEAM_EVENT_TYPES[5];
+      const subjects = {
+        salary_raise:"Your salary has been updated", promotion:"Congratulations on your promotion!",
+        bonus:"You've received a bonus", commission:"You've earned a commission",
+        deduction:"Salary deduction notice", warning:"Formal notice", demotion:"Notice of role change",
+      };
+      const ok = await sendEmail(member.email, `[SocialFlow] ${subjects[e.event_type]||e.title||t.label}`, EMAIL_TEMPLATES.careerEvent(member.name, e));
+      if(ok) setEmailedIds(s=>new Set([...s, e.id]));
+      else alert("Email failed to send.");
+    } catch(err){ alert("Email failed to send."); }
+    setEmailingId(null);
+  };
+
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
@@ -11983,6 +12038,12 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
                     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                       <span style={{background:t.color+"22",color:t.color,borderRadius:6,padding:"2px 9px",fontSize:11,fontWeight:700}}>{t.label}</span>
                       <span style={{fontWeight:700,fontSize:13}}>{e.title}</span>
+                      {canEdit&&(
+                        <button onClick={()=>sendEventEmail(e)} disabled={emailingId===e.id} style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:5,padding:"3px 10px",borderRadius:6,fontSize:11,fontWeight:700,background:"var(--surface2)",border:"1px solid var(--border2)",color:emailedIds.has(e.id)?"#10b981":"var(--text2)",cursor:"pointer",flexShrink:0}}>
+                          {emailingId===e.id?<Spinner size={11}/>:<Ico d={Icons.send} size={12}/>}
+                          {emailedIds.has(e.id)?"Email Sent":"Send Email"}
+                        </button>
+                      )}
                     </div>
                     {(e.previous_value||e.new_value)&&(
                       <p style={{fontSize:12,color:"var(--text2)",marginTop:4}}>
