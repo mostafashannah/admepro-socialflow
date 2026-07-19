@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.301";
+const APP_VERSION = "beta 5.302";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -27576,12 +27576,29 @@ function renderChatMd(text) {
   const blocks = [];
   let i = 0;
   let key = 0;
+  // dir="auto" + unicode-bidi:plaintext make each block pick its own direction
+  // from its first strong character — Arabic paragraphs flow right-to-left,
+  // English ones left-to-right, and mixed lines keep numbers/latin fragments
+  // ordered correctly instead of scrambling.
+  const bidi = {unicodeBidi:"plaintext", textAlign:"start"};
 
   while(i < lines.length) {
     const line = lines[i];
 
+    // Fenced code block ```
+    if(/^```/.test(line.trim())) {
+      const codeLines = [];
+      let j = i + 1;
+      while(j < lines.length && !/^```/.test(lines[j].trim())) { codeLines.push(lines[j]); j++; }
+      blocks.push(
+        <pre key={key++} dir="ltr" style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,padding:"10px 12px",margin:"6px 0",overflowX:"auto",fontSize:12,fontFamily:"monospace",lineHeight:1.55,whiteSpace:"pre"}}>{codeLines.join("\n")}</pre>
+      );
+      i = j + 1;
+      continue;
+    }
+
     // Table block: a header row + separator row (---|---) followed by data rows
-    if(line.includes("|") && (lines[i+1]||"").replace(/[\s|:-]/g,"") === "") {
+    if(line.includes("|") && (lines[i+1]||"").replace(/[\s|:-]/g,"") === "" && (lines[i+1]||"").includes("-")) {
       const headerCells = line.split("|").map(c=>c.trim()).filter((c,ci,arr)=>!(c==="" && (ci===0||ci===arr.length-1)));
       const rows = [];
       let j = i + 2;
@@ -27591,17 +27608,17 @@ function renderChatMd(text) {
         j++;
       }
       blocks.push(
-        <div key={key++} style={{overflowX:"auto",marginBottom:8}}>
+        <div key={key++} dir="auto" style={{overflowX:"auto",margin:"8px 0",border:"1px solid var(--border2)",borderRadius:10}}>
           <table style={{borderCollapse:"collapse",width:"100%",fontSize:12.5}}>
             <thead>
               <tr>{headerCells.map((c,ci)=>(
-                <th key={ci} style={{textAlign:"left",padding:"5px 8px",borderBottom:"2px solid var(--border2)",fontWeight:700,color:"var(--text)"}}>{renderChatMdInline(c)}</th>
+                <th key={ci} dir="auto" style={{...bidi,padding:"8px 12px",background:"var(--surface2)",borderBottom:"1px solid var(--border2)",fontWeight:700,color:"var(--text)",whiteSpace:"nowrap"}}>{renderChatMdInline(c)}</th>
               ))}</tr>
             </thead>
             <tbody>
               {rows.map((r,ri)=>(
-                <tr key={ri}>{r.map((c,ci)=>(
-                  <td key={ci} style={{padding:"5px 8px",borderBottom:"1px solid var(--border)",color:"var(--text2)"}}>{renderChatMdInline(c)}</td>
+                <tr key={ri} style={ri%2===1?{background:"var(--surface2)"}:undefined}>{r.map((c,ci)=>(
+                  <td key={ci} dir="auto" style={{...bidi,padding:"7px 12px",borderBottom:ri<rows.length-1?"1px solid var(--border)":"none",color:"var(--text2)",verticalAlign:"top"}}>{renderChatMdInline(c)}</td>
                 ))}</tr>
               ))}
             </tbody>
@@ -27612,12 +27629,31 @@ function renderChatMd(text) {
       continue;
     }
 
-    // Heading: ### / ## / #
-    const headMatch = line.match(/^(#{1,3})\s+(.*)/);
-    if(headMatch) {
-      const size = headMatch[1].length === 1 ? 15 : headMatch[1].length === 2 ? 14 : 13;
-      blocks.push(<div key={key++} style={{fontWeight:800,fontSize:size,margin:"6px 0 4px",color:"var(--text)"}}>{renderChatMdInline(headMatch[2])}</div>);
+    // Horizontal rule --- / ***
+    if(/^(\s*)(-{3,}|\*{3,})\s*$/.test(line)) {
+      blocks.push(<hr key={key++} style={{border:"none",borderTop:"1px solid var(--border2)",margin:"10px 0"}}/>);
       i++;
+      continue;
+    }
+
+    // Heading: ### / ## / #
+    const headMatch = line.match(/^(#{1,4})\s+(.*)/);
+    if(headMatch) {
+      const size = headMatch[1].length === 1 ? 16 : headMatch[1].length === 2 ? 15 : 14;
+      blocks.push(<div key={key++} dir="auto" style={{...bidi,fontWeight:800,fontSize:size,margin:"10px 0 4px",color:"var(--text)"}}>{renderChatMdInline(headMatch[2])}</div>);
+      i++;
+      continue;
+    }
+
+    // Blockquote
+    if(/^>\s?/.test(line)) {
+      const quoteLines = [];
+      while(i < lines.length && /^>\s?/.test(lines[i])) { quoteLines.push(lines[i].replace(/^>\s?/, "")); i++; }
+      blocks.push(
+        <div key={key++} dir="auto" style={{...bidi,borderInlineStart:"3px solid var(--border2)",paddingInlineStart:12,margin:"6px 0",color:"var(--text2)"}}>
+          {quoteLines.map((q,qi)=><div key={qi}>{renderChatMdInline(q)}</div>)}
+        </div>
+      );
       continue;
     }
 
@@ -27629,8 +27665,8 @@ function renderChatMd(text) {
         i++;
       }
       blocks.push(
-        <ul key={key++} style={{margin:"2px 0 6px",paddingLeft:18}}>
-          {items.map((it,ii)=>(<li key={ii} style={{marginBottom:2}}>{renderChatMdInline(it)}</li>))}
+        <ul key={key++} dir="auto" style={{margin:"4px 0 6px",paddingInlineStart:20}}>
+          {items.map((it,ii)=>(<li key={ii} dir="auto" style={{...bidi,marginBottom:3}}>{renderChatMdInline(it)}</li>))}
         </ul>
       );
       continue;
@@ -27644,8 +27680,8 @@ function renderChatMd(text) {
         i++;
       }
       blocks.push(
-        <ol key={key++} style={{margin:"2px 0 6px",paddingLeft:18}}>
-          {items.map((it,ii)=>(<li key={ii} style={{marginBottom:2}}>{renderChatMdInline(it)}</li>))}
+        <ol key={key++} dir="auto" style={{margin:"4px 0 6px",paddingInlineStart:20}}>
+          {items.map((it,ii)=>(<li key={ii} dir="auto" style={{...bidi,marginBottom:3}}>{renderChatMdInline(it)}</li>))}
         </ol>
       );
       continue;
@@ -27653,13 +27689,13 @@ function renderChatMd(text) {
 
     // Blank line = spacing
     if(line.trim() === "") {
-      blocks.push(<div key={key++} style={{height:6}}/>);
+      blocks.push(<div key={key++} style={{height:8}}/>);
       i++;
       continue;
     }
 
     // Plain paragraph line
-    blocks.push(<div key={key++} style={{marginBottom:0}}>{renderChatMdInline(line)}</div>);
+    blocks.push(<div key={key++} dir="auto" style={{...bidi,marginBottom:0}}>{renderChatMdInline(line)}</div>);
     i++;
   }
 
@@ -27692,13 +27728,13 @@ function ChatMessage({msg, isTyping, onConfirm, onReject, onExecuteAction}) {
                 </span>)}
           </div>
         )}
-        <div style={{
+        <div dir="auto" style={{
           padding: (isBot && !msg.type) ? "2px 0" : "10px 14px",
-          fontSize:13,lineHeight:1.6,
+          fontSize:14,lineHeight:1.7,
           borderRadius:"var(--rs)",
           background:msg.type==="success"?"#dcfce7":msg.type==="error"?"#fee2e2":msg.type==="info"?"#eff6ff":isBot?"transparent":"var(--accent)",
           color:msg.type==="success"?"#166534":msg.type==="error"?"#991b1b":msg.type==="info"?"#1e40af":isBot?"var(--text)":"#fff",
-          wordBreak:"break-word",
+          wordBreak:"break-word",unicodeBidi:"plaintext",textAlign:"start",
         }}>{isBot ? renderChatMd(displayText) : displayText}</div>
 
         {/* Confirmation card */}
