@@ -1111,7 +1111,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.265";
+const APP_VERSION = "beta 5.266";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3953,9 +3953,10 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
     <Modal open onClose={onClose} title="" width={1280}>
       <div style={{display:isMobile?"flex":"grid",flexDirection:isMobile?"column":undefined,gridTemplateColumns:isMobile?undefined:"2fr 1fr",gap:20,alignItems:"start"}}>
       <div style={{display:"flex",flexDirection:"column",gap:18}}>
-        {/* Header */}
+        {/* Header — the Workflow Path section below already shows every stage
+            plus who owns it, so the plain stage-pill row that used to sit here
+            was pure duplication; dropped in favor of that single source. */}
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          <StagePipeline post={post}/>
           <TimeTracker postId={post.id} userEmail={currentUser?.email} timeEntries={timeEntries||[]} onStart={onStartTimer} onPause={onPauseTimer} onResume={onResumeTimer}/>
           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
             <PChip platform={post.platform}/>
@@ -4345,15 +4346,20 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
               <button onClick={()=>setCommentAttachment(null)} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontWeight:700}}>×</button>
             </div>
           )}
-          <div style={{display:"flex",gap:8}}>
+          {/* Composer — textarea gets its own full-width row, with attach/send
+              below it, instead of squeezing all three into one row that wraps
+              badly once this column is only ~1/3 of the modal's width. */}
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
             <MentionInput value={comment} onChange={setComment} team={team} placeholder="Add a comment… (type @ to mention)" rows={2}/>
-            <input ref={commentFileRef} type="file" style={{display:"none"}} onChange={e=>{handleCommentFile(e.target.files?.[0]); e.target.value="";}}/>
-            <button onClick={()=>commentFileRef.current?.click()} disabled={attaching} title="Attach a file" style={{alignSelf:"flex-end",width:36,height:36,borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:attaching?"default":"pointer"}}>
-              {attaching?<Spinner size={13}/>:<Ico d={Icons.upload} size={14}/>}
-            </button>
-            <Btn onClick={sendComment} disabled={sending||(!comment.trim()&&!commentAttachment)} style={{alignSelf:"flex-end"}}>
-              <Ico d={Icons.send} size={14}/> Send
-            </Btn>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <input ref={commentFileRef} type="file" style={{display:"none"}} onChange={e=>{handleCommentFile(e.target.files?.[0]); e.target.value="";}}/>
+              <button onClick={()=>commentFileRef.current?.click()} disabled={attaching} title="Attach a file" style={{width:34,height:34,borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:attaching?"default":"pointer",flexShrink:0}}>
+                {attaching?<Spinner size={13}/>:<Ico d={Icons.upload} size={14}/>}
+              </button>
+              <Btn onClick={sendComment} disabled={sending||(!comment.trim()&&!commentAttachment)}>
+                <Ico d={Icons.send} size={14}/> Send
+              </Btn>
+            </div>
           </div>
         </div>
       </div>
