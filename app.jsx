@@ -1111,7 +1111,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.261";
+const APP_VERSION = "beta 5.262";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3863,6 +3863,7 @@ function AssetPickerModal({open, assets=[], onPick, onClose, multiple=true}) {
 // POST DETAIL MODAL
 // ════════════════════════════════════════════════════════════════
 function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[]}) {
+  const {isMobile} = useResponsive();
   const [comment,setComment] = useState("");
   const [sending,setSending] = useState(false);
   const isManager = ["admin","account_manager"].includes(currentUser?.role);
@@ -3949,7 +3950,8 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
   };
 
   return (
-    <Modal open onClose={onClose} title="" width={1040}>
+    <Modal open onClose={onClose} title="" width={1280}>
+      <div style={{display:isMobile?"flex":"grid",flexDirection:isMobile?"column":undefined,gridTemplateColumns:isMobile?undefined:"2fr 1fr",gap:20,alignItems:"start"}}>
       <div style={{display:"flex",flexDirection:"column",gap:18}}>
         {/* Header */}
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -4301,11 +4303,14 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
           )}
           </div>
         )}
+      </div>
 
-        {/* Comments */}
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {/* Comments/Activity — right rail, sticky so it stays visible while the
+            left column (which can get long: media, captions, workflow, etc.)
+            scrolls past it inside the modal body. */}
+        <div style={isMobile?{display:"flex",flexDirection:"column",gap:10}:{display:"flex",flexDirection:"column",gap:10,position:"sticky",top:0,maxHeight:"75vh"}}>
           <label style={{fontSize:11,fontWeight:700,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Activity · {postComments.length}</label>
-          <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:220,overflowY:"auto"}}>
+          <div style={{display:"flex",flexDirection:"column",gap:8,overflowY:"auto",flex:isMobile?"none":1,maxHeight:isMobile?220:undefined}}>
             {postComments.map((c,i)=>(
               <div key={i} style={{display:"flex",gap:10}}>
                 <Avatar name={c.author_name||"S"} size={28}/>
