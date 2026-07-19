@@ -1,6 +1,14 @@
 # Add inside your existing server { } block on the VPS (nginx).
 # Maps PostgREST-style URLs the app already calls onto the PHP scripts.
 
+# nginx defaults to a 1MB request body limit — reels/videos uploaded through
+# storage.php (raw file bytes in the POST body) are well over that, and get
+# rejected with a 413 before storage.php or api.php ever runs. Raise it here;
+# also bump upload_max_filesize / post_max_size to match in php.ini (or
+# php_admin_value in the PHP-FPM pool config), since PHP has its own,
+# separate cap on top of nginx's.
+client_max_body_size 100M;
+
 location ~ ^/api/([A-Za-z_]+)$ {
     rewrite ^/api/([A-Za-z_]+)$ /api.php?table=$1 last;
 }

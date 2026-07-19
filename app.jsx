@@ -1089,7 +1089,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.248";
+const APP_VERSION = "beta 5.249";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3741,7 +3741,14 @@ function AssetPickerModal({open, assets=[], onPick, onClose, multiple=true}) {
       }));
       if(multiple) { onPick(results); onClose(); }
       else { onPick([results[0]]); onClose(); }
-    } catch(e){ alert("Upload failed — check connection"); }
+    } catch(e){
+      // Surface the real cause (e.g. a server-side file size limit rejecting a
+      // large video) instead of always blaming the network — "check connection"
+      // sent people chasing wifi issues when the actual problem was a size cap.
+      const msg = String(e?.message||"");
+      if(msg.includes("413") || /request entity too large/i.test(msg)) alert("Upload failed — this file is too large for the server's upload limit. Try a smaller file or ask your admin to raise the server's upload size limit.");
+      else alert("Upload failed: " + (msg || "unknown error"));
+    }
     setUploading(false);
   };
 

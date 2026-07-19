@@ -2,6 +2,16 @@
 # instead of nginx — e.g. shared hosting, or a VPS running Apache + mod_php).
 # Place at the document root, alongside index.html / app.js / api.php.
 
+# PHP's own default upload caps (post_max_size 8M, upload_max_filesize 2M)
+# reject a video/reel upload long before storage.php runs. These only take
+# effect under mod_php; a PHP-FPM setup needs the equivalent set in the
+# pool's php_admin_value / php.ini instead (see notes below).
+<IfModule mod_php.c>
+  php_value post_max_size 100M
+  php_value upload_max_filesize 100M
+  php_value max_execution_time 300
+</IfModule>
+
 RewriteEngine On
 
 RewriteRule ^api/([A-Za-z_]+)$ api.php?table=$1 [QSA,L]
