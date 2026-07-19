@@ -1064,7 +1064,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.230";
+const APP_VERSION = "beta 5.231";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11623,6 +11623,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
           member={live}
           team={team}
           posts={posts}
+          clients={clients}
           leaveRequests={leaveRequests||[]}
           attendanceRecords={attendanceRecords||[]}
           expenses={expenses}
@@ -12192,10 +12193,13 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
   );
 }
 
-function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRecords, expenses, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense}) {
+function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, attendanceRecords, expenses, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense}) {
   const [tab, setTab] = usePersistentState(`sf_tab_member_${member?.id}`,"overview");
   const manager = (team||[]).find(t=>t.id===member.manager_id);
   const directReports = (team||[]).filter(t=>t.manager_id===member.id);
+  // Clients where this member is listed as an account manager — surfaced on
+  // Overview so assigning an AM to a client is visible from both directions.
+  const myClients = (clients||[]).filter(c=>getAccountManagerIds(c).includes(member.id));
   const myTasks = (posts||[]).filter(p=>p.assigned_to===member.email);
   const myScheduled = myTasks.filter(p=>p.scheduled_date).sort((a,b)=>new Date(a.scheduled_date)-new Date(b.scheduled_date));
   const myLeave = (leaveRequests||[]).filter(r=>r.team_member_id===member.id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
@@ -12492,6 +12496,29 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
           </div>
         );
       })()}
+
+      {myClients.length>0&&(
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
+          <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
+            <h3 style={{fontWeight:700,fontSize:14}}>Assigned Clients</h3>
+            <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Clients where {member.name} is the account manager</p>
+          </div>
+          <div>
+            {myClients.map((c,i)=>(
+              <div key={c.id} style={{padding:"12px 18px",borderBottom:i<myClients.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12}}>
+                <div style={{width:34,height:34,borderRadius:"50%",background:clr(c.name),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:13,flexShrink:0,overflow:"hidden"}}>
+                  {c.logo_url?<img src={c.logo_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:c.name?.[0]?.toUpperCase()||"?"}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <p style={{fontWeight:700,fontSize:13}}>{c.name}</p>
+                  <p style={{fontSize:11,color:"var(--text3)"}}>{c.industry||"—"}</p>
+                </div>
+                <span style={{background:c.status==="active"?"#10b98122":"#6b728022",color:c.status==="active"?"#10b981":"#6b7280",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:600}}>{c.status||"active"}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
         <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
