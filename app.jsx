@@ -24,7 +24,16 @@ const uploadToStorage = async (file, folder="uploads") => {
     },
     body: file,
   });
-  if(!res.ok) throw new Error("Upload failed: " + await res.text());
+  if(!res.ok){
+    // A 413 (or nginx's plain-text "Request Entity Too Large" body, which
+    // isn't even valid JSON) means a size limit rejected the file server-side
+    // — surface that clearly instead of a generic error every caller has to
+    // re-detect for itself.
+    if(res.status===413) throw new Error("This file is too large for the server's upload limit. Try a smaller file, or ask your admin to raise the server's upload size limit.");
+    const body = await res.text().catch(()=>"");
+    if(/request entity too large/i.test(body)) throw new Error("This file is too large for the server's upload limit. Try a smaller file, or ask your admin to raise the server's upload size limit.");
+    throw new Error("Upload failed: " + body);
+  }
   return `${SB_STORAGE_URL}/public/${SB_BUCKET}/${path}`;
 };
 
@@ -1089,7 +1098,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.249";
+const APP_VERSION = "beta 5.250";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3742,12 +3751,10 @@ function AssetPickerModal({open, assets=[], onPick, onClose, multiple=true}) {
       if(multiple) { onPick(results); onClose(); }
       else { onPick([results[0]]); onClose(); }
     } catch(e){
-      // Surface the real cause (e.g. a server-side file size limit rejecting a
-      // large video) instead of always blaming the network — "check connection"
-      // sent people chasing wifi issues when the actual problem was a size cap.
-      const msg = String(e?.message||"");
-      if(msg.includes("413") || /request entity too large/i.test(msg)) alert("Upload failed — this file is too large for the server's upload limit. Try a smaller file or ask your admin to raise the server's upload size limit.");
-      else alert("Upload failed: " + (msg || "unknown error"));
+      // "check connection" used to be shown unconditionally here, hiding the
+      // real cause — uploadToStorage() now raises a clear, specific message
+      // (e.g. for a size-limit rejection), so just surface it directly.
+      alert("Upload failed: " + (e?.message||"unknown error"));
     }
     setUploading(false);
   };
@@ -9399,7 +9406,11 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
         const url = await uploadToStorage(file, `${storagePrefix}/${fullCategory||"root"}`);
         await onAddAsset({name:file.name, file_url:url, file_type:file.type.startsWith("video")?"video":file.type.startsWith("image")?"image":"file", category:fullCategory, project_id:resolvedProjectId, tags:[...extraTags], file_size:file.size});
       }
-    } catch(e){}
+    } catch(e){
+      // Used to fail completely silently — the user had no idea an upload
+      // (e.g. a video over the server's size limit) didn't go through.
+      alert(`Upload failed${files.length>1?` for "${files.length}" file(s)`:""}: ${e?.message||"unknown error"}`);
+    }
     setUploading(false);
   };
 
