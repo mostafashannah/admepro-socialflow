@@ -1064,7 +1064,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.232";
+const APP_VERSION = "beta 5.233";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21094,13 +21094,14 @@ function ClientPaymentDetail({clientName,ledger,note,canManage,onBack,onOpenTran
         )}
       </div>
 
-      {client&&(
-        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:accountManagerIds.length?12:0}}>
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:(client&&accountManagerIds.length)?12:0}}>
             <h3 style={{fontWeight:700,fontSize:14}}>Account Manager</h3>
-            {canManage&&<Btn size="sm" variant="secondary" onClick={()=>setShowAMModal(true)}>{accountManagerIds.length?"Manage":"Add Account Manager"}</Btn>}
+            {canManage&&client&&<Btn size="sm" variant="secondary" onClick={()=>setShowAMModal(true)}>{accountManagerIds.length?"Manage":"Add Account Manager"}</Btn>}
           </div>
-          {accountManagerIds.length===0?(
+          {!client?(
+            <p style={{fontSize:13,color:"var(--text2)"}}>This finance ledger name ("{clientName}") doesn't match a real Client record yet — create/rename the client on the Clients page first, matching this name exactly, then account manager assignment will appear here.</p>
+          ):accountManagerIds.length===0?(
             <p style={{fontSize:13,color:"var(--text2)"}}>No account manager assigned to this client yet.</p>
           ):(
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -21124,7 +21125,6 @@ function ClientPaymentDetail({clientName,ledger,note,canManage,onBack,onOpenTran
             </div>
           )}
         </div>
-      )}
 
       {showAMModal&&<AccountManagerModal client={client} team={team} onClose={()=>setShowAMModal(false)} onSave={(updates)=>onUpdateClient(client.id,updates)}/>}
 
@@ -21813,7 +21813,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         onOpenTransaction={openTransaction}
         onRename={async(newName)=>{ await onRenameClient?.(selectedClient,newName); setSelectedClient(newName); }}
         onSaveNote={(updates)=>onSaveClientNote?.(selectedClient,updates)}
-        client={clients.find(c=>c.name===selectedClient)}
+        client={clients.find(c=>c.name===selectedClient) || clients.find(c=>(c.name||"").trim().toLowerCase()===(selectedClient||"").trim().toLowerCase())}
         team={team}
         onUpdateClient={onUpdateClient}
       />
