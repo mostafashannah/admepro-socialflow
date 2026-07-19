@@ -1108,7 +1108,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.256";
+const APP_VERSION = "beta 5.257";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -18889,7 +18889,7 @@ function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh, te
 // ════════════════════════════════════════════════════════════════
 // SETTINGS PAGE
 // ════════════════════════════════════════════════════════════════
-function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, integrationLogs, onAddIntegration, onUpdateIntegration, onDeleteIntegration, onRetryIntegration, emailSettings, onSaveEmailSettings, team, posts, clients, timelogs, perfLogs, accentColor, brandingAssets, onSaveBrandingAssets, wallpaper, emailLogs, activityLogs, onRefreshLogs, systemSessions, onRefreshSessions}) {
+function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, integrationLogs, onAddIntegration, onUpdateIntegration, onDeleteIntegration, onRetryIntegration, emailSettings, onSaveEmailSettings, team, posts, clients, timelogs, perfLogs, accentColor, brandingAssets, onSaveBrandingAssets, wallpaper, emailLogs, activityLogs, onRefreshLogs, systemSessions, onRefreshSessions, assets, onFindDuplicateAssets, onRemoveDuplicateAssets}) {
   const [settingsTab, setSettingsTab] = usePersistentState("sf_tab_settings","branding");
   const [f,setF] = useState({
     app_name: appSettings?.app_name||"SocialFlow",
@@ -18918,6 +18918,10 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
   const [logoPreview,setLogoPreview]=useState(appSettings?.app_logo_url||null);
   const logoRef=useRef(null);
   const sf=(k,v)=>setF(p=>({...p,[k]:v}));
+  const [dupCount, setDupCount] = useState(null); // null = not scanned yet
+  const [confirmingDupRemove, setConfirmingDupRemove] = useState(false);
+  const [removingDups, setRemovingDups] = useState(false);
+  const [dupRemoveResult, setDupRemoveResult] = useState(null);
 
   const handleLogoUpload=(e)=>{
     const file=e.target.files?.[0]; if(!file||!checkInlineImageSize(file))return;
@@ -19148,6 +19152,42 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
               </button>
             </div>
           </div>
+
+          {onRemoveDuplicateAssets&&(
+            <div style={{padding:16,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
+              <div style={{fontSize:14,fontWeight:700}}>Remove Duplicate Assets</div>
+              <div style={{fontSize:12,color:"var(--text3)",marginTop:2,marginBottom:10}}>
+                Finds assets with the same name (case/whitespace-insensitive) and the same folder — usually
+                the same file uploaded more than once — and removes every copy except the earliest one. This
+                only deletes the library record; the underlying uploaded file is left on the server either way.
+              </div>
+              {!confirmingDupRemove ? (
+                <button onClick={()=>{ setDupCount((onFindDuplicateAssets?.()||[]).length); setConfirmingDupRemove(true); setDupRemoveResult(null); }}
+                  style={{padding:"7px 14px",borderRadius:8,background:"var(--surface)",color:"var(--text1)",border:"1px solid var(--border2)",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                  Scan for Duplicates
+                </button>
+              ) : dupCount===0 ? (
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:13,color:"var(--text2)"}}>No duplicates found.</span>
+                  <button onClick={()=>setConfirmingDupRemove(false)} style={{padding:"6px 12px",borderRadius:8,background:"var(--surface)",color:"var(--text2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>OK</button>
+                </div>
+              ) : (
+                <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                  <span style={{fontSize:13,color:"var(--text2)"}}>Found <strong>{dupCount}</strong> duplicate file{dupCount===1?"":"s"} to remove.</span>
+                  <button disabled={removingDups} onClick={async()=>{
+                      setRemovingDups(true);
+                      const removed = await onRemoveDuplicateAssets();
+                      setRemovingDups(false); setConfirmingDupRemove(false); setDupCount(null);
+                      setDupRemoveResult(removed);
+                    }} style={{padding:"7px 14px",borderRadius:8,background:"#ef4444",color:"#fff",border:"none",fontSize:13,fontWeight:700,cursor:removingDups?"default":"pointer",opacity:removingDups?0.6:1}}>
+                    {removingDups?"Removing…":`Remove ${dupCount}`}
+                  </button>
+                  <button disabled={removingDups} onClick={()=>{setConfirmingDupRemove(false);setDupCount(null);}} style={{padding:"7px 12px",borderRadius:8,background:"var(--surface)",color:"var(--text2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Cancel</button>
+                </div>
+              )}
+              {dupRemoveResult!=null&&<p style={{fontSize:12,color:"#10b981",fontWeight:600,marginTop:8}}>✓ Removed {dupRemoveResult} duplicate{dupRemoveResult===1?"":"s"}.</p>}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -32209,6 +32249,31 @@ function App() {
     try { await de("Asset", id); } catch(e){}
   };
 
+  // Groups assets by name (case/whitespace-insensitive) + category, and within
+  // each group keeps only the earliest upload — deleting the rest. Mirrors the
+  // manual SQL cleanup done for a client (same-name re-uploads, often just a
+  // different letter case, left over from before file_size was tracked).
+  const findDuplicateAssets = () => {
+    const groups = new Map();
+    (data.assets||[]).forEach(a=>{
+      const key = `${(a.name||"").trim().toLowerCase()} ${a.category||""}`;
+      if(!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(a);
+    });
+    const toRemove = [];
+    for(const list of groups.values()){
+      if(list.length<2) continue;
+      const sorted = [...list].sort((x,y)=>new Date(x.created_date||x.created_at||0)-new Date(y.created_date||y.created_at||0));
+      toRemove.push(...sorted.slice(1)); // keep the earliest, remove the rest
+    }
+    return toRemove;
+  };
+  const removeDuplicateAssets = async () => {
+    const dupes = findDuplicateAssets();
+    for(const a of dupes) await deleteAsset(a.id);
+    return dupes.length;
+  };
+
   const updateClientTask = (id, updates) => {
     setData(d=>({...d, tasks:d.tasks.map(t=>t.id===id?{...t,...updates}:t)}));
   };
@@ -33886,6 +33951,9 @@ Return ONLY valid JSON (no markdown, no explanation):
             onRefreshLogs={refreshActivityLogs}
             systemSessions={data.systemSessions||[]}
             onRefreshSessions={refreshSystemSessions}
+            assets={data.assets||[]}
+            onFindDuplicateAssets={findDuplicateAssets}
+            onRemoveDuplicateAssets={removeDuplicateAssets}
           />
         )}
         {page==="notifications"&&(
