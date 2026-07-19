@@ -61,7 +61,8 @@ CREATE TABLE IF NOT EXISTS clients (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   name TEXT NOT NULL, email TEXT NOT NULL, phone TEXT, logo_url TEXT,
   industry TEXT, status VARCHAR(50) DEFAULT 'active', account_manager_id TEXT,
-  notes TEXT, platforms JSON DEFAULT ('[]'), portal_password TEXT
+  notes TEXT, platforms JSON DEFAULT ('[]'), portal_password TEXT,
+  allowed_task_types JSON DEFAULT ('[]')
 ) ENGINE=InnoDB;
 
 -- ----------------------------------------------------------------

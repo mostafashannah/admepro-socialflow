@@ -410,6 +410,10 @@ const TASK_TYPES = [
   { id:"content_calendar", label:"Content Calendar", category:"Strategy", icon:"", description:"Monthly content planning" },
   { id:"brand_kit", label:"Brand Kit Update", category:"Design", icon:"", description:"Brand assets and guidelines" },
   { id:"monthly_report", label:"Monthly Report", category:"Strategy", icon:"", description:"Performance analytics report" },
+  { id:"photography", label:"Photography", category:"Content", icon:"", description:"Product or on-location photo shoot" },
+  { id:"influencer_coordination", label:"Influencer Coordination", category:"Ads", icon:"", description:"Sourcing and briefing influencers" },
+  { id:"website_update", label:"Website / Landing Page", category:"Design", icon:"", description:"Website or landing page build/update" },
+  { id:"email_marketing", label:"Email Marketing", category:"Strategy", icon:"", description:"Email campaign design and copy" },
 ];
 const TASK_TYPE_MAP = Object.fromEntries(TASK_TYPES.map(t=>[t.id,t]));
 
@@ -538,7 +542,7 @@ const SB_SCHEMA = {
   // and username both exist but were missing from this list, so they always
   // got stripped before the request went out (see
   // migration-client-username.sql for the added username column).
-  clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","account_manager_commissions","username","notes","logo_url"],
+  clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","account_manager_commissions","username","notes","logo_url","allowed_task_types"],
   client_tasks: ["client_id","client_name","title","description","task_type","priority","stage","assigned_to","created_by","deliverable_note"],
   team_member_events: ["team_member_id","team_member_name","event_type","title","previous_value","new_value","amount","effective_date","notes","recorded_by"],
   // DEFAULT_NOTIF_PREFS (used to build every save payload) has a
@@ -1113,7 +1117,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.288";
+const APP_VERSION = "beta 5.290";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3867,7 +3871,7 @@ function AssetPickerModal({open, assets=[], onPick, onClose, multiple=true}) {
 
 // POST DETAIL MODAL
 // ════════════════════════════════════════════════════════════════
-function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[]}) {
+function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onAddComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[]}) {
   const {isMobile} = useResponsive();
   const [comment,setComment] = useState("");
   const [sending,setSending] = useState(false);
@@ -3971,6 +3975,17 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
   };
   const giveEdits = () => {
     onStageChange(post, "content_creation", {assigned_to: post.content_assigned_to || post.assigned_to});
+  };
+
+  // ── Client Request → Brief: project has to be picked here, since the
+  // client submitted the request with no project attached yet. ──
+  const [showPickProject, setShowPickProject] = useState(false);
+  const [pickedProjectId, setPickedProjectId] = useState("");
+  const clientProjects = projects.filter(p=>p.client_id===post.client_id || p.client_name===post.client_name);
+  const confirmMoveToBrief = () => {
+    if(!pickedProjectId) return;
+    onStageChange(post, "planning", {project_id: pickedProjectId});
+    setShowPickProject(false);
   };
 
   // ── Inline click-to-edit for the Due Date / Publish Date tiles ──
@@ -4408,7 +4423,11 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
             </div>
           )}
           <div style={{display:"flex",gap:8}}>
-            <button onClick={()=>["content_creation","design"].includes(next.key) ? openAssignModal(next.key) : onStageChange(post,next.key)} style={{
+            <button onClick={()=>{
+              if(post.stage==="client_request"&&next.key==="planning") { setPickedProjectId(""); setShowPickProject(true); return; }
+              if(["content_creation","design"].includes(next.key)) { openAssignModal(next.key); return; }
+              onStageChange(post,next.key);
+            }} style={{
               flex:1,padding:"10px 16px",borderRadius:"var(--rs)",
               background:next.color+"22",border:`1px solid ${next.color}55`,
               color:next.color,fontSize:13,fontWeight:700,
@@ -4512,6 +4531,20 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
         </div>
       </div>
     </Modal>
+    {showPickProject&&(
+      <Modal open onClose={()=>setShowPickProject(false)} title="Move to Brief" width={420}
+        footer={<Btn onClick={confirmMoveToBrief} disabled={!pickedProjectId}>Confirm</Btn>}>
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <label style={{fontSize:12,fontWeight:600,color:"var(--text3)"}}>Pick the project this request belongs to</label>
+          <select value={pickedProjectId} onChange={e=>setPickedProjectId(e.target.value)}
+            style={{width:"100%",padding:"9px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontSize:13}}>
+            <option value="">Select project…</option>
+            {clientProjects.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}
+          </select>
+          {clientProjects.length===0&&<p style={{fontSize:12,color:"#f59e0b"}}>No projects found for this client — create one first.</p>}
+        </div>
+      </Modal>
+    )}
     {assignStage&&(
       <Modal open onClose={()=>setAssignStage(null)} title={`Move to ${STAGE_MAP[assignStage].label}`} width={440}
         footer={<Btn onClick={confirmAssignModal} disabled={!assignForm.assigned_to||!assignForm.scheduled_date||(assignForm.mode==="due"?!assignForm.scheduled_time:!(assignForm.start_time&&assignForm.end_time))}>Confirm</Btn>}>
@@ -7735,7 +7768,8 @@ function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUs
 }
 
 function EditClientPage({client,onBack,onSave,canDelete,onRequestDelete,team=[]}) {
-  const [f,setF] = useState({name:client.name||"",username:client.username||"",email:client.email||"",phone:client.phone||"",industry:client.industry||"",status:client.status||"active",platforms:client.platforms||[],portal_password:client.portal_password||"",account_manager_ids:getAccountManagerIds(client),logo_url:client.logo_url||""});
+  const [f,setF] = useState({name:client.name||"",username:client.username||"",email:client.email||"",phone:client.phone||"",industry:client.industry||"",status:client.status||"active",platforms:client.platforms||[],portal_password:client.portal_password||"",account_manager_ids:getAccountManagerIds(client),logo_url:client.logo_url||"",allowed_task_types:client.allowed_task_types?.length?client.allowed_task_types:TASK_TYPES.map(t=>t.id)});
+  const toggleTaskType = id => setF(x=>({...x,allowed_task_types:x.allowed_task_types.includes(id)?x.allowed_task_types.filter(v=>v!==id):[...x.allowed_task_types,id]}));
   const [showPw,setShowPw] = useState(false);
   const [uploadingLogo,setUploadingLogo] = useState(false);
   const PLATFORMS = ["instagram","facebook","tiktok","twitter","linkedin","youtube"];
@@ -7811,6 +7845,15 @@ function EditClientPage({client,onBack,onSave,canDelete,onRequestDelete,team=[]}
             {accountManagers.map(m=>(
               <button key={m.id} onClick={()=>toggleAM(m.id)} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",border:"none",background:f.account_manager_ids.includes(m.id)?"var(--accent)":"var(--surface2)",color:f.account_manager_ids.includes(m.id)?"#fff":"var(--text2)",outline:f.account_manager_ids.includes(m.id)?"none":"1px solid var(--border2)"}}>
                 {m.name}
+              </button>
+            ))}
+          </div>
+        </Field>
+        <Field label="Allowed Request Types" hint="Which task types this client can submit through their portal's New Request form">
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>
+            {TASK_TYPES.map(t=>(
+              <button key={t.id} type="button" onClick={()=>toggleTaskType(t.id)} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",border:"none",background:f.allowed_task_types.includes(t.id)?"var(--accent)":"var(--surface2)",color:f.allowed_task_types.includes(t.id)?"#fff":"var(--text2)",outline:f.allowed_task_types.includes(t.id)?"none":"1px solid var(--border2)"}}>
+                {t.label}
               </button>
             ))}
           </div>
@@ -9251,8 +9294,11 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
   const canSeeClientRequest = (post) => {
     if(post.stage!=="client_request") return true;
     if(isAdminUser) return true;
-    const proj = projects.find(pr=>pr.id===post.project_id);
-    return !!(myClientNames && proj && myClientNames.has(proj.client_name));
+    // Client Requests have no project yet (that's assigned when moved to
+    // Brief) — resolve the client name straight off the post itself instead
+    // of via a project lookup.
+    const clientName = post.client_name || projects.find(pr=>pr.id===post.project_id)?.client_name;
+    return !!(myClientNames && clientName && myClientNames.has(clientName));
   };
 
   const filtered = posts.filter(p=>{
@@ -13750,7 +13796,9 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
   const [showNewRequest,setShowNewRequest] = useState(false);
   const [taskView,setTaskView] = useState("kanban");
   const [hideEmptyStages,setHideEmptyStages] = useState(true);
-  const [newReqForm,setNewReqForm] = useState({task_type:"post",project_id:"",title:"",description:"",post_type:"image",platforms:["instagram"],priority:"medium"});
+  const [enhancingBrief,setEnhancingBrief] = useState(false);
+  const clientAllowedTaskTypes = client.allowed_task_types?.length ? TASK_TYPES.filter(t=>client.allowed_task_types.includes(t.id)) : TASK_TYPES;
+  const [newReqForm,setNewReqForm] = useState({task_type:clientAllowedTaskTypes[0]?.id||"social_post",title:"",description:"",post_type:"image",platforms:["instagram"],priority:"medium"});
   const [showUserMenu,setShowUserMenu] = useState(false);
   const userMenuRef = useRef(null);
   useEffect(()=>{
@@ -13941,14 +13989,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
               <div>
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Task Type</label>
                 <select value={newReqForm.task_type} onChange={e=>setNewReqForm(f=>({...f,task_type:e.target.value}))} style={inputSt}>
-                  {[["calendar","Calendar"],["post","Post"],["design","Design"],["video_editing","Video Editing"]].map(([v,label])=><option key={v} value={v}>{label}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Project</label>
-                <select value={newReqForm.project_id} onChange={e=>setNewReqForm(f=>({...f,project_id:e.target.value}))} style={inputSt}>
-                  <option value="">Select project…</option>
-                  {cProjects.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}
+                  {clientAllowedTaskTypes.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}
                 </select>
               </div>
               <div>
@@ -13956,7 +13997,20 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                 <input value={newReqForm.title} onChange={e=>setNewReqForm(f=>({...f,title:e.target.value}))} style={inputSt}/>
               </div>
               <div>
-                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Description</label>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+                  <label style={{fontSize:11,fontWeight:600,color:"var(--text3)"}}>Description</label>
+                  <button type="button" disabled={!newReqForm.description.trim()||enhancingBrief} onClick={async()=>{
+                    setEnhancingBrief(true);
+                    try {
+                      const rewritten = await ai(`Rewrite and expand the following client content-request brief into a clearer, more detailed brief the agency's team can act on. Keep the client's original intent and language, just add helpful specifics (goal, tone, key points to include, any constraints implied) where reasonable. Return ONLY the rewritten brief text, no preamble, no markdown headers.\n\nOriginal brief:\n"""${newReqForm.description}"""`, 500);
+                      if(rewritten.trim()) setNewReqForm(f=>({...f,description:rewritten.trim()}));
+                    } catch(e) { /* silently keep original text if AI call fails */ }
+                    setEnhancingBrief(false);
+                  }} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,fontWeight:700,color:newReqForm.description.trim()?"var(--accent)":"var(--text3)",background:"none",border:"none",cursor:newReqForm.description.trim()?"pointer":"default",padding:0}}>
+                    {enhancingBrief?<Spinner size={12}/>:<Ico d={Icons.sparkle||Icons.zap} size={12} stroke={newReqForm.description.trim()?"var(--accent)":"var(--text3)"}/>}
+                    {enhancingBrief?"Enhancing…":"Enhance with AI"}
+                  </button>
+                </div>
                 <textarea value={newReqForm.description} onChange={e=>setNewReqForm(f=>({...f,description:e.target.value}))} rows={3} style={{...inputSt,resize:"vertical",fontFamily:"inherit"}}/>
               </div>
               <div>
@@ -13990,9 +14044,9 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                   </select>
                 </div>
               </div>
-              <Btn disabled={!newReqForm.project_id||!newReqForm.title.trim()} onClick={()=>{
-                onAddPost&&onAddPost({...newReqForm, platform:newReqForm.platforms[0], client_id:client.id, client_name:client.name, project_id:newReqForm.project_id, stage:"client_request", created_by:"client"});
-                setNewReqForm({task_type:"post",project_id:"",title:"",description:"",post_type:"image",platforms:["instagram"],priority:"medium"});
+              <Btn disabled={!newReqForm.title.trim()} onClick={()=>{
+                onAddPost&&onAddPost({...newReqForm, platform:newReqForm.platforms[0], client_id:client.id, client_name:client.name, stage:"client_request", created_by:"client"});
+                setNewReqForm({task_type:clientAllowedTaskTypes[0]?.id||"social_post",title:"",description:"",post_type:"image",platforms:["instagram"],priority:"medium"});
                 setShowNewRequest(false);
               }}><Ico d={Icons.plus} size={14}/> Submit Request</Btn>
             </div>
@@ -31891,7 +31945,10 @@ function App() {
 
   // Handlers
   const addPost = async (postData) => {
-    if(!postData.project_id) { setToast(" Pick a project before creating a post/task — every post must belong to a project."); return false; }
+    // Client Requests are the one exception — the client submits a request
+    // with no project attached yet; the account manager picks the project
+    // when they move it forward to Brief (see handleStageChange overrides).
+    if(!postData.project_id && postData.stage!=="client_request") { setToast(" Pick a project before creating a post/task — every post must belong to a project."); return false; }
     const local = {...postData, id:uid(), created_date:new Date().toISOString()};
     // Notify assignee
     if(postData.assigned_to && postData.assigned_to !== currentUser?.email) {
@@ -33311,6 +33368,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       due_time: overrides.due_time || post.due_time,
       estimated_minutes: overrides.estimated_minutes || post.estimated_minutes,
       content_assigned_to: newStage==="content_creation" ? (assigneeEmail||post.assigned_to) : post.content_assigned_to,
+      project_id: overrides.project_id || post.project_id,
     };
     setData(d=>({...d,posts:d.posts.map(p=>p.id===post.id?updatedPost:p)}));
 
@@ -33407,7 +33465,8 @@ Return ONLY valid JSON (no markdown, no explanation):
     try {
       await ue("Post", post.id, {stage:newStage, assigned_to:updatedPost.assigned_to,
         due_date:updatedPost.due_date, due_time:updatedPost.due_time,
-        estimated_minutes:updatedPost.estimated_minutes, content_assigned_to:updatedPost.content_assigned_to});
+        estimated_minutes:updatedPost.estimated_minutes, content_assigned_to:updatedPost.content_assigned_to,
+        project_id:updatedPost.project_id});
       await ce("Comment",[{post_id:post.id,author_name:comment.author_name,type:"stage_change",content:comment.content}]);
     } catch(e){ logActivity("Post Stage Change Failed","tasks",`"${post.title}" → ${stageLabel}`,"error",String(e),currentUser?.email||"admin"); }
   };
@@ -34253,6 +34312,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       return <PostDetail
         post={selectedPost}
         project={_proj}
+        projects={data.projects}
         team={data.team}
         comments={postComments}
         currentUser={currentUser}
