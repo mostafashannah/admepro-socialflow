@@ -490,7 +490,7 @@ const SB_SCHEMA = {
   // and username both exist but were missing from this list, so they always
   // got stripped before the request went out (see
   // migration-client-username.sql for the added username column).
-  clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","username","notes","logo_url"],
+  clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","account_manager_commissions","username","notes","logo_url"],
   client_tasks: ["client_id","client_name","title","description","task_type","priority","stage","assigned_to","created_by","deliverable_note"],
   team_member_events: ["team_member_id","team_member_name","event_type","title","previous_value","new_value","amount","effective_date","notes","recorded_by"],
   // DEFAULT_NOTIF_PREFS (used to build every save payload) has a
@@ -1064,7 +1064,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.231";
+const APP_VERSION = "beta 5.232";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1928,6 +1928,14 @@ const getAccountManagerIds = (client) => {
   if(!v) return [];
   if(Array.isArray(v)) return v;
   try { const parsed = JSON.parse(v); return Array.isArray(parsed) ? parsed : [v]; } catch(e) { return [v]; }
+};
+// clients.account_manager_commissions — JSON object keyed by team member id:
+// {"<id>": {percentage, cycle}}. cycle is "monthly" or "quarterly".
+const getAccountManagerCommissions = (client) => {
+  const v = client?.account_manager_commissions;
+  if(!v) return {};
+  if(typeof v==="object") return v;
+  try { const parsed = JSON.parse(v); return typeof parsed==="object" && parsed ? parsed : {}; } catch(e) { return {}; }
 };
 // Names an uploaded file after its task/post title, keeping the original extension.
 const renameForTask = (taskTitle, originalName, suffix="") => {
@@ -12504,18 +12512,21 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
             <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Clients where {member.name} is the account manager</p>
           </div>
           <div>
-            {myClients.map((c,i)=>(
+            {myClients.map((c,i)=>{
+              const commission = getAccountManagerCommissions(c)[member.id];
+              return (
               <div key={c.id} style={{padding:"12px 18px",borderBottom:i<myClients.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12}}>
                 <div style={{width:34,height:34,borderRadius:"50%",background:clr(c.name),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:13,flexShrink:0,overflow:"hidden"}}>
                   {c.logo_url?<img src={c.logo_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:c.name?.[0]?.toUpperCase()||"?"}
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <p style={{fontWeight:700,fontSize:13}}>{c.name}</p>
-                  <p style={{fontSize:11,color:"var(--text3)"}}>{c.industry||"—"}</p>
+                  <p style={{fontSize:11,color:"var(--text3)"}}>{c.industry||"—"}{commission?.percentage?` · ${commission.percentage}% commission (${commission.cycle==="quarterly"?"quarterly":"monthly"})`:""}</p>
                 </div>
                 <span style={{background:c.status==="active"?"#10b98122":"#6b728022",color:c.status==="active"?"#10b981":"#6b7280",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:600}}>{c.status||"active"}</span>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -20946,7 +20957,71 @@ function CategoryDetail({categoryKey,ledger,onBack,onOpenTransaction}) {
   );
 }
 
-function ClientPaymentDetail({clientName,ledger,note,canManage,onBack,onOpenTransaction,onRename,onSaveNote}) {
+// Account manager + commission terms editor for a client — % of that
+// client's payments, paid out on a monthly or quarterly cycle. A client can
+// have more than one account manager, each with their own commission terms.
+function AccountManagerModal({client, team, onSave, onClose}) {
+  const accountManagers = (team||[]).filter(t=>["account_manager","admin"].includes(t.role));
+  const [selectedIds, setSelectedIds] = useState(getAccountManagerIds(client));
+  const [commissions, setCommissions] = useState(getAccountManagerCommissions(client));
+  const [saving, setSaving] = useState(false);
+  const toggleAM = (id) => setSelectedIds(ids=>ids.includes(id)?ids.filter(x=>x!==id):[...ids,id]);
+  const setCommission = (id, patch) => setCommissions(c=>({...c, [id]:{percentage:"", cycle:"monthly", ...(c[id]||{}), ...patch}}));
+
+  const save = async () => {
+    setSaving(true);
+    const cleanCommissions = Object.fromEntries(Object.entries(commissions).filter(([id])=>selectedIds.includes(id)));
+    await onSave({
+      account_manager_id: JSON.stringify(selectedIds),
+      account_manager_commissions: JSON.stringify(cleanCommissions),
+    });
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <Modal open onClose={onClose} title="Account Manager & Commission" width={480}>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <Field label="Account Manager(s)" hint="Pick as many as needed">
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>
+            {accountManagers.length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>No account managers on the team yet.</p>}
+            {accountManagers.map(m=>(
+              <button key={m.id} onClick={()=>toggleAM(m.id)} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",border:"none",background:selectedIds.includes(m.id)?"var(--accent)":"var(--surface2)",color:selectedIds.includes(m.id)?"#fff":"var(--text2)",outline:selectedIds.includes(m.id)?"none":"1px solid var(--border2)"}}>
+                {m.name}
+              </button>
+            ))}
+          </div>
+        </Field>
+        {selectedIds.map(id=>{
+          const m = (team||[]).find(t=>t.id===id);
+          const c = commissions[id]||{};
+          return (
+            <div key={id} style={{padding:12,background:"var(--surface2)",borderRadius:10,border:"1px solid var(--border2)",display:"flex",flexDirection:"column",gap:8}}>
+              <p style={{fontWeight:700,fontSize:13}}>{m?.name||"Unknown"} — Commission</p>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <Field label="Percentage (%)">
+                  <input type="number" value={c.percentage||""} onChange={e=>setCommission(id,{percentage:e.target.value})} placeholder="e.g. 10" style={inputSt}/>
+                </Field>
+                <Field label="Cycle">
+                  <select value={c.cycle||"monthly"} onChange={e=>setCommission(id,{cycle:e.target.value})} style={inputSt}>
+                    <option value="monthly">Monthly</option>
+                    <option value="quarterly">Quarterly</option>
+                  </select>
+                </Field>
+              </div>
+            </div>
+          );
+        })}
+        <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+          <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={save} disabled={saving}>{saving?<Spinner size={13}/>:"Save"}</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function ClientPaymentDetail({clientName,ledger,note,canManage,onBack,onOpenTransaction,onRename,onSaveNote,client,team,onUpdateClient}) {
   const {isMobile} = useResponsive();
   const [editing,setEditing] = useState(false);
   const [nameInput,setNameInput] = useState(clientName);
@@ -20957,9 +21032,13 @@ function ClientPaymentDetail({clientName,ledger,note,canManage,onBack,onOpenTran
   const [customStart,setCustomStart] = useState("");
   const [customEnd,setCustomEnd] = useState("");
   const [selectedMonth,setSelectedMonth] = useState("");
+  const [showAMModal,setShowAMModal] = useState(false);
   const monthOptions = buildFinanceMonthOptions(ledger.map(l=>l.date));
 
   React.useEffect(()=>{ setNameInput(clientName); setPhone(note?.phone||""); setNotes(note?.notes||""); },[clientName, note?.phone, note?.notes]);
+
+  const accountManagerIds = getAccountManagerIds(client);
+  const accountManagerCommissions = getAccountManagerCommissions(client);
 
   const clientTxns = ledger.filter(l=>l.type==="in"&&l.clientName===clientName&&dateInFinanceRange(l.date,{range,customStart,customEnd,selectedMonth})).sort(sortTxnsRecent);
   const clientTotal = clientTxns.reduce((a,l)=>a+l.amount,0);
@@ -21014,6 +21093,40 @@ function ClientPaymentDetail({clientName,ledger,note,canManage,onBack,onOpenTran
           </>
         )}
       </div>
+
+      {client&&(
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:accountManagerIds.length?12:0}}>
+            <h3 style={{fontWeight:700,fontSize:14}}>Account Manager</h3>
+            {canManage&&<Btn size="sm" variant="secondary" onClick={()=>setShowAMModal(true)}>{accountManagerIds.length?"Manage":"Add Account Manager"}</Btn>}
+          </div>
+          {accountManagerIds.length===0?(
+            <p style={{fontSize:13,color:"var(--text2)"}}>No account manager assigned to this client yet.</p>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {accountManagerIds.map(id=>{
+                const m = (team||[]).find(t=>t.id===id);
+                const c = accountManagerCommissions[id];
+                return (
+                  <div key={id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderTop:"1px solid var(--border)"}}>
+                    <Avatar name={m?.name||"?"} size={30}/>
+                    <div style={{flex:1,minWidth:0}}>
+                      <p style={{fontWeight:700,fontSize:13}}>{m?.name||"Unknown"}</p>
+                      {c?.percentage?(
+                        <p style={{fontSize:11,color:"var(--text3)"}}>{c.percentage}% commission · {c.cycle==="quarterly"?"Quarterly":"Monthly"}</p>
+                      ):(
+                        <p style={{fontSize:11,color:"var(--text3)"}}>No commission set</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {showAMModal&&<AccountManagerModal client={client} team={team} onClose={()=>setShowAMModal(false)} onSave={(updates)=>onUpdateClient(client.id,updates)}/>}
 
       {/* Monthly payments graph */}
       {months.length>0&&(
@@ -21344,7 +21457,7 @@ function OutstandingTab({expenses, team, currentUser, canManage, onRecordPayment
   );
 }
 
-function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,clients=[],financeClientNotes=[],team=[],currentUser,onAddExpense,onDeleteExpense,onEditExpense,onAddExpenseComment,onRefresh,onRenameClient,onSaveClientNote}) {
+function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,clients=[],financeClientNotes=[],team=[],currentUser,onAddExpense,onDeleteExpense,onEditExpense,onAddExpenseComment,onRefresh,onRenameClient,onSaveClientNote,onUpdateClient}) {
   const {isMobile} = useResponsive();
   const [showAdd,setShowAdd] = useState(false);
   const [range,setRange] = useState("all");
@@ -21700,6 +21813,9 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         onOpenTransaction={openTransaction}
         onRename={async(newName)=>{ await onRenameClient?.(selectedClient,newName); setSelectedClient(newName); }}
         onSaveNote={(updates)=>onSaveClientNote?.(selectedClient,updates)}
+        client={clients.find(c=>c.name===selectedClient)}
+        team={team}
+        onUpdateClient={onUpdateClient}
       />
     );
   }
@@ -33064,6 +33180,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             onRefresh={refreshFinance}
             onRenameClient={renameFinanceClient}
             onSaveClientNote={saveFinanceClientNote}
+            onUpdateClient={updateClient}
           />
         )}
         {page==="users"&&(currentUser?.role==="admin"||currentUser?.role==="account_manager"||currentUser?.role==="office_boy"||hasPerm(currentUser,rolePermsMap,"hr.view_team"))&&(
