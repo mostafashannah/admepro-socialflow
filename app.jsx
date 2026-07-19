@@ -1087,7 +1087,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.237";
+const APP_VERSION = "beta 5.238";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -17690,6 +17690,79 @@ function generateEmailHTML(es, member, perf, posts, timelogs, appSettings, accen
 </body></html>`;
 }
 
+// Every transactional/notification email the app can send, with realistic
+// sample data, so admins can preview all of them from one place instead of
+// only the Daily Performance email. Grouped to mirror where each is fired
+// from in the app (see EMAIL_TEMPLATES definitions near the top of the file).
+const SYSTEM_EMAIL_SAMPLES = [
+  { group:"Users & Access", key:"invitation", label:"Invitation", build:()=>EMAIL_TEMPLATES.invitation("Sarah Ahmed","Content Creator","https://socialflow.admepro.com/?invite=sample") },
+  { group:"Users & Access", key:"accessApproved", label:"Access Approved", build:()=>EMAIL_TEMPLATES.accessApproved("Sarah Ahmed","https://socialflow.admepro.com") },
+  { group:"Users & Access", key:"accessRejected", label:"Access Rejected", build:()=>EMAIL_TEMPLATES.accessRejected("Sarah Ahmed","Requested during a closed hiring window.") },
+  { group:"Users & Access", key:"accessRequested", label:"New Access Request (to admin)", build:()=>EMAIL_TEMPLATES.accessRequested("Mostafa Kamal","mostafa@example.com","Email","https://socialflow.admepro.com") },
+  { group:"Users & Access", key:"permissionsUpdated", label:"Permissions Updated", build:()=>EMAIL_TEMPLATES.permissionsUpdated("Sarah Ahmed","Account Manager","Mostafa Shannah") },
+  { group:"Tasks & Posts", key:"taskAssigned", label:"Task Assigned", build:()=>EMAIL_TEMPLATES.taskAssigned("Sarah Ahmed","Ramadan Campaign — Reel #3","July Calendar","Al Mousa Group","2026-07-25","Mostafa Shannah") },
+  { group:"Tasks & Posts", key:"taskStageChanged", label:"Task Stage Changed", build:()=>EMAIL_TEMPLATES.taskStageChanged("Sarah Ahmed","Ramadan Campaign — Reel #3","Design","Internal Review","July Calendar","Al Mousa Group") },
+  { group:"Tasks & Posts", key:"taskDueSoon", label:"Task Due Soon", build:()=>EMAIL_TEMPLATES.taskDueSoon("Sarah Ahmed","Ramadan Campaign — Reel #3","2026-07-25","July Calendar","Al Mousa Group") },
+  { group:"Tasks & Posts", key:"taskOverdue", label:"Task Overdue", build:()=>EMAIL_TEMPLATES.taskOverdue("Sarah Ahmed","Ramadan Campaign — Reel #3","2026-07-20","July Calendar","Al Mousa Group") },
+  { group:"Tasks & Posts", key:"mentionNotification", label:"Mentioned in a Comment", build:()=>EMAIL_TEMPLATES.mentionNotification("Sarah Ahmed","Mostafa Shannah","Ramadan Campaign — Reel #3","Can you double check the CTA on slide 3?","July Calendar") },
+  { group:"Tasks & Posts", key:"commentAdded", label:"New Comment", build:()=>EMAIL_TEMPLATES.commentAdded("Sarah Ahmed","Mostafa Shannah","Ramadan Campaign — Reel #3","Looks great, ready to move forward.","July Calendar") },
+  { group:"Tasks & Posts", key:"postApproved", label:"Post Approved", build:()=>EMAIL_TEMPLATES.postApproved("Sarah Ahmed","Ramadan Campaign — Reel #3","Al Mousa Group") },
+  { group:"Tasks & Posts", key:"postRejected", label:"Post Rejected", build:()=>EMAIL_TEMPLATES.postRejected("Sarah Ahmed","Ramadan Campaign — Reel #3","Al Mousa Group","Please brighten the product shot and re-check the logo placement.") },
+  { group:"Projects", key:"projectCreated", label:"Project Created", build:()=>EMAIL_TEMPLATES.projectCreated("Sarah Ahmed","July Content Calendar","Al Mousa Group","2026-07-31","Mostafa Shannah") },
+  { group:"Projects", key:"taskAddedToProject", label:"Task Added to Project", build:()=>EMAIL_TEMPLATES.taskAddedToProject("Sarah Ahmed","Ramadan Campaign — Reel #3","July Content Calendar","Al Mousa Group","2026-07-25","sarah@admepro.com") },
+  { group:"Projects", key:"projectDeadlineUpdated", label:"Project Deadline Updated", build:()=>EMAIL_TEMPLATES.projectDeadlineUpdated("Sarah Ahmed","July Content Calendar","Al Mousa Group","2026-07-25","2026-07-31") },
+  { group:"Projects", key:"clientApprovalRequired", label:"Client Approval Required", build:()=>EMAIL_TEMPLATES.clientApprovalRequired("Al Mousa Group","Ramadan Campaign — Reel #3","July Content Calendar","2026-07-25","https://socialflow.admepro.com") },
+  { group:"Finance", key:"invoiceSent", label:"Invoice Sent (to client)", build:()=>EMAIL_TEMPLATES.invoiceSent("Al Mousa Group","INV-2026-014","45,000","EGP","2026-08-05","https://socialflow.admepro.com") },
+  { group:"Finance", key:"invoiceCreated", label:"Invoice Created (internal)", build:()=>EMAIL_TEMPLATES.invoiceCreated("Mostafa Shannah","INV-2026-014","45,000","EGP","Al Mousa Group") },
+  { group:"Finance", key:"paymentReceived", label:"Payment Received", build:()=>EMAIL_TEMPLATES.paymentReceived("Mostafa Shannah","INV-2026-014","45,000","EGP","Al Mousa Group") },
+  { group:"Finance", key:"subscriptionRenewal", label:"Subscription Renewal", build:()=>EMAIL_TEMPLATES.subscriptionRenewal("Al Mousa Group","Monthly Retainer","15,000","EGP","2026-08-01") },
+  { group:"Team / Career", key:"careerEvent", label:"Career Event (Salary Raise example)", build:()=>EMAIL_TEMPLATES.careerEvent("Sherif Hossam",{event_type:"salary_raise",title:"Salary Raise — 2026",previous_value:"10000",new_value:"12000",effective_date:"2026-07-15",notes:""}) },
+  { group:"Team / Career", key:"dailyDigest", label:"Daily Digest", build:()=>EMAIL_TEMPLATES.dailyDigest("Sarah Ahmed",
+      [{title:"Ramadan Campaign — Reel #3",client_name:"Al Mousa Group"}],
+      [{title:"Product Launch Teaser",client_name:"Urban Fitness"}],
+      [{title:"Weekly Recap Post",client_name:"Al Mousa Group"}],
+      [{title:"Behind the Scenes Story",client_name:"Al Mousa Group"}]) },
+];
+
+function SystemEmailsPreviewTab() {
+  const [selectedKey, setSelectedKey] = useState(SYSTEM_EMAIL_SAMPLES[0].key);
+  const groups = [...new Set(SYSTEM_EMAIL_SAMPLES.map(s=>s.group))];
+  const selected = SYSTEM_EMAIL_SAMPLES.find(s=>s.key===selectedKey);
+  let html = "";
+  try { html = selected?.build() || ""; } catch(e) { html = `<p style="padding:20px;font-family:sans-serif;color:#ef4444">Preview failed: ${String(e.message||e)}</p>`; }
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14}} className="fade-in">
+      <p style={{fontSize:13,color:"var(--text2)"}}>Every automated email the system can send, with sample data — pick one to preview exactly how it renders.</p>
+      <div style={{display:"grid",gridTemplateColumns:"220px 1fr",gap:16,alignItems:"start"}}>
+        <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:560,overflowY:"auto",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:8}}>
+          {groups.map(g=>(
+            <div key={g}>
+              <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",padding:"8px 8px 4px"}}>{g}</p>
+              {SYSTEM_EMAIL_SAMPLES.filter(s=>s.group===g).map(s=>(
+                <button key={s.key} onClick={()=>setSelectedKey(s.key)} style={{width:"100%",textAlign:"left",padding:"7px 10px",borderRadius:7,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:selectedKey===s.key?"var(--accent)":"transparent",color:selectedKey===s.key?"#fff":"var(--text2)"}}>
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+        <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+          <div style={{padding:"10px 16px",background:"var(--surface2)",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:10}}>
+            <div style={{width:12,height:12,borderRadius:"50%",background:"#ef4444"}}/>
+            <div style={{width:12,height:12,borderRadius:"50%",background:"#f59e0b"}}/>
+            <div style={{width:12,height:12,borderRadius:"50%",background:"#10b981"}}/>
+            <span style={{fontSize:12,color:"var(--text3)",marginLeft:8,fontFamily:"monospace"}}>{selected?.label}</span>
+          </div>
+          <div style={{height:560,overflowY:"auto",background:"#f0f0f0"}}>
+            <iframe srcDoc={html} style={{width:"100%",height:"100%",border:"none"}} title="System Email Preview" sandbox="allow-same-origin"/>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DailyEmailSettings({emailSettings, onSave, team, posts, timelogs, perfLogs, appSettings, accentColor, emailLogs}) {
   const DEFAULT_ES = {
     enabled:true, send_time:"18:00", timezone:"Africa/Cairo",
@@ -17810,7 +17883,7 @@ function DailyEmailSettings({emailSettings, onSave, team, posts, timelogs, perfL
 
       {/* Sub-tabs */}
       <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)",alignSelf:"flex-start",flexWrap:"wrap"}}>
-        {[["config","Configuration"],["sections","Sections"],["preview","Preview"],["log","Email Log"]].map(([k,l])=>(
+        {[["config","Configuration"],["sections","Sections"],["preview","Preview"],["all_emails","All System Emails"],["log","Email Log"]].map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)} style={{padding:"7px 16px",borderRadius:"var(--rxs)",fontSize:12,fontWeight:700,background:tab===k?"var(--accent)":"none",color:tab===k?"#fff":"var(--text2)",transition:"all 0.15s",display:"flex",alignItems:"center",gap:5}}>
             {k==="log"&&(emailLogs||[]).filter(e=>e.status!=="sent").length>0&&<span style={{background:"#ef4444",color:"#fff",borderRadius:99,fontSize:9,fontWeight:800,padding:"1px 5px",marginRight:2}}>{(emailLogs||[]).filter(e=>e.status!=="sent").length}</span>}
             {l}
@@ -17967,6 +18040,8 @@ function DailyEmailSettings({emailSettings, onSave, team, posts, timelogs, perfL
           </div>
         </div>
       )}
+
+      {tab==="all_emails"&&<SystemEmailsPreviewTab/>}
 
       {/* ── EMAIL LOG TAB ── */}
       {tab==="log"&&(
@@ -18785,7 +18860,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 
       {/* Tab nav */}
       <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",flexWrap:"wrap"}}>
-        {[["branding","Branding"],["logos","Identity"],["integrations","Integrations"],["email","Daily Email"],["ai_model","AI & Tokens"],["flags","Feature Flags"],["syslog","System Log"]].map(([k,l])=>(
+        {[["branding","Branding"],["logos","Identity"],["integrations","Integrations"],["email","Email"],["ai_model","AI & Tokens"],["flags","Feature Flags"],["syslog","System Log"]].map(([k,l])=>(
           <button key={k} onClick={()=>setSettingsTab(k)} style={{padding:"9px 20px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${settingsTab===k?"var(--accent)":"transparent"}`,color:settingsTab===k?"var(--accent)":"var(--text2)",transition:"all 0.15s",display:"flex",alignItems:"center",gap:6,position:"relative"}}>
             {l}
             {k==="syslog"&&(activityLogs||[]).filter(a=>a.status==="error").length>0&&(
