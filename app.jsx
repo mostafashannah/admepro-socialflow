@@ -1064,7 +1064,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.223";
+const APP_VERSION = "beta 5.224";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11896,9 +11896,12 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
         recorded_by: currentUser?.name||currentUser?.email||"",
       }]);
       // A salary raise isn't just a log entry — it should actually change
-      // what the member gets paid going forward.
-      if(form.event_type==="salary_raise" && form.new_value && !isNaN(Number(form.new_value)) && onUpdateTeamMember) {
-        await onUpdateTeamMember(member.id, {salary: Number(form.new_value)});
+      // what the member gets paid going forward. Strip anything but digits/dot
+      // in case someone types "12,000" or "EGP 12000" instead of a bare number.
+      if(form.event_type==="salary_raise" && form.new_value && onUpdateTeamMember) {
+        const cleanSalary = Number(String(form.new_value).replace(/[^0-9.]/g,""));
+        if(cleanSalary>0) await onUpdateTeamMember(member.id, {salary: cleanSalary});
+        else alert(`Event saved, but "${form.new_value}" isn't a valid salary number — the team member's salary was NOT updated. Edit their profile directly if needed.`);
       }
       // A bonus is real money paid out — record it as a Salaries & Payroll
       // expense linked to this member so it actually counts toward this
@@ -11979,11 +11982,11 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
               <div>
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>{cfg.prevLabel}</label>
-                <input value={form.previous_value} onChange={e=>setForm(f=>({...f,previous_value:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)"}}/>
+                <input type={form.event_type==="salary_raise"?"number":"text"} value={form.previous_value} onChange={e=>setForm(f=>({...f,previous_value:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)"}}/>
               </div>
               <div>
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>{cfg.newLabel}</label>
-                <input value={form.new_value} onChange={e=>setForm(f=>({...f,new_value:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)"}}/>
+                <input type={form.event_type==="salary_raise"?"number":"text"} value={form.new_value} onChange={e=>setForm(f=>({...f,new_value:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)"}}/>
               </div>
             </div>
           )}
