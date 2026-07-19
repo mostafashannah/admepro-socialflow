@@ -1113,7 +1113,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.282";
+const APP_VERSION = "beta 5.283";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13758,11 +13758,11 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
     return ()=>document.removeEventListener("mousedown",fn);
   },[]);
   const cProjects = projects.filter(p=>p.client_id===client.id||p.client_name===client.name);
-  // "planning" (Brief) is the first stage a client is allowed to see at all —
-  // everything before it (client_request) stays purely internal. Once a task
-  // reaches Brief it shows up here labeled "In Progress", same as the rest
-  // of the pre-approval pipeline the client never sees the internal names of.
-  const cPosts = posts.filter(p=>cProjects.some(pr=>pr.id===p.project_id)&&["planning","client_approval","scheduled","published"].includes(p.stage));
+  // Brief/Content/Design/Review are purely internal agency work — the client
+  // only ever sees their own request, then it reappears once it's ready for
+  // their approval or further along, exactly as if the internal steps never
+  // happened from their point of view.
+  const cPosts = posts.filter(p=>cProjects.some(pr=>pr.id===p.project_id)&&["client_request","client_approval","scheduled","published","rejected","on_hold"].includes(p.stage));
   const cAssets = assets.filter(a=>cProjects.some(pr=>pr.id===a.project_id) || (a.tags||[]).includes(`client_${client.id}`));
   const [month,setMonth] = useState(()=>{const d=new Date();return{y:d.getFullYear(),m:d.getMonth()};});
   const clientSubs = subscriptions||[];
@@ -13778,8 +13778,8 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
     return Math.max(0, lim.limit - (lim.used||0));
   };
 
-  const stageColor = {planning:"#3b82f6",client_approval:"#ec4899",scheduled:"#06b6d4",published:"#10b981"};
-  const stageLabel = {planning:"In Progress",client_approval:"Pending Approval",scheduled:"Scheduled",published:"Published"};
+  const stageColor = {client_request:"#a855f7",client_approval:"#ec4899",scheduled:"#06b6d4",published:"#10b981",rejected:"#ef4444",on_hold:"#f97316"};
+  const stageLabel = {client_request:"Request",client_approval:"Pending Approval",scheduled:"Scheduled",published:"Published",rejected:"Rejected",on_hold:"On Hold"};
 
   const pendingBrief = (monthlyBriefs||[]).find(b=>b.client_id===client?.id&&b.status==="pending");
   const cMessages = (messages||[]).filter(m=>m.client_id===client.id);
