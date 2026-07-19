@@ -1111,7 +1111,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.271";
+const APP_VERSION = "beta 5.272";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -20613,12 +20613,14 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial,clientNames=[],team=
   },[open,initial]);
 
   const reset = () => { setType("out"); setCategory("other"); setDescription(""); setAmount(""); setDate(new Date().toISOString().split("T")[0]); setMethod(""); setTeamMemberId(""); setOtherMemberName(""); setSalaryMonth(""); setClientMode("select"); };
+  const isInstallmentMode = isOutstanding&&outstandingKind==="installment";
   const submit = async () => {
-    if(!amount||Number(amount)<=0||!description.trim()) return;
+    if(!description.trim()) return;
+    if(!isInstallmentMode && (!amount||Number(amount)<=0)) return;
     if(isOutstanding&&outstandingKind==="team_member"&&!outstandingMemberId) return;
-    if(isOutstanding&&outstandingKind==="installment"&&(!outstandingPrincipal||Number(outstandingPrincipal)<=0)) return;
+    if(isInstallmentMode&&(!outstandingPrincipal||Number(outstandingPrincipal)<=0)) return;
     setSaving(true);
-    const payload = {type,category,description:description.trim(),amount:Number(amount),currency,date,method:method||null,team_member_id:isSalary&&teamMemberId!=="__other__"?(teamMemberId||null):null,salary_month:isSalary?(salaryMonth||null):null};
+    const payload = {type,category,description:description.trim(),amount:isInstallmentMode?0:Number(amount),currency,date,method:method||null,team_member_id:isSalary&&teamMemberId!=="__other__"?(teamMemberId||null):null,salary_month:isSalary?(salaryMonth||null):null};
     if(isOutstanding) {
       payload.outstanding_kind = outstandingKind;
       payload.outstanding_status = initial?.outstanding_status||"outstanding";
@@ -20705,16 +20707,23 @@ function AddExpenseModal({open,onClose,onAdd,onSave,initial,clientNames=[],team=
             <input value={description} onChange={e=>setDescription(e.target.value)} placeholder={type==="out"?"e.g. April office rent":"e.g. Bank transfer — Client X"} style={inputSt}/>
           </Field>
         )}
-        <div style={{display:"flex",gap:10}}>
-          <Field label="Amount" required>
-            <input type="number" min="0" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0" style={inputSt}/>
-          </Field>
-          <Field label="Currency">
-            <select value={currency} onChange={e=>setCurrency(e.target.value)} style={{...inputSt,width:90}}>
-              <option value="EGP">EGP</option><option value="USD">USD</option>
-            </select>
-          </Field>
-        </div>
+        {/* Once "Outstanding → Fawry Installment" is picked, Principal Amount
+            below becomes the real source of truth for the saved amount (plus
+            interest) — the plain Amount field here would silently be ignored
+            on save, which looked like the field "not responding" to typing.
+            Hide it in that mode instead of leaving two competing inputs. */}
+        {!(isOutstanding&&outstandingKind==="installment") && (
+          <div style={{display:"flex",gap:10}}>
+            <Field label="Amount" required>
+              <input type="number" min="0" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0" style={inputSt}/>
+            </Field>
+            <Field label="Currency">
+              <select value={currency} onChange={e=>setCurrency(e.target.value)} style={{...inputSt,width:90}}>
+                <option value="EGP">EGP</option><option value="USD">USD</option>
+              </select>
+            </Field>
+          </div>
+        )}
         <Field label="Date">
           <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={inputSt}/>
         </Field>
