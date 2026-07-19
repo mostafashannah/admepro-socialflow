@@ -1087,7 +1087,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.236";
+const APP_VERSION = "beta 5.237";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -30630,19 +30630,6 @@ function App() {
     }catch(e){return "home";}
   });
 
-  // Roles without the clients.manage permission (Creative/Design by default)
-  // get bounced to My Tasks if they land on the client roster/projects/full
-  // task board/clients calendar anyway (a stale localStorage/hash from
-  // before this change, or a direct link) — an admin can re-grant this via
-  // Roles & Permissions, so this checks the live toggle, not a hardcoded
-  // role list.
-  React.useEffect(()=>{
-    const canClients = currentUser?.role==="admin" || hasPerm(currentUser, rolePermsMap, "clients.manage");
-    if(!canClients && ["clients","projects","tasks","calendar"].includes(page)){
-      setPage("my_tasks");
-    }
-  },[currentUser?.role, page, rolePermsMap]);
-
   // Web Push: subscribe this device once logged in, and re-subscribe whenever
   // the app gets installed to the home screen (task-assignment alerts need this).
   React.useEffect(()=>{
@@ -30986,6 +30973,20 @@ function App() {
     expenses: [], financeClientNotes: [],
   });
   const rolePermsMap = useMemo(()=>buildRolePermsMap(data.rolePermissions), [data.rolePermissions]);
+
+  // Roles without the clients.manage permission (Creative/Design by default)
+  // get bounced to My Tasks if they land on the client roster/projects/full
+  // task board/clients calendar anyway (a stale localStorage/hash from
+  // before this change, or a direct link) — an admin can re-grant this via
+  // Roles & Permissions, so this checks the live toggle, not a hardcoded
+  // role list.
+  React.useEffect(()=>{
+    const canClients = currentUser?.role==="admin" || hasPerm(currentUser, rolePermsMap, "clients.manage");
+    if(!canClients && ["clients","projects","tasks","calendar"].includes(page)){
+      setPage("my_tasks");
+    }
+  },[currentUser?.role, page, rolePermsMap]);
+
   const [appSettings, setAppSettings] = useState(SEED.appSettings);
   useEffect(()=>{
     const f = appSettings?.feature_flags;
