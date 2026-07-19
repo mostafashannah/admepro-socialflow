@@ -1111,7 +1111,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.267";
+const APP_VERSION = "beta 5.268";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3972,19 +3972,38 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
     )}>
       <div style={{display:isMobile?"flex":"grid",flexDirection:isMobile?"column":undefined,gridTemplateColumns:isMobile?undefined:"2fr 1fr",gap:20,alignItems:"start"}}>
       <div style={{display:"flex",flexDirection:"column",gap:18}}>
-        {/* Header — the Workflow Path section below already shows every stage
-            plus who owns it, so the plain stage-pill row that used to sit here
-            was pure duplication; dropped in favor of that single source. */}
+        {/* Header: title first, then project + platform/type/priority right
+            under it, then a details strip for due date / assignee / time —
+            in that order top to bottom. */}
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          <TimeTracker postId={post.id} userEmail={currentUser?.email} timeEntries={timeEntries||[]} onStart={onStartTimer} onPause={onPauseTimer} onResume={onResumeTimer}/>
+          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:22,fontWeight:700,lineHeight:1.2}}>{post.title}</h2>
           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            {project&&<span style={{fontSize:12,color:"var(--text2)"}}>{project.title} · {project.client_name}</span>}
             <PChip platform={post.platform}/>
             <Badge label={post.post_type} color="#6b7280"/>
             <Badge label={post.priority} color={PRI_COLOR[post.priority]}/>
-            {assignee&&<div style={{display:"flex",alignItems:"center",gap:6,marginLeft:"auto"}}><Avatar name={assignee.name} size={24} role={assignee.role}/><span style={{fontSize:12,color:"var(--text2)"}}>{assignee.name}</span></div>}
           </div>
-          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:22,fontWeight:700,lineHeight:1.2}}>{post.title}</h2>
-          {project&&<p style={{fontSize:12,color:"var(--text2)"}}> {project.title} · {project.client_name}</p>}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10}}>
+            <div style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
+              <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Due Date</p>
+              {post.scheduled_date ? (
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <Ico d={Icons.calendar} size={13}/>
+                  <span style={{fontSize:13,fontWeight:600}}>{fmtDate(post.scheduled_date)}{post.scheduled_time?` · ${post.scheduled_time}`:""}</span>
+                </div>
+              ) : <span style={{fontSize:12,color:"var(--text3)"}}>Not set</span>}
+            </div>
+            <div style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
+              <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Assigned To</p>
+              {assignee ? (
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <Avatar name={assignee.name} size={20} role={assignee.role}/>
+                  <span style={{fontSize:13,fontWeight:600}}>{assignee.name}</span>
+                </div>
+              ) : <span style={{fontSize:12,color:"var(--text3)"}}>Unassigned</span>}
+            </div>
+          </div>
+          <TimeTracker postId={post.id} userEmail={currentUser?.email} timeEntries={timeEntries||[]} onStart={onStartTimer} onPause={onPauseTimer} onResume={onResumeTimer}/>
         </div>
 
         {/* Delete confirm */}
@@ -4061,26 +4080,10 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
           <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6}}>{post.description}</p>
         </div>}
 
-        {/* Workflow Assignment - Show who handles each stage */}
-        <div style={{padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
-          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:8,textTransform:"uppercase",letterSpacing:"0.06em"}}> Workflow Path</p>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-            {STAGES.map((s,idx)=>{
-              const isActive = STAGES.findIndex(st=>st.key===post.stage) >= idx;
-              const isCurrent = s.key === post.stage;
-              const assignedPerson = getAssigneeForStage(s.key, team);
-              return (
-                <div key={s.key} style={{display:"flex",alignItems:"center",gap:6}}>
-                  <div style={{padding:"6px 10px",borderRadius:"var(--rs)",background:isCurrent?s.color+"22":isActive?"var(--surface)":"var(--surface)",border:`1px solid ${isCurrent?s.color:isActive?"var(--border2)":"var(--border)"}`,fontSize:11,fontWeight:600,color:isCurrent?s.color:"var(--text2)"}}>
-                    <span style={{marginRight:4}}>{s.icon}</span>{s.label}
-                    {assignedPerson&&<div style={{fontSize:9,color:"var(--text3)",marginTop:2}}>→ {assignedPerson.name.split(" ")[0]}</div>}
-                  </div>
-                  {idx < STAGES.length-1 && <span style={{color:"var(--border)",fontSize:12}}>→</span>}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        {/* Workflow Path used to be shown here as a static row of stages — every
+            move is now logged in the Activity feed instead (who moved it, to
+            which stage, at what time, and who it landed with), so this stayed
+            a duplicate of the log rather than a distinct source of truth. */}
 
         {/* Caption + Media side by side on wide screens so the caption isn't
             squeezed into a tall narrow column above/below the image */}
@@ -4172,15 +4175,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
           </div>
         </div>}
 
-        {/* Schedule */}
-        {(post.scheduled_date||post.scheduled_time)&&<div style={{display:"flex",gap:10}}>
-          {post.scheduled_date&&<div style={{flex:1,padding:11,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",display:"flex",alignItems:"center",gap:8}}>
-            <Ico d={Icons.calendar} size={14}/><span style={{fontSize:13}}>{fmtDate(post.scheduled_date)}</span>
-          </div>}
-          {post.scheduled_time&&<div style={{flex:1,padding:11,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",display:"flex",alignItems:"center",gap:8}}>
-            <Ico d={Icons.clock} size={14}/><span style={{fontSize:13}}>{post.scheduled_time}</span>
-          </div>}
-        </div>}
+        {/* Due date is now shown in the details strip at the top of the modal. */}
 
         {/* DESIGN PHASE - File Upload for Photos/Videos */}
         {post.stage==="design"&&(
@@ -33222,8 +33217,11 @@ Return ONLY valid JSON (no markdown, no explanation):
     setData(d=>({...d,posts:d.posts.map(p=>p.id===post.id?updatedPost:p)}));
 
     const stageLabel = STAGE_MAP[newStage]?.label || newStage;
-    const assignmentText = assignee ? ` → Assigned to ${assigneeName}` : "";
-    const comment = {id:uid(),post_id:post.id,author_name:"System",type:"stage_change",content:` Moved to ${stageLabel}${assignmentText}`,created_date:new Date().toISOString()};
+    const assignmentText = assignee ? ` → assigned to ${assigneeName}` : "";
+    // Logged under the actual person who made the move (not "System") so the
+    // Activity feed reads as a real audit trail — who moved it, to what stage,
+    // and who it landed with — instead of an anonymous system event.
+    const comment = {id:uid(),post_id:post.id,author_name:currentUser?.name||"System",type:"stage_change",content:`Moved to ${stageLabel}${assignmentText}`,created_date:new Date().toISOString()};
     setData(d=>({...d,comments:[...d.comments,comment]}));
     setSelectedPost(prev=>prev?.id===post.id?updatedPost:prev);
     logActivity("Post Stage Changed","tasks",`"${post.title}" → ${stageLabel}${assignmentText}`,"success","",currentUser?.email||"admin");
@@ -33310,7 +33308,7 @@ Return ONLY valid JSON (no markdown, no explanation):
 
     try {
       await ue("Post", post.id, {stage:newStage, assigned_to:assigneeEmail||post.assigned_to});
-      await ce("Comment",[{post_id:post.id,author_name:"System",type:"stage_change",content:comment.content}]);
+      await ce("Comment",[{post_id:post.id,author_name:comment.author_name,type:"stage_change",content:comment.content}]);
     } catch(e){ logActivity("Post Stage Change Failed","tasks",`"${post.title}" → ${stageLabel}`,"error",String(e),currentUser?.email||"admin"); }
   };
 
