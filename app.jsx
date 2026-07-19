@@ -1108,7 +1108,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.255";
+const APP_VERSION = "beta 5.256";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3776,7 +3776,7 @@ function AssetPickerModal({open, assets=[], onPick, onClose, multiple=true}) {
     try {
       const results = await Promise.all(list.map(async f=>{
         const url = await uploadToStorage(f, "design/picker");
-        return {name:f.name, url, type:f.type, file_type:f.type.startsWith("video")?"video":"image"};
+        return {name:f.name, url, type:f.type, file_type:f.type.startsWith("video")?"video":"image", file_size:f.size};
       }));
       if(multiple) { onPick(results); onClose(); }
       else { onPick([results[0]]); onClose(); }
@@ -4578,7 +4578,7 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
                       // Save freshly-uploaded files to the asset library too — see the matching
                       // comment in PostDetail's picker for why this was previously missing.
                       picked.filter(a=>a.url).forEach(a=>{
-                        if(onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(selectableProjects.find(p=>p.id===f.project_id)?.title, selectableProjects.find(p=>p.id===f.project_id)?.client_name), project_id:f.project_id, tags:[]}).catch(()=>{});
+                        if(onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(selectableProjects.find(p=>p.id===f.project_id)?.title, selectableProjects.find(p=>p.id===f.project_id)?.client_name), project_id:f.project_id, tags:[], file_size:a.file_size}).catch(()=>{});
                       });
                       s("media",[...f.media,...picked.map(a=>a.url?a:{name:a.name,type:a.file_type,url:a.file_url,uploaded_at:new Date().toISOString()})]);
                     }}/>
@@ -4590,7 +4590,7 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
                       <Ico d={Icons.upload} size={14} stroke="var(--text2)"/> Choose Cover Image…
                     </button>
                     <AssetPickerModal open={showCoverPicker} assets={assets.filter(a=>a.file_type==="image"||(a.file_url||"").match(/\.(jpg|jpeg|png|gif|webp)/i))} multiple={false} onClose={()=>setShowCoverPicker(false)}
-                      onPick={(picked)=>{ const a=picked[0]; if(a.url&&onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(selectableProjects.find(p=>p.id===f.project_id)?.title, selectableProjects.find(p=>p.id===f.project_id)?.client_name), project_id:f.project_id, tags:[]}).catch(()=>{}); s("cover",a.url?a:{name:a.name,type:a.file_type,url:a.file_url}); }}/>
+                      onPick={(picked)=>{ const a=picked[0]; if(a.url&&onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(selectableProjects.find(p=>p.id===f.project_id)?.title, selectableProjects.find(p=>p.id===f.project_id)?.client_name), project_id:f.project_id, tags:[], file_size:a.file_size}).catch(()=>{}); s("cover",a.url?a:{name:a.name,type:a.file_type,url:a.file_url}); }}/>
                     {uploadingCover&&<div style={{fontSize:12,color:"var(--text3)",marginTop:6}}><Spinner size={12}/> Uploading…</div>}
                     {f.cover&&(
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,padding:"4px 8px",borderRadius:8,background:"var(--surface2)",fontSize:11,width:"fit-content"}}>
@@ -5633,7 +5633,7 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
                       // Save freshly-uploaded files to the asset library too — see the matching
                       // comment in PostDetail's picker for why this was previously missing.
                       picked.filter(a=>a.url).forEach(a=>{
-                        if(onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(projects.find(p=>p.id===f.project_id)?.title, projects.find(p=>p.id===f.project_id)?.client_name), project_id:f.project_id, tags:[]}).catch(()=>{});
+                        if(onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(projects.find(p=>p.id===f.project_id)?.title, projects.find(p=>p.id===f.project_id)?.client_name), project_id:f.project_id, tags:[], file_size:a.file_size}).catch(()=>{});
                       });
                       s("media",[...f.media,...picked.map(a=>a.url?a:{name:a.name,type:a.file_type,url:a.file_url,uploaded_at:new Date().toISOString()})]);
                     }}/>
@@ -5645,7 +5645,7 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
                       <Ico d={Icons.upload} size={14} stroke="var(--text2)"/> Choose Cover Image…
                     </button>
                     <AssetPickerModal open={showCoverPicker} assets={assets.filter(a=>a.file_type==="image"||(a.file_url||"").match(/\.(jpg|jpeg|png|gif|webp)/i))} multiple={false} onClose={()=>setShowCoverPicker(false)}
-                      onPick={(picked)=>{ const a=picked[0]; if(a.url&&onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(projects.find(p=>p.id===f.project_id)?.title, projects.find(p=>p.id===f.project_id)?.client_name), project_id:f.project_id, tags:[]}).catch(()=>{}); s("cover",a.url?a:{name:a.name,type:a.file_type,url:a.file_url}); }}/>
+                      onPick={(picked)=>{ const a=picked[0]; if(a.url&&onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(projects.find(p=>p.id===f.project_id)?.title, projects.find(p=>p.id===f.project_id)?.client_name), project_id:f.project_id, tags:[], file_size:a.file_size}).catch(()=>{}); s("cover",a.url?a:{name:a.name,type:a.file_type,url:a.file_url}); }}/>
                     {uploadingCover&&<div style={{fontSize:12,color:"var(--text3)",marginTop:6}}><Spinner size={12}/> Uploading…</div>}
                     {f.cover&&(
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,padding:"4px 8px",borderRadius:8,background:"var(--surface2)",fontSize:11,width:"fit-content"}}>
@@ -9412,8 +9412,22 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
 
   const filesHere = assets.filter(a=>{ const rel=stripPrefix(a.category); return rel!=null && rel.split("/").filter(Boolean).join("/")===currentPath; });
 
-  const goto = (i) => setPath(path.slice(0,i));
-  const openFolder = (name) => setPath([...path, name]);
+  // Every folder click pushes a browser history entry carrying the full path,
+  // so pressing Back steps out one folder level at a time (to whatever the
+  // previous entry's path was) instead of leaving the Assets tab entirely —
+  // it only falls through to leaving the page once there's no folder history
+  // left to pop.
+  const navigateTo = (newPath) => {
+    try{ window.history.pushState({assetsPath:newPath}, ""); }catch(e){}
+    setPath(newPath);
+  };
+  useEffect(()=>{
+    const onPop = (e) => { setPath(e.state?.assetsPath || []); };
+    window.addEventListener("popstate", onPop);
+    return ()=>window.removeEventListener("popstate", onPop);
+  },[]);
+  const goto = (i) => navigateTo(path.slice(0,i));
+  const openFolder = (name) => navigateTo([...path, name]);
 
   const createFolder = () => {
     const name = newFolderName.trim();
