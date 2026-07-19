@@ -1111,7 +1111,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.274";
+const APP_VERSION = "beta 5.275";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3971,6 +3971,23 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
     onStageChange(post, "content_creation", {assigned_to: post.content_assigned_to || post.assigned_to});
   };
 
+  // ── Inline click-to-edit for the Due Date / Publish Date tiles ──
+  // Admin/AM only — everyone else just reads these off the tile.
+  const [dueEdit, setDueEdit] = useState(null); // {date,time} | null
+  const [pubEdit, setPubEdit] = useState(null);
+  const saveDueEdit = () => {
+    if(!dueEdit) return;
+    if(dueEdit.date && !dueEdit.time) return;
+    onEdit&&onEdit({...post, due_date:dueEdit.date, due_time:dueEdit.time});
+    setDueEdit(null);
+  };
+  const savePubEdit = () => {
+    if(!pubEdit) return;
+    if(pubEdit.date && !pubEdit.time) return;
+    onEdit&&onEdit({...post, scheduled_date:pubEdit.date, scheduled_time:pubEdit.time});
+    setPubEdit(null);
+  };
+
   const clientId = post.client_id || project?.client_id;
   // A client-specific integration must win over a global (no client_id) one for
   // the same app_key — otherwise .find() can match a different client's
@@ -4050,18 +4067,44 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
             <Badge label={post.priority} color={PRI_COLOR[post.priority]}/>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10}}>
-            <div style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
+            <div onClick={()=>{if(isManager&&!dueEdit) setDueEdit({date:post.due_date||"",time:post.due_time||""});}}
+              style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",cursor:isManager?"pointer":"default"}}>
               <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Due Date <span style={{fontWeight:400,textTransform:"none"}}>(work deadline)</span></p>
-              {post.due_date ? (
+              {dueEdit ? (
+                <div onClick={e=>e.stopPropagation()} style={{display:"flex",flexDirection:"column",gap:6}}>
+                  <div style={{display:"flex",gap:6}}>
+                    <input type="date" value={dueEdit.date} onChange={e=>setDueEdit(v=>({...v,date:e.target.value}))} style={{flex:1,padding:"5px 6px",borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:12,color:"var(--text)"}}/>
+                    <input type="time" value={dueEdit.time} onChange={e=>setDueEdit(v=>({...v,time:e.target.value}))} style={{flex:1,padding:"5px 6px",borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:12,color:"var(--text)"}}/>
+                  </div>
+                  {dueEdit.date&&!dueEdit.time&&<p style={{fontSize:10,color:"#ef4444"}}>Needs a time too</p>}
+                  <div style={{display:"flex",gap:6}}>
+                    <button onClick={saveDueEdit} style={{flex:1,padding:"4px",borderRadius:6,border:"none",background:"var(--accent)",color:"#fff",fontSize:11,fontWeight:700}}>Save</button>
+                    <button onClick={()=>setDueEdit(null)} style={{flex:1,padding:"4px",borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",fontSize:11,fontWeight:600}}>Cancel</button>
+                  </div>
+                </div>
+              ) : post.due_date ? (
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <Ico d={Icons.calendar} size={13}/>
                   <span style={{fontSize:13,fontWeight:600}}>{fmtDate(post.due_date)}{post.due_time?` · ${post.due_time}`:""}</span>
                 </div>
               ) : <span style={{fontSize:12,color:"var(--text3)"}}>Not set</span>}
             </div>
-            <div style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
+            <div onClick={()=>{if(isManager&&!pubEdit) setPubEdit({date:post.scheduled_date||"",time:post.scheduled_time||""});}}
+              style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",cursor:isManager?"pointer":"default"}}>
               <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Publish Date</p>
-              {post.scheduled_date ? (
+              {pubEdit ? (
+                <div onClick={e=>e.stopPropagation()} style={{display:"flex",flexDirection:"column",gap:6}}>
+                  <div style={{display:"flex",gap:6}}>
+                    <input type="date" value={pubEdit.date} onChange={e=>setPubEdit(v=>({...v,date:e.target.value}))} style={{flex:1,padding:"5px 6px",borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:12,color:"var(--text)"}}/>
+                    <input type="time" value={pubEdit.time} onChange={e=>setPubEdit(v=>({...v,time:e.target.value}))} style={{flex:1,padding:"5px 6px",borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:12,color:"var(--text)"}}/>
+                  </div>
+                  {pubEdit.date&&!pubEdit.time&&<p style={{fontSize:10,color:"#ef4444"}}>Needs a time too</p>}
+                  <div style={{display:"flex",gap:6}}>
+                    <button onClick={savePubEdit} style={{flex:1,padding:"4px",borderRadius:6,border:"none",background:"var(--accent)",color:"#fff",fontSize:11,fontWeight:700}}>Save</button>
+                    <button onClick={()=>setPubEdit(null)} style={{flex:1,padding:"4px",borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",fontSize:11,fontWeight:600}}>Cancel</button>
+                  </div>
+                </div>
+              ) : post.scheduled_date ? (
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <Ico d={Icons.calendar} size={13}/>
                   <span style={{fontSize:13,fontWeight:600}}>{fmtDate(post.scheduled_date)}{post.scheduled_time?` · ${post.scheduled_time}`:""}</span>
