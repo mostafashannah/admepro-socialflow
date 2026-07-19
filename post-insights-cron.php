@@ -12,6 +12,11 @@
  * has usually settled, and this keeps the per-run API call count small).
  */
 
+// CLI-only — this script performs real writes (emails, DB records) and has
+// no authentication of its own, so it must never be reachable over plain
+// HTTP (this file sits in the public web root alongside the app).
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
+
 require_once __DIR__ . '/config.php';
 
 $pdo = new PDO(

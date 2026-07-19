@@ -1087,7 +1087,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.241";
+const APP_VERSION = "beta 5.242";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1517,7 +1517,7 @@ async function sendWhatsApp(to, body) {
   if(!FEATURE_FLAGS.whatsapp_notifications) return false;
   try {
     const r = await fetch(WA_ENDPOINT, {
-      method:"POST", headers:{"Content-Type":"application/json"},
+      method:"POST", headers:{"Content-Type":"application/json",apikey:SB_KEY},
       body: JSON.stringify({to, body}),
     });
     const d = await r.json();
@@ -1530,7 +1530,7 @@ async function sendWhatsApp(to, body) {
 async function sendPushNotification(toEmail, title, body, url) {
   try {
     const r = await fetch(PUSH_ENDPOINT, {
-      method:"POST", headers:{"Content-Type":"application/json"},
+      method:"POST", headers:{"Content-Type":"application/json",apikey:SB_KEY},
       body: JSON.stringify({ to_email: toEmail, title, body, url: url||window.location.origin }),
     });
     return r.ok;
@@ -1596,7 +1596,7 @@ async function publishPost(post, integration) {
   // carousel_cover holds the reel cover image URL (set in AddPostModal/AddTaskModal).
   const coverUrl = (post.post_type==="reel"||post.post_type==="video") ? (post.carousel_cover||"") : "";
   const r = await fetch(PUBLISH_ENDPOINT, {
-    method:"POST", headers:{"Content-Type":"application/json"},
+    method:"POST", headers:{"Content-Type":"application/json",apikey:SB_KEY},
     body: JSON.stringify({
       platform: integration.app_key,
       page_id: creds.page_id||"",
@@ -1617,7 +1617,7 @@ async function publishPost(post, integration) {
     for(let i=0; i<30; i++) {
       await new Promise(res=>setTimeout(res, 4000));
       const sr = await fetch(REEL_STATUS_ENDPOINT, {
-        method:"POST", headers:{"Content-Type":"application/json"},
+        method:"POST", headers:{"Content-Type":"application/json",apikey:SB_KEY},
         body: JSON.stringify({container_id, ig_user_id, access_token: accessToken}),
       });
       const sd = await sr.json();
@@ -8427,7 +8427,7 @@ function ClientLeadsTab({clientLeads=[], clientName, clientId, notifySettings=[]
     setSavingCat(category);
     try {
       await Promise.all(list.map(number=>fetch(WA_ENDPOINT, {
-        method: "POST", headers: {"Content-Type":"application/json"},
+        method: "POST", headers: {"Content-Type":"application/json",apikey:SB_KEY},
         body: JSON.stringify({to: number, body: `Welcome! This number is now set up on SocialFlow to receive ${LEAD_CATEGORY_LABELS[category]} contacts for ${clientName||"this client"} — whenever a new ${LEAD_CATEGORY_LABELS[category].toLowerCase()} contact is captured from the inbox, you'll get their full details here.`}),
       })));
     } catch(e) {} finally { setSavingCat(null); }
@@ -12909,7 +12909,7 @@ function AttendanceImportTab({appSettings, onSaveSettings, isAdmin, onDeclareCom
     try {
       const fd = new FormData();
       fd.append("file", file);
-      const r = await fetch(window.location.origin+"/attendance-import.php", {method:"POST", body:fd});
+      const r = await fetch(window.location.origin+"/attendance-import.php", {method:"POST", headers:{apikey:SB_KEY}, body:fd});
       const d = await r.json();
       setResult(r.ok ? d : {error: d.error||"Upload failed"});
     } catch(err) {
@@ -31563,7 +31563,7 @@ function App() {
       const verb = status==="approved" ? "approved ✅" : "rejected ❌";
       const label = req.type==="vacation" ? "vacation" : "WFH";
       fetch(window.location.origin+"/whatsapp.php", {
-        method:"POST", headers:{"Content-Type":"application/json"},
+        method:"POST", headers:{"Content-Type":"application/json",apikey:SB_KEY},
         body: JSON.stringify({to:requester.whatsapp_number, body:`Your ${label} request for ${req.start_date} has been ${verb} by ${currentUser?.name||"your manager"}.${note?`\nNote: ${note}`:""}`}),
       }).catch(()=>{});
     }
@@ -31622,7 +31622,7 @@ function App() {
       // Sent immediately (not after they accept) so the admin gets instant confirmation
       // the number is real/reachable — if it silently fails, the number was wrong.
       fetch(window.location.origin+"/whatsapp.php", {
-        method:"POST", headers:{"Content-Type":"application/json"},
+        method:"POST", headers:{"Content-Type":"application/json",apikey:SB_KEY},
         body: JSON.stringify({
           to: formData.whatsapp_number,
           body: `Hi ${formData.name||"there"}! 👋 This is Pro, SocialFlow's AI assistant. You've been invited to join as ${ROLES[formData.role]?.label||formData.role} — check your email for the setup link. Once you're in, you can message me here anytime for approvals, task lookups, or questions about your profile. Welcome aboard!`,
@@ -31782,7 +31782,7 @@ function App() {
     try { creds = typeof integration.credentials==="string" ? JSON.parse(integration.credentials) : (integration.credentials||{}); } catch(e) {}
     try {
       const res = await fetch(window.location.origin+"/meta-send-reply.php", {
-        method:"POST", headers:{"Content-Type":"application/json"},
+        method:"POST", headers:{"Content-Type":"application/json",apikey:SB_KEY},
         body: JSON.stringify(inboxSendBody(msg.channel, msg.customer_id, msg.external_id, creds, replyText.trim())),
       });
       const out = await res.json();
@@ -31808,7 +31808,7 @@ function App() {
     try { creds = typeof integration.credentials==="string" ? JSON.parse(integration.credentials) : (integration.credentials||{}); } catch(e) {}
     try {
       const res = await fetch(window.location.origin+"/meta-send-reply.php", {
-        method:"POST", headers:{"Content-Type":"application/json"},
+        method:"POST", headers:{"Content-Type":"application/json",apikey:SB_KEY},
         body: JSON.stringify(inboxSendBody(draftMsg.channel, draftMsg.customer_id, draftMsg.external_id, creds, text)),
       });
       const out = await res.json();

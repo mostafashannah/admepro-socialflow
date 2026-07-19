@@ -17,6 +17,12 @@
  * double-pays.
  */
 
+// CLI-only — this script writes real payroll/financial records and has no
+// authentication of its own, so it must never be reachable over plain HTTP
+// (this file sits in the public web root alongside the app, like every
+// other *-cron.php).
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
+
 require_once __DIR__ . '/config.php';
 
 $pdo = new PDO(

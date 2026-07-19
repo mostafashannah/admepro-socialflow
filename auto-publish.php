@@ -17,6 +17,12 @@
  *   - Can also be run manually for testing: php auto-publish.php
  */
 
+// CLI-only — this script actually publishes to live Facebook/Instagram/
+// LinkedIn pages and has no authentication of its own, so it must never be
+// reachable over plain HTTP (this file sits in the public web root
+// alongside the app).
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
+
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/meta-lib.php';
 require_once __DIR__ . '/linkedin-lib.php';

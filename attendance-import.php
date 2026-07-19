@@ -28,10 +28,24 @@ require_once 'config.php';
 header("Content-Type: application/json");
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type");
+header("Access-Control-Allow-Headers: Content-Type, apikey, Authorization");
 
 if ($_SERVER["REQUEST_METHOD"] === "OPTIONS") { http_response_code(200); exit; }
 if ($_SERVER["REQUEST_METHOD"] !== "POST")    { http_response_code(405); echo json_encode(["error"=>"Method not allowed"]); exit; }
+
+// Same shared-key check as api.php — this endpoint writes directly to
+// attendance_records with no other auth, and previously had none at all
+// (any site could POST a crafted CSV and inject fake attendance data for
+// any team member by name, thanks to Access-Control-Allow-Origin: *).
+$providedKey = $_SERVER['HTTP_APIKEY'] ?? '';
+if (!$providedKey && !empty($_SERVER['HTTP_AUTHORIZATION'])) {
+    $providedKey = preg_replace('/^Bearer\s+/i', '', $_SERVER['HTTP_AUTHORIZATION']);
+}
+if (!hash_equals(API_KEY, (string)$providedKey)) {
+    http_response_code(401);
+    echo json_encode(['error' => 'Invalid or missing API key']);
+    exit;
+}
 
 if (empty($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
     http_response_code(400);

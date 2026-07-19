@@ -7,13 +7,26 @@
 // ================================================================
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type");
+header("Access-Control-Allow-Headers: Content-Type, apikey, Authorization");
 header("Content-Type: application/json");
 
 if($_SERVER['REQUEST_METHOD']==='OPTIONS'){http_response_code(200);exit;}
 if($_SERVER['REQUEST_METHOD']!=='POST'){http_response_code(405);echo json_encode(["error"=>"Method not allowed"]);exit;}
 
 require_once __DIR__ . '/config.php';
+
+// Same shared-key check as api.php — internal-only endpoint (only ever
+// called from the logged-in app), but had no server-side auth of its own.
+$providedKey = $_SERVER['HTTP_APIKEY'] ?? '';
+if (!$providedKey && !empty($_SERVER['HTTP_AUTHORIZATION'])) {
+    $providedKey = preg_replace('/^Bearer\s+/i', '', $_SERVER['HTTP_AUTHORIZATION']);
+}
+if (!hash_equals(API_KEY, (string)$providedKey)) {
+    http_response_code(401);
+    echo json_encode(['error' => 'Invalid or missing API key']);
+    exit;
+}
+
 require_once __DIR__ . '/vendor/autoload.php';
 
 use Minishlink\WebPush\WebPush;

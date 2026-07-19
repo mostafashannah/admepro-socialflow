@@ -34,6 +34,12 @@
  * (5-field cron wildcard syntax — written out here so this docblock comment doesn't break PHP parsing)
  */
 
+// CLI-only — this script downloads attachments, writes real applications to
+// the DB, and sends emails, with no authentication of its own, so it must
+// never be reachable over plain HTTP (this file sits in the public web root
+// alongside the app).
+if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
+
 // A mailbox with several days' worth of messages (each with real CV/
 // portfolio attachments actually being downloaded here, unlike the
 // read-only mailbox viewer) can exceed the shared hosting default of
