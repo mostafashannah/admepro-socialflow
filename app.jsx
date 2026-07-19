@@ -1117,7 +1117,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.298";
+const APP_VERSION = "beta 5.299";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13881,11 +13881,13 @@ function TemplatesPage({templates}) {
 // ════════════════════════════════════════════════════════════════
 // CLIENT PORTAL
 // ════════════════════════════════════════════════════════════════
-function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tasks=[],onAddTask,onUpdateTask,onAddPost,contract,wallpaper,onWallpaperChange,monthlyBriefs=[],onSubmitBrief,onSelfCreateBrief,messages=[],integrations=[],onSendReply,onApproveDraft,onDismissDraft,assets=[],onAddAsset,onUpdateAsset,onDeleteAsset,leads=[]}) {
+function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tasks=[],onAddTask,onUpdateTask,onAddPost,contract,wallpaper,onWallpaperChange,monthlyBriefs=[],onSubmitBrief,onSelfCreateBrief,messages=[],integrations=[],onSendReply,onApproveDraft,onDismissDraft,assets=[],onAddAsset,onUpdateAsset,onDeleteAsset,leads=[],comments=[],onAddComment}) {
   const {isMobile} = useResponsive();
   const [view,setView] = useState("dashboard");
   const [sel,setSel] = useState(null);
   const [reason,setReason] = useState("");
+  const [selComment,setSelComment] = useState("");
+  const [selSending,setSelSending] = useState(false);
   const [showNewRequest,setShowNewRequest] = useState(false);
   const [taskView,setTaskView] = useState("kanban");
   const [hideEmptyStages,setHideEmptyStages] = useState(true);
@@ -14056,9 +14058,43 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                 <p style={{fontSize:13,lineHeight:1.7}}>{sel.caption}</p>
                 {sel.hashtags&&<p style={{fontSize:12,color:"var(--accent)",marginTop:8}}>{sel.hashtags}</p>}
               </div>}
-              {sel.scheduled_date&&<div style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:"var(--text2)"}}>
-                <Ico d={Icons.calendar} size={15}/> {fmtDate(sel.scheduled_date)} {sel.scheduled_time&&`at ${sel.scheduled_time}`}
-              </div>}
+              {(()=>{
+                const mUrls = Array.isArray(sel.design_urls)?sel.design_urls:parseJ(sel.design_urls||"[]");
+                const mAssets = Array.isArray(sel.design_assets)?sel.design_assets:parseJ(sel.design_assets||"[]");
+                const media = mUrls.map(u=>({url:u})).concat(mAssets.filter(a=>a.url));
+                if(!media.length) return null;
+                return (
+                  <div>
+                    <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:8,textTransform:"uppercase",letterSpacing:"0.05em"}}>Media</p>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(90px,1fr))",gap:8}}>
+                      {media.map((m,i)=>{
+                        const isVideo = (m.type||"").startsWith("video") || (m.url||"").match(/\.(mp4|mov|webm|m4v)/i);
+                        return (
+                          <a key={i} href={m.url} target="_blank" rel="noreferrer" style={{display:"block",borderRadius:8,overflow:"hidden",border:"1px solid var(--border)",aspectRatio:"1",background:"var(--surface2)"}}>
+                            {isVideo
+                              ? <video src={m.url+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                              : <img src={m.url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
+                          </a>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                {sel.due_date&&<div>
+                  <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Due</p>
+                  <div style={{display:"flex",alignItems:"center",gap:6,fontSize:13,color:"var(--text2)"}}>
+                    <Ico d={Icons.calendar} size={14}/> {fmtDate(sel.due_date)} {sel.due_time&&`at ${sel.due_time}`}
+                  </div>
+                </div>}
+                {sel.scheduled_date&&<div>
+                  <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:4,textTransform:"uppercase",letterSpacing:"0.05em"}}>Publish</p>
+                  <div style={{display:"flex",alignItems:"center",gap:6,fontSize:13,color:"var(--text2)"}}>
+                    <Ico d={Icons.calendar} size={14}/> {fmtDate(sel.scheduled_date)} {sel.scheduled_time&&`at ${sel.scheduled_time}`}
+                  </div>
+                </div>}
+              </div>
               {sel.stage==="client_approval"&&(
                 <div style={{display:"flex",flexDirection:"column",gap:10,paddingTop:8,borderTop:"1px solid var(--border)"}}>
                   <p style={{fontSize:13,fontWeight:700}}>Your Feedback</p>
@@ -14073,6 +14109,41 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                   </div>
                 </div>
               )}
+
+              {/* Comments — the same client-facing thread the agency team sees
+                  under the "Client" tab on their side; the client can read
+                  and reply here. */}
+              {(()=>{
+                const selComments = (comments||[]).filter(c=>c.post_id===sel.id&&c.audience==="client");
+                return (
+                  <div style={{display:"flex",flexDirection:"column",gap:10,paddingTop:8,borderTop:"1px solid var(--border)"}}>
+                    <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Comments · {selComments.length}</p>
+                    <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:220,overflowY:"auto"}}>
+                      {selComments.map((c,i)=>(
+                        <div key={i} style={{display:"flex",gap:10}}>
+                          <Avatar name={c.author_name||"S"} size={26}/>
+                          <div style={{flex:1,background:"var(--surface2)",borderRadius:"var(--rs)",padding:"8px 11px",border:"1px solid var(--border)"}}>
+                            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                              <span style={{fontSize:12,fontWeight:600}}>{c.author_name||"Agency"}</span>
+                              <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date)}</span>
+                            </div>
+                            <p style={{fontSize:13,lineHeight:1.5}}>{c.content}</p>
+                          </div>
+                        </div>
+                      ))}
+                      {selComments.length===0&&<p style={{fontSize:12,color:"var(--text3)",textAlign:"center",padding:10}}>No comments yet</p>}
+                    </div>
+                    <div style={{display:"flex",gap:8}}>
+                      <input value={selComment} onChange={e=>setSelComment(e.target.value)} placeholder="Write a comment…" style={{...inputSt,flex:1}}
+                        onKeyDown={async e=>{ if(e.key==="Enter"&&selComment.trim()&&!selSending){ setSelSending(true); await onAddComment(sel.id, selComment.trim(), {name:client.username||client.name, email:client.email}, null, "client"); setSelComment(""); setSelSending(false); } }}/>
+                      <button disabled={selSending||!selComment.trim()} onClick={async()=>{ setSelSending(true); await onAddComment(sel.id, selComment.trim(), {name:client.username||client.name, email:client.email}, null, "client"); setSelComment(""); setSelSending(false); }}
+                        style={{width:38,height:38,borderRadius:8,border:"none",background:"var(--accent)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",cursor:selSending||!selComment.trim()?"default":"pointer",opacity:selSending||!selComment.trim()?0.6:1,flexShrink:0}}>
+                        {selSending?<Spinner size={14}/>:<Ico d={Icons.send} size={15} stroke="#fff"/>}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
@@ -33831,7 +33902,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         </div>
       )}
       <div style={impersonatorUser?{marginTop:48}:{}}>
-        <ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} onAddPost={addPost} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]}/>
+        <ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} onAddPost={addPost} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]} comments={data.comments||[]} onAddComment={handleAddComment}/>
       </div>
     </>);
   }
