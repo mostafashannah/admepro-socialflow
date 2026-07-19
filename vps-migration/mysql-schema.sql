@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS posts (
   music_direction TEXT, tov_used TEXT, content_language TEXT,
   design_assets JSON DEFAULT ('[]'), brief TEXT, notes TEXT,
   published_at TIMESTAMP NULL, external_post_id TEXT, publish_error TEXT,
-  publish_attempts DECIMAL(4,0) DEFAULT 0, estimated_minutes DECIMAL(6,0)
+  publish_attempts DECIMAL(4,0) DEFAULT 0, estimated_minutes DECIMAL(6,0),
+  content_assigned_to TEXT
 ) ENGINE=InnoDB;
 
 -- ----------------------------------------------------------------

@@ -526,7 +526,7 @@ function sbTable(entityName) {
 // Known columns per table — used to strip unknown fields before POST/PATCH
 const SB_SCHEMA = {
   projects: ["title","description","client_id","client_name","status","start_date","end_date","platforms","team_members","project_type","posting_start","posting_end"],
-  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","estimated_minutes"],
+  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","estimated_minutes","content_assigned_to"],
   // address/website/contact_person were never real columns on the clients
   // table (mysql-schema.sql only has name/email/phone/logo_url/industry/
   // status/account_manager_id/notes/platforms/portal_password/username) —
@@ -1111,7 +1111,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.272";
+const APP_VERSION = "beta 5.273";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3922,6 +3922,49 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
     onClose();
   };
 
+  // ── Move-to assign+schedule modal (Content/Design entry points) ──
+  // Moving a task into Content or Design should capture *who* picks it up and
+  // *when* they'll work it, instead of silently auto-assigning by role — the
+  // chosen slot also drives that member's timeline via estimated_minutes.
+  const [assignStage, setAssignStage] = useState(null); // "content_creation" | "design" | null
+  const [assignForm, setAssignForm] = useState({assigned_to:"", mode:"due", scheduled_date:"", scheduled_time:"", start_time:"", end_time:""});
+  const openAssignModal = (stageKey) => {
+    setAssignForm({
+      assigned_to: (stageKey==="content_creation" ? (post.content_assigned_to||post.assigned_to) : post.assigned_to) || "",
+      mode:"due",
+      scheduled_date: post.scheduled_date || "",
+      scheduled_time: post.scheduled_time || "",
+      start_time: post.scheduled_time || "",
+      end_time: "",
+    });
+    setAssignStage(stageKey);
+  };
+  const confirmAssignModal = () => {
+    if(!assignForm.assigned_to || !assignForm.scheduled_date) return;
+    let estimated_minutes, scheduled_time;
+    if(assignForm.mode==="range" && assignForm.start_time && assignForm.end_time) {
+      const [sh,sm] = assignForm.start_time.split(":").map(Number);
+      const [eh,em] = assignForm.end_time.split(":").map(Number);
+      const mins = (eh*60+em) - (sh*60+sm);
+      if(mins<=0) return;
+      estimated_minutes = mins;
+      scheduled_time = assignForm.start_time;
+    } else {
+      if(!assignForm.scheduled_time) return;
+      scheduled_time = assignForm.scheduled_time;
+      estimated_minutes = post.estimated_minutes || estimateDuration(post);
+    }
+    onStageChange(post, assignStage, {
+      assigned_to: assignForm.assigned_to,
+      scheduled_date: assignForm.scheduled_date,
+      scheduled_time, estimated_minutes,
+    });
+    setAssignStage(null);
+  };
+  const giveEdits = () => {
+    onStageChange(post, "content_creation", {assigned_to: post.content_assigned_to || post.assigned_to});
+  };
+
   const clientId = post.client_id || project?.client_id;
   // A client-specific integration must win over a global (no client_id) one for
   // the same app_key — otherwise .find() can match a different client's
@@ -3966,6 +4009,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
   };
 
   return (
+    <>
     <Modal open onClose={onClose} title={<Badge label={stage.label} color={stage.color}/>} width={1280} headerActions={isManager&&(
       <>
         <button onClick={openEdit} title="Edit task" style={{display:"flex",alignItems:"center",gap:5,padding:"5px 11px",borderRadius:7,fontSize:12,fontWeight:600,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text2)",transition:"all 0.12s"}}
@@ -4272,14 +4316,30 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
         {/* Stage Actions */}
         {next&&post.stage!=="published"&&post.stage!=="rejected"&&(
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {!post.assigned_to&&["content_creation","design","internal_review","client_approval"].includes(next.key)&&(
+          {!post.assigned_to&&!["content_creation","design"].includes(next.key)&&["internal_review","client_approval"].includes(next.key)&&(
             <div style={{padding:"8px 12px",background:"#f59e0b22",border:"1px solid #f59e0b55",borderRadius:"var(--rs)",display:"flex",alignItems:"center",gap:8}}>
               <span style={{fontSize:13}}></span>
               <span style={{fontSize:12,color:"#f59e0b",fontWeight:600}}>Assign a team member first before moving to {next.label}</span>
             </div>
           )}
+          {/* Review stage: manager decides forward (Design, with a fresh assignee+slot) or back (Give Edits, same content member) */}
+          {post.stage==="internal_review"&&isManager&&(
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>openAssignModal("design")} style={{
+                flex:1,padding:"10px 16px",borderRadius:"var(--rs)",
+                background:STAGE_MAP.design.color+"22",border:`1px solid ${STAGE_MAP.design.color}55`,
+                color:STAGE_MAP.design.color,fontSize:13,fontWeight:700,
+                display:"flex",alignItems:"center",justifyContent:"center",gap:8,
+              }}>Move to Design <Ico d={Icons.arrow} size={14} stroke={STAGE_MAP.design.color}/></button>
+              <button onClick={giveEdits} style={{
+                flex:1,padding:"10px 16px",borderRadius:"var(--rs)",
+                background:"#f59e0b22",border:"1px solid #f59e0b55",
+                color:"#f59e0b",fontSize:13,fontWeight:700,
+              }}>Give Edits</button>
+            </div>
+          )}
           <div style={{display:"flex",gap:8}}>
-            <button onClick={()=>onStageChange(post,next.key)} style={{
+            <button onClick={()=>["content_creation","design"].includes(next.key) ? openAssignModal(next.key) : onStageChange(post,next.key)} style={{
               flex:1,padding:"10px 16px",borderRadius:"var(--rs)",
               background:next.color+"22",border:`1px solid ${next.color}55`,
               color:next.color,fontSize:13,fontWeight:700,
@@ -4383,6 +4443,52 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
         </div>
       </div>
     </Modal>
+    {assignStage&&(
+      <Modal open onClose={()=>setAssignStage(null)} title={`Move to ${STAGE_MAP[assignStage].label}`} width={440}
+        footer={<Btn onClick={confirmAssignModal} disabled={!assignForm.assigned_to||!assignForm.scheduled_date||(assignForm.mode==="due"?!assignForm.scheduled_time:!(assignForm.start_time&&assignForm.end_time))}>Confirm</Btn>}>
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <div>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:6}}>Assign To</label>
+            <select value={assignForm.assigned_to} onChange={e=>setAssignForm(f=>({...f,assigned_to:e.target.value}))}
+              style={{width:"100%",padding:"9px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontSize:13}}>
+              <option value="">Select team member…</option>
+              {(team||[]).map(m=><option key={m.email} value={m.email}>{m.name}</option>)}
+            </select>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setAssignForm(f=>({...f,mode:"due"}))} style={{flex:1,padding:"8px",borderRadius:8,fontSize:12,fontWeight:700,border:`1px solid ${assignForm.mode==="due"?"var(--accent)":"var(--border2)"}`,background:assignForm.mode==="due"?"var(--accent)22":"var(--surface2)",color:assignForm.mode==="due"?"var(--accent)":"var(--text2)"}}>Due date/time</button>
+            <button onClick={()=>setAssignForm(f=>({...f,mode:"range"}))} style={{flex:1,padding:"8px",borderRadius:8,fontSize:12,fontWeight:700,border:`1px solid ${assignForm.mode==="range"?"var(--accent)":"var(--border2)"}`,background:assignForm.mode==="range"?"var(--accent)22":"var(--surface2)",color:assignForm.mode==="range"?"var(--accent)":"var(--text2)"}}>Start & end time</button>
+          </div>
+          <div>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:6}}>Date</label>
+            <input type="date" value={assignForm.scheduled_date} onChange={e=>setAssignForm(f=>({...f,scheduled_date:e.target.value}))}
+              style={{width:"100%",padding:"9px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontSize:13}}/>
+          </div>
+          {assignForm.mode==="due"?(
+            <div>
+              <label style={{fontSize:12,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:6}}>Time</label>
+              <input type="time" value={assignForm.scheduled_time} onChange={e=>setAssignForm(f=>({...f,scheduled_time:e.target.value}))}
+                style={{width:"100%",padding:"9px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontSize:13}}/>
+              <p style={{fontSize:11,color:"var(--text3)",marginTop:6}}>Duration will be auto-estimated from task type/priority ({estimateDuration(post)} min) and added to their timeline.</p>
+            </div>
+          ):(
+            <div style={{display:"flex",gap:10}}>
+              <div style={{flex:1}}>
+                <label style={{fontSize:12,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:6}}>Start</label>
+                <input type="time" value={assignForm.start_time} onChange={e=>setAssignForm(f=>({...f,start_time:e.target.value}))}
+                  style={{width:"100%",padding:"9px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontSize:13}}/>
+              </div>
+              <div style={{flex:1}}>
+                <label style={{fontSize:12,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:6}}>End</label>
+                <input type="time" value={assignForm.end_time} onChange={e=>setAssignForm(f=>({...f,end_time:e.target.value}))}
+                  style={{width:"100%",padding:"9px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontSize:13}}/>
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
+    )}
+    </>
   );
 }
 
@@ -33249,19 +33355,26 @@ Return ONLY valid JSON (no markdown, no explanation):
     setToast(` ${tasks.length} posts created for ${planForm.campaign}`);
   };
 
-  const handleStageChange = async (post,newStage) => {
-    // Block transition if no assignee for stages that require one
-    if(["content_creation","design","internal_review","client_approval"].includes(newStage) && !post.assigned_to) {
+  const handleStageChange = async (post,newStage,overrides={}) => {
+    // Block transition if no assignee for stages that require one, unless the
+    // caller (the assign+schedule modal) is supplying one right now via overrides.
+    if(["content_creation","design","internal_review","client_approval"].includes(newStage) && !post.assigned_to && !overrides.assigned_to) {
       const stageLabel = STAGE_MAP[newStage]?.label || newStage;
       setToast(` Assign a team member before moving to ${stageLabel}. Open the post and set 'Assign To'.`);
       return;
     }
-    // Auto-assign to the right team member for this stage
-    const assignee = getAssigneeForStage(newStage, data.team);
+    // A manually-picked assignee/schedule (from the Move-to modal) always wins over
+    // the role-based auto-assign guess below.
+    const assignee = overrides.assigned_to ? data.team.find(m=>m.email===overrides.assigned_to) : getAssigneeForStage(newStage, data.team);
     const assigneeName = assignee?.name || "Unassigned";
-    const assigneeEmail = assignee?.email || "";
+    const assigneeEmail = overrides.assigned_to || assignee?.email || "";
 
-    const updatedPost = {...post, stage:newStage, assigned_to:assigneeEmail||post.assigned_to};
+    const updatedPost = {...post, stage:newStage, assigned_to:assigneeEmail||post.assigned_to,
+      scheduled_date: overrides.scheduled_date || post.scheduled_date,
+      scheduled_time: overrides.scheduled_time || post.scheduled_time,
+      estimated_minutes: overrides.estimated_minutes || post.estimated_minutes,
+      content_assigned_to: newStage==="content_creation" ? (assigneeEmail||post.assigned_to) : post.content_assigned_to,
+    };
     setData(d=>({...d,posts:d.posts.map(p=>p.id===post.id?updatedPost:p)}));
 
     const stageLabel = STAGE_MAP[newStage]?.label || newStage;
@@ -33355,7 +33468,9 @@ Return ONLY valid JSON (no markdown, no explanation):
     }
 
     try {
-      await ue("Post", post.id, {stage:newStage, assigned_to:assigneeEmail||post.assigned_to});
+      await ue("Post", post.id, {stage:newStage, assigned_to:updatedPost.assigned_to,
+        scheduled_date:updatedPost.scheduled_date, scheduled_time:updatedPost.scheduled_time,
+        estimated_minutes:updatedPost.estimated_minutes, content_assigned_to:updatedPost.content_assigned_to});
       await ce("Comment",[{post_id:post.id,author_name:comment.author_name,type:"stage_change",content:comment.content}]);
     } catch(e){ logActivity("Post Stage Change Failed","tasks",`"${post.title}" → ${stageLabel}`,"error",String(e),currentUser?.email||"admin"); }
   };
