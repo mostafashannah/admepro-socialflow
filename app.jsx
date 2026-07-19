@@ -322,8 +322,8 @@ const POST_TYPE_DURATIONS = {
   social_post: 60, story_reel: 120, caption_copy: 45, graphic_design: 180,
   campaign: 240, ad_creative: 120, blog: 240,
 };
-const WORKING_START = 9; // 9am
-const WORKING_END = 18; // 6pm
+const WORKING_START = 10; // 10am
+const WORKING_END = 19; // 7pm
 const WORKING_MINS = (WORKING_END - WORKING_START) * 60; // 540 mins
 
 // ── Smart Schedule Engine ──────────────────────────────────────
@@ -1111,7 +1111,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.262";
+const APP_VERSION = "beta 5.263";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
