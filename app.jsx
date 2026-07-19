@@ -1064,7 +1064,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.227";
+const APP_VERSION = "beta 5.228";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -32563,7 +32563,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     return (<>
       <GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/>
       {impersonatorUser&&(
-        <div style={{position:"fixed",top:0,left:0,right:0,zIndex:9999,background:"#111827",color:"#fff",padding:"8px 16px",display:"flex",alignItems:"center",justifyContent:"center",gap:12,fontSize:13,fontWeight:600}}>
+        <div style={{position:"fixed",top:0,left:0,right:0,zIndex:500,background:"#111827",color:"#fff",padding:"8px 16px",display:"flex",alignItems:"center",justifyContent:"center",gap:12,fontSize:13,fontWeight:600}}>
           <span>Viewing as <strong>{clientRecord?.name}</strong> (Client Portal)</span>
           <button onClick={stopImpersonating} style={{background:"#fff",color:"#111827",border:"none",borderRadius:6,padding:"4px 12px",fontWeight:700,fontSize:12,cursor:"pointer"}}>Return to my account</button>
         </div>
@@ -32660,7 +32660,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   return (
     <><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/>
     {impersonatorUser&&(
-      <div style={{position:"fixed",top:0,left:0,right:0,zIndex:9999,background:"#111827",color:"#fff",padding:"8px 16px",display:"flex",alignItems:"center",justifyContent:"center",gap:12,fontSize:13,fontWeight:600}}>
+      <div style={{position:"fixed",top:0,left:0,right:0,zIndex:500,background:"#111827",color:"#fff",padding:"8px 16px",display:"flex",alignItems:"center",justifyContent:"center",gap:12,fontSize:13,fontWeight:600}}>
         <span>Viewing as <strong>{currentUser?.name}</strong> ({ROLES[currentUser?.role]?.label||currentUser?.role})</span>
         <button onClick={stopImpersonating} style={{background:"#fff",color:"#111827",border:"none",borderRadius:6,padding:"4px 12px",fontWeight:700,fontSize:12,cursor:"pointer"}}>Return to my account</button>
       </div>
