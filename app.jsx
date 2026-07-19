@@ -1111,7 +1111,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.263";
+const APP_VERSION = "beta 5.264";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23765,7 +23765,7 @@ function MyCalendarPage({posts,currentUser,team,onDayClick}) {
       </div>
 
       {/* Calendar Container */}
-      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"2fr 1fr",gap:20}}>
+      <div style={{display:"flex",flexDirection:"column",gap:20}}>
         {/* Calendar */}
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,overflow:"hidden"}}>
           {/* Month Navigation */}
@@ -23832,7 +23832,7 @@ function MyCalendarPage({posts,currentUser,team,onDayClick}) {
           {myPosts.length === 0 ? (
             <p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:20}}>No scheduled posts</p>
           ) : (
-            <div style={{display:"flex",flexDirection:"column",gap:10,maxHeight:500,overflowY:"auto"}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:10,maxHeight:500,overflowY:"auto"}}>
               {myPosts.sort((a,b)=>new Date(a.scheduled_date)-new Date(b.scheduled_date)).map(post=>(
                 <div key={post.id} style={{padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:`1px solid ${STAGE_MAP[post.stage]?.color}44`,display:"flex",flexDirection:"column",gap:6}}>
                   <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
