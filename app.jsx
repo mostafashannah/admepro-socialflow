@@ -1117,7 +1117,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.294";
+const APP_VERSION = "beta 5.295";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -33722,12 +33722,12 @@ Return ONLY valid JSON (no markdown, no explanation):
     return (<>
       <GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/>
       {impersonatorUser&&(
-        <div style={{position:"fixed",top:0,left:0,right:0,zIndex:500,background:"#111827",color:"#fff",padding:"8px 16px",display:"flex",alignItems:"center",justifyContent:"center",gap:12,fontSize:13,fontWeight:600}}>
+        <div style={{position:"fixed",top:0,left:0,right:0,zIndex:99999,background:"#111827",color:"#fff",padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"center",gap:12,fontSize:13,fontWeight:600,minHeight:44,boxSizing:"border-box"}}>
           <span>Viewing as <strong>{clientRecord?.name}</strong> (Client Portal)</span>
-          <button onClick={stopImpersonating} style={{background:"#fff",color:"#111827",border:"none",borderRadius:6,padding:"4px 12px",fontWeight:700,fontSize:12,cursor:"pointer"}}>Return to my account</button>
+          <button onClick={stopImpersonating} style={{background:"#fff",color:"#111827",border:"none",borderRadius:6,padding:"6px 14px",fontWeight:700,fontSize:12,cursor:"pointer",minHeight:32}}>Return to my account</button>
         </div>
       )}
-      <div style={impersonatorUser?{marginTop:36}:{}}>
+      <div style={impersonatorUser?{marginTop:48}:{}}>
         <ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} onAddPost={addPost} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]}/>
       </div>
     </>);
@@ -33819,12 +33819,12 @@ Return ONLY valid JSON (no markdown, no explanation):
   return (
     <><GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/>
     {impersonatorUser&&(
-      <div style={{position:"fixed",top:0,left:0,right:0,zIndex:500,background:"#111827",color:"#fff",padding:"8px 16px",display:"flex",alignItems:"center",justifyContent:"center",gap:12,fontSize:13,fontWeight:600}}>
+      <div style={{position:"fixed",top:0,left:0,right:0,zIndex:99999,background:"#111827",color:"#fff",padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"center",gap:12,fontSize:13,fontWeight:600,minHeight:44,boxSizing:"border-box"}}>
         <span>Viewing as <strong>{currentUser?.name}</strong> ({ROLES[currentUser?.role]?.label||currentUser?.role})</span>
-        <button onClick={stopImpersonating} style={{background:"#fff",color:"#111827",border:"none",borderRadius:6,padding:"4px 12px",fontWeight:700,fontSize:12,cursor:"pointer"}}>Return to my account</button>
+        <button onClick={stopImpersonating} style={{background:"#fff",color:"#111827",border:"none",borderRadius:6,padding:"6px 14px",fontWeight:700,fontSize:12,cursor:"pointer",minHeight:32}}>Return to my account</button>
       </div>
     )}
-    <div className="app-shell" style={{display:"flex",position:"relative",overflow:"hidden",...(impersonatorUser?{marginTop:36,height:"calc(var(--app-height, 100dvh) - 36px)"}:{})}}>
+    <div className="app-shell" style={{display:"flex",position:"relative",overflow:"hidden",...(impersonatorUser?{marginTop:48,height:"calc(var(--app-height, 100dvh) - 48px)"}:{})}}>
 
       {/* Sidebar — hidden on mobile (uses drawer instead) */}
       {!isMobile&&(
