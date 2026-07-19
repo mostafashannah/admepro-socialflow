@@ -1108,7 +1108,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.252";
+const APP_VERSION = "beta 5.253";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1983,8 +1983,23 @@ const clr = (name,arr=["#d90b2c","#3b82f6","#8b5cf6","#10b981","#f59e0b","#ec489
 // (category is reused as a "/"-joined folder path — no schema change needed).
 // Client filtering lives as a separate dropdown on the Assets page instead
 // of restructuring the folder tree itself.
-const monthProjectFolder = (projectName, clientName, date=new Date()) =>
-  `${date.toLocaleDateString("en-US",{month:"long",year:"numeric"})}/${projectName||"Unsorted"}`;
+const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const monthProjectFolder = (projectName, clientName, date=new Date()) => {
+  // Prefer whatever month is actually named in the project's title (e.g.
+  // "August Calendar") over the fallback date, which is normally "now" at
+  // upload time or the project's created_at — a calendar built ahead of
+  // time (an "August Calendar" project created in July) was otherwise filed
+  // under a "July 2026" folder, nesting it under the wrong month entirely.
+  const nameLower = (projectName||"").toLowerCase();
+  const foundMonth = MONTH_NAMES.find(m=>nameLower.includes(m.toLowerCase()));
+  let folderDate = date;
+  if(foundMonth){
+    const yearMatch = (projectName||"").match(/20\d{2}/);
+    const year = yearMatch ? parseInt(yearMatch[0]) : date.getFullYear();
+    folderDate = new Date(year, MONTH_NAMES.indexOf(foundMonth), 1);
+  }
+  return `${folderDate.toLocaleDateString("en-US",{month:"long",year:"numeric"})}/${projectName||"Unsorted"}`;
+};
 
 // clients.account_manager_id started as a single plain-string team-member id;
 // now stores a JSON-encoded array so a client can have more than one account
