@@ -1111,7 +1111,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.264";
+const APP_VERSION = "beta 5.265";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23856,10 +23856,14 @@ function MyCalendarPage({posts,currentUser,team,onDayClick}) {
 // ════════════════════════════════════════════════════════════════
 // MY TIMELINE PAGE - Daily schedule view 9am-6pm
 // ════════════════════════════════════════════════════════════════
-function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onStartTimer, onPauseTimer, onResumeTimer, schedules, scheduleOverrides, onOverrideSchedule, initialJump, onJumpConsumed}) {
+function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onStartTimer, onPauseTimer, onResumeTimer, schedules, scheduleOverrides, onOverrideSchedule, initialJump, onJumpConsumed, onBackToCalendar}) {
   const {isMobile} = useResponsive();
   const [viewDate, setViewDate] = useState(()=>initialJump?.date ? new Date(initialJump.date+"T00:00:00") : new Date());
   const [tick, setTick] = useState(0);
+  // Whether this page was opened by clicking a day on My Calendar — captured
+  // once on mount (not re-derived from initialJump, which gets cleared right
+  // after mount) so the Back button sticks around for the whole visit here.
+  const [cameFromCalendar] = useState(()=>!!initialJump);
   const isAM = currentUser?.role==="account_manager" || currentUser?.role==="admin";
   const [viewUser, setViewUser] = useState(()=>initialJump?.viewUser||null); // null = self
   const [combinedView, setCombinedView] = useState(()=>!!initialJump?.combined);
@@ -23933,6 +23937,11 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
       {/* Header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
         <div>
+          {cameFromCalendar&&onBackToCalendar&&(
+            <button onClick={onBackToCalendar} style={{display:"flex",alignItems:"center",gap:5,padding:0,marginBottom:6,background:"none",border:"none",color:"var(--text3)",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+              <Ico d={Icons.chevL} size={13}/> Back to Calendar
+            </button>
+          )}
           <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?22:28,fontWeight:800,marginBottom:4}}>
             {combinedView ? "Combined Timeline" : isAM && viewUser ? `${viewUser.name.split(" ")[0]}'s Schedule` : "My Daily Schedule"}
           </h1>
@@ -24026,9 +24035,9 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
         </div>
       )}
 
-      {/* Main layout: timeline + sidebar */}
+      {/* Main layout: timeline on top, Active Timers + Today's Tasks below it */}
       {!combinedView && (
-      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 280px",gap:16,alignItems:"start"}}>
+      <div style={{display:"flex",flexDirection:"column",gap:16}}>
         {/* Timeline grid */}
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
           <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",background:"var(--surface2)"}}>
@@ -24092,8 +24101,8 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
           })}
         </div>
 
-        {/* Right sidebar: active timers */}
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        {/* Active Timers + Today's Tasks — below the timeline, side by side on wide screens */}
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:16,alignItems:"start"}}>
           <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
             <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",background:"var(--surface2)"}}>
               <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Active Timers</p>
@@ -34040,7 +34049,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             onDayClick={(jump)=>{ setTimelineJump(jump); setPage("my_timeline"); }}
           />
         )}
-        {page==="my_timeline"&&<MyTimelinePage posts={data.posts} team={data.team} currentUser={currentUser} timeEntries={data.timeEntries||[]} onPostClick={setSelectedPost} onStartTimer={startTimer} onPauseTimer={pauseTimer} onResumeTimer={resumeTimer} schedules={data.schedules||[]} scheduleOverrides={data.scheduleOverrides||[]} onOverrideSchedule={overrideSchedule} initialJump={timelineJump} onJumpConsumed={()=>setTimelineJump(null)}/>}
+        {page==="my_timeline"&&<MyTimelinePage posts={data.posts} team={data.team} currentUser={currentUser} timeEntries={data.timeEntries||[]} onPostClick={setSelectedPost} onStartTimer={startTimer} onPauseTimer={pauseTimer} onResumeTimer={resumeTimer} schedules={data.schedules||[]} scheduleOverrides={data.scheduleOverrides||[]} onOverrideSchedule={overrideSchedule} initialJump={timelineJump} onJumpConsumed={()=>setTimelineJump(null)} onBackToCalendar={()=>setPage("my_calendar")}/>}
         {(page==="my_performance"||page==="reports")&&<MyPerformancePage currentUser={currentUser} posts={data.posts} timeEntries={data.timeEntries||[]} perfLogs={data.perfLogs||[]} aiInsights={data.aiInsights||[]}/>}
         {page==="account"&&(
           <AccountPage
