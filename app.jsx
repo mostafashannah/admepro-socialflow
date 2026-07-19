@@ -1111,7 +1111,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.277";
+const APP_VERSION = "beta 5.278";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3041,7 +3041,7 @@ function KanbanView({posts,project,team,onPostClick}) {
           {visibleStages.map(stage=>{
             const sp = posts.filter(p=>p.stage===stage.key);
             return (
-              <div key={stage.key} style={{flex:"1 0 260px",minWidth:260,maxWidth:400,display:"flex",flexDirection:"column",gap:8}}>
+              <div key={stage.key} style={{flex:"1 0 260px",minWidth:260,maxWidth:300,display:"flex",flexDirection:"column",gap:8}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 2px"}}>
                   <div style={{display:"flex",alignItems:"center",gap:7}}>
                     <div style={{width:8,height:8,borderRadius:"50%",background:stage.color}}/>
