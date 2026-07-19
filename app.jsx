@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.302";
+const APP_VERSION = "beta 5.303";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -27378,11 +27378,63 @@ ${isFocused && recentPosts?`RECENT POSTS:\n${recentPosts}`:""}`.trim();
 
   const teamList = allTeam.slice(0,20).map(m=>`- ${m.name} <${m.email}> [${m.role}]`).join("\n");
   const projList = activeProj.slice(0,20).map(p=>`- ${p.title||p.name} (id:${p.id}, client:${p.client_name})`).join("\n");
-  // Leads are the agency's own CRM pipeline, not per-client brand data — they
-  // should never disappear just because the chat happens to be locked onto a
-  // particular client for content-creation purposes, so always show all of them.
-  const leadsToShow = allLeads;
+
+  // ── Permission-gated data blocks — each area only enters Pro's context if
+  // this user's role can actually see that part of the app, so Pro's answers
+  // automatically respect the same permission model as the UI.
+  const rolePerms = buildRolePermsMap(data?.rolePermissions);
+  const can = (key) => hasPerm(user, rolePerms, key);
+
+  // CRM leads — crm.leads (admin, account managers by default)
+  const canCrm = can("crm.leads");
+  const leadsToShow = canCrm ? allLeads : [];
   const leadList = leadsToShow.slice(0,40).map(l=>`- ${l.name||"(no name)"} | phone:${l.phone||"-"} | status:${l.status||"new"} | source:${l.source||"-"}${l.client_name?` | client:${l.client_name}`:""}`).join("\n");
+
+  // Finance — invoices/expenses/subscriptions need finance.full; quotes need finance.quotes
+  const canFinanceFull = can("finance.full");
+  const canQuotes = can("finance.quotes") || canFinanceFull;
+  let financeBlock = "";
+  if(canFinanceFull) {
+    const invoices = (data?.invoices||[]);
+    const expenses = (data?.expenses||[]);
+    const subs = (data?.subscriptions||[]);
+    const unpaidInv = invoices.filter(i=>!["paid"].includes(i.status));
+    const thisMonth = new Date().toISOString().slice(0,7);
+    const mExp = expenses.filter(e=>(e.date||"").startsWith(thisMonth));
+    const sumBy = (arr,f)=>arr.reduce((s,x)=>s+(Number(x[f])||0),0);
+    financeBlock = `═══ FINANCE (you have full finance access) ═══
+Invoices: ${invoices.length} total | Unpaid/overdue: ${unpaidInv.length} (${unpaidInv.slice(0,10).map(i=>`${i.invoice_number||i.id}: ${i.client_name} ${i.currency||""} ${i.total||i.amount||0} [${i.status}] due ${i.due_date||"?"}`).join(" ; ")||"none"})
+Active subscriptions: ${subs.filter(s=>s.status==="active").length} (${subs.filter(s=>s.status==="active").slice(0,10).map(s=>`${s.client_name||s.subscription_name}: ${s.currency||""} ${s.amount||0}/${s.billing_cycle||"mo"}`).join(" ; ")||"none"})
+Expenses this month (${thisMonth}): ${mExp.length} records, total ${sumBy(mExp,"amount")} (mixed currencies possible)
+Recent expenses: ${expenses.slice(0,15).map(e=>`- ${e.date||"?"} | ${e.description||e.category||"?"} | ${e.currency||""} ${e.amount||0} | ${e.category||"-"}${e.client_name?` | ${e.client_name}`:""}`).join("\n")||"none"}`;
+  }
+  if(canQuotes) {
+    const quotes = (data?.quotes||[]);
+    financeBlock += `\nQuotes: ${quotes.length} total | ${quotes.slice(0,10).map(q=>`${q.quote_number||q.id}: ${q.client_name} ${q.currency||""} ${q.total||0} [${q.status}]`).join(" ; ")||"none"}`;
+  }
+
+  // Recruitment — hr.manage_recruitment (admin, HR by default)
+  let recruitBlock = "";
+  if(can("hr.manage_recruitment")) {
+    const openings = (data?.jobOpenings||[]);
+    const apps = (data?.jobApplications||[]);
+    recruitBlock = `═══ RECRUITMENT (you can see hiring data) ═══
+Open positions: ${openings.filter(o=>o.status==="open").length} (${openings.filter(o=>o.status==="open").map(o=>o.title).join(", ")||"none"})
+Applications: ${apps.length} total | New: ${apps.filter(a=>a.status==="new").length} | Shortlisted: ${apps.filter(a=>a.status==="shortlisted").length} | Interview: ${apps.filter(a=>a.status==="interview").length} | Hired: ${apps.filter(a=>a.status==="hired").length}
+Top candidates by AI score: ${apps.filter(a=>a.ai_score!=null).sort((a,b)=>(b.ai_score||0)-(a.ai_score||0)).slice(0,8).map(a=>`${a.candidate_name} (${a.ai_score}/100, ${a.job_title||"?"}, status:${a.status})${a.ai_summary?` — ${(a.ai_summary||"").slice(0,120)}`:""}`).join(" ; ")||"none scored yet"}`;
+  }
+
+  // HR — leave requests visible to leave approvers; salaries only with hr.view_salary
+  let hrBlock = "";
+  if(can("hr.approve_leave") || can("hr.view_team")) {
+    const leaves = (data?.leaveRequests||[]);
+    const pendingLeaves = leaves.filter(l=>l.status==="pending");
+    hrBlock = `═══ HR ═══
+Pending leave/WFH requests: ${pendingLeaves.length} (${pendingLeaves.slice(0,10).map(l=>`${l.member_name||l.member_email}: ${l.type||"leave"} ${l.start_date||"?"}→${l.end_date||"?"}`).join(" ; ")||"none"})`;
+  }
+  if(can("hr.view_salary")) {
+    hrBlock += `\nSalaries (confidential — only share with users who can see salaries): ${allTeam.filter(m=>m.salary).map(m=>`${m.name}: ${m.salary}`).join(" ; ")||"none recorded"}`;
+  }
 
   return `You are Pro — a powerful AI assistant built into SocialFlow by admepro. You work like ChatGPT or Claude: you answer EVERYTHING directly in the chat. You NEVER say "go to a page" or "navigate to X" or "visit the panel". You handle every question and every action right here in the conversation.
 
@@ -27404,8 +27456,14 @@ ${teamList||"No team yet."}
 ACTIVE PROJECTS:
 ${projList||"No active projects."}
 
-LEADS / CRM (${leadsToShow.length} total — you know every one of these, never say there are 0 if this list is non-empty):
-${leadList||"No leads yet."}
+${canCrm ? `LEADS / CRM (${leadsToShow.length} total — you know every one of these, never say there are 0 if this list is non-empty):
+${leadList||"No leads yet."}` : `LEADS / CRM: (hidden — this user's role has no CRM access; if asked about leads, say they don't have permission to view CRM data)`}
+
+${financeBlock || `FINANCE: (hidden — this user's role has no finance access; if asked about invoices, expenses, budgets or money, say they don't have permission to view finance data)`}
+
+${recruitBlock || `RECRUITMENT: (hidden — this user's role has no recruitment access; if asked about job openings or candidates, say they don't have permission to view recruitment data)`}
+
+${hrBlock}
 
 CLIENT DATA:
 ${clientBlocks||"No clients yet."}
@@ -27466,6 +27524,7 @@ Format answers for readability, not as a wall of text:
 8. Response length: match the question. Short question = short answer. "List all overdue" = full list.
 8b. To add platforms, change industry, or update contact info on an EXISTING client, use the update_client action — never claim something was changed without emitting it. add_platforms is ADDED to the client's current platform list, not a replacement.
 9. You have a web_search tool. ONLY use it when the user EXPLICITLY asks you to search/look up/check online/google something (e.g. "search the internet for...", "look up...", "what's trending on..."). NEVER use it on your own initiative for ordinary questions you can already answer from the data above — searching costs real money per use, so it must be user-requested every time.
+10. PERMISSIONS: The data sections above are already filtered to what THIS user's role is allowed to see. If a section is marked "(hidden — no access)", the user asked about it means they lack permission — politely say so ("You don't have permission to view finance data — ask an admin") and NEVER guess, estimate, or reveal numbers from areas hidden from them. Never reveal salaries unless the Salaries line is present above.
 ${user?.role==="client" ? `
 CLIENT MODE: You are speaking with a client. NEVER reveal: internal stage names, team member names, workflow steps.
 For post status say: "In progress", "Ready for your review", "Approved — being finalized", "Revision in progress".
@@ -31943,7 +32002,7 @@ function App() {
     invitations: [], accessRequests: [], clientUsers: [],
     emailLogs: [], activityLogs: [], notifPrefs: [],
     rolePermissions: [], leaveRequests: [], attendanceRecords: [], contactReports: [], leadNotifySettings: [],
-    expenses: [], financeClientNotes: [],
+    expenses: [], financeClientNotes: [], jobOpenings: [], jobApplications: [],
   });
   const rolePermsMap = useMemo(()=>buildRolePermsMap(data.rolePermissions), [data.rolePermissions]);
 
@@ -32126,6 +32185,8 @@ function App() {
         qe("LeadNotifySetting"), // 44
         qe("Expense",{},"-date",1000), // 45
         qe("FinanceClientNote"), // 46
+        qe("JobOpening",{},"-created_at",100), // 47
+        qe("JobApplication",{},"-created_at",300), // 48
       ]);
       if(wave2[13].status==="fulfilled" && wave2[13].value?.entities?.length) setEmailSettings(wave2[13].value.entities[0]);
 
@@ -32176,6 +32237,8 @@ function App() {
         leadNotifySettings: pick(wave2[44], d.leadNotifySettings||[]),
         expenses: pick(wave2[45], d.expenses||[]),
         financeClientNotes: pick(wave2[46], d.financeClientNotes||[]),
+        jobOpenings: pick(wave2[47], d.jobOpenings||[]),
+        jobApplications: pick(wave2[48], d.jobApplications||[]),
       }));
     }
     loadAllDataRef.current = load;
