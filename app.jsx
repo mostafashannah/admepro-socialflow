@@ -1113,7 +1113,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.284";
+const APP_VERSION = "beta 5.285";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13750,7 +13750,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
   const [showBrief,setShowBrief] = useState(false);
   const [showNewRequest,setShowNewRequest] = useState(false);
   const [taskView,setTaskView] = useState("kanban");
-  const [newReqForm,setNewReqForm] = useState({project_id:"",title:"",description:"",platform:"instagram",priority:"medium"});
+  const [newReqForm,setNewReqForm] = useState({project_id:"",title:"",description:"",post_type:"image",platforms:["instagram"],priority:"medium"});
   const [showUserMenu,setShowUserMenu] = useState(false);
   const userMenuRef = useRef(null);
   useEffect(()=>{
@@ -13968,11 +13968,28 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Description</label>
                 <textarea value={newReqForm.description} onChange={e=>setNewReqForm(f=>({...f,description:e.target.value}))} rows={3} style={{...inputSt,resize:"vertical",fontFamily:"inherit"}}/>
               </div>
+              <div>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Platforms (pick more than one if it's cross-posted)</label>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {PLATFORMS.map(p=>{
+                    const active = newReqForm.platforms.includes(p);
+                    return (
+                      <button key={p} type="button" onClick={()=>setNewReqForm(f=>{
+                        const has = f.platforms.includes(p);
+                        const next = has ? f.platforms.filter(x=>x!==p) : [...f.platforms, p];
+                        return {...f, platforms: next.length?next:[p]};
+                      })} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,border:`1px solid ${active?PLT_COLOR[p]:"var(--border2)"}`,background:active?PLT_COLOR[p]+"22":"var(--surface2)",color:active?PLT_COLOR[p]:"var(--text2)",cursor:"pointer"}}>
+                        {p.charAt(0).toUpperCase()+p.slice(1)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 <div>
-                  <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Platform</label>
-                  <select value={newReqForm.platform} onChange={e=>setNewReqForm(f=>({...f,platform:e.target.value}))} style={inputSt}>
-                    {PLATFORMS.map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+                  <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Task Type</label>
+                  <select value={newReqForm.post_type} onChange={e=>setNewReqForm(f=>({...f,post_type:e.target.value}))} style={inputSt}>
+                    {POST_TYPES.map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
                   </select>
                 </div>
                 <div>
@@ -13983,9 +14000,8 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                 </div>
               </div>
               <Btn disabled={!newReqForm.project_id||!newReqForm.title.trim()} onClick={()=>{
-                const proj = cProjects.find(p=>p.id===newReqForm.project_id);
-                onAddPost&&onAddPost({...newReqForm, client_id:client.id, client_name:client.name, project_id:newReqForm.project_id, stage:"client_request", created_by:"client"});
-                setNewReqForm({project_id:"",title:"",description:"",platform:"instagram",priority:"medium"});
+                onAddPost&&onAddPost({...newReqForm, platform:newReqForm.platforms[0], client_id:client.id, client_name:client.name, project_id:newReqForm.project_id, stage:"client_request", created_by:"client"});
+                setNewReqForm({project_id:"",title:"",description:"",post_type:"image",platforms:["instagram"],priority:"medium"});
                 setShowNewRequest(false);
               }}><Ico d={Icons.plus} size={14}/> Submit Request</Btn>
             </div>
