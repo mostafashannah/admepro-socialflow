@@ -1108,7 +1108,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.254";
+const APP_VERSION = "beta 5.255";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -29445,6 +29445,7 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
   const [pasteLearnAuto, setPasteLearnAuto] = useState(false);
   const [brainOpen, setBrainOpen] = useState(false);
   const [attachments, setAttachments] = useState([]);
+  const [dragOverComposer, setDragOverComposer] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -30230,11 +30231,21 @@ RULES:
       )}
 
       <div style={isMobile?{
-          display:"flex",alignItems:"flex-end",gap:6,background:"var(--surface)",border:"1px solid var(--border)",
-          borderRadius:28,padding:"6px 6px 6px 14px",boxShadow:"var(--shadow-sm)",transition:"box-shadow 0.2s",
-        }:{display:"flex",flexDirection:"column",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:24,padding:"16px 16px 10px",boxShadow:"var(--shadow-sm)",transition:"box-shadow 0.2s"}}
+          display:"flex",alignItems:"flex-end",gap:6,background:"var(--surface)",
+          border:`1px solid ${dragOverComposer?"var(--accent)":"var(--border)"}`,
+          borderRadius:28,padding:"6px 6px 6px 14px",boxShadow:"var(--shadow-sm)",transition:"box-shadow 0.2s, border-color 0.15s",
+        }:{display:"flex",flexDirection:"column",background:"var(--surface)",
+          border:`1px solid ${dragOverComposer?"var(--accent)":"var(--border)"}`,
+          borderRadius:24,padding:"16px 16px 10px",boxShadow:"var(--shadow-sm)",transition:"box-shadow 0.2s, border-color 0.15s"}}
         onFocusCapture={e=>e.currentTarget.style.boxShadow="var(--shadow-md)"}
-        onBlurCapture={e=>e.currentTarget.style.boxShadow="var(--shadow-sm)"}>
+        onBlurCapture={e=>e.currentTarget.style.boxShadow="var(--shadow-sm)"}
+        onDragOver={e=>{ e.preventDefault(); if(e.dataTransfer.types.includes("Files")) setDragOverComposer(true); }}
+        onDragLeave={e=>{ if(e.currentTarget===e.target || !e.currentTarget.contains(e.relatedTarget)) setDragOverComposer(false); }}
+        onDrop={e=>{
+          e.preventDefault();
+          setDragOverComposer(false);
+          if(e.dataTransfer.files && e.dataTransfer.files.length) handleFilesSelected(e.dataTransfer.files);
+        }}>
         <input ref={fileInputRef} type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,text/plain,text/csv,text/markdown,application/json,.txt,.csv,.md,.json"
           style={{display:"none"}}
           onChange={e=>{ handleFilesSelected(e.target.files); e.target.value=""; }}/>
