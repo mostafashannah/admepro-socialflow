@@ -1117,7 +1117,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.291";
+const APP_VERSION = "beta 5.292";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13948,9 +13948,17 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
             </div>
             <div style={{padding:isMobile?16:24,display:"flex",flexDirection:"column",gap:14}}>
               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                <PChip platform={sel.platform}/>
+                {(Array.isArray(sel.platforms)?sel.platforms:parseJ(sel.platforms||"[]")).length
+                  ? (Array.isArray(sel.platforms)?sel.platforms:parseJ(sel.platforms||"[]")).map(p=><PChip key={p} platform={p}/>)
+                  : sel.platform&&<PChip platform={sel.platform}/>}
                 <Badge label={stageLabel[sel.stage]||sel.stage} color={stageColor[sel.stage]||"#888"}/>
+                {sel.task_type&&<Badge label={TASK_TYPE_MAP[sel.task_type]?.label||sel.task_type} color="#8b5cf6"/>}
+                {sel.priority&&<Badge label={sel.priority} color={PRI_COLOR[sel.priority]||"#888"}/>}
               </div>
+              {sel.description&&<div style={{padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
+                <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:5,textTransform:"uppercase",letterSpacing:"0.05em"}}>Brief</p>
+                <p style={{fontSize:13,lineHeight:1.7}}>{sel.description}</p>
+              </div>}
               {sel.caption&&<div style={{padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
                 <p style={{fontSize:13,lineHeight:1.7}}>{sel.caption}</p>
                 {sel.hashtags&&<p style={{fontSize:12,color:"var(--accent)",marginTop:8}}>{sel.hashtags}</p>}
