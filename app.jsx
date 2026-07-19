@@ -1108,7 +1108,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.253";
+const APP_VERSION = "beta 5.254";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1910,6 +1910,11 @@ const SEED = {
 // UTILS
 // ════════════════════════════════════════════════════════════════
 const uid = () => "local_" + Date.now() + "_" + Math.random().toString(36).slice(2,7);
+const fmtFileSize = (bytes) => {
+  if(!bytes) return "";
+  if(bytes < 1024*1024) return `${(bytes/1024).toFixed(0)} KB`;
+  return `${(bytes/1024/1024).toFixed(1)} MB`;
+};
 // Pro action executors: match a post by id/title without picking the first fuzzy
 // substring hit. Prefers an exact title match, then narrows to the active client
 // when one is locked, then falls back to substring — but only if that leaves a
@@ -9285,7 +9290,7 @@ function AssetCard({asset:a, proj, allFolders=[], onUpdate, onDelete, selected, 
         ) : (
           <>
             <p style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</p>
-            <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{a.category||"Uncategorized"}</p>
+            <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{a.category||"Uncategorized"}{a.file_size?` · ${fmtFileSize(a.file_size)}`:""}</p>
             {proj&&<p style={{fontSize:10,color:"var(--text3)",marginTop:4}}>{proj.client_name}</p>}
             <div style={{display:"flex",gap:8,marginTop:8}}>
               {a.file_url&&a.file_url!="#"&&<a href={a.file_url} target="_blank" rel="noreferrer" style={{fontSize:11,color:"var(--accent)",fontWeight:600,textDecoration:"none"}}>Open</a>}
@@ -9550,7 +9555,7 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
               <input type="checkbox" checked={selected.has(a.id)} onChange={()=>toggleSelect(a.id)} style={{width:14,height:14,cursor:"pointer",accentColor:"var(--accent)"}}/>
               <span style={{fontSize:16}}>{a.file_type==="video"?"🎬":a.file_type==="image"?"🖼️":"📄"}</span>
               <span style={{flex:1,fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.name}</span>
-              <span style={{fontSize:11,color:"var(--text3)",width:70}}>{a.file_size?`${(a.file_size/1024/1024).toFixed(1)} MB`:""}</span>
+              <span style={{fontSize:11,color:"var(--text3)",width:70}}>{fmtFileSize(a.file_size)}</span>
               {a.file_url&&a.file_url!="#"&&<>
                 <a href={a.file_url} target="_blank" rel="noreferrer" style={{fontSize:11,color:"var(--accent)",fontWeight:600,textDecoration:"none"}}>Open</a>
                 <a href={a.file_url} download={a.name} target="_blank" rel="noreferrer" style={{fontSize:11,color:"var(--accent)",fontWeight:600,textDecoration:"none"}}>Download</a>
@@ -11639,6 +11644,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                 :<div style={{height:100,background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:32}}></div>}
                 <div style={{padding:"8px 10px"}}>
                   <div style={{fontSize:12,fontWeight:600,color:"var(--text1)",overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{a.name}</div>
+                  {a.file_size&&<div style={{fontSize:10,color:"var(--text3)",marginTop:2}}>{fmtFileSize(a.file_size)}</div>}
                 </div>
               </div>
             ))}
