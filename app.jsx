@@ -1108,7 +1108,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.257";
+const APP_VERSION = "beta 5.258";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21740,9 +21740,17 @@ function OutstandingTab({expenses, team, currentUser, canManage, onRecordPayment
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20}}>
-      {Object.entries(groups).map(([groupName, items])=>(
+      {Object.entries(groups).map(([groupName, items])=>{
+        const groupTotal = items.reduce((s,e)=>s+Number(e.outstanding_total_payable ?? e.amount ?? 0), 0);
+        const groupRemaining = items.reduce((s,e)=>s+Math.max(0, Number(e.outstanding_total_payable ?? e.amount ?? 0)-paidSoFar(e.id)), 0);
+        return (
         <div key={groupName}>
-          <p style={{fontSize:12,fontWeight:800,color:"var(--text3)",letterSpacing:"0.05em",textTransform:"uppercase",marginBottom:8}}>{groupName}</p>
+          <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:6}}>
+            <p style={{fontSize:12,fontWeight:800,color:"var(--text3)",letterSpacing:"0.05em",textTransform:"uppercase",margin:0}}>{groupName}</p>
+            <p style={{fontSize:12,color:"var(--text3)",margin:0}}>
+              Remaining <strong style={{fontSize:14,color:groupRemaining>0?"#ef4444":"#10b981"}}>{groupRemaining.toLocaleString(undefined,{maximumFractionDigits:2})}</strong> of {groupTotal.toLocaleString(undefined,{maximumFractionDigits:2})}
+            </p>
+          </div>
           <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
             {items.map((e,i)=>{
               const paid = paidSoFar(e.id);
@@ -21814,7 +21822,7 @@ function OutstandingTab({expenses, team, currentUser, canManage, onRecordPayment
             })}
           </div>
         </div>
-      ))}
+      );})}
     </div>
   );
 }
