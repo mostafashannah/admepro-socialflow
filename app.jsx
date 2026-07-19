@@ -1111,7 +1111,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.268";
+const APP_VERSION = "beta 5.269";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23489,7 +23489,7 @@ function TeamPerformancePage({currentUser, perfLogs, aiInsights, team}) {
 function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,onPostClick}) {
   const {isMobile} = useResponsive();
   const [filterStage, setFilterStage] = useState(null);
-  const [myView, setMyView] = usePersistentState("sf_my_tasks_view","list");
+  const [myView, setMyView] = usePersistentState("sf_my_tasks_view","kanban");
 
   // Post IDs where the current user was @mentioned in a comment — same
   // @Name-matching convention used when firing mention notifications
@@ -23597,9 +23597,18 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
   return (
     <div style={{display:"flex",flexDirection:"column",gap:24,maxWidth:1200,margin:"0 auto",padding:"32px 24px"}}>
       {/* Header */}
-      <div>
-        <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:32,fontWeight:800,marginBottom:6}}>My Tasks</h1>
-        <p style={{fontSize:13,color:"var(--text2)"}}>All posts assigned to you across the workflow</p>
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
+        <div>
+          <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:32,fontWeight:800,marginBottom:6}}>My Tasks</h1>
+          <p style={{fontSize:13,color:"var(--text2)"}}>All posts assigned to you across the workflow</p>
+        </div>
+        <div style={{display:"inline-flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",flexShrink:0}}>
+          {[["kanban",Icons.grid,"Kanban"],["list",Icons.list,"List"],["calendar",Icons.calendar,"Calendar"]].map(([v,ico,label])=>(
+            <button key={v} onClick={()=>setMyView(v)} title={label} style={{padding:"6px 12px",borderRadius:99,background:myView===v?"var(--accent)":"none",color:myView===v?"#fff":"var(--text2)",border:"none",display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              <Ico d={ico} size={13}/> {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Stats Row */}
@@ -23629,8 +23638,10 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
         ))}
       </div>
 
-      {/* Tasks List */}
-      {filteredPosts.length === 0 ? (
+      {/* Kanban / Calendar / List */}
+      {myView==="kanban" && <KanbanView posts={filteredPosts} project={null} team={team} onPostClick={onPostClick}/>}
+      {myView==="calendar" && <CalendarView posts={filteredPosts} onPostClick={onPostClick}/>}
+      {myView==="list" && (filteredPosts.length === 0 ? (
         <div style={{textAlign:"center",padding:"60px 20px",color:"var(--text3)"}}>
           <p style={{fontSize:32,marginBottom:10}}></p>
           <p style={{fontSize:15,fontWeight:700,color:"var(--text2)"}}>No tasks</p>
@@ -23698,7 +23709,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
             );
           })}
         </div>
-      )}
+      ))}
     </div>
   );
 }
