@@ -328,6 +328,9 @@ const WORKING_MINS = (WORKING_END - WORKING_START) * 60; // 540 mins
 
 // ── Smart Schedule Engine ──────────────────────────────────────
 function estimateDuration(post) {
+  // An explicit estimate set on the task always wins — the post_type/priority
+  // guess below is only a fallback for tasks nobody has given a real duration.
+  if(post.estimated_minutes) return Number(post.estimated_minutes);
   const base = POST_TYPE_DURATIONS[post.post_type] || POST_TYPE_DURATIONS[post.task_type] || 60;
   const priorityMult = {urgent:1.5, high:1.2, medium:1.0, low:0.8};
   return Math.round(base * (priorityMult[post.priority] || 1.0));
@@ -523,7 +526,7 @@ function sbTable(entityName) {
 // Known columns per table — used to strip unknown fields before POST/PATCH
 const SB_SCHEMA = {
   projects: ["title","description","client_id","client_name","status","start_date","end_date","platforms","team_members","project_type","posting_start","posting_end"],
-  posts: ["project_id","client_id","client_name","title","description","stage","platform","post_type","caption","hashtags","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id"],
+  posts: ["project_id","client_id","client_name","title","description","stage","platform","post_type","caption","hashtags","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","estimated_minutes"],
   // address/website/contact_person were never real columns on the clients
   // table (mysql-schema.sql only has name/email/phone/logo_url/industry/
   // status/account_manager_id/notes/platforms/portal_password/username) —
@@ -1108,7 +1111,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.260";
+const APP_VERSION = "beta 5.261";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3885,6 +3888,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
       assigned_to: post.assigned_to||"",
       scheduled_date: post.scheduled_date||"",
       scheduled_time: post.scheduled_time||"",
+      estimated_minutes: post.estimated_minutes||"",
     });
     setEditing(true);
   };
@@ -4036,6 +4040,10 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
               <div>
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Time</label>
                 <input type="time" value={editForm.scheduled_time} onChange={e=>setEditForm(f=>({...f,scheduled_time:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
+              </div>
+              <div>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Est. Duration (mins, for Timeline)</label>
+                <input type="number" min={5} step={5} value={editForm.estimated_minutes||""} onChange={e=>setEditForm(f=>({...f,estimated_minutes:e.target.value?Number(e.target.value):""}))} placeholder="Auto" style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
               </div>
             </div>
             <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
@@ -4357,7 +4365,7 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
   // selectable/defaulted — otherwise this silently defaults to projects[0],
   // which can belong to a totally different client.
   const selectableProjects = presetClient ? projects.filter(p=>p.client_id===presetClient.id) : projects;
-  const blankForm = {project_id:selectableProjects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:"",scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",content_mode:"new",platforms:[],platform_types:{},media:[],cover:null,publish_mode:"schedule",postStory:false,storyImage:null};
+  const blankForm = {project_id:selectableProjects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:"",scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",content_mode:"new",platforms:[],platform_types:{},media:[],cover:null,publish_mode:"schedule",postStory:false,storyImage:null,estimated_minutes:""};
   const [f,setF] = useState({...blankForm});
   const [saving,setSaving] = useState(false);
   const [uploading,setUploading] = useState(false);
@@ -4642,6 +4650,12 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
                 </select>
               </Field>
             </div>
+            <Field label="Estimated Duration (for My Timeline scheduling)">
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <input type="number" min={5} step={5} value={f.estimated_minutes||""} onChange={e=>s("estimated_minutes",e.target.value?Number(e.target.value):"")} placeholder="Auto (by type/priority)" style={{...inputSt,flex:1}}/>
+                <span style={{fontSize:12,color:"var(--text3)",whiteSpace:"nowrap"}}>minutes</span>
+              </div>
+            </Field>
             {f.content_mode==="new"?(
               <>
                 <Field label="Scheduled Date">
@@ -5401,6 +5415,7 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
     post_type:"image",priority:"medium",stage:"planning",
     content_mode:"new", caption:"", platforms:[], platform_types:{}, media:[], cover:null,
     publish_mode:"schedule", scheduled_time:"", postStory:false, storyImage:null,
+    estimated_minutes:"",
   };
   const [f,setF] = useState({...blankForm});
   const [saving,setSaving] = useState(false);
@@ -5717,6 +5732,12 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
                 <input type="date" value={f.scheduled_date} onChange={e=>s("scheduled_date",e.target.value)} style={inputSt}/>
               </Field>}
             </div>
+            <Field label="Estimated Duration (for My Timeline scheduling)">
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <input type="number" min={5} step={5} value={f.estimated_minutes||""} onChange={e=>s("estimated_minutes",e.target.value?Number(e.target.value):"")} placeholder="Auto (by type/priority)" style={{...inputSt,flex:1}}/>
+                <span style={{fontSize:12,color:"var(--text3)",whiteSpace:"nowrap"}}>minutes</span>
+              </div>
+            </Field>
           </div>
           {f.content_mode==="new"&&<Field label="Brief / Description">
             <textarea value={f.description} onChange={e=>s("description",e.target.value)} rows={3} placeholder="Describe what this post should achieve…" style={{...inputSt,resize:"vertical"}}/>
@@ -23679,7 +23700,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
 // ════════════════════════════════════════════════════════════════
 // MY CALENDAR PAGE - Team member's calendar with scheduled posts
 // ════════════════════════════════════════════════════════════════
-function MyCalendarPage({posts,currentUser,team}) {
+function MyCalendarPage({posts,currentUser,team,onDayClick}) {
   const {isMobile} = useResponsive();
   const [currentDate, setCurrentDate] = useState(new Date());
   const isAM = currentUser?.role==="account_manager" || currentUser?.role==="admin";
@@ -23764,8 +23785,9 @@ function MyCalendarPage({posts,currentUser,team}) {
               const postsForDay = day ? getPostsForDate(day) : [];
               const isToday = day && new Date(year, month, day).toDateString() === new Date().toDateString();
 
+              const dateStrForDay = day ? `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}` : null;
               return (
-                <div key={i} style={{
+                <div key={i} onClick={()=>{ if(day && onDayClick) onDayClick({date:dateStrForDay, viewUser: combinedView?null:viewUser, combined:combinedView}); }} style={{
                   aspectRatio:"1/1",
                   background:day===null?"var(--bg)":isToday?"var(--accent)22":"var(--surface2)",
                   border:`1px solid ${day===null?"transparent":isToday?"var(--accent)":"var(--border)"}`,
@@ -23775,7 +23797,8 @@ function MyCalendarPage({posts,currentUser,team}) {
                   flexDirection:"column",
                   gap:4,
                   position:"relative",
-                  overflow:"hidden"
+                  overflow:"hidden",
+                  cursor: day&&onDayClick?"pointer":"default",
                 }}>
                   {day && (
                     <>
@@ -23828,16 +23851,21 @@ function MyCalendarPage({posts,currentUser,team}) {
 // ════════════════════════════════════════════════════════════════
 // MY TIMELINE PAGE - Daily schedule view 9am-6pm
 // ════════════════════════════════════════════════════════════════
-function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onStartTimer, onPauseTimer, onResumeTimer, schedules, scheduleOverrides, onOverrideSchedule}) {
+function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onStartTimer, onPauseTimer, onResumeTimer, schedules, scheduleOverrides, onOverrideSchedule, initialJump, onJumpConsumed}) {
   const {isMobile} = useResponsive();
-  const [viewDate, setViewDate] = useState(new Date());
+  const [viewDate, setViewDate] = useState(()=>initialJump?.date ? new Date(initialJump.date+"T00:00:00") : new Date());
   const [tick, setTick] = useState(0);
   const isAM = currentUser?.role==="account_manager" || currentUser?.role==="admin";
-  const [viewUser, setViewUser] = useState(null); // null = self
-  const [combinedView, setCombinedView] = useState(false);
+  const [viewUser, setViewUser] = useState(()=>initialJump?.viewUser||null); // null = self
+  const [combinedView, setCombinedView] = useState(()=>!!initialJump?.combined);
   const [overrideTarget, setOverrideTarget] = useState(null); // {slot, post}
   const [overrideTime, setOverrideTime] = useState("09:00");
   const effectiveUser = (isAM && viewUser) ? viewUser : currentUser;
+
+  // Consume the jump once so it doesn't keep re-forcing this date/mode if the
+  // component happens to re-render — clicking Prev/Next or a member button
+  // afterwards should behave normally from then on.
+  useEffect(()=>{ if(initialJump && onJumpConsumed) onJumpConsumed(); },[]);
 
   useEffect(() => {
     const id = setInterval(() => setTick(t => t+1), 1000);
@@ -23945,10 +23973,15 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
       {/* Combined timeline — every team member's day on one board (AM/admin only) */}
       {combinedView && (
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
-          <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Combined Timeline · {dateStr}</p>
-            <div style={{display:"flex",fontSize:10,color:"var(--text3)",gap:0}}>
-              {hours.map(h=>(<div key={h} style={{width:52,textAlign:"left"}}>{h}:00</div>))}
+          <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",gap:10}}>
+            <div style={{width:120,flexShrink:0,fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Combined Timeline</div>
+            {/* Ruler lives in a name-column + flex-timeline split identical to each
+                member row below, so hour ticks (percentage-positioned) line up
+                exactly with the percentage-positioned task bars underneath them. */}
+            <div style={{position:"relative",flex:1,height:14}}>
+              {hours.map(h=>(
+                <span key={h} style={{position:"absolute",left:`${(h-WORKING_START)*60/WORKING_MINS*100}%`,fontSize:10,color:"var(--text3)",whiteSpace:"nowrap"}}>{h}:00</span>
+              ))}
             </div>
           </div>
           {[currentUser, ...(team||[]).filter(m=>m.email!==currentUser?.email)].map(member=>{
@@ -23964,7 +23997,8 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                 <div style={{width:120,flexShrink:0,fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                   {member.name}{member.email===currentUser?.email?" (You)":""}
                 </div>
-                <div style={{position:"relative",flex:1,height:30,background:"var(--surface2)",borderRadius:6}}>
+                <div style={{position:"relative",flex:1,height:30,background:"var(--surface2)",borderRadius:6,
+                  backgroundImage:`repeating-linear-gradient(to right, var(--border) 0, var(--border) 1px, transparent 1px, transparent ${100/(WORKING_END-WORKING_START)}%)`}}>
                   {memberSlots.length===0 && <span style={{position:"absolute",top:"50%",left:8,transform:"translateY(-50%)",fontSize:10,color:"var(--text3)"}}>No tasks scheduled</span>}
                   {memberSlots.map(slot=>{
                     const post = posts.find(p=>p.id===slot.post_id);
@@ -23974,8 +24008,9 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     return (
                       <div key={slot.post_id} title={`${post?.title||""} (${slot.start_time}–${slot.end_time})`}
                         onClick={()=>onPostClick&&post&&onPostClick(post)}
-                        style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:3,bottom:3,background:stage?.color||"var(--accent)",borderRadius:5,cursor:post?"pointer":"default",display:"flex",alignItems:"center",overflow:"hidden",padding:"0 6px"}}>
+                        style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:3,bottom:3,background:stage?.color||"var(--accent)",borderRadius:5,cursor:post?"pointer":"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 6px"}}>
                         <span style={{fontSize:10,color:"#fff",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span>
+                        {widthPct>8&&<span style={{fontSize:8.5,color:"#fff",opacity:0.85,whiteSpace:"nowrap"}}>{slot.start_time}–{slot.end_time}</span>}
                       </div>
                     );
                   })}
@@ -31143,6 +31178,10 @@ function App() {
       return (stored && SAFE_PAGES.includes(stored)) ? stored : "home";
     }catch(e){return "home";}
   });
+  // Set when a My Calendar day is clicked, so My Timeline opens showing that
+  // specific date (and whichever member/combined mode the calendar was on)
+  // instead of always defaulting to today.
+  const [timelineJump, setTimelineJump] = useState(null);
 
   // Web Push: subscribe this device once logged in, and re-subscribe whenever
   // the app gets installed to the home screen (task-assignment alerts need this).
@@ -33993,9 +34032,10 @@ Return ONLY valid JSON (no markdown, no explanation):
             posts={data.posts}
             currentUser={currentUser}
             team={data.team}
+            onDayClick={(jump)=>{ setTimelineJump(jump); setPage("my_timeline"); }}
           />
         )}
-        {page==="my_timeline"&&<MyTimelinePage posts={data.posts} team={data.team} currentUser={currentUser} timeEntries={data.timeEntries||[]} onPostClick={setSelectedPost} onStartTimer={startTimer} onPauseTimer={pauseTimer} onResumeTimer={resumeTimer} schedules={data.schedules||[]} scheduleOverrides={data.scheduleOverrides||[]} onOverrideSchedule={overrideSchedule}/>}
+        {page==="my_timeline"&&<MyTimelinePage posts={data.posts} team={data.team} currentUser={currentUser} timeEntries={data.timeEntries||[]} onPostClick={setSelectedPost} onStartTimer={startTimer} onPauseTimer={pauseTimer} onResumeTimer={resumeTimer} schedules={data.schedules||[]} scheduleOverrides={data.scheduleOverrides||[]} onOverrideSchedule={overrideSchedule} initialJump={timelineJump} onJumpConsumed={()=>setTimelineJump(null)}/>}
         {(page==="my_performance"||page==="reports")&&<MyPerformancePage currentUser={currentUser} posts={data.posts} timeEntries={data.timeEntries||[]} perfLogs={data.perfLogs||[]} aiInsights={data.aiInsights||[]}/>}
         {page==="account"&&(
           <AccountPage
