@@ -1108,7 +1108,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.258";
+const APP_VERSION = "beta 5.259";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23808,6 +23808,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   const [tick, setTick] = useState(0);
   const isAM = currentUser?.role==="account_manager" || currentUser?.role==="admin";
   const [viewUser, setViewUser] = useState(null); // null = self
+  const [combinedView, setCombinedView] = useState(false);
   const [overrideTarget, setOverrideTarget] = useState(null); // {slot, post}
   const [overrideTime, setOverrideTime] = useState("09:00");
   const effectiveUser = (isAM && viewUser) ? viewUser : currentUser;
@@ -23874,19 +23875,22 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
         <div>
           <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?22:28,fontWeight:800,marginBottom:4}}>
-            {isAM && viewUser ? `${viewUser.name.split(" ")[0]}'s Schedule` : "My Daily Schedule"}
+            {combinedView ? "Combined Timeline" : isAM && viewUser ? `${viewUser.name.split(" ")[0]}'s Schedule` : "My Daily Schedule"}
           </h1>
           <p style={{fontSize:13,color:"var(--text2)"}}>{viewDate.toLocaleDateString(undefined,{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</p>
           {isAM && (
             <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>
-              <button onClick={()=>setViewUser(null)} style={{padding:"4px 10px",borderRadius:"var(--rs)",border:`1px solid ${!viewUser?"var(--accent)":"var(--border)"}`,background:!viewUser?"var(--accent)22":"var(--surface)",color:!viewUser?"var(--accent)":"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+              <button onClick={()=>{setCombinedView(false);setViewUser(null);}} style={{padding:"4px 10px",borderRadius:"var(--rs)",border:`1px solid ${!combinedView&&!viewUser?"var(--accent)":"var(--border)"}`,background:!combinedView&&!viewUser?"var(--accent)22":"var(--surface)",color:!combinedView&&!viewUser?"var(--accent)":"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>
                 My Schedule
               </button>
               {(team||[]).filter(m=>m.email!==currentUser?.email).map(m=>(
-                <button key={m.email} onClick={()=>setViewUser(m)} style={{padding:"4px 10px",borderRadius:"var(--rs)",border:`1px solid ${viewUser?.email===m.email?"var(--accent)":"var(--border)"}`,background:viewUser?.email===m.email?"var(--accent)22":"var(--surface)",color:viewUser?.email===m.email?"var(--accent)":"var(--text2)",fontSize:11,fontWeight:600,cursor:"pointer"}}>
+                <button key={m.email} onClick={()=>{setCombinedView(false);setViewUser(m);}} style={{padding:"4px 10px",borderRadius:"var(--rs)",border:`1px solid ${!combinedView&&viewUser?.email===m.email?"var(--accent)":"var(--border)"}`,background:!combinedView&&viewUser?.email===m.email?"var(--accent)22":"var(--surface)",color:!combinedView&&viewUser?.email===m.email?"var(--accent)":"var(--text2)",fontSize:11,fontWeight:600,cursor:"pointer"}}>
                   {m.name.split(" ")[0]}
                 </button>
               ))}
+              <button onClick={()=>setCombinedView(true)} style={{padding:"4px 10px",borderRadius:"var(--rs)",border:`1px solid ${combinedView?"var(--accent)":"var(--border)"}`,background:combinedView?"var(--accent)22":"var(--surface)",color:combinedView?"var(--accent)":"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
+                <Ico d={Icons.stat} size={11}/> All Members
+              </button>
             </div>
           )}
         </div>
@@ -23912,7 +23916,52 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
         ))}
       </div>
 
+      {/* Combined timeline — every team member's day on one board (AM/admin only) */}
+      {combinedView && (
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+          <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Combined Timeline · {dateStr}</p>
+            <div style={{display:"flex",fontSize:10,color:"var(--text3)",gap:0}}>
+              {hours.map(h=>(<div key={h} style={{width:52,textAlign:"left"}}>{h}:00</div>))}
+            </div>
+          </div>
+          {[currentUser, ...(team||[]).filter(m=>m.email!==currentUser?.email)].map(member=>{
+            const memberSlots = generateDailySchedule(posts, member.email, dateStr).map(slot=>{
+              const ov = (scheduleOverrides||[]).find(o=>o.post_id===slot.post_id && o.user_email===member.email && o.date===dateStr);
+              if(!ov) return slot;
+              const dur = slot.end_mins - slot.start_mins;
+              const newEnd = ov.start_mins + dur;
+              return {...slot, start_mins:ov.start_mins, end_mins:newEnd};
+            });
+            return (
+              <div key={member.email} style={{display:"flex",alignItems:"center",padding:"10px 16px",borderBottom:"1px solid var(--border)",gap:10}}>
+                <div style={{width:120,flexShrink:0,fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {member.name}{member.email===currentUser?.email?" (You)":""}
+                </div>
+                <div style={{position:"relative",flex:1,height:30,background:"var(--surface2)",borderRadius:6}}>
+                  {memberSlots.length===0 && <span style={{position:"absolute",top:"50%",left:8,transform:"translateY(-50%)",fontSize:10,color:"var(--text3)"}}>No tasks scheduled</span>}
+                  {memberSlots.map(slot=>{
+                    const post = posts.find(p=>p.id===slot.post_id);
+                    const leftPct = Math.max(0,(slot.start_mins - WORKING_START*60)/WORKING_MINS*100);
+                    const widthPct = Math.max(2,(slot.end_mins-slot.start_mins)/WORKING_MINS*100);
+                    const stage = post ? (STAGE_MAP[post.stage]||STAGES[0]) : null;
+                    return (
+                      <div key={slot.post_id} title={`${post?.title||""} (${slot.start_time}–${slot.end_time})`}
+                        onClick={()=>onPostClick&&post&&onPostClick(post)}
+                        style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:3,bottom:3,background:stage?.color||"var(--accent)",borderRadius:5,cursor:post?"pointer":"default",display:"flex",alignItems:"center",overflow:"hidden",padding:"0 6px"}}>
+                        <span style={{fontSize:10,color:"#fff",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Main layout: timeline + sidebar */}
+      {!combinedView && (
       <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 280px",gap:16,alignItems:"start"}}>
         {/* Timeline grid */}
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
@@ -24029,6 +24078,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
           </div>
         </div>
       </div>
+      )}
 
       {/* Override Schedule Modal (AM only) */}
       {overrideTarget && (
