@@ -1087,7 +1087,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.246";
+const APP_VERSION = "beta 5.247";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -27964,15 +27964,36 @@ RULES:
     setMessages(m=>[...m, userMsgObj]);
     setTyping(true);
 
-    // Build clean conversation history
+    // Build clean conversation history. This widget has no file-upload UI of its
+    // own, but it shares the same session storage as the full Pro page, so a
+    // message sent from there can still carry image/PDF attachments — resend those
+    // (capped) instead of silently dropping them, otherwise switching between the
+    // widget and the full page mid-conversation makes Pro "forget" an uploaded file.
+    const toBlock = (a) => a.kind==="image"
+      ? {type:"image", source:{type:"base64", media_type:a.mediaType, data:a.base64}}
+      : {type:"document", source:{type:"base64", media_type:"application/pdf", data:a.base64}};
+    const RESEND_DOC_CAP = 3;
+    let resent = 0;
     const allMsgs = [...messages, userMsgObj].slice(-14);
     const history = allMsgs
-      .filter(m=>m.content && typeof m.content==="string" && !m.pendingAction && !m.meta)
-      .map(m=>({
-        role: m.role==="bot" ? "assistant" : "user",
-        content: stripActionBlocks(m.content),
-      }))
-      .filter(m=>m.content.length>0)
+      .filter(m=>(m.content && typeof m.content==="string") || (m.attachments||[]).length)
+      .filter(m=>!m.pendingAction && !m.meta)
+      .map(m=>{
+        let textContent = stripActionBlocks(m.content||"");
+        const docs = (m.attachments||[]).filter(a=>a.kind==="image"||a.kind==="pdf");
+        const textAtt = (m.attachments||[]).filter(a=>a.kind==="text");
+        if(textAtt.length) textContent += textAtt.map(a=>`\n\n[Attached file: ${a.name}]\n${a.text}`).join("");
+        let blocks = [];
+        if(docs.length && resent < RESEND_DOC_CAP){
+          const take = docs.slice(0, RESEND_DOC_CAP - resent);
+          resent += take.length;
+          blocks = take.map(toBlock);
+        }
+        const role = m.role==="bot" ? "assistant" : "user";
+        if(blocks.length) return {role, content:[{type:"text", text:textContent||"See attached file(s)."}, ...blocks]};
+        return {role, content:textContent};
+      })
+      .filter(m=>Array.isArray(m.content) ? m.content.length>0 : m.content.length>0)
       .slice(-10);
     const firstUserIdx = history.findIndex(m=>m.role==="user");
     const apiHistory = firstUserIdx>0 ? history.slice(firstUserIdx) : history;
