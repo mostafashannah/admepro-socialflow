@@ -2,7 +2,7 @@
 
 > SocialFlow is an all-in-one management platform for social media agencies — content workflow, client portals, an AI assistant reachable over WhatsApp, Meta (Facebook/Instagram) performance insights, finance and payroll, recruitment, HR, CRM, and granular role-based permissions, all in one connected system.
 
-Marketing overview: https://socialflow.admepro.com/features
+Marketing overview: https://socialflow.admepro.com/features.html
 Login: https://socialflow.admepro.com
 
 ## Modules
