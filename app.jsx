@@ -1064,7 +1064,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.234";
+const APP_VERSION = "beta 5.235";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -8024,7 +8024,9 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
 
 function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient}) {
   const {isMobile} = useResponsive();
-  const [tab,setTab] = usePersistentState(`sf_tab_client_${client?.id}`,"overview");
+  // Plain state, not persisted — opening any client should always start on
+  // Overview, not silently reopen to whatever tab was last viewed for them.
+  const [tab,setTab] = useState("overview");
   const [showEdit,setShowEdit] = useState(false);
   const [confirmDelete,setConfirmDelete] = useState(false);
   const [showAddMenu,setShowAddMenu] = useState(false);
@@ -8774,23 +8776,37 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
 function ProjectsPage({projects, posts, clients, team, assets, clientIntelligence, onPostClick, onAdd, onSaveIntelligence, initialProjectId, onClearInitialProject}) {
   const [showWizard, setShowWizard] = useState(false);
   const [selectedProject, setSelectedProject_] = usePersistentState("sf_selected_project", initialProjectId||null);
-  const setSelectedProject = (id) => { setSelectedProject_(id); };
+  // Opening a project pushes its own history entry so the physical browser
+  // Back button pops back to the project list, instead of skipping straight
+  // past it to whatever page was open before Projects.
+  const setSelectedProject = (id) => {
+    setSelectedProject_(id);
+    if(id) { try{ window.history.pushState({sfPage:"projects", sfProjectDetail:id},"","#projects"); }catch(e){} }
+  };
   const [filter, setFilter] = useState("all");
   React.useEffect(()=>{
     if(initialProjectId){ setSelectedProject(initialProjectId); onClearInitialProject&&onClearInitialProject(); }
   },[initialProjectId]);
+  React.useEffect(()=>{
+    const onPop = (e) => {
+      if(e.state && "sfProjectDetail" in e.state) setSelectedProject_(e.state.sfProjectDetail || null);
+    };
+    window.addEventListener("popstate", onPop);
+    return ()=>window.removeEventListener("popstate", onPop);
+  },[]);
 
   if(selectedProject) {
     const proj = projects.find(p=>p.id===selectedProject);
     if(proj) return (
       <ProjectDetailPage
+        key={proj.id}
         project={proj}
         posts={posts}
         assets={assets||[]}
         team={team}
         clients={clients}
         clientIntelligence={clientIntelligence}
-        onBack={()=>setSelectedProject(null)}
+        onBack={()=>{ try{ window.history.back(); }catch(e){ setSelectedProject_(null); } }}
         onPostClick={onPostClick}
       />
     );
@@ -11287,7 +11303,9 @@ function ClientBrainTab({client, knowledge, clientKnowledge, documents, currentU
 // PROJECT DETAIL PAGE — tabs: Overview, Tasks, Calendar, Assets, Reports
 // ════════════════════════════════════════════════════════════════
 function ProjectDetailPage({project, posts, comments, assets, team, clients, clientIntelligence, onBack, onPostClick, onStageChange}) {
-  const [tab, setTab] = usePersistentState(`sf_tab_project_${project?.id}`,"overview");
+  // Plain state, not persisted — opening any project should always start on
+  // Overview, not silently reopen to whatever tab was last viewed for it.
+  const [tab, setTab] = useState("overview");
 
   const projectPosts = posts.filter(p=>p.project_id===project.id);
   const projType = PROJECT_TYPES.find(t=>t.id===project.project_type)||PROJECT_TYPES[0];
@@ -11599,7 +11617,23 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   const [editingMember, setEditingMember] = useState(null);
   const [approvalRole, setApprovalRole] = useState("content_creator");
   const [approvingId, setApprovingId] = useState(null);
-  const [viewingMember, setViewingMember] = useState(null);
+  const [viewingMember, setViewingMember_] = useState(null);
+  // Opening a member's profile pushes its own history entry so the physical
+  // browser Back button pops back to the team directory.
+  const setViewingMember = (m) => {
+    setViewingMember_(m);
+    if(m) { try{ window.history.pushState({sfPage:"users", sfMemberDetail:m.id},"","#users"); }catch(e){} }
+  };
+  React.useEffect(()=>{
+    const onPop = (e) => {
+      if(e.state && "sfMemberDetail" in e.state) {
+        const id = e.state.sfMemberDetail;
+        setViewingMember_(id ? ((team||[]).find(t=>t.id===id)||null) : null);
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return ()=>window.removeEventListener("popstate", onPop);
+  },[team]);
 
   // Account managers (without broader HR view) only get access requests
   // scoped to clients they're assigned to as account_manager_id — everything
@@ -11628,6 +11662,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
     return (
       <>
         <TeamMemberDetailPage
+          key={live.id}
           member={live}
           team={team}
           posts={posts}
@@ -11642,7 +11677,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
           onAddExpense={onAddExpense}
           canEdit={!isOfficeBoy && hasPerm(currentUser,rolePerms,"hr.edit_team")}
           canEditSalary={!isOfficeBoy && hasPerm(currentUser,rolePerms,"hr.edit_salary")}
-          onBack={isOfficeBoy ? null : ()=>setViewingMember(null)}
+          onBack={isOfficeBoy ? null : ()=>{ try{ window.history.back(); }catch(e){ setViewingMember_(null); } }}
           onEdit={()=>setEditingMember(live)}
           onDelete={isOfficeBoy ? null : (id)=>{ onRemoveMember(id); setViewingMember(null); }}
           onSelectMember={isOfficeBoy ? null : (m)=>setViewingMember(m)}
@@ -12238,7 +12273,9 @@ function computeClientPaymentsInRange(clientName, {invoices=[],payments=[],subsc
 }
 
 function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, attendanceRecords, expenses, invoices, payments, subscriptionPayments, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense}) {
-  const [tab, setTab] = usePersistentState(`sf_tab_member_${member?.id}`,"overview");
+  // Plain state, not persisted — opening any team member should always
+  // start on Overview, not silently reopen to whatever tab was last viewed.
+  const [tab, setTab] = useState("overview");
   const manager = (team||[]).find(t=>t.id===member.manager_id);
   const directReports = (team||[]).filter(t=>t.manager_id===member.id);
   // Clients where this member is listed as an account manager — surfaced on
@@ -16152,7 +16189,9 @@ const fmtFollowup = (d) => d ? (d.includes("T") ? fmtDateTime(d) : fmtDate(d)) :
 
 // Lead Detail Panel
 function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivity, onConvert, currentUser, onDeleteLead}) {
-  const [tab, setTab] = usePersistentState(`sf_tab_lead_${lead?.id}`,"overview");
+  // Plain state, not persisted — opening any lead should always start on
+  // Overview, not silently reopen to whatever tab was last viewed.
+  const [tab, setTab] = useState("overview");
   const [note, setNote] = useState("");
   const [noteType, setNoteType] = useState("note");
   const [followupDate, setFollowupDate] = useState("");
@@ -16403,7 +16442,23 @@ function LeadCard({lead, onClick}) {
 // Main Leads Page
 function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead, onUpdateLead, onAddActivity, onConvertLead, onDeleteLead}) {
   const [view, setView] = useState("kanban");
-  const [selectedLead, setSelectedLead] = useState(null);
+  const [selectedLead, setSelectedLead_] = useState(null);
+  // Opening a lead pushes its own history entry so the physical browser
+  // Back button closes it instead of navigating away from Leads entirely.
+  const setSelectedLead = (l) => {
+    setSelectedLead_(l);
+    if(l) { try{ window.history.pushState({sfPage:"leads", sfLeadDetail:l.id},"","#leads"); }catch(e){} }
+  };
+  React.useEffect(()=>{
+    const onPop = (e) => {
+      if(e.state && "sfLeadDetail" in e.state) {
+        const id = e.state.sfLeadDetail;
+        setSelectedLead_(id ? (leads.find(l=>l.id===id)||null) : null);
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return ()=>window.removeEventListener("popstate", onPop);
+  },[leads]);
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState("");
   const [sourceF, setSourceF] = useState("all");
@@ -16544,15 +16599,16 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
       {/* Lead Detail Panel */}
       {selectedLead&&(
         <LeadDetail
+          key={selectedLead.id}
           lead={leads.find(l=>l.id===selectedLead.id)||selectedLead}
           activities={leadActivities}
           team={team}
           currentUser={currentUser}
-          onClose={()=>setSelectedLead(null)}
-          onUpdateLead={async l=>{await onUpdateLead(l);setSelectedLead(l);}}
+          onClose={()=>{ try{ window.history.back(); }catch(e){ setSelectedLead_(null); } }}
+          onUpdateLead={async l=>{await onUpdateLead(l);setSelectedLead_(l);}}
           onAddActivity={onAddActivity}
-          onConvert={async l=>{await onConvertLead(l);setSelectedLead(null);}}
-          onDeleteLead={currentUser?.role==="admin"?async id=>{await onDeleteLead(id);setSelectedLead(null);}:null}
+          onConvert={async l=>{await onConvertLead(l);setSelectedLead_(null);}}
+          onDeleteLead={currentUser?.role==="admin"?async id=>{await onDeleteLead(id);setSelectedLead_(null);}:null}
         />
       )}
     </div>
@@ -30711,9 +30767,19 @@ function App() {
       const p = e.state?.sfPage || (window.location.hash.replace("#",""))||"home";
       if(VALID_PAGES.includes(p)){
         setPage_(p);
-        // When navigating back to clients/projects via browser back, clear detail selection
-        if(p==="clients"){ setSelectedClientId_(null); try{localStorage.removeItem("sf_selected_client");}catch(e){} }
-        if(p==="projects"){ setSelectedProjectId_(null); try{localStorage.removeItem("sf_selected_project");}catch(e){} }
+        // Restore whichever detail (if any) was open at this point in history —
+        // e.state.sfDetail is null for the plain list entry, an id for a detail
+        // view, so browser back/forward moves through list ⇄ detail correctly.
+        if(p==="clients"){
+          const detailId = e.state?.sfDetail || null;
+          setSelectedClientId_(detailId);
+          try{ detailId ? localStorage.setItem("sf_selected_client",detailId) : localStorage.removeItem("sf_selected_client"); }catch(e){}
+        }
+        if(p==="projects"){
+          const detailId = e.state?.sfDetail || null;
+          setSelectedProjectId_(detailId);
+          try{ detailId ? localStorage.setItem("sf_selected_project",detailId) : localStorage.removeItem("sf_selected_project"); }catch(e){}
+        }
         try{localStorage.setItem("sf_page",p);}catch(e){}
       }
     };
@@ -30802,6 +30868,10 @@ function App() {
   const setSelectedClientId = (id) => {
     setSelectedClientId_(id);
     try{ id ? localStorage.setItem("sf_selected_client",id) : localStorage.removeItem("sf_selected_client"); }catch(e){}
+    // Opening a client detail pushes its own history entry so the physical
+    // browser Back button pops back to the client list, instead of skipping
+    // straight past it to whatever page was open before Clients.
+    if(id) { try{ window.history.pushState({sfPage:"clients", sfDetail:id},"","#clients"); }catch(e){} }
   };
   const [selectedProjectId,setSelectedProjectId_] = useState(()=>{
     try{ return page==="projects" ? (localStorage.getItem("sf_selected_project")||null) : null; }catch(e){return null;}
@@ -30809,6 +30879,7 @@ function App() {
   const setSelectedProjectId = (id) => {
     setSelectedProjectId_(id);
     try{ id ? localStorage.setItem("sf_selected_project",id) : localStorage.removeItem("sf_selected_project"); }catch(e){}
+    if(id) { try{ window.history.pushState({sfPage:"projects", sfDetail:id},"","#projects"); }catch(e){} }
   };
   const [showAddPost,setShowAddPost] = useState(false);
   const [showAddProject,setShowAddProject] = useState(false);
@@ -33102,12 +33173,12 @@ Return ONLY valid JSON (no markdown, no explanation):
               currentUser={currentUser} onToggleHide={toggleHideClient}/>
           );
           return (
-            <ClientDetailPage client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} onAddAsset={addAsset} currentUser={currentUser} onImpersonateClient={impersonateClient}
+            <ClientDetailPage key={selectedClient.id} client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} onAddAsset={addAsset} currentUser={currentUser} onImpersonateClient={impersonateClient}
               contactReports={data.contactReports||[]}
               integrations={data.integrations||[]}
               invoices={data.invoices||[]}
               leads={data.leads||[]}
-              onBack={()=>setSelectedClientId(null)} onPostClick={setSelectedPost}
+              onBack={()=>{ try{ window.history.back(); }catch(e){ setSelectedClientId(null); } }} onPostClick={setSelectedPost}
               onAddProject={()=>setShowAddProject(true)}
               onAddPost={()=>{setAddPostForClient(selectedClient);setShowAddPost(true);}}
               clientKnowledge={data.clientKnowledge}
