@@ -52,6 +52,7 @@ $ALLOWED_TABLES = [
     'lead_notify_settings','expenses','finance_client_notes',
     'job_openings','job_applications','deleted_email_applications','job_application_activity',
     'outstanding_liabilities','outstanding_payments','team_member_events',
+    'pro_chat_sessions',
 ];
 
 $table = $_GET['table'] ?? '';

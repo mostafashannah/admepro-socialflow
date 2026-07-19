@@ -469,6 +469,7 @@ const SB_TABLE = {
   NotificationPrefs:"notification_prefs",
   ClientTask:"client_tasks",
   ClientMemory:"client_memory",
+  ProChatSession:"pro_chat_sessions",
   GeneratedLead:"generated_leads",
   LeadAgentConfig:"lead_agent_configs",
   AgentConfig:"agent_configs",
@@ -523,6 +524,7 @@ const SB_SCHEMA = {
   notification_prefs: ["user_email","all_disabled","mentions_only","daily_digest","task_assigned","task_stage_changed","task_due_soon","task_overdue","task_mention","task_comment","project_created","project_task_added","project_deadline_updated","post_approved","post_rejected","client_approval_required","invoice_created","payment_received","subscription_renewal","user_invited","access_approved","access_rejected","permissions_updated"],
   customer_messages: ["client_id","client_name","channel","customer_id","customer_name","direction","message_text","sent_by","thread_status","draft_status","external_id"],
   reply_bot_settings: ["client_id","client_name","enabled","mode","channels","tone","brain","dont_do","fallback_message","updated_by"],
+  pro_chat_sessions: ["user_email","client_id","title","messages"],
 };
 function sbSanitize(tableName, payload) {
   const allowed = SB_SCHEMA[tableName];
@@ -1087,7 +1089,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.247";
+const APP_VERSION = "beta 5.248";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -26299,11 +26301,14 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
         const next = loadProSessions(currentUser?.email).map(s=>s.id===editingProId?{...s,title}:s);
         saveProSessions(next, currentUser?.email);
         setProSessions(next);
+        const renamed = next.find(s=>s.id===editingProId);
+        if(renamed) persistProSessionToServer(renamed, currentUser?.email);
       }
     }
     setEditingProId(null);
   };
   const deleteProSession = (id) => {
+    deleteProSessionFromServer(id);
     const next = loadProSessions(currentUser?.email).filter(s=>s.id!==id);
     saveProSessions(next, currentUser?.email);
     setProSessions(next);
@@ -26319,6 +26324,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     saveActiveChatId(fresh.id, currentUser?.email);
     setProSessions(next);
     setProActiveId(fresh.id);
+    persistProSessionToServer(fresh, currentUser?.email);
     handleNav("home");
   };
 
@@ -27337,6 +27343,80 @@ function saveProSessions(s,email){ try{ localStorage.setItem(PRO_CHAT_SESSIONS_K
 function loadActiveChatId(email){ try{ return localStorage.getItem(PRO_CHAT_ACTIVE_KEY(email))||""; }catch(e){ return ""; } }
 function saveActiveChatId(id,email){ try{ localStorage.setItem(PRO_CHAT_ACTIVE_KEY(email), id||""); }catch(e){} }
 
+// ── Pro chat: server-side persistence (localStorage stays as an instant local
+// cache, but the server is now the durable source of truth) ──────────────────
+// A conversation used to live ONLY in the browser's localStorage: clearing the
+// cache, switching browsers, or opening Pro on another device meant it was
+// simply gone, with nothing to inspect or recover. Sessions are now also
+// upserted to `pro_chat_sessions`, keyed by the same client-generated id once
+// it's been assigned a server row. Attachment binaries (base64 PDFs/images)
+// are stripped before saving server-side — only name/kind survive — so a
+// large upload doesn't bloat every subsequent save of the whole conversation.
+function stripAttachmentBinaries(messages){
+  return (messages||[]).map(m=>!m.attachments||!m.attachments.length ? m :
+    {...m, attachments: m.attachments.map(a=>({id:a.id, name:a.name, kind:a.kind}))});
+}
+async function fetchProSessionsFromServer(email){
+  if(!email) return [];
+  const r = await qe("ProChatSession", {user_email:email}, "-updated_at", 50);
+  if(!r.ok) return [];
+  return (r.entities||[]).map(row=>{
+    let messages = [];
+    try{ messages = typeof row.messages==="string" ? JSON.parse(row.messages||"[]") : (row.messages||[]); }catch(e){}
+    return {id:row.id, user_id:row.user_email, client_id:row.client_id||"", title:row.title||"New conversation",
+      created_at:row.created_at, updated_at:row.updated_at, messages};
+  });
+}
+// Upsert one session to the server. Returns the session, with `id` swapped to
+// the real server id the first time it's created (mirrors how every other
+// addX() in this app replaces a local temp id with the server-assigned one).
+async function persistProSessionToServer(session, email){
+  if(!email || !session) return session;
+  const payload = {
+    user_email: email,
+    client_id: session.client_id||"",
+    title: session.title||"New conversation",
+    messages: JSON.stringify(stripAttachmentBinaries(session.messages)),
+  };
+  const hasServerId = session.id && !String(session.id).startsWith("local_");
+  if(hasServerId){
+    await ue("ProChatSession", session.id, payload);
+    return session;
+  }
+  const r = await ce("ProChatSession", [payload]);
+  const created = r.entities?.[0];
+  return (created && created.id && !created._saveError) ? {...session, id:created.id} : session;
+}
+function deleteProSessionFromServer(id){
+  if(!id || String(id).startsWith("local_")) return;
+  de("ProChatSession", id).catch(()=>{});
+}
+// Called once per mount (per component using Pro sessions). First run for a
+// user with existing local-only history pushes it up to the server; after
+// that, merges in whichever copy of each session — local or server — was
+// updated more recently, so two open tabs/devices don't stomp each other.
+async function syncProSessionsWithServer(email, setSessions){
+  if(!email) return;
+  const server = await fetchProSessionsFromServer(email);
+  if(server.length===0){
+    setSessions(prevLocal=>{
+      prevLocal.forEach(s=>{ persistProSessionToServer(s, email).then(saved=>{
+        if(saved.id!==s.id) setSessions(cur=>cur.map(x=>x.id===s.id?{...x,id:saved.id}:x));
+      }); });
+      return prevLocal;
+    });
+    return;
+  }
+  setSessions(prevLocal=>{
+    const byId = new Map(prevLocal.map(s=>[s.id,s]));
+    for(const srv of server){
+      const loc = byId.get(srv.id);
+      if(!loc || new Date(srv.updated_at||0) > new Date(loc.updated_at||0)) byId.set(srv.id, srv);
+    }
+    return [...byId.values()].sort((a,b)=>new Date(b.updated_at||0)-new Date(a.updated_at||0)).slice(0,50);
+  });
+}
+
 // Every real page load (hard refresh, new tab/window) should land on a brand
 // new Pro conversation rather than silently resuming the last one — but
 // navigating within the SPA back to Pro Home should keep resuming it. Since
@@ -27476,6 +27556,24 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
   // without sending a message leaves localStorage pointing at an id that no
   // longer exists anywhere, which renders as a blank "new" chat.
   useEffect(()=>{ saveProSessions(sessions, currentUser?.email); },[sessions]);
+  // Pull the durable server copy in once per user (merges in anything saved
+  // from another device/browser, or migrates pre-existing local-only history up).
+  useEffect(()=>{ syncProSessionsWithServer(currentUser?.email, setSessions); },[currentUser?.email]);
+  // Push changes up to the server, debounced so a fast burst of edits (typing,
+  // streaming replies) doesn't fire an upsert per keystroke.
+  useEffect(()=>{
+    const t = setTimeout(()=>{
+      sessions.forEach(s=>{
+        persistProSessionToServer(s, currentUser?.email).then(saved=>{
+          if(saved.id!==s.id){
+            setSessions(prev=>prev.map(x=>x.id===s.id?{...x,id:saved.id}:x));
+            if(activeChatId===s.id){ setActiveChatId(saved.id); saveActiveChatId(saved.id, currentUser?.email); }
+          }
+        });
+      });
+    }, 800);
+    return ()=>clearTimeout(t);
+  },[sessions]);
   useEffect(()=>{
     if(pendingSession && pendingSession.id===activeChatId) return;
     saveActiveChatId(activeChatId, currentUser?.email);
@@ -27525,6 +27623,7 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
       if(id===activeChatId) setActiveChatId("");
       return;
     }
+    deleteProSessionFromServer(id);
     setSessions(prev=>prev.filter(s=>s.id!==id));
     if(id===activeChatId) setActiveChatId("");
   };
@@ -29191,6 +29290,20 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
     });
   };
   useEffect(()=>{ saveProSessions(chatSessions, currentUser?.email); },[chatSessions]);
+  useEffect(()=>{ syncProSessionsWithServer(currentUser?.email, setChatSessions); },[currentUser?.email]);
+  useEffect(()=>{
+    const t = setTimeout(()=>{
+      chatSessions.forEach(s=>{
+        persistProSessionToServer(s, currentUser?.email).then(saved=>{
+          if(saved.id!==s.id){
+            setChatSessions(prev=>prev.map(x=>x.id===s.id?{...x,id:saved.id}:x));
+            if(activeChatId===s.id){ setActiveChatId(saved.id); saveActiveChatId(saved.id, currentUser?.email); }
+          }
+        });
+      });
+    }, 800);
+    return ()=>clearTimeout(t);
+  },[chatSessions]);
   useEffect(()=>{
     if(pendingSession && pendingSession.id===activeChatId) return;
     saveActiveChatId(activeChatId, currentUser?.email);
@@ -29350,6 +29463,7 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
       if(sessionId===activeChatId) setActiveChatId("");
       return;
     }
+    deleteProSessionFromServer(sessionId);
     setChatSessions(prev=>prev.filter(s=>s.id!==sessionId));
     if(sessionId===activeChatId) setActiveChatId("");
   };

@@ -572,6 +572,25 @@ CREATE TABLE IF NOT EXISTS client_memory (
 ) ENGINE=InnoDB;
 
 -- ----------------------------------------------------------------
+-- PRO CHAT SESSIONS — server-side home for the Pro assistant's chat
+-- history (previously localStorage-only, which meant a conversation
+-- couldn't survive a cleared cache or follow a user to another device).
+-- `messages` holds the full message array as JSON, same shape the client
+-- already used for localStorage — attachment binaries (base64) are
+-- stripped before saving here, only name/kind metadata is kept, so a
+-- large PDF/image upload doesn't bloat this row.
+-- ----------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS pro_chat_sessions (
+  id CHAR(36) PRIMARY KEY DEFAULT (UUID()),
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  user_email VARCHAR(255) NOT NULL,
+  client_id VARCHAR(36),
+  title TEXT,
+  messages JSON DEFAULT ('[]')
+) ENGINE=InnoDB;
+
+-- ----------------------------------------------------------------
 -- EMAIL LOGS
 -- ----------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS email_logs (
@@ -694,6 +713,7 @@ CREATE INDEX idx_subscriptions_client_id ON subscriptions(client_id);
 CREATE INDEX idx_subscription_payments_subscription_id ON subscription_payments(subscription_id);
 CREATE INDEX idx_client_tasks_client_id ON client_tasks(client_id);
 CREATE INDEX idx_client_memory_client_id ON client_memory(client_id);
+CREATE INDEX idx_pro_chat_sessions_user_email ON pro_chat_sessions(user_email(191));
 CREATE INDEX idx_client_users_client_id ON client_users(client_id);
 CREATE INDEX idx_client_documents_client_id ON client_documents(client_id);
 CREATE INDEX idx_client_knowledge_client_id ON client_knowledge(client_id);
