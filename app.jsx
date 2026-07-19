@@ -1064,7 +1064,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.225";
+const APP_VERSION = "beta 5.226";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11854,6 +11854,8 @@ const TEAM_EVENT_TYPES = [
   {key:"salary_raise", label:"Salary Raise", color:"#10b981", prevLabel:"Previous Salary", newLabel:"New Salary"},
   {key:"promotion", label:"Promotion", color:"#8b5cf6", prevLabel:"Previous Title", newLabel:"New Title"},
   {key:"bonus", label:"Bonus", color:"#f59e0b"},
+  {key:"commission", label:"Commission", color:"#06b6d4"},
+  {key:"deduction", label:"Deduction", color:"#ef4444"},
   {key:"warning", label:"Warning", color:"#ef4444"},
   {key:"demotion", label:"Demotion", color:"#ef4444", prevLabel:"Previous Title", newLabel:"New Title"},
   {key:"other", label:"Other", color:"#6b7280"},
@@ -11891,7 +11893,7 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
-  const blankForm = () => ({event_type:"salary_raise", title:"", previous_value:member.salary?String(member.salary):"", new_value:"", amount:"", effective_date:new Date().toISOString().slice(0,10), notes:""});
+  const blankForm = () => ({event_type:"salary_raise", title:"", previous_value:member.salary?String(member.salary):"", new_value:"", amount:"", deduction_mode:"fixed", deduction_days:"", effective_date:new Date().toISOString().slice(0,10), notes:""});
   const [form, setForm] = useState(blankForm);
   const [saving, setSaving] = useState(false);
 
@@ -11906,16 +11908,26 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
 
   const cfg = TEAM_EVENT_MAP[form.event_type]||TEAM_EVENT_TYPES[0];
 
+  // A deduction can be entered either as a flat amount or as a number of
+  // days to dock — days are converted to money using a 30-day daily rate off
+  // the member's current salary, same convention used elsewhere in Finance.
+  const deductionAmount = () => {
+    if(form.deduction_mode==="days") return (Number(form.deduction_days)||0) * (Number(member.salary)||0) / 30;
+    return Number(form.amount)||0;
+  };
+
   const save = async () => {
     if(!form.title.trim()) return;
     setSaving(true);
     try {
+      const isDeduction = form.event_type==="deduction";
+      const finalAmount = isDeduction ? deductionAmount() : (form.amount?Number(form.amount):null);
       await ce("TeamMemberEvent",[{
         team_member_id: member.id, team_member_name: member.name,
         event_type: form.event_type, title: form.title.trim(),
         previous_value: form.previous_value||"", new_value: form.new_value||"",
-        amount: form.amount?Number(form.amount):null,
-        effective_date: form.effective_date||"", notes: form.notes||"",
+        amount: finalAmount,
+        effective_date: form.effective_date||"", notes: isDeduction&&form.deduction_mode==="days"?`${form.deduction_days} day(s) deducted${form.notes?" — "+form.notes:""}`:(form.notes||""),
         recorded_by: currentUser?.name||currentUser?.email||"",
       }]);
       // A salary raise isn't just a log entry — it should actually change
@@ -11926,14 +11938,15 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
         if(cleanSalary>0) await onUpdateTeamMember(member.id, {salary: cleanSalary});
         else alert(`Event saved, but "${form.new_value}" isn't a valid salary number — the team member's salary was NOT updated. Edit their profile directly if needed.`);
       }
-      // A bonus is real money paid out — record it as a Salaries & Payroll
-      // expense linked to this member so it actually counts toward this
-      // month's payroll total (Finance page + this profile's Payroll tab),
-      // not just a note in the history log.
-      if(form.event_type==="bonus" && form.amount && !isNaN(Number(form.amount)) && onAddExpense) {
+      // Bonus/Commission are real money paid out — record as a Salaries &
+      // Payroll expense linked to this member so it counts toward this
+      // month's payroll total (Finance page + this profile's Payroll tab).
+      // Deduction is the opposite (money NOT paid) — it isn't a real expense,
+      // it's just subtracted from the prorated total shown on Overview.
+      if((form.event_type==="bonus"||form.event_type==="commission") && form.amount && !isNaN(Number(form.amount)) && onAddExpense) {
         await onAddExpense({
           type:"out", category:"salaries",
-          description:`Bonus — ${form.title.trim()}`,
+          description:`${cfg.label} — ${form.title.trim()}`,
           amount: Number(form.amount), currency:"EGP",
           date: form.effective_date || new Date().toISOString().slice(0,10),
           method: null, team_member_id: member.id, salary_month: null,
@@ -12013,10 +12026,34 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
               </div>
             </div>
           )}
-          {form.event_type==="bonus"&&(
+          {(form.event_type==="bonus"||form.event_type==="commission")&&(
             <div>
               <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Amount (EGP)</label>
               <input type="number" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)"}}/>
+            </div>
+          )}
+          {form.event_type==="deduction"&&(
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              <div>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Deduct As</label>
+                <div style={{display:"flex",gap:8}}>
+                  {[["fixed","Fixed Amount"],["days","Number of Days"]].map(([v,l])=>(
+                    <button key={v} type="button" onClick={()=>setForm(f=>({...f,deduction_mode:v}))} style={{flex:1,padding:"8px 10px",borderRadius:7,border:`1px solid ${form.deduction_mode===v?"var(--accent)":"var(--border2)"}`,background:form.deduction_mode===v?"var(--accentbg)":"var(--surface2)",color:form.deduction_mode===v?"var(--accent)":"var(--text2)",fontSize:12,fontWeight:700,cursor:"pointer"}}>{l}</button>
+                  ))}
+                </div>
+              </div>
+              {form.deduction_mode==="fixed"?(
+                <div>
+                  <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Amount (EGP)</label>
+                  <input type="number" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)"}}/>
+                </div>
+              ):(
+                <div>
+                  <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Number of Days</label>
+                  <input type="number" value={form.deduction_days} onChange={e=>setForm(f=>({...f,deduction_days:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)"}}/>
+                  {form.deduction_days&&member.salary&&<p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>= EGP {Math.round(deductionAmount()).toLocaleString()} (at EGP {Math.round(Number(member.salary)/30).toLocaleString()}/day)</p>}
+                </div>
+              )}
             </div>
           )}
           <div>
@@ -12057,6 +12094,15 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
   useEffect(()=>{
     qe("TeamMemberEvent", {team_member_id: member.id, event_type:"salary_raise"}, "-effective_date", 100)
       .then(res=>setSalaryRaises(res.entities||[])).catch(()=>{});
+  },[member.id]);
+
+  // Deductions (docked days/amount) — subtracted from the prorated total on
+  // Overview, not stored as an expense since it's money NOT paid rather than
+  // an actual outflow.
+  const [deductions, setDeductions] = useState([]);
+  useEffect(()=>{
+    qe("TeamMemberEvent", {team_member_id: member.id, event_type:"deduction"}, "-effective_date", 100)
+      .then(res=>setDeductions(res.entities||[])).catch(()=>{});
   },[member.id]);
 
   // The original job application this person was hired from — CV,
@@ -12307,7 +12353,11 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
         const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
         const thisMonthRecords = mySalaryRecords.filter(e=>(e.date||"").slice(0,7)===thisMonthKey);
         const thisMonthBonuses = thisMonthRecords.filter(e=>(e.description||"").startsWith("Bonus —"));
+        const thisMonthCommissions = thisMonthRecords.filter(e=>(e.description||"").startsWith("Commission —"));
         const bonusTotal = thisMonthBonuses.reduce((s,e)=>s+Number(e.amount||0),0);
+        const commissionTotal = thisMonthCommissions.reduce((s,e)=>s+Number(e.amount||0),0);
+        const thisMonthDeductions = deductions.filter(d=>(d.effective_date||"").slice(0,7)===thisMonthKey);
+        const deductionTotal = thisMonthDeductions.reduce((s,d)=>s+Number(d.amount||0),0);
         // Prorated, not just "current salary" or "whatever was already paid" —
         // a raise mid-month means part of the month was earned at the old rate.
         const raisesThisMonth = salaryRaises.filter(r=>(r.effective_date||"").slice(0,7)===thisMonthKey);
@@ -12318,7 +12368,9 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
             {row("Base Salary (Prorated)", baseTotal?`EGP ${Math.round(baseTotal).toLocaleString()}`:"—")}
             {raisesThisMonth.length>0&&row("Raise Effective", raisesThisMonth.map(r=>fmtDate(r.effective_date)).join(", "))}
             {row("Bonuses", bonusTotal?`EGP ${Math.round(bonusTotal).toLocaleString()}`:"—")}
-            {row("Total This Month", `EGP ${Math.round(baseTotal+bonusTotal).toLocaleString()}`)}
+            {row("Commissions", commissionTotal?`EGP ${Math.round(commissionTotal).toLocaleString()}`:"—")}
+            {row("Deductions", deductionTotal?`-EGP ${Math.round(deductionTotal).toLocaleString()}`:"—")}
+            {row("Total This Month", `EGP ${Math.round(baseTotal+bonusTotal+commissionTotal-deductionTotal).toLocaleString()}`)}
           </div>
         );
       })()}
