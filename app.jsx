@@ -1069,7 +1069,10 @@ async function sendCareersEmail(to, subject, html, fromName="Admepro Careers") {
 
 // ── Pro AI preferences (model + speed), set from Settings → AI & Tokens ──
 function getAIPrefs() {
-  let model = "claude-haiku-4-5-20251001", speed = "medium";
+  // Sonnet is the default brain for Pro — noticeably smarter than Haiku on
+  // multi-step reasoning, document understanding, and long conversations,
+  // still switchable from Settings → AI & Tokens.
+  let model = "claude-sonnet-4-6", speed = "medium";
   try {
     model = localStorage.getItem("sf_ai_model") || model;
     speed = localStorage.getItem("sf_ai_speed") || speed;
@@ -1117,7 +1120,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.299";
+const APP_VERSION = "beta 5.300";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19564,7 +19567,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 function AITokensPanel() {
   const [usage, setUsage] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [model, setModel] = useState(() => { try{ return localStorage.getItem("sf_ai_model")||"claude-haiku-4-5-20251001"; }catch(e){return "claude-haiku-4-5-20251001";} });
+  const [model, setModel] = useState(() => { try{ return localStorage.getItem("sf_ai_model")||"claude-sonnet-4-6"; }catch(e){return "claude-sonnet-4-6";} });
   const [speed, setSpeed] = useState(() => { try{ return localStorage.getItem("sf_ai_speed")||"medium"; }catch(e){return "medium";} });
   const [saved, setSaved] = useState(false);
   const [testResult, setTestResult] = useState(null);
@@ -28696,9 +28699,9 @@ RULES:
     const toBlock = (a) => a.kind==="image"
       ? {type:"image", source:{type:"base64", media_type:a.mediaType, data:a.base64}}
       : {type:"document", source:{type:"base64", media_type:"application/pdf", data:a.base64}};
-    const RESEND_DOC_CAP = 3;
+    const RESEND_DOC_CAP = 6;
     let resent = 0;
-    const allMsgs = [...messages, userMsgObj].slice(-14);
+    const allMsgs = [...messages, userMsgObj].slice(-30);
     const history = allMsgs
       .filter(m=>(m.content && typeof m.content==="string") || (m.attachments||[]).length)
       .filter(m=>!m.pendingAction && !m.meta)
@@ -28718,7 +28721,7 @@ RULES:
         return {role, content:textContent};
       })
       .filter(m=>Array.isArray(m.content) ? m.content.length>0 : m.content.length>0)
-      .slice(-10);
+      .slice(-26);
     const firstUserIdx = history.findIndex(m=>m.role==="user");
     const apiHistory = firstUserIdx>0 ? history.slice(firstUserIdx) : history;
 
@@ -30532,10 +30535,12 @@ RULES:
       }
     }
 
-    // Build conversation history (cap each msg + total to keep input under Claude limits)
+    // Build conversation history (cap each msg + total to keep input under Claude limits).
+    // With Sonnet's 1M context there is far more headroom than the old Haiku-tuned
+    // caps assumed, so Pro now remembers ~40 turns back with much less truncation.
     const truncMsg = (s) => {
-      if(!s || s.length <= 4000) return s;
-      return s.slice(0,2200) + "\n\n…[truncated for length]…\n\n" + s.slice(-1500);
+      if(!s || s.length <= 12000) return s;
+      return s.slice(0,7000) + "\n\n…[truncated for length]…\n\n" + s.slice(-4000);
     };
     const toBlock = (a) => a.kind==="image"
       ? {type:"image", source:{type:"base64", media_type:a.mediaType, data:a.base64}}
@@ -30545,12 +30550,12 @@ RULES:
       .filter(a=>a.kind==="text")
       .map(a=>`\n\n[Attached file: ${a.name}]\n${a.text}`).join("");
 
-    const allMsgs = [...messages, userMsgObj].slice(-16);
+    const allMsgs = [...messages, userMsgObj].slice(-40);
     // Re-attach images/PDFs from earlier turns too — otherwise a document uploaded
     // a message or two ago silently vanishes from context on every later turn and
     // the user has to keep re-uploading it. Cap how many we resend so payload size
     // stays bounded (most recent uploads win).
-    const RESEND_DOC_CAP = 3;
+    const RESEND_DOC_CAP = 6;
     let resent = 0;
     const history = allMsgs
       .filter(m=>(m.content && typeof m.content==="string") || (m.attachments||[]).length)
@@ -30577,7 +30582,7 @@ RULES:
       })
       .reverse()
       .filter(m=>Array.isArray(m.content) ? m.content.length>0 : m.content.length>0)
-      .slice(-14);
+      .slice(-38);
     const firstIdx = history.findIndex(m=>m.role==="user");
     const apiHistory = firstIdx>0 ? history.slice(firstIdx) : history;
 
