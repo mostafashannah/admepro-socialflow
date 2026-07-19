@@ -1087,7 +1087,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.245";
+const APP_VERSION = "beta 5.246";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11603,7 +11603,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
 
       {/* Reports Tab */}
       {tab==="reports"&&(
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:16}}>
           {[
             {label:"Total Posts",value:projectPosts.length,icon:"",color:"#6366f1"},
             {label:"Published",value:projectPosts.filter(p=>p.stage==="published").length,icon:"",color:"#10b981"},
