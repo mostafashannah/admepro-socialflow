@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS posts (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   project_id VARCHAR(36), client_id VARCHAR(36), client_name TEXT,
   title TEXT NOT NULL, description TEXT, stage VARCHAR(50) DEFAULT 'planning',
-  platform TEXT, post_type TEXT, caption TEXT, hashtags TEXT,
+  platform TEXT, platforms JSON DEFAULT ('[]'), post_type TEXT, caption TEXT, hashtags TEXT,
   design_urls JSON DEFAULT ('[]'), scheduled_date TEXT, scheduled_time TEXT,
   assigned_to TEXT, priority TEXT DEFAULT ('medium'), rejection_reason TEXT,
   reel_hook TEXT, reel_script TEXT, reel_cta TEXT,
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS posts (
   music_direction TEXT, tov_used TEXT, content_language TEXT,
   design_assets JSON DEFAULT ('[]'), brief TEXT, notes TEXT,
   published_at TIMESTAMP NULL, external_post_id TEXT, publish_error TEXT,
-  publish_attempts DECIMAL(4,0) DEFAULT 0
+  publish_attempts DECIMAL(4,0) DEFAULT 0, estimated_minutes DECIMAL(6,0)
 ) ENGINE=InnoDB;
 
 -- ----------------------------------------------------------------

@@ -526,7 +526,7 @@ function sbTable(entityName) {
 // Known columns per table — used to strip unknown fields before POST/PATCH
 const SB_SCHEMA = {
   projects: ["title","description","client_id","client_name","status","start_date","end_date","platforms","team_members","project_type","posting_start","posting_end"],
-  posts: ["project_id","client_id","client_name","title","description","stage","platform","post_type","caption","hashtags","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","estimated_minutes"],
+  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","estimated_minutes"],
   // address/website/contact_person were never real columns on the clients
   // table (mysql-schema.sql only has name/email/phone/logo_url/industry/
   // status/account_manager_id/notes/platforms/portal_password/username) —
@@ -1111,7 +1111,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.270";
+const APP_VERSION = "beta 5.271";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3883,10 +3883,12 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
   const assignee = team?.find(t=>t.email===post.assigned_to);
 
   const openEdit = () => {
+    const existingPlatforms = Array.isArray(post.platforms) ? post.platforms : parseJ(post.platforms||"[]");
     setEditForm({
       title: post.title||"",
       description: post.description||"",
       platform: post.platform||"instagram",
+      platforms: existingPlatforms.length ? existingPlatforms : [post.platform||"instagram"],
       post_type: post.post_type||"image",
       priority: post.priority||"medium",
       assigned_to: post.assigned_to||"",
@@ -3896,8 +3898,19 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
     });
     setEditing(true);
   };
+  const togglePlatform = (p) => {
+    setEditForm(f=>{
+      const has = f.platforms.includes(p);
+      const next = has ? f.platforms.filter(x=>x!==p) : [...f.platforms, p];
+      return {...f, platforms: next.length?next:[p]}; // never let it go fully empty
+    });
+  };
   const saveEdit = () => {
-    onEdit&&onEdit({...post, ...editForm});
+    if(editForm.scheduled_date && !editForm.scheduled_time) return; // due date needs a time too
+    // Keep the singular `platform` field (used everywhere else — Kanban
+    // columns, calendar icons, filters) as the first picked platform, while
+    // `platforms` carries the full set for showing every badge here.
+    onEdit&&onEdit({...post, ...editForm, platform: editForm.platforms[0]});
     setEditing(false);
   };
   const handleDelete = () => {
@@ -3953,7 +3966,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
   };
 
   return (
-    <Modal open onClose={onClose} title="" width={1280} headerActions={isManager&&(
+    <Modal open onClose={onClose} title={<Badge label={stage.label} color={stage.color}/>} width={1280} headerActions={isManager&&(
       <>
         <button onClick={openEdit} title="Edit task" style={{display:"flex",alignItems:"center",gap:5,padding:"5px 11px",borderRadius:7,fontSize:12,fontWeight:600,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text2)",transition:"all 0.12s"}}
           onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--accent)";e.currentTarget.style.color="var(--accent)";}}
@@ -3979,8 +3992,10 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:22,fontWeight:700,lineHeight:1.2}}>{post.title}</h2>
           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
             {project&&<span style={{fontSize:12,color:"var(--text2)"}}>{project.title} · {project.client_name}</span>}
-            <Badge label={stage.label} color={stage.color}/>
-            <PChip platform={post.platform}/>
+            {(()=>{
+              const pf = Array.isArray(post.platforms) ? post.platforms : parseJ(post.platforms||"[]");
+              return (pf.length ? pf : [post.platform]).filter(Boolean).map(p=><PChip key={p} platform={p}/>);
+            })()}
             <Badge label={post.post_type} color="#6b7280"/>
             <Badge label={post.priority} color={PRI_COLOR[post.priority]}/>
           </div>
@@ -4031,11 +4046,18 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Brief / Description</label>
                 <textarea value={editForm.description} onChange={e=>setEditForm(f=>({...f,description:e.target.value}))} rows={3} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)",resize:"vertical",fontFamily:"inherit"}}/>
               </div>
-              <div>
-                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Platform</label>
-                <select value={editForm.platform} onChange={e=>setEditForm(f=>({...f,platform:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}>
-                  {PLATFORMS.map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
-                </select>
+              <div style={{gridColumn:"1/-1"}}>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Platforms (pick more than one if it's cross-posted)</label>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {PLATFORMS.map(p=>{
+                    const active = editForm.platforms.includes(p);
+                    return (
+                      <button key={p} type="button" onClick={()=>togglePlatform(p)} style={{padding:"6px 12px",borderRadius:99,border:`1px solid ${active?PLT_COLOR[p]:"var(--border2)"}`,background:active?PLT_COLOR[p]+"22":"var(--surface)",color:active?PLT_COLOR[p]:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                        {p.charAt(0).toUpperCase()+p.slice(1)}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
               <div>
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Post Type</label>
@@ -4061,17 +4083,18 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
                 <input type="date" value={editForm.scheduled_date} onChange={e=>setEditForm(f=>({...f,scheduled_date:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
               </div>
               <div>
-                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Time</label>
-                <input type="time" value={editForm.scheduled_time} onChange={e=>setEditForm(f=>({...f,scheduled_time:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Time{editForm.scheduled_date?" *":""}</label>
+                <input type="time" value={editForm.scheduled_time} onChange={e=>setEditForm(f=>({...f,scheduled_time:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:`1px solid ${editForm.scheduled_date&&!editForm.scheduled_time?"#ef4444":"var(--border2)"}`,background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
+                {editForm.scheduled_date&&!editForm.scheduled_time&&<p style={{fontSize:10,color:"#ef4444",marginTop:3}}>A due date needs a time too</p>}
               </div>
               <div>
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Est. Duration (mins, for Timeline)</label>
-                <input type="number" min={5} step={5} value={editForm.estimated_minutes||""} onChange={e=>setEditForm(f=>({...f,estimated_minutes:e.target.value?Number(e.target.value):""}))} placeholder="Auto" style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
+                <input type="number" min={5} step={5} value={editForm.estimated_minutes||""} onChange={e=>setEditForm(f=>({...f,estimated_minutes:e.target.value?Number(e.target.value):""}))} placeholder={`Auto (${estimateDuration({post_type:editForm.post_type,priority:editForm.priority})} min)`} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
               </div>
             </div>
             <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
               <button onClick={()=>setEditing(false)} style={{padding:"7px 16px",borderRadius:7,fontSize:12,fontWeight:600,background:"var(--surface)",border:"1px solid var(--border2)",color:"var(--text2)"}}>Cancel</button>
-              <Btn onClick={saveEdit}><Ico d={Icons.check} size={13}/> Save Changes</Btn>
+              <Btn onClick={saveEdit} disabled={editForm.scheduled_date&&!editForm.scheduled_time}><Ico d={Icons.check} size={13}/> Save Changes</Btn>
             </div>
           </div>
         )}
@@ -4446,8 +4469,8 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
   };
 
   const canSubmit = f.content_mode==="ready"
-    ? f.title.trim()&&f.project_id&&f.caption.trim()&&f.platforms.length&&(f.publish_mode!=="schedule"||f.scheduled_date)&&!needsInstaCover
-    : f.title.trim()&&f.project_id;
+    ? f.title.trim()&&f.project_id&&f.caption.trim()&&f.platforms.length&&(f.publish_mode!=="schedule"||(f.scheduled_date&&f.scheduled_time))&&!needsInstaCover
+    : f.title.trim()&&f.project_id&&(!f.scheduled_date||f.scheduled_time);
 
   const submit = async () => {
     if(!canSubmit) return;
@@ -4659,14 +4682,18 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
             </div>
             <Field label="Estimated Duration (for My Timeline scheduling)">
               <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                <input type="number" min={5} step={5} value={f.estimated_minutes||""} onChange={e=>s("estimated_minutes",e.target.value?Number(e.target.value):"")} placeholder="Auto (by type/priority)" style={{...inputSt,flex:1}}/>
+                <input type="number" min={5} step={5} value={f.estimated_minutes||""} onChange={e=>s("estimated_minutes",e.target.value?Number(e.target.value):"")} placeholder={`Auto (${estimateDuration({post_type:f.post_type,priority:f.priority})} min)`} style={{...inputSt,flex:1}}/>
                 <span style={{fontSize:12,color:"var(--text3)",whiteSpace:"nowrap"}}>minutes</span>
               </div>
             </Field>
             {f.content_mode==="new"?(
               <>
-                <Field label="Scheduled Date">
-                  <input type="date" value={f.scheduled_date} onChange={e=>s("scheduled_date",e.target.value)} style={inputSt}/>
+                <Field label="Scheduled Date & Time">
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    <input type="date" value={f.scheduled_date} onChange={e=>s("scheduled_date",e.target.value)} style={inputSt}/>
+                    <input type="time" value={f.scheduled_time} onChange={e=>s("scheduled_time",e.target.value)} style={{...inputSt,borderColor:f.scheduled_date&&!f.scheduled_time?"#ef4444":undefined}}/>
+                  </div>
+                  {f.scheduled_date&&!f.scheduled_time&&<p style={{fontSize:11,color:"#ef4444",marginTop:4}}>A scheduled date needs a time too</p>}
                 </Field>
                 <Field label="Brief / Description">
                   <textarea value={f.description} onChange={e=>s("description",e.target.value)} rows={3} placeholder="What should be created? Any specific requirements…" style={{...inputSt,resize:"vertical"}}/>
@@ -5550,8 +5577,8 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
   const reset = () => { setF({...blankForm}); setDone(false); };
 
   const canSubmit = f.content_mode==="ready"
-    ? f.title.trim()&&f.project_id&&f.caption.trim()&&f.platforms.length&&(f.publish_mode!=="schedule"||f.scheduled_date)&&!needsInstaCover
-    : f.title.trim()&&f.project_id;
+    ? f.title.trim()&&f.project_id&&f.caption.trim()&&f.platforms.length&&(f.publish_mode!=="schedule"||(f.scheduled_date&&f.scheduled_time))&&!needsInstaCover
+    : f.title.trim()&&f.project_id&&(!f.scheduled_date||f.scheduled_time);
 
   if(!open) return null;
   return (
@@ -5741,7 +5768,7 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
             </div>
             <Field label="Estimated Duration (for My Timeline scheduling)">
               <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                <input type="number" min={5} step={5} value={f.estimated_minutes||""} onChange={e=>s("estimated_minutes",e.target.value?Number(e.target.value):"")} placeholder="Auto (by type/priority)" style={{...inputSt,flex:1}}/>
+                <input type="number" min={5} step={5} value={f.estimated_minutes||""} onChange={e=>s("estimated_minutes",e.target.value?Number(e.target.value):"")} placeholder={`Auto (${estimateDuration({post_type:f.post_type,priority:f.priority})} min)`} style={{...inputSt,flex:1}}/>
                 <span style={{fontSize:12,color:"var(--text3)",whiteSpace:"nowrap"}}>minutes</span>
               </div>
             </Field>
