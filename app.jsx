@@ -526,7 +526,7 @@ function sbTable(entityName) {
 // Known columns per table — used to strip unknown fields before POST/PATCH
 const SB_SCHEMA = {
   projects: ["title","description","client_id","client_name","status","start_date","end_date","platforms","team_members","project_type","posting_start","posting_end"],
-  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","estimated_minutes","content_assigned_to"],
+  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","estimated_minutes","content_assigned_to","due_date","due_time"],
   // address/website/contact_person were never real columns on the clients
   // table (mysql-schema.sql only has name/email/phone/logo_url/industry/
   // status/account_manager_id/notes/platforms/portal_password/username) —
@@ -1111,7 +1111,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.273";
+const APP_VERSION = "beta 5.274";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3894,6 +3894,8 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
       assigned_to: post.assigned_to||"",
       scheduled_date: post.scheduled_date||"",
       scheduled_time: post.scheduled_time||"",
+      due_date: post.due_date||"",
+      due_time: post.due_time||"",
       estimated_minutes: post.estimated_minutes||"",
     });
     setEditing(true);
@@ -3906,7 +3908,8 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
     });
   };
   const saveEdit = () => {
-    if(editForm.scheduled_date && !editForm.scheduled_time) return; // due date needs a time too
+    if(editForm.scheduled_date && !editForm.scheduled_time) return; // publish date needs a time too
+    if(editForm.due_date && !editForm.due_time) return; // due date needs a time too
     // Keep the singular `platform` field (used everywhere else — Kanban
     // columns, calendar icons, filters) as the first picked platform, while
     // `platforms` carries the full set for showing every badge here.
@@ -3941,23 +3944,26 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
   };
   const confirmAssignModal = () => {
     if(!assignForm.assigned_to || !assignForm.scheduled_date) return;
-    let estimated_minutes, scheduled_time;
+    let estimated_minutes, due_time;
     if(assignForm.mode==="range" && assignForm.start_time && assignForm.end_time) {
       const [sh,sm] = assignForm.start_time.split(":").map(Number);
       const [eh,em] = assignForm.end_time.split(":").map(Number);
       const mins = (eh*60+em) - (sh*60+sm);
       if(mins<=0) return;
       estimated_minutes = mins;
-      scheduled_time = assignForm.start_time;
+      due_time = assignForm.start_time;
     } else {
       if(!assignForm.scheduled_time) return;
-      scheduled_time = assignForm.scheduled_time;
+      due_time = assignForm.scheduled_time;
       estimated_minutes = post.estimated_minutes || estimateDuration(post);
     }
+    // This popup sets the work deadline (due_date/due_time) for whoever picks
+    // the task up next — it's deliberately separate from scheduled_date/time,
+    // which is the actual publish date and isn't touched here.
     onStageChange(post, assignStage, {
       assigned_to: assignForm.assigned_to,
-      scheduled_date: assignForm.scheduled_date,
-      scheduled_time, estimated_minutes,
+      due_date: assignForm.scheduled_date,
+      due_time, estimated_minutes,
     });
     setAssignStage(null);
   };
@@ -4045,7 +4051,16 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10}}>
             <div style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
-              <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Due Date</p>
+              <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Due Date <span style={{fontWeight:400,textTransform:"none"}}>(work deadline)</span></p>
+              {post.due_date ? (
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <Ico d={Icons.calendar} size={13}/>
+                  <span style={{fontSize:13,fontWeight:600}}>{fmtDate(post.due_date)}{post.due_time?` · ${post.due_time}`:""}</span>
+                </div>
+              ) : <span style={{fontSize:12,color:"var(--text3)"}}>Not set</span>}
+            </div>
+            <div style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
+              <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Publish Date</p>
               {post.scheduled_date ? (
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <Ico d={Icons.calendar} size={13}/>
@@ -4123,13 +4138,22 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
                 </select>
               </div>
               <div>
-                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Scheduled Date</label>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Due Date <span style={{fontWeight:400}}>(deadline to finish)</span></label>
+                <input type="date" value={editForm.due_date} onChange={e=>setEditForm(f=>({...f,due_date:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
+              </div>
+              <div>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Due Time{editForm.due_date?" *":""}</label>
+                <input type="time" value={editForm.due_time} onChange={e=>setEditForm(f=>({...f,due_time:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:`1px solid ${editForm.due_date&&!editForm.due_time?"#ef4444":"var(--border2)"}`,background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
+                {editForm.due_date&&!editForm.due_time&&<p style={{fontSize:10,color:"#ef4444",marginTop:3}}>A due date needs a time too</p>}
+              </div>
+              <div>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Publish Date <span style={{fontWeight:400}}>(when it goes live)</span></label>
                 <input type="date" value={editForm.scheduled_date} onChange={e=>setEditForm(f=>({...f,scheduled_date:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
               </div>
               <div>
-                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Time{editForm.scheduled_date?" *":""}</label>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Publish Time{editForm.scheduled_date?" *":""}</label>
                 <input type="time" value={editForm.scheduled_time} onChange={e=>setEditForm(f=>({...f,scheduled_time:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:`1px solid ${editForm.scheduled_date&&!editForm.scheduled_time?"#ef4444":"var(--border2)"}`,background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
-                {editForm.scheduled_date&&!editForm.scheduled_time&&<p style={{fontSize:10,color:"#ef4444",marginTop:3}}>A due date needs a time too</p>}
+                {editForm.scheduled_date&&!editForm.scheduled_time&&<p style={{fontSize:10,color:"#ef4444",marginTop:3}}>A publish date needs a time too</p>}
               </div>
               <div>
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Est. Duration (mins, for Timeline)</label>
@@ -4138,7 +4162,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
             </div>
             <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
               <button onClick={()=>setEditing(false)} style={{padding:"7px 16px",borderRadius:7,fontSize:12,fontWeight:600,background:"var(--surface)",border:"1px solid var(--border2)",color:"var(--text2)"}}>Cancel</button>
-              <Btn onClick={saveEdit} disabled={editForm.scheduled_date&&!editForm.scheduled_time}><Ico d={Icons.check} size={13}/> Save Changes</Btn>
+              <Btn onClick={saveEdit} disabled={(editForm.scheduled_date&&!editForm.scheduled_time)||(editForm.due_date&&!editForm.due_time)}><Ico d={Icons.check} size={13}/> Save Changes</Btn>
             </div>
           </div>
         )}
@@ -4501,7 +4525,7 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
   // selectable/defaulted — otherwise this silently defaults to projects[0],
   // which can belong to a totally different client.
   const selectableProjects = presetClient ? projects.filter(p=>p.client_id===presetClient.id) : projects;
-  const blankForm = {project_id:selectableProjects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:"",scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",content_mode:"new",platforms:[],platform_types:{},media:[],cover:null,publish_mode:"schedule",postStory:false,storyImage:null,estimated_minutes:""};
+  const blankForm = {project_id:selectableProjects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:"",scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",due_date:"",due_time:"",content_mode:"new",platforms:[],platform_types:{},media:[],cover:null,publish_mode:"schedule",postStory:false,storyImage:null,estimated_minutes:""};
   const [f,setF] = useState({...blankForm});
   const [saving,setSaving] = useState(false);
   const [uploading,setUploading] = useState(false);
@@ -5868,8 +5892,11 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
                   {PRIORITIES.map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
                 </select>
               </Field>
-              {f.content_mode==="new"&&<Field label="Due Date">
-                <input type="date" value={f.scheduled_date} onChange={e=>s("scheduled_date",e.target.value)} style={inputSt}/>
+              {f.content_mode==="new"&&<Field label="Due Date (deadline to finish)">
+                <div style={{display:"flex",gap:8}}>
+                  <input type="date" value={f.due_date} onChange={e=>s("due_date",e.target.value)} style={{...inputSt,flex:1}}/>
+                  <input type="time" value={f.due_time} onChange={e=>s("due_time",e.target.value)} style={{...inputSt,flex:1}}/>
+                </div>
               </Field>}
             </div>
             <Field label="Estimated Duration (for My Timeline scheduling)">
@@ -33370,8 +33397,8 @@ Return ONLY valid JSON (no markdown, no explanation):
     const assigneeEmail = overrides.assigned_to || assignee?.email || "";
 
     const updatedPost = {...post, stage:newStage, assigned_to:assigneeEmail||post.assigned_to,
-      scheduled_date: overrides.scheduled_date || post.scheduled_date,
-      scheduled_time: overrides.scheduled_time || post.scheduled_time,
+      due_date: overrides.due_date || post.due_date,
+      due_time: overrides.due_time || post.due_time,
       estimated_minutes: overrides.estimated_minutes || post.estimated_minutes,
       content_assigned_to: newStage==="content_creation" ? (assigneeEmail||post.assigned_to) : post.content_assigned_to,
     };
@@ -33469,7 +33496,7 @@ Return ONLY valid JSON (no markdown, no explanation):
 
     try {
       await ue("Post", post.id, {stage:newStage, assigned_to:updatedPost.assigned_to,
-        scheduled_date:updatedPost.scheduled_date, scheduled_time:updatedPost.scheduled_time,
+        due_date:updatedPost.due_date, due_time:updatedPost.due_time,
         estimated_minutes:updatedPost.estimated_minutes, content_assigned_to:updatedPost.content_assigned_to});
       await ce("Comment",[{post_id:post.id,author_name:comment.author_name,type:"stage_change",content:comment.content}]);
     } catch(e){ logActivity("Post Stage Change Failed","tasks",`"${post.title}" → ${stageLabel}`,"error",String(e),currentUser?.email||"admin"); }
