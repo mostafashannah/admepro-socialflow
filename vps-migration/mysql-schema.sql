@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS posts (
   design_assets JSON DEFAULT ('[]'), brief TEXT, notes TEXT,
   published_at TIMESTAMP NULL, external_post_id TEXT, publish_error TEXT,
   publish_attempts DECIMAL(4,0) DEFAULT 0, estimated_minutes DECIMAL(6,0),
-  content_assigned_to TEXT, due_date TEXT, due_time TEXT
+  content_assigned_to TEXT, due_date TEXT, due_time TEXT, task_type TEXT
 ) ENGINE=InnoDB;
 
 -- ----------------------------------------------------------------

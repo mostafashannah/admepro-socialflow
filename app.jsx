@@ -528,7 +528,7 @@ function sbTable(entityName) {
 // Known columns per table — used to strip unknown fields before POST/PATCH
 const SB_SCHEMA = {
   projects: ["title","description","client_id","client_name","status","start_date","end_date","platforms","team_members","project_type","posting_start","posting_end"],
-  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","estimated_minutes","content_assigned_to","due_date","due_time"],
+  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","estimated_minutes","content_assigned_to","due_date","due_time","task_type"],
   // address/website/contact_person were never real columns on the clients
   // table (mysql-schema.sql only has name/email/phone/logo_url/industry/
   // status/account_manager_id/notes/platforms/portal_password/username) —
@@ -1113,7 +1113,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.287";
+const APP_VERSION = "beta 5.288";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13750,7 +13750,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
   const [showNewRequest,setShowNewRequest] = useState(false);
   const [taskView,setTaskView] = useState("kanban");
   const [hideEmptyStages,setHideEmptyStages] = useState(true);
-  const [newReqForm,setNewReqForm] = useState({project_id:"",title:"",description:"",post_type:"image",platforms:["instagram"],priority:"medium"});
+  const [newReqForm,setNewReqForm] = useState({task_type:"post",project_id:"",title:"",description:"",post_type:"image",platforms:["instagram"],priority:"medium"});
   const [showUserMenu,setShowUserMenu] = useState(false);
   const userMenuRef = useRef(null);
   useEffect(()=>{
@@ -13939,6 +13939,12 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
             </div>
             <div style={{padding:isMobile?16:24,display:"flex",flexDirection:"column",gap:12}}>
               <div>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Task Type</label>
+                <select value={newReqForm.task_type} onChange={e=>setNewReqForm(f=>({...f,task_type:e.target.value}))} style={inputSt}>
+                  {[["calendar","Calendar"],["post","Post"],["design","Design"],["video_editing","Video Editing"]].map(([v,label])=><option key={v} value={v}>{label}</option>)}
+                </select>
+              </div>
+              <div>
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Project</label>
                 <select value={newReqForm.project_id} onChange={e=>setNewReqForm(f=>({...f,project_id:e.target.value}))} style={inputSt}>
                   <option value="">Select project…</option>
@@ -13972,9 +13978,9 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
               </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 <div>
-                  <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Task Type</label>
+                  <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Post Type</label>
                   <select value={newReqForm.post_type} onChange={e=>setNewReqForm(f=>({...f,post_type:e.target.value}))} style={inputSt}>
-                    {[["calendar","Calendar"],["post","Post"],["design","Design"],["video_editing","Video Editing"]].map(([v,label])=><option key={v} value={v}>{label}</option>)}
+                    {POST_TYPES.map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
                   </select>
                 </div>
                 <div>
@@ -13986,7 +13992,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
               </div>
               <Btn disabled={!newReqForm.project_id||!newReqForm.title.trim()} onClick={()=>{
                 onAddPost&&onAddPost({...newReqForm, platform:newReqForm.platforms[0], client_id:client.id, client_name:client.name, project_id:newReqForm.project_id, stage:"client_request", created_by:"client"});
-                setNewReqForm({project_id:"",title:"",description:"",post_type:"image",platforms:["instagram"],priority:"medium"});
+                setNewReqForm({task_type:"post",project_id:"",title:"",description:"",post_type:"image",platforms:["instagram"],priority:"medium"});
                 setShowNewRequest(false);
               }}><Ico d={Icons.plus} size={14}/> Submit Request</Btn>
             </div>
