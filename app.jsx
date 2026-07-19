@@ -1087,7 +1087,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.240";
+const APP_VERSION = "beta 5.241";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -18774,7 +18774,7 @@ function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh, te
                         </div>
                         {log.details&&<p style={{fontSize:12,color:"var(--text2)"}}>{typeof log.details==="string"?log.details:JSON.stringify(log.details)}</p>}
                         {isError&&log.error_message&&(
-                          <div style={{marginTop:4,padding:"6px 10px",background:"#ef444411",border:"1px solid #ef444433",borderRadius:4,fontSize:11,color:"#ef4444",fontFamily:"monospace"}}>{log.error_message}</div>
+                          <div style={{marginTop:4,padding:"6px 10px",background:"#ef444411",border:"1px solid #ef444433",borderRadius:4,fontSize:11,color:"#ef4444",fontFamily:"monospace"}}>{typeof log.error_message==="string"?log.error_message:JSON.stringify(log.error_message)}</div>
                         )}
                       </div>
                       <div>
