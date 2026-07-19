@@ -1113,7 +1113,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.286";
+const APP_VERSION = "beta 5.287";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13824,7 +13824,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
 
       {/* Header */}
       <div style={{background:"var(--surface)",borderBottom:"1px solid var(--border)",padding:`0 ${isMobile?16:24}px`,position:"sticky",top:0,zIndex:100}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:isMobile?56:64,maxWidth:1000,margin:"0 auto"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",height:isMobile?56:64}}>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <img src="/favicon.svg" width={32} height={32} style={{borderRadius:8,flexShrink:0}} alt="logo"/>
             <div>
@@ -13974,7 +13974,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                 <div>
                   <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Task Type</label>
                   <select value={newReqForm.post_type} onChange={e=>setNewReqForm(f=>({...f,post_type:e.target.value}))} style={inputSt}>
-                    {[...POST_TYPES,"calendar"].map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
+                    {[["calendar","Calendar"],["post","Post"],["design","Design"],["video_editing","Video Editing"]].map(([v,label])=><option key={v} value={v}>{label}</option>)}
                   </select>
                 </div>
                 <div>
