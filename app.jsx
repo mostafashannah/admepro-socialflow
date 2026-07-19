@@ -1117,7 +1117,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.292";
+const APP_VERSION = "beta 5.293";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13996,20 +13996,35 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
               <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:isMobile?15:17}}>New Request</h3>
               <button onClick={()=>setShowNewRequest(false)} style={{color:"var(--text3)",display:"flex",background:"none",border:"none",cursor:"pointer",flexShrink:0}}><Ico d={Icons.x} size={18}/></button>
             </div>
-            <div style={{padding:isMobile?16:24,display:"flex",flexDirection:"column",gap:12}}>
-              <div>
-                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Task Type</label>
-                <select value={newReqForm.task_type} onChange={e=>setNewReqForm(f=>({...f,task_type:e.target.value}))} style={inputSt}>
-                  {clientAllowedTaskTypes.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}
-                </select>
+            <div style={{padding:isMobile?16:24,display:"flex",flexDirection:"column",gap:18}}>
+
+              {/* Section: What it is */}
+              <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                <p style={{fontSize:11,fontWeight:700,color:"var(--accent)",textTransform:"uppercase",letterSpacing:"0.06em"}}>What do you need?</p>
+                <div>
+                  <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Title</label>
+                  <input value={newReqForm.title} onChange={e=>setNewReqForm(f=>({...f,title:e.target.value}))} placeholder="e.g. Ramadan campaign teaser" style={inputSt}/>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                  <div>
+                    <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Task Type</label>
+                    <select value={newReqForm.task_type} onChange={e=>setNewReqForm(f=>({...f,task_type:e.target.value}))} style={inputSt}>
+                      {clientAllowedTaskTypes.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Priority</label>
+                    <select value={newReqForm.priority} onChange={e=>setNewReqForm(f=>({...f,priority:e.target.value}))} style={inputSt}>
+                      {PRIORITIES.map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+                    </select>
+                  </div>
+                </div>
               </div>
-              <div>
-                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Title</label>
-                <input value={newReqForm.title} onChange={e=>setNewReqForm(f=>({...f,title:e.target.value}))} style={inputSt}/>
-              </div>
-              <div>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
-                  <label style={{fontSize:11,fontWeight:600,color:"var(--text3)"}}>Description</label>
+
+              {/* Section: The brief */}
+              <div style={{display:"flex",flexDirection:"column",gap:8,paddingTop:14,borderTop:"1px solid var(--border)"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <p style={{fontSize:11,fontWeight:700,color:"var(--accent)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Brief</p>
                   <button type="button" disabled={!newReqForm.description.trim()||enhancingBrief} onClick={async()=>{
                     setEnhancingBrief(true);
                     try {
@@ -14022,44 +14037,45 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                     {enhancingBrief?"Enhancing…":"Enhance with AI"}
                   </button>
                 </div>
-                <textarea value={newReqForm.description} onChange={e=>setNewReqForm(f=>({...f,description:e.target.value}))} rows={3} style={{...inputSt,resize:"vertical",fontFamily:"inherit"}}/>
+                <textarea value={newReqForm.description} onChange={e=>setNewReqForm(f=>({...f,description:e.target.value}))} rows={4} placeholder="Describe what you'd like — goal, tone, key points to include…" style={{...inputSt,resize:"vertical",fontFamily:"inherit"}}/>
               </div>
-              <div>
-                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Platforms (pick more than one if it's cross-posted)</label>
-                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  {PLATFORMS.map(p=>{
-                    const active = newReqForm.platforms.includes(p);
-                    return (
-                      <button key={p} type="button" onClick={()=>setNewReqForm(f=>{
-                        const has = f.platforms.includes(p);
-                        const next = has ? f.platforms.filter(x=>x!==p) : [...f.platforms, p];
-                        return {...f, platforms: next.length?next:[p]};
-                      })} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,border:`1px solid ${active?PLT_COLOR[p]:"var(--border2)"}`,background:active?PLT_COLOR[p]+"22":"var(--surface2)",color:active?PLT_COLOR[p]:"var(--text2)",cursor:"pointer"}}>
-                        {p.charAt(0).toUpperCase()+p.slice(1)}
-                      </button>
-                    );
-                  })}
+
+              {/* Section: Where it publishes */}
+              <div style={{display:"flex",flexDirection:"column",gap:12,paddingTop:14,borderTop:"1px solid var(--border)"}}>
+                <p style={{fontSize:11,fontWeight:700,color:"var(--accent)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Where does this go?</p>
+                <div>
+                  <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Platforms (pick more than one if it's cross-posted)</label>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {PLATFORMS.map(p=>{
+                      const active = newReqForm.platforms.includes(p);
+                      return (
+                        <button key={p} type="button" onClick={()=>setNewReqForm(f=>{
+                          const has = f.platforms.includes(p);
+                          const next = has ? f.platforms.filter(x=>x!==p) : [...f.platforms, p];
+                          return {...f, platforms: next.length?next:[p]};
+                        })} style={{padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,border:`1px solid ${active?PLT_COLOR[p]:"var(--border2)"}`,background:active?PLT_COLOR[p]+"22":"var(--surface2)",color:active?PLT_COLOR[p]:"var(--text2)",cursor:"pointer"}}>
+                          {p.charAt(0).toUpperCase()+p.slice(1)}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                 <div>
                   <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Post Type</label>
                   <select value={newReqForm.post_type} onChange={e=>setNewReqForm(f=>({...f,post_type:e.target.value}))} style={inputSt}>
                     {POST_TYPES.map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Priority</label>
-                  <select value={newReqForm.priority} onChange={e=>setNewReqForm(f=>({...f,priority:e.target.value}))} style={inputSt}>
-                    {PRIORITIES.map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
-                  </select>
-                </div>
               </div>
-              <Btn disabled={!newReqForm.title.trim()} onClick={()=>{
-                onAddPost&&onAddPost({...newReqForm, platform:newReqForm.platforms[0], client_id:client.id, client_name:client.name, stage:"client_request", created_by:"client"});
-                setNewReqForm({task_type:clientAllowedTaskTypes[0]?.id||"social_post",title:"",description:"",post_type:"image",platforms:["instagram"],priority:"medium"});
-                setShowNewRequest(false);
-              }}><Ico d={Icons.plus} size={14}/> Submit Request</Btn>
+
+              <div style={{display:"flex",gap:8,paddingTop:6}}>
+                <button type="button" onClick={()=>setShowNewRequest(false)} style={{flex:1,padding:"10px 0",borderRadius:8,fontSize:13,fontWeight:600,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer"}}>Cancel</button>
+                <Btn disabled={!newReqForm.title.trim()} style={{flex:2}} onClick={()=>{
+                  onAddPost&&onAddPost({...newReqForm, platform:newReqForm.platforms[0], client_id:client.id, client_name:client.name, stage:"client_request", created_by:"client"});
+                  setNewReqForm({task_type:clientAllowedTaskTypes[0]?.id||"social_post",title:"",description:"",post_type:"image",platforms:["instagram"],priority:"medium"});
+                  setShowNewRequest(false);
+                }}><Ico d={Icons.plus} size={14}/> Submit Request</Btn>
+              </div>
             </div>
           </div>
         </div>
