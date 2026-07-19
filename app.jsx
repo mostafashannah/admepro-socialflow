@@ -1111,7 +1111,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.269";
+const APP_VERSION = "beta 5.270";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3979,6 +3979,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:22,fontWeight:700,lineHeight:1.2}}>{post.title}</h2>
           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
             {project&&<span style={{fontSize:12,color:"var(--text2)"}}>{project.title} · {project.client_name}</span>}
+            <Badge label={stage.label} color={stage.color}/>
             <PChip platform={post.platform}/>
             <Badge label={post.post_type} color="#6b7280"/>
             <Badge label={post.priority} color={PRI_COLOR[post.priority]}/>
