@@ -1108,7 +1108,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.259";
+const APP_VERSION = "beta 5.260";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23682,9 +23682,18 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
 function MyCalendarPage({posts,currentUser,team}) {
   const {isMobile} = useResponsive();
   const [currentDate, setCurrentDate] = useState(new Date());
+  const isAM = currentUser?.role==="account_manager" || currentUser?.role==="admin";
+  const [viewUser, setViewUser] = useState(null); // null = self
+  const [combinedView, setCombinedView] = useState(false);
+  const effectiveUser = (isAM && viewUser) ? viewUser : currentUser;
+  const teamByEmail = new Map((team||[]).map(m=>[m.email, m]));
+  if(currentUser?.email) teamByEmail.set(currentUser.email, currentUser);
 
-  // Get only posts assigned to current user with scheduled dates
-  const myPosts = posts.filter(p => p.assigned_to === currentUser?.email && p.scheduled_date);
+  // Get only posts assigned to the person being viewed with scheduled dates —
+  // or, in combined view, every team member's posts at once.
+  const myPosts = combinedView
+    ? posts.filter(p => p.assigned_to && teamByEmail.has(p.assigned_to) && p.scheduled_date)
+    : posts.filter(p => p.assigned_to === effectiveUser?.email && p.scheduled_date);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -23708,8 +23717,25 @@ function MyCalendarPage({posts,currentUser,team}) {
     <div style={{display:"flex",flexDirection:"column",gap:24,maxWidth:"100%",padding:isMobile?"16px":"32px 24px"}}>
       {/* Header */}
       <div>
-        <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?24:32,fontWeight:800,marginBottom:6}}>My Calendar</h1>
-        <p style={{fontSize:13,color:"var(--text2)"}}>Your scheduled posts and deadlines</p>
+        <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?24:32,fontWeight:800,marginBottom:6}}>
+          {combinedView ? "Combined Calendar" : isAM && viewUser ? `${viewUser.name.split(" ")[0]}'s Calendar` : "My Calendar"}
+        </h1>
+        <p style={{fontSize:13,color:"var(--text2)"}}>{combinedView ? "Every team member's scheduled posts and deadlines" : "Your scheduled posts and deadlines"}</p>
+        {isAM && (
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:10}}>
+            <button onClick={()=>{setCombinedView(false);setViewUser(null);}} style={{padding:"4px 10px",borderRadius:"var(--rs)",border:`1px solid ${!combinedView&&!viewUser?"var(--accent)":"var(--border)"}`,background:!combinedView&&!viewUser?"var(--accent)22":"var(--surface)",color:!combinedView&&!viewUser?"var(--accent)":"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+              My Calendar
+            </button>
+            {(team||[]).filter(m=>m.email!==currentUser?.email).map(m=>(
+              <button key={m.email} onClick={()=>{setCombinedView(false);setViewUser(m);}} style={{padding:"4px 10px",borderRadius:"var(--rs)",border:`1px solid ${!combinedView&&viewUser?.email===m.email?"var(--accent)":"var(--border)"}`,background:!combinedView&&viewUser?.email===m.email?"var(--accent)22":"var(--surface)",color:!combinedView&&viewUser?.email===m.email?"var(--accent)":"var(--text2)",fontSize:11,fontWeight:600,cursor:"pointer"}}>
+                {m.name.split(" ")[0]}
+              </button>
+            ))}
+            <button onClick={()=>setCombinedView(true)} style={{padding:"4px 10px",borderRadius:"var(--rs)",border:`1px solid ${combinedView?"var(--accent)":"var(--border)"}`,background:combinedView?"var(--accent)22":"var(--surface)",color:combinedView?"var(--accent)":"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
+              <Ico d={Icons.stat} size={11}/> All Members
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Calendar Container */}
@@ -23757,8 +23783,8 @@ function MyCalendarPage({posts,currentUser,team}) {
                       {postsForDay.length > 0 && (
                         <div style={{flex:1,display:"flex",flexDirection:"column",gap:2,overflow:"hidden"}}>
                           {postsForDay.slice(0,2).map((post,idx)=>(
-                            <div key={idx} style={{fontSize:9,padding:"2px 4px",borderRadius:4,background:STAGE_MAP[post.stage]?.color+"33",color:STAGE_MAP[post.stage]?.color,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                              {post.title.substring(0,12)}
+                            <div key={idx} title={combinedView?teamByEmail.get(post.assigned_to)?.name:undefined} style={{fontSize:9,padding:"2px 4px",borderRadius:4,background:STAGE_MAP[post.stage]?.color+"33",color:STAGE_MAP[post.stage]?.color,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                              {combinedView&&teamByEmail.get(post.assigned_to)?`${teamByEmail.get(post.assigned_to).name.split(" ")[0][0]}: `:""}{post.title.substring(0,combinedView?9:12)}
                             </div>
                           ))}
                           {postsForDay.length > 2 && <p style={{fontSize:8,color:"var(--text3)",padding:"2px 4px"}}>+{postsForDay.length-2} more</p>}
@@ -23785,7 +23811,7 @@ function MyCalendarPage({posts,currentUser,team}) {
                     <div style={{fontSize:16,flexShrink:0}}></div>
                     <div style={{flex:1,minWidth:0}}>
                       <p style={{fontWeight:700,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{post.title}</p>
-                      <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{fmtDate(post.scheduled_date)}{post.scheduled_time && ` at ${post.scheduled_time}`}</p>
+                      <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{fmtDate(post.scheduled_date)}{post.scheduled_time && ` at ${post.scheduled_time}`}{combinedView&&teamByEmail.get(post.assigned_to)&&` · ${teamByEmail.get(post.assigned_to).name}`}</p>
                     </div>
                   </div>
                   <Badge label={STAGE_MAP[post.stage]?.label} color={STAGE_MAP[post.stage]?.color} xs/>
