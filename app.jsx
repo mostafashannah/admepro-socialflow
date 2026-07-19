@@ -1087,7 +1087,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.242";
+const APP_VERSION = "beta 5.243";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -25304,7 +25304,11 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
         const savedId = localStorage.getItem("sf_recruitment_open_app");
         if(savedId) {
           const found = (aRes.entities||[]).find(a=>a.id===savedId);
-          if(found) setSelectedApp(found);
+          // Restoring on a fresh page load must push a history entry too,
+          // exactly like openApp() does — otherwise there's no "list view"
+          // entry for the in-app Back button/browser Back to pop to, and it
+          // instead jumps to whatever page was open before Recruitment.
+          if(found) { try{ window.history.pushState({recruitmentApp:found.id}, ""); }catch(e){} setSelectedApp(found); }
         }
       } catch(e) {}
     }
