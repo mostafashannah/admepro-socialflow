@@ -297,6 +297,7 @@ function smartSchedule(posts, startDate, endDate, intelligence) {
 }
 
 const STAGES = [
+  { key: "client_request", label: "Client Request", color: "#a855f7", icon: "" },
   { key: "planning", label: "Brief", color: "#6366f1", icon: "◆" },
   { key: "content_creation", label: "Content", color: "#3b82f6", icon: "" },
   { key: "design", label: "Design", color: "#8b5cf6", icon: "" },
@@ -1112,7 +1113,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.281";
+const APP_VERSION = "beta 5.282";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -4563,7 +4564,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
 // ════════════════════════════════════════════════════════════════
 // ADD POST MODAL — 2-step wizard
 // ════════════════════════════════════════════════════════════════
-function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,onUpdateAsset,presetClient,assets=[]}) {
+function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,onUpdateAsset,presetClient,assets=[],allowClientRequest=false}) {
   const [step,setStep] = useState(1);
   // When opened from a client's profile, only that client's projects should be
   // selectable/defaulted — otherwise this silently defaults to projects[0],
@@ -5949,6 +5950,12 @@ function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAdd
                 <span style={{fontSize:12,color:"var(--text3)",whiteSpace:"nowrap"}}>minutes</span>
               </div>
             </Field>
+            {allowClientRequest&&f.content_mode==="new"&&(
+              <label style={{display:"flex",alignItems:"center",gap:8,marginTop:10,cursor:"pointer"}}>
+                <input type="checkbox" checked={f.stage==="client_request"} onChange={e=>s("stage",e.target.checked?"client_request":"planning")}/>
+                <span style={{fontSize:12,color:"var(--text2)"}}>Submit as a <strong>Client Request</strong> (before Brief) instead of a regular task</span>
+              </label>
+            )}
           </div>
           {f.content_mode==="new"&&<Field label="Brief / Description">
             <textarea value={f.description} onChange={e=>s("description",e.target.value)} rows={3} placeholder="Describe what this post should achieve…" style={{...inputSt,resize:"vertical"}}/>
@@ -9236,7 +9243,20 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
   // Derived filter options
   const allClients = [...new Set(projects.map(p=>p.client_name).filter(Boolean))].sort();
 
+  // Client Request stage is only visible to admin or the account manager
+  // responsible for that particular client — everyone else on the team
+  // shouldn't see a request before it's been turned into a real Brief.
+  const isAdminUser = currentUser?.role==="admin";
+  const myClientNames = currentUser?.role==="account_manager" ? new Set((clients||[]).filter(c=>getAccountManagerIds(c).includes(currentUser?.id)).map(c=>c.name)) : null;
+  const canSeeClientRequest = (post) => {
+    if(post.stage!=="client_request") return true;
+    if(isAdminUser) return true;
+    const proj = projects.find(pr=>pr.id===post.project_id);
+    return !!(myClientNames && proj && myClientNames.has(proj.client_name));
+  };
+
   const filtered = posts.filter(p=>{
+    if(!canSeeClientRequest(p)) return false;
     if(stageF!=="all"&&p.stage!==stageF) return false;
     if(platF!=="all"&&p.platform!==platF) return false;
     if(assigneeF!=="all"&&p.assigned_to!==assigneeF) return false;
@@ -9324,132 +9344,7 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
       {view==="kanban"&&<KanbanView posts={filtered} project={null} team={team} onPostClick={onPostClick}/>}
       {view==="list"&&<ListView posts={filtered} projects={projects} team={team} onPostClick={onPostClick}/>}
       {view==="calendar"&&<CalendarView posts={filtered} onPostClick={onPostClick}/>}
-      {showAdd&&<AddPostModal open onClose={()=>setShowAdd(false)} projects={projects} team={team} onAdd={async d=>{onAdd(d);setShowAdd(false);}} onAddReady={onAddReady ? async (list,opts)=>{await onAddReady(list,opts);setShowAdd(false);} : undefined} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset}/>}
-    </div>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════
-// CLIENT REQUESTS — admin-only view of tasks clients submit through their
-// portal. Admin can also create one on a client's behalf here (clients are
-// the only other party who can create these — team members create regular
-// Posts instead). Status is deliberately kept to 3 client-facing buckets:
-// In Progress / Waiting Approval / Done.
-// ════════════════════════════════════════════════════════════════
-function ClientRequestsPage({tasks=[], clients=[], onAddTask, onUpdateTask, currentUser}) {
-  const [showAdd, setShowAdd] = useState(false);
-  const [selected, setSelected] = useState(null);
-  const [filter, setFilter] = useState("all"); // all | in_progress | waiting | done
-  const [form, setForm] = useState({client_id:"", title:"", description:"", task_type:"social_post", priority:"medium"});
-
-  const bucketOf = (stage) => stage==="ready_for_client_approval" ? "waiting" : (["approved","completed"].includes(stage) ? "done" : "in_progress");
-  const filtered = tasks.filter(t => filter==="all" || bucketOf(t.stage)===filter);
-
-  const submitNew = () => {
-    if(!form.client_id || !form.title.trim()) return;
-    const client = clients.find(c=>c.id===form.client_id);
-    onAddTask({...form, client_id:form.client_id, client_name:client?.name||"", stage:"new_request", created_by:"admin"});
-    setForm({client_id:"", title:"", description:"", task_type:"social_post", priority:"medium"});
-    setShowAdd(false);
-  };
-
-  return (
-    <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
-        <div>
-          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Client Requests</h2>
-          <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{tasks.length} total — submitted by clients through their portal</p>
-        </div>
-        <button onClick={()=>setShowAdd(true)} style={{display:"flex",alignItems:"center",gap:6,padding:"9px 16px",borderRadius:99,border:"none",background:"var(--accent)",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-          <Ico d={Icons.plus} size={14}/> New Request
-        </button>
-      </div>
-
-      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-        {[["all","All"],["in_progress","In Progress"],["waiting","Waiting Approval"],["done","Done"]].map(([k,label])=>(
-          <button key={k} onClick={()=>setFilter(k)} style={{padding:"7px 14px",borderRadius:99,fontSize:12,fontWeight:700,border:`1px solid ${filter===k?"var(--accent)":"var(--border2)"}`,background:filter===k?"var(--accent)22":"var(--surface2)",color:filter===k?"var(--accent)":"var(--text2)",cursor:"pointer"}}>{label}</button>
-        ))}
-      </div>
-
-      {filtered.length===0 ? (
-        <EmptyState icon={Icons.tasks} title="No client requests" sub="Requests clients submit through their portal will show up here."/>
-      ) : (
-        <div style={{display:"flex",flexDirection:"column",gap:0,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
-          {filtered.map((t,i)=>{
-            const bucket = bucketOf(t.stage);
-            const bucketColor = bucket==="waiting" ? "#f59e0b" : bucket==="done" ? "#10b981" : "#3b82f6";
-            const bucketLabel = bucket==="waiting" ? "Waiting Approval" : bucket==="done" ? "Done" : "In Progress";
-            return (
-              <div key={t.id} onClick={()=>setSelected(t)} style={{padding:"14px 18px",borderBottom:i<filtered.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",cursor:"pointer"}}>
-                <span style={{fontSize:20,flexShrink:0}}>{TASK_TYPE_MAP[t.task_type]?.icon||""}</span>
-                <div style={{flex:1,minWidth:160}}>
-                  <p style={{fontWeight:600,fontSize:13}}>{t.title}</p>
-                  <p style={{fontSize:11,color:"var(--text3)",marginTop:1}}>{t.client_name} · {TASK_TYPE_MAP[t.task_type]?.label}</p>
-                </div>
-                {t.priority&&<Badge label={t.priority} color={PRI_COLOR[t.priority]||"#888"} xs/>}
-                <Badge label={bucketLabel} color={bucketColor}/>
-                {t.assigned_to&&<span style={{fontSize:11,color:"var(--text3)",background:"var(--surface2)",padding:"3px 8px",borderRadius:99,border:"1px solid var(--border)"}}>{t.assigned_to.split("@")[0]}</span>}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {showAdd&&(
-        <Modal open onClose={()=>setShowAdd(false)} title="New Client Request" width={480}
-          footer={<Btn onClick={submitNew} disabled={!form.client_id||!form.title.trim()}>Create</Btn>}>
-          <div style={{display:"flex",flexDirection:"column",gap:12}}>
-            <div>
-              <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Client</label>
-              <select value={form.client_id} onChange={e=>setForm(f=>({...f,client_id:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}>
-                <option value="">Select client…</option>
-                {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Title</label>
-              <input value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
-            </div>
-            <div>
-              <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Description</label>
-              <textarea value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} rows={3} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)",resize:"vertical",fontFamily:"inherit"}}/>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-              <div>
-                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Type</label>
-                <select value={form.task_type} onChange={e=>setForm(f=>({...f,task_type:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}>
-                  {TASK_TYPES.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}
-                </select>
-              </div>
-              <div>
-                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Priority</label>
-                <select value={form.priority} onChange={e=>setForm(f=>({...f,priority:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}>
-                  {PRIORITIES.map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
-                </select>
-              </div>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {selected&&(
-        <Modal open onClose={()=>setSelected(null)} title={selected.title} width={480}>
-          <div style={{display:"flex",flexDirection:"column",gap:14}}>
-            <p style={{fontSize:12,color:"var(--text3)"}}>{selected.client_name} · {TASK_TYPE_MAP[selected.task_type]?.label}</p>
-            {selected.description&&(
-              <div style={{padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
-                <p style={{fontSize:13,color:"var(--text)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{selected.description}</p>
-              </div>
-            )}
-            <div>
-              <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em"}}>Stage</p>
-              <select value={selected.stage} onChange={e=>{ onUpdateTask&&onUpdateTask(selected.id,{stage:e.target.value}); setSelected(t=>t?{...t,stage:e.target.value}:t); }} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}>
-                {TASK_WORKFLOW.map(w=><option key={w.key} value={w.key}>{w.label}</option>)}
-              </select>
-            </div>
-          </div>
-        </Modal>
-      )}
+      {showAdd&&<AddPostModal open onClose={()=>setShowAdd(false)} projects={projects} team={team} onAdd={async d=>{onAdd(d);setShowAdd(false);}} onAddReady={onAddReady ? async (list,opts)=>{await onAddReady(list,opts);setShowAdd(false);} : undefined} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset} allowClientRequest={isAdminUser}/>}
     </div>
   );
 }
@@ -13863,7 +13758,11 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
     return ()=>document.removeEventListener("mousedown",fn);
   },[]);
   const cProjects = projects.filter(p=>p.client_id===client.id||p.client_name===client.name);
-  const cPosts = posts.filter(p=>cProjects.some(pr=>pr.id===p.project_id)&&["client_approval","scheduled","published"].includes(p.stage));
+  // "planning" (Brief) is the first stage a client is allowed to see at all —
+  // everything before it (client_request) stays purely internal. Once a task
+  // reaches Brief it shows up here labeled "In Progress", same as the rest
+  // of the pre-approval pipeline the client never sees the internal names of.
+  const cPosts = posts.filter(p=>cProjects.some(pr=>pr.id===p.project_id)&&["planning","client_approval","scheduled","published"].includes(p.stage));
   const cAssets = assets.filter(a=>cProjects.some(pr=>pr.id===a.project_id) || (a.tags||[]).includes(`client_${client.id}`));
   const [month,setMonth] = useState(()=>{const d=new Date();return{y:d.getFullYear(),m:d.getMonth()};});
   const clientSubs = subscriptions||[];
@@ -13879,8 +13778,8 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
     return Math.max(0, lim.limit - (lim.used||0));
   };
 
-  const stageColor = {client_approval:"#ec4899",scheduled:"#06b6d4",published:"#10b981"};
-  const stageLabel = {client_approval:"Pending Approval",scheduled:"Scheduled",published:"Published"};
+  const stageColor = {planning:"#3b82f6",client_approval:"#ec4899",scheduled:"#06b6d4",published:"#10b981"};
+  const stageLabel = {planning:"In Progress",client_approval:"Pending Approval",scheduled:"Scheduled",published:"Published"};
 
   const pendingBrief = (monthlyBriefs||[]).find(b=>b.client_id===client?.id&&b.status==="pending");
   const cMessages = (messages||[]).filter(m=>m.client_id===client.id);
@@ -26663,7 +26562,6 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
       {key:"projects", label:"Projects", ico:Icons.projects},
       {key:"tasks", label:"All Posts & Tasks", ico:Icons.tasks},
       {key:"calendar", label:"Clients Calendar", ico:Icons.calendar},
-      ...(isAdmin ? [{key:"client_requests", label:"Client Requests", ico:Icons.tasks}] : []),
     ]}] : []),
     ...(canViewCrm ? [{ group: "CRM", icon: Icons.leads, items: [
       {key:"leads", label:"Leads", ico:Icons.leads},
@@ -31430,14 +31328,14 @@ function App() {
     setImpersonatorUser(null);
     setPage(returnPage);
   };
-  const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment","client_requests"];
+  const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment"];
   const [page,setPage_] = useState(()=>{
     try{
       // URL hash takes priority (direct link) — but always reset to home on fresh load
       // to avoid getting stuck on a detail page that hasn't loaded data yet
       const hash = window.location.hash.replace("#","");
       // Only use hash/localStorage if it's a top-level list page (not a detail context)
-      const SAFE_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment","client_requests"];
+      const SAFE_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment"];
       if(hash && SAFE_PAGES.includes(hash)) return hash;
       const stored = localStorage.getItem("sf_page");
       return (stored && SAFE_PAGES.includes(stored)) ? stored : "home";
@@ -34136,7 +34034,6 @@ Return ONLY valid JSON (no markdown, no explanation):
   onClearInitialProject={()=>setSelectedProjectId(null)}
 />}
         {page==="tasks"&&<TasksPage posts={data.posts} projects={data.projects} team={data.team} onPostClick={setSelectedPost} onAdd={addPost} clientTasks={(data.tasks||[])} onUpdateTask={updateClientTask} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} currentUser={currentUser} clients={data.clients}/>}
-        {page==="client_requests"&&currentUser?.role==="admin"&&<ClientRequestsPage tasks={data.tasks||[]} clients={data.clients} onAddTask={addClientTask} onUpdateTask={updateClientTask} currentUser={currentUser}/>}
         {page==="calendar"&&<div className="fade-in"><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800,marginBottom:24}}>Content Calendar</h2><CalendarView posts={data.posts} onPostClick={setSelectedPost}/></div>}
         {page==="assets"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"assets.manage"))&&<AssetsPage assets={data.assets} projects={data.projects} clients={data.clients} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} currentUser={currentUser}/>}
         {page==="templates"&&<TemplatesPage templates={data.templates}/>}
