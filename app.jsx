@@ -167,20 +167,43 @@ const INTERNAL_ROLES = ["admin","hr","account_manager","content_creator","graphi
 // Granular permissions the Roles & Permissions settings page can toggle per
 // role. "admin" always implicitly has every permission regardless of what's
 // stored in role_permissions — it's the one role that can't be locked out.
-const HR_PERMISSIONS = [
-  { key: "hr.view_team",       label: "View team directory & profiles" },
-  { key: "hr.edit_team",       label: "Add / edit team members" },
-  { key: "hr.manage_roles",    label: "Manage roles & permissions" },
-  { key: "hr.view_salary",     label: "View salary" },
-  { key: "hr.edit_salary",     label: "Edit salary" },
-  { key: "hr.view_performance",label: "View performance logs" },
-  { key: "hr.approve_leave",   label: "Approve / reject leave & WFH requests" },
-  { key: "hr.upload_attendance",label:"Upload monthly attendance sheet" },
-  { key: "hr.manage_recruitment",label:"Manage job openings & applications" },
+// Grouped by app module so the settings page can render them as sections
+// instead of one flat list — each group maps 1:1 to a Sidebar nav group /
+// page-level access guard (see hasPerm() call sites in Sidebar/App).
+const PERMISSION_GROUPS = [
+  { group: "Team & HR", perms: [
+    { key: "hr.view_team",       label: "View team directory & profiles" },
+    { key: "hr.edit_team",       label: "Add / edit team members" },
+    { key: "hr.manage_roles",    label: "Manage roles & permissions" },
+    { key: "hr.view_salary",     label: "View salary" },
+    { key: "hr.edit_salary",     label: "Edit salary" },
+    { key: "hr.view_performance",label: "View performance logs" },
+    { key: "hr.approve_leave",   label: "Approve / reject leave & WFH requests" },
+    { key: "hr.upload_attendance",label:"Upload monthly attendance sheet" },
+    { key: "hr.manage_recruitment",label:"Manage job openings & applications" },
+  ]},
+  { group: "Clients & Projects", perms: [
+    { key: "clients.manage", label: "View & manage Clients, Projects, Posts & Tasks, Clients Calendar" },
+  ]},
+  { group: "Tools", perms: [
+    { key: "assets.manage", label: "Access Assets Library" },
+  ]},
+  { group: "CRM", perms: [
+    { key: "crm.leads", label: "View & manage Leads and Lead Generation" },
+  ]},
+  { group: "Finance", perms: [
+    { key: "finance.quotes", label: "View & manage Quotes" },
+    { key: "finance.full", label: "Full financial access — Invoices, Subscriptions, Finance" },
+  ]},
 ];
+// Flat list, kept for any call site that just needs every known key/label.
+const HR_PERMISSIONS = PERMISSION_GROUPS.flatMap(g=>g.perms);
 const DEFAULT_ROLE_PERMISSIONS = {
   hr: ["hr.view_team","hr.edit_team","hr.manage_roles","hr.view_salary","hr.edit_salary","hr.view_performance","hr.approve_leave","hr.upload_attendance","hr.manage_recruitment"],
-  account_manager: ["hr.view_performance"],
+  account_manager: ["hr.view_performance","clients.manage","assets.manage","crm.leads","finance.quotes"],
+  content_creator: ["assets.manage"],
+  graphic_designer: ["assets.manage"],
+  accountant: ["finance.quotes","finance.full"],
 };
 // Converts the flat role_permissions rows fetched from the API into
 // {role: [permission_key,...]} for hasPerm() to consume.
@@ -1064,7 +1087,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.235";
+const APP_VERSION = "beta 5.236";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12823,13 +12846,27 @@ function LeaveRequestsTab({requests, canDecide, onDecide}) {
   );
 }
 
+// Small pill switch, styled to match the Toggle components used elsewhere
+// (e.g. notification prefs) — a plain unstyled <input type="checkbox"> on
+// this dark theme rendered checked/unchecked as visually identical squares.
+function PermSwitch({checked, onChange}) {
+  return (
+    <button type="button" onClick={()=>onChange(!checked)} aria-pressed={checked} style={{
+      width:38, height:21, borderRadius:99, flexShrink:0, border:"none", cursor:"pointer",
+      background:checked?"var(--accent)":"var(--border2)", position:"relative", transition:"background 0.15s",
+    }}>
+      <div style={{position:"absolute",top:2,left:checked?18:2,width:17,height:17,borderRadius:"50%",background:"#fff",transition:"left 0.15s",boxShadow:"0 1px 3px rgba(0,0,0,0.3)"}}/>
+    </button>
+  );
+}
+
 function RolesPermissionsTab({rolePerms, onToggle}) {
   const editableRoles = INTERNAL_ROLES.filter(r=>r!=="admin"); // admin always has everything, nothing to toggle
   const isChecked = (role,key) => (rolePerms?.[role]||[]).includes(key);
   return (
     <div style={{overflowX:"auto"}}>
       <p style={{color:"var(--text2)",fontSize:13,marginBottom:16}}>Admin always has every permission. Toggle what each other role can access.</p>
-      <table style={{width:"100%",borderCollapse:"collapse",minWidth:640}}>
+      <table style={{width:"100%",borderCollapse:"collapse",minWidth:760}}>
         <thead>
           <tr>
             <th style={{textAlign:"left",padding:"8px 10px",fontSize:12,color:"var(--text2)",borderBottom:"1px solid var(--border)"}}>Permission</th>
@@ -12837,15 +12874,22 @@ function RolesPermissionsTab({rolePerms, onToggle}) {
           </tr>
         </thead>
         <tbody>
-          {HR_PERMISSIONS.map(p=>(
-            <tr key={p.key}>
-              <td style={{padding:"10px",fontSize:13,color:"var(--text)",borderBottom:"1px solid var(--border)"}}>{p.label}</td>
-              {editableRoles.map(r=>(
-                <td key={r} style={{textAlign:"center",padding:"10px",borderBottom:"1px solid var(--border)"}}>
-                  <input type="checkbox" checked={isChecked(r,p.key)} onChange={e=>onToggle(r,p.key,e.target.checked)} style={{width:16,height:16,cursor:"pointer"}}/>
-                </td>
+          {PERMISSION_GROUPS.map(g=>(
+            <React.Fragment key={g.group}>
+              <tr>
+                <td colSpan={editableRoles.length+1} style={{padding:"14px 10px 6px",fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>{g.group}</td>
+              </tr>
+              {g.perms.map(p=>(
+                <tr key={p.key}>
+                  <td style={{padding:"10px",fontSize:13,color:"var(--text)",borderBottom:"1px solid var(--border)"}}>{p.label}</td>
+                  {editableRoles.map(r=>(
+                    <td key={r} style={{textAlign:"center",padding:"10px",borderBottom:"1px solid var(--border)"}}>
+                      <PermSwitch checked={isChecked(r,p.key)} onChange={v=>onToggle(r,p.key,v)}/>
+                    </td>
+                  ))}
+                </tr>
               ))}
-            </tr>
+            </React.Fragment>
           ))}
         </tbody>
       </table>
@@ -25961,13 +26005,15 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
   const canViewTeamNav = isAdmin || hasPerm(currentUser, rolePerms, "hr.view_team");
   const canManageRecruitment = isAdmin || hasPerm(currentUser, rolePerms, "hr.manage_recruitment");
   const isAccountant = currentUser?.role==="accountant";
-  const canFinance = isAdmin||isAccountant;
-  const canAgency = isAdmin||["account_manager","content_creator","graphic_designer"].includes(currentUser?.role);
+  const canFinanceFull = isAdmin || hasPerm(currentUser, rolePerms, "finance.full");
+  const canFinanceQuotes = isAdmin || canFinanceFull || hasPerm(currentUser, rolePerms, "finance.quotes");
+  const canAgency = isAdmin || hasPerm(currentUser, rolePerms, "assets.manage");
   // Creative/Design (content_creator/graphic_designer) do full production work
   // but shouldn't see the client roster/detail pages, project list, the
   // full cross-client task board, or the clients-wide calendar — they only
   // work from My Tasks (assigned to them, or where they're @mentioned).
-  const canViewClientsNav = isAdmin||currentUser?.role==="account_manager";
+  const canViewClientsNav = isAdmin || hasPerm(currentUser, rolePerms, "clients.manage");
+  const canViewCrm = isAdmin || hasPerm(currentUser, rolePerms, "crm.leads");
   const isClientRole = currentUser?.role === "client";
   const isHR = currentUser?.role === "hr";
   const canViewPerformance = isAdmin || hasPerm(currentUser, rolePerms, "hr.view_performance");
@@ -26009,7 +26055,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
       {key:"tasks", label:"All Posts & Tasks", ico:Icons.tasks},
       {key:"calendar", label:"Clients Calendar", ico:Icons.calendar},
     ]}] : []),
-    ...((isAdmin||currentUser?.role==="account_manager") ? [{ group: "CRM", icon: Icons.leads, items: [
+    ...(canViewCrm ? [{ group: "CRM", icon: Icons.leads, items: [
       {key:"leads", label:"Leads", ico:Icons.leads},
       {key:"lead_gen", label:"Lead Generation", ico:Icons.zap2},
       // Account managers get a scoped entry into User Management just for
@@ -26023,9 +26069,9 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     ...(!canViewTeamNav&&currentUser?.role==="office_boy" ? [{ group: "TEAM", icon: Icons.users, items: [
       {key:"users", label:"My Profile", ico:Icons.users},
     ]}] : []),
-    ...((canFinance||(isAdmin||currentUser?.role==="account_manager")) ? [{ group: "FINANCE", icon: Icons.wallet, items: [
-      ...((isAdmin||currentUser?.role==="account_manager"||canFinance)?[{key:"quotes", label:"Quotes", ico:Icons.receipt}]:[]),
-      ...(canFinance?[
+    ...(canFinanceQuotes ? [{ group: "FINANCE", icon: Icons.wallet, items: [
+      {key:"quotes", label:"Quotes", ico:Icons.receipt},
+      ...(canFinanceFull?[
         {key:"invoices", label:"Invoices", ico:Icons.invoice},
         {key:"subscriptions", label:"Subscriptions", ico:Icons.repeat},
         {key:"finance", label:"Finance", ico:Icons.wallet},
@@ -30584,16 +30630,18 @@ function App() {
     }catch(e){return "home";}
   });
 
-  // Creative/Design roles lost nav access to the client roster/projects/full
-  // task board/clients calendar — bounce them to My Tasks if they land on one
-  // of those pages anyway (a stale localStorage/hash from before this change,
-  // or a direct link), instead of just hiding the nav link and leaving the
-  // page itself still reachable.
+  // Roles without the clients.manage permission (Creative/Design by default)
+  // get bounced to My Tasks if they land on the client roster/projects/full
+  // task board/clients calendar anyway (a stale localStorage/hash from
+  // before this change, or a direct link) — an admin can re-grant this via
+  // Roles & Permissions, so this checks the live toggle, not a hardcoded
+  // role list.
   React.useEffect(()=>{
-    if(["content_creator","graphic_designer"].includes(currentUser?.role) && ["clients","projects","tasks","calendar"].includes(page)){
+    const canClients = currentUser?.role==="admin" || hasPerm(currentUser, rolePermsMap, "clients.manage");
+    if(!canClients && ["clients","projects","tasks","calendar"].includes(page)){
       setPage("my_tasks");
     }
-  },[currentUser?.role, page]);
+  },[currentUser?.role, page, rolePermsMap]);
 
   // Web Push: subscribe this device once logged in, and re-subscribe whenever
   // the app gets installed to the home screen (task-assignment alerts need this).
@@ -33165,7 +33213,7 @@ Return ONLY valid JSON (no markdown, no explanation):
               }}
               onMarkNotifRead={markNotifRead}
             />}
-        {page==="clients"&&(()=>{
+        {page==="clients"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"clients.manage"))&&(()=>{
           const selectedClient = data.clients.find(c=>c.id===selectedClientId)||null;
           if(!selectedClient) return (
             <ClientsPage clients={data.clients} projects={data.projects} posts={data.posts}
@@ -33227,9 +33275,9 @@ Return ONLY valid JSON (no markdown, no explanation):
 />}
         {page==="tasks"&&<TasksPage posts={data.posts} projects={data.projects} team={data.team} onPostClick={setSelectedPost} onAdd={addPost} clientTasks={(data.tasks||[])} onUpdateTask={updateClientTask} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} currentUser={currentUser} clients={data.clients}/>}
         {page==="calendar"&&<div className="fade-in"><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800,marginBottom:24}}>Content Calendar</h2><CalendarView posts={data.posts} onPostClick={setSelectedPost}/></div>}
-        {page==="assets"&&<AssetsPage assets={data.assets} projects={data.projects} clients={data.clients} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} currentUser={currentUser}/>}
+        {page==="assets"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"assets.manage"))&&<AssetsPage assets={data.assets} projects={data.projects} clients={data.clients} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} currentUser={currentUser}/>}
         {page==="templates"&&<TemplatesPage templates={data.templates}/>}
-        {page==="quotes"&&["admin","account_manager","accountant"].includes(currentUser?.role)&&(
+        {page==="quotes"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"finance.quotes")||hasPerm(currentUser,rolePermsMap,"finance.full"))&&(
           <QuotesPage
             quotes={data.quotes}
             clients={data.clients}
@@ -33243,7 +33291,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             }}
           />
         )}
-        {page==="invoices"&&["admin","accountant"].includes(currentUser?.role)&&(
+        {page==="invoices"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"finance.full"))&&(
           <InvoicesPage
             invoices={data.invoices}
             payments={data.payments}
@@ -33259,7 +33307,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             onToast={setToast}
           />
         )}
-        {page==="subscriptions"&&["admin","accountant"].includes(currentUser?.role)&&(
+        {page==="subscriptions"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"finance.full"))&&(
           <SubscriptionsPage
             subscriptions={data.subscriptions}
             subscriptionPayments={data.subscriptionPayments}
@@ -33273,7 +33321,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             onGenerateLink={generateSubLink}
           />
         )}
-        {page==="finance"&&["admin","accountant"].includes(currentUser?.role)&&(
+        {page==="finance"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"finance.full"))&&(
           <FinancePage
             invoices={data.invoices}
             payments={data.payments}
@@ -33355,7 +33403,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             onSaveSettings={saveAgentSettings}
           />
         )}
-        {page==="lead_gen"&&["admin","account_manager"].includes(currentUser?.role)&&(
+        {page==="lead_gen"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"crm.leads"))&&(
           <LeadGenerationPage
             generatedLeads={data.generatedLeads||[]}
             leadAgentConfig={data.leadAgentConfig||[]}
@@ -33369,7 +33417,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             onConvertToLead={convertGeneratedLeadToLead}
           />
         )}
-        {page==="leads"&&["admin","account_manager"].includes(currentUser?.role)&&(
+        {page==="leads"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"crm.leads"))&&(
           <LeadsPage
             leads={(data.leads||[]).filter(l=>(!l.client_name || l.client_name.toLowerCase()==="admepro") && (!l.category || l.category==="lead"))}
             leadActivities={data.leadActivities}
