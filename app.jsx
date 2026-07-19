@@ -1086,14 +1086,26 @@ function speedTokens(speed, base) {
   if(speed==="high") return Math.round(base*1.5);
   return base;
 }
+// $ per 1M tokens [input, output] — used to accumulate an accurate running cost
+// per call at the price of the model that actually served it, instead of
+// repricing the whole history at whichever model is currently selected.
+const AI_MODEL_PRICES = {
+  "claude-haiku-4-5-20251001": [1.00, 5.00],
+  "claude-sonnet-4-6": [3.00, 15.00],
+  "claude-opus-4-8": [5.00, 25.00],
+  "claude-fable-5": [10.00, 50.00],
+};
 function trackAIUsage(usage, model) {
   if(!usage) return;
   try {
     const prev = JSON.parse(localStorage.getItem("sf_token_usage")||"{}");
+    const [pin, pout] = AI_MODEL_PRICES[model] || [3.00, 15.00];
+    const callCost = (usage.input_tokens||0)/1e6*pin + (usage.output_tokens||0)/1e6*pout;
     const updated = {
       input_tokens: (prev.input_tokens||0) + (usage.input_tokens||0),
       output_tokens: (prev.output_tokens||0) + (usage.output_tokens||0),
       total_calls: (prev.total_calls||0) + 1,
+      est_cost: (prev.est_cost||0) + callCost,
       last_call: new Date().toISOString(),
       model,
     };
@@ -1120,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.300";
+const APP_VERSION = "beta 5.301";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19648,7 +19660,12 @@ function AITokensPanel() {
     setUsage(null);
   };
 
-  const totalCost = usage ? ((usage.input_tokens||0)/1e6 * selectedModel.input + (usage.output_tokens||0)/1e6 * selectedModel.output).toFixed(4) : "0.0000";
+  // Prefer the per-call accumulated cost (accurate across model switches);
+  // fall back to repricing totals at the selected model for usage recorded
+  // before est_cost existed.
+  const totalCost = usage ? (usage.est_cost != null
+    ? usage.est_cost.toFixed(4)
+    : ((usage.input_tokens||0)/1e6 * selectedModel.input + (usage.output_tokens||0)/1e6 * selectedModel.output).toFixed(4)) : "0.0000";
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:"min(700px,100%)"}}>
