@@ -1111,7 +1111,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.275";
+const APP_VERSION = "beta 5.276";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23836,18 +23836,6 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
             <p style={{fontSize:12,color:"var(--text3)",fontWeight:700}}>{stat.label}</p>
             <p style={{fontSize:28,fontWeight:800,color:stat.color}}>{stat.count}</p>
           </div>
-        ))}
-      </div>
-
-      {/* Workflow Pipeline */}
-      <div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:8,WebkitOverflowScrolling:"touch"}}>
-        <button onClick={()=>setFilterStage(null)} style={{padding:"8px 16px",borderRadius:"var(--r)",border:`2px solid ${!filterStage?"var(--accent)":"var(--border)"}`,background:!filterStage?"var(--accent)22":"var(--surface)",color:!filterStage?"var(--accent)":"var(--text2)",fontSize:12,fontWeight:600,whiteSpace:"nowrap",cursor:"pointer",transition:"all 0.2s"}}>
-          All Tasks
-        </button>
-        {STAGES.map(s=>(
-          <button key={s.key} onClick={()=>setFilterStage(s.key)} style={{padding:"8px 16px",borderRadius:"var(--r)",border:`2px solid ${filterStage===s.key?s.color:"var(--border)"}`,background:filterStage===s.key?s.color+"22":"var(--surface)",color:filterStage===s.key?s.color:"var(--text2)",fontSize:12,fontWeight:600,whiteSpace:"nowrap",cursor:"pointer",transition:"all 0.2s"}}>
-            {s.label} ({byStage[s.key].length})
-          </button>
         ))}
       </div>
 
