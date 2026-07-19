@@ -1111,7 +1111,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.266";
+const APP_VERSION = "beta 5.267";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -2852,7 +2852,7 @@ function useResponsive() {
 // ════════════════════════════════════════════════════════════════
 // MODAL
 // ════════════════════════════════════════════════════════════════
-function Modal({open,onClose,title,subtitle,width=560,children,footer}) {
+function Modal({open,onClose,title,subtitle,width=560,children,footer,headerActions}) {
   if(!open) return null;
   // Rendered via a portal straight to document.body — any ancestor with the
   // .fade-in class (used on almost every page wrapper) has a CSS animation,
@@ -2871,7 +2871,10 @@ function Modal({open,onClose,title,subtitle,width=560,children,footer}) {
             <div className="modal-title">{title}</div>
             {subtitle&&<div className="modal-subtitle">{subtitle}</div>}
           </div>
-          <button onClick={onClose} aria-label="Close dialog" className="modal-close"><Ico d={Icons.x} size={15}/></button>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            {headerActions}
+            <button onClick={onClose} aria-label="Close dialog" className="modal-close"><Ico d={Icons.x} size={15}/></button>
+          </div>
         </div>
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-footer">{footer}</div>}
@@ -3950,7 +3953,23 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
   };
 
   return (
-    <Modal open onClose={onClose} title="" width={1280}>
+    <Modal open onClose={onClose} title="" width={1280} headerActions={isManager&&(
+      <>
+        <button onClick={openEdit} title="Edit task" style={{display:"flex",alignItems:"center",gap:5,padding:"5px 11px",borderRadius:7,fontSize:12,fontWeight:600,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text2)",transition:"all 0.12s"}}
+          onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--accent)";e.currentTarget.style.color="var(--accent)";}}
+          onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border2)";e.currentTarget.style.color="var(--text2)";}}>
+          <Ico d={Icons.edit} size={13}/> Edit
+        </button>
+        <button onClick={handleHold} title={post.stage==="on_hold"?"Resume task":"Put on hold"} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 11px",borderRadius:7,fontSize:12,fontWeight:600,background:post.stage==="on_hold"?"#f9741622":"var(--surface2)",border:`1px solid ${post.stage==="on_hold"?"#f97316aa":"var(--border2)"}`,color:post.stage==="on_hold"?"#f97316":"var(--text2)",transition:"all 0.12s"}}>
+          <Ico d={Icons.pause||Icons.clock} size={13}/> {post.stage==="on_hold"?"Resume":"Hold"}
+        </button>
+        <button onClick={()=>setConfirmDelete(true)} title="Delete task" style={{display:"flex",alignItems:"center",gap:5,padding:"5px 11px",borderRadius:7,fontSize:12,fontWeight:600,background:"#ef444411",border:"1px solid #ef444433",color:"#ef4444",transition:"all 0.12s"}}
+          onMouseEnter={e=>e.currentTarget.style.background="#ef444422"}
+          onMouseLeave={e=>e.currentTarget.style.background="#ef444411"}>
+          <Ico d={Icons.trash} size={13} stroke="#ef4444"/> Delete
+        </button>
+      </>
+    )}>
       <div style={{display:isMobile?"flex":"grid",flexDirection:isMobile?"column":undefined,gridTemplateColumns:isMobile?undefined:"2fr 1fr",gap:20,alignItems:"start"}}>
       <div style={{display:"flex",flexDirection:"column",gap:18}}>
         {/* Header — the Workflow Path section below already shows every stage
@@ -3964,26 +3983,7 @@ function PostDetail({post,project,team,comments,onClose,onStageChange,onAddComme
             <Badge label={post.priority} color={PRI_COLOR[post.priority]}/>
             {assignee&&<div style={{display:"flex",alignItems:"center",gap:6,marginLeft:"auto"}}><Avatar name={assignee.name} size={24} role={assignee.role}/><span style={{fontSize:12,color:"var(--text2)"}}>{assignee.name}</span></div>}
           </div>
-          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
-            <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:22,fontWeight:700,lineHeight:1.2,flex:1}}>{post.title}</h2>
-            {isManager&&(
-              <div style={{display:"flex",gap:6,flexShrink:0}}>
-                <button onClick={openEdit} title="Edit task" style={{display:"flex",alignItems:"center",gap:5,padding:"5px 11px",borderRadius:7,fontSize:12,fontWeight:600,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text2)",transition:"all 0.12s"}}
-                  onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--accent)";e.currentTarget.style.color="var(--accent)";}}
-                  onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border2)";e.currentTarget.style.color="var(--text2)";}}>
-                  <Ico d={Icons.edit} size={13}/> Edit
-                </button>
-                <button onClick={handleHold} title={post.stage==="on_hold"?"Resume task":"Put on hold"} style={{display:"flex",alignItems:"center",gap:5,padding:"5px 11px",borderRadius:7,fontSize:12,fontWeight:600,background:post.stage==="on_hold"?"#f9741622":"var(--surface2)",border:`1px solid ${post.stage==="on_hold"?"#f97316aa":"var(--border2)"}`,color:post.stage==="on_hold"?"#f97316":"var(--text2)",transition:"all 0.12s"}}>
-                  <Ico d={Icons.pause||Icons.clock} size={13}/> {post.stage==="on_hold"?"Resume":"Hold"}
-                </button>
-                <button onClick={()=>setConfirmDelete(true)} title="Delete task" style={{display:"flex",alignItems:"center",gap:5,padding:"5px 11px",borderRadius:7,fontSize:12,fontWeight:600,background:"#ef444411",border:"1px solid #ef444433",color:"#ef4444",transition:"all 0.12s"}}
-                  onMouseEnter={e=>e.currentTarget.style.background="#ef444422"}
-                  onMouseLeave={e=>e.currentTarget.style.background="#ef444411"}>
-                  <Ico d={Icons.trash} size={13} stroke="#ef4444"/> Delete
-                </button>
-              </div>
-            )}
-          </div>
+          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:22,fontWeight:700,lineHeight:1.2}}>{post.title}</h2>
           {project&&<p style={{fontSize:12,color:"var(--text2)"}}> {project.title} · {project.client_name}</p>}
         </div>
 
