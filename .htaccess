@@ -1,5 +1,11 @@
 Options -MultiViews
 RewriteEngine On
+
+# Public marketing/SEO page — served at the clean URL /features instead of
+# /features.html, before the catch-all SPA rewrite below so it doesn't fall
+# through to the app.
+RewriteRule ^features/?$ features.html [L]
+
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ index.html [QSA,L]

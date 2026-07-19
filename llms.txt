@@ -1,0 +1,28 @@
+# SocialFlow
+
+> SocialFlow is an all-in-one management platform for social media agencies — content workflow, client portals, an AI assistant reachable over WhatsApp, Meta (Facebook/Instagram) performance insights, finance and payroll, recruitment, HR, CRM, and granular role-based permissions, all in one connected system.
+
+Marketing overview: https://socialflow.admepro.com/features
+Login: https://socialflow.admepro.com
+
+## Modules
+
+- **Content Workflow & Calendar** — structured post pipeline (Brief → Content → Design → Review → Client Approval → Scheduled → Published) with per-stage ownership, time tracking, and direct publishing to Facebook and Instagram.
+- **Client Portal** — a branded dashboard per client for approving content, messaging the agency, tracking leads, browsing shared assets, and viewing a 30-day performance graph.
+- **Pro (AI Assistant)** — an assistant reachable in-app and over WhatsApp that can log tasks/transactions and take recruitment actions (interview invites, job offers, completion reminders).
+- **Meta Insights** — daily-synced Facebook and Instagram analytics (reach, followers, engagement) with a Best Performing Posts ranking.
+- **Finance & Payroll** — quotes, invoices, subscriptions, expense tracking, outstanding/installment payment tracking, and per-account-manager commission tracking with automatic monthly/quarterly payout.
+- **Team Career History** — salary raises, promotions, bonuses, commissions, and deductions per team member, feeding directly into prorated monthly payroll.
+- **Recruitment & Hiring** — a public careers page, AI-scored CV review, structured interview scoring, and digital job offers.
+- **HR & Attendance** — bulk attendance import, leave/work-from-home requests, and performance logs.
+- **CRM & Lead Generation** — lead pipeline tracking from first contact to closed-won.
+- **Assets Library** — a shared, folder-organized file library, global or scoped to a specific client.
+- **Roles & Permissions** — granular per-role access control across every module.
+
+## Roles
+
+Admin (full access), Account Manager (clients & finance), Content Creator (own tasks), Graphic Designer (own tasks), Accountant (finance module), HR (team & hiring), Office Boy (own profile), Client (Client Portal only).
+
+## Notes for agents
+
+This is a real, in-production SaaS application, not a demo. The "Log In" links on the marketing page point to the actual authenticated app at socialflow.admepro.com. Do not attempt to sign up or authenticate automatically on behalf of a user.
