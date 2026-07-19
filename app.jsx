@@ -1117,7 +1117,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.295";
+const APP_VERSION = "beta 5.296";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7020,7 +7020,7 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
         {filtered.map(client=>{
           const isHidden = client.status==="hidden";
           const cProjects = projects.filter(p=>p.client_id===client.id||p.client_name===client.name);
-          const cPosts = posts.filter(p=>cProjects.some(pr=>pr.id===p.project_id));
+          const cPosts = posts.filter(p=>cProjects.some(pr=>pr.id===p.project_id)||p.client_id===client.id||p.client_name===client.name);
           return (
             <div key={client.id} style={{
               background:"var(--surface)",border:"1px solid var(--border2)",
@@ -8405,7 +8405,9 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
   const [showAddMenu,setShowAddMenu] = useState(false);
   const [brainSubTab,setBrainSubTab] = useState("profile");
   const cProjects = projects.filter(p=>p.client_id===client.id||p.client_name===client.name);
-  const cPosts = posts.filter(p=>cProjects.some(pr=>pr.id===p.project_id));
+  // Client Requests have no project yet (assigned when moved to Brief) —
+  // match those directly by client_id/client_name too, not just via project.
+  const cPosts = posts.filter(p=>cProjects.some(pr=>pr.id===p.project_id)||p.client_id===client.id||p.client_name===client.name);
   const cAssets = assets.filter(a=>cProjects.some(pr=>pr.id===a.project_id) || (a.tags||[]).includes(`client_${client.id}`));
   const cInvoices = invoices.filter(inv=>inv.client_id===client.id||inv.client_name===client.name);
   const cLeads = (leads||[]).filter(l=>l.client_id===client.id||(l.company&&l.company===client.name));
@@ -31987,6 +31989,16 @@ function App() {
     // with no project attached yet; the account manager picks the project
     // when they move it forward to Brief (see handleStageChange overrides).
     if(!postData.project_id && postData.stage!=="client_request") { setToast(" Pick a project before creating a post/task — every post must belong to a project."); return false; }
+    // A new Client Request should land straight on the responsible account
+    // manager's plate — auto-assign to the client's first account manager so
+    // it shows up in their My Tasks immediately, instead of sitting unowned
+    // until someone happens to open All Posts & Tasks.
+    if(postData.stage==="client_request" && !postData.assigned_to) {
+      const reqClient = data.clients.find(c=>c.id===postData.client_id || c.name===postData.client_name);
+      const amIds = reqClient ? getAccountManagerIds(reqClient) : [];
+      const am = amIds.length ? data.team.find(m=>amIds.includes(m.id)) : null;
+      if(am) postData = {...postData, assigned_to: am.email};
+    }
     const local = {...postData, id:uid(), created_date:new Date().toISOString()};
     // Notify assignee
     if(postData.assigned_to && postData.assigned_to !== currentUser?.email) {
