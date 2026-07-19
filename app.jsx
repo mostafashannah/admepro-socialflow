@@ -8,9 +8,19 @@ const SB_URL = window.location.origin + "/api";
 const SB_KEY = "f5b3d0e0023471b5376d2da87edbccc03bb27e00c3916f2f93c72f3926f32954";
 const SB_STORAGE_URL = window.location.origin + "/storage";
 const SB_BUCKET = "socialflow-media";
+// Fallback used until Settings' saved value loads (or if it was never set).
+// Actually raising an upload past this requires the server's nginx
+// client_max_body_size / PHP post_max_size to allow it too — this setting
+// can only ever be a cap *within* whatever the server infra already permits,
+// not a way to exceed it.
+const DEFAULT_MAX_UPLOAD_MB = 100;
 
 // Upload a file to self-hosted storage (vps-migration/storage.php) — returns public URL
 const uploadToStorage = async (file, folder="uploads") => {
+  const maxMB = window.__sfMaxUploadMB || DEFAULT_MAX_UPLOAD_MB;
+  if(file.size > maxMB*1024*1024){
+    throw new Error(`This file is ${(file.size/1024/1024).toFixed(1)}MB, over the ${maxMB}MB upload limit set in Settings. Try a smaller file, or ask an admin to raise the limit.`);
+  }
   const ext = file.name.split(".").pop();
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
   const path = `${folder}/${Date.now()}_${safeName}`;
@@ -1098,7 +1108,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.250";
+const APP_VERSION = "beta 5.252";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19083,6 +19093,26 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
             </div>
           ))}
           {flagsSaved&&<p style={{fontSize:12,color:"#10b981",fontWeight:600}}>✓ Saved</p>}
+
+          <div style={{padding:16,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
+            <div style={{fontSize:14,fontWeight:700}}>Max Upload Size</div>
+            <div style={{fontSize:12,color:"var(--text3)",marginTop:2,marginBottom:10}}>
+              Caps file size for uploads across the app (assets, reels, designs, CVs, etc.) so people get an
+              instant, clear error instead of the upload silently hanging or failing partway. This only ever
+              narrows what the server already allows — it can't raise your server's own nginx/PHP upload
+              limits, which have to be changed on the server itself.
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <input type="number" min={1} max={2000} value={flags.max_upload_mb||DEFAULT_MAX_UPLOAD_MB}
+                onChange={e=>setFlags(p=>({...p,max_upload_mb:Math.max(1,parseInt(e.target.value)||DEFAULT_MAX_UPLOAD_MB)}))}
+                style={{width:90,padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text1)",fontSize:13}}/>
+              <span style={{fontSize:13,color:"var(--text2)"}}>MB</span>
+              <button onClick={async()=>{ await onSaveSettings({feature_flags:flags}); setFlagsSaved(true); setTimeout(()=>setFlagsSaved(false),2000); }}
+                style={{padding:"7px 14px",borderRadius:8,background:"var(--accent)",color:"#fff",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                Save
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -27450,32 +27480,53 @@ function claimFreshProSessionOnLoad(){
 }
 
 // ── Reusable "⋮" menu for a chat session row: Rename / Delete ──────
+// Renders the dropdown via a portal at document.body, position:fixed and
+// coordinate-computed from the trigger button — instead of position:absolute
+// nested inside the scrolling session list. That nesting was the actual bug:
+// each row sits in normal document flow with no z-index of its own, so a
+// z-indexed absolute child can still end up stacked underneath a later
+// sibling row's own background depending on the ancestor stacking context;
+// a fixed-position portal escapes that entirely and always paints on top.
 function ChatSessionMenu({onRename, onDelete}) {
   const [open, setOpen] = useState(false);
-  const ref = useRef(null);
+  const [pos, setPos] = useState(null);
+  const btnRef = useRef(null);
+  const menuRef = useRef(null);
   useEffect(()=>{
     if(!open) return;
-    const close = (e) => { if(ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const close = (e) => {
+      if(menuRef.current && menuRef.current.contains(e.target)) return;
+      if(btnRef.current && btnRef.current.contains(e.target)) return;
+      setOpen(false);
+    };
     document.addEventListener("mousedown", close);
     return ()=>document.removeEventListener("mousedown", close);
   },[open]);
+  const toggleOpen = () => {
+    if(!open && btnRef.current){
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({top:r.bottom+2, right:window.innerWidth-r.right});
+    }
+    setOpen(o=>!o);
+  };
   return (
-    <div ref={ref} style={{position:"relative",flexShrink:0}} onClick={e=>e.stopPropagation()}>
-      <button onClick={()=>setOpen(o=>!o)} title="More options" style={{
+    <div style={{flexShrink:0}} onClick={e=>e.stopPropagation()}>
+      <button ref={btnRef} onClick={toggleOpen} title="More options" style={{
         padding:4, borderRadius:6, background:"transparent", border:"none",
         color:"var(--text3)", cursor:"pointer", display:"flex", alignItems:"center",
       }}>
         <Ico d="M12 6a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm0 7.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm0 7.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3z" size={14}/>
       </button>
-      {open && (
-        <div style={{position:"absolute",top:"100%",right:0,marginTop:2,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.2)",zIndex:400,minWidth:120,overflow:"hidden"}}>
+      {open && pos && ReactDOM.createPortal(
+        <div ref={menuRef} style={{position:"fixed",top:pos.top,right:pos.right,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.2)",zIndex:9999,minWidth:120,overflow:"hidden"}}>
           <button onClick={()=>{setOpen(false);onRename();}} style={{display:"block",width:"100%",textAlign:"left",padding:"9px 12px",fontSize:12,fontWeight:600,color:"var(--text2)",background:"transparent",border:"none",cursor:"pointer"}}>
             Rename
           </button>
           <button onClick={()=>{setOpen(false);onDelete();}} style={{display:"block",width:"100%",textAlign:"left",padding:"9px 12px",fontSize:12,fontWeight:600,color:"#ef4444",background:"transparent",border:"none",cursor:"pointer"}}>
             Delete
           </button>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -31291,6 +31342,12 @@ function App() {
 
   // Expose clientMemory globally so ContentPhaseGenerator (outside App) can read it
   useEffect(()=>{ window.__sfClientMemory = data.clientMemory||[]; },[data.clientMemory]);
+
+  // Expose the admin-configurable upload size cap globally so uploadToStorage()
+  // (a plain top-level function, not inside this component) can check a file's
+  // size before ever sending it — an instant, friendly rejection instead of
+  // waiting on a round trip to hit the server's actual hard limit (nginx/PHP).
+  useEffect(()=>{ window.__sfMaxUploadMB = appSettings?.feature_flags?.max_upload_mb || DEFAULT_MAX_UPLOAD_MB; },[appSettings?.feature_flags?.max_upload_mb]);
 
   // Keep System Log live — logActivity() saves to Supabase from outside React state,
   // so without this listener new entries (and their dates) only appear after a reload.
