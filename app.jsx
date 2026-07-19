@@ -1113,7 +1113,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.285";
+const APP_VERSION = "beta 5.286";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9145,7 +9145,7 @@ function ProjectsPage({projects, posts, clients, team, assets, clientIntelligenc
   const filtered = filter==="all"?projects:projects.filter(p=>p.project_type===filter||p.status===filter);
 
   return (
-    <div style={{padding:"24px",maxWidth:1100,margin:"0 auto"}}>
+    <div style={{padding:"24px"}}>
       {/* Header */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
         <div>
@@ -11993,7 +11993,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   ];
 
   return (
-    <div style={{padding:"24px",maxWidth:1100,margin:"0 auto"}}>
+    <div style={{padding:"24px"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
         <div>
           <h1 style={{fontSize:22,fontWeight:700,color:"var(--text)"}}>User Management</h1>
@@ -13747,9 +13747,9 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
   const [view,setView] = useState("dashboard");
   const [sel,setSel] = useState(null);
   const [reason,setReason] = useState("");
-  const [showBrief,setShowBrief] = useState(false);
   const [showNewRequest,setShowNewRequest] = useState(false);
   const [taskView,setTaskView] = useState("kanban");
+  const [hideEmptyStages,setHideEmptyStages] = useState(true);
   const [newReqForm,setNewReqForm] = useState({project_id:"",title:"",description:"",post_type:"image",platforms:["instagram"],priority:"medium"});
   const [showUserMenu,setShowUserMenu] = useState(false);
   const userMenuRef = useRef(null);
@@ -13782,7 +13782,6 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
   const stageColor = {client_request:"#a855f7",client_approval:"#ec4899",scheduled:"#06b6d4",published:"#10b981",rejected:"#ef4444",on_hold:"#f97316"};
   const stageLabel = {client_request:"Request",client_approval:"Pending Approval",scheduled:"Scheduled",published:"Published",rejected:"Rejected",on_hold:"On Hold"};
 
-  const pendingBrief = (monthlyBriefs||[]).find(b=>b.client_id===client?.id&&b.status==="pending");
   const cMessages = (messages||[]).filter(m=>m.client_id===client.id);
   const unreadCount = cMessages.filter(m=>m.direction==="in"&&m.draft_status!=="dismissed").length;
   const clientLeads = (leads||[]).filter(l=>l.client_id===client.id);
@@ -13927,20 +13926,6 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
         </div>
       )}
 
-      {/* Add Calendar Brief modal */}
-      {showBrief&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:200,display:"flex",alignItems:isMobile?"flex-end":"center",justifyContent:"center",backdropFilter:"blur(4px)",padding:isMobile?0:20}}>
-          <div onClick={e=>e.stopPropagation()} style={modalCard(isMobile)}>
-            <div style={{padding:`${isMobile?16:20}px ${isMobile?16:24}px`,borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
-              <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:isMobile?15:17}}>Calendar Brief</h3>
-              <button onClick={()=>setShowBrief(false)} style={{color:"var(--text3)",display:"flex",background:"none",border:"none",cursor:"pointer",flexShrink:0}}><Ico d={Icons.x} size={18}/></button>
-            </div>
-            <div style={{padding:isMobile?16:24}}>
-              <MonthlyBriefTab client={client} monthlyBriefs={monthlyBriefs} onSubmit={onSubmitBrief} onSelfCreate={onSelfCreateBrief}/>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* New Request modal — creates a real task starting at the Client Request
           stage, same record type the agency's own Kanban uses, just entered
@@ -13989,7 +13974,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                 <div>
                   <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Task Type</label>
                   <select value={newReqForm.post_type} onChange={e=>setNewReqForm(f=>({...f,post_type:e.target.value}))} style={inputSt}>
-                    {POST_TYPES.map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
+                    {[...POST_TYPES,"calendar"].map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
                   </select>
                 </div>
                 <div>
@@ -14009,7 +13994,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
         </div>
       )}
 
-      <div style={{maxWidth:["inbox","meta_insights","assets"].includes(view)?1100:1000,margin:"0 auto",padding:isMobile?"16px 16px 80px":"32px 24px"}}>
+      <div style={{padding:isMobile?"16px 16px 80px":"32px 24px"}}>
 
         {/* DASHBOARD VIEW */}
         {view==="dashboard"&&(
@@ -14126,7 +14111,6 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                     </button>
                   ))}
                 </div>
-                <Btn variant="secondary" onClick={()=>setShowBrief(true)} style={isMobile?{width:"100%",justifyContent:"center"}:{}}><Ico d={Icons.plus} size={15}/>Add Calendar Brief{pendingBrief?" ●":""}</Btn>
                 <button onClick={()=>setShowNewRequest(true)} aria-label="New Request" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}><Ico d={Icons.plus} size={15} stroke="#fff"/></button>
               </div>
             </div>
@@ -14169,8 +14153,16 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                   <p style={{fontSize:13,marginTop:4}}>Tap the + button to submit a request</p>
                 </div>
               ) : (
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                {(()=>{ const empty=["client_request","client_approval","scheduled","published","rejected","on_hold"].filter(k=>!cPosts.some(p=>p.stage===k)); return empty.length>0&&(
+                  <div style={{display:"flex",justifyContent:"flex-end"}}>
+                    <button onClick={()=>setHideEmptyStages(v=>!v)} style={{fontSize:12,fontWeight:600,color:"var(--text3)",display:"flex",alignItems:"center",gap:5,padding:"4px 12px",borderRadius:99,border:"1px solid var(--border)",background:"var(--surface2)"}}>
+                      {hideEmptyStages?`Show all 6 stages`:`Hide ${empty.length} empty stages`}
+                    </button>
+                  </div>
+                ); })()}
                 <div style={{display:"flex",gap:12,overflowX:"auto",paddingBottom:12,alignItems:"flex-start"}}>
-                  {["client_request","client_approval","scheduled","published","rejected","on_hold"].map(stKey=>{
+                  {["client_request","client_approval","scheduled","published","rejected","on_hold"].filter(stKey=>!hideEmptyStages||cPosts.some(p=>p.stage===stKey)).map(stKey=>{
                     const colPosts = cPosts.filter(p=>p.stage===stKey);
                     return (
                       <div key={stKey} style={{flex:"1 0 240px",minWidth:240,maxWidth:300,display:"flex",flexDirection:"column",gap:8}}>
@@ -14204,6 +14196,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                       </div>
                     );
                   })}
+                </div>
                 </div>
               )
             )}
