@@ -1064,7 +1064,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.233";
+const APP_VERSION = "beta 5.234";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11590,7 +11590,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   onInviteUser, onCancelInvitation, onApproveRequest, onRejectRequest,
   onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation,
   rolePerms, onUpdateTeamMember, onRemoveMember, onToggleRolePermission, onAddExpense, leaveRequests, onDecideLeaveRequest, attendanceRecords,
-  posts, onImpersonate, appSettings, onSaveSettings, expenses, onDeclareCompanyDayOff}) {
+  posts, onImpersonate, appSettings, onSaveSettings, expenses, onDeclareCompanyDayOff, invoices, payments, subscriptionPayments}) {
   const [tab, setTab] = usePersistentState("sf_tab_users","team");
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showClientUserModal, setShowClientUserModal] = useState(false);
@@ -11635,6 +11635,9 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
           leaveRequests={leaveRequests||[]}
           attendanceRecords={attendanceRecords||[]}
           expenses={expenses}
+          invoices={invoices}
+          payments={payments}
+          subscriptionPayments={subscriptionPayments}
           onUpdateTeamMember={onUpdateTeamMember}
           onAddExpense={onAddExpense}
           canEdit={!isOfficeBoy && hasPerm(currentUser,rolePerms,"hr.edit_team")}
@@ -12201,7 +12204,40 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
   );
 }
 
-function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, attendanceRecords, expenses, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense}) {
+// The current calendar month (monthly cycle) or quarter (quarterly cycle),
+// for computing "commission earned so far this cycle".
+function getCommissionCycleRange(cycle) {
+  const now = new Date();
+  if(cycle==="quarterly") {
+    const qStartMonth = Math.floor(now.getMonth()/3)*3;
+    return {
+      start: new Date(now.getFullYear(), qStartMonth, 1),
+      end: new Date(now.getFullYear(), qStartMonth+3, 1),
+      label: `Q${Math.floor(qStartMonth/3)+1} ${now.getFullYear()}`,
+    };
+  }
+  return {
+    start: new Date(now.getFullYear(), now.getMonth(), 1),
+    end: new Date(now.getFullYear(), now.getMonth()+1, 1),
+    label: now.toLocaleDateString("en-US",{month:"long",year:"numeric"}),
+  };
+}
+// Real money actually paid by this client within [start,end) — mirrors the
+// same three sources FinancePage's ledger builds from (invoice payments,
+// subscription payments, manual client-payment income entries) so the
+// commission figure matches what Finance itself would show.
+function computeClientPaymentsInRange(clientName, {invoices=[],payments=[],subscriptionPayments=[],expenses=[]}, start, end) {
+  const inRange = (d) => { if(!d) return false; const dt=new Date(d); return dt>=start && dt<end; };
+  const invoiceClientMap = {};
+  invoices.forEach(inv=>{ if(inv.invoice_number) invoiceClientMap[inv.invoice_number]=inv.client_name; });
+  let total = 0;
+  payments.forEach(p=>{ if(inRange(p.payment_date) && invoiceClientMap[p.invoice_number]===clientName) total += Number(p.amount||0); });
+  subscriptionPayments.forEach(p=>{ if(inRange(p.payment_date) && p.client_name===clientName) total += Number(p.amount||0); });
+  expenses.forEach(e=>{ if((e.type||"out")==="in" && e.category==="client_payment" && e.description===clientName && inRange(e.date)) total += Number(e.amount||0); });
+  return total;
+}
+
+function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, attendanceRecords, expenses, invoices, payments, subscriptionPayments, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense}) {
   const [tab, setTab] = usePersistentState(`sf_tab_member_${member?.id}`,"overview");
   const manager = (team||[]).find(t=>t.id===member.manager_id);
   const directReports = (team||[]).filter(t=>t.manager_id===member.id);
@@ -12514,6 +12550,9 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
           <div>
             {myClients.map((c,i)=>{
               const commission = getAccountManagerCommissions(c)[member.id];
+              const cycleRange = commission?.percentage ? getCommissionCycleRange(commission.cycle) : null;
+              const cyclePayments = cycleRange ? computeClientPaymentsInRange(c.name, {invoices,payments,subscriptionPayments,expenses}, cycleRange.start, cycleRange.end) : 0;
+              const commissionEarned = cycleRange ? cyclePayments * (Number(commission.percentage)||0) / 100 : 0;
               return (
               <div key={c.id} style={{padding:"12px 18px",borderBottom:i<myClients.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12}}>
                 <div style={{width:34,height:34,borderRadius:"50%",background:clr(c.name),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:13,flexShrink:0,overflow:"hidden"}}>
@@ -12522,6 +12561,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                 <div style={{flex:1,minWidth:0}}>
                   <p style={{fontWeight:700,fontSize:13}}>{c.name}</p>
                   <p style={{fontSize:11,color:"var(--text3)"}}>{c.industry||"—"}{commission?.percentage?` · ${commission.percentage}% commission (${commission.cycle==="quarterly"?"quarterly":"monthly"})`:""}</p>
+                  {cycleRange&&<p style={{fontSize:11,color:"#10b981",marginTop:2,fontWeight:600}}>EGP {Math.round(commissionEarned).toLocaleString()} earned so far — {cycleRange.label}</p>}
                 </div>
                 <span style={{background:c.status==="active"?"#10b98122":"#6b728022",color:c.status==="active"?"#10b981":"#6b7280",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:600}}>{c.status||"active"}</span>
               </div>
@@ -33208,6 +33248,9 @@ Return ONLY valid JSON (no markdown, no explanation):
             onDecideLeaveRequest={decideLeaveRequest}
             attendanceRecords={data.attendanceRecords||[]}
             expenses={data.expenses||[]}
+            invoices={data.invoices||[]}
+            payments={data.payments||[]}
+            subscriptionPayments={data.subscriptionPayments||[]}
             posts={data.posts}
             onImpersonate={impersonateAs}
             appSettings={appSettings}
