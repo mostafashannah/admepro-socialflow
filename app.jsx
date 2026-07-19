@@ -1087,7 +1087,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.238";
+const APP_VERSION = "beta 5.239";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -18772,7 +18772,7 @@ function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh, te
                           <span style={{fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:99,background:cc+"22",color:cc,textTransform:"uppercase",letterSpacing:"0.05em"}}>{log.category||"system"}</span>
                           <p style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>{log.action}</p>
                         </div>
-                        {log.details&&<p style={{fontSize:12,color:"var(--text2)"}}>{log.details}</p>}
+                        {log.details&&<p style={{fontSize:12,color:"var(--text2)"}}>{typeof log.details==="string"?log.details:JSON.stringify(log.details)}</p>}
                         {isError&&log.error_message&&(
                           <div style={{marginTop:4,padding:"6px 10px",background:"#ef444411",border:"1px solid #ef444433",borderRadius:4,fontSize:11,color:"#ef4444",fontFamily:"monospace"}}>{log.error_message}</div>
                         )}
