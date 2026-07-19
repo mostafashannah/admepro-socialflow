@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.304";
+const APP_VERSION = "beta 5.305";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -27418,10 +27418,16 @@ Recent expenses: ${expenses.slice(0,15).map(e=>`- ${e.date||"?"} | ${e.descripti
   if(can("hr.manage_recruitment")) {
     const openings = (data?.jobOpenings||[]);
     const apps = (data?.jobApplications||[]);
+    const appDate = (a) => (a.created_at||a.created_date||"").slice(0,10);
+    const todayStr = new Date().toISOString().slice(0,10);
+    const weekAgo = new Date(Date.now()-7*86400000).toISOString().slice(0,10);
     recruitBlock = `═══ RECRUITMENT (you can see hiring data) ═══
 Open positions: ${openings.filter(o=>o.status==="open").length} (${openings.filter(o=>o.status==="open").map(o=>o.title).join(", ")||"none"})
 Applications: ${apps.length} total | New: ${apps.filter(a=>a.status==="new").length} | Shortlisted: ${apps.filter(a=>a.status==="shortlisted").length} | Interview: ${apps.filter(a=>a.status==="interview").length} | Hired: ${apps.filter(a=>a.status==="hired").length}
-Top candidates by AI score: ${apps.filter(a=>a.ai_score!=null).sort((a,b)=>(b.ai_score||0)-(a.ai_score||0)).slice(0,8).map(a=>`${a.candidate_name} (${a.ai_score}/100, ${a.job_title||"?"}, status:${a.status})${a.ai_summary?` — ${(a.ai_summary||"").slice(0,120)}`:""}`).join(" ; ")||"none scored yet"}`;
+Applied TODAY (${todayStr}): ${apps.filter(a=>appDate(a)===todayStr).map(a=>`${a.candidate_name} (${a.job_title||"?"})`).join(", ")||"none"}
+Applied in the last 7 days: ${apps.filter(a=>appDate(a)>=weekAgo).length}
+All applications (newest first, with apply date): ${apps.slice(0,40).map(a=>`${a.candidate_name} | ${a.job_title||"?"} | applied:${appDate(a)||"?"} | score:${a.ai_score!=null?a.ai_score+"/100":"-"} | status:${a.status}`).join(" ; ")||"none"}
+Top candidates by AI score: ${apps.filter(a=>a.ai_score!=null).sort((a,b)=>(b.ai_score||0)-(a.ai_score||0)).slice(0,8).map(a=>`${a.candidate_name} (${a.ai_score}/100, ${a.job_title||"?"}, applied:${appDate(a)||"?"}, status:${a.status})${a.ai_summary?` — ${(a.ai_summary||"").slice(0,120)}`:""}`).join(" ; ")||"none scored yet"}`;
   }
 
   // HR — leave requests visible to leave approvers; salaries only with hr.view_salary
