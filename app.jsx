@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.303";
+const APP_VERSION = "beta 5.304";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -27484,7 +27484,11 @@ ${allPosts.slice(0,50).map(p=>`- "${p.title}" | Client: ${p.client_name||"(none 
 Format answers for readability, not as a wall of text:
 - Use "- " bullet lines for lists (one item per line).
 - Use "1. " numbered lines for ranked or sequential steps.
-- Use a markdown table (header row, then a |---|---| separator row, then data rows) whenever you're comparing multiple items across the same fields (e.g. posts, clients, metrics).
+- Use a markdown table whenever you're comparing multiple items across the same fields (e.g. posts, clients, metrics). Table format rules (follow EXACTLY or the table won't render):
+  * Row 1 = column NAMES only (e.g. | Task | Assigned To | Due | Stage |). Never put data values or "Label: value" pairs in the header row.
+  * Row 2 = separator: |---|---|---|---|
+  * Then one row per item, values only in cells (no "Assigned:" prefixes — the column name already says it).
+  * Every row on its own line, same number of columns per row, no blank lines inside the table.
 - Use **bold** for key numbers/names and short ### headings to break up longer answers into sections.
 - Keep prose short; let the structure carry the information.
 - Don't decorate your own replies with emojis. Only include an emoji when the user explicitly asks for one, or when you're drafting/quoting actual social content (a caption, post copy) for a client whose brand voice calls for it.
@@ -27656,6 +27660,35 @@ function renderChatMd(text) {
       continue;
     }
 
+    // Headerless pipe table: 2+ consecutive rows of |cells| with no separator
+    // row — render as a plain table body so it doesn't fall through to
+    // paragraphs and turn into an unreadable pipe-soup line.
+    const isPipeRow = (l) => { const t=(l||"").trim(); return t.startsWith("|") && (t.match(/\|/g)||[]).length >= 2; };
+    const isSepRow = (l) => (l||"").replace(/[\s|:-]/g,"") === "" && (l||"").includes("-");
+    if(isPipeRow(line) && isPipeRow(lines[i+1]) && !isSepRow(lines[i+1])) {
+      const rows = [];
+      let j = i;
+      while(j < lines.length && isPipeRow(lines[j])) {
+        if(!isSepRow(lines[j])) rows.push(lines[j].split("|").map(c=>c.trim()).filter((c,ci,arr)=>!(c==="" && (ci===0||ci===arr.length-1))));
+        j++;
+      }
+      blocks.push(
+        <div key={key++} dir="auto" style={{overflowX:"auto",margin:"8px 0",border:"1px solid var(--border2)",borderRadius:10}}>
+          <table style={{borderCollapse:"collapse",width:"100%",fontSize:12.5}}>
+            <tbody>
+              {rows.map((r,ri)=>(
+                <tr key={ri} style={ri%2===1?{background:"var(--surface2)"}:undefined}>{r.map((c,ci)=>(
+                  <td key={ci} dir="auto" style={{unicodeBidi:"plaintext",textAlign:"start",padding:"7px 12px",borderBottom:ri<rows.length-1?"1px solid var(--border)":"none",color:"var(--text2)",verticalAlign:"top"}}>{renderChatMdInline(c)}</td>
+                ))}</tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+      i = j;
+      continue;
+    }
+
     // Table block: a header row + separator row (---|---) followed by data rows
     if(line.includes("|") && (lines[i+1]||"").replace(/[\s|:-]/g,"") === "" && (lines[i+1]||"").includes("-")) {
       const headerCells = line.split("|").map(c=>c.trim()).filter((c,ci,arr)=>!(c==="" && (ci===0||ci===arr.length-1)));
@@ -27777,7 +27810,7 @@ function ChatMessage({msg, isTyping, onConfirm, onReject, onExecuteAction}) {
 
   return (
     <div style={{display:"flex",marginBottom:14,justifyContent:isBot?"flex-start":"flex-end"}} className="fade-in">
-      <div style={{maxWidth:"88%",display:"flex",flexDirection:"column",gap:6,alignItems:isBot?"flex-start":"flex-end"}}>
+      <div style={{maxWidth:isBot?"100%":"85%",width:isBot?"100%":undefined,display:"flex",flexDirection:"column",gap:6,alignItems:isBot?"flex-start":"flex-end"}}>
         {(msg.attachments||[]).length>0 && (
           <div style={{display:"flex",gap:6,flexWrap:"wrap",justifyContent:isBot?"flex-start":"flex-end"}}>
             {msg.attachments.map(a=>a.kind==="image"
@@ -31075,7 +31108,7 @@ RULES:
       )}
 
       {/* ── Messages area ── */}
-      <div style={{flex:1,overflowY:"auto",padding:isMobile?"16px":"24px 20%",display:"flex",flexDirection:"column",justifyContent:isEmpty?"center":"flex-start"}}>
+      <div style={{flex:1,overflowY:"auto",padding:isMobile?"16px":"24px max(24px, calc((100% - 980px)/2))",display:"flex",flexDirection:"column",justifyContent:isEmpty?"center":"flex-start"}}>
         {isEmpty ? (
           <div style={{textAlign:"center",maxWidth:640,width:"100%",margin:"0 auto"}}>
             <h2 style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12,fontFamily:"'Montserrat',sans-serif",fontWeight:600,fontSize:isMobile?22:32,color:"var(--text)",marginBottom:28}}>
@@ -31119,7 +31152,7 @@ RULES:
 
       {/* ── Input area (pinned bottom, once the conversation has started) ── */}
       {!isEmpty && (
-        <div style={{padding:isMobile?"12px 16px calc(84px + env(safe-area-inset-bottom))":"16px 20%",borderTop:"1px solid var(--border)",background:"var(--surface)",flexShrink:0}}>
+        <div style={{padding:isMobile?"12px 16px calc(84px + env(safe-area-inset-bottom))":"16px max(24px, calc((100% - 980px)/2))",borderTop:"1px solid var(--border)",background:"var(--surface)",flexShrink:0}}>
           {Composer}
           <p style={{fontSize:11,color:"var(--text3)",marginTop:8,textAlign:"center"}}>Pro can make mistakes. Double-check important info.</p>
         </div>
