@@ -1087,7 +1087,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.243";
+const APP_VERSION = "beta 5.245";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1889,6 +1889,28 @@ const SEED = {
 // UTILS
 // ════════════════════════════════════════════════════════════════
 const uid = () => "local_" + Date.now() + "_" + Math.random().toString(36).slice(2,7);
+// Pro action executors: match a post by id/title without picking the first fuzzy
+// substring hit. Prefers an exact title match, then narrows to the active client
+// when one is locked, then falls back to substring — but only if that leaves a
+// single unambiguous candidate. Returns null (rather than a wrong guess) otherwise.
+const matchPostByTitle = (posts, postId, postTitle, clientId) => {
+  if(postId){ const byId = posts.find(p=>p.id===postId); if(byId) return byId; }
+  const title = (postTitle||"").trim().toLowerCase();
+  if(!title) return null;
+  const scoped = clientId ? posts.filter(p=>p.client_id===clientId) : posts;
+  const pool = scoped.length ? scoped : posts;
+  const exact = pool.find(p=>(p.title||"").trim().toLowerCase()===title);
+  if(exact) return exact;
+  const contains = pool.filter(p=>(p.title||"").toLowerCase().includes(title));
+  if(contains.length===1) return contains[0];
+  if(contains.length===0 && scoped.length && scoped!==posts){
+    // Nothing matched inside the locked client's posts — retry against everything
+    // in case the client scope itself was wrong, but still require a unique hit.
+    const wide = posts.filter(p=>(p.title||"").toLowerCase().includes(title));
+    if(wide.length===1) return wide[0];
+  }
+  return null; // 0 or >1 candidates — refuse rather than silently editing the wrong post
+};
 const fmtDate = d => d ? new Date(d).toLocaleDateString("en-US",{month:"short",day:"numeric"}) : "";
 // Due-date urgency color for a task's date badge: red once the date has
 // passed, yellow if it's today, green if there's still time.
@@ -11375,7 +11397,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
   const weeks = buildCalendarWeeks();
 
   return (
-    <div style={{padding:"20px 24px",maxWidth:1100,margin:"0 auto"}}>
+    <div style={{padding:"20px 24px",maxWidth:1500,margin:"0 auto"}}>
       {/* Back + Header */}
       <div style={{marginBottom:20}}>
         <button onClick={onBack} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontSize:13,padding:0,marginBottom:12}}>← Back to Projects</button>
@@ -26790,6 +26812,7 @@ Format answers for readability, not as a wall of text:
    [ACTION:{"action":"create_invoice","client_name":"...","amount":0,"currency":"USD","due_date":"YYYY-MM-DD","description":"..."}]
    [ACTION:{"action":"create_lead","name":"...","email":"...","company":"...","source":"manual","notes":"..."}]
    [ACTION:{"action":"update_task_stage","post_title":"...","new_stage":"..."}]
+   [ACTION:{"action":"update_task_caption","post_title":"...","caption":"...","hashtags":"...","tov_used":"..."}] — writes a caption (and optionally hashtags/tone-of-voice) onto an EXISTING task. Use this whenever the user gives you captions/copy/ToV (e.g. from an uploaded PDF or pasted list) to apply "to each post"/"to the plan" — emit ONE of these per post, matching post_title to the exact task title shown in ALL POSTS & TASKS above. Only include "hashtags"/"tov_used" if the source material actually specifies them; never invent them. For a batch of many posts, emit them ALL in this single reply as separate action blocks — do not wait for per-post confirmation or split the batch across multiple replies.
    [ACTION:{"action":"assign_task","post_title":"...","assigned_to_email":"...","assigned_to_name":"..."}]
    [ACTION:{"action":"add_comment","post_title":"...","comment_text":"..."}]
    [ACTION:{"action":"send_approval","post_title":"..."}]
@@ -26874,6 +26897,7 @@ const CHATBOT_ACTION_ROLES = {
   create_lead: ["admin","account_manager"],
   create_invoice: ["admin","accountant"],
   update_task_stage: ["admin","account_manager","content_creator","graphic_designer"],
+  update_task_caption: ["admin","account_manager","content_creator"],
   assign_task: ["admin","account_manager"],
   add_comment: ["admin","account_manager","content_creator","graphic_designer"],
   send_approval: ["admin","account_manager"],
@@ -27346,7 +27370,7 @@ function ChatSessionMenu({onRename, onDelete}) {
         <Ico d="M12 6a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm0 7.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm0 7.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3z" size={14}/>
       </button>
       {open && (
-        <div style={{position:"absolute",top:"100%",right:0,marginTop:2,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.2)",zIndex:50,minWidth:120,overflow:"hidden"}}>
+        <div style={{position:"absolute",top:"100%",right:0,marginTop:2,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.2)",zIndex:400,minWidth:120,overflow:"hidden"}}>
           <button onClick={()=>{setOpen(false);onRename();}} style={{display:"block",width:"100%",textAlign:"left",padding:"9px 12px",fontSize:12,fontWeight:600,color:"var(--text2)",background:"transparent",border:"none",cursor:"pointer"}}>
             Rename
           </button>
@@ -27748,6 +27772,18 @@ RULES:
         if(!member) { addBotMsg(" Couldn't find that team member.","error"); return; }
         if(onDirectAction) await onDirectAction("update_stage", {postId:post.id, updates:{assigned_to:member.email}});
         addBotMsg(` "${post.title}" assigned to ${member.name}!`,"success",{label:" View Tasks", fn:"nav_tasks"});
+      }
+
+      else if(act==="update_task_caption") {
+        const post = matchPostByTitle(data.posts||[], payload.post_id, payload.post_title, activeClient?.id||selectedClient?.id);
+        if(!post) { addBotMsg(` Couldn't find a task matching "${payload.post_title||payload.post_id}" — skipped so it doesn't get applied to the wrong post.`,"error"); return; }
+        const updates = {};
+        if(payload.caption!=null) updates.caption = payload.caption;
+        if(payload.hashtags!=null) updates.hashtags = payload.hashtags;
+        if(payload.tov_used!=null) updates.tov_used = payload.tov_used;
+        if(Object.keys(updates).length===0){ addBotMsg(" No caption text provided.","error"); return; }
+        if(onDirectAction) await onDirectAction("update_stage", {postId:post.id, updates});
+        addBotMsg(` Caption set on "${post.title}".`,"success",{label:" View Tasks", fn:"nav_tasks"});
       }
 
       else if(act==="add_comment") {
@@ -29418,6 +29454,16 @@ RULES:
         if(!post){addBotMsg(" Couldn't find that task.","error");return;}
         if(onDirectAction) await onDirectAction("update_stage",{postId:post.id,newStage:payload.new_stage});
         addBotMsg(` **"${post.title}"** moved to ${payload.new_stage.replace(/_/g," ")}!`,"success");
+      } else if(act==="update_task_caption") {
+        const post = matchPostByTitle(data.posts||[], payload.post_id, payload.post_title, selectedClient?.id);
+        if(!post){addBotMsg(` Couldn't find a task matching "${payload.post_title||payload.post_id}" — skipped so it doesn't get applied to the wrong post.`,"error");return;}
+        const updates = {};
+        if(payload.caption!=null) updates.caption = payload.caption;
+        if(payload.hashtags!=null) updates.hashtags = payload.hashtags;
+        if(payload.tov_used!=null) updates.tov_used = payload.tov_used;
+        if(Object.keys(updates).length===0){addBotMsg(" No caption text provided.","error");return;}
+        if(onDirectAction) await onDirectAction("update_stage",{postId:post.id,updates});
+        addBotMsg(` Caption set on **"${post.title}"**.`,"success");
       } else if(act==="assign_task") {
         const post=(data.posts||[]).find(p=>(p.title||"").toLowerCase().includes((payload.post_title||"").toLowerCase()));
         const member=resolveEntity(payload.assigned_to_name||payload.assigned_to_email,data.team,"name")||(data.team||[]).find(m=>m.email===payload.assigned_to_email);
@@ -29730,32 +29776,47 @@ RULES:
       if(!s || s.length <= 4000) return s;
       return s.slice(0,2200) + "\n\n…[truncated for length]…\n\n" + s.slice(-1500);
     };
-    // Attachments are only sent to Claude on the turn they're uploaded — images/PDFs go
-    // as vision/document blocks, text files are inlined as quoted text in the prompt.
-    const visionBlocks = pendingAttachments
-      .filter(a=>a.kind==="image"||a.kind==="pdf")
-      .map(a=>a.kind==="image"
-        ? {type:"image", source:{type:"base64", media_type:a.mediaType, data:a.base64}}
-        : {type:"document", source:{type:"base64", media_type:"application/pdf", data:a.base64}});
+    const toBlock = (a) => a.kind==="image"
+      ? {type:"image", source:{type:"base64", media_type:a.mediaType, data:a.base64}}
+      : {type:"document", source:{type:"base64", media_type:"application/pdf", data:a.base64}};
+    const visionBlocks = pendingAttachments.filter(a=>a.kind==="image"||a.kind==="pdf").map(toBlock);
     const textAttachmentsInline = pendingAttachments
       .filter(a=>a.kind==="text")
       .map(a=>`\n\n[Attached file: ${a.name}]\n${a.text}`).join("");
 
-    const allMsgs = [...messages, userMsgObj].slice(-10);
+    const allMsgs = [...messages, userMsgObj].slice(-16);
+    // Re-attach images/PDFs from earlier turns too — otherwise a document uploaded
+    // a message or two ago silently vanishes from context on every later turn and
+    // the user has to keep re-uploading it. Cap how many we resend so payload size
+    // stays bounded (most recent uploads win).
+    const RESEND_DOC_CAP = 3;
+    let resent = 0;
     const history = allMsgs
       .filter(m=>(m.content && typeof m.content==="string") || (m.attachments||[]).length)
       .filter(m=>!m.pendingAction && !m.meta)
+      .slice()
+      .reverse()
       .map(m=>{
         const isCurrent = m===userMsgObj;
         let textContent = truncMsg(stripActionBlocks(m.content||""));
+        const pastDocs = !isCurrent ? (m.attachments||[]).filter(a=>a.kind==="image"||a.kind==="pdf") : [];
+        const pastText = !isCurrent ? (m.attachments||[]).filter(a=>a.kind==="text") : [];
+        if(pastText.length) textContent = (textContent||"") + pastText.map(a=>`\n\n[Attached file: ${a.name}]\n${a.text}`).join("");
         if(isCurrent && textAttachmentsInline) textContent = (textContent||"") + textAttachmentsInline;
-        if(isCurrent && visionBlocks.length){
-          return {role:"user", content:[{type:"text", text:textContent||"See attached file(s)."}, ...visionBlocks]};
+        let blocks = isCurrent ? visionBlocks : [];
+        if(!isCurrent && pastDocs.length && resent < RESEND_DOC_CAP){
+          const take = pastDocs.slice(0, RESEND_DOC_CAP - resent);
+          resent += take.length;
+          blocks = take.map(toBlock);
+        }
+        if(blocks.length){
+          return {role: m.role==="bot" ? "assistant" : "user", content:[{type:"text", text:textContent||"See attached file(s)."}, ...blocks]};
         }
         return {role: m.role==="bot" ? "assistant" : "user", content:textContent};
       })
+      .reverse()
       .filter(m=>Array.isArray(m.content) ? m.content.length>0 : m.content.length>0)
-      .slice(-8);
+      .slice(-14);
     const firstIdx = history.findIndex(m=>m.role==="user");
     const apiHistory = firstIdx>0 ? history.slice(firstIdx) : history;
 
