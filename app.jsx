@@ -1064,7 +1064,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.224";
+const APP_VERSION = "beta 5.225";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11860,6 +11860,29 @@ const TEAM_EVENT_TYPES = [
 ];
 const TEAM_EVENT_MAP = Object.fromEntries(TEAM_EVENT_TYPES.map(t=>[t.key,t]));
 
+// A salary raise partway through a month means the member actually earned
+// the old rate for part of the month and the new rate for the rest — this
+// prorates day-by-day across any salary_raise events that landed in the
+// target month instead of just using whatever the current salary is now.
+function computeProratedMonthlySalary(currentSalary, raiseEvents, year, month) {
+  const parseNum = v => Number(String(v||"").replace(/[^0-9.]/g,"")) || 0;
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const events = (raiseEvents||[])
+    .filter(r=>r.effective_date && parseNum(r.new_value)>0)
+    .map(r=>({date:r.effective_date, rate:parseNum(r.new_value), prevRate:parseNum(r.previous_value)}))
+    .sort((a,b)=>new Date(a.date)-new Date(b.date));
+  let total = 0;
+  for(let d=1; d<=daysInMonth; d++){
+    const dateStr = `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    let rate = Number(currentSalary)||0;
+    const applicable = events.filter(e=>e.date<=dateStr).pop();
+    if(applicable) rate = applicable.rate;
+    else if(events.length>0 && events[0].prevRate>0) rate = events[0].prevRate;
+    total += rate/daysInMonth;
+  }
+  return total;
+}
+
 // Career history log — salary raises, promotions, bonuses, warnings, etc.
 // Lazy-fetched per profile (same pattern as the Hiring tab's application
 // activity log) rather than pulled into the app-wide data load, since it's
@@ -12026,6 +12049,15 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
   const mySalaryRecords = (expenses||[]).filter(e=>e.team_member_id===member.id && e.category==="salaries").sort((a,b)=>new Date(b.date)-new Date(a.date));
   const totalPaid = mySalaryRecords.reduce((sum,e)=>sum+Number(e.amount||0),0);
   const docs = [member.id_photo_front_url&&{label:"ID Photo — Front", url:member.id_photo_front_url}, member.id_photo_back_url&&{label:"ID Photo — Back", url:member.id_photo_back_url}].filter(Boolean);
+
+  // Salary raises recorded on Career History, used to prorate "This Month
+  // Payroll" below — a raise partway through the month means part of the
+  // month was actually earned at the old rate and part at the new one.
+  const [salaryRaises, setSalaryRaises] = useState([]);
+  useEffect(()=>{
+    qe("TeamMemberEvent", {team_member_id: member.id, event_type:"salary_raise"}, "-effective_date", 100)
+      .then(res=>setSalaryRaises(res.entities||[])).catch(()=>{});
+  },[member.id]);
 
   // The original job application this person was hired from — CV,
   // portfolio, cover letter, AI review, and the full activity log all
@@ -12275,13 +12307,16 @@ function TeamMemberDetailPage({member, team, posts, leaveRequests, attendanceRec
         const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
         const thisMonthRecords = mySalaryRecords.filter(e=>(e.date||"").slice(0,7)===thisMonthKey);
         const thisMonthBonuses = thisMonthRecords.filter(e=>(e.description||"").startsWith("Bonus —"));
-        const thisMonthBase = thisMonthRecords.filter(e=>!(e.description||"").startsWith("Bonus —"));
         const bonusTotal = thisMonthBonuses.reduce((s,e)=>s+Number(e.amount||0),0);
-        const baseTotal = thisMonthBase.reduce((s,e)=>s+Number(e.amount||0),0);
+        // Prorated, not just "current salary" or "whatever was already paid" —
+        // a raise mid-month means part of the month was earned at the old rate.
+        const raisesThisMonth = salaryRaises.filter(r=>(r.effective_date||"").slice(0,7)===thisMonthKey);
+        const baseTotal = computeProratedMonthlySalary(member.salary, salaryRaises, now.getFullYear(), now.getMonth());
         return (
           <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
             <h3 style={{fontWeight:700,fontSize:14,marginBottom:8}}>This Month Payroll</h3>
-            {row("Base Salary Paid", baseTotal?`EGP ${Math.round(baseTotal).toLocaleString()}`:"—")}
+            {row("Base Salary (Prorated)", baseTotal?`EGP ${Math.round(baseTotal).toLocaleString()}`:"—")}
+            {raisesThisMonth.length>0&&row("Raise Effective", raisesThisMonth.map(r=>fmtDate(r.effective_date)).join(", "))}
             {row("Bonuses", bonusTotal?`EGP ${Math.round(bonusTotal).toLocaleString()}`:"—")}
             {row("Total This Month", `EGP ${Math.round(baseTotal+bonusTotal).toLocaleString()}`)}
           </div>
