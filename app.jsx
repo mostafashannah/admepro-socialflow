@@ -1113,7 +1113,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.283";
+const APP_VERSION = "beta 5.284";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13742,14 +13742,15 @@ function TemplatesPage({templates}) {
 // ════════════════════════════════════════════════════════════════
 // CLIENT PORTAL
 // ════════════════════════════════════════════════════════════════
-function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tasks=[],onAddTask,onUpdateTask,contract,wallpaper,onWallpaperChange,monthlyBriefs=[],onSubmitBrief,onSelfCreateBrief,messages=[],integrations=[],onSendReply,onApproveDraft,onDismissDraft,assets=[],onAddAsset,onUpdateAsset,onDeleteAsset,leads=[]}) {
+function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tasks=[],onAddTask,onUpdateTask,onAddPost,contract,wallpaper,onWallpaperChange,monthlyBriefs=[],onSubmitBrief,onSelfCreateBrief,messages=[],integrations=[],onSendReply,onApproveDraft,onDismissDraft,assets=[],onAddAsset,onUpdateAsset,onDeleteAsset,leads=[]}) {
   const {isMobile} = useResponsive();
   const [view,setView] = useState("dashboard");
   const [sel,setSel] = useState(null);
-  const [selTask,setSelTask] = useState(null);
   const [reason,setReason] = useState("");
-  const [showAddTask,setShowAddTask] = useState(false);
   const [showBrief,setShowBrief] = useState(false);
+  const [showNewRequest,setShowNewRequest] = useState(false);
+  const [taskView,setTaskView] = useState("kanban");
+  const [newReqForm,setNewReqForm] = useState({project_id:"",title:"",description:"",platform:"instagram",priority:"medium"});
   const [showUserMenu,setShowUserMenu] = useState(false);
   const userMenuRef = useRef(null);
   useEffect(()=>{
@@ -13787,9 +13788,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
   const clientLeads = (leads||[]).filter(l=>l.client_id===client.id);
   const navItems = [
     {key:"dashboard", label:"Dashboard", mLabel:"Home"},
-    {key:"tasks", label:"Requests", mLabel:"Requests"},
-    {key:"posts", label:"Content", mLabel:"Content"},
-    {key:"calendar",label:"Calendar", mLabel:"Calendar"},
+    {key:"posts", label:"Tasks", mLabel:"Tasks"},
     {key:"inbox", label:`Inbox${unreadCount?` (${unreadCount})`:""}`, mLabel:"Inbox"},
     {key:"meta_insights", label:"Meta Insights", mLabel:"Insights"},
     {key:"assets", label:"Assets", mLabel:"Assets"},
@@ -13888,67 +13887,6 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
         </div>
       )}
 
-      {/* Task detail modal */}
-      {selTask&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:200,display:"flex",alignItems:isMobile?"flex-end":"center",justifyContent:"center",backdropFilter:"blur(4px)",padding:isMobile?0:20}}>
-          <div onClick={e=>e.stopPropagation()} style={modalCard(isMobile)}>
-            <div style={{padding:`${isMobile?16:20}px ${isMobile?16:24}px`,borderBottom:"1px solid var(--border)",display:"flex",alignItems:"flex-start",gap:12,justifyContent:"space-between"}}>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-                  <span style={{fontSize:18}}>{TASK_TYPE_MAP[selTask.task_type]?.icon||""}</span>
-                  <span style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>{TASK_TYPE_MAP[selTask.task_type]?.label||selTask.task_type}</span>
-                </div>
-                <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:isMobile?15:17,lineHeight:1.3}}>{selTask.title}</h3>
-              </div>
-              <button onClick={()=>{setSelTask(null);setReason("");}} style={{color:"var(--text3)",display:"flex",background:"none",border:"none",cursor:"pointer",padding:4,flexShrink:0}}><Ico d={Icons.x} size={18}/></button>
-            </div>
-            <div style={{padding:isMobile?16:24,display:"flex",flexDirection:"column",gap:14}}>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                <Badge label={getClientStageLabel(selTask.stage)} color={getClientStageColor(selTask.stage)}/>
-                {selTask.priority&&<Badge label={selTask.priority} color={PRI_COLOR[selTask.priority]||"#888"}/>}
-              </div>
-              {selTask.description&&(
-                <div style={{padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
-                  <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:5,textTransform:"uppercase",letterSpacing:"0.05em"}}>Brief</p>
-                  <p style={{fontSize:13,lineHeight:1.7,color:"var(--text)"}}>{selTask.description}</p>
-                </div>
-              )}
-              <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"var(--text3)"}}>
-                <Ico d={Icons.calendar} size={14}/> Submitted {fmtDate(selTask.created_date?.split("T")[0]||"")}
-              </div>
-              {selTask.stage==="ready_for_client_approval"&&(
-                <div style={{borderTop:"1px solid var(--border)",paddingTop:14,display:"flex",flexDirection:"column",gap:12}}>
-                  <div style={{padding:12,background:"#f9731622",border:"1px solid #f9731644",borderRadius:"var(--rs)"}}>
-                    <p style={{fontSize:13,fontWeight:700,color:"#f97316"}}> Your deliverable is ready for review!</p>
-                    {selTask.deliverable_note&&<p style={{fontSize:13,color:"var(--text2)",marginTop:6,lineHeight:1.6}}>{selTask.deliverable_note}</p>}
-                  </div>
-                  <p style={{fontSize:13,fontWeight:700}}>Your Feedback</p>
-                  <textarea value={reason} onChange={e=>setReason(e.target.value)} placeholder="Optional: describe any changes needed…" rows={3} style={inputSt}/>
-                  <div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:8}}>
-                    <Btn variant="danger" onClick={()=>{onUpdateTask(selTask.id,{stage:"changes_requested",client_rejection_reason:reason,client_action_date:new Date().toISOString()});setSelTask(null);setReason("");}}>
-                      <Ico d={Icons.x} size={14}/> Request Changes
-                    </Btn>
-                    <Btn variant="success" onClick={()=>{onUpdateTask(selTask.id,{stage:"approved",client_approved_date:new Date().toISOString()});setSelTask(null);setReason("");}}>
-                      <Ico d={Icons.check} size={14}/> Approve ✓
-                    </Btn>
-                  </div>
-                </div>
-              )}
-              {selTask.stage==="approved"&&(
-                <div style={{padding:12,background:"#10b98122",border:"1px solid #10b98166",borderRadius:"var(--rs)"}}>
-                  <p style={{fontSize:13,fontWeight:700,color:"#10b981"}}> You approved this task. Our team is finalizing delivery.</p>
-                </div>
-              )}
-              {selTask.stage==="changes_requested"&&(
-                <div style={{padding:12,background:"#ef444422",border:"1px solid #ef444466",borderRadius:"var(--rs)"}}>
-                  <p style={{fontSize:13,fontWeight:700,color:"#ef4444"}}> Changes requested. Our team is working on revisions.</p>
-                  {selTask.client_rejection_reason&&<p style={{fontSize:12,color:"var(--text2)",marginTop:4}}>Your note: "{selTask.client_rejection_reason}"</p>}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Post detail modal */}
       {sel&&(
@@ -13989,19 +13927,6 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
         </div>
       )}
 
-      {/* Add Task Modal */}
-      {showAddTask&&(
-        <ClientAddTaskModal
-          allowedTypes={allowedTypes}
-          limitsEnabled={limitsEnabled}
-          taskLimits={taskLimits}
-          client={client}
-          isMobile={isMobile}
-          onClose={()=>setShowAddTask(false)}
-          onAdd={(t)=>{onAddTask(t);setShowAddTask(false);}}
-        />
-      )}
-
       {/* Add Calendar Brief modal */}
       {showBrief&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:200,display:"flex",alignItems:isMobile?"flex-end":"center",justifyContent:"center",backdropFilter:"blur(4px)",padding:isMobile?0:20}}>
@@ -14012,6 +13937,57 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
             </div>
             <div style={{padding:isMobile?16:24}}>
               <MonthlyBriefTab client={client} monthlyBriefs={monthlyBriefs} onSubmit={onSubmitBrief} onSelfCreate={onSelfCreateBrief}/>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Request modal — creates a real task starting at the Client Request
+          stage, same record type the agency's own Kanban uses, just entered
+          from the client side instead of by a team member. */}
+      {showNewRequest&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:200,display:"flex",alignItems:isMobile?"flex-end":"center",justifyContent:"center",backdropFilter:"blur(4px)",padding:isMobile?0:20}}>
+          <div onClick={e=>e.stopPropagation()} style={modalCard(isMobile)}>
+            <div style={{padding:`${isMobile?16:20}px ${isMobile?16:24}px`,borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+              <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:isMobile?15:17}}>New Request</h3>
+              <button onClick={()=>setShowNewRequest(false)} style={{color:"var(--text3)",display:"flex",background:"none",border:"none",cursor:"pointer",flexShrink:0}}><Ico d={Icons.x} size={18}/></button>
+            </div>
+            <div style={{padding:isMobile?16:24,display:"flex",flexDirection:"column",gap:12}}>
+              <div>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Project</label>
+                <select value={newReqForm.project_id} onChange={e=>setNewReqForm(f=>({...f,project_id:e.target.value}))} style={inputSt}>
+                  <option value="">Select project…</option>
+                  {cProjects.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Title</label>
+                <input value={newReqForm.title} onChange={e=>setNewReqForm(f=>({...f,title:e.target.value}))} style={inputSt}/>
+              </div>
+              <div>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Description</label>
+                <textarea value={newReqForm.description} onChange={e=>setNewReqForm(f=>({...f,description:e.target.value}))} rows={3} style={{...inputSt,resize:"vertical",fontFamily:"inherit"}}/>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <div>
+                  <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Platform</label>
+                  <select value={newReqForm.platform} onChange={e=>setNewReqForm(f=>({...f,platform:e.target.value}))} style={inputSt}>
+                    {PLATFORMS.map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Priority</label>
+                  <select value={newReqForm.priority} onChange={e=>setNewReqForm(f=>({...f,priority:e.target.value}))} style={inputSt}>
+                    {PRIORITIES.map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+                  </select>
+                </div>
+              </div>
+              <Btn disabled={!newReqForm.project_id||!newReqForm.title.trim()} onClick={()=>{
+                const proj = cProjects.find(p=>p.id===newReqForm.project_id);
+                onAddPost&&onAddPost({...newReqForm, client_id:client.id, client_name:client.name, project_id:newReqForm.project_id, stage:"client_request", created_by:"client"});
+                setNewReqForm({project_id:"",title:"",description:"",platform:"instagram",priority:"medium"});
+                setShowNewRequest(false);
+              }}><Ico d={Icons.plus} size={14}/> Submit Request</Btn>
             </div>
           </div>
         </div>
@@ -14043,7 +14019,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
             </div>
 
             {dashStats.pendingApproval>0&&(
-              <div onClick={()=>setView("tasks")} style={{cursor:"pointer",padding:14,background:"#ec489915",border:"1px solid #ec489944",borderRadius:"var(--rs)",fontSize:13,color:"var(--text2)",display:"flex",alignItems:"center",gap:10}}>
+              <div onClick={()=>setView("posts")} style={{cursor:"pointer",padding:14,background:"#ec489915",border:"1px solid #ec489944",borderRadius:"var(--rs)",fontSize:13,color:"var(--text2)",display:"flex",alignItems:"center",gap:10}}>
                 <Ico d={Icons.alert} size={16} stroke="#ec4899"/>
                 <span>You have <strong>{dashStats.pendingApproval}</strong> piece{dashStats.pendingApproval!==1?"s":""} of content waiting for your approval. <span style={{color:"var(--accent)",fontWeight:700}}>Review now →</span></span>
               </div>
@@ -14117,112 +14093,28 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
         {view==="leads"&&<ClientLeadsTab clientLeads={clientLeads} clientName={client.name}/>}
 
         {/* TASKS VIEW */}
-        {view==="tasks"&&(
+        {/* TASKS VIEW — merges the old Requests/Content/Calendar tabs into one
+            Kanban/List/Calendar page over the 6 client-visible stages. */}
+        {view==="posts"&&(
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
             <div style={{display:"flex",alignItems:isMobile?"flex-start":"center",justifyContent:"space-between",flexDirection:isMobile?"column":"row",gap:10}}>
               <div>
-                <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?20:22,fontWeight:800}}>My Requests</h2>
-                <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{tasks.length} total · {tasks.filter(t=>t.stage==="ready_for_client_approval").length} awaiting approval</p>
+                <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?20:22,fontWeight:800}}>Your Tasks</h2>
+                <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{cPosts.length} total · {cPosts.filter(p=>p.stage==="client_approval").length} awaiting your approval</p>
               </div>
-              <div style={{display:"flex",gap:8,flexDirection:isMobile?"column":"row",width:isMobile?"100%":"auto"}}>
-                <Btn variant="secondary" onClick={()=>setShowBrief(true)} style={isMobile?{width:"100%",justifyContent:"center"}:{}}><Ico d={Icons.plus} size={15}/>Add Calendar Brief{pendingBrief?" ●":""}</Btn>
-                {isMobile ? (
-                  <Btn onClick={()=>setShowAddTask(true)} style={{width:"100%",justifyContent:"center"}}><Ico d={Icons.plus} size={15}/>New Request</Btn>
-                ) : (
-                  <button onClick={()=>setShowAddTask(true)} aria-label="New Request" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}><Ico d={Icons.plus} size={15} stroke="#fff"/></button>
-                )}
-              </div>
-            </div>
-
-            {/* Awaiting approval highlight */}
-            {tasks.filter(t=>t.stage==="ready_for_client_approval").length>0&&(
-              <div style={{padding:14,background:"#f9731622",border:"1px solid #f9731644",borderRadius:"var(--r)"}}>
-                <p style={{fontSize:13,fontWeight:700,color:"#f97316",marginBottom:10}}> Waiting for Your Approval ({tasks.filter(t=>t.stage==="ready_for_client_approval").length})</p>
-                <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  {tasks.filter(t=>t.stage==="ready_for_client_approval").map(t=>(
-                    <div key={t.id} onClick={()=>setSelTask(t)} style={{background:"var(--surface)",borderRadius:"var(--rs)",padding:"12px 14px",cursor:"pointer",border:"1px solid #f9731644",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}
-                    onMouseEnter={e=>e.currentTarget.style.borderColor="#f97316"}
-                    onMouseLeave={e=>e.currentTarget.style.borderColor="#f9731644"}>
-                      <div style={{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0}}>
-                        <span style={{fontSize:20,flexShrink:0}}>{TASK_TYPE_MAP[t.task_type]?.icon||""}</span>
-                        <div style={{minWidth:0}}>
-                          <p style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</p>
-                          <p style={{fontSize:11,color:"var(--text3)"}}>{TASK_TYPE_MAP[t.task_type]?.label}</p>
-                        </div>
-                      </div>
-                      <Btn size="sm" style={{flexShrink:0}}>Review →</Btn>
-                    </div>
+              <div style={{display:"flex",gap:8,alignItems:"center",flexDirection:isMobile?"column":"row",width:isMobile?"100%":"auto"}}>
+                <div style={{display:"inline-flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",flexShrink:0}}>
+                  {[["kanban",Icons.grid,"Kanban"],["list",Icons.list,"List"],["cal",Icons.calendar,"Calendar"]].map(([v,ico,label])=>(
+                    <button key={v} onClick={()=>setTaskView(v)} title={label} style={{padding:"6px 12px",borderRadius:99,background:taskView===v?"var(--accent)":"none",color:taskView===v?"#fff":"var(--text2)",border:"none",display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                      <Ico d={ico} size={13}/> {isMobile?"":label}
+                    </button>
                   ))}
                 </div>
+                <Btn variant="secondary" onClick={()=>setShowBrief(true)} style={isMobile?{width:"100%",justifyContent:"center"}:{}}><Ico d={Icons.plus} size={15}/>Add Calendar Brief{pendingBrief?" ●":""}</Btn>
+                <button onClick={()=>setShowNewRequest(true)} aria-label="New Request" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}><Ico d={Icons.plus} size={15} stroke="#fff"/></button>
               </div>
-            )}
-
-            {/* Task limits — horizontal scroll on mobile */}
-            {limitsEnabled&&contract&&(
-              <div style={{display:"flex",gap:10,overflowX:"auto",paddingBottom:4,WebkitOverflowScrolling:"touch"}}>
-                {allowedTypes.filter(tid=>taskLimits[tid]).map(tid=>{
-                  const lim=taskLimits[tid];
-                  const used=lim.used||0;
-                  const remaining=Math.max(0,lim.limit-used);
-                  const pct=Math.min(100,(used/lim.limit)*100);
-                  return (
-                    <div key={tid} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--rs)",padding:"10px 14px",minWidth:140}}>
-                      <p style={{fontSize:11,color:"var(--text3)",marginBottom:4}}>{TASK_TYPE_MAP[tid]?.label}</p>
-                      <p style={{fontSize:18,fontWeight:800,color:remaining===0?"#ef4444":remaining<=2?"#f59e0b":"var(--text)"}}>{remaining}<span style={{fontSize:11,fontWeight:400,color:"var(--text3)"}}> left</span></p>
-                      <div style={{height:4,background:"var(--border)",borderRadius:99,marginTop:6,overflow:"hidden"}}>
-                        <div style={{height:"100%",width:`${pct}%`,background:remaining===0?"#ef4444":remaining<=2?"#f59e0b":"var(--accent)",borderRadius:99,transition:"width 0.3s"}}/>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Task list */}
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              {tasks.length===0?(
-                <div style={{textAlign:"center",padding:"48px 20px",color:"var(--text3)",background:"var(--surface)",borderRadius:"var(--r)",border:"1px solid var(--border)"}}>
-                  <p style={{fontSize:36,marginBottom:10}}></p>
-                  <p style={{fontSize:15,fontWeight:700,color:"var(--text2)"}}>No requests yet</p>
-                  <p style={{fontSize:13,marginTop:4}}>Tap "New Request" to get started</p>
-                </div>
-              ):(
-                tasks.filter(t=>t.stage!=="ready_for_client_approval").map(t=>(
-                  <div key={t.id} onClick={()=>setSelTask(t)} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"12px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:12,minHeight:56,transition:"background 0.15s,border-color 0.15s"}}
-                  onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--border2)";e.currentTarget.style.background="var(--surface2)";}}
-                  onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border)";e.currentTarget.style.background="var(--surface)";}}>
-                    <span style={{fontSize:22,flexShrink:0}}>{TASK_TYPE_MAP[t.task_type]?.icon||""}</span>
-                    <div style={{flex:1,minWidth:0}}>
-                      <p style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</p>
-                      <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{TASK_TYPE_MAP[t.task_type]?.label} · {fmtDate(t.created_date?.split("T")[0]||"")}</p>
-                      {isMobile&&(
-                        <div style={{display:"flex",gap:5,marginTop:5,flexWrap:"wrap"}}>
-                          {t.priority&&<Badge label={t.priority} color={PRI_COLOR[t.priority]||"#888"} xs/>}
-                          <Badge label={getClientStageLabel(t.stage)} color={getClientStageColor(t.stage)} xs/>
-                        </div>
-                      )}
-                    </div>
-                    {!isMobile&&(
-                      <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-                        {t.priority&&<Badge label={t.priority} color={PRI_COLOR[t.priority]||"#888"} xs/>}
-                        <Badge label={getClientStageLabel(t.stage)} color={getClientStageColor(t.stage)} xs/>
-                      </div>
-                    )}
-                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="var(--text3)" strokeWidth={2.5} strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
-                  </div>
-                ))
-              )}
             </div>
-          </div>
-        )}
 
-        {/* POSTS VIEW */}
-        {view==="posts"&&(
-          <div style={{display:"flex",flexDirection:"column",gap:16}}>
-            <div>
-              <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:isMobile?20:22,fontWeight:800}}>Your Content</h2>
-              <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{cPosts.filter(p=>p.stage==="client_approval").length} awaiting your approval</p>
-            </div>
             {cPosts.filter(p=>p.stage==="client_approval").length>0&&(
               <div style={{padding:14,background:"#ec489922",border:"1px solid #ec489966",borderRadius:"var(--r)"}}>
                 <p style={{fontSize:13,fontWeight:700,color:"#ec4899",marginBottom:10}}> Awaiting Your Approval ({cPosts.filter(p=>p.stage==="client_approval").length})</p>
@@ -14252,58 +14144,94 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                 </div>
               </div>
             )}
-            <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fill,minmax(280px,1fr))",gap:isMobile?8:14}}>
-              {cPosts.filter(p=>p.stage!=="client_approval").map(p=>{
-                const pUrls = Array.isArray(p.design_urls)?p.design_urls:parseJ(p.design_urls||"[]");
-                const pAssets = Array.isArray(p.design_assets)?p.design_assets:parseJ(p.design_assets||"[]");
-                const pThumb = pUrls[0]||pAssets[0]?.url||"";
-                return (
-                <div key={p.id} onClick={()=>setSel(p)} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden",cursor:"pointer",display:isMobile?"flex":"block",alignItems:"center",transition:"border-color 0.15s"}}
-                onMouseEnter={e=>e.currentTarget.style.borderColor="var(--border2)"}
-                onMouseLeave={e=>e.currentTarget.style.borderColor="var(--border)"}>
-                  {isMobile?(
-                    pThumb?(
-                      <img src={pThumb} alt="" style={{width:56,height:56,objectFit:"cover",flexShrink:0,margin:10,borderRadius:8,background:"var(--surface2)"}}/>
-                    ):(
-                      <div style={{width:44,height:44,background:`${PLT_COLOR[p.platform]}22`,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,margin:12,flexShrink:0}}>
-                        <span style={{fontSize:15,fontWeight:800,color:PLT_COLOR[p.platform]}}>{PLT_ICON[p.platform]}</span>
-                      </div>
-                    )
-                  ):(
-                    pThumb?(
-                      <div style={{height:120,overflow:"hidden",position:"relative",background:"var(--surface2)"}}>
-                        <img src={pThumb} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                        <div style={{position:"absolute",bottom:6,right:6,background:"rgba(0,0,0,0.55)",borderRadius:6,padding:"2px 7px",fontSize:11,fontWeight:700,color:"#fff",display:"flex",alignItems:"center",gap:4}}>
-                          <span style={{fontSize:13}}>{PLT_ICON[p.platform]}</span>
+
+            {taskView==="kanban"&&(
+              cPosts.length===0 ? (
+                <div style={{textAlign:"center",padding:isMobile?"48px 20px":"80px",color:"var(--text3)"}}>
+                  <p style={{fontSize:32,marginBottom:8}}></p>
+                  <p style={{fontSize:16,fontWeight:600}}>No tasks yet</p>
+                  <p style={{fontSize:13,marginTop:4}}>Tap the + button to submit a request</p>
+                </div>
+              ) : (
+                <div style={{display:"flex",gap:12,overflowX:"auto",paddingBottom:12,alignItems:"flex-start"}}>
+                  {["client_request","client_approval","scheduled","published","rejected","on_hold"].map(stKey=>{
+                    const colPosts = cPosts.filter(p=>p.stage===stKey);
+                    return (
+                      <div key={stKey} style={{flex:"1 0 240px",minWidth:240,maxWidth:300,display:"flex",flexDirection:"column",gap:8}}>
+                        <div style={{display:"flex",alignItems:"center",gap:7,padding:"0 2px"}}>
+                          <div style={{width:8,height:8,borderRadius:"50%",background:stageColor[stKey]}}/>
+                          <span style={{fontSize:11,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.06em",color:"var(--text2)"}}>{stageLabel[stKey]}</span>
+                          <span style={{fontSize:10,color:"var(--text3)",background:"var(--surface2)",padding:"1px 7px",borderRadius:99,border:"1px solid var(--border)",marginLeft:"auto"}}>{colPosts.length}</span>
+                        </div>
+                        <div style={{display:"flex",flexDirection:"column",gap:8,minHeight:60}}>
+                          {colPosts.map(p=>{
+                            const pUrls = Array.isArray(p.design_urls)?p.design_urls:parseJ(p.design_urls||"[]");
+                            const pAssets = Array.isArray(p.design_assets)?p.design_assets:parseJ(p.design_assets||"[]");
+                            const pThumb = pUrls[0]||pAssets[0]?.url||"";
+                            return (
+                              <div key={p.id} onClick={()=>setSel(p)} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--rs)",overflow:"hidden",cursor:"pointer"}}>
+                                {pThumb?(
+                                  <div style={{height:90,overflow:"hidden",background:"var(--surface2)"}}><img src={pThumb} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/></div>
+                                ):(
+                                  <div style={{height:60,background:`linear-gradient(135deg,${PLT_COLOR[p.platform]}33,${PLT_COLOR[p.platform]}11)`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                                    <span style={{fontSize:18,fontWeight:800,color:PLT_COLOR[p.platform]}}>{PLT_ICON[p.platform]}</span>
+                                  </div>
+                                )}
+                                <div style={{padding:10}}>
+                                  <p style={{fontWeight:700,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}</p>
+                                  {p.scheduled_date&&<p style={{fontSize:10,color:"var(--text3)",marginTop:2}}>{fmtDate(p.scheduled_date)}</p>}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
-                    ):(
-                      <div style={{height:80,background:`linear-gradient(135deg,${PLT_COLOR[p.platform]}33,${PLT_COLOR[p.platform]}11)`,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                        <span style={{fontSize:24,fontWeight:800,color:PLT_COLOR[p.platform]}}>{PLT_ICON[p.platform]}</span>
-                      </div>
-                    )
-                  )}
-                  <div style={{padding:isMobile?"10px 12px 10px 0":"10px 14px",flex:1,minWidth:0}}>
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:4}}>
-                      <p style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{p.title}</p>
-                      <Badge label={stageLabel[p.stage]||p.stage} color={stageColor[p.stage]||"#888"} xs/>
-                    </div>
-                    {p.scheduled_date&&<p style={{fontSize:11,color:"var(--text3)"}}>{fmtDate(p.scheduled_date)}</p>}
-                  </div>
+                    );
+                  })}
                 </div>
-              );})}
-            </div>
-            {cPosts.length===0&&(
-              <div style={{textAlign:"center",padding:isMobile?"48px 20px":"80px",color:"var(--text3)"}}>
-                <p style={{fontSize:32,marginBottom:8}}></p>
-                <p style={{fontSize:16,fontWeight:600}}>No content yet</p>
-                <p style={{fontSize:13,marginTop:4}}>Your agency is working on it!</p>
-              </div>
+              )
             )}
+
+            {taskView==="list"&&(
+              cPosts.length===0 ? (
+                <div style={{textAlign:"center",padding:"48px 20px",color:"var(--text3)",background:"var(--surface)",borderRadius:"var(--r)",border:"1px solid var(--border)"}}>
+                  <p style={{fontSize:36,marginBottom:10}}></p>
+                  <p style={{fontSize:15,fontWeight:700,color:"var(--text2)"}}>No tasks yet</p>
+                  <p style={{fontSize:13,marginTop:4}}>Tap the + button to submit a request</p>
+                </div>
+              ) : (
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {cPosts.map(p=>{
+                    const pUrls = Array.isArray(p.design_urls)?p.design_urls:parseJ(p.design_urls||"[]");
+                    const pAssets = Array.isArray(p.design_assets)?p.design_assets:parseJ(p.design_assets||"[]");
+                    const pThumb = pUrls[0]||pAssets[0]?.url||"";
+                    return (
+                      <div key={p.id} onClick={()=>setSel(p)} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"12px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:12,minHeight:56,transition:"background 0.15s,border-color 0.15s"}}
+                      onMouseEnter={e=>{e.currentTarget.style.borderColor="var(--border2)";e.currentTarget.style.background="var(--surface2)";}}
+                      onMouseLeave={e=>{e.currentTarget.style.borderColor="var(--border)";e.currentTarget.style.background="var(--surface)";}}>
+                        {pThumb?(
+                          <img src={pThumb} alt="" style={{width:44,height:44,borderRadius:8,objectFit:"cover",flexShrink:0,background:"var(--surface2)"}}/>
+                        ):(
+                          <div style={{width:44,height:44,borderRadius:8,background:`${PLT_COLOR[p.platform]}22`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                            <span style={{fontSize:16,fontWeight:800,color:PLT_COLOR[p.platform]}}>{PLT_ICON[p.platform]}</span>
+                          </div>
+                        )}
+                        <div style={{flex:1,minWidth:0}}>
+                          <p style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}</p>
+                          {p.scheduled_date&&<p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{fmtDate(p.scheduled_date)}</p>}
+                        </div>
+                        <Badge label={stageLabel[p.stage]||p.stage} color={stageColor[p.stage]||"#888"} xs/>
+                        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="var(--text3)" strokeWidth={2.5} strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
+                      </div>
+                    );
+                  })}
+                </div>
+              )
+            )}
+
+            {taskView==="cal"&&<CalendarView posts={cPosts} onPostClick={setSel}/>}
           </div>
         )}
-
-        {view==="calendar"&&<CalendarView posts={cPosts} onPostClick={setSel}/>}
 
         {view==="settings"&&(
           <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
@@ -33688,7 +33616,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         </div>
       )}
       <div style={impersonatorUser?{marginTop:36}:{}}>
-        <ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]}/>
+        <ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} onAddPost={addPost} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]}/>
       </div>
     </>);
   }
