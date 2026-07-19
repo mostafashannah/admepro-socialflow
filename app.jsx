@@ -1064,7 +1064,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.229";
+const APP_VERSION = "beta 5.230";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -2757,7 +2757,15 @@ function useResponsive() {
 // ════════════════════════════════════════════════════════════════
 function Modal({open,onClose,title,subtitle,width=560,children,footer}) {
   if(!open) return null;
-  return (
+  // Rendered via a portal straight to document.body — any ancestor with the
+  // .fade-in class (used on almost every page wrapper) has a CSS animation,
+  // and an element with animation-name != none always establishes its own
+  // stacking context per spec, regardless of the animation's current state.
+  // That traps this modal's z-index inside that ancestor's local stack
+  // instead of the true top layer, so e.g. a fixed page header can render
+  // OVER the modal even though the modal's z-index is numerically higher.
+  // Portaling to <body> escapes that entirely.
+  return ReactDOM.createPortal(
     <div onClick={onClose} className="modal-backdrop">
       <div onClick={e=>e.stopPropagation()} className="modal-box" style={{maxWidth:width}}>
         <div className="modal-handle-bar"/>
@@ -2771,7 +2779,8 @@ function Modal({open,onClose,title,subtitle,width=560,children,footer}) {
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-footer">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
