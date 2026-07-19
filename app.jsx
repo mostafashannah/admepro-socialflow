@@ -1117,7 +1117,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.290";
+const APP_VERSION = "beta 5.291";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13811,7 +13811,10 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
   // only ever sees their own request, then it reappears once it's ready for
   // their approval or further along, exactly as if the internal steps never
   // happened from their point of view.
-  const cPosts = posts.filter(p=>cProjects.some(pr=>pr.id===p.project_id)&&["client_request","client_approval","scheduled","published","rejected","on_hold"].includes(p.stage));
+  // Client Requests have no project yet (that's picked when the account
+  // manager moves it to Brief) — match those by client_id/client_name
+  // directly instead of requiring a project_id that doesn't exist yet.
+  const cPosts = posts.filter(p=>(cProjects.some(pr=>pr.id===p.project_id)||p.client_id===client.id||p.client_name===client.name)&&["client_request","client_approval","scheduled","published","rejected","on_hold"].includes(p.stage));
   const cAssets = assets.filter(a=>cProjects.some(pr=>pr.id===a.project_id) || (a.tags||[]).includes(`client_${client.id}`));
   const [month,setMonth] = useState(()=>{const d=new Date();return{y:d.getFullYear(),m:d.getMonth()};});
   const clientSubs = subscriptions||[];
