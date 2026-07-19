@@ -1117,7 +1117,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.297";
+const APP_VERSION = "beta 5.298";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -4073,6 +4073,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   };
   const internalComments = postComments.filter(c=>c.audience!=="client");
   const clientComments = postComments.filter(c=>c.audience==="client");
+  const [activityTab, setActivityTab] = useState("internal"); // "internal" | "client"
 
   return (
     <>
@@ -4503,68 +4504,78 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
             left column (which can get long: media, captions, workflow, etc.)
             scrolls past it inside the modal body. */}
         <div style={isMobile?{display:"flex",flexDirection:"column",gap:10}:{display:"flex",flexDirection:"column",gap:10,position:"sticky",top:0,maxHeight:"75vh"}}>
-          <label style={{fontSize:11,fontWeight:700,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Activity · {internalComments.length}</label>
-          <div style={{display:"flex",flexDirection:"column",gap:8,overflowY:"auto",flex:isMobile?"none":1,maxHeight:isMobile?220:undefined}}>
-            {internalComments.map((c,i)=>(
-              <div key={i} style={{display:"flex",gap:10}}>
-                <Avatar name={c.author_name||"S"} size={28}/>
-                <div style={{flex:1,background:"var(--surface2)",borderRadius:"var(--rs)",padding:"9px 12px",border:"1px solid var(--border)"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-                    <span style={{fontSize:12,fontWeight:600}}>{c.author_name||"System"}</span>
-                    {c.type!=="comment"&&<Badge label={c.type} color={c.type==="rejection"?"#ef4444":c.type==="approval"?"#10b981":"#6b7280"} xs/>}
-                    <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date)}</span>
-                  </div>
-                  <p style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content)}</p>
-                  {c.file_url&&(
-                    c.file_type==="image" ? (
-                      <a href={c.file_url} target="_blank" rel="noreferrer" style={{display:"block",marginTop:8,maxWidth:220,borderRadius:8,overflow:"hidden",border:"1px solid var(--border)"}}>
-                        <img src={c.file_url} alt={c.file_name||""} style={{width:"100%",display:"block"}}/>
-                      </a>
-                    ) : c.file_type==="video" ? (
-                      <video src={c.file_url} controls playsInline preload="metadata" style={{marginTop:8,maxWidth:220,borderRadius:8,border:"1px solid var(--border)"}}/>
-                    ) : (
-                      <a href={c.file_url} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:8,padding:"6px 10px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border)",fontSize:12,color:"var(--accent)",fontWeight:600,textDecoration:"none"}}>
-                        <Ico d={Icons.upload} size={12} stroke="var(--accent)"/> {c.file_name||"Attachment"}
-                      </a>
-                    )
-                  )}
-                </div>
-              </div>
-            ))}
-            {internalComments.length===0&&<p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:16}}>No activity yet</p>}
-          </div>
-          {commentAttachment&&(
-            <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border)",fontSize:12}}>
-              <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📎 {commentAttachment.file_name}</span>
-              <button onClick={()=>setCommentAttachment(null)} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontWeight:700}}>×</button>
-            </div>
-          )}
-          {/* Composer — textarea gets its own full-width row, with attach/send
-              below it, instead of squeezing all three into one row that wraps
-              badly once this column is only ~1/3 of the modal's width. */}
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            <MentionInput value={comment} onChange={setComment} team={team} placeholder="Add a comment… (type @ to mention)" rows={2}/>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <input ref={commentFileRef} type="file" style={{display:"none"}} onChange={e=>{handleCommentFile(e.target.files?.[0]); e.target.value="";}}/>
-              <button onClick={()=>commentFileRef.current?.click()} disabled={attaching} title="Attach a file" style={{width:34,height:34,borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:attaching?"default":"pointer",flexShrink:0}}>
-                {attaching?<Spinner size={13}/>:<Ico d={Icons.upload} size={14}/>}
+          {/* Tabs — Activity (internal team log) vs Client (admin/AM-only log for client-facing notes) */}
+          <div style={{display:"flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",width:isManager?"fit-content":"auto"}}>
+            <button onClick={()=>setActivityTab("internal")} style={{padding:"6px 14px",borderRadius:99,background:activityTab==="internal"?"var(--accent)":"none",color:activityTab==="internal"?"#fff":"var(--text2)",border:"none",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              Activity · {internalComments.length}
+            </button>
+            {isManager&&(
+              <button onClick={()=>setActivityTab("client")} style={{padding:"6px 14px",borderRadius:99,background:activityTab==="client"?"var(--accent)":"none",color:activityTab==="client"?"#fff":"var(--text2)",border:"none",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                Client · {clientComments.length}
               </button>
-              <Btn onClick={sendComment} disabled={sending||(!comment.trim()&&!commentAttachment)}>
-                <Ico d={Icons.send} size={14}/> Send
-              </Btn>
-            </div>
+            )}
           </div>
 
-          {/* Client Comments — admin/AM only, a separate thread for notes
-              meant for (or about) the client, kept out of the internal feed. */}
-          {isManager&&(
-            <div style={{display:"flex",flexDirection:"column",gap:10,marginTop:12,paddingTop:14,borderTop:"1px solid var(--border)"}}>
-              <label style={{fontSize:11,fontWeight:700,color:"#ec4899",letterSpacing:"0.06em",textTransform:"uppercase"}}>Client Comments · {clientComments.length}</label>
-              <div style={{display:"flex",flexDirection:"column",gap:8,overflowY:"auto",maxHeight:220}}>
+          {activityTab==="internal" ? (
+            <>
+              <div style={{display:"flex",flexDirection:"column",gap:8,overflowY:"auto",flex:isMobile?"none":1,maxHeight:isMobile?220:undefined}}>
+                {internalComments.map((c,i)=>(
+                  <div key={i} style={{display:"flex",gap:10}}>
+                    <Avatar name={c.author_name||"S"} size={28}/>
+                    <div style={{flex:1,background:"var(--surface2)",borderRadius:"var(--rs)",padding:"9px 12px",border:"1px solid var(--border)"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                        <span style={{fontSize:12,fontWeight:600}}>{c.author_name||"System"}</span>
+                        {c.type!=="comment"&&<Badge label={c.type} color={c.type==="rejection"?"#ef4444":c.type==="approval"?"#10b981":"#6b7280"} xs/>}
+                        <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date)}</span>
+                      </div>
+                      <p style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content)}</p>
+                      {c.file_url&&(
+                        c.file_type==="image" ? (
+                          <a href={c.file_url} target="_blank" rel="noreferrer" style={{display:"block",marginTop:8,maxWidth:220,borderRadius:8,overflow:"hidden",border:"1px solid var(--border)"}}>
+                            <img src={c.file_url} alt={c.file_name||""} style={{width:"100%",display:"block"}}/>
+                          </a>
+                        ) : c.file_type==="video" ? (
+                          <video src={c.file_url} controls playsInline preload="metadata" style={{marginTop:8,maxWidth:220,borderRadius:8,border:"1px solid var(--border)"}}/>
+                        ) : (
+                          <a href={c.file_url} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:8,padding:"6px 10px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border)",fontSize:12,color:"var(--accent)",fontWeight:600,textDecoration:"none"}}>
+                            <Ico d={Icons.upload} size={12} stroke="var(--accent)"/> {c.file_name||"Attachment"}
+                          </a>
+                        )
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {internalComments.length===0&&<p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:16}}>No activity yet</p>}
+              </div>
+              {commentAttachment&&(
+                <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border)",fontSize:12}}>
+                  <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📎 {commentAttachment.file_name}</span>
+                  <button onClick={()=>setCommentAttachment(null)} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontWeight:700}}>×</button>
+                </div>
+              )}
+              {/* Composer — textarea gets its own full-width row, with attach/send
+                  below it, instead of squeezing all three into one row that wraps
+                  badly once this column is only ~1/3 of the modal's width. */}
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                <MentionInput value={comment} onChange={setComment} team={team} placeholder="Add a comment… (type @ to mention)" rows={2}/>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <input ref={commentFileRef} type="file" style={{display:"none"}} onChange={e=>{handleCommentFile(e.target.files?.[0]); e.target.value="";}}/>
+                  <button onClick={()=>commentFileRef.current?.click()} disabled={attaching} title="Attach a file" style={{width:34,height:34,borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:attaching?"default":"pointer",flexShrink:0}}>
+                    {attaching?<Spinner size={13}/>:<Ico d={Icons.upload} size={14}/>}
+                  </button>
+                  <Btn onClick={sendComment} disabled={sending||(!comment.trim()&&!commentAttachment)}>
+                    <Ico d={Icons.send} size={14}/> Send
+                  </Btn>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{display:"flex",flexDirection:"column",gap:8,overflowY:"auto",flex:isMobile?"none":1,maxHeight:isMobile?220:undefined}}>
                 {clientComments.map((c,i)=>(
                   <div key={i} style={{display:"flex",gap:10}}>
                     <Avatar name={c.author_name||"S"} size={28}/>
-                    <div style={{flex:1,background:"#ec489911",borderRadius:"var(--rs)",padding:"9px 12px",border:"1px solid #ec489944"}}>
+                    <div style={{flex:1,background:"var(--surface2)",borderRadius:"var(--rs)",padding:"9px 12px",border:"1px solid var(--border)"}}>
                       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
                         <span style={{fontSize:12,fontWeight:600}}>{c.author_name||"System"}</span>
                         <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date)}</span>
@@ -4601,12 +4612,12 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                   <button onClick={()=>clientCommentFileRef.current?.click()} disabled={clientAttaching} title="Attach a file" style={{width:34,height:34,borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:clientAttaching?"default":"pointer",flexShrink:0}}>
                     {clientAttaching?<Spinner size={13}/>:<Ico d={Icons.upload} size={14}/>}
                   </button>
-                  <Btn onClick={sendClientComment} disabled={clientSending||(!clientComment.trim()&&!clientCommentAttachment)} style={{background:"#ec4899"}}>
+                  <Btn onClick={sendClientComment} disabled={clientSending||(!clientComment.trim()&&!clientCommentAttachment)}>
                     <Ico d={Icons.send} size={14}/> Send
                   </Btn>
                 </div>
               </div>
-            </div>
+            </>
           )}
         </div>
       </div>
