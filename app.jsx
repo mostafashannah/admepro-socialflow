@@ -1064,7 +1064,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.228";
+const APP_VERSION = "beta 5.229";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1215,39 +1215,87 @@ const EMAIL_TEMPLATES = {
   `),
 
   // ─── CAREER EVENTS ─────────────────────────────────────────────
-  // One shared template covering every Career History event type — tone and
-  // headline change per type (celebratory for raises/promotions/bonuses,
-  // neutral/formal for deductions/warnings) but the layout stays consistent.
+  // Matches the job-offer email's exact visual construction (gradient hero
+  // card, plain bordered row table, address-block footer) instead of the
+  // generic emailBase wrapper — same request as "use same style of offer
+  // email, same logo and footer". Copy leans motivational/appreciative for
+  // the positive events (raise/promotion/bonus/commission); deductions,
+  // warnings, and demotions stay respectful but neutral, not celebratory.
   careerEvent: (memberName, event) => {
     const t = event.event_type;
+    const firstName = (memberName||"there").split(" ")[0];
     const amt = event.amount!=null && event.amount!=="" ? `EGP ${Number(event.amount).toLocaleString()}` : null;
-    const rows = [];
-    if(event.previous_value) rows.push(["Previous", event.previous_value]);
-    if(event.new_value) rows.push(["New", event.new_value, "#10b981"]);
-    if(amt) rows.push(["Amount", amt, t==="deduction"?"#ef4444":"#10b981"]);
-    if(event.effective_date) rows.push(["Effective", fmtDate(event.effective_date)]);
 
     const copy = {
-      salary_raise: {h:"Your salary has been updated", p:`Hi <strong>${memberName||"there"}</strong>, we're happy to let you know your salary has been updated.`, color:"#10b981"},
-      promotion: {h:"Congratulations on your promotion!", p:`Hi <strong>${memberName||"there"}</strong>, congratulations — you've been promoted.`, color:"#8b5cf6"},
-      bonus: {h:"You've received a bonus", p:`Hi <strong>${memberName||"there"}</strong>, great news — you've been awarded a bonus.`, color:"#f59e0b"},
-      commission: {h:"You've earned a commission", p:`Hi <strong>${memberName||"there"}</strong>, you've earned a commission.`, color:"#06b6d4"},
-      deduction: {h:"Salary deduction notice", p:`Hi <strong>${memberName||"there"}</strong>, this is to inform you of a deduction applied to your salary.`, color:"#ef4444"},
-      warning: {h:"Formal notice", p:`Hi <strong>${memberName||"there"}</strong>, this is a formal notice regarding your conduct or performance.`, color:"#ef4444"},
-      demotion: {h:"Notice of role change", p:`Hi <strong>${memberName||"there"}</strong>, this is to inform you of a change to your role.`, color:"#ef4444"},
-      other: {h:"An update regarding your employment", p:`Hi <strong>${memberName||"there"}</strong>,`, color:"#6b7280"},
-    }[t] || {h:"An update regarding your employment", p:`Hi <strong>${memberName||"there"}</strong>,`, color:"#6b7280"};
+      salary_raise: {
+        hero:"Great news!", sub:`Your hard work hasn't gone unnoticed, ${firstName} — your salary has been raised.`,
+        body:`Every project you've delivered and every extra mile you've gone this past period has been seen and genuinely appreciated. This raise is our way of recognizing that — thank you for everything you bring to the team.`,
+      },
+      promotion: {
+        hero:`Congratulations, ${memberName||"there"}!`, sub:`Your dedication has earned you a well-deserved promotion${event.new_value?` to <strong>${event.new_value}</strong>`:""}.`,
+        body:`We've watched you grow, take on more, and consistently raise the bar — this promotion is a reflection of the trust we have in you and the impact you've made. We're excited to see where you take it from here. Congratulations, and thank you for everything.`,
+      },
+      bonus: {
+        hero:"You've earned a bonus!", sub:`A little extra for the effort you've put in, ${firstName}.`,
+        body:`Your commitment and the quality of your work have made a real difference for the team — this bonus is a small way of saying thank you. We're grateful to have you with us.`,
+      },
+      commission: {
+        hero:"Great work — commission earned!", sub:`Nice one, ${firstName} — your results have earned you a commission.`,
+        body:`Thank you for the effort and consistency behind these results. It's genuinely appreciated, and we're proud to have you on the team.`,
+      },
+      deduction: {
+        hero:"Salary deduction notice", sub:`This is to inform you of a deduction applied to your salary, ${firstName}.`,
+        body:`If you have any questions about this, please reach out to your manager or HR — we're happy to walk through the details with you.`,
+      },
+      warning: {
+        hero:"Formal notice", sub:`This is a formal notice regarding your conduct or performance, ${firstName}.`,
+        body:`Please reach out to your manager or HR if you'd like to discuss this further.`,
+      },
+      demotion: {
+        hero:"Notice of role change", sub:`This is to inform you of a change to your role, ${firstName}.`,
+        body:`Please reach out to your manager or HR if you have any questions.`,
+      },
+      other: {
+        hero:event.title||"An update regarding your employment", sub:firstName?`Hi ${firstName},`:"",
+        body:`Please reach out to your manager or HR if you have any questions.`,
+      },
+    }[t] || {hero:event.title||"An update regarding your employment", sub:firstName?`Hi ${firstName},`:"", body:""};
 
-    return emailBase(`
-      ${emailH(copy.h)}
-      ${emailP(copy.p)}
-      <div style="background:#f9fafb;border-left:4px solid ${copy.color};padding:14px 18px;border-radius:0 10px 10px 0;margin:16px 0">
-        <p style="margin:0;font-size:15px;font-weight:800;color:#111827">${event.title}</p>
-      </div>
-      ${rows.length?emailCard(rows):""}
-      ${event.notes?emailP(event.notes):""}
-      ${emailP(`If you have any questions, reach out to your manager or HR.`)}
-    `);
+    const offerRow = (label,value) => value==null||value===""?"":`
+      <tr>
+        <td style="padding:12px 16px;border-bottom:1px solid #f1f1f3;font-size:13px;color:#6b7280">${label}</td>
+        <td style="padding:12px 16px;border-bottom:1px solid #f1f1f3;font-size:14px;font-weight:800;color:#111827;text-align:right">${value}</td>
+      </tr>`;
+    const rowsHtml = [
+      offerRow("Previous", event.previous_value),
+      offerRow("New", event.new_value),
+      offerRow("Amount", amt),
+      offerRow("Effective", event.effective_date?fmtDate(event.effective_date):""),
+    ].join("");
+
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
+<tr><td align="center">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb">
+  <tr><td style="padding:36px">
+    <div style="background:linear-gradient(135deg,#d90b2c,#a80822);border-radius:16px;padding:28px 32px;margin-bottom:24px;text-align:center">
+      <h1 style="margin:0 0 6px;font-size:22px;font-weight:800;color:#ffffff">${copy.hero}</h1>
+      <p style="margin:0;font-size:14px;color:#ffe0e5">${copy.sub}</p>
+    </div>
+    ${event.title?`<p style="margin:0 0 16px;font-size:15px;font-weight:800;color:#111827">${event.title}</p>`:""}
+    ${rowsHtml?`<table width="100%" style="border-collapse:collapse;margin:0 0 20px;border:1px solid #f1f1f3;border-radius:12px;overflow:hidden">${rowsHtml}</table>`:""}
+    ${event.notes?`<p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563">${event.notes.replace(/</g,"&lt;")}</p>`:""}
+    <p style="margin:0 0 4px;font-size:14px;line-height:1.6;color:#4b5563">${copy.body}</p>
+    <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
+      <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Team</p>
+      <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
+      <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
+    </td></tr></table>
+  </td></tr>
+</table>
+</td></tr></table>
+</body></html>`;
   },
 
   commentAdded: (recipientName, commenterName, taskTitle, commentText, projectName) => emailBase(`
