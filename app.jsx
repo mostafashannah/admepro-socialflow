@@ -1111,7 +1111,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.279";
+const APP_VERSION = "beta 5.280";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23719,7 +23719,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
   }
 
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:24,maxWidth:1200,margin:"0 auto",padding:"32px 24px"}}>
+    <div style={{display:"flex",flexDirection:"column",gap:24}} className="fade-in">
       {/* Header */}
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,flexWrap:"wrap"}}>
         <div>
