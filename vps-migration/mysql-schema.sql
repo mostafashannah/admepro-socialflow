@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS comments (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   post_id VARCHAR(36) NOT NULL, content TEXT NOT NULL,
   author_name TEXT, author_email TEXT, type VARCHAR(50) DEFAULT 'comment',
-  mentions JSON DEFAULT ('[]')
+  mentions JSON DEFAULT ('[]'), audience VARCHAR(20) DEFAULT 'internal'
 ) ENGINE=InnoDB;
 
 -- ----------------------------------------------------------------

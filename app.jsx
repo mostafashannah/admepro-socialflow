@@ -1117,7 +1117,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.296";
+const APP_VERSION = "beta 5.297";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -4044,9 +4044,35 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   const sendComment = async () => {
     if(!comment.trim()&&!commentAttachment) return;
     setSending(true);
-    await onAddComment(post.id, comment.trim()||"📎 Attachment", currentUser, commentAttachment);
+    await onAddComment(post.id, comment.trim()||"📎 Attachment", currentUser, commentAttachment, "internal");
     setComment(""); setCommentAttachment(null); setSending(false);
   };
+
+  // ── Client-facing comments — a separate thread admin/AM can use to log
+  // notes meant for (or about) the client, kept out of the internal-only
+  // Activity feed and hidden from everyone but admin/account_manager.
+  const [clientComment, setClientComment] = useState("");
+  const [clientCommentAttachment, setClientCommentAttachment] = useState(null);
+  const [clientAttaching, setClientAttaching] = useState(false);
+  const [clientSending, setClientSending] = useState(false);
+  const clientCommentFileRef = useRef(null);
+  const handleClientCommentFile = async (file) => {
+    if(!file) return;
+    setClientAttaching(true);
+    try {
+      const url = await uploadToStorage(file, "comments");
+      setClientCommentAttachment({file_url:url, file_name:file.name, file_type:file.type.startsWith("video")?"video":file.type.startsWith("image")?"image":"file"});
+    } catch(e){ alert("File upload failed"); }
+    setClientAttaching(false);
+  };
+  const sendClientComment = async () => {
+    if(!clientComment.trim()&&!clientCommentAttachment) return;
+    setClientSending(true);
+    await onAddComment(post.id, clientComment.trim()||"📎 Attachment", currentUser, clientCommentAttachment, "client");
+    setClientComment(""); setClientCommentAttachment(null); setClientSending(false);
+  };
+  const internalComments = postComments.filter(c=>c.audience!=="client");
+  const clientComments = postComments.filter(c=>c.audience==="client");
 
   return (
     <>
@@ -4477,9 +4503,9 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
             left column (which can get long: media, captions, workflow, etc.)
             scrolls past it inside the modal body. */}
         <div style={isMobile?{display:"flex",flexDirection:"column",gap:10}:{display:"flex",flexDirection:"column",gap:10,position:"sticky",top:0,maxHeight:"75vh"}}>
-          <label style={{fontSize:11,fontWeight:700,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Activity · {postComments.length}</label>
+          <label style={{fontSize:11,fontWeight:700,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Activity · {internalComments.length}</label>
           <div style={{display:"flex",flexDirection:"column",gap:8,overflowY:"auto",flex:isMobile?"none":1,maxHeight:isMobile?220:undefined}}>
-            {postComments.map((c,i)=>(
+            {internalComments.map((c,i)=>(
               <div key={i} style={{display:"flex",gap:10}}>
                 <Avatar name={c.author_name||"S"} size={28}/>
                 <div style={{flex:1,background:"var(--surface2)",borderRadius:"var(--rs)",padding:"9px 12px",border:"1px solid var(--border)"}}>
@@ -4505,7 +4531,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 </div>
               </div>
             ))}
-            {postComments.length===0&&<p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:16}}>No activity yet</p>}
+            {internalComments.length===0&&<p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:16}}>No activity yet</p>}
           </div>
           {commentAttachment&&(
             <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border)",fontSize:12}}>
@@ -4528,6 +4554,60 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
               </Btn>
             </div>
           </div>
+
+          {/* Client Comments — admin/AM only, a separate thread for notes
+              meant for (or about) the client, kept out of the internal feed. */}
+          {isManager&&(
+            <div style={{display:"flex",flexDirection:"column",gap:10,marginTop:12,paddingTop:14,borderTop:"1px solid var(--border)"}}>
+              <label style={{fontSize:11,fontWeight:700,color:"#ec4899",letterSpacing:"0.06em",textTransform:"uppercase"}}>Client Comments · {clientComments.length}</label>
+              <div style={{display:"flex",flexDirection:"column",gap:8,overflowY:"auto",maxHeight:220}}>
+                {clientComments.map((c,i)=>(
+                  <div key={i} style={{display:"flex",gap:10}}>
+                    <Avatar name={c.author_name||"S"} size={28}/>
+                    <div style={{flex:1,background:"#ec489911",borderRadius:"var(--rs)",padding:"9px 12px",border:"1px solid #ec489944"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                        <span style={{fontSize:12,fontWeight:600}}>{c.author_name||"System"}</span>
+                        <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date)}</span>
+                      </div>
+                      <p style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content)}</p>
+                      {c.file_url&&(
+                        c.file_type==="image" ? (
+                          <a href={c.file_url} target="_blank" rel="noreferrer" style={{display:"block",marginTop:8,maxWidth:220,borderRadius:8,overflow:"hidden",border:"1px solid var(--border)"}}>
+                            <img src={c.file_url} alt={c.file_name||""} style={{width:"100%",display:"block"}}/>
+                          </a>
+                        ) : c.file_type==="video" ? (
+                          <video src={c.file_url} controls playsInline preload="metadata" style={{marginTop:8,maxWidth:220,borderRadius:8,border:"1px solid var(--border)"}}/>
+                        ) : (
+                          <a href={c.file_url} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:8,padding:"6px 10px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border)",fontSize:12,color:"var(--accent)",fontWeight:600,textDecoration:"none"}}>
+                            <Ico d={Icons.upload} size={12} stroke="var(--accent)"/> {c.file_name||"Attachment"}
+                          </a>
+                        )
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {clientComments.length===0&&<p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:16}}>No client comments yet</p>}
+              </div>
+              {clientCommentAttachment&&(
+                <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border)",fontSize:12}}>
+                  <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📎 {clientCommentAttachment.file_name}</span>
+                  <button onClick={()=>setClientCommentAttachment(null)} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontWeight:700}}>×</button>
+                </div>
+              )}
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                <MentionInput value={clientComment} onChange={setClientComment} team={team} placeholder="Add a client-facing note…" rows={2}/>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <input ref={clientCommentFileRef} type="file" style={{display:"none"}} onChange={e=>{handleClientCommentFile(e.target.files?.[0]); e.target.value="";}}/>
+                  <button onClick={()=>clientCommentFileRef.current?.click()} disabled={clientAttaching} title="Attach a file" style={{width:34,height:34,borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:clientAttaching?"default":"pointer",flexShrink:0}}>
+                    {clientAttaching?<Spinner size={13}/>:<Ico d={Icons.upload} size={14}/>}
+                  </button>
+                  <Btn onClick={sendClientComment} disabled={clientSending||(!clientComment.trim()&&!clientCommentAttachment)} style={{background:"#ec4899"}}>
+                    <Ico d={Icons.send} size={14}/> Send
+                  </Btn>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </Modal>
@@ -33576,8 +33656,8 @@ Return ONLY valid JSON (no markdown, no explanation):
     setToast(" Task deleted");
   };
 
-  const handleAddComment = async (postId,content,user,attachment) => {
-    const payload = {post_id:postId, content, author_name:user?.name||"User", author_email:user?.email, type:"comment",
+  const handleAddComment = async (postId,content,user,attachment,audience="internal") => {
+    const payload = {post_id:postId, content, author_name:user?.name||"User", author_email:user?.email, type:"comment", audience,
       ...(attachment?{file_url:attachment.file_url, file_name:attachment.file_name, file_type:attachment.file_type}:{})};
     const local = {...payload, id:uid(), created_date:new Date().toISOString()};
     setData(d=>({...d,comments:[...d.comments,local]}));
