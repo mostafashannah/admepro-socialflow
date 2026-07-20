@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.306";
+const APP_VERSION = "beta 5.307";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -28162,6 +28162,24 @@ function deleteProSessionFromServer(id){
   if(!id || String(id).startsWith("local_")) return;
   de("ProChatSession", id).catch(()=>{});
 }
+// Shares a chat by copying it into a brand-new session row owned by the
+// recipient — not a live link — so each side can keep editing/deleting their
+// own copy without affecting the other's, matching how every other object in
+// this app is "sent" (a real independent record, not a reference).
+async function shareProSessionToMember(session, member, senderName){
+  const payload = {
+    user_email: member.email,
+    client_id: session.client_id||"",
+    title: `🔗 ${session.title||"Shared chat"} (from ${senderName||"a teammate"})`,
+    messages: JSON.stringify(stripAttachmentBinaries(session.messages||[])),
+  };
+  const r = await ce("ProChatSession", [payload]);
+  const notifPayload = {recipient_email:member.email, title:"Pro chat shared with you",
+    message:`${senderName||"A teammate"} shared a Pro chat with you: "${session.title||"New conversation"}"`,
+    type:"pro_chat_share", is_read:false};
+  ce("Notification",[notifPayload]).catch(()=>{});
+  return r;
+}
 // Called once per mount (per component using Pro sessions). First run for a
 // user with existing local-only history pushes it up to the server; after
 // that, merges in whichever copy of each session — local or server — was
@@ -28210,8 +28228,9 @@ function claimFreshProSessionOnLoad(){
 // z-indexed absolute child can still end up stacked underneath a later
 // sibling row's own background depending on the ancestor stacking context;
 // a fixed-position portal escapes that entirely and always paints on top.
-function ChatSessionMenu({onRename, onDelete}) {
+function ChatSessionMenu({onRename, onDelete, onShare, team}) {
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState("main"); // "main" | "share"
   const [pos, setPos] = useState(null);
   const btnRef = useRef(null);
   const menuRef = useRef(null);
@@ -28230,8 +28249,10 @@ function ChatSessionMenu({onRename, onDelete}) {
       const r = btnRef.current.getBoundingClientRect();
       setPos({top:r.bottom+2, right:window.innerWidth-r.right});
     }
+    setMode("main");
     setOpen(o=>!o);
   };
+  const shareable = (team||[]).filter(m=>m.email);
   return (
     <div style={{flexShrink:0}} onClick={e=>e.stopPropagation()}>
       <button ref={btnRef} onClick={toggleOpen} title="More options" style={{
@@ -28241,13 +28262,32 @@ function ChatSessionMenu({onRename, onDelete}) {
         <Ico d="M12 6a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm0 7.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm0 7.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3z" size={14}/>
       </button>
       {open && pos && ReactDOM.createPortal(
-        <div ref={menuRef} style={{position:"fixed",top:pos.top,right:pos.right,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.2)",zIndex:9999,minWidth:120,overflow:"hidden"}}>
-          <button onClick={()=>{setOpen(false);onRename();}} style={{display:"block",width:"100%",textAlign:"left",padding:"9px 12px",fontSize:12,fontWeight:600,color:"var(--text2)",background:"transparent",border:"none",cursor:"pointer"}}>
-            Rename
-          </button>
-          <button onClick={()=>{setOpen(false);onDelete();}} style={{display:"block",width:"100%",textAlign:"left",padding:"9px 12px",fontSize:12,fontWeight:600,color:"#ef4444",background:"transparent",border:"none",cursor:"pointer"}}>
-            Delete
-          </button>
+        <div ref={menuRef} style={{position:"fixed",top:pos.top,right:pos.right,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.2)",zIndex:9999,minWidth:160,maxHeight:280,overflowY:"auto"}}>
+          {mode==="main" ? (
+            <>
+              <button onClick={()=>{setOpen(false);onRename();}} style={{display:"block",width:"100%",textAlign:"left",padding:"9px 12px",fontSize:12,fontWeight:600,color:"var(--text2)",background:"transparent",border:"none",cursor:"pointer"}}>
+                Rename
+              </button>
+              {onShare && (
+                <button onClick={()=>setMode("share")} style={{display:"block",width:"100%",textAlign:"left",padding:"9px 12px",fontSize:12,fontWeight:600,color:"var(--text2)",background:"transparent",border:"none",cursor:"pointer"}}>
+                  Share…
+                </button>
+              )}
+              <button onClick={()=>{setOpen(false);onDelete();}} style={{display:"block",width:"100%",textAlign:"left",padding:"9px 12px",fontSize:12,fontWeight:600,color:"#ef4444",background:"transparent",border:"none",cursor:"pointer"}}>
+                Delete
+              </button>
+            </>
+          ) : (
+            <>
+              <div style={{padding:"8px 12px 4px",fontSize:10.5,fontWeight:700,color:"var(--text3)",textTransform:"uppercase"}}>Share with</div>
+              {shareable.length===0 && <div style={{padding:"6px 12px 9px",fontSize:12,color:"var(--text3)"}}>No team members found.</div>}
+              {shareable.map(m=>(
+                <button key={m.id||m.email} onClick={()=>{setOpen(false);onShare(m);}} style={{display:"block",width:"100%",textAlign:"left",padding:"9px 12px",fontSize:12,fontWeight:600,color:"var(--text2)",background:"transparent",border:"none",cursor:"pointer"}}>
+                  {m.name||m.email}
+                </button>
+              ))}
+            </>
+          )}
         </div>,
         document.body
       )}
@@ -28418,6 +28458,13 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
     deleteProSessionFromServer(id);
     setSessions(prev=>prev.filter(s=>s.id!==id));
     if(id===activeChatId) setActiveChatId("");
+  };
+
+  const [shareToast, setShareToast] = useState("");
+  const shareChat = (session, member) => {
+    shareProSessionToMember(session, member, currentUser?.name).catch(()=>{});
+    setShareToast(`Shared with ${member.name||member.email}`);
+    setTimeout(()=>setShareToast(""), 2500);
   };
 
   const [editingChatId, setEditingChatId] = useState(null);
@@ -29060,11 +29107,12 @@ RULES:
                         <p style={{fontSize:10,color:"var(--text3)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginTop:1}}>{cName?`${cName} · `:""}{preview||"…"}</p>
                         <p style={{fontSize:9,color:"var(--text3)",marginTop:2}}>{when} · {(s.messages||[]).length} msgs</p>
                       </div>
-                      <ChatSessionMenu onRename={()=>startRenameChat(s)} onDelete={()=>deleteChat(s.id)}/>
+                      <ChatSessionMenu onRename={()=>startRenameChat(s)} onDelete={()=>deleteChat(s.id)} onShare={m=>shareChat(s,m)} team={(data?.team||[]).filter(m=>m.email!==currentUser?.email)}/>
                     </div>
                   );
                 })}
               </div>
+              {shareToast && <div style={{padding:"8px 14px",fontSize:11.5,fontWeight:700,color:"var(--accent)",borderTop:"1px solid var(--border)"}}>{shareToast}</div>}
             </div>
           )}
 
@@ -30264,6 +30312,12 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
   const [editingHomeId, setEditingHomeId] = useState(null);
   const [editingHomeTitle, setEditingHomeTitle] = useState("");
   const startRenameSession = (s) => { setEditingHomeId(s.id); setEditingHomeTitle(s.title||""); };
+  const [shareToast, setShareToast] = useState("");
+  const shareSession = (session, member) => {
+    shareProSessionToMember(session, member, currentUser?.name).catch(()=>{});
+    setShareToast(`Shared with ${member.name||member.email}`);
+    setTimeout(()=>setShareToast(""), 2500);
+  };
   const commitRenameSession = () => {
     if(editingHomeId && editingHomeTitle.trim()){
       setChatSessions(prev=>prev.map(s=>s.id===editingHomeId?{...s,title:editingHomeTitle.trim()}:s));
@@ -31119,10 +31173,11 @@ RULES:
                 <ChatSessionMenu onRename={()=>startRenameSession(s)} onDelete={()=>{
                   setChatSessions(prev=>prev.filter(x=>x.id!==s.id));
                   if(s.id===activeChatId) setActiveChatId("");
-                }}/>
+                }} onShare={m=>shareSession(s,m)} team={(data?.team||[]).filter(m=>m.email!==currentUser?.email)}/>
               </div>
             ))
           )}
+          {shareToast && <div style={{marginTop:8,fontSize:11.5,fontWeight:700,color:"var(--accent)",textAlign:"center"}}>{shareToast}</div>}
         </div>
       )}
 
