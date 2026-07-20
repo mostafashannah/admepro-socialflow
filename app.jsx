@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.332";
+const APP_VERSION = "beta 5.333";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3441,8 +3441,12 @@ function MentionInput({value, onChange, team, placeholder, rows}) {
   const [mentionStart, setMentionStart] = useState(-1);
   const textareaRef = useRef(null);
 
+  // Sara is mentionable everywhere a human teammate is, even though she's
+  // not a real team_members row — role shown as "AI" so she reads distinctly
+  // in the dropdown.
+  const mentionable = [...(team||[]), {name:"Sara", email:"sara@ai.socialflow", role:"AI"}];
   const filtered = showDropdown
-    ? (team||[]).filter(m => m.name && m.name.toLowerCase().includes(mentionQuery.toLowerCase())).slice(0,6)
+    ? mentionable.filter(m => m.name && m.name.toLowerCase().includes(mentionQuery.toLowerCase())).slice(0,6)
     : [];
 
   const handleChange = (e) => {
