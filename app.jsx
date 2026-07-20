@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.326";
+const APP_VERSION = "beta 5.327";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1773,7 +1773,7 @@ Don'ts: ${know?.donts||intel?.donts||""}
 ${memBlock ? `LEARNED MEMORY (highest priority — always follow):\n${memBlock}` : ""}
 ${publishedBlock ? `RECENTLY PUBLISHED — ${allPublished.length} total published, showing the ${recentPublished.length} most recent (real examples — match this proven style/format, and do NOT repeat these ideas/angles):\n${publishedBlock}` : "RECENTLY PUBLISHED: none yet for this client."}
 Context: ${(know?.context_file||"").slice(0,400)}
-=== END CLIENT BRAIN — confirm you have reviewed the above before proceeding ===`;
+=== END CLIENT BRAIN ===`;
   } catch(e){ return ""; }
 }
 // After Sara finishes a piece of work, extract durable brand insights from it
@@ -1792,7 +1792,8 @@ Existing memory keys for this client (do NOT duplicate these): ${existing.join("
 If this work revealed any durable, reusable insight about this client's brand/content strategy (e.g. a content angle that fits them, a format mix they prefer, a recurring theme), return it as JSON:
 [{"key":"short_snake_case_key","value":"one clear sentence"}]
 Return at most 2 insights. If nothing durable was revealed, return []. ONLY the JSON array, nothing else.`, 400);
-    const insights = JSON.parse(res.replace(/```json|```/g,"").trim());
+    const insightsMatch = res.match(/\[[\s\S]*\]/);
+    const insights = JSON.parse(insightsMatch ? insightsMatch[0] : res);
     for(const ins of (Array.isArray(insights)?insights:[]).slice(0,2)){
       if(ins?.key && ins?.value) await onUpsertMemory(clientId, clientName, ins.key, ins.value, "ai", {source:"sara"});
     }
@@ -4969,7 +4970,8 @@ ${f.description?`Existing brief/notes: ${f.description}`:""}
 Return ONLY valid JSON (no markdown):
 {"caption":"engaging on-brand caption (2-4 sentences)","hashtags":"#tag1 #tag2 #tag3 #tag4","description":"a short internal brief for the designer/creator (1-2 sentences)"}`,
       800);
-      const p = JSON.parse(res.replace(/```json|```/g,"").trim());
+      const pMatch = res.match(/\{[\s\S]*\}/);
+      const p = JSON.parse(pMatch ? pMatch[0] : res);
       setF(prev=>({...prev,
         caption: p.caption||prev.caption,
         hashtags: p.hashtags||prev.hashtags,
@@ -5845,8 +5847,12 @@ Return ONLY a JSON array with ${cfg.count} objects, each having:
 - "hashtags": 3-5 relevant hashtags (empty string for stories)
 
 No markdown, no explanation, just the JSON array.`);
-        const clean = aiRes.replace(/```json|```/g,"").trim();
-        ideasByKind[kind] = JSON.parse(clean);
+        // Extract the array specifically rather than requiring the whole
+        // response to be pure JSON — the model sometimes adds a stray
+        // sentence before/after despite instructions, which would otherwise
+        // fail JSON.parse and silently fall back to placeholder text.
+        const match = aiRes.match(/\[[\s\S]*\]/);
+        ideasByKind[kind] = JSON.parse(match ? match[0] : aiRes);
       } catch(e) {
         ideasByKind[kind] = Array.from({length:cfg.count},(_,i)=>({
           title:`${kind.charAt(0).toUpperCase()+kind.slice(1)} ${i+1} — ${f.campaign}`,
@@ -5919,8 +5925,8 @@ ${note?`FEEDBACK FROM THE TEAM — apply this: ${note}`:"The team asked for a fr
 ${kindGuide}
 
 Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":"..."}`, 700);
-      const clean = aiRes.replace(/```json|```/g,"").trim();
-      const idea = JSON.parse(clean);
+      const match = aiRes.match(/\{[\s\S]*\}/);
+      const idea = JSON.parse(match ? match[0] : aiRes);
       setGenerated(prev=>prev.map((t,i)=>i===idx?{...t,title:idea.title||t.title,caption:idea.caption||t.caption,hashtags:idea.hashtags??t.hashtags,approved:false}:t));
       setRegenNotes(prev=>({...prev,[idx]:""}));
     } catch(e) { alert("Sara couldn't regenerate that item — please try again."); }
@@ -7308,8 +7314,8 @@ Return ONLY a JSON array of ${ideasCount} objects, each with:
 - "platform_tip": one specific tip for ${ideasPlatform}
 
 No markdown, no explanation. Just the JSON array.`);
-      const clean = (result||"").replace(/```json|```/g,"").trim();
-      const parsed = JSON.parse(clean);
+      const ideasMatch = (result||"").match(/\[[\s\S]*\]/);
+      const parsed = JSON.parse(ideasMatch ? ideasMatch[0] : (result||""));
       setIdeasResult(Array.isArray(parsed)?parsed:[]);
     } catch(e) { setIdeasResult([{title:"Error generating ideas",hook:"Please try again",angle:"",platform_tip:""}]); }
     setIdeasLoading(false);
@@ -7342,8 +7348,8 @@ Return ONLY valid JSON (no markdown):
   "missing_keywords": ["keywords that should be included"],
   "tone_match": "How well the tone matches (1 sentence)"
 }`);
-      const clean = (result||"").replace(/```json|```/g,"").trim();
-      setReviewResult(JSON.parse(clean));
+      const reviewMatch = (result||"").match(/\{[\s\S]*\}/);
+      setReviewResult(JSON.parse(reviewMatch ? reviewMatch[0] : (result||"")));
     } catch(e) { setReviewResult({score:0,verdict:"Error",strengths:[],issues:["Could not analyze — please try again"],improved_version:"",missing_keywords:[],tone_match:""}); }
     setReviewLoading(false);
   };

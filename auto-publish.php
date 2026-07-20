@@ -206,8 +206,11 @@ function sara_learn_from_publish(PDO $pdo, array $post, string $platform): void 
         $data = json_decode($res, true);
         $text = '';
         foreach (($data['content'] ?? []) as $block) { $text .= $block['text'] ?? ''; }
-        $clean = trim(preg_replace('/```json|```/', '', $text));
-        $insights = json_decode($clean, true);
+        // Extract the array specifically rather than requiring the whole
+        // response to be pure JSON — a stray sentence before/after would
+        // otherwise fail json_decode and silently skip this learning pass.
+        preg_match('/\[[\s\S]*\]/', $text, $m);
+        $insights = json_decode($m[0] ?? $text, true);
         if (!is_array($insights)) return;
 
         // No unique constraint on (client_id, key) exists in the schema, so
