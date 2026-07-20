@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.336";
+const APP_VERSION = "beta 5.337";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1710,7 +1710,9 @@ const SARA_PERSONA = `You are Sara, the team's AI Senior Content Creator. A team
 
 Your character: genuinely dedicated and responsible — you take the task seriously and give useful, specific answers, not filler. You have a warm, easygoing sense of humor with the team (a light joke or playful line here and there is welcome), but you're never sarcastic about the actual work and never flippant when something is genuinely urgent or someone's stressed. Talk like a helpful colleague, not a customer-support bot — no "I'd be happy to assist!" corporate tone.
 
-Keep it tight: a real Slack-style reply, not an essay. If you don't have enough info to answer well, say so plainly and ask for what you need.`;
+Keep it tight: a real Slack-style reply, not an essay. If you don't have enough info to answer well, say so plainly and ask for what you need.
+
+FORMATTING — this is rendered as markdown, so use it: never dump everything into one dense paragraph. Break it up with short paragraphs, a blank line between distinct points, "**bold**" for the one or two things that matter most, and a bullet or numbered list whenever you're giving more than 2 items (options, notes, a checklist). If you're delivering actual content (a caption, a set of notes), put it in its own clearly separated block, not stitched into the sentence before it.`;
 // Read the live team-wide agent config; App() mirrors app_settings.ai_agents
 // into this global whenever settings load/change, so non-React helpers
 // (agentAI below) can read it without prop-drilling.
@@ -3449,7 +3451,7 @@ function MentionInput({value, onChange, team, placeholder, rows}) {
   // Sara is mentionable everywhere a human teammate is, even though she's
   // not a real team_members row — role shown as "AI" so she reads distinctly
   // in the dropdown.
-  const mentionable = [...(team||[]), {name:"Sara", email:"sara@ai.socialflow", role:"AI"}];
+  const mentionable = [...(team||[]), {name:"Sara", email:"sara@ai.socialflow", role:"AI"}, {name:"Pro", email:"pro@ai.socialflow", role:"AI"}];
   const filtered = showDropdown
     ? mentionable.filter(m => m.name && (m.name.toLowerCase().includes(mentionQuery.toLowerCase()) || toUsername(m.name).includes(toUsername(mentionQuery)))).slice(0,6)
     : [];
@@ -4681,7 +4683,9 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                         {c.type==="ai_reply"?<Badge label="AI" color="#10b981" xs/>:c.type!=="comment"&&<Badge label={c.type} color={c.type==="rejection"?"#ef4444":c.type==="approval"?"#10b981":"#6b7280"} xs/>}
                         <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date)}</span>
                       </div>
-                      <p style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content)}</p>
+                      {c.type==="ai_reply"
+                        ? <div style={{fontSize:13,lineHeight:1.6}}>{renderChatMd(c.content)}</div>
+                        : <p style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content)}</p>}
                       {c.file_url&&(
                         c.file_type==="image" ? (
                           <a href={c.file_url} target="_blank" rel="noreferrer" style={{display:"block",marginTop:8,maxWidth:220,borderRadius:8,overflow:"hidden",border:"1px solid var(--border)"}}>
@@ -12239,11 +12243,96 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
 // ════════════════════════════════════════════════════════════════
 // USERS PAGE — team management, invitations, access requests, client users
 // ════════════════════════════════════════════════════════════════
+// Full profile for an AI agent — her whole history/analysis, all derived from
+// her own activity log (no separate storage needed: every run she does is
+// already logged there, tagged [agent:<id>], so this doubles as her "file").
+function AgentProfileModal({agent, avatarUrl, activityLogs=[], onClose}) {
+  const logs = (activityLogs||[]).filter(a=>(a.details||"").includes(`[agent:${agent.id}]`))
+    .sort((a,b)=>new Date(b.performed_at)-new Date(a.performed_at));
+  const byDay = {};
+  logs.forEach(l=>{ const d=(l.performed_at||"").slice(0,10); if(d) byDay[d]=(byDay[d]||0)+1; });
+  const days = Object.entries(byDay).sort((a,b)=>a[0]<b[0]?1:-1); // newest first
+  const peakDay = Object.entries(byDay).sort((a,b)=>b[1]-a[1])[0];
+  const today = new Date().toISOString().slice(0,10);
+  const todayCount = byDay[today]||0;
+  const activeDaysCount = days.length;
+  const avgPerActiveDay = activeDaysCount ? (logs.length/activeDaysCount).toFixed(1) : "0";
+  const errorCount = logs.filter(l=>l.status==="error").length;
+  const last14 = days.slice(0,14);
+  const maxDayCount = Math.max(1, ...last14.map(([,c])=>c));
+
+  return (
+    <Modal open onClose={onClose} title={`${agent.name} — Profile`} width={720}>
+      <div style={{display:"flex",flexDirection:"column",gap:18}}>
+        <div style={{display:"flex",alignItems:"center",gap:14}}>
+          <div style={{width:56,height:56,borderRadius:"50%",background:agent.color,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:20,flexShrink:0,overflow:"hidden"}}>
+            {avatarUrl?<img src={avatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:agent.name[0]}
+          </div>
+          <div>
+            <p style={{fontWeight:800,fontSize:17}}>{agent.name}</p>
+            <p style={{fontSize:12,color:"var(--text3)"}}>{agent.description}</p>
+          </div>
+          <span style={{marginLeft:"auto",background:agent.color+"22",color:agent.color,borderRadius:6,padding:"4px 12px",fontSize:11,fontWeight:700,flexShrink:0}}>AI Team Member</span>
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10}}>
+          {[
+            {label:"Total Actions",value:logs.length,color:agent.color},
+            {label:"Today",value:todayCount,color:"#10b981"},
+            {label:"Active Days",value:activeDaysCount,color:"#3b82f6"},
+            {label:"Avg / Active Day",value:avgPerActiveDay,color:"#f59e0b"},
+            {label:"Peak Day",value:peakDay?`${peakDay[1]} on ${fmtDate(peakDay[0])}`:"—",color:"#8b5cf6",wide:true},
+            {label:"Errors",value:errorCount,color:errorCount?"#ef4444":"var(--text3)"},
+          ].map(s=>(
+            <div key={s.label} style={{padding:12,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",gridColumn:s.wide?"span 2":undefined}}>
+              <p style={{fontSize:10,color:"var(--text3)",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em"}}>{s.label}</p>
+              <p style={{fontSize:s.wide?15:18,fontWeight:800,color:s.color,marginTop:2}}>{s.value}</p>
+            </div>
+          ))}
+        </div>
+
+        {last14.length>0 && (
+          <div>
+            <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",marginBottom:8}}>Actions per day (last {last14.length})</p>
+            <div style={{display:"flex",flexDirection:"column",gap:5}}>
+              {[...last14].reverse().map(([day,count])=>(
+                <div key={day} style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:10,color:"var(--text3)",width:70,flexShrink:0}}>{fmtDate(day)}</span>
+                  <div style={{flex:1,height:14,background:"var(--surface2)",borderRadius:4,overflow:"hidden"}}>
+                    <div style={{width:`${(count/maxDayCount)*100}%`,height:"100%",background:day===peakDay?.[0]?agent.color:agent.color+"88",borderRadius:4}}/>
+                  </div>
+                  <span style={{fontSize:11,fontWeight:700,width:20,textAlign:"right",flexShrink:0}}>{count}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div>
+          <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",marginBottom:8}}>Full History ({logs.length} logged actions)</p>
+          <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:280,overflowY:"auto"}}>
+            {logs.length===0&&<p style={{fontSize:12,color:"var(--text3)",textAlign:"center",padding:20}}>No activity logged yet.</p>}
+            {logs.map((a,i)=>(
+              <div key={a.id||i} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"8px 10px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border)"}}>
+                <div style={{width:7,height:7,borderRadius:"50%",background:a.status==="error"?"#ef4444":"#10b981",marginTop:4,flexShrink:0}}/>
+                <div style={{minWidth:0,flex:1}}>
+                  <p style={{fontSize:12,fontWeight:600}}>{a.action}</p>
+                  <p style={{fontSize:10.5,color:"var(--text3)",marginTop:1}}>{new Date(a.performed_at).toLocaleString()}{a.error_message?` — ${a.error_message.slice(0,150)}`:""}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function UsersPage({currentUser, team, invitations, accessRequests, clientUsers, clients,
   onInviteUser, onCancelInvitation, onApproveRequest, onRejectRequest,
   onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation,
   rolePerms, onUpdateTeamMember, onRemoveMember, onToggleRolePermission, onAddExpense, leaveRequests, onDecideLeaveRequest, attendanceRecords,
-  posts, onImpersonate, appSettings, onSaveSettings, expenses, onDeclareCompanyDayOff, invoices, payments, subscriptionPayments}) {
+  posts, onImpersonate, appSettings, onSaveSettings, expenses, onDeclareCompanyDayOff, invoices, payments, subscriptionPayments, activityLogs=[]}) {
   const [tab, setTab] = usePersistentState("sf_tab_users","team");
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showClientUserModal, setShowClientUserModal] = useState(false);
@@ -12252,6 +12341,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   const [editingMember, setEditingMember] = useState(null);
   const [approvalRole, setApprovalRole] = useState("content_creator");
   const [approvingId, setApprovingId] = useState(null);
+  const [viewingAgent, setViewingAgent] = useState(null);
   const [viewingMember, setViewingMember_] = useState(null);
   // Opening a member's profile pushes its own history entry so the physical
   // browser Back button pops back to the team directory.
@@ -12394,10 +12484,10 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
           <div>
             <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>AI Team</p>
             {(()=>{ let agentsCfg=appSettings?.ai_agents; if(typeof agentsCfg==="string"){try{agentsCfg=JSON.parse(agentsCfg);}catch(e){agentsCfg={};}} agentsCfg=agentsCfg||{};
-            return AI_AGENT_DEFS.filter(a=>a.id!=="pro").map(a=>{
+            return AI_AGENT_DEFS.map(a=>{
               const avatarUrl = agentsCfg[a.id]?.avatar_url;
               return (
-              <div key={a.id} style={{background:"var(--surface)",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:14,border:`1px solid ${a.color}55`,marginBottom:8}}>
+              <div key={a.id} onClick={()=>setViewingAgent(a)} data-clickable style={{background:"var(--surface)",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:14,border:`1px solid ${a.color}55`,marginBottom:8,cursor:"pointer"}}>
                 <div style={{width:40,height:40,borderRadius:"50%",background:a.color,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:15,flexShrink:0,overflow:"hidden"}}>
                   {avatarUrl?<img src={avatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:a.name[0]}
                 </div>
@@ -12409,9 +12499,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
               </div>
               );
             }); })()}
-            {AI_AGENT_DEFS.find(a=>a.id==="content_creator")&&(
-              <p style={{fontSize:11,color:"var(--text3)",marginBottom:4}}>Mention <strong>@Sara</strong> in any task/post comment and she'll reply with full context. Configure her model &amp; skills in Settings → AI Agents.</p>
-            )}
+            <p style={{fontSize:11,color:"var(--text3)",marginBottom:4}}>Mention <strong>@Sara</strong> for content help, or <strong>@Pro</strong> to have him take an action (assign, change stage, set due date/priority) — both reply right in the thread. Configure them in Settings → AI Agents.</p>
           </div>
           <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",margin:"6px 0 -2px"}}>Human Team</p>
           {(team||[]).map(m=>(
@@ -12601,6 +12689,10 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
           onSave={(updates)=>{onUpdateTeamMember(editingMember.id, updates); setEditingMember(null);}}
         />
       )}
+      {viewingAgent&&(()=>{
+        let agentsCfg=appSettings?.ai_agents; if(typeof agentsCfg==="string"){try{agentsCfg=JSON.parse(agentsCfg);}catch(e){agentsCfg={};}}
+        return <AgentProfileModal agent={viewingAgent} avatarUrl={(agentsCfg||{})[viewingAgent.id]?.avatar_url} activityLogs={activityLogs} onClose={()=>setViewingAgent(null)}/>;
+      })()}
 
       {showRejectModal&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -24629,7 +24721,7 @@ function MyCalendarPage({posts,currentUser,team,onDayClick}) {
 // ════════════════════════════════════════════════════════════════
 // MY TIMELINE PAGE - Daily schedule view 9am-6pm
 // ════════════════════════════════════════════════════════════════
-function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onStartTimer, onPauseTimer, onResumeTimer, schedules, scheduleOverrides, onOverrideSchedule, initialJump, onJumpConsumed, onBackToCalendar}) {
+function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onStartTimer, onPauseTimer, onResumeTimer, schedules, scheduleOverrides, onOverrideSchedule, initialJump, onJumpConsumed, onBackToCalendar, activityLogs=[], appSettings}) {
   const {isMobile} = useResponsive();
   const [viewDate, setViewDate] = useState(()=>initialJump?.date ? new Date(initialJump.date+"T00:00:00") : new Date());
   const [tick, setTick] = useState(0);
@@ -24805,6 +24897,36 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
               </div>
             );
           })}
+          {(()=>{
+            // Sara has no clock-in hours, so an hourly slot bar doesn't apply
+            // to her the way it does a human — instead show one bar sized to
+            // how much she actually worked that day (her agent-log action
+            // count), so she's still visibly present on the shared timeline.
+            const sara = AI_AGENT_DEFS.find(a=>a.id==="content_creator");
+            let agentsCfg=appSettings?.ai_agents; if(typeof agentsCfg==="string"){try{agentsCfg=JSON.parse(agentsCfg);}catch(e){agentsCfg={};}}
+            const avatarUrl = (agentsCfg||{})[sara?.id]?.avatar_url;
+            const saraCount = (activityLogs||[]).filter(l=>(l.details||"").includes(`[agent:${sara?.id}]`) && (l.performed_at||"").slice(0,10)===dateStr).length;
+            if(!sara) return null;
+            return (
+              <div key="sara-timeline-row" style={{display:"flex",alignItems:"center",padding:"10px 16px",borderBottom:"1px solid var(--border)",gap:10,background:sara.color+"08"}}>
+                <div style={{width:120,flexShrink:0,fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:6}}>
+                  <div style={{width:16,height:16,borderRadius:"50%",background:sara.color,flexShrink:0,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:9,fontWeight:800}}>
+                    {avatarUrl?<img src={avatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:"S"}
+                  </div>
+                  Sara (AI)
+                </div>
+                <div style={{position:"relative",flex:1,height:30,background:"var(--surface2)",borderRadius:6}}>
+                  {saraCount===0 ? (
+                    <span style={{position:"absolute",top:"50%",left:8,transform:"translateY(-50%)",fontSize:10,color:"var(--text3)"}}>No activity this day</span>
+                  ) : (
+                    <div title={`${saraCount} action${saraCount===1?"":"s"} today`} style={{position:"absolute",left:0,width:`${Math.min(100,saraCount*12)}%`,top:3,bottom:3,background:sara.color,borderRadius:5,display:"flex",alignItems:"center",padding:"0 8px"}}>
+                      <span style={{fontSize:10,color:"#fff",fontWeight:700,whiteSpace:"nowrap"}}>{saraCount} action{saraCount===1?"":"s"}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -34538,6 +34660,70 @@ Return ONLY valid JSON (no markdown, no explanation):
     if(/@sara\b/i.test(content) && post) {
       replySaraInComment(post, project, content, user);
     }
+    // @Pro — he can actually act on the task (assign/stage/due date/priority),
+    // not just reply.
+    if(/@pro\b/i.test(content) && post) {
+      replyProInComment(post, project, content, user);
+    }
+  };
+
+  // Pro replying to a direct @mention on a task/post comment — same idea as
+  // Sara's reply, but Pro can also carry out a small, explicit set of real
+  // actions on the task itself (never anything destructive or open-ended).
+  const replyProInComment = async (post, project, triggerContent, user) => {
+    try {
+      const thread = (data.comments||[]).filter(c=>c.post_id===post.id)
+        .sort((a,b)=>new Date(a.created_date)-new Date(b.created_date))
+        .slice(-10)
+        .map(c=>`${c.author_name||"?"}: ${(c.content||"").slice(0,300)}`).join("\n");
+      const teamList = (data.team||[]).map(m=>`${m.name} <${m.email}>`).join(", ");
+      const taskBlock = `Task: "${post.title}" (id:${post.id})
+Project: ${project?.title||post.project_name||"-"} | Client: ${post.client_name||"-"}
+Current stage: ${post.stage||"-"} | Platform: ${post.platform||"-"} | Type: ${post.post_type||"-"}
+Assigned to: ${post.assigned_to||"unassigned"} | Due: ${post.due_date||post.scheduled_date||"-"} | Priority: ${post.priority||"-"}`;
+      const prompt = `You are Pro, the team's AI supervisor. A teammate mentioned you (@Pro) in a comment thread on a task, possibly asking you to DO something (assign it, move its stage, set a due date, set priority) — not just talk.
+
+${taskBlock}
+
+RECENT THREAD:
+${thread||"(no earlier comments)"}
+
+Team members you can assign to (must match one of these exactly by email): ${teamList||"none"}
+Valid stages: ${STAGES.map(s=>s.key).join(", ")}
+Valid priorities: low, medium, high
+
+${user?.name||"A teammate"} just wrote: "${triggerContent}"
+
+Decide if a real action was requested. Return ONLY valid JSON (no markdown):
+{"reply":"your short in-thread reply, addressed to them","action":{"type":"assign"|"change_stage"|"set_due_date"|"set_priority"|"none","email":"...","stage":"...","date":"YYYY-MM-DD","priority":"..."}}
+Only include the action fields relevant to its type. Use type "none" if nothing actionable was asked — just chat normally in "reply". Never invent an email or stage not in the lists above.`;
+      const res = await ai(prompt, 600);
+      const match = res.match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(match ? match[0] : res);
+      let actionNote = "";
+      const action = parsed.action||{};
+      if(action.type==="assign" && action.email) {
+        const member = data.team.find(m=>m.email===action.email);
+        if(member) { setData(d=>({...d,posts:d.posts.map(p=>p.id===post.id?{...p,assigned_to:member.email}:p)})); ue("Post",post.id,{assigned_to:member.email}).catch(()=>{}); actionNote = `Assigned to ${member.name}.`; }
+      } else if(action.type==="change_stage" && action.stage && STAGES.some(s=>s.key===action.stage)) {
+        await handleStageChange(post, action.stage);
+        actionNote = `Moved to ${STAGE_MAP[action.stage]?.label||action.stage}.`;
+      } else if(action.type==="set_due_date" && action.date) {
+        setData(d=>({...d,posts:d.posts.map(p=>p.id===post.id?{...p,due_date:action.date}:p)})); ue("Post",post.id,{due_date:action.date}).catch(()=>{});
+        actionNote = `Due date set to ${action.date}.`;
+      } else if(action.type==="set_priority" && ["low","medium","high"].includes(action.priority)) {
+        setData(d=>({...d,posts:d.posts.map(p=>p.id===post.id?{...p,priority:action.priority}:p)})); ue("Post",post.id,{priority:action.priority}).catch(()=>{});
+        actionNote = `Priority set to ${action.priority}.`;
+      }
+      const replyText = (parsed.reply||"On it.") + (actionNote?`\n\n_${actionNote}_`:"");
+      const payload = {post_id:post.id, content:replyText, author_name:"Pro", author_email:"pro@ai.socialflow", type:"ai_reply", audience:"internal"};
+      const local = {...payload, id:uid(), created_date:new Date().toISOString()};
+      setData(d=>({...d,comments:[...d.comments,local]}));
+      ce("Comment",[payload]).then(r=>{ const real=r.entities?.[0]; if(real?.id) setData(d=>({...d,comments:d.comments.map(c=>c.id===local.id?{...c,...real}:c)})); }).catch(()=>{});
+      logActivity(`Pro: ${actionNote||"Comment reply"} — ${post.title}`,"agents",`[agent:pro] ${post.title}${actionNote?` — ${actionNote}`:""}`,"success","","agent");
+    } catch(e) {
+      logActivity(`Pro: Comment reply — ${post.title}`,"agents",`[agent:pro] ${post.title}`,"error",String(e.message).slice(0,200),"agent");
+    }
   };
 
   // Sara replying to a direct @mention in a task/post comment thread — full
@@ -35146,6 +35332,7 @@ Reply now, addressed to them.`, 500);
             appSettings={appSettings}
             onSaveSettings={saveAppSettings}
             onDeclareCompanyDayOff={declareCompanyDayOff}
+            activityLogs={data.activityLogs||[]}
           />
         )}
         {page==="performance"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.view_performance"))&&(
