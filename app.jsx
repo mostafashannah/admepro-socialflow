@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.325";
+const APP_VERSION = "beta 5.326";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19416,7 +19416,7 @@ function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh, te
 // ════════════════════════════════════════════════════════════════
 // SETTINGS PAGE
 // ════════════════════════════════════════════════════════════════
-function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, integrationLogs, onAddIntegration, onUpdateIntegration, onDeleteIntegration, onRetryIntegration, emailSettings, onSaveEmailSettings, team, posts, clients, timelogs, perfLogs, accentColor, brandingAssets, onSaveBrandingAssets, wallpaper, emailLogs, activityLogs, onRefreshLogs, systemSessions, onRefreshSessions, assets, onFindDuplicateAssets, onRemoveDuplicateAssets}) {
+function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, integrationLogs, onAddIntegration, onUpdateIntegration, onDeleteIntegration, onRetryIntegration, emailSettings, onSaveEmailSettings, team, posts, clients, timelogs, perfLogs, accentColor, brandingAssets, onSaveBrandingAssets, wallpaper, emailLogs, activityLogs, onRefreshLogs, systemSessions, onRefreshSessions, assets, onFindDuplicateAssets, onRemoveDuplicateAssets, onBackfillSaraMemory, backfillRunning}) {
   const [settingsTab, setSettingsTab] = usePersistentState("sf_tab_settings","branding");
   const [f,setF] = useState({
     app_name: appSettings?.app_name||"SocialFlow",
@@ -19635,7 +19635,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 
       {/* ── AI & TOKENS TAB ── */}
       {settingsTab==="ai_model"&&(
-        <AITokensPanel appSettings={appSettings} onSaveSettings={onSaveSettings} activityLogs={activityLogs||[]}/>
+        <AITokensPanel appSettings={appSettings} onSaveSettings={onSaveSettings} activityLogs={activityLogs||[]} onBackfillSaraMemory={onBackfillSaraMemory} backfillRunning={backfillRunning}/>
       )}
 
       {/* ── FEATURE FLAGS TAB ── */}
@@ -19728,7 +19728,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 // ── AI & Tokens Panel ──────────────────────────────────────────
 // One card per sub-agent in Settings → AI Agents: model + skills/guides
 // (persisted team-wide in app_settings.ai_agents) and the agent's own run log.
-function AgentCard({def, cfg, models, onSave, logs}) {
+function AgentCard({def, cfg, models, onSave, logs, onBackfill, backfillRunning}) {
   const [model,setModel] = useState(cfg?.model||"claude-sonnet-4-6");
   const [skills,setSkills] = useState(cfg?.skills||"");
   const [saved,setSaved] = useState(false);
@@ -19769,6 +19769,12 @@ function AgentCard({def, cfg, models, onSave, logs}) {
         <button onClick={()=>setShowLog(v=>!v)} style={{padding:"8px 16px",borderRadius:10,background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)",fontSize:12.5,fontWeight:600,cursor:"pointer"}}>
           {showLog?"Hide Log":`Agent Log (${agentLogs.length})`}
         </button>
+        {onBackfill&&(
+          <button onClick={onBackfill} disabled={backfillRunning} title="One-time: analyze every client's already-published posts and add insights to their Brain memory"
+            style={{padding:"8px 16px",borderRadius:10,background:"#10b98111",color:"#10b981",border:"1px solid #10b98166",fontSize:12.5,fontWeight:700,cursor:backfillRunning?"wait":"pointer",display:"flex",alignItems:"center",gap:6}}>
+            {backfillRunning?<><Spinner size={13}/> Reviewing published history…</>:<><Ico d={Icons.sparkle} size={13} stroke="#10b981"/> Backfill from Published History</>}
+          </button>
+        )}
       </div>
       {showLog&&(
         <div style={{marginTop:12,display:"flex",flexDirection:"column",gap:8,maxHeight:220,overflowY:"auto"}}>
@@ -19788,7 +19794,7 @@ function AgentCard({def, cfg, models, onSave, logs}) {
   );
 }
 
-function AITokensPanel({appSettings, onSaveSettings, activityLogs=[]}) {
+function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfillSaraMemory, backfillRunning}) {
   const [usage, setUsage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [model, setModel] = useState(() => { try{ return localStorage.getItem("sf_ai_model")||"claude-sonnet-4-6"; }catch(e){return "claude-sonnet-4-6";} });
@@ -19909,7 +19915,8 @@ function AITokensPanel({appSettings, onSaveSettings, activityLogs=[]}) {
       </div>
 
       {AI_AGENT_DEFS.filter(a=>a.id!=="pro").map(def=>(
-        <AgentCard key={def.id} def={def} cfg={agentsCfg[def.id]} models={MODELS} onSave={saveAgent} logs={activityLogs}/>
+        <AgentCard key={def.id} def={def} cfg={agentsCfg[def.id]} models={MODELS} onSave={saveAgent} logs={activityLogs}
+          onBackfill={def.id==="content_creator"?onBackfillSaraMemory:null} backfillRunning={backfillRunning}/>
       ))}
 
       {/* AI Model Selector (Pro supervisor) */}
@@ -33186,6 +33193,34 @@ function App() {
     }
   };
 
+  // One-time catch-up: Sara's publish-learning hook only fires for NEW
+  // publishes going forward — this analyzes each client's already-published
+  // history (one batched call per client, not per-post, to keep it fast and
+  // cheap) so existing content isn't a permanent blind spot in her memory.
+  const [backfillRunning, setBackfillRunning] = useState(false);
+  const backfillSaraFromPublished = async () => {
+    setBackfillRunning(true);
+    const clientIds = [...new Set((data.posts||[]).filter(p=>p.stage==="published"&&p.client_id&&p.caption).map(p=>p.client_id))];
+    setToast(`Sara is reviewing published history for ${clientIds.length} client${clientIds.length===1?"":"s"}…`);
+    let done = 0;
+    for(const clientId of clientIds){
+      const client = data.clients.find(c=>c.id===clientId);
+      const posts = (data.posts||[]).filter(p=>p.client_id===clientId&&p.stage==="published"&&p.caption)
+        .sort((a,b)=>new Date(b.published_at||b.scheduled_date||0)-new Date(a.published_at||a.scheduled_date||0))
+        .slice(0,30);
+      if(!posts.length) continue;
+      await saraLearnFromWork({
+        clientId, clientName: client?.name||"",
+        workLabel: `Backfill review: ${posts.length} published posts`,
+        workSummary: posts.map(p=>`[${p.platform||"?"}/${p.post_type||"post"}] ${p.title}: ${(p.caption||"").slice(0,200)}`).join("\n"),
+        onUpsertMemory: upsertClientMemory,
+      });
+      done++;
+    }
+    setBackfillRunning(false);
+    setToast(`Sara reviewed published history for ${done} client${done===1?"":"s"} — check each client's Brain for new memory.`);
+  };
+
   const deleteClientMemory = async (memId) => {
     setData(d=>({...d, clientMemory:(d.clientMemory||[]).filter(m=>m.id!==memId)}));
     de("ClientMemory", memId).catch(()=>{});
@@ -35055,6 +35090,8 @@ Return ONLY valid JSON (no markdown, no explanation):
             wallpaper={wallpaper}
             emailLogs={data.emailLogs||[]}
             activityLogs={data.activityLogs||[]}
+            onBackfillSaraMemory={backfillSaraFromPublished}
+            backfillRunning={backfillRunning}
             onRefreshLogs={refreshActivityLogs}
             systemSessions={data.systemSessions||[]}
             onRefreshSessions={refreshSystemSessions}
