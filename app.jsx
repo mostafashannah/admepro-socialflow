@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.309";
+const APP_VERSION = "beta 5.310";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19313,7 +19313,11 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 
   const handleSave=async()=>{
     setSaving(true);
-    await onSaveSettings({...f,logo_url:f.app_logo_url});
+    // api.php's PATCH builds one UPDATE from every key in the body with no
+    // column filtering — a stray key that isn't a real column (like the old
+    // "logo_url" here, when the actual column is "app_logo_url") throws and
+    // fails the WHOLE statement, silently dropping every field in this save.
+    await onSaveSettings({...f});
     setSaving(false); setSaved(true); setTimeout(()=>setSaved(false),2500);
   };
 
