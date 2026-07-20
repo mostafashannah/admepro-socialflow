@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.322";
+const APP_VERSION = "beta 5.323";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1750,7 +1750,17 @@ function clientBrainBlock(clientId, clientName){
     const know = (b.knowledge||[]).find(k=>k.client_id===clientId||(clientName&&k.client_name===clientName));
     const intel = (b.intelligence||[]).find(i=>i.client_id===clientId);
     const memBlock = clientId ? formatClientMemory(clientId, b.memory||[]) : "";
-    if(!know && !intel && !memBlock) return "";
+    // Real examples of what already went live — lets Sara match actual proven
+    // style/format instead of only the distilled facts in memory.
+    const recentPublished = clientId
+      ? (b.publishedPosts||[]).filter(p=>p.client_id===clientId)
+          .sort((a,b2)=>new Date(b2.published_at||b2.scheduled_date||0)-new Date(a.published_at||a.scheduled_date||0))
+          .slice(0,5)
+      : [];
+    const publishedBlock = recentPublished.length
+      ? recentPublished.map(p=>`- [${p.platform||"?"}/${p.post_type||"post"}] "${p.title}": ${(p.caption||"").slice(0,200)}`).join("\n")
+      : "";
+    if(!know && !intel && !memBlock && !publishedBlock) return "";
     return `
 === CLIENT BRAIN (${clientName||clientId}) ===
 Brand Voice/Tone: ${know?.tone||intel?.brand_voice||"professional"}
@@ -1760,6 +1770,7 @@ Keywords: ${know?.keywords ? (typeof know.keywords==="string"?know.keywords:JSON
 Do's: ${know?.dos||""}
 Don'ts: ${know?.donts||intel?.donts||""}
 ${memBlock ? `LEARNED MEMORY (highest priority — always follow):\n${memBlock}` : ""}
+${publishedBlock ? `RECENTLY PUBLISHED (real examples — match this proven style/format):\n${publishedBlock}` : ""}
 Context: ${(know?.context_file||"").slice(0,400)}
 ===`;
   } catch(e){ return ""; }
@@ -5804,21 +5815,7 @@ function AddCalendarPlanModal({open,onClose,clients,team,preselectedClient,onGen
     const postTypes = ["image","carousel","reel"];
 
     const selClient = clients?.find?.(c=>c.id===f.client_id);
-    const selKnow = (clientKnowledgeList||[]).find(k=>k.client_id===selClient?.id);
-    const selIntel = (clientIntelligenceList||[]).find(i=>i.client_id===selClient?.id);
-    const memBlock = selClient?.id ? formatClientMemory(selClient.id, clientMemoryList||[]) : "";
-    const clientCtxBlock = selClient ? `
-=== CLIENT CONTEXT ===
-Client: ${selClient.name}
-Industry: ${selClient.industry||""}
-Brand Voice: ${selKnow?.tone||selIntel?.brand_voice||"professional"}
-Content Preferences: ${selKnow?.content_preferences||selIntel?.content_preferences||""}
-Target Audience: ${selIntel?.target_audience||""}
-Keywords: ${selKnow?.keywords ? (typeof selKnow.keywords==="string"?selKnow.keywords:JSON.stringify(selKnow.keywords)) : ""}
-Don'ts: ${selIntel?.donts||""}
-${memBlock ? `CLIENT MEMORY (highest priority — always follow):\n${memBlock}` : ""}
-Context: ${(selKnow?.context_file||"").slice(0,400)}
-===` : "";
+    const clientCtxBlock = selClient ? `Client: ${selClient.name}\nIndustry: ${selClient.industry||""}\n${clientBrainBlock(selClient.id, selClient.name)}` : "";
 
     // Generate ideas per kind, each with its OWN brief/platforms/assignee.
     const ideasByKind = {};
@@ -32438,15 +32435,18 @@ function App() {
     if(typeof agents==="string"){ try{ agents = JSON.parse(agents); }catch(e){ agents = {}; } }
     window.__SF_AI_AGENTS = agents||{};
   },[appSettings?.ai_agents]);
-  // Mirror the client brain (knowledge/intelligence/memory) the same way so
-  // Sara's helpers (clientBrainBlock/saraLearnFromWork) can read it anywhere.
+  // Mirror the client brain (knowledge/intelligence/memory/published posts) the
+  // same way so Sara's helpers (clientBrainBlock/saraLearnFromWork) can read
+  // it anywhere — including actual published content, not just distilled
+  // memory facts, so she can reference real examples of what already went live.
   useEffect(()=>{
     window.__SF_CLIENT_BRAIN = {
       knowledge: data.clientKnowledge||[],
       intelligence: data.clientIntelligence||[],
       memory: data.clientMemory||[],
+      publishedPosts: (data.posts||[]).filter(p=>p.stage==="published"),
     };
-  },[data.clientKnowledge, data.clientIntelligence, data.clientMemory]);
+  },[data.clientKnowledge, data.clientIntelligence, data.clientMemory, data.posts]);
   useEffect(()=>{
     const f = appSettings?.feature_flags;
     Object.assign(FEATURE_FLAGS, typeof f === "string" ? parseJ(f,{}) : (f||{}));
@@ -34181,6 +34181,17 @@ Return ONLY valid JSON (no markdown, no explanation):
         if(post.platform) autoLearn(_clientId2, _clientName2, `preferred_platform_${post.platform}`, `Published ${(data.posts||[]).filter(p=>p.client_id===_clientId2&&p.platform===post.platform&&p.stage==="published").length+1} posts on ${post.platform}`);
         if(post.scheduled_time) autoLearn(_clientId2, _clientName2, "best_posting_time", post.scheduled_time);
         if(post.tov_used) autoLearn(_clientId2, _clientName2, "approved_tov", post.tov_used);
+        // Sara reviews the actual content that just went live (not just her own
+        // draft from the calendar plan) and can save a qualitative insight —
+        // best-effort, doesn't block the stage change.
+        if(post.caption) {
+          saraLearnFromWork({
+            clientId: _clientId2, clientName: _clientName2,
+            workLabel: `Published: ${post.title}`,
+            workSummary: `This post just went live on ${post.platform||"?"} (${post.post_type||"post"}):\nTitle: ${post.title}\nCaption: ${post.caption}\n${post.hashtags?`Hashtags: ${post.hashtags}`:""}`,
+            onUpsertMemory: upsertClientMemory,
+          });
+        }
       }
       if(newStage==="rejected" && post.rejection_reason) {
         appendToContextFile(_clientId2, ` Rejected: "${post.title}" — Reason: ${post.rejection_reason}`);

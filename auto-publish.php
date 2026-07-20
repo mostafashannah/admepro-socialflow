@@ -129,6 +129,7 @@ foreach ($due as $post) {
         $extId = $resp['id'] ?? $resp['post_id'] ?? null;
         $upd = $pdo->prepare("UPDATE posts SET stage = 'published', published_at = :now, external_post_id = :ext, publish_error = NULL WHERE id = :id");
         $upd->execute([':now' => $now->format('Y-m-d H:i:s'), ':ext' => $extId, ':id' => $post['id']]);
+        sara_learn_from_publish($pdo, $post, $platform);
     } else {
         $upd = $pdo->prepare("UPDATE posts SET publish_attempts = :att, publish_error = :err WHERE id = :id");
         $upd->execute([':att' => $attempts + 1, ':err' => json_encode($resp), ':id' => $post['id']]);
@@ -163,3 +164,83 @@ foreach ($due as $post) {
 
 header('Content-Type: application/json');
 echo json_encode(['checked' => count($due), 'published' => count($results), 'results' => $results]);
+
+// Server-side mirror of the frontend's saraLearnFromWork() — most real
+// publishes happen here via cron, never through the browser, so the
+// frontend hook alone would miss almost everything that actually goes live.
+// Best-effort: any failure here must never break the publish loop above.
+function sara_learn_from_publish(PDO $pdo, array $post, string $platform): void {
+    try {
+        $clientId = $post['client_id'] ?? '';
+        $clientName = $post['client_name'] ?? '';
+        $caption = trim($post['caption'] ?? '');
+        if (!$clientId || !$caption || !defined('ANTHROPIC_API_KEY') || ANTHROPIC_API_KEY === 'YOUR_ANTHROPIC_API_KEY_HERE') return;
+
+        $keysStmt = $pdo->prepare("SELECT `key` FROM client_memory WHERE client_id = :cid");
+        $keysStmt->execute([':cid' => $clientId]);
+        $existingKeys = implode(', ', $keysStmt->fetchAll(PDO::FETCH_COLUMN)) ?: 'none';
+
+        $prompt = "You are Sara, a senior content creator. This post just went live on {$platform} for the client \"{$clientName}\":\n\n"
+            . "Title: " . ($post['title'] ?? '') . "\n"
+            . "Caption: {$caption}\n"
+            . (!empty($post['hashtags']) ? "Hashtags: {$post['hashtags']}\n" : "")
+            . "\nExisting memory keys for this client (do NOT duplicate these): {$existingKeys}\n\n"
+            . "If this reveals any durable, reusable insight about this client's brand/content strategy, return it as JSON: "
+            . "[{\"key\":\"short_snake_case_key\",\"value\":\"one clear sentence\"}]\n"
+            . "Return at most 2 insights. If nothing durable was revealed, return []. ONLY the JSON array, nothing else.";
+
+        $ch = curl_init("https://api.anthropic.com/v1/messages");
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode(['model' => 'claude-sonnet-4-6', 'max_tokens' => 400, 'messages' => [['role' => 'user', 'content' => $prompt]]]),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_HTTPHEADER => ["x-api-key: " . ANTHROPIC_API_KEY, "anthropic-version: 2023-06-01", "Content-Type: application/json"],
+        ]);
+        $res = curl_exec($ch);
+        $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($status < 200 || $status >= 300 || !$res) return;
+
+        $data = json_decode($res, true);
+        $text = '';
+        foreach (($data['content'] ?? []) as $block) { $text .= $block['text'] ?? ''; }
+        $clean = trim(preg_replace('/```json|```/', '', $text));
+        $insights = json_decode($clean, true);
+        if (!is_array($insights)) return;
+
+        // No unique constraint on (client_id, key) exists in the schema, so
+        // dedupe the same way the frontend's upsertClientMemory does: look
+        // up any existing row for this key first, UPDATE if found else INSERT.
+        $now = date('Y-m-d H:i:s');
+        $findStmt = $pdo->prepare("SELECT id FROM client_memory WHERE client_id = :cid AND `key` = :k LIMIT 1");
+        $updStmt = $pdo->prepare("UPDATE client_memory SET value = :v, type = 'ai', source = 'sara_publish', updated_at = :now WHERE id = :id");
+        $insStmt = $pdo->prepare("INSERT INTO client_memory (id, client_id, client_name, `key`, value, type, source, created_at, updated_at) VALUES (UUID(), :cid, :cname, :k, :v, 'ai', 'sara_publish', :now, :now)");
+        $count = 0;
+        foreach (array_slice($insights, 0, 2) as $insight) {
+            if (empty($insight['key']) || empty($insight['value'])) continue;
+            try {
+                $findStmt->execute([':cid' => $clientId, ':k' => $insight['key']]);
+                $existingId = $findStmt->fetchColumn();
+                if ($existingId) {
+                    $updStmt->execute([':v' => $insight['value'], ':now' => $now, ':id' => $existingId]);
+                } else {
+                    $insStmt->execute([':cid' => $clientId, ':cname' => $clientName, ':k' => $insight['key'], ':v' => $insight['value'], ':now' => $now]);
+                }
+                $count++;
+            } catch (Throwable $e) { /* skip this one insight, keep going */ }
+        }
+
+        if ($count > 0) {
+            $log = $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by, performed_at) VALUES (UUID(), :action, 'agents', :details, 'success', 'agent', :now)");
+            $log->execute([
+                ':action' => "Sara — Senior Content Creator: Published: " . ($post['title'] ?? ''),
+                ':details' => "[agent:content_creator] Published: " . ($post['title'] ?? '') . " — learned {$count} insight(s)",
+                ':now' => $now,
+            ]);
+        }
+    } catch (Throwable $e) {
+        error_log('[auto-publish] sara_learn_from_publish failed (non-fatal): ' . $e->getMessage());
+    }
+}
