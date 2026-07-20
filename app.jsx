@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.331";
+const APP_VERSION = "beta 5.332";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1703,6 +1703,14 @@ const AI_AGENT_DEFS = [
   {id:"lead_generation", name:"Lead Generation Agent", color:"#6366f1",
    description:"Works under Pro's supervision searching for new B2B leads — finds and enriches prospects matching your targeting criteria."},
 ];
+// Sara's character when she's talking directly WITH the team (comment
+// mentions) — distinct from her content-writing prompts above, which are
+// task-focused and have no persona voice of their own.
+const SARA_PERSONA = `You are Sara, the team's AI Senior Content Creator. A teammate just mentioned you (@Sara) in a comment thread on a task. Reply directly to them, in-thread, like a real dedicated teammate would.
+
+Your character: genuinely dedicated and responsible — you take the task seriously and give useful, specific answers, not filler. You have a warm, easygoing sense of humor with the team (a light joke or playful line here and there is welcome), but you're never sarcastic about the actual work and never flippant when something is genuinely urgent or someone's stressed. Talk like a helpful colleague, not a customer-support bot — no "I'd be happy to assist!" corporate tone.
+
+Keep it tight: a real Slack-style reply, not an essay. If you don't have enough info to answer well, say so plainly and ask for what you need.`;
 // Read the live team-wide agent config; App() mirrors app_settings.ai_agents
 // into this global whenever settings load/change, so non-React helpers
 // (agentAI below) can read it without prop-drilling.
@@ -4647,10 +4655,10 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 {internalComments.map((c,i)=>(
                   <div key={i} style={{display:"flex",gap:10}}>
                     <Avatar name={c.author_name||"S"} size={28}/>
-                    <div style={{flex:1,background:"var(--surface2)",borderRadius:"var(--rs)",padding:"9px 12px",border:"1px solid var(--border)"}}>
+                    <div style={{flex:1,background:c.type==="ai_reply"?"#10b98111":"var(--surface2)",borderRadius:"var(--rs)",padding:"9px 12px",border:`1px solid ${c.type==="ai_reply"?"#10b98155":"var(--border)"}`}}>
                       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
                         <span style={{fontSize:12,fontWeight:600}}>{c.author_name||"System"}</span>
-                        {c.type!=="comment"&&<Badge label={c.type} color={c.type==="rejection"?"#ef4444":c.type==="approval"?"#10b981":"#6b7280"} xs/>}
+                        {c.type==="ai_reply"?<Badge label="AI" color="#10b981" xs/>:c.type!=="comment"&&<Badge label={c.type} color={c.type==="rejection"?"#ef4444":c.type==="approval"?"#10b981":"#6b7280"} xs/>}
                         <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date)}</span>
                       </div>
                       <p style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content)}</p>
@@ -12360,6 +12368,28 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
 
       {tab==="team"&&(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {/* AI Team — Sara & the agent crew. Read-only identity cards; actual
+              model/skills config lives in Settings → AI Agents so there's one
+              source of truth, not two places that can drift out of sync. */}
+          <div>
+            <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>AI Team</p>
+            {AI_AGENT_DEFS.filter(a=>a.id!=="pro").map(a=>(
+              <div key={a.id} style={{background:"var(--surface)",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:14,border:`1px solid ${a.color}55`,marginBottom:8}}>
+                <div style={{width:40,height:40,borderRadius:"50%",background:a.color,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:15,flexShrink:0}}>
+                  {a.name[0]}
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:600,fontSize:14,color:"var(--text)"}}>{a.name}</div>
+                  <div style={{color:"var(--text2)",fontSize:12}}>{a.description}</div>
+                </div>
+                <span style={{background:a.color+"22",color:a.color,borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:700}}>AI</span>
+              </div>
+            ))}
+            {AI_AGENT_DEFS.find(a=>a.id==="content_creator")&&(
+              <p style={{fontSize:11,color:"var(--text3)",marginBottom:4}}>Mention <strong>@Sara</strong> in any task/post comment and she'll reply with full context. Configure her model &amp; skills in Settings → AI Agents.</p>
+            )}
+          </div>
+          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",margin:"6px 0 -2px"}}>Human Team</p>
           {(team||[]).map(m=>(
             <div key={m.id} onClick={()=>setViewingMember(m)} data-clickable style={{background:"var(--surface)",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:14,border:"1px solid var(--border)",cursor:"pointer"}}>
               <div style={{width:40,height:40,borderRadius:"50%",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:15,flexShrink:0,overflow:"hidden"}}>
@@ -27821,6 +27851,10 @@ ${allClientNames||"No clients yet."}
 TEAM MEMBERS:
 ${teamList||"No team yet."}
 
+AI TEAM (agents that work alongside the human team, under your supervision — you know these exist, never say you don't):
+${AI_AGENT_DEFS.filter(a=>a.id!=="pro").map(a=>`- ${a.name}: ${a.description}`).join("\n")}
+Sara is also mentionable directly in any task/post comment thread (type @Sara) and replies there with full context on that task. Both agents' model and skills/guides are configured in Settings → AI Agents.
+
 ACTIVE PROJECTS:
 ${projList||"No active projects."}
 
@@ -34456,6 +34490,45 @@ Return ONLY valid JSON (no markdown, no explanation):
         ).catch(()=>{});
       }
     }
+    // @Sara — she reads the full task + thread and replies in-comment.
+    if(/@sara\b/i.test(content) && post) {
+      replySaraInComment(post, project, content, user);
+    }
+  };
+
+  // Sara replying to a direct @mention in a task/post comment thread — full
+  // task context + the thread itself + her persona, posted back as a comment
+  // (type "ai_reply" so the UI can badge it distinctly from a human reply).
+  const replySaraInComment = async (post, project, triggerContent, user) => {
+    try {
+      const thread = (data.comments||[]).filter(c=>c.post_id===post.id)
+        .sort((a,b)=>new Date(a.created_date)-new Date(b.created_date))
+        .slice(-10)
+        .map(c=>`${c.author_name||"?"}: ${(c.content||"").slice(0,300)}`).join("\n");
+      const taskBlock = `Task: "${post.title}"
+Project: ${project?.title||post.project_name||"-"} | Client: ${post.client_name||"-"}
+Stage: ${post.stage||"-"} | Platform: ${post.platform||"-"} | Type: ${post.post_type||"-"}
+Assigned to: ${post.assigned_to||"unassigned"} | Due: ${post.due_date||post.scheduled_date||"-"}
+Priority: ${post.priority||"-"}
+${post.description?`Brief: ${post.description}`:""}
+${post.caption?`Current caption: ${post.caption}`:""}`;
+      const reply = await agentAI("content_creator", `Comment reply: ${post.title}`, `${SARA_PERSONA}
+${clientBrainBlock(post.client_id, post.client_name)}
+${taskBlock}
+
+RECENT THREAD ON THIS TASK:
+${thread||"(no earlier comments)"}
+
+${user?.name||"A teammate"} just wrote: "${triggerContent}"
+
+Reply now, addressed to them.`, 500);
+      const payload = {post_id:post.id, content:reply, author_name:"Sara", author_email:"sara@ai.socialflow", type:"ai_reply", audience:"internal"};
+      const local = {...payload, id:uid(), created_date:new Date().toISOString()};
+      setData(d=>({...d,comments:[...d.comments,local]}));
+      ce("Comment",[payload]).then(res=>{
+        const real=res.entities?.[0]; if(real?.id) setData(d=>({...d,comments:d.comments.map(c=>c.id===local.id?{...c,...real}:c)}));
+      }).catch(()=>{});
+    } catch(e) { /* best-effort — a failed reply just means silence, not a broken thread */ }
   };
 
   const startTimer = async (postId) => {
