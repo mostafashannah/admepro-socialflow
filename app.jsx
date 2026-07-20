@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.338";
+const APP_VERSION = "beta 5.339";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3548,6 +3548,8 @@ function ContentPhaseGenerator({post, project, clientKnowledge, clientIntelligen
   const [result, setResult] = useState(()=>loadSaved());
   const [chosenIdx, setChosenIdx] = useState(null);
   const [editingIdx, setEditingIdx] = useState(null);
+  const [optionNotes, setOptionNotes] = useState({}); // idx -> feedback text
+  const [regenIdx, setRegenIdx] = useState(null);
 
   // Persist result
   useEffect(()=>{ if(!lsKey) return; try{ result ? localStorage.setItem(lsKey,JSON.stringify(result)) : localStorage.removeItem(lsKey); }catch(e){} },[result]);
@@ -3599,7 +3601,7 @@ ${approvedBlock}
 ${rejectedBlock}`.trim();
   };
 
-  const buildPrompt = () => {
+  const buildSharedHeader = () => {
     const langInstr = langObj.instruction;
     const tovInstr = `Tone of Voice: ${tovObj.label} — ${tovObj.desc}`;
     const ctx = clientCtx();
@@ -3619,7 +3621,7 @@ Post Type: ${postType}
 Platform: ${post.platform}
 Brief/Description: ${post.description||"(no brief provided)"}`;
 
-    const sharedHeader = `You are an expert social media content writer who deeply studies a client's content history to match their unique voice and style perfectly.
+    return `You are Sara, an expert social media content writer who deeply studies a client's content history to match their unique voice and style perfectly.
 
 LANGUAGE INSTRUCTION: ${langInstr}
 ${tovInstr}
@@ -3631,7 +3633,10 @@ ${ctx}
 
 THIS POST:
 ${postInfo}`;
+  };
 
+  const buildPrompt = () => {
+    const sharedHeader = buildSharedHeader();
     if(isReel) return `${sharedHeader}
 
 Generate 3 REEL content options. Each must use a different angle/energy. Study the approved examples above and match that client's style.
@@ -3691,8 +3696,9 @@ No markdown, no explanation. Return the JSON array only.`;
   const handleGenerate = async () => {
     setGenerating(true); setResult(null); setChosenIdx(null); setEditingIdx(null);
     try {
-      const raw = await ai(buildPrompt(), 4000);
-      const clean = (raw||"").replace(/```json|```/g,"").trim();
+      const raw = await agentAI("content_creator", `Content phase: ${post?.title||"post"}`, buildPrompt(), 4000);
+      const arrMatch = (raw||"").match(/\[[\s\S]*\]/);
+      const clean = arrMatch ? arrMatch[0] : (raw||"").replace(/```json|```/g,"").trim();
       let parsed;
       try {
         parsed = JSON.parse(clean);
@@ -3714,6 +3720,38 @@ No markdown, no explanation. Return the JSON array only.`;
   };
   const updateSlide = (optIdx, slideIdx, field, val) => {
     setResult(prev=>prev.map((o,i)=>i===optIdx?{...o,slides:o.slides.map((s,si)=>si===slideIdx?{...s,[field]:val}:s)}:o));
+  };
+
+  // Regenerate exactly ONE option, steered by feedback typed against it —
+  // same shared client/brand context as the bulk generator, just scoped to
+  // a single object instead of an array of 3.
+  const regenerateOption = async (idx) => {
+    const opt = result[idx];
+    if(!opt) return;
+    setRegenIdx(idx);
+    const note = (optionNotes[idx]||"").trim();
+    const shapeInstr = isReel
+      ? `{"tov_label":"...","hook":"...","script":"...","cta":"...","caption":"...","hashtags":"...","music_direction":"..."}`
+      : isCarousel
+      ? `{"tov_label":"...","cover":"...","slides":[{"title":"...","body":"..."},{"title":"...","body":"..."},{"title":"...","body":"..."},{"title":"...","body":"..."}],"cta_slide":"...","caption":"...","hashtags":"..."}`
+      : `{"tov_label":"...","caption":"...","hashtags":"..."}`;
+    const prompt = `${buildSharedHeader()}
+
+You previously wrote this option (angle: "${opt.tov_label||""}"):
+${JSON.stringify(opt)}
+
+${note ? `FEEDBACK FROM THE TEAM — apply this: ${note}` : "The team asked for a fresh alternative on this same angle — don't just repeat the same wording."}
+
+Return ONLY one valid JSON object in this exact shape, no markdown, no explanation:
+${shapeInstr}`;
+    try {
+      const raw = await agentAI("content_creator", `Regenerate option: ${post?.title||"post"}`, prompt, 3000);
+      const objMatch = (raw||"").match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(objMatch ? objMatch[0] : raw);
+      setResult(prev=>prev.map((o,i)=>i===idx?{...o,...parsed}:o));
+      setOptionNotes(prev=>({...prev,[idx]:""}));
+    } catch(e) { alert("Sara couldn't regenerate that option — please try again."); }
+    setRegenIdx(null);
   };
 
   const handleChoose = (idx) => {
@@ -3752,12 +3790,12 @@ No markdown, no explanation. Return the JSON array only.`;
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <Ico d={Icons.sparkle} size={16} stroke="var(--accent)"/>
           <div>
-            <p style={{fontSize:13,fontWeight:700}}>AI Content Generator — {typeLabel}</p>
+            <p style={{fontSize:13,fontWeight:700}}>Sara — Content Generator — {typeLabel}</p>
             <p style={{fontSize:11,color:"var(--text3)"}}>3 options · different tones · editable · push to Design</p>
           </div>
         </div>
         <Btn size="sm" onClick={handleGenerate} disabled={generating}>
-          {generating?<><Spinner size={12}/> Generating…</>:<><Ico d={Icons.sparkle} size={12}/>{result?"Regenerate":"Generate 3 Options"}</>}
+          {generating?<><Spinner size={12}/> Sara is now working…</>:<><Ico d={Icons.sparkle} size={12}/>{result?"Regenerate":"Generate 3 Options"}</>}
         </Btn>
       </div>
 
@@ -3890,6 +3928,15 @@ No markdown, no explanation. Return the JSON array only.`;
                 )}
               </div>
             )}
+
+            {/* Feedback + per-option regenerate */}
+            <div style={{padding:"10px 14px",borderTop:"1px solid var(--border)",display:"flex",gap:8}}>
+              <input value={optionNotes[idx]||""} onChange={e=>setOptionNotes(prev=>({...prev,[idx]:e.target.value}))}
+                placeholder="Feedback for Sara on this option (optional)…" style={{flex:1,fontSize:12,padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontFamily:"inherit"}}/>
+              <button onClick={()=>regenerateOption(idx)} disabled={regenIdx===idx} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:8,fontSize:12,fontWeight:700,background:"#10b98111",color:"#10b981",border:"1px solid #10b98166",cursor:regenIdx===idx?"wait":"pointer",whiteSpace:"nowrap",flexShrink:0}}>
+                {regenIdx===idx?<><Spinner size={12}/> Sara is regenerating…</>:<><Ico d={Icons.sparkle} size={12} stroke="#10b981"/> Regenerate</>}
+              </button>
+            </div>
 
             {/* Choose button */}
             <div style={{padding:"10px 14px",borderTop:"1px solid var(--border)",display:"flex",justifyContent:"flex-end"}}>
