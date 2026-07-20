@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.324";
+const APP_VERSION = "beta 5.325";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -2464,7 +2464,7 @@ const GStyle = ({wallpaper="dark", accentColor="#d90b2c", photoIsDark=true}) => 
       display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text3);
       transition:all 0.15s;flex-shrink:0}
     .modal-close:hover{background:var(--border);color:var(--text1)}
-    .modal-body{overflow-y:auto;flex:1;padding:20px 24px}
+    .modal-body{overflow-y:auto;flex:1;padding:20px 24px;-webkit-overflow-scrolling:touch}
     .modal-footer{padding:14px 24px;border-top:1px solid var(--border);background:var(--surface2);flex-shrink:0}
     .modal-handle-bar{display:none}
     /* ── Form sections inside modals ── */
@@ -6058,7 +6058,7 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
             <p style={{fontSize:13,color:"var(--text2)",marginTop:6}}>Sara is now generating your content — {totalCount} pieces</p>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:6,width:"100%",maxWidth:300}}>
-            {["Analyzing campaign brief…","Generating post ideas…","Writing captions…","Distributing dates…"].map((msg,i)=>(
+            {["Checking client brain (brand voice, memory, published posts)…","Analyzing campaign brief…","Generating post ideas…","Writing captions…","Distributing dates…"].map((msg,i)=>(
               <div key={msg} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"var(--surface2)",borderRadius:"var(--rxs)",opacity:0.8}}>
                 <div style={{width:6,height:6,borderRadius:"50%",background:"var(--accent)",animation:"pulse 1s infinite",animationDelay:`${i*0.3}s`}}/>
                 <span style={{fontSize:12,color:"var(--text2)"}}>{msg}</span>
@@ -6079,12 +6079,12 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
             <div style={{display:"flex",gap:5}}>{allPlatformsUsed.map(p=><PChip key={p} platform={p} xs/>)}</div>
           </div>
           <p style={{fontSize:11.5,color:"var(--text3)"}}>Review each item below — approve it, leave feedback for Sara and regenerate, or edit the text directly.</p>
-          <div style={{maxHeight:440,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
+          <div style={{maxHeight:440,overflowY:"auto",display:"flex",flexDirection:"column",gap:6,WebkitOverflowScrolling:"touch"}}>
             {generated.map((task,i)=>{
               const isOpen = expandedIdx===i;
               const isRegen = regenIdx===i;
               return (
-                <div key={task.id} style={{background:"var(--surface2)",borderRadius:"var(--rs)",border:`1px solid ${task.approved?"#10b981aa":"var(--border)"}`,overflow:"hidden"}}>
+                <div key={task.id||i} style={{background:"var(--surface2)",borderRadius:"var(--rs)",border:`1px solid ${task.approved?"#10b981aa":"var(--border)"}`}}>
                   <div onClick={()=>setExpandedIdx(isOpen?null:i)} style={{display:"grid",gridTemplateColumns:"28px 1fr auto auto auto",alignItems:"center",gap:10,padding:"10px 14px",cursor:"pointer"}}>
                     <div style={{width:26,height:26,borderRadius:"50%",background:task.approved?"#10b98122":"var(--accentbg)",border:`1px solid ${task.approved?"#10b981":"var(--accent)33"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:task.approved?"#10b981":"var(--accent)"}}>
                       {task.approved?<Ico d={Icons.check} size={13} stroke="#10b981"/>:i+1}
