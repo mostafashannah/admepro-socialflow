@@ -1086,12 +1086,6 @@ function speedTokens(speed, base) {
   if(speed==="high") return Math.round(base*1.5);
   return base;
 }
-// Free-text house rules for Pro (formatting/behavior preferences), set from
-// Settings → AI & Tokens. Read directly wherever CHATBOT_SYSTEM_PROMPT is
-// built, same convention as model/speed above — no server round-trip needed.
-function getProCustomInstructions() {
-  try { return localStorage.getItem("sf_pro_custom_instructions") || ""; } catch(e) { return ""; }
-}
 // $ per 1M tokens [input, output] — used to accumulate an accurate running cost
 // per call at the price of the model that actually served it, instead of
 // repricing the whole history at whichever model is currently selected.
@@ -1138,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.308";
+const APP_VERSION = "beta 5.309";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19491,7 +19485,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 
       {/* ── AI & TOKENS TAB ── */}
       {settingsTab==="ai_model"&&(
-        <AITokensPanel/>
+        <AITokensPanel appSettings={appSettings} onSaveSettings={onSaveSettings}/>
       )}
 
       {/* ── FEATURE FLAGS TAB ── */}
@@ -19582,7 +19576,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 }
 
 // ── AI & Tokens Panel ──────────────────────────────────────────
-function AITokensPanel() {
+function AITokensPanel({appSettings, onSaveSettings}) {
   const [usage, setUsage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [model, setModel] = useState(() => { try{ return localStorage.getItem("sf_ai_model")||"claude-sonnet-4-6"; }catch(e){return "claude-sonnet-4-6";} });
@@ -19590,10 +19584,11 @@ function AITokensPanel() {
   const [saved, setSaved] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [testing, setTesting] = useState(false);
-  const [customInstructions, setCustomInstructions] = useState(() => getProCustomInstructions());
+  const [customInstructions, setCustomInstructions] = useState(appSettings?.pro_custom_instructions || "");
   const [instrSaved, setInstrSaved] = useState(false);
-  const saveCustomInstructions = () => {
-    try { localStorage.setItem("sf_pro_custom_instructions", customInstructions); } catch(e) {}
+  useEffect(()=>{ setCustomInstructions(appSettings?.pro_custom_instructions || ""); },[appSettings?.pro_custom_instructions]);
+  const saveCustomInstructions = async () => {
+    await onSaveSettings?.({pro_custom_instructions: customInstructions});
     setInstrSaved(true);
     setTimeout(()=>setInstrSaved(false), 2500);
   };
@@ -19742,7 +19737,7 @@ function AITokensPanel() {
       {/* Pro Skills / Custom Instructions */}
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:22}}>
         <p style={{fontWeight:800,fontSize:14,marginBottom:4}}> Pro Skills — Custom Instructions</p>
-        <p style={{fontSize:12,color:"var(--text3)",marginBottom:14}}>Teach Pro how you want it to behave or format answers — these apply to every conversation, everywhere Pro is used. For example: "When I ask for a content calendar, always give it to me as a table with columns Date, Platform, Main Topic, Format." or "Always answer in Arabic first, then English." One instruction per line works well, but plain prose is fine too.</p>
+        <p style={{fontSize:12,color:"var(--text3)",marginBottom:14}}>Teach Pro how you want it to behave or format answers — saved company-wide, so every team member's Pro follows these, on any device. For example: "When I ask for a content calendar, always give it to me as a table with columns Date, Platform, Main Topic, Format." or "Always answer in Arabic first, then English." One instruction per line works well, but plain prose is fine too.</p>
         <textarea value={customInstructions} onChange={e=>setCustomInstructions(e.target.value)}
           placeholder={`e.g.\n- When I ask about a content calendar, reply with a table: Date | Platform | Main Topic | Format\n- Keep captions under 40 words unless I ask for long-form\n- Always flag overdue tasks at the top of any status update`}
           rows={6}
@@ -27538,8 +27533,8 @@ Format answers for readability, not as a wall of text:
 - Keep prose short; let the structure carry the information.
 - Don't decorate your own replies with emojis. Only include an emoji when the user explicitly asks for one, or when you're drafting/quoting actual social content (a caption, post copy) for a client whose brand voice calls for it.
 
-${getProCustomInstructions().trim() ? `═══ CUSTOM INSTRUCTIONS FROM THE ADMIN (follow these — they override the general formatting guidance above wherever they conflict) ═══
-${getProCustomInstructions().trim()}
+${(data?.appSettings?.pro_custom_instructions||"").trim() ? `═══ CUSTOM INSTRUCTIONS FROM THE ADMIN (follow these — they override the general formatting guidance above wherever they conflict) ═══
+${(data.appSettings.pro_custom_instructions||"").trim()}
 ` : ""}
 ═══ RULES ═══
 1. ANSWER EVERYTHING directly. If asked "what tasks are overdue?" — list them. If asked "how many clients?" — tell them. Use the live data above.
@@ -34363,7 +34358,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         <main id="main-content" className="main-content" ref={mainScrollRef}
           style={{flex:1,padding:page==="home"?0:isMobile?"16px":"28px 32px",overflowY:page==="home"?"hidden":"auto",paddingBottom:page==="home"?0:isMobile?84:28,display:"flex",flexDirection:"column",minHeight:0}}>
           {page==="home"&&<ProHomePage
-              currentUser={currentUser} data={data}
+              currentUser={currentUser} data={{...data, appSettings}}
               setPage={setPage}
               onUpsertMemory={upsertClientMemory}
               onDeleteMemory={deleteClientMemory}
@@ -34875,7 +34870,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     {page!=="home" && !sidebarOpen && <Chatbot
       currentUser={currentUser}
       currentPage={page}
-      data={data}
+      data={{...data, appSettings}}
       selectedClientId={selectedClientId}
       onUpsertMemory={upsertClientMemory}
       onAction={(type, payload) => {
