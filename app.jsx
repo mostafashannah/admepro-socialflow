@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.329";
+const APP_VERSION = "beta 5.330";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -27629,6 +27629,15 @@ const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId) => {
       .map(s=>`${s.replace(/_/g," ")}:${cPost.filter(p=>p.stage===s).length}`)
       .filter(s=>!s.endsWith(":0")).join(", ");
     const recentPosts = cPost.slice(0,8).map(p=>` - "${p.title}" [${p.platform||"?"}/${p.post_type||"?"}] stage:${p.stage}${p.caption?` caption:"${(p.caption||"").slice(0,100)}"`:""}`).join("\n");
+    // Focused client gets a dedicated published-content library with FULL-length
+    // captions — the 8-row snippet above mixes all stages and cuts captions at
+    // 100 chars, which left Pro unable to review what actually went live
+    // (topics covered, TOV) even though the data was loaded in the app.
+    const publishedLib = isFocused ? cPost.filter(p=>p.stage==="published"&&p.caption)
+      .sort((a,b)=>new Date(b.published_at||b.scheduled_date||0)-new Date(a.published_at||a.scheduled_date||0))
+      .slice(0,20)
+      .map(p=>` - "${p.title}" [${p.platform||"?"}/${p.post_type||"?"}]${p.published_at||p.scheduled_date?` on ${(p.published_at||p.scheduled_date).slice(0,10)}`:""}\n   Caption: ${(p.caption||"").slice(0,600)}${p.hashtags?`\n   Hashtags: ${p.hashtags}`:""}`)
+      .join("\n") : "";
     // Parse fields that may be JSON-strings or newline-separated strings
     const parseList = (v) => {
       if(!v) return [];
@@ -27706,7 +27715,8 @@ ${knowledgeBlock}
 ${intelBlock}
 ${replyBotBlock}
 ${mem?`MEMORY (key=value):\n${mem.slice(0,memCap)}`:"MEMORY: (empty — say so honestly if asked)"}
-${isFocused && recentPosts?`RECENT POSTS:\n${recentPosts}`:""}`.trim();
+${isFocused && recentPosts?`RECENT POSTS:\n${recentPosts}`:""}
+${publishedLib?`▼ PUBLISHED CONTENT LIBRARY (what actually went live — full captions; use this to review covered topics, TOV, and avoid repeating angles):\n${publishedLib}`:""}`.trim();
   }).join("\n\n");
 
   const teamList = allTeam.slice(0,20).map(m=>`- ${m.name} <${m.email}> [${m.role}]`).join("\n");
