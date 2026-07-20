@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.313";
+const APP_VERSION = "beta 5.314";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -2580,6 +2580,7 @@ const Icons = {
   panelLeft: ["M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z","M9 3v18"],
   eye: ["M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z","M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"],
   edit: ["M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7","M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"],
+  key: ["M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"],
   trash: ["M3 6h18","M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"],
   clock: ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z","M12 6v6l4 2"],
   alert: ["M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z","M12 9v4M12 17h.01"],
@@ -4703,6 +4704,83 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
 // ════════════════════════════════════════════════════════════════
 // ADD POST MODAL — 2-step wizard
 // ════════════════════════════════════════════════════════════════
+// ── Generic work Task — distinct from a social Post: no platform/caption/media,
+// just a piece of work (design, video editing, resizing, a report, ...) that
+// belongs to a project, is due by a date, and is assigned to someone. Stored
+// in the same `posts` table as everything else on the board/calendar (no new
+// table needed) — post_type carries the task category, platform stays empty
+// since it isn't going out to any social platform.
+const TASK_CATEGORIES = [["design","Design"],["video_editing","Video Editing"],["resizing","Resizing"],["report","Report"],["copywriting","Copywriting"],["other","Other"]];
+function AddGenericTaskModal({open,onClose,projects,team,onAdd,presetClient,clients=[]}) {
+  const [pickedClientId,setPickedClientId] = useState("");
+  const activeClientId = presetClient?.id || pickedClientId;
+  const selectableProjects = activeClientId ? projects.filter(p=>p.client_id===activeClientId) : projects;
+  const blank = {title:"",project_id:selectableProjects[0]?.id||"",task_category:"design",description:"",assigned_to:"",due_date:"",priority:"medium"};
+  const [f,setF] = useState({...blank});
+  const [saving,setSaving] = useState(false);
+  const s = (k,v) => setF(p=>({...p,[k]:v}));
+  const canSubmit = f.title.trim() && f.project_id && f.assigned_to && f.due_date;
+  const submit = async () => {
+    if(!canSubmit) return;
+    setSaving(true);
+    const proj = projects.find(p=>p.id===f.project_id);
+    await onAdd({
+      title:f.title, project_id:f.project_id, client_id:proj?.client_id||"", client_name:proj?.client_name||"",
+      description:f.description, assigned_to:f.assigned_to, due_date:f.due_date, priority:f.priority,
+      stage:"planning", platform:"", post_type:f.task_category,
+    });
+    setSaving(false); onClose();
+  };
+  return (
+    <Modal open={open} onClose={onClose} title="New Task">
+      <div style={{display:"flex",flexDirection:"column",gap:14,padding:"14px 0"}}>
+        <Field label="Task Title" required>
+          <input value={f.title} onChange={e=>s("title",e.target.value)} placeholder="e.g. Resize logo for Instagram" style={inputSt} autoFocus/>
+        </Field>
+        {!presetClient&&clients.length>0&&(
+          <Field label="Client">
+            <select value={pickedClientId} onChange={e=>{setPickedClientId(e.target.value);s("project_id","");}} style={inputSt}>
+              <option value="">All clients — pick a project below</option>
+              {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </Field>
+        )}
+        <Field label="Project" required>
+          <select value={f.project_id} onChange={e=>s("project_id",e.target.value)} style={inputSt}>
+            <option value="">— Select project —</option>
+            {selectableProjects.map(p=><option key={p.id} value={p.id}>{p.title} · {p.client_name}</option>)}
+          </select>
+        </Field>
+        <Field label="Task Type">
+          <select value={f.task_category} onChange={e=>s("task_category",e.target.value)} style={inputSt}>
+            {TASK_CATEGORIES.map(([k,l])=><option key={k} value={k}>{l}</option>)}
+          </select>
+        </Field>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <Field label="Assign To" required>
+            <select value={f.assigned_to} onChange={e=>s("assigned_to",e.target.value)} style={inputSt}>
+              <option value="">— Select —</option>
+              {team.map(m=><option key={m.id||m.email} value={m.email}>{m.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Due Date" required>
+            <input type="date" value={f.due_date} onChange={e=>s("due_date",e.target.value)} style={inputSt}/>
+          </Field>
+        </div>
+        <Field label="Priority">
+          <select value={f.priority} onChange={e=>s("priority",e.target.value)} style={inputSt}>
+            <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
+          </select>
+        </Field>
+        <Field label="Description (optional)">
+          <textarea value={f.description} onChange={e=>s("description",e.target.value)} rows={3} style={{...inputSt,resize:"vertical"}}/>
+        </Field>
+        <Btn onClick={submit} disabled={!canSubmit||saving}>{saving?<Spinner size={14}/>:"Create Task"}</Btn>
+      </div>
+    </Modal>
+  );
+}
+
 function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,onUpdateAsset,presetClient,assets=[],allowClientRequest=false,clients=[]}) {
   const [step,setStep] = useState(1);
   // When opened from a client's profile, only that client's projects should be
@@ -5318,7 +5396,7 @@ function FAB({currentUser,onAddClient,onAddCalendar,onAddTask,onCreateInvoice,on
       {label:"Add Client",sub:"Create new client folder",ico:Icons.clients,color:"#d90b2c",action:onAddClient,badge:"PRIMARY"},
       {label:"New Project",sub:"Launch project with smart scheduling",ico:Icons.projects,color:"#6366f1",action:onAddProject},
       {label:"Add Calendar Plan",sub:"Generate content calendar",ico:Icons.calPlus,color:"#3b82f6",action:onAddCalendar},
-      {label:"Add Task",sub:"Create a single post/task",ico:Icons.taskAdd,color:"#8b5cf6",action:onAddTask},
+      {label:"Add Task",sub:"Design, editing, a report, etc. — not a social post",ico:Icons.taskAdd,color:"#8b5cf6",action:onAddTask},
     ]:[]),
     ...(canFinance&&onCreateInvoice?[
       {label:"Create Invoice",sub:"New invoice for a client",ico:Icons.invoice,color:"#10b981",action:onCreateInvoice},
@@ -8140,13 +8218,17 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
   );
 }
 
+// Credential-only platform list — separate from PLATFORMS (used for social
+// posts) since logins also cover things that are never posted to, like the
+// client's own website/hosting/cPanel.
+const CRED_PLATFORMS = [...PLATFORMS,"website","cpanel","hosting","other"];
 // ── Client Logins tab: saved username/password per platform, masked by default ──
 function ClientLoginsTab({client,onUpdateClient}) {
   const [items,setItems] = useState(()=>client.platform_credentials||[]);
   const [revealed,setRevealed] = useState({});
   const [editingIdx,setEditingIdx] = useState(null);
   const [saving,setSaving] = useState(false);
-  const blank = {platform:"instagram",username:"",password:"",notes:""};
+  const blank = {platform:"instagram",other_label:"",username:"",password:"",notes:""};
   const [form,setForm] = useState({...blank});
   const sf = (k,v) => setForm(p=>({...p,[k]:v}));
 
@@ -8158,7 +8240,7 @@ function ClientLoginsTab({client,onUpdateClient}) {
   };
 
   const startAdd = () => { setForm({...blank}); setEditingIdx(-1); };
-  const startEdit = (i) => { setForm({...items[i]}); setEditingIdx(i); };
+  const startEdit = (i) => { setForm({...blank,...items[i]}); setEditingIdx(i); };
   const cancelEdit = () => setEditingIdx(null);
   const saveForm = async () => {
     if(!form.username.trim() && !form.password.trim()) return;
@@ -8187,7 +8269,7 @@ function ClientLoginsTab({client,onUpdateClient}) {
         <div key={i} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"column",gap:8}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
             <span style={{display:"flex",alignItems:"center",gap:8,fontWeight:700,fontSize:13,textTransform:"capitalize"}}>
-              <PChip platform={it.platform}/> {it.platform}
+              <PChip platform={it.platform}/> {it.platform==="other"?(it.other_label||"Other"):it.platform}
             </span>
             <div style={{display:"flex",gap:6}}>
               <button onClick={()=>startEdit(i)} title="Edit" style={{padding:5,borderRadius:6,background:"var(--surface2)",border:"1px solid var(--border2)"}}><Ico d={Icons.edit} size={13} stroke="var(--text2)"/></button>
@@ -8220,9 +8302,12 @@ function ClientLoginsTab({client,onUpdateClient}) {
           <p style={{fontSize:13,fontWeight:700}}>{editingIdx===-1?"Add Login":"Edit Login"}</p>
           <Field label="Platform">
             <select value={form.platform} onChange={e=>sf("platform",e.target.value)} style={inputSt}>
-              {[...PLATFORMS,"other"].map(p=><option key={p} value={p}>{p}</option>)}
+              {CRED_PLATFORMS.map(p=><option key={p} value={p}>{({website:"Website",cpanel:"cPanel",hosting:"Hosting",other:"Other"})[p]||p}</option>)}
             </select>
           </Field>
+          {form.platform==="other"&&(
+            <Field label="What is it?"><input value={form.other_label} onChange={e=>sf("other_label",e.target.value)} placeholder="e.g. Domain registrar, Google Ads account" style={inputSt}/></Field>
+          )}
           <Field label="Username / Email"><input value={form.username} onChange={e=>sf("username",e.target.value)} style={inputSt}/></Field>
           <Field label="Password"><input value={form.password} onChange={e=>sf("password",e.target.value)} style={inputSt}/></Field>
           <Field label="Notes (optional)"><input value={form.notes} onChange={e=>sf("notes",e.target.value)} placeholder="e.g. 2FA on Mostafa's phone" style={inputSt}/></Field>
@@ -8236,7 +8321,7 @@ function ClientLoginsTab({client,onUpdateClient}) {
   );
 }
 
-function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,onAddCalendar,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient}) {
+function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,onAddCalendar,onAddTask,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient}) {
   const {isMobile} = useResponsive();
   // Plain state, not persisted — opening any client should always start on
   // Overview, not silently reopen to whatever tab was last viewed for them.
@@ -8244,6 +8329,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
   const [showEdit,setShowEdit] = useState(false);
   const [confirmDelete,setConfirmDelete] = useState(false);
   const [showAddMenu,setShowAddMenu] = useState(false);
+  const [showLogins,setShowLogins] = useState(false);
   const [brainSubTab,setBrainSubTab] = useState("profile");
   const cProjects = projects.filter(p=>p.client_id===client.id||p.client_name===client.name);
   // Client Requests have no project yet (assigned when moved to Brief) —
@@ -8273,7 +8359,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
     ["assets","Assets"],
     ...(isPriv?[["inbox",`Inbox${cMessagesNeedReplyCount?` (${cMessagesNeedReplyCount})`:""}`]]:[]),
     ...(isPriv?[["meta_insights","Meta Insights"]]:[]),
-    ...(isPriv?[["brain","Client Brain"],["leads",`Leads${clientLeads.length?` (${clientLeads.length})`:""}`],["logins","Logins"]]:[]),
+    ...(isPriv?[["brain","Client Brain"],["leads",`Leads${clientLeads.length?` (${clientLeads.length})`:""}`]]:[]),
   ];
 
   if(showEdit) {
@@ -8315,6 +8401,12 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
               <Ico d={Icons.edit} size={15} stroke="var(--text2)"/>
             </button>
           )}
+          {isPriv&&(
+            <button onClick={()=>setShowLogins(true)} aria-label="Logins" title="Saved Logins"
+              style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
+              <Ico d={Icons.key} size={15} stroke="var(--text2)"/>
+            </button>
+          )}
           {isAdmin&&(
             <button onClick={()=>onToggleHide&&onToggleHide(client.id,client.status)} aria-label={client.status==="hidden"?"Restore":"Hide"}
               title={client.status==="hidden"?"Restore":"Hide"}
@@ -8323,7 +8415,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
             </button>
           )}
           <div style={{position:"relative"}}>
-            <button onClick={()=>setShowAddMenu(v=>!v)} aria-label="Add" title="Add Project, Task, or Calendar Plan"
+            <button onClick={()=>setShowAddMenu(v=>!v)} aria-label="Add" title="Add Project, Post, Task, or Calendar Plan"
               style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
               <Ico d={Icons.plus} size={16} stroke="#fff"/>
             </button>
@@ -8335,8 +8427,13 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
                     <Ico d={Icons.projects} size={14} stroke="var(--text2)"/> Project
                   </button>
                   <button onClick={()=>{setShowAddMenu(false);onAddPost();}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"10px 14px",fontSize:13,fontWeight:600,color:"var(--text)",background:"none",border:"none",cursor:"pointer",textAlign:"left",borderTop:"1px solid var(--border)"}}>
-                    <Ico d={Icons.tasks} size={14} stroke="var(--text2)"/> Task
+                    <Ico d={Icons.tasks} size={14} stroke="var(--text2)"/> Post
                   </button>
+                  {onAddTask&&(
+                    <button onClick={()=>{setShowAddMenu(false);onAddTask();}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"10px 14px",fontSize:13,fontWeight:600,color:"var(--text)",background:"none",border:"none",cursor:"pointer",textAlign:"left",borderTop:"1px solid var(--border)"}}>
+                      <Ico d={Icons.check||Icons.tasks} size={14} stroke="var(--text2)"/> Task
+                    </button>
+                  )}
                   {onAddCalendar&&(
                     <button onClick={()=>{setShowAddMenu(false);onAddCalendar();}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"10px 14px",fontSize:13,fontWeight:600,color:"var(--text)",background:"none",border:"none",cursor:"pointer",textAlign:"left",borderTop:"1px solid var(--border)"}}>
                       <Ico d={Icons.calPlus} size={14} stroke="var(--text2)"/> Calendar Plan
@@ -8545,7 +8642,14 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
 
       {tab==="leads"&&<ClientLeadsTab clientLeads={clientLeads} clientName={client.name} clientId={client.id} notifySettings={leadNotifySettings.filter(s=>s.client_id===client.id)} onSaveNotifySetting={onSaveLeadNotifySetting} canEditSettings onDeleteLead={currentUser?.role==="admin"?onDeleteLead:null}/>}
 
-      {tab==="logins"&&<ClientLoginsTab client={client} onUpdateClient={onUpdateClient}/>}
+      {/* Saved Logins — opened from the key icon in the header, not a tab */}
+      {showLogins&&(
+        <Modal open onClose={()=>setShowLogins(false)} title="Saved Logins">
+          <div style={{padding:"14px 0"}}>
+            <ClientLoginsTab client={client} onUpdateClient={onUpdateClient}/>
+          </div>
+        </Modal>
+      )}
 
       {/* Delete Confirm */}
       {confirmDelete&&(
@@ -31871,6 +31975,8 @@ function App() {
   const [showAddProject,setShowAddProject] = useState(false);
   const [showCreateBrief,setShowCreateBrief] = useState(false);
   const [addPostForClient,setAddPostForClient] = useState(null);
+  const [showAddTask,setShowAddTask] = useState(false);
+  const [addTaskForClient,setAddTaskForClient] = useState(null);
   // FAB workflow state
   const [showFABClient,setShowFABClient] = useState(false);
   const [showFABCalendar,setShowFABCalendar] = useState(false);
@@ -34252,6 +34358,7 @@ Return ONLY valid JSON (no markdown, no explanation):
               onBack={()=>{ try{ window.history.back(); }catch(e){ setSelectedClientId(null); } }} onPostClick={setSelectedPost}
               onAddProject={()=>setShowAddProject(true)}
               onAddPost={()=>{setAddPostForClient(selectedClient);setShowAddPost(true);}}
+              onAddTask={()=>{setAddTaskForClient(selectedClient);setShowAddTask(true);}}
               onAddCalendar={()=>{setCalendarPreselectedClient(selectedClient);setShowFABCalendar(true);}}
               clientKnowledge={data.clientKnowledge}
               clientDocuments={data.clientDocuments}
@@ -34613,6 +34720,8 @@ Return ONLY valid JSON (no markdown, no explanation):
     {/* Add Post */}
     {showAddPost&&<AddPostModal open onClose={()=>{setShowAddPost(false);setAddPostForClient(null);}} projects={data.projects} team={data.team} onAdd={addPost} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} presetClient={addPostForClient} assets={data.assets||[]}/>}
 
+    {showAddTask&&<AddGenericTaskModal open onClose={()=>{setShowAddTask(false);setAddTaskForClient(null);}} projects={data.projects} team={data.team} onAdd={addPost} presetClient={addTaskForClient} clients={data.clients}/>}
+
     {/* New Project Wizard — used by FAB, Dashboard, Projects page */}
     {(showFABProject||showAddProject)&&<ProjectWizard
       onClose={()=>{setShowFABProject(false);setShowAddProject(false);}}
@@ -34641,18 +34750,15 @@ Return ONLY valid JSON (no markdown, no explanation):
       clientMemoryList={data.clientMemory||[]}
     />}
 
-    {/* FAB — Add Task (same modal used everywhere else, e.g. from a client's
-        profile — no more separate/stale duplicate here) */}
-    {showFABTask&&<AddPostModal open
+    {/* FAB — Add Task: a piece of internal work (design, editing, a report, ...),
+        distinct from a social Post — same generic-task modal used from a client's
+        profile page. */}
+    {showFABTask&&<AddGenericTaskModal open
       onClose={()=>setShowFABTask(false)}
       clients={data.clients}
       projects={data.projects}
       team={data.team}
-      onAdd={async d=>{ await addPost(d); setToast("Task created and added to calendar"); }}
-      onAddReady={addReadyContent}
-      onAddAsset={addAsset}
-      onUpdateAsset={updateAsset}
-      assets={data.assets||[]}
+      onAdd={async d=>{ await addPost(d); setToast("Task created"); }}
     />}
 
     {/* Monthly Brief — Create Modal */}
