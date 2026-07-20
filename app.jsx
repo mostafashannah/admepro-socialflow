@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.339";
+const APP_VERSION = "beta 5.340";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -34742,8 +34742,10 @@ Valid priorities: low, medium, high
 ${user?.name||"A teammate"} just wrote: "${triggerContent}"
 
 Decide if a real action was requested. Return ONLY valid JSON (no markdown):
-{"reply":"your short in-thread reply, addressed to them","action":{"type":"assign"|"change_stage"|"set_due_date"|"set_priority"|"none","email":"...","stage":"...","date":"YYYY-MM-DD","priority":"..."}}
-Only include the action fields relevant to its type. Use type "none" if nothing actionable was asked — just chat normally in "reply". Never invent an email or stage not in the lists above.`;
+{"reply":"your short in-thread reply, addressed to them","action":{"type":"assign"|"change_stage"|"set_due_date"|"set_priority"|"ask_sara"|"none","email":"...","stage":"...","date":"YYYY-MM-DD","priority":"...","request":"..."}}
+Only include the action fields relevant to its type. Use "ask_sara" (with "request" set to a one-line summary of what's needed) if they want Sara to write/resend content — you cannot write captions yourself, only hand the request to her; she'll post her own reply right after yours. Use type "none" if nothing actionable was asked — just chat normally in "reply".
+
+CRITICAL: Never invent, guess, or hallucinate an email address, a person's name, or a stage that isn't explicitly in the lists above. If you don't actually know something (e.g. you can't literally "ping" someone outside the actions listed here), say so plainly in "reply" instead of making up a plausible-sounding detail.`;
       const res = await ai(prompt, 600);
       const match = res.match(/\{[\s\S]*\}/);
       const parsed = JSON.parse(match ? match[0] : res);
@@ -34761,6 +34763,8 @@ Only include the action fields relevant to its type. Use type "none" if nothing 
       } else if(action.type==="set_priority" && ["low","medium","high"].includes(action.priority)) {
         setData(d=>({...d,posts:d.posts.map(p=>p.id===post.id?{...p,priority:action.priority}:p)})); ue("Post",post.id,{priority:action.priority}).catch(()=>{});
         actionNote = `Priority set to ${action.priority}.`;
+      } else if(action.type==="ask_sara") {
+        actionNote = `Looping in Sara.`;
       }
       const replyText = (parsed.reply||"On it.") + (actionNote?`\n\n_${actionNote}_`:"");
       const payload = {post_id:post.id, content:replyText, author_name:"Pro", author_email:"pro@ai.socialflow", type:"ai_reply", audience:"internal"};
@@ -34768,6 +34772,11 @@ Only include the action fields relevant to its type. Use type "none" if nothing 
       setData(d=>({...d,comments:[...d.comments,local]}));
       ce("Comment",[payload]).then(r=>{ const real=r.entities?.[0]; if(real?.id) setData(d=>({...d,comments:d.comments.map(c=>c.id===local.id?{...c,...real}:c)})); }).catch(()=>{});
       logActivity(`Pro: ${actionNote||"Comment reply"} — ${post.title}`,"agents",`[agent:pro] ${post.title}${actionNote?` — ${actionNote}`:""}`,"success","","agent");
+      // A real handoff, not a fabricated mention — Sara gets Pro's own summary
+      // of what's needed as her trigger, and posts her own reply right after his.
+      if(action.type==="ask_sara") {
+        replySaraInComment(post, project, action.request||triggerContent, {name:"Pro"});
+      }
     } catch(e) {
       logActivity(`Pro: Comment reply — ${post.title}`,"agents",`[agent:pro] ${post.title}`,"error",String(e.message).slice(0,200),"agent");
     }
