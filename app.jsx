@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.314";
+const APP_VERSION = "beta 5.315";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -8223,7 +8223,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
 // client's own website/hosting/cPanel.
 const CRED_PLATFORMS = [...PLATFORMS,"website","cpanel","hosting","other"];
 // ── Client Logins tab: saved username/password per platform, masked by default ──
-function ClientLoginsTab({client,onUpdateClient}) {
+function ClientLoginsTab({client,onUpdateClient,canEdit=false}) {
   const [items,setItems] = useState(()=>client.platform_credentials||[]);
   const [revealed,setRevealed] = useState({});
   const [editingIdx,setEditingIdx] = useState(null);
@@ -8257,8 +8257,8 @@ function ClientLoginsTab({client,onUpdateClient}) {
   return (
     <div style={{display:"flex",flexDirection:"column",gap:14,maxWidth:640}} className="fade-in">
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <p style={{fontSize:12,color:"var(--text3)"}}>Saved usernames/passwords for this client's platforms — visible to admins and account managers only.</p>
-        {editingIdx===null&&<Btn size="sm" onClick={startAdd}><Ico d={Icons.plus} size={13}/> Add Login</Btn>}
+        <p style={{fontSize:12,color:"var(--text3)"}}>Saved usernames/passwords for this client's platforms — visible to admins and account managers, editable by admins only.</p>
+        {canEdit&&editingIdx===null&&<Btn size="sm" onClick={startAdd}><Ico d={Icons.plus} size={13}/> Add Login</Btn>}
       </div>
 
       {items.length===0&&editingIdx===null&&(
@@ -8271,10 +8271,12 @@ function ClientLoginsTab({client,onUpdateClient}) {
             <span style={{display:"flex",alignItems:"center",gap:8,fontWeight:700,fontSize:13,textTransform:"capitalize"}}>
               <PChip platform={it.platform}/> {it.platform==="other"?(it.other_label||"Other"):it.platform}
             </span>
-            <div style={{display:"flex",gap:6}}>
-              <button onClick={()=>startEdit(i)} title="Edit" style={{padding:5,borderRadius:6,background:"var(--surface2)",border:"1px solid var(--border2)"}}><Ico d={Icons.edit} size={13} stroke="var(--text2)"/></button>
-              <button onClick={()=>removeItem(i)} title="Delete" style={{padding:5,borderRadius:6,background:"var(--surface2)",border:"1px solid var(--border2)"}}><Ico d={Icons.trash} size={13} stroke="#ef4444"/></button>
-            </div>
+            {canEdit&&(
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={()=>startEdit(i)} title="Edit" style={{padding:5,borderRadius:6,background:"var(--surface2)",border:"1px solid var(--border2)"}}><Ico d={Icons.edit} size={13} stroke="var(--text2)"/></button>
+                <button onClick={()=>removeItem(i)} title="Delete" style={{padding:5,borderRadius:6,background:"var(--surface2)",border:"1px solid var(--border2)"}}><Ico d={Icons.trash} size={13} stroke="#ef4444"/></button>
+              </div>
+            )}
           </div>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:11,color:"var(--text3)",width:70,flexShrink:0}}>Username</span>
@@ -8646,7 +8648,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
       {showLogins&&(
         <Modal open onClose={()=>setShowLogins(false)} title="Saved Logins">
           <div style={{padding:"14px 0"}}>
-            <ClientLoginsTab client={client} onUpdateClient={onUpdateClient}/>
+            <ClientLoginsTab client={client} onUpdateClient={onUpdateClient} canEdit={isAdmin}/>
           </div>
         </Modal>
       )}
