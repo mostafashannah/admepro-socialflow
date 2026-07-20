@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.330";
+const APP_VERSION = "beta 5.331";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5835,6 +5835,12 @@ function AddCalendarPlanModal({open,onClose,clients,team,preselectedClient,onGen
         ? `These are ephemeral, very short and casual (1 punchy line each, no hashtags needed).`
         : `These are normal short-form social posts (image/carousel/reel caption).`;
       try {
+        // Scale the output budget to the batch size (and give articles much
+        // more room — "several paragraphs" each) — the previous flat 1000
+        // default routinely truncated the JSON array mid-response, which
+        // failed JSON.parse below and silently fell back to placeholder text
+        // even though the API call itself succeeded (hence a clean Agent Log).
+        const genMaxTokens = Math.min(8000, 400 + cfg.count * (kind==="article" ? 900 : kind==="story" ? 150 : 300));
         const aiRes = await agentAI("content_creator", `Calendar plan (${kind}): ${f.campaign}`, `You are Sara, a senior content creator working under Pro's supervision. Before writing anything, review the ENTIRE client brain below — especially recently published posts — this is mandatory, not optional. Generate ${cfg.count} "${kind}" content ideas for:
 ${clientCtxBlock}
 Campaign: ${f.campaign}
@@ -5850,7 +5856,7 @@ Return ONLY a JSON array with ${cfg.count} objects, each having:
 - "caption": for posts/stories — an engaging caption (1-3 sentences). For articles — the full long-form body text (several paragraphs).
 - "hashtags": 3-5 relevant hashtags (empty string for stories)
 
-No markdown, no explanation, just the JSON array.`);
+No markdown, no explanation, just the JSON array.`, genMaxTokens);
         // Extract the array specifically rather than requiring the whole
         // response to be pure JSON — the model sometimes adds a stray
         // sentence before/after despite instructions, which would otherwise
@@ -5929,7 +5935,7 @@ ${note?`FEEDBACK FROM THE TEAM — apply this: ${note}`:"The team asked for a fr
 
 ${kindGuide}
 
-Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":"..."}`, 700);
+Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":"..."}`, kind==="article"?2500:700);
       const match = aiRes.match(/\{[\s\S]*\}/);
       const idea = JSON.parse(match ? match[0] : aiRes);
       setGenerated(prev=>prev.map((t,i)=>i===idx?{...t,title:idea.title||t.title,caption:idea.caption||t.caption,hashtags:idea.hashtags??t.hashtags,approved:false}:t));
@@ -7335,7 +7341,7 @@ Return ONLY a JSON array of ${ideasCount} objects, each with:
 - "angle": the content angle/approach (e.g. educational, behind-the-scenes, testimonial)
 - "platform_tip": one specific tip for ${ideasPlatform}
 
-No markdown, no explanation. Just the JSON array.`);
+No markdown, no explanation. Just the JSON array.`, Math.min(4000, 300+parseInt(ideasCount||5)*250));
       const ideasMatch = (result||"").match(/\[[\s\S]*\]/);
       const parsed = JSON.parse(ideasMatch ? ideasMatch[0] : (result||""));
       setIdeasResult(Array.isArray(parsed)?parsed:[]);
