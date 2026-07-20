@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.319";
+const APP_VERSION = "beta 5.320";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1698,7 +1698,7 @@ const ai = async (prompt, maxTokens=1000) => {
 const AI_AGENT_DEFS = [
   {id:"pro", name:"Pro — AI Supervisor", color:"#d90b2c",
    description:"The supervisor agent. Chats with the team, oversees the other agents, and answers using live workspace data. Its model/speed and Pro Skills are configured below."},
-  {id:"content_creator", name:"Senior Content Creator", color:"#10b981",
+  {id:"content_creator", name:"Sara — Senior Content Creator", color:"#10b981",
    description:"Works under Pro's supervision on Add Calendar Plan and post content creation — writes post ideas, captions, articles, and stories in the client's brand voice."},
   {id:"lead_generation", name:"Lead Generation Agent", color:"#6366f1",
    description:"Works under Pro's supervision searching for new B2B leads — finds and enriches prospects matching your targeting criteria."},
@@ -5644,29 +5644,41 @@ function AddClientWorkflowModal({open,onClose,onAdd,onGoToCalendar}) {
 // ════════════════════════════════════════════════════════════════
 // ADD CALENDAR PLAN MODAL
 // ════════════════════════════════════════════════════════════════
+const CALENDAR_KIND_DEFS = [
+  ["post","Posts","Short-form image/carousel/reel captions"],
+  ["article","Articles","Long-form, e.g. LinkedIn articles"],
+  ["story","Stories","Ephemeral, one punchy line each"],
+];
 function AddCalendarPlanModal({open,onClose,clients,team,preselectedClient,onGenerate,clientKnowledgeList,clientIntelligenceList,clientMemoryList}) {
   const [step,setStep] = useState("form"); // form | generating | preview | done
+  const makeKindDefaults = (count) => ({count, platforms:preselectedClient?.platforms||[], brief:"", assigned_to:""});
   const [f,setF] = useState({
     client_id: preselectedClient?.id||"",
     campaign: "",
     date_from: "",
     date_to: "",
-    num_posts: 8,
-    num_articles: 0,
-    num_stories: 0,
-    platforms: preselectedClient?.platforms||[],
-    brief: "",
-    assigned_to: "",
+    kinds: {
+      post: makeKindDefaults(8),
+      article: makeKindDefaults(0),
+      story: makeKindDefaults(0),
+    },
   });
   const [generated,setGenerated] = useState([]);
   const [aiIdeas,setAiIdeas] = useState([]);
   const s = (k,v) => setF(p=>({...p,[k]:v}));
-  const togglePlt = p => s("platforms",f.platforms.includes(p)?f.platforms.filter(x=>x!==p):[...f.platforms,p]);
+  const sk = (kind,key,val) => setF(p=>({...p,kinds:{...p.kinds,[kind]:{...p.kinds[kind],[key]:val}}}));
+  const togglePlt = (kind,p) => sk(kind,"platforms", f.kinds[kind].platforms.includes(p) ? f.kinds[kind].platforms.filter(x=>x!==p) : [...f.kinds[kind].platforms,p]);
+  const activeKinds = CALENDAR_KIND_DEFS.map(([k])=>k).filter(k=>f.kinds[k].count>0);
+  const totalCount = activeKinds.reduce((sum,k)=>sum+f.kinds[k].count,0);
+  const allPlatformsUsed = [...new Set(activeKinds.flatMap(k=>f.kinds[k].platforms))];
+  const canGenerate = f.client_id && f.campaign && f.date_from && f.date_to && totalCount>0 && activeKinds.every(k=>f.kinds[k].platforms.length>0);
 
   // When preselectedClient changes, update form
   useEffect(()=>{
     if(preselectedClient){
-      setF(ff=>({...ff,client_id:preselectedClient.id,platforms:preselectedClient.platforms||[]}));
+      setF(ff=>({...ff,client_id:preselectedClient.id,
+        kinds: Object.fromEntries(Object.entries(ff.kinds).map(([k,v])=>[k,{...v,platforms:preselectedClient.platforms||[]}]))
+      }));
     }
   },[preselectedClient]);
 
@@ -5690,39 +5702,31 @@ function AddCalendarPlanModal({open,onClose,clients,team,preselectedClient,onGen
   };
 
   const handleGenerate = async () => {
-    const totalCount = f.num_posts+f.num_articles+f.num_stories;
-    if(!f.client_id||!f.campaign||!f.date_from||!f.date_to||f.platforms.length===0||totalCount===0) return;
+    if(!canGenerate) return;
     setStep("generating");
 
     // Distribute every piece of content across dates, but interleave the
-    // three content kinds evenly rather than grouping them into blocks (e.g.
+    // active content kinds evenly rather than grouping them into blocks (e.g.
     // 6 posts + 2 articles + 4 stories shouldn't put all posts first) —
-    // built by round-robin-ing each kind's own slice of the date range.
+    // built by round-robin-ing each kind's own share of the date range.
     const dates = distributeDates(f.date_from,f.date_to,totalCount);
     const kindQueue = [];
-    let pi=0, ai_=0, si=0;
+    const done = {post:0,article:0,story:0};
     for(let i=0;i<totalCount;i++){
-      const remaining = {post:f.num_posts-pi, article:f.num_articles-ai_, story:f.num_stories-si};
-      const pick = remaining.post/(f.num_posts||1) >= remaining.article/(f.num_articles||1) && remaining.post/(f.num_posts||1) >= remaining.story/(f.num_stories||1) && remaining.post>0
-        ? "post" : remaining.article/(f.num_articles||1) >= remaining.story/(f.num_stories||1) && remaining.article>0
-        ? "article" : "story";
-      kindQueue.push(pick);
-      if(pick==="post") pi++; else if(pick==="article") ai_++; else si++;
+      let best=null, bestRatio=-1;
+      for(const k of activeKinds){
+        const ratio = (f.kinds[k].count-done[k])/f.kinds[k].count;
+        if(done[k]<f.kinds[k].count && ratio>bestRatio){ bestRatio=ratio; best=k; }
+      }
+      kindQueue.push(best); done[best]++;
     }
-    const platformCycle = f.platforms;
     const postTypes = ["image","carousel","reel"];
-    const linkedinOrFirst = f.platforms.includes("linkedin") ? "linkedin" : f.platforms[0];
 
-    // Generate AI ideas
-    let ideas = [];
-    try {
-      // Inject client context if available
-      const clientKnow = (clients||[]).find ? undefined : undefined; // resolved below via prop
-      const selClient = clients?.find?.(c=>c.id===f.client_id);
-      const selKnow = (clientKnowledgeList||[]).find(k=>k.client_id===selClient?.id);
-      const selIntel = (clientIntelligenceList||[]).find(i=>i.client_id===selClient?.id);
-      const memBlock = selClient?.id ? formatClientMemory(selClient.id, clientMemoryList||[]) : "";
-      const clientCtxBlock = selClient ? `
+    const selClient = clients?.find?.(c=>c.id===f.client_id);
+    const selKnow = (clientKnowledgeList||[]).find(k=>k.client_id===selClient?.id);
+    const selIntel = (clientIntelligenceList||[]).find(i=>i.client_id===selClient?.id);
+    const memBlock = selClient?.id ? formatClientMemory(selClient.id, clientMemoryList||[]) : "";
+    const clientCtxBlock = selClient ? `
 === CLIENT CONTEXT ===
 Client: ${selClient.name}
 Industry: ${selClient.industry||""}
@@ -5735,61 +5739,72 @@ ${memBlock ? `CLIENT MEMORY (highest priority — always follow):\n${memBlock}` 
 Context: ${(selKnow?.context_file||"").slice(0,400)}
 ===` : "";
 
-      const kindCounts = kindQueue.reduce((s,k)=>({...s,[k]:(s[k]||0)+1}),{});
-      const aiRes = await agentAI("content_creator", `Calendar plan: ${f.campaign}`, `You are a senior content creator working under Pro's supervision. Generate content ideas for:
+    // Generate ideas per kind, each with its OWN brief/platforms/assignee.
+    const ideasByKind = {};
+    for(const kind of activeKinds){
+      const cfg = f.kinds[kind];
+      const kindGuide = kind==="article"
+        ? `These are long-form pieces (e.g. a LinkedIn article) — give each a real headline and a longer, structured body (several paragraphs), not a short caption.`
+        : kind==="story"
+        ? `These are ephemeral, very short and casual (1 punchy line each, no hashtags needed).`
+        : `These are normal short-form social posts (image/carousel/reel caption).`;
+      try {
+        const aiRes = await agentAI("content_creator", `Calendar plan (${kind}): ${f.campaign}`, `You are Sara, a senior content creator working under Pro's supervision. Generate ${cfg.count} "${kind}" content ideas for:
 ${clientCtxBlock}
 Campaign: ${f.campaign}
-Brief: ${f.brief||"General social media content"}
-Platforms: ${f.platforms.join(", ")}
+Brief for this content type: ${cfg.brief||f.campaign}
+Platforms: ${cfg.platforms.join(", ")}
 
-Generate exactly ${totalCount} ideas in this order: ${kindQueue.join(", ")}
-- "post" items are normal short-form social posts (image/carousel/reel caption).
-- "article" items are long-form pieces (e.g. a LinkedIn article) — give them a real headline and a longer, structured body (several paragraphs), not a short caption.
-- "story" items are ephemeral, very short and casual (1 punchy line, no hashtags needed).
+${kindGuide}
 
 IMPORTANT: Make each idea match the client's brand voice and preferences above. Be specific to their industry and audience.
 
-Return ONLY a JSON array with ${totalCount} objects IN THE SAME ORDER as the list above, each having:
-- "type": one of "post"/"article"/"story" (must match the order given)
+Return ONLY a JSON array with ${cfg.count} objects, each having:
 - "title": short title (max 8 words)
-- "caption": for "post"/"story" — an engaging caption (1-3 sentences). For "article" — the full long-form body text (several paragraphs).
-- "hashtags": 3-5 relevant hashtags (empty string for "story")
+- "caption": for posts/stories — an engaging caption (1-3 sentences). For articles — the full long-form body text (several paragraphs).
+- "hashtags": 3-5 relevant hashtags (empty string for stories)
 
 No markdown, no explanation, just the JSON array.`);
-      const clean = aiRes.replace(/```json|```/g,"").trim();
-      ideas = JSON.parse(clean);
-    } catch(e) {
-      // fallback generic ideas
-      ideas = kindQueue.map((kind,i)=>({
-        type:kind,
-        title:`${kind.charAt(0).toUpperCase()+kind.slice(1)} ${i+1} — ${f.campaign}`,
-        caption:`Exciting ${kind} content for ${f.campaign}. Stay tuned for more updates!`,
-        hashtags: kind==="story" ? "" : `#${f.campaign.toLowerCase().replace(/\s+/g,"")} #socialmedia`,
-      }));
+        const clean = aiRes.replace(/```json|```/g,"").trim();
+        ideasByKind[kind] = JSON.parse(clean);
+      } catch(e) {
+        ideasByKind[kind] = Array.from({length:cfg.count},(_,i)=>({
+          title:`${kind.charAt(0).toUpperCase()+kind.slice(1)} ${i+1} — ${f.campaign}`,
+          caption:`Exciting ${kind} content for ${f.campaign}. Stay tuned for more updates!`,
+          hashtags: kind==="story" ? "" : `#${f.campaign.toLowerCase().replace(/\s+/g,"")} #socialmedia`,
+        }));
+      }
     }
 
+    const cursor = {post:0,article:0,story:0};
+    const platformCursor = {post:0,article:0,story:0};
     const tasks = dates.map((date,i)=>{
       const kind = kindQueue[i];
+      const idea = ideasByKind[kind]?.[cursor[kind]]; cursor[kind]++;
+      const plats = f.kinds[kind].platforms;
+      const platform = kind==="article"
+        ? (plats.includes("linkedin")?"linkedin":plats[0])
+        : plats[platformCursor[kind]++ % plats.length];
       return {
         id: uid(),
-        title: ideas[i]?.title||`${kind} ${i+1}`,
-        caption: ideas[i]?.caption||"",
-        hashtags: ideas[i]?.hashtags||"",
+        title: idea?.title||`${kind} ${i+1}`,
+        caption: idea?.caption||"",
+        hashtags: idea?.hashtags||"",
         scheduled_date: date,
         scheduled_time: ["09:00","12:00","15:00","18:00","20:00"][i%5],
-        platform: kind==="article" ? linkedinOrFirst : platformCycle[i%platformCycle.length],
+        platform,
         post_type: kind==="article" ? "article" : kind==="story" ? "story" : postTypes[i%postTypes.length],
         stage: "planning",
         priority: i<2?"high":"medium",
         client_id: f.client_id,
         client_name: selectedClient?.name||"",
-        assigned_to: f.assigned_to||"",
+        assigned_to: f.kinds[kind].assigned_to||"",
         project_name: f.campaign,
         status:"pending",
       };
     });
 
-    setAiIdeas(ideas);
+    setAiIdeas(Object.values(ideasByKind).flat());
     setGenerated(tasks);
     setStep("preview");
   };
@@ -5818,7 +5833,7 @@ No markdown, no explanation, just the JSON array.`);
               <select value={f.client_id} onChange={e=>{
                 s("client_id",e.target.value);
                 const c=clients.find(x=>x.id===e.target.value);
-                if(c&&c.platforms?.length) s("platforms",c.platforms);
+                if(c&&c.platforms?.length) setF(p=>({...p,kinds:Object.fromEntries(Object.entries(p.kinds).map(([k,v])=>[k,{...v,platforms:c.platforms}]))}));
               }} style={inputSt}>
                 <option value="">— Select Client —</option>
                 {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
@@ -5833,55 +5848,66 @@ No markdown, no explanation, just the JSON array.`);
             <Field label="End Date" required>
               <input type="date" value={f.date_to} onChange={e=>s("date_to",e.target.value)} style={inputSt}/>
             </Field>
-            <Field label="Number of Posts">
-              <select value={f.num_posts} onChange={e=>s("num_posts",parseInt(e.target.value))} style={inputSt}>
-                {[0,2,4,6,8,10,12,15,20,24,30].map(n=><option key={n} value={n}>{n} posts</option>)}
-              </select>
-            </Field>
-            <Field label="Number of Articles" hint="Long-form, e.g. LinkedIn articles">
-              <select value={f.num_articles} onChange={e=>s("num_articles",parseInt(e.target.value))} style={inputSt}>
-                {[0,1,2,3,4,5,6,8,10].map(n=><option key={n} value={n}>{n} articles</option>)}
-              </select>
-            </Field>
-            <Field label="Number of Stories">
-              <select value={f.num_stories} onChange={e=>s("num_stories",parseInt(e.target.value))} style={inputSt}>
-                {[0,2,4,6,8,10,12,15,20].map(n=><option key={n} value={n}>{n} stories</option>)}
-              </select>
-            </Field>
-            <Field label="Assign All To">
-              <select value={f.assigned_to} onChange={e=>s("assigned_to",e.target.value)} style={inputSt}>
-                <option value="">— Unassigned —</option>
-                {team.map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
-              </select>
-            </Field>
           </div>
-          <Field label="Platforms" required>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              {PLATFORMS.map(p=>(
-                <button key={p} onClick={()=>togglePlt(p)} style={{
-                  display:"flex",alignItems:"center",gap:5,
-                  padding:"7px 14px",borderRadius:99,fontSize:12,fontWeight:700,
-                  border:`1.5px solid ${f.platforms.includes(p)?PLT_COLOR[p]:"var(--border2)"}`,
-                  background:f.platforms.includes(p)?PLT_COLOR[p]+"22":"var(--surface2)",
-                  color:f.platforms.includes(p)?PLT_COLOR[p]:"var(--text2)",
-                  transition:"all 0.15s",
-                }}>
-                  {f.platforms.includes(p)&&<Ico d={Icons.check} size={11} stroke={PLT_COLOR[p]}/>}
-                  {p.charAt(0).toUpperCase()+p.slice(1)}
-                </button>
-              ))}
-            </div>
-          </Field>
-          <Field label="General Brief" hint="Describe the campaign goal, tone, key messages — AI will use this">
-            <textarea value={f.brief} onChange={e=>s("brief",e.target.value)} rows={3} placeholder="e.g. Ramadan campaign to promote our new product line. Warm, inspirational tone. Focus on family values and community." style={inputSt}/>
-          </Field>
+
+          {/* Per-content-type: count, platforms, assignee, brief — each independent */}
+          {CALENDAR_KIND_DEFS.map(([kind,label,hint])=>{
+            const cfg = f.kinds[kind];
+            const countOptions = kind==="article" ? [0,1,2,3,4,5,6,8,10] : [0,2,4,6,8,10,12,15,20,24,30];
+            return (
+              <div key={kind} style={{border:"1px solid var(--border)",borderRadius:"var(--rs)",padding:14,display:"flex",flexDirection:"column",gap:10,background:cfg.count>0?"var(--surface2)":"transparent"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <p style={{fontWeight:700,fontSize:13}}>{label}</p>
+                  <span style={{fontSize:11,color:"var(--text3)"}}>{hint}</span>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(180px,100%),1fr))",gap:10}}>
+                  <Field label={`Number of ${label}`}>
+                    <select value={cfg.count} onChange={e=>sk(kind,"count",parseInt(e.target.value))} style={inputSt}>
+                      {countOptions.map(n=><option key={n} value={n}>{n} {label.toLowerCase()}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Assign To">
+                    <select value={cfg.assigned_to} onChange={e=>sk(kind,"assigned_to",e.target.value)} style={inputSt}>
+                      <option value="">— Unassigned —</option>
+                      {team.map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
+                    </select>
+                  </Field>
+                </div>
+                {cfg.count>0&&(
+                  <>
+                    <Field label="Platforms" required>
+                      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                        {PLATFORMS.map(p=>(
+                          <button key={p} onClick={()=>togglePlt(kind,p)} style={{
+                            display:"flex",alignItems:"center",gap:5,
+                            padding:"6px 12px",borderRadius:99,fontSize:11.5,fontWeight:700,
+                            border:`1.5px solid ${cfg.platforms.includes(p)?PLT_COLOR[p]:"var(--border2)"}`,
+                            background:cfg.platforms.includes(p)?PLT_COLOR[p]+"22":"var(--surface)",
+                            color:cfg.platforms.includes(p)?PLT_COLOR[p]:"var(--text2)",
+                            transition:"all 0.15s",
+                          }}>
+                            {cfg.platforms.includes(p)&&<Ico d={Icons.check} size={10} stroke={PLT_COLOR[p]}/>}
+                            {p.charAt(0).toUpperCase()+p.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    </Field>
+                    <Field label={`${label} Brief`} hint="Goal, tone, key messages for this content type — AI will use this">
+                      <textarea value={cfg.brief} onChange={e=>sk(kind,"brief",e.target.value)} rows={2} placeholder="e.g. Ramadan campaign to promote our new product line. Warm, inspirational tone." style={inputSt}/>
+                    </Field>
+                  </>
+                )}
+              </div>
+            );
+          })}
+
           <div style={{padding:12,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",display:"flex",alignItems:"center",gap:10}}>
             <Ico d={Icons.sparkle} size={16} stroke="var(--accent)"/>
-            <p style={{fontSize:12,color:"var(--text2)"}}>AI will generate <strong>{f.num_posts+f.num_articles+f.num_stories} pieces of content</strong> ({[f.num_posts&&`${f.num_posts} posts`,f.num_articles&&`${f.num_articles} articles`,f.num_stories&&`${f.num_stories} stories`].filter(Boolean).join(", ")||"none yet — set a count above"}), distribute them evenly across your date range, and create individual task cards.</p>
+            <p style={{fontSize:12,color:"var(--text2)"}}>AI will generate <strong>{totalCount} pieces of content</strong> ({activeKinds.map(k=>`${f.kinds[k].count} ${k}s`).join(", ")||"none yet — set a count above"}), distribute them evenly across your date range, and create individual task cards.</p>
           </div>
           <div style={{display:"flex",gap:10,paddingTop:6}}>
             <Btn variant="secondary" onClick={()=>{reset();onClose();}} style={{flex:1}}>Cancel</Btn>
-            <Btn onClick={handleGenerate} disabled={!f.client_id||!f.campaign||!f.date_from||!f.date_to||f.platforms.length===0||(f.num_posts+f.num_articles+f.num_stories)===0} style={{flex:2}}>
+            <Btn onClick={handleGenerate} disabled={!canGenerate} style={{flex:2}}>
               <Ico d={Icons.sparkle} size={15}/> Generate Calendar Plan
             </Btn>
           </div>
@@ -5899,7 +5925,7 @@ No markdown, no explanation, just the JSON array.`);
           </div>
           <div style={{textAlign:"center"}}>
             <p style={{fontFamily:"'Montserrat',sans-serif",fontSize:18,fontWeight:700}}>AI is building your calendar…</p>
-            <p style={{fontSize:13,color:"var(--text2)",marginTop:6}}>Generating {f.num_posts+f.num_articles+f.num_stories} pieces of content</p>
+            <p style={{fontSize:13,color:"var(--text2)",marginTop:6}}>Generating {totalCount} pieces of content</p>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:6,width:"100%",maxWidth:300}}>
             {["Analyzing campaign brief…","Generating post ideas…","Writing captions…","Distributing dates…"].map((msg,i)=>(
@@ -5920,7 +5946,7 @@ No markdown, no explanation, just the JSON array.`);
               <h4 style={{fontWeight:700,fontSize:14}}>{f.campaign}</h4>
               <p style={{fontSize:12,color:"var(--text2)"}}>{selectedClient?.name} · {generated.length} items · {fmtDate(f.date_from)} → {fmtDate(f.date_to)}</p>
             </div>
-            <div style={{display:"flex",gap:5}}>{f.platforms.map(p=><PChip key={p} platform={p} xs/>)}</div>
+            <div style={{display:"flex",gap:5}}>{allPlatformsUsed.map(p=><PChip key={p} platform={p} xs/>)}</div>
           </div>
           <div style={{maxHeight:340,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
             {generated.map((task,i)=>(
@@ -7074,7 +7100,7 @@ function AIContentTools({client, knowledge, clientPosts}) {
     setVoiceLoading(true); setVoiceResult("");
     const ck = knowledge;
     try {
-      const result = await agentAI("content_creator", `Brand voice rewrite: ${client.name}`, `You are a brand voice specialist. Rewrite the text below to perfectly match this client's brand voice.
+      const result = await agentAI("content_creator", `Brand voice rewrite: ${client.name}`, `You are Sara, a brand voice specialist working under Pro's supervision. Rewrite the text below to perfectly match this client's brand voice.
 
 CLIENT: ${client.name}
 Brand Voice/Tone: ${ck?.tone||"professional and engaging"}
@@ -7107,7 +7133,7 @@ Rules:
     setIdeasLoading(true); setIdeasResult([]);
     const ck = knowledge;
     try {
-      const result = await agentAI("content_creator", `Content ideas: ${client.name}`, `Generate ${ideasCount} creative social media post ideas for ${client.name} on ${ideasPlatform}.
+      const result = await agentAI("content_creator", `Content ideas: ${client.name}`, `You are Sara, a senior content creator working under Pro's supervision. Generate ${ideasCount} creative social media post ideas for ${client.name} on ${ideasPlatform}.
 
 CLIENT CONTEXT:
 Industry: ${client.industry||""}
@@ -7144,7 +7170,7 @@ No markdown, no explanation. Just the JSON array.`);
     setReviewLoading(true); setReviewResult(null);
     const ck = knowledge;
     try {
-      const result = await agentAI("content_creator", `Brand check: ${client.name}`, `You are a brand consistency expert. Review this caption against the client's brand guidelines.
+      const result = await agentAI("content_creator", `Brand check: ${client.name}`, `You are Sara, a brand consistency expert working under Pro's supervision. Review this caption against the client's brand guidelines.
 
 CLIENT: ${client.name}
 Brand Voice: ${ck?.tone||"professional"}
@@ -33912,17 +33938,23 @@ Return ONLY valid JSON (no markdown, no explanation):
 
   const generateCalendarPlan = async (planForm, tasks) => {
     if(!planForm.client_id) { setToast(" Pick a client before generating a calendar plan."); return; }
+    // planForm.kinds holds each content type's own brief/platforms/assignee —
+    // roll them up into one description/platform list for the project record.
+    const kindsCfg = planForm.kinds||{};
+    const activeKindCfgs = Object.entries(kindsCfg).filter(([,v])=>v.count>0);
+    const combinedBrief = activeKindCfgs.map(([k,v])=>v.brief?`${k}: ${v.brief}`:null).filter(Boolean).join(" | ");
+    const combinedPlatforms = [...new Set(activeKindCfgs.flatMap(([,v])=>v.platforms||[]))];
     // Find or create project for this campaign
     const existingProj = data.projects.find(p=>p.client_id===planForm.client_id&&p.title===planForm.campaign);
     let projectId = existingProj?.id;
     if(!projectId) {
       const client = data.clients.find(c=>c.id===planForm.client_id);
       const tempProjId = uid();
-      const np = {id:tempProjId,title:planForm.campaign,client_id:planForm.client_id,client_name:client?.name||"",description:planForm.brief,status:"active",platforms:planForm.platforms,start_date:planForm.date_from,end_date:planForm.date_to,created_date:new Date().toISOString()};
+      const np = {id:tempProjId,title:planForm.campaign,client_id:planForm.client_id,client_name:client?.name||"",description:combinedBrief,status:"active",platforms:combinedPlatforms,start_date:planForm.date_from,end_date:planForm.date_to,created_date:new Date().toISOString()};
       setData(d=>({...d,projects:[np,...d.projects]}));
       projectId = tempProjId;
       try {
-        const res = await ce("Project",[{title:planForm.campaign,client_id:planForm.client_id,client_name:client?.name||"",description:planForm.brief,status:"active",platforms:planForm.platforms,start_date:planForm.date_from,end_date:planForm.date_to}]);
+        const res = await ce("Project",[{title:planForm.campaign,client_id:planForm.client_id,client_name:client?.name||"",description:combinedBrief,status:"active",platforms:combinedPlatforms,start_date:planForm.date_from,end_date:planForm.date_to}]);
         const realProj = res.entities?.[0];
         if(realProj?.id) {
           projectId = realProj.id;
