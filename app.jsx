@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.317";
+const APP_VERSION = "beta 5.318";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5601,6 +5601,8 @@ function AddCalendarPlanModal({open,onClose,clients,team,preselectedClient,onGen
     date_from: "",
     date_to: "",
     num_posts: 8,
+    num_articles: 0,
+    num_stories: 0,
     platforms: preselectedClient?.platforms||[],
     brief: "",
     assigned_to: "",
@@ -5637,13 +5639,28 @@ function AddCalendarPlanModal({open,onClose,clients,team,preselectedClient,onGen
   };
 
   const handleGenerate = async () => {
-    if(!f.client_id||!f.campaign||!f.date_from||!f.date_to||f.platforms.length===0) return;
+    const totalCount = f.num_posts+f.num_articles+f.num_stories;
+    if(!f.client_id||!f.campaign||!f.date_from||!f.date_to||f.platforms.length===0||totalCount===0) return;
     setStep("generating");
 
-    // Distribute posts across dates
-    const dates = distributeDates(f.date_from,f.date_to,f.num_posts);
+    // Distribute every piece of content across dates, but interleave the
+    // three content kinds evenly rather than grouping them into blocks (e.g.
+    // 6 posts + 2 articles + 4 stories shouldn't put all posts first) —
+    // built by round-robin-ing each kind's own slice of the date range.
+    const dates = distributeDates(f.date_from,f.date_to,totalCount);
+    const kindQueue = [];
+    let pi=0, ai_=0, si=0;
+    for(let i=0;i<totalCount;i++){
+      const remaining = {post:f.num_posts-pi, article:f.num_articles-ai_, story:f.num_stories-si};
+      const pick = remaining.post/(f.num_posts||1) >= remaining.article/(f.num_articles||1) && remaining.post/(f.num_posts||1) >= remaining.story/(f.num_stories||1) && remaining.post>0
+        ? "post" : remaining.article/(f.num_articles||1) >= remaining.story/(f.num_stories||1) && remaining.article>0
+        ? "article" : "story";
+      kindQueue.push(pick);
+      if(pick==="post") pi++; else if(pick==="article") ai_++; else si++;
+    }
     const platformCycle = f.platforms;
-    const postTypes = ["image","carousel","reel","video","story"];
+    const postTypes = ["image","carousel","reel"];
+    const linkedinOrFirst = f.platforms.includes("linkedin") ? "linkedin" : f.platforms[0];
 
     // Generate AI ideas
     let ideas = [];
@@ -5667,48 +5684,59 @@ ${memBlock ? `CLIENT MEMORY (highest priority — always follow):\n${memBlock}` 
 Context: ${(selKnow?.context_file||"").slice(0,400)}
 ===` : "";
 
-      const aiRes = await ai(`You are a social media strategist. Generate ${f.num_posts} creative post ideas for:
+      const kindCounts = kindQueue.reduce((s,k)=>({...s,[k]:(s[k]||0)+1}),{});
+      const aiRes = await ai(`You are a social media strategist. Generate content ideas for:
 ${clientCtxBlock}
 Campaign: ${f.campaign}
 Brief: ${f.brief||"General social media content"}
 Platforms: ${f.platforms.join(", ")}
 
-IMPORTANT: Make each post idea match the client's brand voice and preferences above. Be specific to their industry and audience.
+Generate exactly ${totalCount} ideas in this order: ${kindQueue.join(", ")}
+- "post" items are normal short-form social posts (image/carousel/reel caption).
+- "article" items are long-form pieces (e.g. a LinkedIn article) — give them a real headline and a longer, structured body (several paragraphs), not a short caption.
+- "story" items are ephemeral, very short and casual (1 punchy line, no hashtags needed).
 
-Return ONLY a JSON array with ${f.num_posts} objects, each having:
-- "title": short post title (max 6 words)
-- "caption": engaging caption (2-3 sentences, on-brand)
-- "hashtags": 3-5 relevant hashtags
+IMPORTANT: Make each idea match the client's brand voice and preferences above. Be specific to their industry and audience.
+
+Return ONLY a JSON array with ${totalCount} objects IN THE SAME ORDER as the list above, each having:
+- "type": one of "post"/"article"/"story" (must match the order given)
+- "title": short title (max 8 words)
+- "caption": for "post"/"story" — an engaging caption (1-3 sentences). For "article" — the full long-form body text (several paragraphs).
+- "hashtags": 3-5 relevant hashtags (empty string for "story")
 
 No markdown, no explanation, just the JSON array.`);
       const clean = aiRes.replace(/```json|```/g,"").trim();
       ideas = JSON.parse(clean);
     } catch(e) {
       // fallback generic ideas
-      ideas = Array.from({length:f.num_posts},(_,i)=>({
-        title:`Post ${i+1} — ${f.campaign}`,
-        caption:`Exciting content for ${f.campaign}. Stay tuned for more updates!`,
-        hashtags:`#${f.campaign.toLowerCase().replace(/\s+/g,"")} #socialmedia`,
+      ideas = kindQueue.map((kind,i)=>({
+        type:kind,
+        title:`${kind.charAt(0).toUpperCase()+kind.slice(1)} ${i+1} — ${f.campaign}`,
+        caption:`Exciting ${kind} content for ${f.campaign}. Stay tuned for more updates!`,
+        hashtags: kind==="story" ? "" : `#${f.campaign.toLowerCase().replace(/\s+/g,"")} #socialmedia`,
       }));
     }
 
-    const tasks = dates.map((date,i)=>({
-      id: uid(),
-      title: ideas[i]?.title||`Post ${i+1}`,
-      caption: ideas[i]?.caption||"",
-      hashtags: ideas[i]?.hashtags||"",
-      scheduled_date: date,
-      scheduled_time: ["09:00","12:00","15:00","18:00","20:00"][i%5],
-      platform: platformCycle[i%platformCycle.length],
-      post_type: postTypes[i%postTypes.length],
-      stage: "planning",
-      priority: i<2?"high":"medium",
-      client_id: f.client_id,
-      client_name: selectedClient?.name||"",
-      assigned_to: f.assigned_to||"",
-      project_name: f.campaign,
-      status:"pending",
-    }));
+    const tasks = dates.map((date,i)=>{
+      const kind = kindQueue[i];
+      return {
+        id: uid(),
+        title: ideas[i]?.title||`${kind} ${i+1}`,
+        caption: ideas[i]?.caption||"",
+        hashtags: ideas[i]?.hashtags||"",
+        scheduled_date: date,
+        scheduled_time: ["09:00","12:00","15:00","18:00","20:00"][i%5],
+        platform: kind==="article" ? linkedinOrFirst : platformCycle[i%platformCycle.length],
+        post_type: kind==="article" ? "article" : kind==="story" ? "story" : postTypes[i%postTypes.length],
+        stage: "planning",
+        priority: i<2?"high":"medium",
+        client_id: f.client_id,
+        client_name: selectedClient?.name||"",
+        assigned_to: f.assigned_to||"",
+        project_name: f.campaign,
+        status:"pending",
+      };
+    });
 
     setAiIdeas(ideas);
     setGenerated(tasks);
@@ -5756,7 +5784,17 @@ No markdown, no explanation, just the JSON array.`);
             </Field>
             <Field label="Number of Posts">
               <select value={f.num_posts} onChange={e=>s("num_posts",parseInt(e.target.value))} style={inputSt}>
-                {[4,6,8,10,12,15,20,24,30].map(n=><option key={n} value={n}>{n} posts</option>)}
+                {[0,2,4,6,8,10,12,15,20,24,30].map(n=><option key={n} value={n}>{n} posts</option>)}
+              </select>
+            </Field>
+            <Field label="Number of Articles" hint="Long-form, e.g. LinkedIn articles">
+              <select value={f.num_articles} onChange={e=>s("num_articles",parseInt(e.target.value))} style={inputSt}>
+                {[0,1,2,3,4,5,6,8,10].map(n=><option key={n} value={n}>{n} articles</option>)}
+              </select>
+            </Field>
+            <Field label="Number of Stories">
+              <select value={f.num_stories} onChange={e=>s("num_stories",parseInt(e.target.value))} style={inputSt}>
+                {[0,2,4,6,8,10,12,15,20].map(n=><option key={n} value={n}>{n} stories</option>)}
               </select>
             </Field>
             <Field label="Assign All To">
@@ -5788,11 +5826,11 @@ No markdown, no explanation, just the JSON array.`);
           </Field>
           <div style={{padding:12,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",display:"flex",alignItems:"center",gap:10}}>
             <Ico d={Icons.sparkle} size={16} stroke="var(--accent)"/>
-            <p style={{fontSize:12,color:"var(--text2)"}}>AI will generate <strong>{f.num_posts} post ideas</strong> with captions, distribute them evenly across your date range, and create individual task cards.</p>
+            <p style={{fontSize:12,color:"var(--text2)"}}>AI will generate <strong>{f.num_posts+f.num_articles+f.num_stories} pieces of content</strong> ({[f.num_posts&&`${f.num_posts} posts`,f.num_articles&&`${f.num_articles} articles`,f.num_stories&&`${f.num_stories} stories`].filter(Boolean).join(", ")||"none yet — set a count above"}), distribute them evenly across your date range, and create individual task cards.</p>
           </div>
           <div style={{display:"flex",gap:10,paddingTop:6}}>
             <Btn variant="secondary" onClick={()=>{reset();onClose();}} style={{flex:1}}>Cancel</Btn>
-            <Btn onClick={handleGenerate} disabled={!f.client_id||!f.campaign||!f.date_from||!f.date_to||f.platforms.length===0} style={{flex:2}}>
+            <Btn onClick={handleGenerate} disabled={!f.client_id||!f.campaign||!f.date_from||!f.date_to||f.platforms.length===0||(f.num_posts+f.num_articles+f.num_stories)===0} style={{flex:2}}>
               <Ico d={Icons.sparkle} size={15}/> Generate Calendar Plan
             </Btn>
           </div>
@@ -5810,7 +5848,7 @@ No markdown, no explanation, just the JSON array.`);
           </div>
           <div style={{textAlign:"center"}}>
             <p style={{fontFamily:"'Montserrat',sans-serif",fontSize:18,fontWeight:700}}>AI is building your calendar…</p>
-            <p style={{fontSize:13,color:"var(--text2)",marginTop:6}}>Generating {f.num_posts} post ideas with captions</p>
+            <p style={{fontSize:13,color:"var(--text2)",marginTop:6}}>Generating {f.num_posts+f.num_articles+f.num_stories} pieces of content</p>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:6,width:"100%",maxWidth:300}}>
             {["Analyzing campaign brief…","Generating post ideas…","Writing captions…","Distributing dates…"].map((msg,i)=>(
@@ -5829,7 +5867,7 @@ No markdown, no explanation, just the JSON array.`);
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
             <div>
               <h4 style={{fontWeight:700,fontSize:14}}>{f.campaign}</h4>
-              <p style={{fontSize:12,color:"var(--text2)"}}>{selectedClient?.name} · {generated.length} posts · {fmtDate(f.date_from)} → {fmtDate(f.date_to)}</p>
+              <p style={{fontSize:12,color:"var(--text2)"}}>{selectedClient?.name} · {generated.length} items · {fmtDate(f.date_from)} → {fmtDate(f.date_to)}</p>
             </div>
             <div style={{display:"flex",gap:5}}>{f.platforms.map(p=><PChip key={p} platform={p} xs/>)}</div>
           </div>
@@ -5841,7 +5879,12 @@ No markdown, no explanation, just the JSON array.`);
                   <p style={{fontWeight:600,fontSize:13}}>{task.title}</p>
                   {task.caption&&<p style={{fontSize:11,color:"var(--text3)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:280}}>{task.caption}</p>}
                 </div>
-                <PChip platform={task.platform} xs/>
+                <span style={{display:"flex",alignItems:"center",gap:5}}>
+                  <PChip platform={task.platform} xs/>
+                  {(task.post_type==="article"||task.post_type==="story")&&(
+                    <span style={{fontSize:9,fontWeight:800,textTransform:"uppercase",padding:"2px 6px",borderRadius:99,background:"var(--surface)",border:"1px solid var(--border2)",color:"var(--text3)"}}>{task.post_type}</span>
+                  )}
+                </span>
                 <span style={{fontSize:11,color:"var(--text3)",whiteSpace:"nowrap"}}>{fmtDate(task.scheduled_date)}</span>
               </div>
             ))}
@@ -5863,7 +5906,7 @@ No markdown, no explanation, just the JSON array.`);
           </div>
           <div>
             <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:20,fontWeight:800}}>Calendar Plan Created!</h3>
-            <p style={{fontSize:13,color:"var(--text2)",marginTop:4}}>{generated.length} posts added to {selectedClient?.name}'s calendar</p>
+            <p style={{fontSize:13,color:"var(--text2)",marginTop:4}}>{generated.length} items added to {selectedClient?.name}'s calendar</p>
           </div>
           <Btn onClick={()=>{reset();onClose();}} style={{width:"100%"}}>View in Calendar</Btn>
         </div>
