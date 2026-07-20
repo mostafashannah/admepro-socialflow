@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.311";
+const APP_VERSION = "beta 5.312";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -34355,7 +34355,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             onRenameClient={renameFinanceClient}
             onSaveClientNote={saveFinanceClientNote}
             onUpdateClient={updateClient}
-            activityLogs={activityLogs}
+            activityLogs={data.activityLogs||[]}
           />
         )}
         {page==="users"&&(currentUser?.role==="admin"||currentUser?.role==="account_manager"||currentUser?.role==="office_boy"||hasPerm(currentUser,rolePermsMap,"hr.view_team"))&&(
