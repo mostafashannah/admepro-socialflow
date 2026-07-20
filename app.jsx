@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.323";
+const APP_VERSION = "beta 5.324";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1751,18 +1751,19 @@ function clientBrainBlock(clientId, clientName){
     const intel = (b.intelligence||[]).find(i=>i.client_id===clientId);
     const memBlock = clientId ? formatClientMemory(clientId, b.memory||[]) : "";
     // Real examples of what already went live — lets Sara match actual proven
-    // style/format instead of only the distilled facts in memory.
-    const recentPublished = clientId
-      ? (b.publishedPosts||[]).filter(p=>p.client_id===clientId)
-          .sort((a,b2)=>new Date(b2.published_at||b2.scheduled_date||0)-new Date(a.published_at||a.scheduled_date||0))
-          .slice(0,5)
-      : [];
+    // style/format instead of only the distilled facts in memory. Reviewing
+    // this (and the rest of the brain) before writing anything new is a hard
+    // rule, not a suggestion — see the mandatory notice below.
+    const allPublished = clientId ? (b.publishedPosts||[]).filter(p=>p.client_id===clientId) : [];
+    const recentPublished = [...allPublished]
+      .sort((a,b2)=>new Date(b2.published_at||b2.scheduled_date||0)-new Date(a.published_at||a.scheduled_date||0))
+      .slice(0,20);
     const publishedBlock = recentPublished.length
       ? recentPublished.map(p=>`- [${p.platform||"?"}/${p.post_type||"post"}] "${p.title}": ${(p.caption||"").slice(0,200)}`).join("\n")
       : "";
     if(!know && !intel && !memBlock && !publishedBlock) return "";
     return `
-=== CLIENT BRAIN (${clientName||clientId}) ===
+=== CLIENT BRAIN (${clientName||clientId}) — MANDATORY: review this ENTIRE section before writing anything, especially the published posts. Never repeat an idea, angle, or wording already used below — every new piece must be genuinely new relative to what this client has already put out. ===
 Brand Voice/Tone: ${know?.tone||intel?.brand_voice||"professional"}
 Content Preferences: ${know?.content_preferences||intel?.content_preferences||""}
 Target Audience: ${intel?.target_audience||""}
@@ -1770,9 +1771,9 @@ Keywords: ${know?.keywords ? (typeof know.keywords==="string"?know.keywords:JSON
 Do's: ${know?.dos||""}
 Don'ts: ${know?.donts||intel?.donts||""}
 ${memBlock ? `LEARNED MEMORY (highest priority — always follow):\n${memBlock}` : ""}
-${publishedBlock ? `RECENTLY PUBLISHED (real examples — match this proven style/format):\n${publishedBlock}` : ""}
+${publishedBlock ? `RECENTLY PUBLISHED — ${allPublished.length} total published, showing the ${recentPublished.length} most recent (real examples — match this proven style/format, and do NOT repeat these ideas/angles):\n${publishedBlock}` : "RECENTLY PUBLISHED: none yet for this client."}
 Context: ${(know?.context_file||"").slice(0,400)}
-===`;
+=== END CLIENT BRAIN — confirm you have reviewed the above before proceeding ===`;
   } catch(e){ return ""; }
 }
 // After Sara finishes a piece of work, extract durable brand insights from it
@@ -4956,8 +4957,9 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
     const proj = projects.find(p=>p.id===f.project_id);
     setSaraLoading(true);
     try {
-      const res = await agentAI("content_creator", `Post content: ${f.title}`, `You are Sara, a senior content creator working under Pro's supervision. Write the content for ONE social media post.
+      const res = await agentAI("content_creator", `Post content: ${f.title}`, `You are Sara, a senior content creator working under Pro's supervision. Before writing anything, review the ENTIRE client brain below — especially recently published posts — this is mandatory, not optional.
 ${clientBrainBlock(proj?.client_id||activeClientId, proj?.client_name)}
+Now write the content for ONE social media post.
 Post title: ${f.title}
 Project: ${proj?.title||"-"}
 Platform(s): ${(f.platforms.length?f.platforms:[f.platform]).join(", ")}
@@ -5827,7 +5829,7 @@ function AddCalendarPlanModal({open,onClose,clients,team,preselectedClient,onGen
         ? `These are ephemeral, very short and casual (1 punchy line each, no hashtags needed).`
         : `These are normal short-form social posts (image/carousel/reel caption).`;
       try {
-        const aiRes = await agentAI("content_creator", `Calendar plan (${kind}): ${f.campaign}`, `You are Sara, a senior content creator working under Pro's supervision. Generate ${cfg.count} "${kind}" content ideas for:
+        const aiRes = await agentAI("content_creator", `Calendar plan (${kind}): ${f.campaign}`, `You are Sara, a senior content creator working under Pro's supervision. Before writing anything, review the ENTIRE client brain below — especially recently published posts — this is mandatory, not optional. Generate ${cfg.count} "${kind}" content ideas for:
 ${clientCtxBlock}
 Campaign: ${f.campaign}
 Brief for this content type: ${cfg.brief||f.campaign}
@@ -5835,7 +5837,7 @@ Platforms: ${cfg.platforms.join(", ")}
 
 ${kindGuide}
 
-IMPORTANT: Make each idea match the client's brand voice and preferences above. Be specific to their industry and audience.
+IMPORTANT: Make each idea match the client's brand voice and preferences above, and make sure none of them repeat an idea/angle already covered in the recently published list. Be specific to their industry and audience.
 
 Return ONLY a JSON array with ${cfg.count} objects, each having:
 - "title": short title (max 8 words)
@@ -5905,7 +5907,7 @@ No markdown, no explanation, just the JSON array.`);
       : `This is a normal short-form social post (image/carousel/reel caption).`;
     const note = (regenNotes[idx]||"").trim();
     try {
-      const aiRes = await agentAI("content_creator", `Regenerate: ${task.title}`, `You are Sara, a senior content creator working under Pro's supervision. Rewrite ONE "${kind}" content idea for:
+      const aiRes = await agentAI("content_creator", `Regenerate: ${task.title}`, `You are Sara, a senior content creator working under Pro's supervision. Before rewriting, review the ENTIRE client brain below — especially recently published posts — this is mandatory, not optional. Rewrite ONE "${kind}" content idea for:
 ${clientBrainBlock(f.client_id, selectedClient?.name)}
 Campaign: ${f.campaign}
 Brief: ${cfg.brief||f.campaign}
@@ -7292,7 +7294,7 @@ Rules:
     setIdeasLoading(true); setIdeasResult([]);
     const ck = knowledge;
     try {
-      const result = await agentAI("content_creator", `Content ideas: ${client.name}`, `You are Sara, a senior content creator working under Pro's supervision. Generate ${ideasCount} creative social media post ideas for ${client.name} on ${ideasPlatform}.
+      const result = await agentAI("content_creator", `Content ideas: ${client.name}`, `You are Sara, a senior content creator working under Pro's supervision. Before writing anything, review the ENTIRE client brain below — especially recently published posts — this is mandatory, not optional. Then generate ${ideasCount} creative social media post ideas for ${client.name} on ${ideasPlatform}, making sure none repeats an idea/angle already published.
 
 Industry: ${client.industry||""}
 Priorities: ${ck?.priorities ? (typeof ck.priorities==="string"?ck.priorities:JSON.stringify(ck.priorities)) : ""}
