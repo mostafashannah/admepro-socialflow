@@ -542,7 +542,7 @@ const SB_SCHEMA = {
   // and username both exist but were missing from this list, so they always
   // got stripped before the request went out (see
   // migration-client-username.sql for the added username column).
-  clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","account_manager_commissions","username","notes","logo_url","allowed_task_types"],
+  clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","account_manager_commissions","username","notes","logo_url","allowed_task_types","platform_credentials"],
   client_tasks: ["client_id","client_name","title","description","task_type","priority","stage","assigned_to","created_by","deliverable_note"],
   team_member_events: ["team_member_id","team_member_name","event_type","title","previous_value","new_value","amount","effective_date","notes","recorded_by"],
   // DEFAULT_NOTIF_PREFS (used to build every save payload) has a
@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.310";
+const APP_VERSION = "beta 5.311";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1638,7 +1638,7 @@ async function publishPost(post, integration) {
   // post as Instagram Story" option) requests a parallel Story publish alongside
   // the regular feed post — only meaningful for Instagram.
   const storyUrl = integration.app_key==="instagram" ? (designAssets.find(a=>a.kind==="story")?.url || "") : "";
-  // carousel_cover holds the reel cover image URL (set in AddPostModal/AddTaskModal).
+  // carousel_cover holds the reel cover image URL (set in AddPostModal).
   const coverUrl = (post.post_type==="reel"||post.post_type==="video") ? (post.carousel_cover||"") : "";
   const r = await fetch(PUBLISH_ENDPOINT, {
     method:"POST", headers:{"Content-Type":"application/json",apikey:SB_KEY},
@@ -4703,12 +4703,16 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
 // ════════════════════════════════════════════════════════════════
 // ADD POST MODAL — 2-step wizard
 // ════════════════════════════════════════════════════════════════
-function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,onUpdateAsset,presetClient,assets=[],allowClientRequest=false}) {
+function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,onUpdateAsset,presetClient,assets=[],allowClientRequest=false,clients=[]}) {
   const [step,setStep] = useState(1);
   // When opened from a client's profile, only that client's projects should be
   // selectable/defaulted — otherwise this silently defaults to projects[0],
-  // which can belong to a totally different client.
-  const selectableProjects = presetClient ? projects.filter(p=>p.client_id===presetClient.id) : projects;
+  // which can belong to a totally different client. When opened generically
+  // (e.g. the FAB, with no preset client), an in-modal client picker narrows
+  // it down the same way instead.
+  const [pickedClientId,setPickedClientId] = useState("");
+  const activeClientId = presetClient?.id || pickedClientId;
+  const selectableProjects = activeClientId ? projects.filter(p=>p.client_id===activeClientId) : projects;
   const blankForm = {project_id:selectableProjects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:"",scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",due_date:"",due_time:"",content_mode:"new",platforms:[],platform_types:{},media:[],cover:null,publish_mode:"schedule",postStory:false,storyImage:null,estimated_minutes:""};
   const [f,setF] = useState({...blankForm});
   const [saving,setSaving] = useState(false);
@@ -4858,6 +4862,14 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
             <Field label="Post Title" required>
               <input value={f.title} onChange={e=>s("title",e.target.value)} placeholder="e.g. Brand Story Monday" style={inputSt} autoFocus/>
             </Field>
+            {!presetClient&&clients.length>0&&(
+              <Field label="Client">
+                <select value={pickedClientId} onChange={e=>{setPickedClientId(e.target.value);s("project_id","");}} style={inputSt}>
+                  <option value="">All clients — pick a project below</option>
+                  {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </Field>
+            )}
             <Field label="Project" required>
               <select value={f.project_id} onChange={e=>s("project_id",e.target.value)} style={inputSt}>
                 <option value="">— Select project —</option>
@@ -5747,379 +5759,6 @@ No markdown, no explanation, just the JSON array.`);
             <p style={{fontSize:13,color:"var(--text2)",marginTop:4}}>{generated.length} posts added to {selectedClient?.name}'s calendar</p>
           </div>
           <Btn onClick={()=>{reset();onClose();}} style={{width:"100%"}}>View in Calendar</Btn>
-        </div>
-      )}
-    </Modal>
-  );
-}
-
-// ════════════════════════════════════════════════════════════════
-// ADD TASK MODAL (SINGLE)
-// ════════════════════════════════════════════════════════════════
-function AddTaskModal({open,onClose,clients,projects,team,onAdd,onAddReady,onAddAsset,onUpdateAsset,assets=[]}) {
-  const blankForm = {
-    title:"",client_id:"",project_id:"",description:"",
-    assigned_to:"",scheduled_date:"",platform:"instagram",
-    post_type:"image",priority:"medium",stage:"planning",
-    content_mode:"new", caption:"", platforms:[], platform_types:{}, media:[], cover:null,
-    publish_mode:"schedule", scheduled_time:"", postStory:false, storyImage:null,
-    estimated_minutes:"",
-  };
-  const [f,setF] = useState({...blankForm});
-  const [saving,setSaving] = useState(false);
-  const [uploading,setUploading] = useState(false);
-  const [uploadingCover,setUploadingCover] = useState(false);
-  const [uploadingStory,setUploadingStory] = useState(false);
-  const [showMediaPicker,setShowMediaPicker] = useState(false);
-  const [showCoverPicker,setShowCoverPicker] = useState(false);
-  const [done,setDone] = useState(false);
-  const s = (k,v) => setF(p=>({...p,[k]:v}));
-  const clientProjects = projects.filter(p=>p.client_id===f.client_id||(!f.client_id&&true));
-  const selectedClient = clients.find(c=>c.id===f.client_id);
-  const defaultTypeFor = (media) => (media||f.media).some(m=>(m.type||"").startsWith("video")) ? "reel" : "image";
-  const togglePlt = p => setF(prev => {
-    const selected = prev.platforms.includes(p);
-    return {
-      ...prev,
-      platforms: selected ? prev.platforms.filter(x=>x!==p) : [...prev.platforms,p],
-      platform_types: selected ? prev.platform_types : {...prev.platform_types, [p]: prev.platform_types[p]||defaultTypeFor(prev.media)},
-    };
-  });
-  const setPlatformType = (p,type) => s("platform_types",{...f.platform_types,[p]:type});
-  const needsInstaCover = f.platforms.includes("instagram") && f.platform_types.instagram==="reel" && !f.cover;
-
-  const handleMediaUpload = async (files) => {
-    const valid = Array.from(files||[]).filter(file=>{
-      if(file.size>50*1024*1024) { alert(`"${file.name}" is too large (max 50MB).`); return false; }
-      return true;
-    });
-    if(!valid.length) return;
-    setUploading(true);
-    try {
-      const projRef = projects.find(p=>p.id===f.project_id); const projName = projRef?.title; const projClientName = projRef?.client_name;
-      const uploaded = await Promise.all(valid.map(async (file,i)=>{
-        const url = await uploadToStorage(file, "ready-content");
-        let assetId;
-        if(onAddAsset) assetId = (await onAddAsset({name:renameForTask(f.title,file.name,valid.length>1?String(i+1):""), file_url:url, file_type:file.type.startsWith("video")?"video":"image", category:monthProjectFolder(projName, projClientName), project_id:f.project_id, tags:[], file_size:file.size}).catch(()=>null))?.id;
-        return {name:file.name, type:file.type, url, uploaded_at:new Date().toISOString(), assetId};
-      }));
-      s("media",[...f.media,...uploaded]);
-    } catch(e) { alert("Upload failed: "+e.message); }
-    setUploading(false);
-  };
-  const removeMedia = (url) => s("media",f.media.filter(m=>m.url!==url));
-
-  const handleCoverUpload = async (files) => {
-    const file = (files||[])[0];
-    if(!file) return;
-    setUploadingCover(true);
-    try {
-      const url = await uploadToStorage(file, "ready-content/covers");
-      const projRef = projects.find(p=>p.id===f.project_id); const projName = projRef?.title; const projClientName = projRef?.client_name;
-      let assetId;
-      if(onAddAsset) assetId = (await onAddAsset({name:renameForTask(f.title,file.name,"cover"), file_url:url, file_type:"image", category:monthProjectFolder(projName, projClientName), project_id:f.project_id, tags:["cover"], file_size:file.size}).catch(()=>null))?.id;
-      s("cover",{name:file.name, type:file.type, url, uploaded_at:new Date().toISOString(), assetId});
-    } catch(e) { alert("Cover upload failed: "+e.message); }
-    setUploadingCover(false);
-  };
-
-  const handleStoryUpload = async (files) => {
-    const file = (files||[])[0];
-    if(!file) return;
-    setUploadingStory(true);
-    try {
-      const url = await uploadToStorage(file, "ready-content/stories");
-      const projRef = projects.find(p=>p.id===f.project_id); const projName = projRef?.title; const projClientName = projRef?.client_name;
-      let assetId;
-      if(onAddAsset) assetId = (await onAddAsset({name:renameForTask(f.title,file.name,"story"), file_url:url, file_type:file.type.startsWith("video")?"video":"image", category:monthProjectFolder(projName, projClientName), project_id:f.project_id, tags:["story"], file_size:file.size}).catch(()=>null))?.id;
-      s("storyImage",{name:file.name, type:file.type, url, uploaded_at:new Date().toISOString(), assetId});
-    } catch(e) { alert("Story upload failed: "+e.message); }
-    setUploadingStory(false);
-  };
-
-  const handleSubmit = async () => {
-    if(!f.title.trim()||!f.project_id) return;
-    if(f.content_mode==="ready") {
-      if(!f.caption.trim()||!f.platforms.length) return;
-      if(f.publish_mode==="schedule"&&!f.scheduled_date) return;
-      if(needsInstaCover) return;
-    }
-    setSaving(true);
-    if(onUpdateAsset) {
-      // Files may have been uploaded before title/project were finalized
-      // (this form has no required field order) — re-file them now that
-      // the real title/project are known, so they land in the right folder.
-      const finalProjRef = projects.find(p=>p.id===f.project_id); const finalProjName = finalProjRef?.title; const finalProjClientName = finalProjRef?.client_name;
-      const finalCategory = monthProjectFolder(finalProjName, finalProjClientName);
-      [...f.media, f.cover, f.storyImage].filter(Boolean).forEach((m,i)=>{
-        if(!m.assetId) return;
-        onUpdateAsset(m.assetId, {name:renameForTask(f.title,m.name,f.media.length>1&&f.media.includes(m)?String(f.media.indexOf(m)+1):""), category:finalCategory, project_id:f.project_id}).catch?.(()=>{});
-      });
-    }
-    if(f.content_mode==="ready") {
-      const design_urls = JSON.stringify(f.media.map(m=>m.url));
-      const list = f.platforms.map(pl=>{
-        const post_type = f.platform_types[pl] || defaultTypeFor();
-        const storySrc = f.storyImage || f.media[0];
-        const design_assets = pl==="instagram" && f.postStory && storySrc
-          ? [...f.media, {...storySrc, kind:"story"}]
-          : f.media;
-        return {
-          title:f.title, client_id:f.client_id, project_id:f.project_id,
-          description:f.description, assigned_to:f.assigned_to,
-          scheduled_date: f.publish_mode==="schedule" ? f.scheduled_date : new Date().toISOString().slice(0,10),
-          scheduled_time: f.publish_mode==="schedule" ? f.scheduled_time : "",
-          platform:pl, post_type, priority:f.priority, stage:"scheduled",
-          client_name: selectedClient?.name||"", hashtags:"",
-          caption:f.caption, design_assets, design_urls,
-          carousel_cover: post_type==="reel" ? (f.cover?.url||"") : "",
-        };
-      });
-      await onAddReady(list, {postNow:f.publish_mode==="now"});
-    } else {
-      await onAdd({
-        ...f,
-        project_id: f.project_id,
-        client_name: selectedClient?.name||"",
-        hashtags:"",
-      });
-    }
-    setSaving(false);
-    setDone(true);
-  };
-
-  const reset = () => { setF({...blankForm}); setDone(false); };
-
-  const canSubmit = f.content_mode==="ready"
-    ? f.title.trim()&&f.project_id&&f.caption.trim()&&f.platforms.length&&(f.publish_mode!=="schedule"||(f.scheduled_date&&f.scheduled_time))&&!needsInstaCover
-    : f.title.trim()&&f.project_id&&(!f.scheduled_date||f.scheduled_time);
-
-  if(!open) return null;
-  return (
-    <Modal open onClose={()=>{reset();onClose();}} title={done?"Task Created! ✓":"Add Post"} subtitle={done?undefined:"Fill in the details to create a new post/task"} width={520}>
-      {!done?(
-        <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          <div style={{display:"flex",gap:8,padding:4,background:"var(--surface2)",borderRadius:10}}>
-            {[["new","New Content"],["ready","Ready Content"]].map(([k,label])=>(
-              <button key={k} onClick={()=>s("content_mode",k)} style={{
-                flex:1,padding:"9px 12px",borderRadius:8,fontSize:13,fontWeight:700,border:"none",cursor:"pointer",
-                background:f.content_mode===k?"var(--accent,#d90b2c)":"transparent",
-                color:f.content_mode===k?"#fff":"var(--text2)",transition:"all 0.15s",
-              }}>{label}</button>
-            ))}
-          </div>
-          <Field label="Task Title" required>
-            <input value={f.title} onChange={e=>s("title",e.target.value)} placeholder="e.g. Ramadan Launch Post" style={inputSt} autoFocus/>
-          </Field>
-          {/* Section: Where */}
-          <div className="form-section">
-            <div className="form-section-title"> Where</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-              <Field label="Client">
-                <select value={f.client_id} onChange={e=>{ s("client_id",e.target.value); s("project_id",""); const c=clients.find(x=>x.id===e.target.value); if(c?.platforms?.length) s("platform",c.platforms[0]); }} style={inputSt}>
-                  <option value="">— Select Client —</option>
-                  {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </Field>
-              <Field label="Project" required>
-                <select value={f.project_id} onChange={e=>s("project_id",e.target.value)} style={inputSt}>
-                  <option value="">— Select Project —</option>
-                  {clientProjects.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}
-                </select>
-              </Field>
-              {f.content_mode==="new"&&<>
-                <Field label="Platform">
-                  <select value={f.platform} onChange={e=>s("platform",e.target.value)} style={inputSt}>
-                    {PLATFORMS.map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
-                  </select>
-                </Field>
-                <Field label="Post Type">
-                  <select value={f.post_type} onChange={e=>s("post_type",e.target.value)} style={inputSt}>
-                    {POST_TYPES.map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
-                  </select>
-                </Field>
-              </>}
-            </div>
-          </div>
-          {f.content_mode==="ready"&&(
-            <div className="form-section">
-              <div className="form-section-title"> Ready Content</div>
-              <div style={{display:"flex",flexDirection:"column",gap:12}}>
-                <Field label="Caption" required>
-                  <textarea value={f.caption} onChange={e=>s("caption",e.target.value)} rows={3} placeholder="Write the caption to post…" style={{...inputSt,resize:"vertical"}}/>
-                </Field>
-                <Field label="Platforms" required>
-                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                      {PLATFORMS.map(p=>(
-                        <button key={p} onClick={()=>togglePlt(p)} style={{
-                          padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:600,
-                          border:`1.5px solid ${f.platforms.includes(p)?PLT_COLOR[p]:"var(--border2)"}`,
-                          background:f.platforms.includes(p)?PLT_COLOR[p]+"22":"var(--surface2)",
-                          color:f.platforms.includes(p)?PLT_COLOR[p]:"var(--text2)",
-                          cursor:"pointer",transition:"all 0.15s",
-                        }}>{p.charAt(0).toUpperCase()+p.slice(1)}</button>
-                      ))}
-                    </div>
-                    {!!f.platforms.length&&(
-                      <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                        {f.platforms.map(p=>(
-                          <div key={p} style={{display:"flex",alignItems:"center",gap:8}}>
-                            <span style={{fontSize:11,fontWeight:700,color:PLT_COLOR[p],width:70}}>{p.charAt(0).toUpperCase()+p.slice(1)}</span>
-                            <select value={f.platform_types[p]||defaultTypeFor()} onChange={e=>setPlatformType(p,e.target.value)} style={{...inputSt,padding:"5px 10px",fontSize:12}}>
-                              {POST_TYPES.map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
-                            </select>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </Field>
-                <Field label="Media (image, reel/video, or any file)">
-                  <button onClick={()=>setShowMediaPicker(true)}
-                    style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontSize:13,fontWeight:600,color:"var(--text2)",width:"100%"}}>
-                    <Ico d={Icons.upload} size={14} stroke="var(--text2)"/> Choose from Assets or Upload New…
-                  </button>
-                  {uploading&&<div style={{fontSize:12,color:"var(--text3)",marginTop:6}}><Spinner size={12}/> Uploading…</div>}
-                  {!!f.media.length&&(
-                    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
-                      {f.media.map(m=>(
-                        <div key={m.url} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 8px",borderRadius:8,background:"var(--surface2)",fontSize:11}}>
-                          <span style={{maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name}</span>
-                          <button onClick={()=>removeMedia(m.url)} style={{border:"none",background:"none",cursor:"pointer",color:"var(--text3)",fontWeight:700}}>×</button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <AssetPickerModal open={showMediaPicker} assets={assets} multiple onClose={()=>setShowMediaPicker(false)}
-                    onPick={(picked)=>{
-                      // Save freshly-uploaded files to the asset library too — see the matching
-                      // comment in PostDetail's picker for why this was previously missing.
-                      picked.filter(a=>a.url).forEach(a=>{
-                        if(onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(projects.find(p=>p.id===f.project_id)?.title, projects.find(p=>p.id===f.project_id)?.client_name), project_id:f.project_id, tags:[], file_size:a.file_size}).catch(()=>{});
-                      });
-                      s("media",[...f.media,...picked.map(a=>a.url?a:{name:a.name,type:a.file_type,url:a.file_url,uploaded_at:new Date().toISOString()})]);
-                    }}/>
-                </Field>
-                {f.platforms.includes("instagram")&&f.platform_types.instagram==="reel"&&(
-                  <Field label="Reel Cover Image" required>
-                    <button onClick={()=>setShowCoverPicker(true)}
-                      style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontSize:13,fontWeight:600,color:"var(--text2)",width:"100%"}}>
-                      <Ico d={Icons.upload} size={14} stroke="var(--text2)"/> Choose Cover Image…
-                    </button>
-                    <AssetPickerModal open={showCoverPicker} assets={assets.filter(a=>a.file_type==="image"||(a.file_url||"").match(/\.(jpg|jpeg|png|gif|webp)/i))} multiple={false} onClose={()=>setShowCoverPicker(false)}
-                      onPick={(picked)=>{ const a=picked[0]; if(a.url&&onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(projects.find(p=>p.id===f.project_id)?.title, projects.find(p=>p.id===f.project_id)?.client_name), project_id:f.project_id, tags:[], file_size:a.file_size}).catch(()=>{}); s("cover",a.url?a:{name:a.name,type:a.file_type,url:a.file_url}); }}/>
-                    {uploadingCover&&<div style={{fontSize:12,color:"var(--text3)",marginTop:6}}><Spinner size={12}/> Uploading…</div>}
-                    {f.cover&&(
-                      <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,padding:"4px 8px",borderRadius:8,background:"var(--surface2)",fontSize:11,width:"fit-content"}}>
-                        <span style={{maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.cover.name}</span>
-                        <button onClick={()=>s("cover",null)} style={{border:"none",background:"none",cursor:"pointer",color:"var(--text3)",fontWeight:700}}>×</button>
-                      </div>
-                    )}
-                    {!f.cover&&<p style={{fontSize:11,color:"#f59e0b",marginTop:4}}>Instagram requires a cover image for Reels.</p>}
-                  </Field>
-                )}
-                {f.platforms.includes("instagram")&&(
-                  <Field label="Instagram Story (optional)">
-                    <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer"}}>
-                      <input type="checkbox" checked={f.postStory} onChange={e=>s("postStory",e.target.checked)}/>
-                      Also post this as an Instagram Story at the same time
-                    </label>
-                    {f.postStory&&(
-                      <div style={{marginTop:8}}>
-                        <input type="file" accept="image/*,video/*" onChange={e=>handleStoryUpload(e.target.files)} disabled={uploadingStory} style={inputSt}/>
-                        {uploadingStory&&<div style={{fontSize:12,color:"var(--text3)",marginTop:6}}><Spinner size={12}/> Uploading…</div>}
-                        {f.storyImage&&(
-                          <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,padding:"4px 8px",borderRadius:8,background:"var(--surface2)",fontSize:11,width:"fit-content"}}>
-                            <span style={{maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.storyImage.name}</span>
-                            <button onClick={()=>s("storyImage",null)} style={{border:"none",background:"none",cursor:"pointer",color:"var(--text3)",fontWeight:700}}>×</button>
-                          </div>
-                        )}
-                        {!f.storyImage&&<p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Upload a 9:16 story-sized image/video, or leave blank to reuse the post media.</p>}
-                      </div>
-                    )}
-                  </Field>
-                )}
-                <Field label="When">
-                  <div style={{display:"flex",gap:8,marginBottom:f.publish_mode==="schedule"?10:0}}>
-                    {[["now","Post Now"],["schedule","Schedule"]].map(([k,label])=>(
-                      <button key={k} onClick={()=>s("publish_mode",k)} style={{
-                        flex:1,padding:"8px 12px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",
-                        border:`1.5px solid ${f.publish_mode===k?"var(--accent,#d90b2c)":"var(--border2)"}`,
-                        background:f.publish_mode===k?"var(--accent,#d90b2c)22":"var(--surface2)",
-                        color:f.publish_mode===k?"var(--accent,#d90b2c)":"var(--text2)",
-                      }}>{label}</button>
-                    ))}
-                  </div>
-                  {f.publish_mode==="schedule"&&(
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                      <input type="date" value={f.scheduled_date} onChange={e=>s("scheduled_date",e.target.value)} style={inputSt}/>
-                      <input type="time" value={f.scheduled_time} onChange={e=>s("scheduled_time",e.target.value)} style={inputSt}/>
-                    </div>
-                  )}
-                </Field>
-              </div>
-            </div>
-          )}
-          {/* Section: Who & When */}
-          <div className="form-section">
-            <div className="form-section-title"> Who & When</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
-              <Field label="Assign To">
-                <select value={f.assigned_to} onChange={e=>s("assigned_to",e.target.value)} style={inputSt}>
-                  <option value="">— Unassigned —</option>
-                  {team.map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
-                </select>
-              </Field>
-              <Field label="Priority">
-                <select value={f.priority} onChange={e=>s("priority",e.target.value)} style={inputSt}>
-                  {PRIORITIES.map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
-                </select>
-              </Field>
-              {f.content_mode==="new"&&<Field label="Due Date (deadline to finish)">
-                <div style={{display:"flex",gap:8}}>
-                  <input type="date" value={f.due_date} onChange={e=>s("due_date",e.target.value)} style={{...inputSt,flex:1}}/>
-                  <input type="time" value={f.due_time} onChange={e=>s("due_time",e.target.value)} style={{...inputSt,flex:1}}/>
-                </div>
-              </Field>}
-            </div>
-            <Field label="Estimated Duration (for My Timeline scheduling)">
-              <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                <input type="number" min={5} step={5} value={f.estimated_minutes||""} onChange={e=>s("estimated_minutes",e.target.value?Number(e.target.value):"")} placeholder={`Auto (${estimateDuration({post_type:f.post_type,priority:f.priority})} min)`} style={{...inputSt,flex:1}}/>
-                <span style={{fontSize:12,color:"var(--text3)",whiteSpace:"nowrap"}}>minutes</span>
-              </div>
-            </Field>
-            {allowClientRequest&&f.content_mode==="new"&&(
-              <label style={{display:"flex",alignItems:"center",gap:8,marginTop:10,cursor:"pointer"}}>
-                <input type="checkbox" checked={f.stage==="client_request"} onChange={e=>s("stage",e.target.checked?"client_request":"planning")}/>
-                <span style={{fontSize:12,color:"var(--text2)"}}>Submit as a <strong>Client Request</strong> (before Brief) instead of a regular task</span>
-              </label>
-            )}
-          </div>
-          {f.content_mode==="new"&&<Field label="Brief / Description">
-            <textarea value={f.description} onChange={e=>s("description",e.target.value)} rows={3} placeholder="Describe what this post should achieve…" style={{...inputSt,resize:"vertical"}}/>
-          </Field>}
-          <div style={{display:"flex",gap:10,paddingTop:6,borderTop:"1px solid var(--border)",marginTop:2}}>
-            <Btn variant="secondary" onClick={()=>{reset();onClose();}} style={{flex:1}}>Cancel</Btn>
-            <Btn onClick={handleSubmit} disabled={saving||uploading||!canSubmit} style={{flex:2}}>
-              {saving?<><Spinner size={14}/> Creating…</>:<><Ico d={Icons.taskAdd} size={15}/>{f.content_mode==="ready"&&f.publish_mode==="now"?"Post Now":"Create"}</>}
-            </Btn>
-          </div>
-        </div>
-      ):(
-        <div style={{padding:"20px 0 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:16,textAlign:"center"}}>
-          <div style={{width:64,height:64,borderRadius:"50%",background:"#10b98122",border:"2px solid #10b98166",display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <Ico d={Icons.success} size={30} stroke="#10b981"/>
-          </div>
-          <div>
-            <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:18,fontWeight:800}}>{f.title}</h3>
-            <p style={{fontSize:13,color:"var(--text2)",marginTop:4}}>Task created and added to calendar</p>
-            {f.assigned_to&&<p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Assigned to {team.find(t=>t.email===f.assigned_to)?.name||f.assigned_to}</p>}
-          </div>
-          <div style={{display:"flex",gap:8,width:"100%"}}>
-            <Btn variant="secondary" onClick={()=>reset()} style={{flex:1}}>Add Another</Btn>
-            <Btn onClick={()=>{reset();onClose();}} style={{flex:1}}>Done</Btn>
-          </div>
         </div>
       )}
     </Modal>
@@ -8501,7 +8140,103 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
   );
 }
 
-function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient}) {
+// ── Client Logins tab: saved username/password per platform, masked by default ──
+function ClientLoginsTab({client,onUpdateClient}) {
+  const [items,setItems] = useState(()=>client.platform_credentials||[]);
+  const [revealed,setRevealed] = useState({});
+  const [editingIdx,setEditingIdx] = useState(null);
+  const [saving,setSaving] = useState(false);
+  const blank = {platform:"instagram",username:"",password:"",notes:""};
+  const [form,setForm] = useState({...blank});
+  const sf = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  const persist = async (next) => {
+    setSaving(true);
+    setItems(next);
+    await onUpdateClient?.(client.id,{platform_credentials:next});
+    setSaving(false);
+  };
+
+  const startAdd = () => { setForm({...blank}); setEditingIdx(-1); };
+  const startEdit = (i) => { setForm({...items[i]}); setEditingIdx(i); };
+  const cancelEdit = () => setEditingIdx(null);
+  const saveForm = async () => {
+    if(!form.username.trim() && !form.password.trim()) return;
+    const next = editingIdx===-1 ? [...items,form] : items.map((it,i)=>i===editingIdx?form:it);
+    await persist(next);
+    setEditingIdx(null);
+  };
+  const removeItem = async (i) => {
+    if(!window.confirm("Delete this saved login? This cannot be undone.")) return;
+    await persist(items.filter((_,idx)=>idx!==i));
+  };
+  const copyText = (text) => { try{ navigator.clipboard.writeText(text); }catch(e){} };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14,maxWidth:640}} className="fade-in">
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <p style={{fontSize:12,color:"var(--text3)"}}>Saved usernames/passwords for this client's platforms — visible to admins and account managers only.</p>
+        {editingIdx===null&&<Btn size="sm" onClick={startAdd}><Ico d={Icons.plus} size={13}/> Add Login</Btn>}
+      </div>
+
+      {items.length===0&&editingIdx===null&&(
+        <p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:24,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)"}}>No saved logins yet.</p>
+      )}
+
+      {items.map((it,i)=>editingIdx===i ? null : (
+        <div key={i} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"column",gap:8}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <span style={{display:"flex",alignItems:"center",gap:8,fontWeight:700,fontSize:13,textTransform:"capitalize"}}>
+              <PChip platform={it.platform}/> {it.platform}
+            </span>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={()=>startEdit(i)} title="Edit" style={{padding:5,borderRadius:6,background:"var(--surface2)",border:"1px solid var(--border2)"}}><Ico d={Icons.edit} size={13} stroke="var(--text2)"/></button>
+              <button onClick={()=>removeItem(i)} title="Delete" style={{padding:5,borderRadius:6,background:"var(--surface2)",border:"1px solid var(--border2)"}}><Ico d={Icons.trash} size={13} stroke="#ef4444"/></button>
+            </div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:11,color:"var(--text3)",width:70,flexShrink:0}}>Username</span>
+            <span style={{fontSize:13,fontWeight:600,flex:1,overflowWrap:"anywhere"}}>{it.username||"—"}</span>
+            {it.username&&<button onClick={()=>copyText(it.username)} title="Copy" style={{padding:4}}><Ico d={Icons.copy2} size={13} stroke="var(--text3)"/></button>}
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:11,color:"var(--text3)",width:70,flexShrink:0}}>Password</span>
+            <span style={{fontSize:13,fontWeight:600,flex:1,fontFamily:"monospace",overflowWrap:"anywhere"}}>{it.password?(revealed[i]?it.password:"••••••••"):"—"}</span>
+            {it.password&&(
+              <>
+                <button onClick={()=>setRevealed(r=>({...r,[i]:!r[i]}))} title={revealed[i]?"Hide":"Show"} style={{padding:4}}>
+                  <Ico d={Icons.eye} size={13} stroke="var(--text3)"/>
+                </button>
+                <button onClick={()=>copyText(it.password)} title="Copy" style={{padding:4}}><Ico d={Icons.copy2} size={13} stroke="var(--text3)"/></button>
+              </>
+            )}
+          </div>
+          {it.notes&&<p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>{it.notes}</p>}
+        </div>
+      ))}
+
+      {editingIdx!==null&&(
+        <div style={{background:"var(--surface)",border:"1px solid var(--accent)",borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"column",gap:10}}>
+          <p style={{fontSize:13,fontWeight:700}}>{editingIdx===-1?"Add Login":"Edit Login"}</p>
+          <Field label="Platform">
+            <select value={form.platform} onChange={e=>sf("platform",e.target.value)} style={inputSt}>
+              {[...PLATFORMS,"other"].map(p=><option key={p} value={p}>{p}</option>)}
+            </select>
+          </Field>
+          <Field label="Username / Email"><input value={form.username} onChange={e=>sf("username",e.target.value)} style={inputSt}/></Field>
+          <Field label="Password"><input value={form.password} onChange={e=>sf("password",e.target.value)} style={inputSt}/></Field>
+          <Field label="Notes (optional)"><input value={form.notes} onChange={e=>sf("notes",e.target.value)} placeholder="e.g. 2FA on Mostafa's phone" style={inputSt}/></Field>
+          <div style={{display:"flex",gap:8}}>
+            <Btn onClick={saveForm} disabled={saving}>{saving?<Spinner size={13}/>:"Save"}</Btn>
+            <Btn variant="secondary" onClick={cancelEdit}>Cancel</Btn>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,onAddCalendar,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient}) {
   const {isMobile} = useResponsive();
   // Plain state, not persisted — opening any client should always start on
   // Overview, not silently reopen to whatever tab was last viewed for them.
@@ -8538,7 +8273,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
     ["assets","Assets"],
     ...(isPriv?[["inbox",`Inbox${cMessagesNeedReplyCount?` (${cMessagesNeedReplyCount})`:""}`]]:[]),
     ...(isPriv?[["meta_insights","Meta Insights"]]:[]),
-    ...(isPriv?[["brain","Client Brain"],["leads",`Leads${clientLeads.length?` (${clientLeads.length})`:""}`]]:[]),
+    ...(isPriv?[["brain","Client Brain"],["leads",`Leads${clientLeads.length?` (${clientLeads.length})`:""}`],["logins","Logins"]]:[]),
   ];
 
   if(showEdit) {
@@ -8588,7 +8323,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
             </button>
           )}
           <div style={{position:"relative"}}>
-            <button onClick={()=>setShowAddMenu(v=>!v)} aria-label="Add" title="Add Project or Post"
+            <button onClick={()=>setShowAddMenu(v=>!v)} aria-label="Add" title="Add Project, Task, or Calendar Plan"
               style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
               <Ico d={Icons.plus} size={16} stroke="#fff"/>
             </button>
@@ -8600,8 +8335,13 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
                     <Ico d={Icons.projects} size={14} stroke="var(--text2)"/> Project
                   </button>
                   <button onClick={()=>{setShowAddMenu(false);onAddPost();}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"10px 14px",fontSize:13,fontWeight:600,color:"var(--text)",background:"none",border:"none",cursor:"pointer",textAlign:"left",borderTop:"1px solid var(--border)"}}>
-                    <Ico d={Icons.tasks} size={14} stroke="var(--text2)"/> Post
+                    <Ico d={Icons.tasks} size={14} stroke="var(--text2)"/> Task
                   </button>
+                  {onAddCalendar&&(
+                    <button onClick={()=>{setShowAddMenu(false);onAddCalendar();}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"10px 14px",fontSize:13,fontWeight:600,color:"var(--text)",background:"none",border:"none",cursor:"pointer",textAlign:"left",borderTop:"1px solid var(--border)"}}>
+                      <Ico d={Icons.calPlus} size={14} stroke="var(--text2)"/> Calendar Plan
+                    </button>
+                  )}
                 </div>
               </>
             )}
@@ -8804,6 +8544,8 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
 
 
       {tab==="leads"&&<ClientLeadsTab clientLeads={clientLeads} clientName={client.name} clientId={client.id} notifySettings={leadNotifySettings.filter(s=>s.client_id===client.id)} onSaveNotifySetting={onSaveLeadNotifySetting} canEditSettings onDeleteLead={currentUser?.role==="admin"?onDeleteLead:null}/>}
+
+      {tab==="logins"&&<ClientLoginsTab client={client} onUpdateClient={onUpdateClient}/>}
 
       {/* Delete Confirm */}
       {confirmDelete&&(
@@ -21325,7 +21067,7 @@ function AddTransactionPage({onBack,onAdd,clientNames=[],team=[]}) {
   );
 }
 
-function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,onDelete,onAddComment,clientNames=[],team=[]}) {
+function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,onDelete,onAddComment,clientNames=[],team=[],activityLogs=[]}) {
   const {isMobile} = useResponsive();
   const [showEdit,setShowEdit] = useState(false);
   const [comment,setComment] = useState("");
@@ -21386,6 +21128,14 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
       <span style={{fontSize:13,fontWeight:600,textAlign:"right"}}>{value}</span>
     </div>
   );
+
+  // This record's own slice of the global activity log — matched by the
+  // "[REF]" tag every add/edit/delete on this expense embeds in `details`,
+  // so the trail survives even after fields on the row itself have changed.
+  const recordLogs = txn.ref
+    ? (activityLogs||[]).filter(a=>a.category==="finance" && (a.details||"").includes(`[${txn.ref}]`))
+        .sort((a,b)=>new Date(b.performed_at)-new Date(a.performed_at))
+    : [];
 
   return (
     <div style={{display:"flex",gap:20,alignItems:"flex-start"}} className="fade-in">
@@ -21464,6 +21214,32 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
           </div>
         )}
       </div>
+
+      {/* Activity Log — every edit/delete/action taken on this exact record */}
+      {txn.ref&&(
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:isMobile?16:24}}>
+          <h3 style={{fontWeight:700,fontSize:14,marginBottom:14}}>Activity Log</h3>
+          {recordLogs.length===0 ? (
+            <p style={{fontSize:13,color:"var(--text3)"}}>No recorded activity yet for this transaction.</p>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {recordLogs.map((a,i)=>(
+                <div key={a.id||i} style={{display:"flex",gap:10,paddingBottom:10,borderBottom:i<recordLogs.length-1?"1px solid var(--border)":"none"}}>
+                  <div style={{width:8,height:8,borderRadius:"50%",background:a.status==="error"?"#ef4444":"var(--accent)",marginTop:5,flexShrink:0}}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                      <span style={{fontSize:13,fontWeight:700}}>{a.action}</span>
+                      <span style={{fontSize:11,color:"var(--text3)"}}>by {a.performed_by||"system"}</span>
+                      <span style={{fontSize:11,color:"var(--text3)"}}>· {new Date(a.performed_at).toLocaleString()}</span>
+                    </div>
+                    {a.details&&<p style={{fontSize:12,color:"var(--text2)",marginTop:2}}>{a.details.replace(`[${txn.ref}] `,"")}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Comments */}
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:isMobile?16:24}}>
@@ -22247,7 +22023,7 @@ function OutstandingTab({expenses, team, currentUser, canManage, onRecordPayment
   );
 }
 
-function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,clients=[],financeClientNotes=[],team=[],currentUser,onAddExpense,onDeleteExpense,onEditExpense,onAddExpenseComment,onRefresh,onRenameClient,onSaveClientNote,onUpdateClient}) {
+function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,clients=[],financeClientNotes=[],team=[],currentUser,onAddExpense,onDeleteExpense,onEditExpense,onAddExpenseComment,onRefresh,onRenameClient,onSaveClientNote,onUpdateClient,activityLogs=[]}) {
   const {isMobile} = useResponsive();
   const [showAdd,setShowAdd] = useState(false);
   const [range,setRange] = useState("all");
@@ -22588,6 +22364,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         onAddComment={onAddExpenseComment}
         clientNames={clientNames}
         team={team}
+        activityLogs={activityLogs}
       />
     );
   }
@@ -33600,21 +33377,28 @@ Return ONLY the JSON array, no markdown.`;
         const ref = "TXN-"+real.id.slice(0,8).toUpperCase();
         setData(d=>({...d,expenses:d.expenses.map(e=>e.id===local.id?{...e,...real,ref}:e)}));
         ue("Expense", real.id, {ref}).catch(()=>{});
+        // Logged here (not synchronously above) so the ref — assigned from the
+        // real server id — can be embedded in `details` and used later to
+        // filter this record's own activity log on its detail page.
+        logActivity("Expense Added","finance",`[${ref}] ${expData.currency||"EGP"} ${expData.amount} — ${expData.description}`,"success","",currentUser?.email||"admin");
       }
     }).catch(()=>{});
-    logActivity("Expense Added","finance",`${expData.currency||"EGP"} ${expData.amount} — ${expData.description}`,"success","",currentUser?.email||"admin");
     setToast("Expense added");
   };
 
   const deleteExpense = async (id) => {
+    const target = data.expenses.find(e=>e.id===id);
     setData(d=>({...d,expenses:d.expenses.filter(e=>e.id!==id)}));
     de("Expense", id).catch(()=>{});
+    logActivity("Expense Deleted","finance",`[${target?.ref||id}] ${target?.currency||""} ${target?.amount||""} — ${target?.description||""}`,"success","",currentUser?.email||"admin");
     setToast("Expense deleted");
   };
 
   const editExpense = async (id, updates) => {
+    const target = data.expenses.find(e=>e.id===id);
     setData(d=>({...d,expenses:d.expenses.map(e=>e.id===id?{...e,...updates}:e)}));
     ue("Expense", id, updates).catch(()=>{});
+    logActivity("Expense Edited","finance",`[${target?.ref||id}] changed: ${Object.keys(updates).join(", ")}`,"success","",currentUser?.email||"admin");
     setToast("Transaction updated");
   };
 
@@ -34459,6 +34243,7 @@ Return ONLY valid JSON (no markdown, no explanation):
               onBack={()=>{ try{ window.history.back(); }catch(e){ setSelectedClientId(null); } }} onPostClick={setSelectedPost}
               onAddProject={()=>setShowAddProject(true)}
               onAddPost={()=>{setAddPostForClient(selectedClient);setShowAddPost(true);}}
+              onAddCalendar={()=>{setCalendarPreselectedClient(selectedClient);setShowFABCalendar(true);}}
               clientKnowledge={data.clientKnowledge}
               clientDocuments={data.clientDocuments}
               currentUser={currentUser}
@@ -34570,6 +34355,7 @@ Return ONLY valid JSON (no markdown, no explanation):
             onRenameClient={renameFinanceClient}
             onSaveClientNote={saveFinanceClientNote}
             onUpdateClient={updateClient}
+            activityLogs={activityLogs}
           />
         )}
         {page==="users"&&(currentUser?.role==="admin"||currentUser?.role==="account_manager"||currentUser?.role==="office_boy"||hasPerm(currentUser,rolePermsMap,"hr.view_team"))&&(
@@ -34846,8 +34632,9 @@ Return ONLY valid JSON (no markdown, no explanation):
       clientMemoryList={data.clientMemory||[]}
     />}
 
-    {/* FAB — Add Task */}
-    {showFABTask&&<AddTaskModal open
+    {/* FAB — Add Task (same modal used everywhere else, e.g. from a client's
+        profile — no more separate/stale duplicate here) */}
+    {showFABTask&&<AddPostModal open
       onClose={()=>setShowFABTask(false)}
       clients={data.clients}
       projects={data.projects}
