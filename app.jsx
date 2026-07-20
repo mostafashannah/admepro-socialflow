@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.335";
+const APP_VERSION = "beta 5.336";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12393,10 +12393,13 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
               source of truth, not two places that can drift out of sync. */}
           <div>
             <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>AI Team</p>
-            {AI_AGENT_DEFS.filter(a=>a.id!=="pro").map(a=>(
+            {(()=>{ let agentsCfg=appSettings?.ai_agents; if(typeof agentsCfg==="string"){try{agentsCfg=JSON.parse(agentsCfg);}catch(e){agentsCfg={};}} agentsCfg=agentsCfg||{};
+            return AI_AGENT_DEFS.filter(a=>a.id!=="pro").map(a=>{
+              const avatarUrl = agentsCfg[a.id]?.avatar_url;
+              return (
               <div key={a.id} style={{background:"var(--surface)",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:14,border:`1px solid ${a.color}55`,marginBottom:8}}>
-                <div style={{width:40,height:40,borderRadius:"50%",background:a.color,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:15,flexShrink:0}}>
-                  {a.name[0]}
+                <div style={{width:40,height:40,borderRadius:"50%",background:a.color,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:15,flexShrink:0,overflow:"hidden"}}>
+                  {avatarUrl?<img src={avatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:a.name[0]}
                 </div>
                 <div style={{flex:1}}>
                   <div style={{fontWeight:600,fontSize:14,color:"var(--text)"}}>{a.name}</div>
@@ -12404,7 +12407,8 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
                 </div>
                 <span style={{background:a.color+"22",color:a.color,borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:700}}>AI</span>
               </div>
-            ))}
+              );
+            }); })()}
             {AI_AGENT_DEFS.find(a=>a.id==="content_creator")&&(
               <p style={{fontSize:11,color:"var(--text3)",marginBottom:4}}>Mention <strong>@Sara</strong> in any task/post comment and she'll reply with full context. Configure her model &amp; skills in Settings → AI Agents.</p>
             )}
@@ -19818,19 +19822,36 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 function AgentCard({def, cfg, models, onSave, logs, onBackfill, backfillRunning}) {
   const [model,setModel] = useState(cfg?.model||"claude-sonnet-4-6");
   const [skills,setSkills] = useState(cfg?.skills||"");
+  const [avatarUrl,setAvatarUrl] = useState(cfg?.avatar_url||"");
+  const [uploadingAvatar,setUploadingAvatar] = useState(false);
   const [saved,setSaved] = useState(false);
   const [showLog,setShowLog] = useState(false);
-  useEffect(()=>{ setModel(cfg?.model||"claude-sonnet-4-6"); setSkills(cfg?.skills||""); },[cfg?.model,cfg?.skills]);
+  useEffect(()=>{ setModel(cfg?.model||"claude-sonnet-4-6"); setSkills(cfg?.skills||""); setAvatarUrl(cfg?.avatar_url||""); },[cfg?.model,cfg?.skills,cfg?.avatar_url]);
   const save = async () => {
-    await onSave(def.id, {model, skills});
+    await onSave(def.id, {model, skills, avatar_url:avatarUrl});
     setSaved(true); setTimeout(()=>setSaved(false),2500);
+  };
+  const handleAvatarUpload = async (file) => {
+    if(!file) return;
+    setUploadingAvatar(true);
+    try {
+      const url = await uploadToStorage(file, "ai-agents");
+      setAvatarUrl(url);
+      await onSave(def.id, {model, skills, avatar_url:url});
+      setSaved(true); setTimeout(()=>setSaved(false),2500);
+    } catch(e){ alert("Photo upload failed: "+e.message); }
+    setUploadingAvatar(false);
   };
   const agentLogs = (logs||[]).filter(a=>(a.details||"").includes(`[agent:${def.id}]`))
     .sort((a,b)=>new Date(b.performed_at)-new Date(a.performed_at)).slice(0,15);
   return (
     <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:22}}>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
-        <div style={{width:10,height:10,borderRadius:"50%",background:def.color,flexShrink:0}}/>
+        <label style={{width:34,height:34,borderRadius:"50%",background:def.color,flexShrink:0,cursor:"pointer",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:13,position:"relative"}} title="Click to upload a photo">
+          {avatarUrl?<img src={avatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:def.name[0]}
+          {uploadingAvatar&&<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center"}}><Spinner size={14}/></div>}
+          <input type="file" accept="image/*" hidden disabled={uploadingAvatar} onChange={e=>{if(e.target.files[0]) handleAvatarUpload(e.target.files[0]); e.target.value="";}}/>
+        </label>
         <p style={{fontWeight:800,fontSize:14}}>{def.name}</p>
         <span style={{marginLeft:"auto",fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text3)"}}>Reports to Pro</span>
       </div>
