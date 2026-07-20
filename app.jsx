@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.312";
+const APP_VERSION = "beta 5.313";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -26527,7 +26527,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
 // ════════════════════════════════════════════════════════════════
 // SIDEBAR
 // ════════════════════════════════════════════════════════════════
-function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfile,onLogout,open,onClose,wallpaper,onWallpaperChange,rolePerms}) {
+function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfile,onLogout,open,onClose,wallpaper,onWallpaperChange,rolePerms,team=[]}) {
   const {isMobile, isTablet} = useResponsive();
   const unread = notifications.filter(n=>n.recipient_email===currentUser?.email&&!n.is_read).length;
   const isAdmin = currentUser?.role==="admin";
@@ -26740,6 +26740,12 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     setProSessions(next);
     if(id===proActiveId){ saveActiveChatId("", currentUser?.email); setProActiveId(""); }
   };
+  const [proShareToast, setProShareToast] = useState("");
+  const shareProSession = (session, member) => {
+    shareProSessionToMember(session, member, currentUser?.name).catch(()=>{});
+    setProShareToast(`Shared with ${member.name||member.email}`);
+    setTimeout(()=>setProShareToast(""), 2500);
+  };
 
   const startProChatFromSidebar = () => {
     const fresh = makeChatSession({user_id:currentUser?.email||""});
@@ -26882,7 +26888,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
                             whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                             {s.title || "New conversation"}
                           </span>
-                          <ChatSessionMenu onRename={()=>startRenameProSession(s)} onDelete={()=>deleteProSession(s.id)}/>
+                          <ChatSessionMenu onRename={()=>startRenameProSession(s)} onDelete={()=>deleteProSession(s.id)} onShare={m=>shareProSession(s,m)} team={team.filter(m=>m.email!==currentUser?.email)}/>
                         </div>
                       )
                     ))}
@@ -26894,6 +26900,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
                         {proShowAll ? "See less" : `See more (${proSessions.length-5})`}
                       </button>
                     )}
+                    {proShareToast && <p style={{padding:"4px 10px",fontSize:11,fontWeight:700,color:"var(--accent)"}}>{proShareToast}</p>}
                   </div>
                 </div>
               </div>
@@ -34055,6 +34062,7 @@ Return ONLY valid JSON (no markdown, no explanation):
           wallpaper={wallpaper}
           onWallpaperChange={handleWallpaperChange}
           rolePerms={rolePermsMap}
+          team={data.team||[]}
         />
       )}
 
@@ -34074,6 +34082,7 @@ Return ONLY valid JSON (no markdown, no explanation):
           wallpaper={wallpaper}
           onWallpaperChange={handleWallpaperChange}
           rolePerms={rolePermsMap}
+          team={data.team||[]}
         />
       )}
 
