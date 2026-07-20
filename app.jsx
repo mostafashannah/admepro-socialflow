@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.321";
+const APP_VERSION = "beta 5.322";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5886,9 +5886,49 @@ No markdown, no explanation, just the JSON array.`);
     });
 
     setAiIdeas(Object.values(ideasByKind).flat());
-    setGenerated(tasks);
+    setGenerated(tasks.map(t=>({...t,approved:false})));
     setStep("preview");
   };
+
+  // Per-item regenerate — same client-brain context as the bulk generator,
+  // but for exactly one item, optionally steered by feedback the user typed.
+  const [regenIdx,setRegenIdx] = useState(null);
+  const [expandedIdx,setExpandedIdx] = useState(null);
+  const [regenNotes,setRegenNotes] = useState({}); // idx -> feedback text
+  const regenerateItem = async (idx) => {
+    const task = generated[idx];
+    if(!task) return;
+    setRegenIdx(idx);
+    const kind = task.post_type==="article"?"article":task.post_type==="story"?"story":"post";
+    const cfg = f.kinds[kind]||{brief:"",platforms:[task.platform]};
+    const kindGuide = kind==="article"
+      ? `This is a long-form piece (e.g. a LinkedIn article) — give it a real headline and a longer, structured body (several paragraphs), not a short caption.`
+      : kind==="story"
+      ? `This is ephemeral, very short and casual (1 punchy line, no hashtags needed).`
+      : `This is a normal short-form social post (image/carousel/reel caption).`;
+    const note = (regenNotes[idx]||"").trim();
+    try {
+      const aiRes = await agentAI("content_creator", `Regenerate: ${task.title}`, `You are Sara, a senior content creator working under Pro's supervision. Rewrite ONE "${kind}" content idea for:
+${clientBrainBlock(f.client_id, selectedClient?.name)}
+Campaign: ${f.campaign}
+Brief: ${cfg.brief||f.campaign}
+Platform: ${task.platform}
+Current title: ${task.title}
+Current content: ${task.caption}
+${note?`FEEDBACK FROM THE TEAM — apply this: ${note}`:"The team asked for a fresh alternative — give a different angle than the current one."}
+
+${kindGuide}
+
+Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":"..."}`, 700);
+      const clean = aiRes.replace(/```json|```/g,"").trim();
+      const idea = JSON.parse(clean);
+      setGenerated(prev=>prev.map((t,i)=>i===idx?{...t,title:idea.title||t.title,caption:idea.caption||t.caption,hashtags:idea.hashtags??t.hashtags,approved:false}:t));
+      setRegenNotes(prev=>({...prev,[idx]:""}));
+    } catch(e) { alert("Sara couldn't regenerate that item — please try again."); }
+    setRegenIdx(null);
+  };
+  const toggleApprove = (idx) => setGenerated(prev=>prev.map((t,i)=>i===idx?{...t,approved:!t.approved}:t));
+  const approvedCount = generated.filter(t=>t.approved).length;
 
   const handleConfirm = async () => {
     setStep("generating");
@@ -5915,7 +5955,7 @@ No markdown, no explanation, just the JSON array.`);
       step==="generating"?"Generating…":
       step==="preview"?"Preview Calendar Plan":
       "Calendar Plan Created!"
-    } width={660}>
+    } width={step==="preview"?900:660}>
       {/* FORM */}
       {step==="form"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -6032,33 +6072,69 @@ No markdown, no explanation, just the JSON array.`);
       {/* PREVIEW */}
       {step==="preview"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
             <div>
               <h4 style={{fontWeight:700,fontSize:14}}>{f.campaign}</h4>
-              <p style={{fontSize:12,color:"var(--text2)"}}>{selectedClient?.name} · {generated.length} items · {fmtDate(f.date_from)} → {fmtDate(f.date_to)}</p>
+              <p style={{fontSize:12,color:"var(--text2)"}}>{selectedClient?.name} · {generated.length} items · {fmtDate(f.date_from)} → {fmtDate(f.date_to)} · {approvedCount}/{generated.length} approved</p>
             </div>
             <div style={{display:"flex",gap:5}}>{allPlatformsUsed.map(p=><PChip key={p} platform={p} xs/>)}</div>
           </div>
-          <div style={{maxHeight:340,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
-            {generated.map((task,i)=>(
-              <div key={task.id} style={{display:"grid",gridTemplateColumns:"32px 1fr auto auto",alignItems:"center",gap:10,padding:"10px 14px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
-                <div style={{width:28,height:28,borderRadius:"50%",background:"var(--accentbg)",border:"1px solid var(--accent)33",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:"var(--accent)"}}>{i+1}</div>
-                <div>
-                  <p style={{fontWeight:600,fontSize:13}}>{task.title}</p>
-                  {task.caption&&<p style={{fontSize:11,color:"var(--text3)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:280}}>{task.caption}</p>}
-                </div>
-                <span style={{display:"flex",alignItems:"center",gap:5}}>
-                  <PChip platform={task.platform} xs/>
-                  {(task.post_type==="article"||task.post_type==="story")&&(
-                    <span style={{fontSize:9,fontWeight:800,textTransform:"uppercase",padding:"2px 6px",borderRadius:99,background:"var(--surface)",border:"1px solid var(--border2)",color:"var(--text3)"}}>{task.post_type}</span>
+          <p style={{fontSize:11.5,color:"var(--text3)"}}>Review each item below — approve it, leave feedback for Sara and regenerate, or edit the text directly.</p>
+          <div style={{maxHeight:440,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
+            {generated.map((task,i)=>{
+              const isOpen = expandedIdx===i;
+              const isRegen = regenIdx===i;
+              return (
+                <div key={task.id} style={{background:"var(--surface2)",borderRadius:"var(--rs)",border:`1px solid ${task.approved?"#10b981aa":"var(--border)"}`,overflow:"hidden"}}>
+                  <div onClick={()=>setExpandedIdx(isOpen?null:i)} style={{display:"grid",gridTemplateColumns:"28px 1fr auto auto auto",alignItems:"center",gap:10,padding:"10px 14px",cursor:"pointer"}}>
+                    <div style={{width:26,height:26,borderRadius:"50%",background:task.approved?"#10b98122":"var(--accentbg)",border:`1px solid ${task.approved?"#10b981":"var(--accent)33"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:task.approved?"#10b981":"var(--accent)"}}>
+                      {task.approved?<Ico d={Icons.check} size={13} stroke="#10b981"/>:i+1}
+                    </div>
+                    <div style={{minWidth:0}}>
+                      <p style={{fontWeight:600,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{task.title}</p>
+                      {task.caption&&<p style={{fontSize:11,color:"var(--text3)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:340}}>{task.caption}</p>}
+                    </div>
+                    <span style={{display:"flex",alignItems:"center",gap:5}}>
+                      <PChip platform={task.platform} xs/>
+                      {(task.post_type==="article"||task.post_type==="story")&&(
+                        <span style={{fontSize:9,fontWeight:800,textTransform:"uppercase",padding:"2px 6px",borderRadius:99,background:"var(--surface)",border:"1px solid var(--border2)",color:"var(--text3)"}}>{task.post_type}</span>
+                      )}
+                    </span>
+                    <span style={{fontSize:11,color:"var(--text3)",whiteSpace:"nowrap"}}>{fmtDate(task.scheduled_date)}</span>
+                    <span style={{display:"flex",transform:isOpen?"rotate(180deg)":"none",transition:"transform 0.15s"}}><Ico d={Icons.chevD} size={13} stroke="var(--text3)"/></span>
+                  </div>
+                  {isOpen&&(
+                    <div style={{padding:"0 14px 14px",display:"flex",flexDirection:"column",gap:10,borderTop:"1px solid var(--border)"}} onClick={e=>e.stopPropagation()}>
+                      <Field label="Title">
+                        <input value={task.title} onChange={e=>setGenerated(prev=>prev.map((t,idx)=>idx===i?{...t,title:e.target.value}:t))} style={{...inputSt,marginTop:10}}/>
+                      </Field>
+                      <Field label={task.post_type==="article"?"Article Body":"Caption"}>
+                        <textarea value={task.caption} onChange={e=>setGenerated(prev=>prev.map((t,idx)=>idx===i?{...t,caption:e.target.value}:t))} rows={task.post_type==="article"?6:3} style={inputSt}/>
+                      </Field>
+                      {task.post_type!=="story"&&(
+                        <Field label="Hashtags">
+                          <input value={task.hashtags} onChange={e=>setGenerated(prev=>prev.map((t,idx)=>idx===i?{...t,hashtags:e.target.value}:t))} style={inputSt}/>
+                        </Field>
+                      )}
+                      <Field label="Feedback for Sara (optional)" hint="Tell her what to change, then hit Regenerate">
+                        <input value={regenNotes[i]||""} onChange={e=>setRegenNotes(prev=>({...prev,[i]:e.target.value}))} placeholder="e.g. more playful tone, mention the summer sale" style={inputSt}/>
+                      </Field>
+                      <div style={{display:"flex",gap:8}}>
+                        <button onClick={()=>toggleApprove(i)} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"9px",borderRadius:8,border:`1px solid ${task.approved?"#10b981":"var(--border2)"}`,background:task.approved?"#10b98122":"var(--surface)",color:task.approved?"#10b981":"var(--text2)",fontSize:12.5,fontWeight:700,cursor:"pointer"}}>
+                          <Ico d={Icons.check} size={13} stroke={task.approved?"#10b981":"var(--text2)"}/> {task.approved?"Approved":"Approve"}
+                        </button>
+                        <button onClick={()=>regenerateItem(i)} disabled={isRegen} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"9px",borderRadius:8,border:"1px solid #10b98166",background:"#10b98111",color:"#10b981",fontSize:12.5,fontWeight:700,cursor:isRegen?"wait":"pointer"}}>
+                          {isRegen?<><Spinner size={13}/> Sara is regenerating…</>:<><Ico d={Icons.sparkle} size={13} stroke="#10b981"/> Regenerate</>}
+                        </button>
+                      </div>
+                    </div>
                   )}
-                </span>
-                <span style={{fontSize:11,color:"var(--text3)",whiteSpace:"nowrap"}}>{fmtDate(task.scheduled_date)}</span>
-              </div>
-            ))}
+                </div>
+              );
+            })}
           </div>
           <div style={{display:"flex",gap:10}}>
-            <Btn variant="secondary" onClick={()=>setStep("form")} style={{flex:1}}>← Regenerate</Btn>
+            <Btn variant="secondary" onClick={()=>setStep("form")} style={{flex:1}}>← Back</Btn>
             <Btn onClick={handleConfirm} style={{flex:2}}>
               <Ico d={Icons.check} size={15}/> Create {generated.length} Tasks
             </Btn>
