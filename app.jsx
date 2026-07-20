@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.334";
+const APP_VERSION = "beta 5.335";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -2051,6 +2051,10 @@ const SEED = {
 // UTILS
 // ════════════════════════════════════════════════════════════════
 const uid = () => "local_" + Date.now() + "_" + Math.random().toString(36).slice(2,7);
+// Mention handle derived straight from a person's name — always in sync with
+// it (no separate field to drift or manage), and single-token so @mentions
+// never need the fragile "match until whitespace" parsing multi-word names required.
+const toUsername = (name) => (name||"").toLowerCase().replace(/[^a-z0-9]/g,"");
 const fmtFileSize = (bytes) => {
   if(!bytes) return "";
   if(bytes < 1024*1024) return `${(bytes/1024).toFixed(0)} KB`;
@@ -3447,7 +3451,7 @@ function MentionInput({value, onChange, team, placeholder, rows}) {
   // in the dropdown.
   const mentionable = [...(team||[]), {name:"Sara", email:"sara@ai.socialflow", role:"AI"}];
   const filtered = showDropdown
-    ? mentionable.filter(m => m.name && m.name.toLowerCase().includes(mentionQuery.toLowerCase())).slice(0,6)
+    ? mentionable.filter(m => m.name && (m.name.toLowerCase().includes(mentionQuery.toLowerCase()) || toUsername(m.name).includes(toUsername(mentionQuery)))).slice(0,6)
     : [];
 
   const handleChange = (e) => {
@@ -3502,7 +3506,10 @@ function MentionInput({value, onChange, team, placeholder, rows}) {
               onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
               <Avatar name={m.name} size={22} role={m.role}/>
-              <span style={{fontWeight:600}}>{m.name}</span>
+              <span>
+                <span style={{fontWeight:600,display:"block"}}>{m.name}</span>
+                <span style={{fontSize:10,color:"var(--text3)"}}>@{toUsername(m.name)}</span>
+              </span>
               <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{m.role}</span>
             </div>
           ))}
@@ -12996,7 +13003,10 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
           {member.avatar_url?<img src={member.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:member.name?.[0]?.toUpperCase()||"?"}
         </div>
         <div style={{flex:1,minWidth:0}}>
-          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:20,fontWeight:800}}>{member.name}</h2>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:20,fontWeight:800}}>{member.name}</h2>
+            <span style={{fontSize:12,color:"var(--text3)",fontWeight:600}}>@{toUsername(member.name)}</span>
+          </div>
           <p style={{fontSize:13,color:"var(--text2)"}}>{member.title?`${member.title} · `:""}{member.email}</p>
         </div>
         <span style={{background:ROLES[member.role]?.color+"22",color:ROLES[member.role]?.color,borderRadius:6,padding:"4px 12px",fontSize:12,fontWeight:600}}>{ROLES[member.role]?.label||member.role}</span>
@@ -34474,7 +34484,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     const mentions = [...content.matchAll(/@(\w[\w\s]*?)(?=\s|$|[.,!?])/g)].map(m=>m[1].trim());
     const mentionedEmails = new Set();
     for(const mentionName of mentions) {
-      const mentioned = data.team.find(m=>m.name===mentionName||m.name.startsWith(mentionName));
+      const mentioned = data.team.find(m=>m.name===mentionName||m.name.startsWith(mentionName)||toUsername(m.name)===toUsername(mentionName));
       if(mentioned && mentioned.email !== user?.email) {
         mentionedEmails.add(mentioned.email);
         const postTitle = post?.title||"a post";
