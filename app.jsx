@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.316";
+const APP_VERSION = "beta 5.317";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -8453,7 +8453,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
             {showAddMenu&&(
               <>
                 <div onClick={()=>setShowAddMenu(false)} style={{position:"fixed",inset:0,zIndex:9}}/>
-                <div className="fade-in" style={{position:"absolute",top:"calc(100% + 6px)",left:0,zIndex:10,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--rs)",boxShadow:"0 10px 30px rgba(0,0,0,0.15)",overflow:"hidden",minWidth:150}}>
+                <div className="fade-in" style={{position:"absolute",top:"calc(100% + 6px)",right:0,zIndex:10,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--rs)",boxShadow:"0 10px 30px rgba(0,0,0,0.15)",overflow:"hidden",minWidth:150}}>
                   <button onClick={()=>{setShowAddMenu(false);onAddProject();}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"10px 14px",fontSize:13,fontWeight:600,color:"var(--text)",background:"none",border:"none",cursor:"pointer",textAlign:"left"}}>
                     <Ico d={Icons.projects} size={14} stroke="var(--text2)"/> Project
                   </button>
