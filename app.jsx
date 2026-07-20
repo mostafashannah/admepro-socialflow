@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.318";
+const APP_VERSION = "beta 5.319";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1689,6 +1689,57 @@ const ai = async (prompt, maxTokens=1000) => {
   }
   const d = await r.json();
   return d.content?.map(b=>b.text||"").join("") || "";
+};
+
+// ── AI Agents (Settings → AI Agents) ─────────────────────────────
+// A small crew working under Pro's supervision. Each agent has a configurable
+// model + free-text skills/guides (stored team-wide in app_settings.ai_agents)
+// and its own activity log (activity_logs rows tagged "[agent:<id>]").
+const AI_AGENT_DEFS = [
+  {id:"pro", name:"Pro — AI Supervisor", color:"#d90b2c",
+   description:"The supervisor agent. Chats with the team, oversees the other agents, and answers using live workspace data. Its model/speed and Pro Skills are configured below."},
+  {id:"content_creator", name:"Senior Content Creator", color:"#10b981",
+   description:"Works under Pro's supervision on Add Calendar Plan and post content creation — writes post ideas, captions, articles, and stories in the client's brand voice."},
+  {id:"lead_generation", name:"Lead Generation Agent", color:"#6366f1",
+   description:"Works under Pro's supervision searching for new B2B leads — finds and enriches prospects matching your targeting criteria."},
+];
+// Read the live team-wide agent config; App() mirrors app_settings.ai_agents
+// into this global whenever settings load/change, so non-React helpers
+// (agentAI below) can read it without prop-drilling.
+function getAgentCfg(agentId){
+  try { return (window.__SF_AI_AGENTS||{})[agentId]||{}; } catch(e){ return {}; }
+}
+// Agent-flavored ai(): uses the agent's configured model, appends its
+// skills/guides to the prompt, tracks token usage, and writes a run entry to
+// that agent's own log. Falls back to defaults when the agent is unconfigured.
+const agentAI = async (agentId, taskLabel, prompt, maxTokens=1000) => {
+  const cfg = getAgentCfg(agentId);
+  const model = cfg.model || "claude-sonnet-4-6";
+  const skills = (cfg.skills||"").trim();
+  const def = AI_AGENT_DEFS.find(a=>a.id===agentId);
+  const fullPrompt = skills
+    ? `${prompt}\n\n=== YOUR SKILLS & GUIDES (set by the admin — always follow these) ===\n${skills}`
+    : prompt;
+  try {
+    const r = await fetch(AI_ENDPOINT, {
+      method:"POST", headers:AI_HEADERS,
+      body: JSON.stringify({ model, max_tokens:maxTokens, messages:[{role:"user",content:fullPrompt}] })
+    });
+    if(!r.ok) {
+      const errText = await r.text();
+      logActivity(`${def?.name||agentId}: ${taskLabel}`,"agents",`[agent:${agentId}] ${taskLabel}`,"error",`API ${r.status}: ${errText.slice(0,200)}`,"agent");
+      throw new Error(`AI API error ${r.status}: ${errText.slice(0,120)}`);
+    }
+    const d = await r.json();
+    trackAIUsage(d.usage, model);
+    logActivity(`${def?.name||agentId}: ${taskLabel}`,"agents",`[agent:${agentId}] ${taskLabel} (${model})`,"success","","agent");
+    return d.content?.map(b=>b.text||"").join("") || "";
+  } catch(e) {
+    if(!String(e.message).startsWith("AI API error")) {
+      logActivity(`${def?.name||agentId}: ${taskLabel}`,"agents",`[agent:${agentId}] ${taskLabel}`,"error",String(e.message).slice(0,200),"agent");
+    }
+    throw e;
+  }
 };
 
 // Uploads a recorded/picked audio file to transcribe-audio.php (OpenAI Whisper
@@ -5685,7 +5736,7 @@ Context: ${(selKnow?.context_file||"").slice(0,400)}
 ===` : "";
 
       const kindCounts = kindQueue.reduce((s,k)=>({...s,[k]:(s[k]||0)+1}),{});
-      const aiRes = await ai(`You are a social media strategist. Generate content ideas for:
+      const aiRes = await agentAI("content_creator", `Calendar plan: ${f.campaign}`, `You are a senior content creator working under Pro's supervision. Generate content ideas for:
 ${clientCtxBlock}
 Campaign: ${f.campaign}
 Brief: ${f.brief||"General social media content"}
@@ -7023,7 +7074,7 @@ function AIContentTools({client, knowledge, clientPosts}) {
     setVoiceLoading(true); setVoiceResult("");
     const ck = knowledge;
     try {
-      const result = await ai(`You are a brand voice specialist. Rewrite the text below to perfectly match this client's brand voice.
+      const result = await agentAI("content_creator", `Brand voice rewrite: ${client.name}`, `You are a brand voice specialist. Rewrite the text below to perfectly match this client's brand voice.
 
 CLIENT: ${client.name}
 Brand Voice/Tone: ${ck?.tone||"professional and engaging"}
@@ -7056,7 +7107,7 @@ Rules:
     setIdeasLoading(true); setIdeasResult([]);
     const ck = knowledge;
     try {
-      const result = await ai(`Generate ${ideasCount} creative social media post ideas for ${client.name} on ${ideasPlatform}.
+      const result = await agentAI("content_creator", `Content ideas: ${client.name}`, `Generate ${ideasCount} creative social media post ideas for ${client.name} on ${ideasPlatform}.
 
 CLIENT CONTEXT:
 Industry: ${client.industry||""}
@@ -7093,7 +7144,7 @@ No markdown, no explanation. Just the JSON array.`);
     setReviewLoading(true); setReviewResult(null);
     const ck = knowledge;
     try {
-      const result = await ai(`You are a brand consistency expert. Review this caption against the client's brand guidelines.
+      const result = await agentAI("content_creator", `Brand check: ${client.name}`, `You are a brand consistency expert. Review this caption against the client's brand guidelines.
 
 CLIENT: ${client.name}
 Brand Voice: ${ck?.tone||"professional"}
@@ -19256,7 +19307,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 
       {/* Tab nav */}
       <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",flexWrap:"wrap"}}>
-        {[["branding","Branding"],["logos","Identity"],["integrations","Integrations"],["email","Email"],["ai_model","AI & Tokens"],["flags","Feature Flags"],["syslog","System Log"]].map(([k,l])=>(
+        {[["branding","Branding"],["logos","Identity"],["integrations","Integrations"],["email","Email"],["ai_model","AI Agents"],["flags","Feature Flags"],["syslog","System Log"]].map(([k,l])=>(
           <button key={k} onClick={()=>setSettingsTab(k)} style={{padding:"9px 20px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${settingsTab===k?"var(--accent)":"transparent"}`,color:settingsTab===k?"var(--accent)":"var(--text2)",transition:"all 0.15s",display:"flex",alignItems:"center",gap:6,position:"relative"}}>
             {l}
             {k==="syslog"&&(activityLogs||[]).filter(a=>a.status==="error").length>0&&(
@@ -19409,7 +19460,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 
       {/* ── AI & TOKENS TAB ── */}
       {settingsTab==="ai_model"&&(
-        <AITokensPanel appSettings={appSettings} onSaveSettings={onSaveSettings}/>
+        <AITokensPanel appSettings={appSettings} onSaveSettings={onSaveSettings} activityLogs={activityLogs||[]}/>
       )}
 
       {/* ── FEATURE FLAGS TAB ── */}
@@ -19500,7 +19551,69 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 }
 
 // ── AI & Tokens Panel ──────────────────────────────────────────
-function AITokensPanel({appSettings, onSaveSettings}) {
+// One card per sub-agent in Settings → AI Agents: model + skills/guides
+// (persisted team-wide in app_settings.ai_agents) and the agent's own run log.
+function AgentCard({def, cfg, models, onSave, logs}) {
+  const [model,setModel] = useState(cfg?.model||"claude-sonnet-4-6");
+  const [skills,setSkills] = useState(cfg?.skills||"");
+  const [saved,setSaved] = useState(false);
+  const [showLog,setShowLog] = useState(false);
+  useEffect(()=>{ setModel(cfg?.model||"claude-sonnet-4-6"); setSkills(cfg?.skills||""); },[cfg?.model,cfg?.skills]);
+  const save = async () => {
+    await onSave(def.id, {model, skills});
+    setSaved(true); setTimeout(()=>setSaved(false),2500);
+  };
+  const agentLogs = (logs||[]).filter(a=>(a.details||"").includes(`[agent:${def.id}]`))
+    .sort((a,b)=>new Date(b.performed_at)-new Date(a.performed_at)).slice(0,15);
+  return (
+    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:22}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
+        <div style={{width:10,height:10,borderRadius:"50%",background:def.color,flexShrink:0}}/>
+        <p style={{fontWeight:800,fontSize:14}}>{def.name}</p>
+        <span style={{marginLeft:"auto",fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text3)"}}>Reports to Pro</span>
+      </div>
+      <p style={{fontSize:12,color:"var(--text3)",marginBottom:14}}>{def.description}</p>
+      <Field label="AI Model">
+        <select value={model} onChange={e=>setModel(e.target.value)} style={inputSt}>
+          {models.map(m=><option key={m.id} value={m.id}>{m.name} — {m.tier}</option>)}
+        </select>
+      </Field>
+      <div style={{marginTop:10}}>
+        <Field label="Skills & Guides" hint="Free-text instructions this agent always follows — tone rules, formats, targeting criteria, etc.">
+          <textarea value={skills} onChange={e=>setSkills(e.target.value)} rows={4}
+            placeholder={def.id==="content_creator"
+              ? "e.g.\n- Always write captions in Arabic first, then English\n- Hooks under 8 words\n- Every carousel ends with a CTA slide"
+              : "e.g.\n- Focus on factory owners and procurement managers\n- Prioritize Saudi Arabia and UAE\n- Skip companies under 20 employees"}
+            style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:13,fontFamily:"inherit",resize:"vertical",lineHeight:1.5}}/>
+        </Field>
+      </div>
+      <div style={{display:"flex",gap:8,marginTop:12,alignItems:"center"}}>
+        <button onClick={save} style={{padding:"8px 16px",borderRadius:10,background:"var(--accent)",color:"#fff",border:"none",fontSize:12.5,fontWeight:700,cursor:"pointer"}}>
+          {saved?" Saved!":"Save Agent"}
+        </button>
+        <button onClick={()=>setShowLog(v=>!v)} style={{padding:"8px 16px",borderRadius:10,background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)",fontSize:12.5,fontWeight:600,cursor:"pointer"}}>
+          {showLog?"Hide Log":`Agent Log (${agentLogs.length})`}
+        </button>
+      </div>
+      {showLog&&(
+        <div style={{marginTop:12,display:"flex",flexDirection:"column",gap:8,maxHeight:220,overflowY:"auto"}}>
+          {agentLogs.length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>No runs logged yet.</p>}
+          {agentLogs.map((a,i)=>(
+            <div key={a.id||i} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"8px 10px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border)"}}>
+              <div style={{width:7,height:7,borderRadius:"50%",background:a.status==="error"?"#ef4444":"#10b981",marginTop:4,flexShrink:0}}/>
+              <div style={{minWidth:0}}>
+                <p style={{fontSize:12,fontWeight:600}}>{a.action}</p>
+                <p style={{fontSize:10.5,color:"var(--text3)",marginTop:1}}>{new Date(a.performed_at).toLocaleString()}{a.error_message?` — ${a.error_message.slice(0,120)}`:""}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AITokensPanel({appSettings, onSaveSettings, activityLogs=[]}) {
   const [usage, setUsage] = useState(null);
   const [loading, setLoading] = useState(false);
   const [model, setModel] = useState(() => { try{ return localStorage.getItem("sf_ai_model")||"claude-sonnet-4-6"; }catch(e){return "claude-sonnet-4-6";} });
@@ -19510,6 +19623,11 @@ function AITokensPanel({appSettings, onSaveSettings}) {
   const [testing, setTesting] = useState(false);
   const [customInstructions, setCustomInstructions] = useState(appSettings?.pro_custom_instructions || "");
   const [instrSaved, setInstrSaved] = useState(false);
+  // Sub-agent configs (team-wide, JSON in app_settings.ai_agents)
+  const agentsCfg = (()=>{ let a=appSettings?.ai_agents; if(typeof a==="string"){try{a=JSON.parse(a);}catch(e){a={};}} return a||{}; })();
+  const saveAgent = async (agentId, cfg) => {
+    await onSaveSettings?.({ai_agents: {...agentsCfg, [agentId]: cfg}});
+  };
   useEffect(()=>{ setCustomInstructions(appSettings?.pro_custom_instructions || ""); },[appSettings?.pro_custom_instructions]);
   const saveCustomInstructions = async () => {
     await onSaveSettings?.({pro_custom_instructions: customInstructions});
@@ -19602,10 +19720,27 @@ function AITokensPanel({appSettings, onSaveSettings}) {
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:"min(700px,100%)"}}>
 
-      {/* AI Model Selector */}
+      {/* The agent crew */}
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:22}}>
-        <p style={{fontWeight:800,fontSize:14,marginBottom:4}}> AI Model</p>
-        <p style={{fontSize:12,color:"var(--text3)",marginBottom:16}}>Select which Claude model Pro uses across the application.</p>
+        <p style={{fontWeight:800,fontSize:14,marginBottom:4}}> Your AI Agents</p>
+        <p style={{fontSize:12,color:"var(--text3)"}}>Pro is the supervisor agent — it chats with the team and oversees the specialists below. Each agent has its own model, skills, and run log.</p>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginTop:14,padding:"12px 14px",background:"var(--surface2)",borderRadius:10,border:"1px solid var(--border)"}}>
+          <div style={{width:10,height:10,borderRadius:"50%",background:"#d90b2c",flexShrink:0}}/>
+          <div>
+            <p style={{fontWeight:700,fontSize:13}}>Pro — AI Supervisor</p>
+            <p style={{fontSize:11.5,color:"var(--text3)",marginTop:1}}>Configured by the Model, Speed, and Pro Skills sections below.</p>
+          </div>
+        </div>
+      </div>
+
+      {AI_AGENT_DEFS.filter(a=>a.id!=="pro").map(def=>(
+        <AgentCard key={def.id} def={def} cfg={agentsCfg[def.id]} models={MODELS} onSave={saveAgent} logs={activityLogs}/>
+      ))}
+
+      {/* AI Model Selector (Pro supervisor) */}
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:22}}>
+        <p style={{fontWeight:800,fontSize:14,marginBottom:4}}> Pro's AI Model</p>
+        <p style={{fontSize:12,color:"var(--text3)",marginBottom:16}}>Select which Claude model Pro (the supervisor) uses across the application.</p>
         <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
           {MODELS.map(m=>(
             <div key={m.id} onClick={()=>setModel(m.id)} style={{
@@ -26794,7 +26929,8 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
         {key:"assets", label:"Assets", ico:Icons.assets},
       ]:[]),
       ...(isAdmin?[
-        {key:"agents", label:"Agents", ico:Icons.activity},
+        // "Agents" page hidden for now — the agent crew is managed from
+        // Settings → AI Agents instead.
         {key:"settings", label:"Settings", ico:Icons.settings},
       ]:[]),
     ]}] : []),
@@ -32119,6 +32255,13 @@ function App() {
   },[currentUser?.role, page, rolePermsMap]);
 
   const [appSettings, setAppSettings] = useState(SEED.appSettings);
+  // Mirror the team-wide agent config into a global so agentAI() (a plain
+  // helper, not a component) can read each agent's model/skills at call time.
+  useEffect(()=>{
+    let agents = appSettings?.ai_agents;
+    if(typeof agents==="string"){ try{ agents = JSON.parse(agents); }catch(e){ agents = {}; } }
+    window.__SF_AI_AGENTS = agents||{};
+  },[appSettings?.ai_agents]);
   useEffect(()=>{
     const f = appSettings?.feature_flags;
     Object.assign(FEATURE_FLAGS, typeof f === "string" ? parseJ(f,{}) : (f||{}));
@@ -33365,12 +33508,9 @@ Make emails realistic (firstname.lastname@company.com pattern).
 Some leads should have phone, some not (realistic mix).
 Return ONLY the JSON array, no markdown.`;
 
-      const res = await fetch(AI_ENDPOINT, {
-        method:"POST", headers:AI_HEADERS,
-        body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:4000,system:"You are a B2B lead database. Generate realistic lead data as requested. Return only valid JSON arrays.",messages:[{role:"user",content:prompt}]}),
-      });
-      const d = await res.json();
-      const raw = (d.content?.map(b=>b.text||"").join("")||"").replace(/```json|```/g,"").trim();
+      const aiText = await agentAI("lead_generation", `Lead search: ${count} leads (${jobTitles.slice(0,60)})`,
+        `You are a B2B lead database. Generate realistic lead data as requested. Return only valid JSON arrays.\n\n${prompt}`, 4000);
+      const raw = aiText.replace(/```json|```/g,"").trim();
       let leads = [];
       try { leads = JSON.parse(raw); } catch(e){ setToast(" Lead generation parse error"); return; }
 
