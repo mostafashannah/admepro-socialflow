@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.327";
+const APP_VERSION = "beta 5.328";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5760,6 +5760,7 @@ function AddCalendarPlanModal({open,onClose,clients,team,preselectedClient,onGen
     },
   });
   const [generated,setGenerated] = useState([]);
+  const [genPhase,setGenPhase] = useState("brain"); // "brain" | "brief" | "<kind>" | "dates"
   const [aiIdeas,setAiIdeas] = useState([]);
   const s = (k,v) => setF(p=>({...p,[k]:v}));
   const sk = (kind,key,val) => setF(p=>({...p,kinds:{...p.kinds,[kind]:{...p.kinds[kind],[key]:val}}}));
@@ -5800,6 +5801,7 @@ function AddCalendarPlanModal({open,onClose,clients,team,preselectedClient,onGen
   const handleGenerate = async () => {
     if(!canGenerate) return;
     setStep("generating");
+    setGenPhase("brain");
 
     // Distribute every piece of content across dates, but interleave the
     // active content kinds evenly rather than grouping them into blocks (e.g.
@@ -5820,10 +5822,12 @@ function AddCalendarPlanModal({open,onClose,clients,team,preselectedClient,onGen
 
     const selClient = clients?.find?.(c=>c.id===f.client_id);
     const clientCtxBlock = selClient ? `Client: ${selClient.name}\nIndustry: ${selClient.industry||""}\n${clientBrainBlock(selClient.id, selClient.name)}` : "";
+    setGenPhase("brief");
 
     // Generate ideas per kind, each with its OWN brief/platforms/assignee.
     const ideasByKind = {};
     for(const kind of activeKinds){
+      setGenPhase(kind);
       const cfg = f.kinds[kind];
       const kindGuide = kind==="article"
         ? `These are long-form pieces (e.g. a LinkedIn article) — give each a real headline and a longer, structured body (several paragraphs), not a short caption.`
@@ -5862,6 +5866,7 @@ No markdown, no explanation, just the JSON array.`);
       }
     }
 
+    setGenPhase("dates");
     const cursor = {post:0,article:0,story:0};
     const platformCursor = {post:0,article:0,story:0};
     const tasks = dates.map((date,i)=>{
@@ -6063,13 +6068,30 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
             <p style={{fontFamily:"'Montserrat',sans-serif",fontSize:18,fontWeight:700}}>Sara is building your calendar…</p>
             <p style={{fontSize:13,color:"var(--text2)",marginTop:6}}>Sara is now generating your content — {totalCount} pieces</p>
           </div>
-          <div style={{display:"flex",flexDirection:"column",gap:6,width:"100%",maxWidth:300}}>
-            {["Checking client brain (brand voice, memory, published posts)…","Analyzing campaign brief…","Generating post ideas…","Writing captions…","Distributing dates…"].map((msg,i)=>(
-              <div key={msg} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"var(--surface2)",borderRadius:"var(--rxs)",opacity:0.8}}>
-                <div style={{width:6,height:6,borderRadius:"50%",background:"var(--accent)",animation:"pulse 1s infinite",animationDelay:`${i*0.3}s`}}/>
-                <span style={{fontSize:12,color:"var(--text2)"}}>{msg}</span>
-              </div>
-            ))}
+          <div style={{display:"flex",flexDirection:"column",gap:6,width:"100%",maxWidth:340}}>
+            {(()=>{
+              // Real steps, in the order handleGenerate actually executes them —
+              // each content kind gets its own row (not a generic "generating
+              // ideas" placeholder), so the list reflects true progress, not decor.
+              const stepOrder = ["brain","brief",...activeKinds,"dates"];
+              const kindPlural = {post:"posts",article:"articles",story:"stories"};
+              const stepLabel = (ph) => ph==="brain" ? "Checking client brain (brand voice, memory, published posts)…"
+                : ph==="brief" ? "Analyzing campaign brief…"
+                : ph==="dates" ? "Distributing dates & finalizing…"
+                : `Writing ${f.kinds[ph]?.count||""} ${kindPlural[ph]||ph}…`;
+              const curIdx = stepOrder.indexOf(genPhase);
+              return stepOrder.map((ph,i)=>{
+                const state = i<curIdx ? "done" : i===curIdx ? "active" : "pending";
+                return (
+                  <div key={ph} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"var(--surface2)",borderRadius:"var(--rxs)",opacity:state==="pending"?0.45:1}}>
+                    {state==="done"
+                      ? <Ico d={Icons.check} size={11} stroke="#10b981"/>
+                      : <div style={{width:6,height:6,borderRadius:"50%",background:"var(--accent)",animation:state==="active"?"pulse 1s infinite":"none"}}/>}
+                    <span style={{fontSize:12,color:state==="done"?"#10b981":"var(--text2)",fontWeight:state==="active"?700:400}}>{stepLabel(ph)}</span>
+                  </div>
+                );
+              });
+            })()}
           </div>
         </div>
       )}
