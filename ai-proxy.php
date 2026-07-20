@@ -27,7 +27,10 @@ curl_setopt_array($ch, [
   CURLOPT_POST           => true,
   CURLOPT_POSTFIELDS     => $payload,
   CURLOPT_RETURNTRANSFER => true,
-  CURLOPT_TIMEOUT        => 60,
+  // 60s was too tight for Pro's real requests (large system prompt + high
+  // max_tokens + web search) — Anthropic regularly needs longer, and every
+  // overrun surfaced in-app as an opaque "AI error: API error".
+  CURLOPT_TIMEOUT        => 300,
   CURLOPT_CONNECTTIMEOUT => 10,
   CURLOPT_HTTPHEADER     => [
     "x-api-key: $ANTHROPIC_KEY",

@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.328";
+const APP_VERSION = "beta 5.329";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -8134,7 +8134,7 @@ ${rejectedBlock}`;
     const userMsg = input.trim();
     if(!userMsg||typing) return;
     setInput("");
-    const userObj = {role:"user",id:uid(),content:userMsg};
+    const userObj = {role:"user",id:uid(),content:userMsg,ts:new Date().toISOString()};
     setMessages(m=>[...m,userObj]);
     setTyping(true);
 
@@ -8222,7 +8222,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
         messages:[{role:"user",content:analysisPrompt}],
       })});
       const d = await res.json();
-      if(d.error) throw new Error(d.error.message||"API error");
+      if(d.error) throw new Error(d.error.message||(typeof d.error==="string"?d.error:"")||"API error");
       const raw = (d.content?.map(b=>b.text||"").join("")||"").replace(/```json|```/g,"").trim();
       let insights = [];
       try{ insights = JSON.parse(raw); }catch(e){ insights = []; }
@@ -28213,6 +28213,13 @@ function ChatMessage({msg, isTyping, onConfirm, onReject, onExecuteAction}) {
             border:"1px solid var(--accent)44",cursor:"pointer",
           }}>{msg.actionBtn.label}</button>
         )}
+
+        {/* Timestamp */}
+        {msg.ts&&(
+          <span style={{fontSize:10,color:"var(--text3)",padding:isBot?"0":"0 2px"}} title={new Date(msg.ts).toLocaleString()}>
+            {new Date(msg.ts).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"})}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -28274,7 +28281,7 @@ Rules:
         }),
       });
       const d = await res.json();
-      if(d.error) throw new Error(d.error.message||"API error");
+      if(d.error) throw new Error(d.error.message||(typeof d.error==="string"?d.error:"")||"API error");
       const raw = (d.content?.map(b=>b.text||"").join("")||"").trim();
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : {insights:[]};
@@ -28949,7 +28956,7 @@ RULES:
   };
 
   const addBotMsgFloat = (content, type="", actionBtn=null) => {
-    setMessages(m=>[...m,{role:"bot",content,id:uid(),type,actionBtn}]);
+    setMessages(m=>[...m,{role:"bot",content,id:uid(),type,actionBtn,ts:new Date().toISOString()}]);
   };
 
   const runOneFloat = async (payload) => {
@@ -29234,7 +29241,7 @@ RULES:
     const userMsg = text || input.trim();
     if(!userMsg) return;
     setInput("");
-    const userMsgObj = {role:"user", content:userMsg, id:uid()};
+    const userMsgObj = {role:"user", content:userMsg, id:uid(), ts:new Date().toISOString()};
     setMessages(m=>[...m, userMsgObj]);
     setTyping(true);
 
@@ -29296,7 +29303,7 @@ RULES:
         }),
       });
       const d = await res.json();
-      if(d.error) throw new Error(d.error.message||"API error");
+      if(d.error) throw new Error(d.error.message||(typeof d.error==="string"?d.error:"")||"API error");
       trackAIUsage(d.usage, aiPrefs.model);
       const botText = (d.content?.map(b=>b.text||"").join("")||"Sorry, I couldn't process that.").trim();
 
@@ -30699,7 +30706,7 @@ RULES:
   };
 
   const addBotMsg = (content, type="", actionBtn=null) =>
-    setMessages(m=>[...m,{role:"bot",content,id:uid(),type,actionBtn}]);
+    setMessages(m=>[...m,{role:"bot",content,id:uid(),type,actionBtn,ts:new Date().toISOString()}]);
 
   const runOneAction = async (payload) => {
     try {
@@ -31027,7 +31034,7 @@ RULES:
     if(!userMsg && pendingAttachments.length===0) return;
     setInput("");
     setAttachments([]);
-    const userMsgObj = {role:"user",content:userMsg||" Sent file(s)",id:uid(),attachments:pendingAttachments};
+    const userMsgObj = {role:"user",content:userMsg||" Sent file(s)",id:uid(),attachments:pendingAttachments,ts:new Date().toISOString()};
     setMessages(m=>[...m,userMsgObj]);
     setTyping(true);
 
@@ -31200,7 +31207,7 @@ RULES:
         body: JSON.stringify({model:aiPrefs.model, max_tokens:speedTokens(aiPrefs.speed,16000), system:sysPrompt, messages:apiHistory, tools:[{type:"web_search_20250305", name:"web_search", max_uses:3}]}),
       });
       const d = await res.json();
-      if(d.error) throw new Error(d.error.message||"API error");
+      if(d.error) throw new Error(d.error.message||(typeof d.error==="string"?d.error:"")||"API error");
       trackAIUsage(d.usage, aiPrefs.model);
       const botText = (d.content?.map(b=>b.text||"").join("")||"").trim() || "I'm not sure — could you rephrase?";
 
