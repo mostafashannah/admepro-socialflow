@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.305";
+const APP_VERSION = "beta 5.306";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -27399,14 +27399,27 @@ ${isFocused && recentPosts?`RECENT POSTS:\n${recentPosts}`:""}`.trim();
     const expenses = (data?.expenses||[]);
     const subs = (data?.subscriptions||[]);
     const unpaidInv = invoices.filter(i=>!["paid"].includes(i.status));
-    const thisMonth = new Date().toISOString().slice(0,7);
-    const mExp = expenses.filter(e=>(e.date||"").startsWith(thisMonth));
+    const today = new Date().toISOString().slice(0,10);
+    const thisMonth = today.slice(0,7);
+    const isIn = e=>(e.type||"out")==="in";
+    const moneyIn = expenses.filter(isIn);
+    const moneyOut = expenses.filter(e=>!isIn(e));
+    const mIn = moneyIn.filter(e=>(e.date||"").startsWith(thisMonth));
+    const mOut = moneyOut.filter(e=>(e.date||"").startsWith(thisMonth));
+    const tIn = moneyIn.filter(e=>e.date===today);
+    const tOut = moneyOut.filter(e=>e.date===today);
     const sumBy = (arr,f)=>arr.reduce((s,x)=>s+(Number(x[f])||0),0);
+    const fmtRow = e=>`- ${e.date||"?"} | ${e.description||e.category||"?"} | ${e.currency||""} ${e.amount||0} | ${e.category||"-"}${e.client_name?` | ${e.client_name}`:""}`;
     financeBlock = `═══ FINANCE (you have full finance access) ═══
+IMPORTANT: every expense/transaction record has a direction — type:"in" = MONEY IN (income/client payment received), type:"out" = MONEY OUT (expense/withdrawal). Never sum these together or call a "type:in" row an expense — always separate income from outgoing spend and label each row correctly.
 Invoices: ${invoices.length} total | Unpaid/overdue: ${unpaidInv.length} (${unpaidInv.slice(0,10).map(i=>`${i.invoice_number||i.id}: ${i.client_name} ${i.currency||""} ${i.total||i.amount||0} [${i.status}] due ${i.due_date||"?"}`).join(" ; ")||"none"})
 Active subscriptions: ${subs.filter(s=>s.status==="active").length} (${subs.filter(s=>s.status==="active").slice(0,10).map(s=>`${s.client_name||s.subscription_name}: ${s.currency||""} ${s.amount||0}/${s.billing_cycle||"mo"}`).join(" ; ")||"none"})
-Expenses this month (${thisMonth}): ${mExp.length} records, total ${sumBy(mExp,"amount")} (mixed currencies possible)
-Recent expenses: ${expenses.slice(0,15).map(e=>`- ${e.date||"?"} | ${e.description||e.category||"?"} | ${e.currency||""} ${e.amount||0} | ${e.category||"-"}${e.client_name?` | ${e.client_name}`:""}`).join("\n")||"none"}`;
+Money IN today (${today}): ${tIn.length} records, total ${sumBy(tIn,"amount")}
+Money OUT today (${today}): ${tOut.length} records, total ${sumBy(tOut,"amount")}
+Money IN this month (${thisMonth}): ${mIn.length} records, total ${sumBy(mIn,"amount")} (mixed currencies possible)
+Money OUT this month (${thisMonth}): ${mOut.length} records, total ${sumBy(mOut,"amount")} (mixed currencies possible)
+Recent money IN (income/client payments): ${moneyIn.slice(0,15).map(fmtRow).join("\n")||"none"}
+Recent money OUT (expenses/withdrawals): ${moneyOut.slice(0,15).map(fmtRow).join("\n")||"none"}`;
   }
   if(canQuotes) {
     const quotes = (data?.quotes||[]);
