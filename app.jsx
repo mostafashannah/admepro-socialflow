@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.342";
+const APP_VERSION = "beta 5.343";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1722,6 +1722,10 @@ function getAgentCfg(agentId){
 // Agent-flavored ai(): uses the agent's configured model, appends its
 // skills/guides to the prompt, tracks token usage, and writes a run entry to
 // that agent's own log. Falls back to defaults when the agent is unconfigured.
+// Real wall-clock start/end for this exact run, so the Team Timeline can draw
+// a genuine time-slot bar for her instead of a fake proportional count bar —
+// no new DB column: encoded as a parseable "|start:ISO|end:ISO" suffix on the
+// existing activity_logs.details TEXT field (see parseAgentRunTiming below).
 const agentAI = async (agentId, taskLabel, prompt, maxTokens=1000) => {
   const cfg = getAgentCfg(agentId);
   const model = cfg.model || "claude-sonnet-4-6";
@@ -1730,6 +1734,8 @@ const agentAI = async (agentId, taskLabel, prompt, maxTokens=1000) => {
   const fullPrompt = skills
     ? `${prompt}\n\n=== YOUR SKILLS & GUIDES (set by the admin — always follow these) ===\n${skills}`
     : prompt;
+  const startedAt = new Date();
+  const timingSuffix = () => `|start:${startedAt.toISOString()}|end:${new Date().toISOString()}`;
   try {
     const r = await fetch(AI_ENDPOINT, {
       method:"POST", headers:AI_HEADERS,
@@ -1737,20 +1743,30 @@ const agentAI = async (agentId, taskLabel, prompt, maxTokens=1000) => {
     });
     if(!r.ok) {
       const errText = await r.text();
-      logActivity(`${def?.name||agentId}: ${taskLabel}`,"agents",`[agent:${agentId}] ${taskLabel}`,"error",`API ${r.status}: ${errText.slice(0,200)}`,"agent");
+      logActivity(`${def?.name||agentId}: ${taskLabel}`,"agents",`[agent:${agentId}] ${taskLabel}${timingSuffix()}`,"error",`API ${r.status}: ${errText.slice(0,200)}`,"agent");
       throw new Error(`AI API error ${r.status}: ${errText.slice(0,120)}`);
     }
     const d = await r.json();
     trackAIUsage(d.usage, model);
-    logActivity(`${def?.name||agentId}: ${taskLabel}`,"agents",`[agent:${agentId}] ${taskLabel} (${model})`,"success","","agent");
+    logActivity(`${def?.name||agentId}: ${taskLabel}`,"agents",`[agent:${agentId}] ${taskLabel} (${model})${timingSuffix()}`,"success","","agent");
     return d.content?.map(b=>b.text||"").join("") || "";
   } catch(e) {
     if(!String(e.message).startsWith("AI API error")) {
-      logActivity(`${def?.name||agentId}: ${taskLabel}`,"agents",`[agent:${agentId}] ${taskLabel}`,"error",String(e.message).slice(0,200),"agent");
+      logActivity(`${def?.name||agentId}: ${taskLabel}`,"agents",`[agent:${agentId}] ${taskLabel}${timingSuffix()}`,"error",String(e.message).slice(0,200),"agent");
     }
     throw e;
   }
 };
+// Pull the real start/end timestamps back out of a log's details string —
+// returns null if this entry predates the timing suffix (older logs still
+// display fine, just without a precise time-slot).
+function parseAgentRunTiming(details){
+  const m = (details||"").match(/\|start:([^|]+)\|end:([^|]+)/);
+  if(!m) return null;
+  const start = new Date(m[1]), end = new Date(m[2]);
+  if(isNaN(start)||isNaN(end)) return null;
+  return {start, end};
+}
 // Full client-brain context block for any Sara task, read from a global App()
 // keeps mirrored (same pattern as __SF_AI_AGENTS) — knowledge + intelligence +
 // learned memory, without prop-drilling three lists into every modal.
@@ -12369,15 +12385,20 @@ function AgentProfilePage({agent, avatarUrl, activityLogs=[], onBack}) {
         <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",marginBottom:10}}>Full History ({logs.length} logged actions)</p>
         <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:480,overflowY:"auto"}}>
           {logs.length===0&&<p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:20}}>No activity logged yet.</p>}
-          {logs.map((a,i)=>(
+          {logs.map((a,i)=>{
+            const timing = parseAgentRunTiming(a.details);
+            const durMins = timing ? (timing.end-timing.start)/60000 : null;
+            const durLabel = durMins==null ? "" : durMins<1 ? ` · ${Math.round(durMins*60)}s` : ` · ${durMins.toFixed(1)}m`;
+            return (
             <div key={a.id||i} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"8px 10px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border)"}}>
               <div style={{width:7,height:7,borderRadius:"50%",background:a.status==="error"?"#ef4444":"#10b981",marginTop:4,flexShrink:0}}/>
               <div style={{minWidth:0,flex:1}}>
                 <p style={{fontSize:12,fontWeight:600}}>{a.action}</p>
-                <p style={{fontSize:10.5,color:"var(--text3)",marginTop:1}}>{new Date(a.performed_at).toLocaleString()}{a.error_message?` — ${a.error_message.slice(0,150)}`:""}</p>
+                <p style={{fontSize:10.5,color:"var(--text3)",marginTop:1}}>{new Date(a.performed_at).toLocaleString()}{durLabel}{a.error_message?` — ${a.error_message.slice(0,150)}`:""}</p>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
@@ -24955,14 +24976,16 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
             );
           })}
           {(()=>{
-            // Sara has no clock-in hours, so an hourly slot bar doesn't apply
-            // to her the way it does a human — instead show one bar sized to
-            // how much she actually worked that day (her agent-log action
-            // count), so she's still visibly present on the shared timeline.
+            // Sara's real start/end time per action (parsed from the timing
+            // suffix agentAI() now logs) drawn as actual positioned bars on
+            // the same hour scale as the human rows above — not a fake
+            // proportional count, real clock times.
             const sara = AI_AGENT_DEFS.find(a=>a.id==="content_creator");
             let agentsCfg=appSettings?.ai_agents; if(typeof agentsCfg==="string"){try{agentsCfg=JSON.parse(agentsCfg);}catch(e){agentsCfg={};}}
             const avatarUrl = (agentsCfg||{})[sara?.id]?.avatar_url;
-            const saraCount = (activityLogs||[]).filter(l=>(l.details||"").includes(`[agent:${sara?.id}]`) && (l.performed_at||"").slice(0,10)===dateStr).length;
+            const saraRuns = (activityLogs||[]).filter(l=>(l.details||"").includes(`[agent:${sara?.id}]`) && (l.performed_at||"").slice(0,10)===dateStr)
+              .map(l=>({log:l, timing:parseAgentRunTiming(l.details)}))
+              .filter(r=>r.timing);
             if(!sara) return null;
             return (
               <div key="sara-timeline-row" style={{display:"flex",alignItems:"center",padding:"10px 16px",borderBottom:"1px solid var(--border)",gap:10,background:sara.color+"08"}}>
@@ -24972,14 +24995,24 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                   </div>
                   Sara (AI)
                 </div>
-                <div style={{position:"relative",flex:1,height:30,background:"var(--surface2)",borderRadius:6}}>
-                  {saraCount===0 ? (
-                    <span style={{position:"absolute",top:"50%",left:8,transform:"translateY(-50%)",fontSize:10,color:"var(--text3)"}}>No activity this day</span>
-                  ) : (
-                    <div title={`${saraCount} action${saraCount===1?"":"s"} today`} style={{position:"absolute",left:0,width:`${Math.min(100,saraCount*12)}%`,top:3,bottom:3,background:sara.color,borderRadius:5,display:"flex",alignItems:"center",padding:"0 8px"}}>
-                      <span style={{fontSize:10,color:"#fff",fontWeight:700,whiteSpace:"nowrap"}}>{saraCount} action{saraCount===1?"":"s"}</span>
-                    </div>
-                  )}
+                <div style={{position:"relative",flex:1,height:30,background:"var(--surface2)",borderRadius:6,
+                  backgroundImage:`repeating-linear-gradient(to right, var(--border) 0, var(--border) 1px, transparent 1px, transparent ${100/(WORKING_END-WORKING_START)}%)`}}>
+                  {saraRuns.length===0 && <span style={{position:"absolute",top:"50%",left:8,transform:"translateY(-50%)",fontSize:10,color:"var(--text3)"}}>No activity this day</span>}
+                  {saraRuns.map(({log,timing},ri)=>{
+                    const startMins = timing.start.getHours()*60+timing.start.getMinutes();
+                    const durMins = Math.max(0,(timing.end-timing.start)/60000);
+                    const leftPct = Math.max(0,(startMins - WORKING_START*60)/WORKING_MINS*100);
+                    // Real runs are usually seconds long — a literal width would
+                    // be an invisible sliver, so floor it for visibility while
+                    // the tooltip/label still shows the true start/end/duration.
+                    const widthPct = Math.max(1.2,(durMins)/WORKING_MINS*100);
+                    const durLabel = durMins<1 ? `${Math.round(durMins*60)}s` : `${durMins.toFixed(1)}m`;
+                    const timeLabel = `${timing.start.toTimeString().slice(0,5)}–${timing.end.toTimeString().slice(0,5)}`;
+                    return (
+                      <div key={log.id||ri} title={`${log.action} · ${timeLabel} (${durLabel})`}
+                        style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:3,bottom:3,background:log.status==="error"?"#ef4444":sara.color,borderRadius:4,overflow:"hidden"}}/>
+                    );
+                  })}
                 </div>
               </div>
             );
