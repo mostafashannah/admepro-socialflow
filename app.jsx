@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.340";
+const APP_VERSION = "beta 5.342";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -4276,6 +4276,11 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   const internalComments = postComments.filter(c=>c.audience!=="client");
   const clientComments = postComments.filter(c=>c.audience==="client");
   const [activityTab, setActivityTab] = useState("internal"); // "internal" | "client"
+  // Auto-scroll to the newest comment (including AI replies that land a few
+  // seconds after a mention, with no user action to trigger a manual scroll).
+  const commentsEndRef = useRef(null);
+  const activeCommentsLen = activityTab==="internal" ? internalComments.length : clientComments.length;
+  useEffect(()=>{ commentsEndRef.current?.scrollIntoView({behavior:"smooth", block:"end"}); },[activeCommentsLen, activityTab]);
 
   return (
     <>
@@ -4750,6 +4755,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                   </div>
                 ))}
                 {internalComments.length===0&&<p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:16}}>No activity yet</p>}
+                <div ref={commentsEndRef}/>
               </div>
               {commentAttachment&&(
                 <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border)",fontSize:12}}>
@@ -4802,6 +4808,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                   </div>
                 ))}
                 {clientComments.length===0&&<p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:16}}>No client comments yet</p>}
+                <div ref={commentsEndRef}/>
               </div>
               {clientCommentAttachment&&(
                 <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border)",fontSize:12}}>
@@ -12293,7 +12300,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
 // Full profile for an AI agent — her whole history/analysis, all derived from
 // her own activity log (no separate storage needed: every run she does is
 // already logged there, tagged [agent:<id>], so this doubles as her "file").
-function AgentProfileModal({agent, avatarUrl, activityLogs=[], onClose}) {
+function AgentProfilePage({agent, avatarUrl, activityLogs=[], onBack}) {
   const logs = (activityLogs||[]).filter(a=>(a.details||"").includes(`[agent:${agent.id}]`))
     .sort((a,b)=>new Date(b.performed_at)-new Date(a.performed_at));
   const byDay = {};
@@ -12309,69 +12316,71 @@ function AgentProfileModal({agent, avatarUrl, activityLogs=[], onClose}) {
   const maxDayCount = Math.max(1, ...last14.map(([,c])=>c));
 
   return (
-    <Modal open onClose={onClose} title={`${agent.name} — Profile`} width={720}>
-      <div style={{display:"flex",flexDirection:"column",gap:18}}>
-        <div style={{display:"flex",alignItems:"center",gap:14}}>
-          <div style={{width:56,height:56,borderRadius:"50%",background:agent.color,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:20,flexShrink:0,overflow:"hidden"}}>
-            {avatarUrl?<img src={avatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:agent.name[0]}
-          </div>
-          <div>
-            <p style={{fontWeight:800,fontSize:17}}>{agent.name}</p>
-            <p style={{fontSize:12,color:"var(--text3)"}}>{agent.description}</p>
-          </div>
-          <span style={{marginLeft:"auto",background:agent.color+"22",color:agent.color,borderRadius:6,padding:"4px 12px",fontSize:11,fontWeight:700,flexShrink:0}}>AI Team Member</span>
+    <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:900}} className="fade-in">
+      <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:700,color:"var(--text2)",alignSelf:"flex-start"}}>
+        <Ico d={Icons.chevL} size={15} stroke="var(--text2)"/> Team
+      </button>
+
+      <div style={{display:"flex",alignItems:"center",gap:14}}>
+        <div style={{width:56,height:56,borderRadius:"50%",background:agent.color,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:20,flexShrink:0,overflow:"hidden"}}>
+          {avatarUrl?<img src={avatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:agent.name[0]}
         </div>
-
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10}}>
-          {[
-            {label:"Total Actions",value:logs.length,color:agent.color},
-            {label:"Today",value:todayCount,color:"#10b981"},
-            {label:"Active Days",value:activeDaysCount,color:"#3b82f6"},
-            {label:"Avg / Active Day",value:avgPerActiveDay,color:"#f59e0b"},
-            {label:"Peak Day",value:peakDay?`${peakDay[1]} on ${fmtDate(peakDay[0])}`:"—",color:"#8b5cf6",wide:true},
-            {label:"Errors",value:errorCount,color:errorCount?"#ef4444":"var(--text3)"},
-          ].map(s=>(
-            <div key={s.label} style={{padding:12,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",gridColumn:s.wide?"span 2":undefined}}>
-              <p style={{fontSize:10,color:"var(--text3)",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em"}}>{s.label}</p>
-              <p style={{fontSize:s.wide?15:18,fontWeight:800,color:s.color,marginTop:2}}>{s.value}</p>
-            </div>
-          ))}
-        </div>
-
-        {last14.length>0 && (
-          <div>
-            <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",marginBottom:8}}>Actions per day (last {last14.length})</p>
-            <div style={{display:"flex",flexDirection:"column",gap:5}}>
-              {[...last14].reverse().map(([day,count])=>(
-                <div key={day} style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{fontSize:10,color:"var(--text3)",width:70,flexShrink:0}}>{fmtDate(day)}</span>
-                  <div style={{flex:1,height:14,background:"var(--surface2)",borderRadius:4,overflow:"hidden"}}>
-                    <div style={{width:`${(count/maxDayCount)*100}%`,height:"100%",background:day===peakDay?.[0]?agent.color:agent.color+"88",borderRadius:4}}/>
-                  </div>
-                  <span style={{fontSize:11,fontWeight:700,width:20,textAlign:"right",flexShrink:0}}>{count}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         <div>
-          <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",marginBottom:8}}>Full History ({logs.length} logged actions)</p>
-          <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:280,overflowY:"auto"}}>
-            {logs.length===0&&<p style={{fontSize:12,color:"var(--text3)",textAlign:"center",padding:20}}>No activity logged yet.</p>}
-            {logs.map((a,i)=>(
-              <div key={a.id||i} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"8px 10px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border)"}}>
-                <div style={{width:7,height:7,borderRadius:"50%",background:a.status==="error"?"#ef4444":"#10b981",marginTop:4,flexShrink:0}}/>
-                <div style={{minWidth:0,flex:1}}>
-                  <p style={{fontSize:12,fontWeight:600}}>{a.action}</p>
-                  <p style={{fontSize:10.5,color:"var(--text3)",marginTop:1}}>{new Date(a.performed_at).toLocaleString()}{a.error_message?` — ${a.error_message.slice(0,150)}`:""}</p>
+          <p style={{fontWeight:800,fontSize:20,fontFamily:"'Montserrat',sans-serif"}}>{agent.name}</p>
+          <p style={{fontSize:13,color:"var(--text3)"}}>{agent.description}</p>
+        </div>
+        <span style={{marginLeft:"auto",background:agent.color+"22",color:agent.color,borderRadius:6,padding:"4px 12px",fontSize:11,fontWeight:700,flexShrink:0}}>AI Team Member</span>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10}}>
+        {[
+          {label:"Total Actions",value:logs.length,color:agent.color},
+          {label:"Today",value:todayCount,color:"#10b981"},
+          {label:"Active Days",value:activeDaysCount,color:"#3b82f6"},
+          {label:"Avg / Active Day",value:avgPerActiveDay,color:"#f59e0b"},
+          {label:"Peak Day",value:peakDay?`${peakDay[1]} on ${fmtDate(peakDay[0])}`:"—",color:"#8b5cf6",wide:true},
+          {label:"Errors",value:errorCount,color:errorCount?"#ef4444":"var(--text3)"},
+        ].map(s=>(
+          <div key={s.label} style={{padding:14,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",gridColumn:s.wide?"span 2":undefined}}>
+            <p style={{fontSize:10,color:"var(--text3)",fontWeight:700,textTransform:"uppercase",letterSpacing:"0.05em"}}>{s.label}</p>
+            <p style={{fontSize:s.wide?16:20,fontWeight:800,color:s.color,marginTop:2}}>{s.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {last14.length>0 && (
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16}}>
+          <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",marginBottom:10}}>Actions per day (last {last14.length})</p>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {[...last14].reverse().map(([day,count])=>(
+              <div key={day} style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:11,color:"var(--text3)",width:70,flexShrink:0}}>{fmtDate(day)}</span>
+                <div style={{flex:1,height:16,background:"var(--surface2)",borderRadius:4,overflow:"hidden"}}>
+                  <div style={{width:`${(count/maxDayCount)*100}%`,height:"100%",background:day===peakDay?.[0]?agent.color:agent.color+"88",borderRadius:4}}/>
                 </div>
+                <span style={{fontSize:12,fontWeight:700,width:20,textAlign:"right",flexShrink:0}}>{count}</span>
               </div>
             ))}
           </div>
         </div>
+      )}
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16}}>
+        <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",marginBottom:10}}>Full History ({logs.length} logged actions)</p>
+        <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:480,overflowY:"auto"}}>
+          {logs.length===0&&<p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:20}}>No activity logged yet.</p>}
+          {logs.map((a,i)=>(
+            <div key={a.id||i} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"8px 10px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border)"}}>
+              <div style={{width:7,height:7,borderRadius:"50%",background:a.status==="error"?"#ef4444":"#10b981",marginTop:4,flexShrink:0}}/>
+              <div style={{minWidth:0,flex:1}}>
+                <p style={{fontSize:12,fontWeight:600}}>{a.action}</p>
+                <p style={{fontSize:10.5,color:"var(--text3)",marginTop:1}}>{new Date(a.performed_at).toLocaleString()}{a.error_message?` — ${a.error_message.slice(0,150)}`:""}</p>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
-    </Modal>
+    </div>
   );
 }
 
@@ -12427,6 +12436,11 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
 
   if(isOfficeBoy && !myOwnRecord) {
     return <div style={{padding:40,textAlign:"center",color:"var(--text2)"}}>Your team profile isn't set up yet — ask an admin to link your account.</div>;
+  }
+
+  if(viewingAgent) {
+    let agentsCfg=appSettings?.ai_agents; if(typeof agentsCfg==="string"){try{agentsCfg=JSON.parse(agentsCfg);}catch(e){agentsCfg={};}}
+    return <AgentProfilePage agent={viewingAgent} avatarUrl={(agentsCfg||{})[viewingAgent.id]?.avatar_url} activityLogs={activityLogs} onBack={()=>setViewingAgent(null)}/>;
   }
 
   if(viewingMember) {
@@ -12736,10 +12750,6 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
           onSave={(updates)=>{onUpdateTeamMember(editingMember.id, updates); setEditingMember(null);}}
         />
       )}
-      {viewingAgent&&(()=>{
-        let agentsCfg=appSettings?.ai_agents; if(typeof agentsCfg==="string"){try{agentsCfg=JSON.parse(agentsCfg);}catch(e){agentsCfg={};}}
-        return <AgentProfileModal agent={viewingAgent} avatarUrl={(agentsCfg||{})[viewingAgent.id]?.avatar_url} activityLogs={activityLogs} onClose={()=>setViewingAgent(null)}/>;
-      })()}
 
       {showRejectModal&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -25792,6 +25802,19 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
     setRerunning(false);
   };
 
+  const [enhancingNotes, setEnhancingNotes] = useState(false);
+  const handleEnhanceNotes = async () => {
+    if(!notes.trim()) return;
+    setEnhancingNotes(true);
+    try {
+      const result = await ai(`Rewrite these recruiting notes to be clearer and better organized — fix grammar, tighten the wording, and structure it so the key facts (status, what's outstanding, next action) are easy to scan. Keep every fact exactly as given, don't invent anything new. Return ONLY the rewritten notes, no preamble.\n\nOriginal notes:\n"""${notes}"""`, 500);
+      const cleaned = result.trim();
+      setNotes(cleaned);
+      onSaveNotes(application, cleaned);
+    } catch(e) { alert("Enhance failed: "+e.message); }
+    setEnhancingNotes(false);
+  };
+
   useEffect(()=>{
     // Only auto-trigger once per application — if it already failed for
     // this exact cv_url, retrying silently on every view just repeats the
@@ -26061,6 +26084,11 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
 
         <Field label="Notes">
           <textarea value={notes} onChange={e=>setNotes(e.target.value)} onBlur={()=>onSaveNotes(application, notes)} rows={3} style={{...inputSt,resize:"vertical"}}/>
+          {notes.trim()&&(
+            <button onClick={handleEnhanceNotes} disabled={enhancingNotes} style={{marginTop:6,display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,fontSize:11.5,fontWeight:700,background:"var(--surface2)",color:"var(--accent)",border:"1px solid var(--border2)",cursor:enhancingNotes?"wait":"pointer"}}>
+              {enhancingNotes?<><Spinner size={12}/> Enhancing…</>:<><Ico d={Icons.sparkle} size={12} stroke="var(--accent)"/> Enhance with AI</>}
+            </button>
+          )}
         </Field>
 
         {activityLog&&activityLog.length>0&&(
@@ -34717,7 +34745,7 @@ Return ONLY valid JSON (no markdown, no explanation):
   // Pro replying to a direct @mention on a task/post comment — same idea as
   // Sara's reply, but Pro can also carry out a small, explicit set of real
   // actions on the task itself (never anything destructive or open-ended).
-  const replyProInComment = async (post, project, triggerContent, user) => {
+  const replyProInComment = async (post, project, triggerContent, user, isHandoff=false) => {
     try {
       const thread = (data.comments||[]).filter(c=>c.post_id===post.id)
         .sort((a,b)=>new Date(a.created_date)-new Date(b.created_date))
@@ -34773,9 +34801,10 @@ CRITICAL: Never invent, guess, or hallucinate an email address, a person's name,
       ce("Comment",[payload]).then(r=>{ const real=r.entities?.[0]; if(real?.id) setData(d=>({...d,comments:d.comments.map(c=>c.id===local.id?{...c,...real}:c)})); }).catch(()=>{});
       logActivity(`Pro: ${actionNote||"Comment reply"} — ${post.title}`,"agents",`[agent:pro] ${post.title}${actionNote?` — ${actionNote}`:""}`,"success","","agent");
       // A real handoff, not a fabricated mention — Sara gets Pro's own summary
-      // of what's needed as her trigger, and posts her own reply right after his.
-      if(action.type==="ask_sara") {
-        replySaraInComment(post, project, action.request||triggerContent, {name:"Pro"});
+      // of what's needed as her trigger, and posts her own reply right after
+      // his. isHandoff blocks a second bounce so the two can't ping-pong forever.
+      if(action.type==="ask_sara" && !isHandoff) {
+        replySaraInComment(post, project, action.request||triggerContent, {name:"Pro"}, true);
       }
     } catch(e) {
       logActivity(`Pro: Comment reply — ${post.title}`,"agents",`[agent:pro] ${post.title}`,"error",String(e.message).slice(0,200),"agent");
@@ -34785,7 +34814,7 @@ CRITICAL: Never invent, guess, or hallucinate an email address, a person's name,
   // Sara replying to a direct @mention in a task/post comment thread — full
   // task context + the thread itself + her persona, posted back as a comment
   // (type "ai_reply" so the UI can badge it distinctly from a human reply).
-  const replySaraInComment = async (post, project, triggerContent, user) => {
+  const replySaraInComment = async (post, project, triggerContent, user, isHandoff=false) => {
     try {
       const thread = (data.comments||[]).filter(c=>c.post_id===post.id)
         .sort((a,b)=>new Date(a.created_date)-new Date(b.created_date))
@@ -34798,7 +34827,7 @@ Assigned to: ${post.assigned_to||"unassigned"} | Due: ${post.due_date||post.sche
 Priority: ${post.priority||"-"}
 ${post.description?`Brief: ${post.description}`:""}
 ${post.caption?`Current caption: ${post.caption}`:""}`;
-      const reply = await agentAI("content_creator", `Comment reply: ${post.title}`, `${SARA_PERSONA}
+      const raw = await agentAI("content_creator", `Comment reply: ${post.title}`, `${SARA_PERSONA}
 ${clientBrainBlock(post.client_id, post.client_name)}
 ${taskBlock}
 
@@ -34807,13 +34836,24 @@ ${thread||"(no earlier comments)"}
 
 ${user?.name||"A teammate"} just wrote: "${triggerContent}"
 
-Reply now, addressed to them.`, 500);
-      const payload = {post_id:post.id, content:reply, author_name:"Sara", author_email:"sara@ai.socialflow", type:"ai_reply", audience:"internal"};
+Reply now, addressed to them. You write/plan content — you can't assign tasks, change a task's stage, or set due dates/priority yourself. If that's genuinely what's being asked, say so plainly and hand it to Pro instead of guessing or faking it.
+
+Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown formatting is fine)","action":{"type":"ask_pro"|"none","request":"one-line summary of what Pro needs to do, if ask_pro"}}`, 700);
+      const match = raw.match(/\{[\s\S]*\}/);
+      let reply, action = {type:"none"};
+      try { const parsed = JSON.parse(match ? match[0] : raw); reply = parsed.reply; action = parsed.action||action; }
+      catch(e) { reply = raw; } // model didn't return JSON — treat the whole thing as her reply, same as before
+      const payload = {post_id:post.id, content:reply||"On it.", author_name:"Sara", author_email:"sara@ai.socialflow", type:"ai_reply", audience:"internal"};
       const local = {...payload, id:uid(), created_date:new Date().toISOString()};
       setData(d=>({...d,comments:[...d.comments,local]}));
       ce("Comment",[payload]).then(res=>{
         const real=res.entities?.[0]; if(real?.id) setData(d=>({...d,comments:d.comments.map(c=>c.id===local.id?{...c,...real}:c)}));
       }).catch(()=>{});
+      // A real handoff — Pro gets Sara's own summary as his trigger, and
+      // posts his own reply (and can actually act) right after hers.
+      if(action.type==="ask_pro" && !isHandoff) {
+        replyProInComment(post, project, action.request||triggerContent, {name:"Sara"}, true);
+      }
     } catch(e) { /* best-effort — a failed reply just means silence, not a broken thread */ }
   };
 
