@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.315";
+const APP_VERSION = "beta 5.316";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -4711,23 +4711,37 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
 // table needed) — post_type carries the task category, platform stays empty
 // since it isn't going out to any social platform.
 const TASK_CATEGORIES = [["design","Design"],["video_editing","Video Editing"],["resizing","Resizing"],["report","Report"],["copywriting","Copywriting"],["other","Other"]];
-function AddGenericTaskModal({open,onClose,projects,team,onAdd,presetClient,clients=[]}) {
+function AddGenericTaskModal({open,onClose,projects,team,onAdd,onCreateProject,presetClient,clients=[]}) {
   const [pickedClientId,setPickedClientId] = useState("");
   const activeClientId = presetClient?.id || pickedClientId;
+  const activeClient = presetClient || clients.find(c=>c.id===pickedClientId) || null;
   const selectableProjects = activeClientId ? projects.filter(p=>p.client_id===activeClientId) : projects;
-  const blank = {title:"",project_id:selectableProjects[0]?.id||"",task_category:"design",description:"",assigned_to:"",due_date:"",priority:"medium"};
+  const blank = {title:"",project_id:selectableProjects[0]?.id||"",task_category:"design",other_category:"",description:"",assigned_to:"",due_date:"",priority:"medium"};
   const [f,setF] = useState({...blank});
   const [saving,setSaving] = useState(false);
+  const [newProjectName,setNewProjectName] = useState("");
+  const [creatingProject,setCreatingProject] = useState(false);
   const s = (k,v) => setF(p=>({...p,[k]:v}));
-  const canSubmit = f.title.trim() && f.project_id && f.assigned_to && f.due_date;
+  const isNewProject = f.project_id==="__new__";
+  const canSubmit = f.title.trim() && f.assigned_to && f.due_date && (isNewProject ? (newProjectName.trim() && activeClientId) : f.project_id);
   const submit = async () => {
     if(!canSubmit) return;
     setSaving(true);
-    const proj = projects.find(p=>p.id===f.project_id);
+    let projectId = f.project_id, clientId = "", clientName = "";
+    if(isNewProject){
+      setCreatingProject(true);
+      const proj = await onCreateProject?.(newProjectName.trim(), activeClientId, activeClient?.name||"");
+      setCreatingProject(false);
+      if(!proj){ setSaving(false); return; }
+      projectId = proj.id; clientId = proj.client_id; clientName = proj.client_name;
+    } else {
+      const proj = projects.find(p=>p.id===f.project_id);
+      clientId = proj?.client_id||""; clientName = proj?.client_name||"";
+    }
     await onAdd({
-      title:f.title, project_id:f.project_id, client_id:proj?.client_id||"", client_name:proj?.client_name||"",
+      title:f.title, project_id:projectId, client_id:clientId, client_name:clientName,
       description:f.description, assigned_to:f.assigned_to, due_date:f.due_date, priority:f.priority,
-      stage:"planning", platform:"", post_type:f.task_category,
+      stage:"planning", platform:"", post_type:f.task_category==="other"?(f.other_category.trim()||"other"):f.task_category,
     });
     setSaving(false); onClose();
   };
@@ -4739,7 +4753,7 @@ function AddGenericTaskModal({open,onClose,projects,team,onAdd,presetClient,clie
         </Field>
         {!presetClient&&clients.length>0&&(
           <Field label="Client">
-            <select value={pickedClientId} onChange={e=>{setPickedClientId(e.target.value);s("project_id","");}} style={inputSt}>
+            <select value={pickedClientId} onChange={e=>{setPickedClientId(e.target.value);s("project_id","");setNewProjectName("");}} style={inputSt}>
               <option value="">All clients — pick a project below</option>
               {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
@@ -4749,13 +4763,28 @@ function AddGenericTaskModal({open,onClose,projects,team,onAdd,presetClient,clie
           <select value={f.project_id} onChange={e=>s("project_id",e.target.value)} style={inputSt}>
             <option value="">— Select project —</option>
             {selectableProjects.map(p=><option key={p.id} value={p.id}>{p.title} · {p.client_name}</option>)}
+            {onCreateProject&&<option value="__new__">+ New Project…</option>}
           </select>
         </Field>
+        {isNewProject&&(
+          !activeClientId ? (
+            <p style={{fontSize:12,color:"#ef4444"}}>Pick a client above first — a new project needs one.</p>
+          ) : (
+            <Field label="New Project Name" required>
+              <input value={newProjectName} onChange={e=>setNewProjectName(e.target.value)} placeholder="e.g. August Calendar" style={inputSt} autoFocus/>
+            </Field>
+          )
+        )}
         <Field label="Task Type">
           <select value={f.task_category} onChange={e=>s("task_category",e.target.value)} style={inputSt}>
             {TASK_CATEGORIES.map(([k,l])=><option key={k} value={k}>{l}</option>)}
           </select>
         </Field>
+        {f.task_category==="other"&&(
+          <Field label="What is it?">
+            <input value={f.other_category} onChange={e=>s("other_category",e.target.value)} placeholder="e.g. Voiceover recording" style={inputSt}/>
+          </Field>
+        )}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <Field label="Assign To" required>
             <select value={f.assigned_to} onChange={e=>s("assigned_to",e.target.value)} style={inputSt}>
@@ -4775,7 +4804,7 @@ function AddGenericTaskModal({open,onClose,projects,team,onAdd,presetClient,clie
         <Field label="Description (optional)">
           <textarea value={f.description} onChange={e=>s("description",e.target.value)} rows={3} style={{...inputSt,resize:"vertical"}}/>
         </Field>
-        <Btn onClick={submit} disabled={!canSubmit||saving}>{saving?<Spinner size={14}/>:"Create Task"}</Btn>
+        <Btn onClick={submit} disabled={!canSubmit||saving}>{creatingProject?<><Spinner size={14}/> Creating project…</>:saving?<Spinner size={14}/>:"Create Task"}</Btn>
       </div>
     </Modal>
   );
@@ -8223,7 +8252,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
 // client's own website/hosting/cPanel.
 const CRED_PLATFORMS = [...PLATFORMS,"website","cpanel","hosting","other"];
 // ── Client Logins tab: saved username/password per platform, masked by default ──
-function ClientLoginsTab({client,onUpdateClient,canEdit=false}) {
+function ClientLoginsTab({client,onUpdateClient,canAdd=false,canEdit=false}) {
   const [items,setItems] = useState(()=>client.platform_credentials||[]);
   const [revealed,setRevealed] = useState({});
   const [editingIdx,setEditingIdx] = useState(null);
@@ -8257,8 +8286,8 @@ function ClientLoginsTab({client,onUpdateClient,canEdit=false}) {
   return (
     <div style={{display:"flex",flexDirection:"column",gap:14,maxWidth:640}} className="fade-in">
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <p style={{fontSize:12,color:"var(--text3)"}}>Saved usernames/passwords for this client's platforms — visible to admins and account managers, editable by admins only.</p>
-        {canEdit&&editingIdx===null&&<Btn size="sm" onClick={startAdd}><Ico d={Icons.plus} size={13}/> Add Login</Btn>}
+        <p style={{fontSize:12,color:"var(--text3)"}}>Saved usernames/passwords for this client's platforms — editing/deleting existing ones is admin-only.</p>
+        {canAdd&&editingIdx===null&&<Btn size="sm" onClick={startAdd}><Ico d={Icons.plus} size={13}/> Add Login</Btn>}
       </div>
 
       {items.length===0&&editingIdx===null&&(
@@ -8648,7 +8677,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
       {showLogins&&(
         <Modal open onClose={()=>setShowLogins(false)} title="Saved Logins">
           <div style={{padding:"14px 0"}}>
-            <ClientLoginsTab client={client} onUpdateClient={onUpdateClient} canEdit={isAdmin}/>
+            <ClientLoginsTab client={client} onUpdateClient={onUpdateClient} canAdd={isPriv} canEdit={isAdmin}/>
           </div>
         </Modal>
       )}
@@ -32369,6 +32398,24 @@ function App() {
     setToast(`Intelligence saved for ${client.name}`);
   };
 
+  // Minimal, synchronous-return project creation — used when a task is being
+  // created and the user picks "+ New Project" inline instead of leaving the
+  // task modal. The full addProject() below returns true/false (its callers
+  // never needed the new id), so this stays separate rather than changing
+  // that contract for every existing caller.
+  const addProjectQuick = async (title, clientId, clientName) => {
+    const payload = {title, client_id:clientId, client_name:clientName, status:"active", platforms:[]};
+    const local = {...payload, id:uid(), created_at:new Date().toISOString()};
+    setData(d=>({...d,projects:[local,...d.projects]}));
+    ensureProjectFolder(clientId, title, clientName);
+    try {
+      const res = await ce("Project",[payload]);
+      const real = res.entities?.[0];
+      if(real?.id) { setData(d=>({...d,projects:d.projects.map(p=>p.id===local.id?{...p,...real}:p)})); return {...local,...real}; }
+    } catch(e){}
+    return local;
+  };
+
   const addProject = async (formData, pillars, intelligence) => {
     if(!formData.client_id) { setToast(" Pick a client before creating a project — every project must belong to one."); return false; }
     // 1. Create project
@@ -34722,7 +34769,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     {/* Add Post */}
     {showAddPost&&<AddPostModal open onClose={()=>{setShowAddPost(false);setAddPostForClient(null);}} projects={data.projects} team={data.team} onAdd={addPost} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} presetClient={addPostForClient} assets={data.assets||[]}/>}
 
-    {showAddTask&&<AddGenericTaskModal open onClose={()=>{setShowAddTask(false);setAddTaskForClient(null);}} projects={data.projects} team={data.team} onAdd={addPost} presetClient={addTaskForClient} clients={data.clients}/>}
+    {showAddTask&&<AddGenericTaskModal open onClose={()=>{setShowAddTask(false);setAddTaskForClient(null);}} projects={data.projects} team={data.team} onAdd={addPost} onCreateProject={addProjectQuick} presetClient={addTaskForClient} clients={data.clients}/>}
 
     {/* New Project Wizard — used by FAB, Dashboard, Projects page */}
     {(showFABProject||showAddProject)&&<ProjectWizard
@@ -34761,6 +34808,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       projects={data.projects}
       team={data.team}
       onAdd={async d=>{ await addPost(d); setToast("Task created"); }}
+      onCreateProject={addProjectQuick}
     />}
 
     {/* Monthly Brief — Create Modal */}
