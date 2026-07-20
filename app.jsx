@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.320";
+const APP_VERSION = "beta 5.321";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1741,6 +1741,51 @@ const agentAI = async (agentId, taskLabel, prompt, maxTokens=1000) => {
     throw e;
   }
 };
+// Full client-brain context block for any Sara task, read from a global App()
+// keeps mirrored (same pattern as __SF_AI_AGENTS) — knowledge + intelligence +
+// learned memory, without prop-drilling three lists into every modal.
+function clientBrainBlock(clientId, clientName){
+  try {
+    const b = window.__SF_CLIENT_BRAIN||{};
+    const know = (b.knowledge||[]).find(k=>k.client_id===clientId||(clientName&&k.client_name===clientName));
+    const intel = (b.intelligence||[]).find(i=>i.client_id===clientId);
+    const memBlock = clientId ? formatClientMemory(clientId, b.memory||[]) : "";
+    if(!know && !intel && !memBlock) return "";
+    return `
+=== CLIENT BRAIN (${clientName||clientId}) ===
+Brand Voice/Tone: ${know?.tone||intel?.brand_voice||"professional"}
+Content Preferences: ${know?.content_preferences||intel?.content_preferences||""}
+Target Audience: ${intel?.target_audience||""}
+Keywords: ${know?.keywords ? (typeof know.keywords==="string"?know.keywords:JSON.stringify(know.keywords)) : ""}
+Do's: ${know?.dos||""}
+Don'ts: ${know?.donts||intel?.donts||""}
+${memBlock ? `LEARNED MEMORY (highest priority — always follow):\n${memBlock}` : ""}
+Context: ${(know?.context_file||"").slice(0,400)}
+===`;
+  } catch(e){ return ""; }
+}
+// After Sara finishes a piece of work, extract durable brand insights from it
+// and save them into the client's memory — same discipline as Pro's
+// proLearnFromExchange: only real, reusable brand facts, never generic fluff.
+async function saraLearnFromWork({clientId, clientName, workLabel, workSummary, onUpsertMemory}){
+  if(!clientId || !onUpsertMemory) return;
+  try {
+    const existing = (window.__SF_CLIENT_BRAIN?.memory||[]).filter(m=>m.client_id===clientId).map(m=>m.key);
+    const res = await agentAI("content_creator", `Learning: ${workLabel}`, `You are Sara, a senior content creator. You just finished this piece of work for the client "${clientName}":
+
+${workSummary.slice(0,3000)}
+
+Existing memory keys for this client (do NOT duplicate these): ${existing.join(", ")||"none"}
+
+If this work revealed any durable, reusable insight about this client's brand/content strategy (e.g. a content angle that fits them, a format mix they prefer, a recurring theme), return it as JSON:
+[{"key":"short_snake_case_key","value":"one clear sentence"}]
+Return at most 2 insights. If nothing durable was revealed, return []. ONLY the JSON array, nothing else.`, 400);
+    const insights = JSON.parse(res.replace(/```json|```/g,"").trim());
+    for(const ins of (Array.isArray(insights)?insights:[]).slice(0,2)){
+      if(ins?.key && ins?.value) await onUpsertMemory(clientId, clientName, ins.key, ins.value, "ai", {source:"sara"});
+    }
+  } catch(e) { /* learning is best-effort — never block the actual work */ }
+}
 
 // Uploads a recorded/picked audio file to transcribe-audio.php (OpenAI Whisper
 // under the hood) and returns the transcribed text. Used by the mic button in
@@ -4891,6 +4936,35 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
   });
   const setPlatformType = (p,type) => s("platform_types",{...f.platform_types,[p]:type});
   const needsInstaCover = f.platforms.includes("instagram") && f.platform_types.instagram==="reel" && !f.cover;
+
+  // ── Sara writes the post content (caption/hashtags/brief) from the title,
+  // project, and the client's full brain — she owns the content phase.
+  const [saraLoading,setSaraLoading] = useState(false);
+  const saraGenerate = async () => {
+    if(!f.title.trim()){ alert("Give the post a title first — Sara needs to know what it's about."); return; }
+    const proj = projects.find(p=>p.id===f.project_id);
+    setSaraLoading(true);
+    try {
+      const res = await agentAI("content_creator", `Post content: ${f.title}`, `You are Sara, a senior content creator working under Pro's supervision. Write the content for ONE social media post.
+${clientBrainBlock(proj?.client_id||activeClientId, proj?.client_name)}
+Post title: ${f.title}
+Project: ${proj?.title||"-"}
+Platform(s): ${(f.platforms.length?f.platforms:[f.platform]).join(", ")}
+Post type: ${f.post_type}
+${f.description?`Existing brief/notes: ${f.description}`:""}
+
+Return ONLY valid JSON (no markdown):
+{"caption":"engaging on-brand caption (2-4 sentences)","hashtags":"#tag1 #tag2 #tag3 #tag4","description":"a short internal brief for the designer/creator (1-2 sentences)"}`,
+      800);
+      const p = JSON.parse(res.replace(/```json|```/g,"").trim());
+      setF(prev=>({...prev,
+        caption: p.caption||prev.caption,
+        hashtags: p.hashtags||prev.hashtags,
+        description: p.description||prev.description,
+      }));
+    } catch(e){ alert("Sara couldn't generate content right now — please try again."); }
+    setSaraLoading(false);
+  };
   const canNext = f.content_mode==="ready"
     ? f.title.trim() && f.project_id && f.caption.trim() && f.platforms.length
     : f.title.trim() && f.project_id;
@@ -5034,6 +5108,13 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
                 {selectableProjects.map(p=><option key={p.id} value={p.id}>{p.title} · {p.client_name}</option>)}
               </select>
             </Field>
+            <button onClick={saraGenerate} disabled={saraLoading} style={{
+              display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"10px 14px",
+              borderRadius:10,border:"1.5px dashed #10b981",background:"#10b98111",color:"#10b981",
+              fontSize:12.5,fontWeight:700,cursor:saraLoading?"wait":"pointer",
+            }}>
+              {saraLoading?<><Spinner size={14}/> Sara is now generating your content…</>:<><Ico d={Icons.sparkle} size={14} stroke="#10b981"/> Let Sara write this post (caption, hashtags, brief)</>}
+            </button>
             {f.content_mode==="new"?(
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                 <Field label="Platform">
@@ -5649,7 +5730,7 @@ const CALENDAR_KIND_DEFS = [
   ["article","Articles","Long-form, e.g. LinkedIn articles"],
   ["story","Stories","Ephemeral, one punchy line each"],
 ];
-function AddCalendarPlanModal({open,onClose,clients,team,preselectedClient,onGenerate,clientKnowledgeList,clientIntelligenceList,clientMemoryList}) {
+function AddCalendarPlanModal({open,onClose,clients,team,preselectedClient,onGenerate,clientKnowledgeList,clientIntelligenceList,clientMemoryList,onUpsertMemory}) {
   const [step,setStep] = useState("form"); // form | generating | preview | done
   const makeKindDefaults = (count) => ({count, platforms:preselectedClient?.platforms||[], brief:"", assigned_to:""});
   const [f,setF] = useState({
@@ -5812,6 +5893,16 @@ No markdown, no explanation, just the JSON array.`);
   const handleConfirm = async () => {
     setStep("generating");
     await onGenerate(f,generated);
+    // Sara learns from the plan she just delivered — best-effort, in the
+    // background, so the user isn't kept waiting on it.
+    saraLearnFromWork({
+      clientId: f.client_id,
+      clientName: selectedClient?.name||"",
+      workLabel: `Calendar plan: ${f.campaign}`,
+      workSummary: `Campaign "${f.campaign}" (${f.date_from} → ${f.date_to}): ${generated.length} items — `+
+        generated.slice(0,20).map(t=>`[${t.post_type}/${t.platform}] ${t.title}`).join("; "),
+      onUpsertMemory,
+    });
     setStep("done");
   };
 
@@ -5924,8 +6015,8 @@ No markdown, no explanation, just the JSON array.`);
             </div>
           </div>
           <div style={{textAlign:"center"}}>
-            <p style={{fontFamily:"'Montserrat',sans-serif",fontSize:18,fontWeight:700}}>AI is building your calendar…</p>
-            <p style={{fontSize:13,color:"var(--text2)",marginTop:6}}>Generating {totalCount} pieces of content</p>
+            <p style={{fontFamily:"'Montserrat',sans-serif",fontSize:18,fontWeight:700}}>Sara is building your calendar…</p>
+            <p style={{fontSize:13,color:"var(--text2)",marginTop:6}}>Sara is now generating your content — {totalCount} pieces</p>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:6,width:"100%",maxWidth:300}}>
             {["Analyzing campaign brief…","Generating post ideas…","Writing captions…","Distributing dates…"].map((msg,i)=>(
@@ -7102,12 +7193,7 @@ function AIContentTools({client, knowledge, clientPosts}) {
     try {
       const result = await agentAI("content_creator", `Brand voice rewrite: ${client.name}`, `You are Sara, a brand voice specialist working under Pro's supervision. Rewrite the text below to perfectly match this client's brand voice.
 
-CLIENT: ${client.name}
-Brand Voice/Tone: ${ck?.tone||"professional and engaging"}
-Content Preferences: ${ck?.content_preferences||""}
-Keywords to weave in naturally: ${ck?.keywords ? (typeof ck.keywords==="string"?ck.keywords:JSON.stringify(ck.keywords)) : ""}
-Don'ts: ${ck?.donts||"avoid generic or salesy language"}
-Context: ${(ck?.context_file||"").slice(0,400)}
+${clientBrainBlock(client.id, client.name)}
 
 TEXT TO REWRITE:
 ${voiceInput}
@@ -7135,15 +7221,9 @@ Rules:
     try {
       const result = await agentAI("content_creator", `Content ideas: ${client.name}`, `You are Sara, a senior content creator working under Pro's supervision. Generate ${ideasCount} creative social media post ideas for ${client.name} on ${ideasPlatform}.
 
-CLIENT CONTEXT:
 Industry: ${client.industry||""}
-Brand Voice: ${ck?.tone||"professional"}
-Content Preferences: ${ck?.content_preferences||""}
-Target Audience: ${ck?.target_audience||""}
-Keywords: ${ck?.keywords ? (typeof ck.keywords==="string"?ck.keywords:JSON.stringify(ck.keywords)) : ""}
 Priorities: ${ck?.priorities ? (typeof ck.priorities==="string"?ck.priorities:JSON.stringify(ck.priorities)) : ""}
-Don'ts: ${ck?.donts||""}
-Context: ${(ck?.context_file||"").slice(0,400)}
+${clientBrainBlock(client.id, client.name)}
 ${ideasTopic ? `\nFocus Topic: ${ideasTopic}` : ""}
 
 Return ONLY a JSON array of ${ideasCount} objects, each with:
@@ -7172,13 +7252,7 @@ No markdown, no explanation. Just the JSON array.`);
     try {
       const result = await agentAI("content_creator", `Brand check: ${client.name}`, `You are Sara, a brand consistency expert working under Pro's supervision. Review this caption against the client's brand guidelines.
 
-CLIENT: ${client.name}
-Brand Voice: ${ck?.tone||"professional"}
-Content Preferences: ${ck?.content_preferences||""}
-Keywords to use: ${ck?.keywords ? (typeof ck.keywords==="string"?ck.keywords:JSON.stringify(ck.keywords)) : ""}
-Do's: ${ck?.dos||""}
-Don'ts: ${ck?.donts||""}
-Context: ${(ck?.context_file||"").slice(0,400)}
+${clientBrainBlock(client.id, client.name)}
 
 CAPTION TO REVIEW:
 ${reviewInput}
@@ -7240,7 +7314,7 @@ Return ONLY valid JSON (no markdown):
               style={{...inputSt,lineHeight:1.7,fontSize:13,resize:"vertical"}}/>
           </Field>
           <Btn onClick={handleVoiceRewrite} disabled={voiceLoading||!voiceInput.trim()}>
-            {voiceLoading?<><Spinner size={14}/> Rewriting in {client.name}'s voice…</>:<><Ico d={Icons.sparkle} size={14}/> Rewrite in Brand Voice</>}
+            {voiceLoading?<><Spinner size={14}/> Sara is now rewriting in {client.name}'s voice…</>:<><Ico d={Icons.sparkle} size={14}/> Rewrite in Brand Voice</>}
           </Btn>
           {voiceResult&&(
             <div style={{background:"var(--surface)",border:"1px solid var(--accent)44",borderRadius:"var(--r)",overflow:"hidden"}} className="fade-in">
@@ -7282,7 +7356,7 @@ Return ONLY valid JSON (no markdown):
             </Field>
           </div>
           <Btn onClick={handleGenIdeas} disabled={ideasLoading}>
-            {ideasLoading?<><Spinner size={14}/> Generating ideas for {client.name}…</>:<><Ico d={Icons.sparkle} size={14}/> Generate {ideasCount} Ideas</>}
+            {ideasLoading?<><Spinner size={14}/> Sara is now generating ideas for {client.name}…</>:<><Ico d={Icons.sparkle} size={14}/> Generate {ideasCount} Ideas</>}
           </Btn>
           {ideasResult.length>0&&(
             <div style={{display:"flex",flexDirection:"column",gap:10}} className="fade-in">
@@ -7317,7 +7391,7 @@ Return ONLY valid JSON (no markdown):
               style={{...inputSt,lineHeight:1.7,fontSize:13,resize:"vertical"}}/>
           </Field>
           <Btn onClick={handleReview} disabled={reviewLoading||!reviewInput.trim()}>
-            {reviewLoading?<><Spinner size={14}/> Reviewing against {client.name}'s brand rules…</>:<><Ico d={Icons.sparkle} size={14}/> Review Caption</>}
+            {reviewLoading?<><Spinner size={14}/> Sara is now reviewing against {client.name}'s brand rules…</>:<><Ico d={Icons.sparkle} size={14}/> Review Caption</>}
           </Btn>
           {reviewResult&&(
             <div style={{display:"flex",flexDirection:"column",gap:12}} className="fade-in">
@@ -32288,6 +32362,15 @@ function App() {
     if(typeof agents==="string"){ try{ agents = JSON.parse(agents); }catch(e){ agents = {}; } }
     window.__SF_AI_AGENTS = agents||{};
   },[appSettings?.ai_agents]);
+  // Mirror the client brain (knowledge/intelligence/memory) the same way so
+  // Sara's helpers (clientBrainBlock/saraLearnFromWork) can read it anywhere.
+  useEffect(()=>{
+    window.__SF_CLIENT_BRAIN = {
+      knowledge: data.clientKnowledge||[],
+      intelligence: data.clientIntelligence||[],
+      memory: data.clientMemory||[],
+    };
+  },[data.clientKnowledge, data.clientIntelligence, data.clientMemory]);
   useEffect(()=>{
     const f = appSettings?.feature_flags;
     Object.assign(FEATURE_FLAGS, typeof f === "string" ? parseJ(f,{}) : (f||{}));
@@ -35012,6 +35095,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       clientKnowledgeList={data.clientKnowledge||[]}
       clientIntelligenceList={data.clientIntelligence||[]}
       clientMemoryList={data.clientMemory||[]}
+      onUpsertMemory={upsertClientMemory}
     />}
 
     {/* FAB — Add Task: a piece of internal work (design, editing, a report, ...),
