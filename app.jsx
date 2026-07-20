@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.333";
+const APP_VERSION = "beta 5.334";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3439,6 +3439,7 @@ function MentionInput({value, onChange, team, placeholder, rows}) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionStart, setMentionStart] = useState(-1);
+  const [openUp, setOpenUp] = useState(true);
   const textareaRef = useRef(null);
 
   // Sara is mentionable everywhere a human teammate is, even though she's
@@ -3460,6 +3461,13 @@ function MentionInput({value, onChange, team, placeholder, rows}) {
       setMentionStart(atIdx);
       setMentionQuery(textBefore.slice(atIdx+1));
       setShowDropdown(true);
+      // Comment box near the top of the viewport (e.g. a task modal scrolled
+      // down) has no room to open upward without getting clipped — flip to
+      // opening downward in that case, and vice versa.
+      const rect = e.target.getBoundingClientRect();
+      const spaceAbove = rect.top;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      setOpenUp(spaceAbove >= 240 || spaceAbove >= spaceBelow);
     } else {
       setShowDropdown(false);
       setMentionStart(-1);
@@ -3487,7 +3495,8 @@ function MentionInput({value, onChange, team, placeholder, rows}) {
         onBlur={()=>setTimeout(()=>setShowDropdown(false),150)}
       />
       {showDropdown && filtered.length > 0 && (
-        <div style={{position:"absolute",bottom:"100%",left:0,background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:"var(--rs)",zIndex:200,minWidth:180,boxShadow:"0 4px 16px rgba(0,0,0,0.18)",marginBottom:4}}>
+        <div style={{position:"absolute",left:0,background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:"var(--rs)",zIndex:200,minWidth:180,boxShadow:"0 4px 16px rgba(0,0,0,0.18)",
+          ...(openUp ? {bottom:"100%",marginBottom:4} : {top:"100%",marginTop:4})}}>
           {filtered.map(m => (
             <div key={m.email} onMouseDown={()=>selectMention(m)} style={{padding:"8px 12px",cursor:"pointer",display:"flex",alignItems:"center",gap:8,fontSize:13}}
               onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
