@@ -290,7 +290,7 @@ function financeTools() {
     ];
 }
 
-function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderName) {
+function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderName, ?string $fromPhone = null) {
     $expenseCats = ['salaries', 'tools', 'rent', 'ads', 'freelancers', 'general', 'office_supplies', 'debt_repayment', 'partner_mostafa', 'partner_radwa', 'other'];
     $incomeCats  = ['client_payment', 'partner_contribution_mostafa', 'partner_contribution_radwa', 'other_income'];
 
@@ -474,6 +474,23 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
         // receipt attached over WhatsApp shows up exactly like one attached
         // manually in the app.
         $photoUrl = trim($input['photo_url'] ?? '');
+        // The model doesn't reliably remember to pass photo_url itself,
+        // especially when the transaction is only actually saved on a LATER
+        // confirmation turn ("cash") after the photo message itself. Same
+        // "don't trust the prompt alone" reasoning as the dedup guard above
+        // — fall back to a direct lookup of the most recent photo this
+        // phone sent, rather than depending on the model to carry it
+        // forward through the conversation correctly.
+        if (!$photoUrl && $fromPhone) {
+            try {
+                $stmt = $pdo->prepare("SELECT content FROM pro_messages WHERE phone = :p AND role = 'user' AND content LIKE '%[photo_url:%' AND created_at >= (NOW() - INTERVAL 30 MINUTE) ORDER BY created_at DESC LIMIT 1");
+                $stmt->execute([':p' => $fromPhone]);
+                $recent = $stmt->fetchColumn();
+                if ($recent && preg_match('/\[photo_url:\s*([^\]]+)\]/', $recent, $m)) {
+                    $photoUrl = trim($m[1]);
+                }
+            } catch (Throwable $e) { /* best-effort — never block saving the transaction over this */ }
+        }
         $attachments = $photoUrl ? json_encode([['url' => $photoUrl, 'name' => 'Receipt (via WhatsApp)']]) : null;
 
         $ins = $pdo->prepare("INSERT INTO expenses (id, type, category, description, amount, currency, date, created_by, ref, method, source,
@@ -1048,7 +1065,7 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
     return ['error' => 'Unknown tool: ' . $name];
 }
 
-function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '', ?string $senderId = null, ?string $senderName = null) {
+function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '', ?string $senderId = null, ?string $senderName = null, ?string $fromPhone = null) {
     if (in_array($name, ['request_time_off', 'decide_pending_request', 'get_my_hr_info'], true)) {
         return runHrTool($pdo, $name, $input, $senderId, $senderName);
     }
@@ -1059,7 +1076,7 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
         if (!in_array($senderRole, ['team:admin', 'team:accountant'], true)) {
             return ['error' => 'You do not have permission to access financial data.'];
         }
-        return runFinanceTool($pdo, $name, $input, $senderName);
+        return runFinanceTool($pdo, $name, $input, $senderName, $fromPhone);
     }
     if (in_array($name, ['list_job_applications', 'get_job_application', 'update_application_status', 'add_application_note', 'list_job_openings', 'send_completion_reminder', 'send_interview_invite', 'send_job_offer'], true)) {
         return runRecruitmentTool($pdo, $name, $input, $senderRole, $senderName);
@@ -1430,7 +1447,7 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
             if (($block['type'] ?? '') !== 'tool_use') continue;
             $toolInput = (array)($block['input'] ?? []);
             if ($block['name'] === 'save_contact_report' && $voiceTranscript) $toolInput['_raw_transcript'] = $voiceTranscript;
-            $result = runProTool($pdo, $block['name'], $toolInput, (string)$senderRole, $senderId, $senderName);
+            $result = runProTool($pdo, $block['name'], $toolInput, (string)$senderRole, $senderId, $senderName, $fromPhone);
             $toolResults[] = [
                 'type' => 'tool_result',
                 'tool_use_id' => $block['id'],
