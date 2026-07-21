@@ -1154,7 +1154,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.381";
+const APP_VERSION = "beta 5.382";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -20217,7 +20217,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
           </p>
           {[
             {key:"whatsapp_notifications",label:"WhatsApp Notifications",desc:"Deliver task/approval notifications via WhatsApp (Meta Cloud API) in addition to email."},
-            {key:"social_publishing",label:"Social Publishing (Facebook/Instagram)",desc:"Show the \"Publish Now\" button on scheduled posts to publish directly to a connected Page."},
+            {key:"social_publishing",label:"Social Publishing (Facebook/Instagram/LinkedIn/TikTok)",desc:"Show the \"Publish Now\" button on scheduled posts to publish directly to a connected Page/account."},
           ].map(({key,label,desc})=>(
             <div key={key} style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:16,padding:16,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
               <div>
