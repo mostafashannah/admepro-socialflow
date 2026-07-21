@@ -1142,7 +1142,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.366";
+const APP_VERSION = "beta 5.367";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19776,7 +19776,7 @@ function TaskDurationSettingsPanel({appSettings, onSaveSettings}){
   const inputSt2 = {width:80,padding:"6px 8px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:13,fontWeight:600,textAlign:"right"};
 
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:"min(700px,100%)"}}>
+    <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:"min(1100px,100%)"}}>
       <div>
         <p style={{fontSize:13,color:"var(--text2)"}}>Controls how "Estimated" time is guessed for a task when nobody has set an explicit duration on it — used across My Timeline, Smart Schedule, and My Performance. A task's own manually-set duration always overrides this.</p>
       </div>
