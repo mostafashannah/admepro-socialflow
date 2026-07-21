@@ -89,6 +89,16 @@ function tiktok_get_fresh_token(PDO $pdo, string $integration_id, array $creds):
     return $fresh['access_token'];
 }
 
+// Query Creator Info — TikTok's Content Sharing Guidelines require the
+// posting UI to be built from THIS call's live response every time (the
+// creator's nickname, their actual available privacy_level_options, which
+// interactions they've allowed, and their max post duration), not from any
+// hardcoded assumption — a creator's own TikTok app settings can restrict
+// any of these at any time.
+function tiktok_creator_info($access_token) {
+    return tiktok_curl(TIKTOK_API_BASE . '/post/publish/creator_info/query/', 'POST', null, $access_token);
+}
+
 // Publishes a video by URL (PULL_FROM_URL source — TikTok fetches it
 // directly from your own storage, same as how the app already hosts
 // design_urls for Facebook/Instagram/LinkedIn). Polls publish status
@@ -96,23 +106,40 @@ function tiktok_get_fresh_token(PDO $pdo, string $integration_id, array $creds):
 // by a short web-request timeout. Returns [http_code, decoded_response]
 // with 'id' set to the publish_id on success, matching the shape
 // linkedin_publish()/meta_publish() already return.
-function tiktok_publish_video($access_token, $video_url, $caption) {
+//
+// $options carries every field the Content Sharing Guidelines require the
+// USER to have explicitly chosen (never a hardcoded default) before this is
+// called: privacy_level, allow_comment/allow_duet/allow_stitch (booleans —
+// note the TikTok API itself takes the inverse "disable_*" booleans), and
+// the commercial-disclosure pair your_brand/branded_content.
+function tiktok_publish_video($access_token, $video_url, $caption, array $options = []) {
+    if (empty($options['privacy_level'])) {
+        return [400, ['error' => 'privacy_level is required — the user must choose it explicitly, there is no safe default.']];
+    }
+    $brandOrganic = !empty($options['your_brand']);
+    $brandContent = !empty($options['branded_content']);
+    if (($options['disclose_commercial'] ?? false) && !$brandOrganic && !$brandContent) {
+        return [400, ['error' => 'Commercial content disclosure was turned on but neither "Your Brand" nor "Branded Content" was selected.']];
+    }
+    if ($brandContent && $options['privacy_level'] === 'SELF_ONLY') {
+        return [400, ['error' => 'Branded Content cannot be posted as private (SELF_ONLY) — TikTok requires public/friends visibility for disclosed branded content.']];
+    }
+
     $body = [
         'post_info' => [
             'title'            => mb_substr($caption, 0, 2200),
-            'privacy_level'    => 'SELF_ONLY', // safest default until an audited app can request PUBLIC_TO_EVERYONE per-account consent; override via config if your app is approved
-            'disable_duet'     => false,
-            'disable_comment'  => false,
-            'disable_stitch'   => false,
+            'privacy_level'    => $options['privacy_level'],
+            'disable_duet'     => empty($options['allow_duet']),
+            'disable_comment'  => empty($options['allow_comment']),
+            'disable_stitch'   => empty($options['allow_stitch']),
+            'brand_organic_toggle' => $brandOrganic,
+            'brand_content_toggle'  => $brandContent,
         ],
         'source_info' => [
             'source'     => 'PULL_FROM_URL',
             'video_url'  => $video_url,
         ],
     ];
-    if (defined('TIKTOK_PRIVACY_LEVEL') && TIKTOK_PRIVACY_LEVEL) {
-        $body['post_info']['privacy_level'] = TIKTOK_PRIVACY_LEVEL;
-    }
 
     [$code, $resp] = tiktok_curl(TIKTOK_API_BASE . '/post/publish/video/init/', 'POST', $body, $access_token);
     $publishId = $resp['data']['publish_id'] ?? null;

@@ -23,7 +23,25 @@ if (!hash_equals(API_KEY, (string)$providedKey)) {
     exit;
 }
 
-$data         = json_decode(file_get_contents("php://input"), true);
+$data = json_decode(file_get_contents("php://input"), true);
+
+// TikTok Content Sharing Guidelines require the posting UI to be built
+// fresh from this call every time (creator nickname, their real
+// privacy_level_options, which interactions they've allowed, max post
+// duration) — never from a hardcoded assumption in the frontend.
+if (($data["action"] ?? "") === "creator_info") {
+    $accessToken = trim($data["access_token"] ?? "");
+    if (!$accessToken) {
+        http_response_code(400);
+        echo json_encode(["error" => "Missing access_token"]);
+        exit;
+    }
+    [$code, $resp] = tiktok_creator_info($accessToken);
+    http_response_code($code);
+    echo json_encode($resp);
+    exit;
+}
+
 $platform     = strtolower(trim($data["platform"]     ?? ""));
 $page_id      = trim($data["page_id"]      ?? "");
 $access_token = trim($data["access_token"] ?? "");
@@ -57,7 +75,16 @@ if ($platform === "linkedin") {
         echo json_encode(["error" => "TikTok requires a video file attached to this post — no image/video URL was provided."]);
         exit;
     }
-    [$http_code, $response] = tiktok_publish_video($access_token, $image_url, $message);
+    $tiktokOptions = [
+        'privacy_level'       => trim($data['privacy_level'] ?? ''),
+        'allow_comment'       => !empty($data['allow_comment']),
+        'allow_duet'          => !empty($data['allow_duet']),
+        'allow_stitch'        => !empty($data['allow_stitch']),
+        'disclose_commercial' => !empty($data['disclose_commercial']),
+        'your_brand'          => !empty($data['your_brand']),
+        'branded_content'     => !empty($data['branded_content']),
+    ];
+    [$http_code, $response] = tiktok_publish_video($access_token, $image_url, $message, $tiktokOptions);
 } else {
     [$http_code, $response] = meta_publish($platform, $page_id, $access_token, $message, $image_url, $scheduled_at ?: null, $story_image_url ?: null, $post_type ?: null, $cover_url ?: null);
 }

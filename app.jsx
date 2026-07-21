@@ -1154,7 +1154,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.382";
+const APP_VERSION = "beta 5.383";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1643,7 +1643,22 @@ async function setupPushSubscription(userEmail) {
   } catch(e) { console.warn("[push] setup failed:", e); return false; }
 }
 
-async function publishPost(post, integration) {
+// TikTok's Content Sharing Guidelines require the posting UI to be built
+// fresh from this call every time (creator nickname, real
+// privacy_level_options, which interactions the creator allows, max post
+// duration) — never assumed/hardcoded, since the creator's own TikTok app
+// settings can change any of these at any time.
+async function fetchTikTokCreatorInfo(accessToken) {
+  const r = await fetch(PUBLISH_ENDPOINT, {
+    method:"POST", headers:{"Content-Type":"application/json",apikey:SB_KEY},
+    body: JSON.stringify({action:"creator_info", access_token: accessToken}),
+  });
+  const d = await r.json();
+  if(!r.ok) throw new Error(d?.error?.message || "Couldn't load TikTok posting options");
+  return d.data;
+}
+
+async function publishPost(post, integration, tiktokOptions=null) {
   // api.php auto-decodes JSON-looking string columns server-side, so credentials
   // can arrive already as an object — parseJ()/JSON.parse() on an object throws
   // and silently falls back to {}, wiping out page_id/access_token.
@@ -1673,6 +1688,7 @@ async function publishPost(post, integration) {
       story_image_url: storyUrl,
       post_type: post.post_type||"",
       cover_url: coverUrl,
+      ...(integration.app_key==="tiktok" && tiktokOptions ? tiktokOptions : {}),
     }),
   });
   const d = await r.json();
@@ -4138,6 +4154,22 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishResult, setPublishResult] = useState(null);
+  // TikTok Content Sharing Guidelines require the posting UI to be built
+  // fresh from the creator_info API response every time the creator picker
+  // opens (their nickname, real privacy_level_options, which interactions
+  // they allow, max post duration) — never a hardcoded default — plus an
+  // explicit, unchecked-by-default commercial-content disclosure and a
+  // Music Usage Confirmation consent line before the publish button.
+  const [tkInfo, setTkInfo] = useState(null);
+  const [tkLoading, setTkLoading] = useState(false);
+  const [tkError, setTkError] = useState("");
+  const [tkPrivacy, setTkPrivacy] = useState("");
+  const [tkComment, setTkComment] = useState(false);
+  const [tkDuet, setTkDuet] = useState(false);
+  const [tkStitch, setTkStitch] = useState(false);
+  const [tkDisclose, setTkDisclose] = useState(false);
+  const [tkYourBrand, setTkYourBrand] = useState(false);
+  const [tkBrandedContent, setTkBrandedContent] = useState(false);
   if(!post) return null;
   const stage = STAGE_MAP[post.stage]||STAGES[0];
   const ci = STAGES.findIndex(s=>s.key===post.stage);
@@ -4269,16 +4301,46 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   const socialIntegration = integrations.find(i=>i.status==="active" && i.app_key===post.platform && i.client_id===clientId)
     || integrations.find(i=>i.status==="active" && i.app_key===post.platform && !i.client_id);
 
+  // TikTok only — fetches creator_info fresh (see fetchTikTokCreatorInfo's
+  // comment for why this can't be cached/hardcoded) and resets every
+  // user-facing choice back to unselected, since none of these may ever
+  // default to a pre-checked value per the Content Sharing Guidelines.
+  const loadTkInfo = async () => {
+    if(!socialIntegration) return;
+    const creds = typeof socialIntegration.credentials==="string" ? parseJ(socialIntegration.credentials,{}) : (socialIntegration.credentials||{});
+    setTkLoading(true); setTkError(""); setTkInfo(null);
+    setTkPrivacy(""); setTkComment(false); setTkDuet(false); setTkStitch(false);
+    setTkDisclose(false); setTkYourBrand(false); setTkBrandedContent(false);
+    try {
+      const info = await fetchTikTokCreatorInfo(creds.access_token||"");
+      setTkInfo(info);
+    } catch(e) {
+      setTkError(e.message||"Couldn't load TikTok posting options");
+    }
+    setTkLoading(false);
+  };
+
+  const tkCanPublish = tkInfo && tkPrivacy && (!tkDisclose || tkYourBrand || tkBrandedContent);
+
   const handlePublish = async () => {
     if(!socialIntegration) return;
+    const isTikTok = socialIntegration.app_key==="tiktok";
+    if(isTikTok && !tkCanPublish) return;
     setPublishing(true); setPublishResult(null);
     try {
-      const res = await publishPost(post, socialIntegration);
+      const tiktokOptions = isTikTok ? {
+        privacy_level: tkPrivacy,
+        allow_comment: tkComment, allow_duet: tkDuet, allow_stitch: tkStitch,
+        disclose_commercial: tkDisclose, your_brand: tkYourBrand, branded_content: tkBrandedContent,
+      } : null;
+      const res = await publishPost(post, socialIntegration, tiktokOptions);
       // TikTok's publish_id (res.id) isn't the id its insights API can look
       // videos up by — video_id (only returned once TikTok finishes
       // processing) is what post-insights-cron.php needs stored instead.
       const postId = res.video_id || res.id || res.post_id || res.creation_id;
-      setPublishResult({ok:true, msg:`Published! Post ID: ${postId||"success"}`});
+      setPublishResult({ok:true, msg: isTikTok
+        ? `Sent to TikTok! It may take a few minutes to finish processing before it appears on the account.`
+        : `Published! Post ID: ${postId||"success"}`});
       if(postId) await ue("Post", post.id, {external_post_id: postId}).catch(()=>{});
       onStageChange(post, "published");
     } catch(e) {
@@ -4738,7 +4800,13 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
           {/* Publish Now — shown when post is scheduled and a matching social integration is active */}
           {FEATURE_FLAGS.social_publishing&&post.stage==="scheduled"&&(
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              {socialIntegration?(
+              {!socialIntegration&&(
+                <div style={{padding:"8px 12px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",fontSize:12,color:"var(--text3)",display:"flex",alignItems:"center",gap:6}}>
+                  <span></span>
+                  <span>Connect a {({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",tiktok:"TikTok"})[post.platform]||post.platform} integration in <strong>Settings → Integrations</strong> to enable one-click publishing.</span>
+                </div>
+              )}
+              {socialIntegration&&socialIntegration.app_key!=="tiktok"&&(
                 <button onClick={handlePublish} disabled={publishing} style={{
                   padding:"10px 16px",borderRadius:"var(--rs)",
                   background:publishing?"var(--surface2)":"#1877F222",
@@ -4746,12 +4814,80 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                   color:publishing?"var(--text3)":"#1877F2",fontSize:13,fontWeight:700,
                   display:"flex",alignItems:"center",justifyContent:"center",gap:8,cursor:publishing?"not-allowed":"pointer",
                 }}>
-                  {publishing?<><Spinner size={14}/> Publishing…</>:<> Publish to {({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",tiktok:"TikTok"})[socialIntegration.app_key]||socialIntegration.app_key}{socialIntegration.client_name?` (${socialIntegration.client_name})`:""}</>}
+                  {publishing?<><Spinner size={14}/> Publishing…</>:<> Publish to {({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn"})[socialIntegration.app_key]||socialIntegration.app_key}{socialIntegration.client_name?` (${socialIntegration.client_name})`:""}</>}
                 </button>
-              ):(
-                <div style={{padding:"8px 12px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",fontSize:12,color:"var(--text3)",display:"flex",alignItems:"center",gap:6}}>
-                  <span></span>
-                  <span>Connect a {({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",tiktok:"TikTok"})[post.platform]||post.platform} integration in <strong>Settings → Integrations</strong> to enable one-click publishing.</span>
+              )}
+              {/* TikTok's Content Sharing Guidelines require this whole picker to be
+                  rebuilt from a fresh creator_info call every time, with nothing
+                  pre-selected — see loadTkInfo's comment. */}
+              {socialIntegration&&socialIntegration.app_key==="tiktok"&&(
+                <div style={{display:"flex",flexDirection:"column",gap:10,padding:12,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
+                  {!tkInfo&&!tkLoading&&(
+                    <button onClick={loadTkInfo} style={{padding:"10px 16px",borderRadius:"var(--rs)",background:"#00000011",border:"1px solid #00000033",color:"var(--text)",fontSize:13,fontWeight:700}}>
+                       Load TikTok posting options
+                    </button>
+                  )}
+                  {tkLoading&&<div style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"var(--text3)"}}><Spinner size={14}/> Loading creator info…</div>}
+                  {tkError&&<div style={{fontSize:12,color:"#ef4444",fontWeight:600}}>{tkError}</div>}
+                  {tkInfo&&(<>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      {tkInfo.creator_avatar_url&&<img src={tkInfo.creator_avatar_url} alt="" style={{width:24,height:24,borderRadius:"50%"}}/>}
+                      <span style={{fontSize:13,fontWeight:700}}>Posting as @{tkInfo.creator_username||tkInfo.creator_nickname||"TikTok account"}</span>
+                    </div>
+                    <div>
+                      <label style={{fontSize:11,fontWeight:700,color:"var(--text3)",display:"block",marginBottom:4}}>Who can view this post <span style={{color:"#ef4444"}}>*</span></label>
+                      <select value={tkPrivacy} onChange={e=>setTkPrivacy(e.target.value)} style={{...inputSt,width:"100%"}}>
+                        <option value="" disabled>Select privacy…</option>
+                        {(tkInfo.privacy_level_options||[]).map(p=>(
+                          <option key={p} value={p} disabled={tkBrandedContent&&p==="SELF_ONLY"}>
+                            {({PUBLIC_TO_EVERYONE:"Everyone",MUTUAL_FOLLOW_FRIENDS:"Friends",FOLLOWER_OF_CREATOR:"Followers",SELF_ONLY:"Only me (private)"})[p]||p}
+                          </option>
+                        ))}
+                      </select>
+                      {tkBrandedContent&&<p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Branded content visibility cannot be set to private.</p>}
+                    </div>
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,opacity:tkInfo.comment_disabled?0.5:1}}>
+                        <input type="checkbox" checked={tkComment} disabled={tkInfo.comment_disabled} onChange={e=>setTkComment(e.target.checked)}/> Allow Comments
+                      </label>
+                      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,opacity:tkInfo.duet_disabled?0.5:1}}>
+                        <input type="checkbox" checked={tkDuet} disabled={tkInfo.duet_disabled} onChange={e=>setTkDuet(e.target.checked)}/> Allow Duet
+                      </label>
+                      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,opacity:tkInfo.stitch_disabled?0.5:1}}>
+                        <input type="checkbox" checked={tkStitch} disabled={tkInfo.stitch_disabled} onChange={e=>setTkStitch(e.target.checked)}/> Allow Stitch
+                      </label>
+                    </div>
+                    <div style={{borderTop:"1px solid var(--border)",paddingTop:10,display:"flex",flexDirection:"column",gap:6}}>
+                      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,fontWeight:600}}>
+                        <input type="checkbox" checked={tkDisclose} onChange={e=>{setTkDisclose(e.target.checked); if(!e.target.checked){setTkYourBrand(false);setTkBrandedContent(false);}}}/> This content promotes myself, a brand, product, or service
+                      </label>
+                      {tkDisclose&&(<>
+                        <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,marginLeft:20}}>
+                          <input type="checkbox" checked={tkYourBrand} onChange={e=>setTkYourBrand(e.target.checked)}/> Your Brand — promoting yourself/your own business
+                        </label>
+                        <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,marginLeft:20}}>
+                          <input type="checkbox" checked={tkBrandedContent} onChange={e=>setTkBrandedContent(e.target.checked)}/> Branded Content — promoting another brand/third party
+                        </label>
+                        {tkYourBrand&&!tkBrandedContent&&<p style={{fontSize:11,color:"var(--text3)",marginLeft:20}}>Your video will be labeled "Promotional content".</p>}
+                        {tkBrandedContent&&<p style={{fontSize:11,color:"var(--text3)",marginLeft:20}}>Your video will be labeled "Paid partnership".</p>}
+                        {!tkYourBrand&&!tkBrandedContent&&<p style={{fontSize:11,color:"#ef4444",marginLeft:20}}>Choose at least one option to continue.</p>}
+                      </>)}
+                    </div>
+                    <p style={{fontSize:11,color:"var(--text3)"}}>
+                      By posting, you agree to TikTok's {tkBrandedContent
+                        ? <>{" "}<a href="https://www.tiktok.com/legal/page/global/bc-policy/en" target="_blank" rel="noreferrer">Branded Content Policy</a> and <a href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en" target="_blank" rel="noreferrer">Music Usage Confirmation</a></>
+                        : <a href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en" target="_blank" rel="noreferrer">Music Usage Confirmation</a>}.
+                    </p>
+                    <button onClick={handlePublish} disabled={publishing||!tkCanPublish} style={{
+                      padding:"10px 16px",borderRadius:"var(--rs)",
+                      background:(publishing||!tkCanPublish)?"var(--surface2)":"#00000011",
+                      border:`1px solid ${(publishing||!tkCanPublish)?"var(--border)":"#000000"}`,
+                      color:(publishing||!tkCanPublish)?"var(--text3)":"var(--text)",fontSize:13,fontWeight:700,
+                      display:"flex",alignItems:"center",justifyContent:"center",gap:8,cursor:(publishing||!tkCanPublish)?"not-allowed":"pointer",
+                    }}>
+                      {publishing?<><Spinner size={14}/> Publishing…</>:<>Post to TikTok</>}
+                    </button>
+                  </>)}
                 </div>
               )}
               {publishResult&&(
