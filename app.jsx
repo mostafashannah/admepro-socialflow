@@ -532,7 +532,7 @@ function sbTable(entityName) {
 // Known columns per table — used to strip unknown fields before POST/PATCH
 const SB_SCHEMA = {
   projects: ["title","description","client_id","client_name","status","start_date","end_date","platforms","team_members","project_type","posting_start","posting_end"],
-  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","estimated_minutes","content_assigned_to","due_date","due_time","task_type"],
+  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","estimated_minutes","content_assigned_to","due_date","due_time","task_type","revision_count","was_rejected"],
   // address/website/contact_person were never real columns on the clients
   // table (mysql-schema.sql only has name/email/phone/logo_url/industry/
   // status/account_manager_id/notes/platforms/portal_password/username) —
@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.355";
+const APP_VERSION = "beta 5.356";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -34719,14 +34719,47 @@ Return ONLY valid JSON (no markdown, no explanation):
     const assigneeName = assignee?.name || "Unassigned";
     const assigneeEmail = overrides.assigned_to || assignee?.email || "";
 
+    // Track revisions (moved backward to an earlier stage in the pipeline)
+    // and any rejection ever hit, so a real PerformanceLog can be written once
+    // the task actually completes — Performance/My Performance's Review Score
+    // was reading only seeded demo rows until this, since nothing ever wrote
+    // a real one.
+    const oldIdx = STAGES.findIndex(s=>s.key===post.stage);
+    const newIdx = STAGES.findIndex(s=>s.key===newStage);
+    const wentBackward = oldIdx>-1 && newIdx>-1 && newIdx<oldIdx && !["on_hold"].includes(post.stage) && !["on_hold"].includes(newStage);
+    const revisionCount = (post.revision_count||0) + (wentBackward?1:0);
+    const wasRejected = post.was_rejected || newStage==="rejected";
+
     const updatedPost = {...post, stage:newStage, assigned_to:assigneeEmail||post.assigned_to,
       due_date: overrides.due_date || post.due_date,
       due_time: overrides.due_time || post.due_time,
       estimated_minutes: overrides.estimated_minutes || post.estimated_minutes,
       content_assigned_to: newStage==="content_creation" ? (assigneeEmail||post.assigned_to) : post.content_assigned_to,
       project_id: overrides.project_id || post.project_id,
+      revision_count: revisionCount,
+      was_rejected: wasRejected,
     };
     setData(d=>({...d,posts:d.posts.map(p=>p.id===post.id?updatedPost:p)}));
+
+    // Log a real performance record on completion — quality score is the
+    // on-time + not-rejected composite (100 both true, 50 only one, 0
+    // neither), revisions is the backward-stage-move count tracked above.
+    if(newStage==="published") {
+      const deadline = updatedPost.due_date || updatedPost.scheduled_date;
+      const onTime = !deadline || new Date() <= new Date(`${deadline}T23:59:59`);
+      const qualityScore = (onTime?50:0) + (!wasRejected?50:0);
+      const perfEmail = updatedPost.assigned_to;
+      if(perfEmail) {
+        ce("PerformanceLog",[{
+          user_email: perfEmail, user_name: (data.team.find(m=>m.email===perfEmail)?.name)||"",
+          role: (data.team.find(m=>m.email===perfEmail)?.role)||"",
+          post_id: post.id, post_title: post.title, project_id: updatedPost.project_id||"",
+          client_name: post.client_name||"", stage_from: post.stage, stage_to: newStage,
+          on_time: onTime, quality_score: qualityScore, revision_count: revisionCount,
+          client_approved: false, rejected: wasRejected, completed_at: new Date().toISOString(),
+        }]).catch(()=>{});
+      }
+    }
 
     const stageLabel = STAGE_MAP[newStage]?.label || newStage;
     const assignmentText = assignee ? ` → assigned to ${assigneeName}` : "";
@@ -34833,7 +34866,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       await ue("Post", post.id, {stage:newStage, assigned_to:updatedPost.assigned_to,
         due_date:updatedPost.due_date, due_time:updatedPost.due_time,
         estimated_minutes:updatedPost.estimated_minutes, content_assigned_to:updatedPost.content_assigned_to,
-        project_id:updatedPost.project_id});
+        project_id:updatedPost.project_id, revision_count:updatedPost.revision_count, was_rejected:updatedPost.was_rejected});
       await ce("Comment",[{post_id:post.id,author_name:comment.author_name,type:"stage_change",content:comment.content}]);
     } catch(e){ logActivity("Post Stage Change Failed","tasks",`"${post.title}" → ${stageLabel}`,"error",String(e),currentUser?.email||"admin"); }
   };
