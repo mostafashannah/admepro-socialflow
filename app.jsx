@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.350";
+const APP_VERSION = "beta 5.351";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -24990,7 +24990,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
               ))}
             </div>
           </div>
-          {[currentUser, ...(team||[]).filter(m=>m.email!==currentUser?.email)].map(member=>{
+          {[currentUser, ...(team||[]).filter(m=>m.email!==currentUser?.email)].filter(m=>!["hr","accountant","office_boy"].includes(m.role)).map(member=>{
             const memberSlots = generateDailySchedule(posts, member.email, dateStr).map(slot=>{
               const ov = (scheduleOverrides||[]).find(o=>o.post_id===slot.post_id && o.user_email===member.email && o.date===dateStr);
               if(!ov) return slot;
