@@ -1418,7 +1418,19 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
     $anchor = ($isShortReply && $lastAssistantMsg)
         ? "\n\n[This reply confirms EXACTLY this, and only this, question you just asked — nothing else pending from earlier in the conversation: \"" . str_replace('"', "'", $lastAssistantMsg) . "\"]"
         : '';
-    $taggedText = "[CURRENT MESSAGE — this is the ONLY thing to answer. Everything above is history for context only, never something to re-answer, recap, or continue]:\n" . $userText . $anchor;
+    // Same reasoning as the anchor above: "always mirror the user's
+    // language" was already in the system prompt and kept getting ignored
+    // once the conversation ran long and mixed languages — a rule stated
+    // once, far above, loses out to whatever language the bulk of the
+    // history happens to be in. Detecting the CURRENT message's script and
+    // restating the requirement immediately next to it forces the model to
+    // decide fresh each turn instead of drifting toward history's language.
+    $hasArabic = (bool)preg_match('/[\x{0600}-\x{06FF}]/u', $userText);
+    $hasLatinLetters = (bool)preg_match('/[A-Za-z]/', $userText);
+    $langNote = '';
+    if ($hasArabic && !$hasLatinLetters) $langNote = "\n\n[Reply in Arabic — the current message above is in Arabic, regardless of what language earlier messages in this conversation used.]";
+    elseif ($hasLatinLetters && !$hasArabic) $langNote = "\n\n[Reply in English — the current message above is in English, regardless of what language earlier messages in this conversation used.]";
+    $taggedText = "[CURRENT MESSAGE — this is the ONLY thing to answer. Everything above is history for context only, never something to re-answer, recap, or continue]:\n" . $userText . $anchor . $langNote;
     // A photo message goes in as a real image content block (not just an
     // OCR'd string beforehand) so Pro can actually look at it directly —
     // history stays plain text since past images aren't re-sent each turn.
