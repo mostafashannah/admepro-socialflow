@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.349";
+const APP_VERSION = "beta 5.350";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -2885,7 +2885,6 @@ function Avatar({name,size=32,role,photoUrl}) {
     return (
       <img src={photoUrl} alt={name} title={name} style={{
         width:size,height:size,borderRadius:"50%",objectFit:"cover",flexShrink:0,
-        border:`2px solid ${c}6a`,boxShadow:`0 2px 8px ${c}20`,
       }}/>
     );
   }
