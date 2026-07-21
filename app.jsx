@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.352";
+const APP_VERSION = "beta 5.353";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12361,9 +12361,15 @@ function AgentProfilePage({agent, avatarUrl, activityLogs=[], onBack}) {
   const activeDaysCount = days.length;
   const avgPerActiveDay = activeDaysCount ? (logs.length/activeDaysCount).toFixed(1) : "0";
   const errorCount = logs.filter(l=>l.status==="error").length;
-  const last14 = days.slice(0,14);
-  const maxDayCount = Math.max(1, ...last14.map(([,c])=>c));
   const [showPhoto, setShowPhoto] = useState(false);
+  const [chartPeriod, setChartPeriod] = useState("week"); // week | month | 90d | custom
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const periodDaysCount = {week:7, month:30, "90d":90}[chartPeriod];
+  const chartDays = chartPeriod==="custom"
+    ? (customFrom||customTo ? days.filter(([d])=>(!customFrom||d>=customFrom)&&(!customTo||d<=customTo)) : days.slice(0,30))
+    : days.slice(0,periodDaysCount);
+  const maxDayCount = Math.max(1, ...chartDays.map(([,c])=>c));
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:900}} className="fade-in">
@@ -12399,11 +12405,30 @@ function AgentProfilePage({agent, avatarUrl, activityLogs=[], onBack}) {
         ))}
       </div>
 
-      {last14.length>0 && (
-        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16}}>
-          <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",marginBottom:10}}>Actions per day (last {last14.length})</p>
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
-            {[...last14].reverse().map(([day,count])=>(
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16}}>
+        <div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:10}}>
+          <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",marginRight:"auto"}}>Actions per day ({chartDays.length} shown)</p>
+          {[["week","Week"],["month","Month"],["90d","90 Days"],["custom","Custom"]].map(([key,label])=>(
+            <button key={key} onClick={()=>setChartPeriod(key)} style={{
+              padding:"4px 11px",borderRadius:99,fontSize:11,fontWeight:700,cursor:"pointer",
+              border:`1px solid ${chartPeriod===key?agent.color:"var(--border2)"}`,
+              background:chartPeriod===key?agent.color+"22":"transparent",
+              color:chartPeriod===key?agent.color:"var(--text3)",
+            }}>{label}</button>
+          ))}
+          {chartPeriod==="custom" && (
+            <>
+              <input type="date" value={customFrom} onChange={e=>setCustomFrom(e.target.value)} style={{...inputSt,padding:"4px 8px",fontSize:11,width:130}}/>
+              <span style={{fontSize:11,color:"var(--text3)"}}>to</span>
+              <input type="date" value={customTo} onChange={e=>setCustomTo(e.target.value)} style={{...inputSt,padding:"4px 8px",fontSize:11,width:130}}/>
+            </>
+          )}
+        </div>
+        {chartDays.length===0 ? (
+          <p style={{fontSize:12,color:"var(--text3)",textAlign:"center",padding:16}}>No activity in this period.</p>
+        ) : (
+          <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:360,overflowY:"auto"}}>
+            {[...chartDays].reverse().map(([day,count])=>(
               <div key={day} style={{display:"flex",alignItems:"center",gap:8}}>
                 <span style={{fontSize:11,color:"var(--text3)",width:70,flexShrink:0}}>{fmtDate(day)}</span>
                 <div style={{flex:1,height:16,background:"var(--surface2)",borderRadius:4,overflow:"hidden"}}>
@@ -12413,8 +12438,8 @@ function AgentProfilePage({agent, avatarUrl, activityLogs=[], onBack}) {
               </div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16}}>
         <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",marginBottom:10}}>Full History ({logs.length} logged actions)</p>
