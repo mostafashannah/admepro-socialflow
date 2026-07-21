@@ -33,8 +33,11 @@ setcookie('tiktok_oauth_verifier', $codeVerifier, $cookieOpts);
 
 // user.info.basic: display name for the connected-account picker.
 // video.publish: required to actually post via the Content Posting API.
-// video.list: required for the insights cron to look up per-video stats.
-$scopes = implode(',', ['user.info.basic', 'video.publish', 'video.list']);
+// video.list isn't available on this app's product tier (Display/Research
+// API access), so per-video insights aren't requested — publishing still
+// works fine without it; post-insights-cron.php's TikTok branch just finds
+// nothing to fetch and skips those posts, same as any unmatched post.
+$scopes = implode(',', ['user.info.basic', 'video.publish']);
 $params = [
     'client_key'            => TIKTOK_CLIENT_KEY,
     'response_type'         => 'code',
