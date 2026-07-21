@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.357";
+const APP_VERSION = "beta 5.358";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -29112,7 +29112,8 @@ function ChatSessionMenu({onRename, onDelete, onShare, team}) {
                 Rename
               </button>
               {onShare && (
-                <button onClick={()=>setMode("share")} style={{display:"block",width:"100%",textAlign:"left",padding:"9px 12px",fontSize:12,fontWeight:600,color:"var(--text2)",background:"transparent",border:"none",cursor:"pointer"}}>
+                <button onClick={()=>setMode("share")} style={{display:"flex",alignItems:"center",gap:7,width:"100%",textAlign:"left",padding:"9px 12px",fontSize:12,fontWeight:600,color:"var(--text2)",background:"transparent",border:"none",cursor:"pointer"}}>
+                  <Ico d={["M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z","M2 19a5.5 5.5 0 0 1 11 0","M17 8v6","M14 11h6"]} size={13} sw={2}/>
                   Share…
                 </button>
               )}
@@ -29127,7 +29128,8 @@ function ChatSessionMenu({onRename, onDelete, onShare, team}) {
               {shareable.map(m=>(
                 <button key={m.id||m.email} onClick={()=>{setOpen(false);onShare(m);}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",padding:"9px 12px",fontSize:12,fontWeight:600,color:"var(--text2)",background:"transparent",border:"none",cursor:"pointer"}}>
                   <Avatar name={m.name} size={20} role={m.role} photoUrl={m.avatar_url}/>
-                  {m.name||m.email}
+                  <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name||m.email}</span>
+                  <Ico d={["M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z","M2 19a5.5 5.5 0 0 1 11 0","M17 8v6","M14 11h6"]} size={12} sw={2} stroke="var(--text3)"/>
                 </button>
               ))}
             </>
