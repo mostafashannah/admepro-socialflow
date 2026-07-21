@@ -1154,7 +1154,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.380";
+const APP_VERSION = "beta 5.381";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -4746,12 +4746,12 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                   color:publishing?"var(--text3)":"#1877F2",fontSize:13,fontWeight:700,
                   display:"flex",alignItems:"center",justifyContent:"center",gap:8,cursor:publishing?"not-allowed":"pointer",
                 }}>
-                  {publishing?<><Spinner size={14}/> Publishing…</>:<> Publish to {socialIntegration.app_key==="instagram"?"Instagram":"Facebook"}{socialIntegration.client_name?` (${socialIntegration.client_name})`:""}</>}
+                  {publishing?<><Spinner size={14}/> Publishing…</>:<> Publish to {({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",tiktok:"TikTok"})[socialIntegration.app_key]||socialIntegration.app_key}{socialIntegration.client_name?` (${socialIntegration.client_name})`:""}</>}
                 </button>
               ):(
                 <div style={{padding:"8px 12px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",fontSize:12,color:"var(--text3)",display:"flex",alignItems:"center",gap:6}}>
                   <span></span>
-                  <span>Connect a Facebook or Instagram integration in <strong>Settings → Integrations</strong> to enable one-click publishing.</span>
+                  <span>Connect a {({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",tiktok:"TikTok"})[post.platform]||post.platform} integration in <strong>Settings → Integrations</strong> to enable one-click publishing.</span>
                 </div>
               )}
               {publishResult&&(
