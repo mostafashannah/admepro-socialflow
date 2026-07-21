@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.360";
+const APP_VERSION = "beta 5.361";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -27807,10 +27807,9 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
                           background: s.id===proActiveId ? "var(--accentbg)" : "transparent",
                           cursor:"pointer",
                         }}>
-                          {isSharedCopy(s) && <SharedCopyIcon/>}
                           <ScrollingTitle text={s.title || "New conversation"} style={{flex:1,minWidth:0,padding:"6px 10px",color:"var(--text2)",fontSize:12,fontWeight:500}}/>
                           <SharedWithBadge session={s} onUnshare={email=>unshareProSession(s,email)}/>
-                          <ChatSessionMenu onRename={()=>startRenameProSession(s)} onDelete={()=>deleteProSession(s.id)} onShare={isSharedCopy(s)?null:m=>shareProSession(s,m)} team={team.filter(m=>m.email!==currentUser?.email)}/>
+                          <ChatSessionMenu onRename={()=>startRenameProSession(s)} onDelete={()=>deleteProSession(s.id)} onShare={isSharedCopy(s)?null:m=>shareProSession(s,m)} onUnshare={email=>unshareProSession(s,email)} sharedWith={s.shared_with} team={team.filter(m=>m.email!==currentUser?.email)}/>
                         </div>
                       )
                     ))}
@@ -29085,9 +29084,9 @@ function claimFreshProSessionOnLoad(){
 // z-indexed absolute child can still end up stacked underneath a later
 // sibling row's own background depending on the ancestor stacking context;
 // a fixed-position portal escapes that entirely and always paints on top.
-function ChatSessionMenu({onRename, onDelete, onShare, team}) {
+function ChatSessionMenu({onRename, onDelete, onShare, onUnshare, sharedWith, team}) {
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState("main"); // "main" | "share"
+  const [mode, setMode] = useState("main"); // "main" | "share" | "unshare"
   const [pos, setPos] = useState(null);
   const btnRef = useRef(null);
   const menuRef = useRef(null);
@@ -29132,12 +29131,18 @@ function ChatSessionMenu({onRename, onDelete, onShare, team}) {
                   Share…
                 </button>
               )}
+              {onUnshare && sharedWith && sharedWith.length>0 && (
+                <button onClick={()=>setMode("unshare")} style={{display:"flex",alignItems:"center",gap:7,width:"100%",textAlign:"left",padding:"9px 12px",fontSize:12,fontWeight:600,color:"var(--text2)",background:"transparent",border:"none",cursor:"pointer"}}>
+                  <Ico d={["M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z","M2 19a5.5 5.5 0 0 1 11 0","M14 8l6 6","M20 8l-6 6"]} size={13} sw={2}/>
+                  Unshare… ({sharedWith.length})
+                </button>
+              )}
               <button onClick={()=>{setOpen(false);onDelete();}} style={{display:"flex",alignItems:"center",gap:7,width:"100%",textAlign:"left",padding:"9px 12px",fontSize:12,fontWeight:600,color:"#ef4444",background:"transparent",border:"none",cursor:"pointer"}}>
                 <Ico d={["M3 6h18","M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2","M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"]} size={13} sw={2}/>
                 Delete
               </button>
             </>
-          ) : (
+          ) : mode==="share" ? (
             <>
               <div style={{padding:"8px 12px 4px",fontSize:10.5,fontWeight:700,color:"var(--text3)",textTransform:"uppercase"}}>Share with</div>
               {shareable.length===0 && <div style={{padding:"6px 12px 9px",fontSize:12,color:"var(--text3)"}}>No team members found.</div>}
@@ -29146,6 +29151,16 @@ function ChatSessionMenu({onRename, onDelete, onShare, team}) {
                   <Avatar name={m.name} size={20} role={m.role} photoUrl={m.avatar_url}/>
                   <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.name||m.email}</span>
                   <Ico d={["M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z","M2 19a5.5 5.5 0 0 1 11 0","M17 8v6","M14 11h6"]} size={12} sw={2} stroke="var(--text3)"/>
+                </button>
+              ))}
+            </>
+          ) : (
+            <>
+              <div style={{padding:"8px 12px 4px",fontSize:10.5,fontWeight:700,color:"var(--text3)",textTransform:"uppercase"}}>Shared with</div>
+              {(sharedWith||[]).map(x=>(
+                <button key={x.email} onClick={()=>{onUnshare(x.email);if((sharedWith||[]).length<=1)setOpen(false);}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",padding:"9px 12px",fontSize:12,fontWeight:600,color:"var(--text2)",background:"transparent",border:"none",cursor:"pointer"}}>
+                  <span style={{flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{x.name}</span>
+                  <span style={{fontSize:10.5,color:"#ef4444",fontWeight:700}}>Remove</span>
                 </button>
               ))}
             </>
@@ -29970,16 +29985,13 @@ RULES:
                             style={{width:"100%",fontSize:12,fontWeight:700,padding:"2px 4px",borderRadius:6,background:"var(--surface)",border:"1px solid var(--accent)",color:"var(--text)"}}
                           />
                         ) : (
-                          <div style={{display:"flex",alignItems:"center",gap:6}}>
-                            {isSharedCopy(s) && <SharedCopyIcon/>}
-                            <ScrollingTitle text={s.title||"New conversation"} style={{flex:1,minWidth:0,fontSize:12,fontWeight:700,color:"var(--text)"}}/>
-                          </div>
+                          <ScrollingTitle text={s.title||"New conversation"} style={{fontSize:12,fontWeight:700,color:"var(--text)"}}/>
                         )}
                         <p style={{fontSize:10,color:"var(--text3)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginTop:1}}>{cName?`${cName} · `:""}{preview||"…"}</p>
                         <p style={{fontSize:9,color:"var(--text3)",marginTop:2}}>{when} · {(s.messages||[]).length} msgs</p>
                       </div>
                       <SharedWithBadge session={s} onUnshare={email=>unshareChat(s,email)}/>
-                      <ChatSessionMenu onRename={()=>startRenameChat(s)} onDelete={()=>deleteChat(s.id)} onShare={isSharedCopy(s)?null:m=>shareChat(s,m)} team={(data?.team||[]).filter(m=>m.email!==currentUser?.email)}/>
+                      <ChatSessionMenu onRename={()=>startRenameChat(s)} onDelete={()=>deleteChat(s.id)} onShare={isSharedCopy(s)?null:m=>shareChat(s,m)} onUnshare={email=>unshareChat(s,email)} sharedWith={s.shared_with} team={(data?.team||[]).filter(m=>m.email!==currentUser?.email)}/>
                     </div>
                   );
                 })}
@@ -32044,10 +32056,7 @@ RULES:
                       style={{width:"100%",fontSize:12,fontWeight:600,padding:"2px 4px",borderRadius:6,background:"var(--surface)",border:"1px solid var(--accent)",color:"var(--text)"}}
                     />
                   ) : (
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      {isSharedCopy(s) && <SharedCopyIcon/>}
-                      <ScrollingTitle text={s.title} style={{flex:1,minWidth:0,fontSize:12,fontWeight:600,color:"var(--text)"}}/>
-                    </div>
+                    <ScrollingTitle text={s.title} style={{fontSize:12,fontWeight:600,color:"var(--text)"}}/>
                   )}
                   <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{new Date(s.updated_at||s.created_at||Date.now()).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</p>
                 </div>
@@ -32056,7 +32065,7 @@ RULES:
                   <ChatSessionMenu onRename={()=>startRenameSession(s)} onDelete={()=>{
                     setChatSessions(prev=>prev.filter(x=>x.id!==s.id));
                     if(s.id===activeChatId) setActiveChatId("");
-                  }} onShare={isSharedCopy(s)?null:m=>shareSession(s,m)} team={(data?.team||[]).filter(m=>m.email!==currentUser?.email)}/>
+                  }} onShare={isSharedCopy(s)?null:m=>shareSession(s,m)} onUnshare={email=>unshareSession(s,email)} sharedWith={s.shared_with} team={(data?.team||[]).filter(m=>m.email!==currentUser?.email)}/>
                 </div>
               </div>
             ))
