@@ -1426,6 +1426,16 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
     $messages = array_merge($history, [['role' => 'user', 'content' => $currentContent]]);
 
     $reply = null;
+    // Tracks the most recent money-changing tool call's outcome across the
+    // whole exchange (which can span several tool-use rounds below) — the
+    // model was repeatedly observed writing a confident "تم ✅ / Done" reply
+    // even when the tool it had just called actually returned an error (a
+    // rejected duplicate transaction, most often). Telling it not to do
+    // that in the system prompt did not reliably stop it, so this is
+    // enforced in code instead: if the last attempt at a mutating call
+    // failed and were about to send a reply that reads as success, the
+    // real error is substituted in before anything goes out to the user.
+    $lastMutationResult = null;
     for ($turn = 0; $turn < 4; $turn++) {
         $payload = ['model' => 'claude-sonnet-4-6', 'max_tokens' => 500, 'system' => $system, 'messages' => $messages];
         if ($tools) $payload['tools'] = $tools;
@@ -1466,6 +1476,9 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
             $toolInput = (array)($block['input'] ?? []);
             if ($block['name'] === 'save_contact_report' && $voiceTranscript) $toolInput['_raw_transcript'] = $voiceTranscript;
             $result = runProTool($pdo, $block['name'], $toolInput, (string)$senderRole, $senderId, $senderName, $fromPhone);
+            if (in_array($block['name'], ['add_transaction', 'edit_transaction', 'delete_transaction'], true)) {
+                $lastMutationResult = $result;
+            }
             $toolResults[] = [
                 'type' => 'tool_result',
                 'tool_use_id' => $block['id'],
@@ -1476,6 +1489,18 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
     }
 
     if ($reply === null) $reply = "Sorry, that took too long to look up — try asking again, or check the app directly.";
+
+    // The deterministic check described above: a mutating call that just
+    // errored, paired with a reply that reads as a success confirmation, is
+    // never a legitimate combination — the model asking a genuine follow-up
+    // question about the error is fine and is left alone (no "done/saved"
+    // wording present), but a false success claim gets replaced with the
+    // real reason it didn't actually save.
+    if (is_array($lastMutationResult) && !empty($lastMutationResult['error'])) {
+        if (preg_match('/(✅|تم\b|done\b|saved\b|logged\b|recorded\b)/iu', $reply)) {
+            $reply = "Actually, that wasn't saved — " . $lastMutationResult['error'];
+        }
+    }
 
     if ($fromPhone && $senderName) {
         saveProMessage($pdo, $fromPhone, 'user', $userText);
