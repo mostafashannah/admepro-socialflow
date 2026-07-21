@@ -1154,7 +1154,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.379";
+const APP_VERSION = "beta 5.380";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16052,6 +16052,51 @@ function OfferResponsePage({token}) {
         )}
       </div>
     </div></>
+  );
+}
+
+// Public Terms of Service / Privacy Policy pages — /terms and /privacy, no
+// login required. Exists mainly so external OAuth app-review forms (TikTok,
+// Meta, LinkedIn, etc.) have a real, publicly reachable policy URL to point
+// at, since SocialFlow itself is an internal agency tool with no public
+// signup of its own.
+function LegalPage({kind}) {
+  const isTerms = kind === "terms";
+  const wrap = {minHeight:"100vh",background:"#0e1117",color:"#e6e8ec",padding:"48px 20px",fontFamily:"'Montserrat',sans-serif"};
+  const inner = {maxWidth:720,margin:"0 auto"};
+  const h2 = {fontSize:18,fontWeight:800,marginTop:32,marginBottom:10};
+  const p = {fontSize:14,lineHeight:1.7,color:"#b3b8c2",marginBottom:6};
+  return (
+    <div style={wrap}>
+      <div style={inner}>
+        <h1 style={{fontSize:28,fontWeight:800,marginBottom:6}}>SocialFlow {isTerms?"Terms of Service":"Privacy Policy"}</h1>
+        <p style={{...p,color:"#7d8494"}}>Last updated: {new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}</p>
+
+        {isTerms ? (<>
+          <p style={p}>SocialFlow is an internal social media management platform built and operated by Admepro for its own team and clients. It is not offered as a public self-signup service — access is by invitation only, granted to Admepro staff and its clients' authorized representatives.</p>
+          <h2 style={h2}>Use of the Service</h2>
+          <p style={p}>SocialFlow is used to plan, schedule, and publish social media content (including to Facebook, Instagram, LinkedIn, and TikTok) on behalf of Admepro's clients, and to review the resulting engagement metrics. Users must have the authority to connect and post on behalf of any account they link to the platform.</p>
+          <h2 style={h2}>Third-Party Platforms</h2>
+          <p style={p}>Publishing and analytics features connect to third-party APIs (Meta, LinkedIn, TikTok, etc.) using credentials the account owner explicitly authorizes via that platform's own OAuth login. SocialFlow only acts within the scopes granted at that time, and access can be revoked at any moment from the connected platform's own security settings or from within SocialFlow's Integrations page.</p>
+          <h2 style={h2}>Account Responsibility</h2>
+          <p style={p}>Users are responsible for the content they schedule or publish through SocialFlow and for keeping their login credentials confidential. Admepro reserves the right to suspend access for any account used in violation of a connected platform's own terms of service.</p>
+          <h2 style={h2}>Contact</h2>
+          <p style={p}>Questions about these terms can be sent to <a href="mailto:hello@admepro.com" style={{color:"#f43f5e"}}>hello@admepro.com</a>.</p>
+        </>) : (<>
+          <p style={p}>This policy explains what data SocialFlow collects and how it's used. SocialFlow is an internal tool operated by Admepro for managing its own and its clients' social media presence — it does not sell data or share it with advertisers.</p>
+          <h2 style={h2}>What We Collect</h2>
+          <p style={p}>Account/profile info for connected social accounts (name, page/account ID); OAuth access and refresh tokens issued by the platform you connect (Facebook, Instagram, LinkedIn, TikTok), used only to publish content and read engagement metrics on your behalf; content you create in SocialFlow (captions, media, schedules); and engagement metrics (views, likes, comments, shares) for posts published through the platform.</p>
+          <h2 style={h2}>How We Use It</h2>
+          <p style={p}>Data is used solely to operate the features you use directly: publishing scheduled posts, displaying performance analytics, and keeping your connected accounts authenticated. Access tokens are stored securely and are never used for any purpose beyond the connected account's own publishing/analytics needs.</p>
+          <h2 style={h2}>Data Retention & Deletion</h2>
+          <p style={p}>Disconnecting an integration from SocialFlow's Settings → Integrations page revokes SocialFlow's stored access to that account. To request deletion of any data SocialFlow holds about a connected account, contact us using the details below.</p>
+          <h2 style={h2}>Third-Party Platforms</h2>
+          <p style={p}>Each connected platform (Meta, LinkedIn, TikTok) governs how it itself handles the data it shares with SocialFlow under its own privacy policy and developer terms — this policy covers only SocialFlow's own handling of that data once received.</p>
+          <h2 style={h2}>Contact</h2>
+          <p style={p}>Questions about this policy, or requests to access/delete your data, can be sent to <a href="mailto:hello@admepro.com" style={{color:"#f43f5e"}}>hello@admepro.com</a>.</p>
+        </>)}
+      </div>
+    </div>
   );
 }
 
@@ -33242,6 +33287,14 @@ function App() {
   const [isCareersPath] = useState(()=>{
     try { return window.location.pathname==="/careers"; } catch(e) { return false; }
   });
+  // Public Terms/Privacy pages — mainly for third-party OAuth app-review
+  // forms (TikTok, Meta, LinkedIn) that require a real policy URL.
+  const [legalPath] = useState(()=>{
+    try {
+      const p = window.location.pathname;
+      return p==="/terms" ? "terms" : p==="/privacy" ? "privacy" : null;
+    } catch(e) { return null; }
+  });
   // Public "complete your application" page for email-captured applications
   // missing required fields — socialflow.admepro.com/careers/complete?token=...
   const [completeToken] = useState(()=>{
@@ -35687,6 +35740,9 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
   // the logged-in app's theme).
   if(isCareersPath) {
     return <CareersPage appSettings={appSettings}/>;
+  }
+  if(legalPath) {
+    return <LegalPage kind={legalPath}/>;
   }
   if(interviewToken) {
     return <InterviewSchedulingPage token={interviewToken}/>;
