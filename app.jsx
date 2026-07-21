@@ -337,10 +337,19 @@ function getDurationCfg(){
   try { return window.__SF_DURATION_CFG||{}; } catch(e){ return {}; }
 }
 function estimateDuration(post) {
-  // An explicit estimate set on the task always wins — the post_type/priority
-  // guess below is only a fallback for tasks nobody has given a real duration.
+  // An explicit estimate set on the task always wins — the guess below (by
+  // whichever of the three methods is configured) is only a fallback for
+  // tasks nobody has given a real duration.
   if(post.estimated_minutes) return Number(post.estimated_minutes);
   const cfg = getDurationCfg();
+  const method = cfg.method || "table"; // "table" (fixed lookup) | "manual" | "historical"
+  if(method==="manual") return 60; // no guessing — flat neutral fallback until someone sets one
+  if(method==="historical"){
+    let hist = {}; try{ hist = window.__SF_DURATION_HIST||{}; }catch(e){}
+    const type = post.post_type || post.task_type;
+    if(type && hist[type]) return hist[type];
+    // No real tracked history for this type yet — fall through to the table guess.
+  }
   const postTypes = cfg.postTypes || POST_TYPE_DURATIONS;
   const priorityMult = cfg.priorityMult || DEFAULT_PRIORITY_MULT;
   const base = postTypes[post.post_type] || postTypes[post.task_type] || 60;
@@ -1142,7 +1151,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.367";
+const APP_VERSION = "beta 5.368";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19761,27 +19770,72 @@ function TaskDurationSettingsPanel({appSettings, onSaveSettings}){
     if(typeof c==="string"){ try{ c = JSON.parse(c); }catch(e){ c = {}; } }
     return c||{};
   })();
+  const [method, setMethod] = useState(savedCfg.method || "table");
   const [postTypes, setPostTypes] = useState({...POST_TYPE_DURATIONS, ...(savedCfg.postTypes||{})});
   const [priorityMult, setPriorityMult] = useState({...DEFAULT_PRIORITY_MULT, ...(savedCfg.priorityMult||{})});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [, forceTick] = useState(0); // re-render once so the live Task Average preview reads window.__SF_DURATION_HIST after mount
 
   const handleSave = async () => {
     setSaving(true);
-    await onSaveSettings({task_durations: {postTypes, priorityMult}});
+    await onSaveSettings({task_durations: {method, postTypes, priorityMult}});
     setSaving(false); setSaved(true); setTimeout(()=>setSaved(false),2500);
   };
-  const handleReset = () => { setPostTypes({...POST_TYPE_DURATIONS}); setPriorityMult({...DEFAULT_PRIORITY_MULT}); };
+  const handleReset = () => { setMethod("table"); setPostTypes({...POST_TYPE_DURATIONS}); setPriorityMult({...DEFAULT_PRIORITY_MULT}); };
 
   const inputSt2 = {width:80,padding:"6px 8px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:13,fontWeight:600,textAlign:"right"};
+  let hist = {}; try{ hist = window.__SF_DURATION_HIST||{}; }catch(e){}
+
+  const METHODS = [
+    {key:"table", label:"AI Estimated", desc:"Fixed guess per post type + priority — the table you can fine-tune below."},
+    {key:"manual", label:"Manual", desc:"No guessing at all — every task must have its own duration set explicitly, or it falls back to a flat 60 min placeholder."},
+    {key:"historical", label:"Task Average", desc:"Uses the real average tracked time your team has logged per post type so far, falling back to the table below for any type with no history yet."},
+  ];
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:"min(1100px,100%)"}}>
       <div>
         <p style={{fontSize:13,color:"var(--text2)"}}>Controls how "Estimated" time is guessed for a task when nobody has set an explicit duration on it — used across My Timeline, Smart Schedule, and My Performance. A task's own manually-set duration always overrides this.</p>
       </div>
+
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
-        <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:14}}>Base Minutes per Post Type</p>
+        <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:14}}>Estimation Method</p>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:12}}>
+          {METHODS.map(m=>(
+            <button key={m.key} onClick={()=>setMethod(m.key)} style={{
+              textAlign:"left",padding:14,borderRadius:"var(--rs)",cursor:"pointer",
+              border:`1.5px solid ${method===m.key?"var(--accent)":"var(--border2)"}`,
+              background:method===m.key?"var(--accent)0f":"var(--surface2)",
+            }}>
+              <p style={{fontSize:13,fontWeight:700,color:method===m.key?"var(--accent)":"var(--text)",marginBottom:4}}>{m.label}</p>
+              <p style={{fontSize:11.5,color:"var(--text3)",lineHeight:1.4}}>{m.desc}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {method==="historical" && (
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
+          <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:14}}>Real Averages Logged So Far</p>
+          {Object.keys(hist).length===0 ? (
+            <p style={{fontSize:12,color:"var(--text3)"}}>No tracked time logged against any task yet — every estimate will use the table below until real history builds up.</p>
+          ) : (
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
+              {Object.entries(hist).map(([type,mins])=>(
+                <div key={type} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                  <span style={{fontSize:13,color:"var(--text2)"}}>{POST_TYPE_LABELS[type]||type}</span>
+                  <span style={{fontSize:13,fontWeight:700,color:"var(--accent)"}}>{mins} min avg</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,opacity:method==="table"?1:0.55}}>
+        <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Base Minutes per Post Type</p>
+        <p style={{fontSize:11,color:"var(--text3)",marginBottom:14}}>{method==="table"?"Active — used directly.":method==="historical"?"Used as the fallback for post types with no tracked history yet.":"Not used while Manual is selected."}</p>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
           {Object.keys(POST_TYPE_DURATIONS).map(type=>(
             <div key={type} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
@@ -19791,7 +19845,7 @@ function TaskDurationSettingsPanel({appSettings, onSaveSettings}){
           ))}
         </div>
       </div>
-      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,opacity:method==="manual"?0.55:1}}>
         <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:14}}>Priority Multiplier</p>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
           {["urgent","high","medium","low"].map(pri=>(
@@ -19882,7 +19936,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
       </div>
 
       {/* Tab nav */}
-      <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",flexWrap:"wrap"}}>
+      <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",flexWrap:"nowrap",overflowX:"auto"}}>
         {[["branding","Branding"],["logos","Identity"],["integrations","Integrations"],["email","Email"],["ai_model","AI Agents"],["durations","Task Estimates"],["flags","Feature Flags"],["syslog","System Log"]].map(([k,l])=>(
           <button key={k} onClick={()=>setSettingsTab(k)} style={{padding:"9px 20px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${settingsTab===k?"var(--accent)":"transparent"}`,color:settingsTab===k?"var(--accent)":"var(--text2)",transition:"all 0.15s",display:"flex",alignItems:"center",gap:6,position:"relative"}}>
             {l}
@@ -33179,6 +33233,25 @@ function App() {
     if(typeof cfg==="string"){ try{ cfg = JSON.parse(cfg); }catch(e){ cfg = {}; } }
     window.__SF_DURATION_CFG = cfg||{};
   },[appSettings?.task_durations]);
+  // Powers the "Task Average" duration method — real tracked minutes per
+  // post type, averaged from completed time entries, instead of a static
+  // guess. Recomputed whenever the underlying data changes.
+  useEffect(()=>{
+    const sums = {}, counts = {};
+    (data.timeEntries||[]).forEach(t=>{
+      if(!t.post_id) return;
+      const post = (data.posts||[]).find(p=>p.id===t.post_id);
+      const type = post?.post_type || post?.task_type;
+      if(!type) return;
+      const secs = t.status==="active" ? (t.total_seconds||0) : (t.total_seconds||0);
+      if(secs<=0) return;
+      sums[type] = (sums[type]||0) + secs/60;
+      counts[type] = (counts[type]||0) + 1;
+    });
+    const avg = {};
+    Object.keys(sums).forEach(type=>{ avg[type] = Math.round(sums[type]/counts[type]); });
+    window.__SF_DURATION_HIST = avg;
+  },[data.timeEntries, data.posts]);
   // Mirror the client brain (knowledge/intelligence/memory/published posts) the
   // same way so Sara's helpers (clientBrainBlock/saraLearnFromWork) can read
   // it anywhere — including actual published content, not just distilled
