@@ -94,6 +94,21 @@ function log_activity($pdo, $applicationId, $action, $actor = 'System') {
     }
 }
 
+// Surfaces CV screening as a real, visible log on the AI Agents page — same
+// [agent:*] tag convention agentAI() uses client-side and the reply bot now
+// uses too, so the AgentCard/activity-log machinery can pick these runs up.
+function log_cv_screening_activity($pdo, $jobTitle, $status, $detail) {
+    try {
+        $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by, performed_at) VALUES (UUID(), :action, 'agents', :details, :status, 'agent', :now)")
+            ->execute([
+                ':action' => "CV Screening: " . ($jobTitle ?: 'Unknown role'),
+                ':details' => "[agent:cv_screening] {$detail}",
+                ':status' => $status,
+                ':now' => date('Y-m-d H:i:s'),
+            ]);
+    } catch (Throwable $e) { /* logging must never break the actual review flow */ }
+}
+
 // Extracts plain text from a .docx file's raw bytes — a .docx is a zip
 // archive with the actual text in word/document.xml. Legacy .doc (pre-2007
 // binary format) can't be read this way; returns null for those/on any
@@ -143,15 +158,16 @@ function ai_review_cv($pdoRef, $applicationId, $cvContent, $jobTitle, $jobDescri
     curl_close($ch);
 
     $upd = $pdoRef->prepare("UPDATE job_applications SET ai_score=:s, ai_summary=:sum, ai_extracted=:ext, ai_review_status=:st WHERE id=:id");
-    $fail = fn() => $upd->execute([':s' => null, ':sum' => null, ':ext' => null, ':st' => 'failed', ':id' => $applicationId]);
+    $fail = fn($reason) => [$upd->execute([':s' => null, ':sum' => null, ':ext' => null, ':st' => 'failed', ':id' => $applicationId]), log_cv_screening_activity($pdoRef, $jobTitle, 'error', $reason)];
 
-    if ($status < 200 || $status >= 300) { $fail(); return; }
+    if ($status < 200 || $status >= 300) { $fail("HTTP {$status} from Claude"); return; }
     $d = json_decode($res, true);
     $raw = '';
     foreach (($d['content'] ?? []) as $block) { $raw .= $block['text'] ?? ''; }
-    if (!preg_match('/\{[\s\S]*\}/', $raw, $m)) { $fail(); return; }
+    if (!preg_match('/\{[\s\S]*\}/', $raw, $m)) { $fail('No JSON found in response'); return; }
     $extracted = json_decode($m[0], true);
-    if (!$extracted) { $fail(); return; }
+    if (!$extracted) { $fail('JSON parse failed'); return; }
+    log_cv_screening_activity($pdoRef, $jobTitle, 'success', "Scored " . ($extracted['candidate_name'] ?? 'a candidate') . ": {$extracted['score']}/100 (via email)");
 
     // Backfill phone/links from the CV if the email capture didn't have them.
     if (!empty($extracted['candidate_phone'])) {

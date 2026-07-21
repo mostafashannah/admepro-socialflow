@@ -797,6 +797,7 @@ async function finishReview(application, raw) {
   }
   await ue("JobApplication", application.id, patch);
   logApplicationActivity(application.id, `AI review completed — score ${patch.ai_score ?? "n/a"}`, "AI");
+  logActivity(`CV Screening: ${application.job_title||"Unknown role"}`,"agents",`[agent:cv_screening] Scored ${extracted.candidate_name||application.candidate_name||"a candidate"}: ${patch.ai_score ?? "n/a"}/100 (via careers page)`,"success","","agent");
   return extracted;
 }
 
@@ -986,6 +987,7 @@ ${AI_REVIEW_JSON_SHAPE}
     return await finishReview(application, raw);
   } catch(e) {
     await ue("JobApplication", application.id, {ai_review_status:"failed", ai_summary:`Retry failed: ${String(e?.message||e).slice(0,500)}`}).catch(()=>{});
+    logActivity(`CV Screening: ${opening?.title||application.job_title||"Unknown role"}`,"agents",`[agent:cv_screening] ${String(e?.message||e).slice(0,200)}`,"error","","agent");
     return null;
   }
 }
@@ -1031,6 +1033,7 @@ Return ONLY JSON in this exact shape:
     return await finishReview(application, raw);
   } catch(e) {
     await ue("JobApplication", application.id, {ai_review_status:"failed", ai_summary:`Retry failed: ${String(e?.message||e).slice(0,500)}`}).catch(()=>{});
+    logActivity(`CV Screening: ${application.job_title||"Unknown role"}`,"agents",`[agent:cv_screening] ${String(e?.message||e).slice(0,200)}`,"error","","agent");
     return null;
   }
 }
@@ -1151,7 +1154,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.371";
+const APP_VERSION = "beta 5.372";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -20193,6 +20196,35 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 // ── AI & Tokens Panel ──────────────────────────────────────────
 // One card per sub-agent in Settings → AI Agents: model + skills/guides
 // (persisted team-wide in app_settings.ai_agents) and the agent's own run log.
+// Log toggle for the server-side "Bot"/"CV Screening" informational cards —
+// same [agent:*] tag + activity_logs source as AgentCard's own log, just
+// without any of the model/skills editing controls those don't have.
+function StaticAgentLogSection({agentId, logs}) {
+  const [showLog, setShowLog] = useState(false);
+  const agentLogs = (logs||[]).filter(a=>(a.details||"").includes(`[agent:${agentId}]`))
+    .sort((a,b)=>new Date(b.performed_at)-new Date(a.performed_at)).slice(0,15);
+  return (
+    <>
+      <button onClick={()=>setShowLog(v=>!v)} style={{marginTop:14,padding:"8px 16px",borderRadius:10,background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)",fontSize:12.5,fontWeight:600,cursor:"pointer"}}>
+        {showLog?"Hide Log":`Activity Log (${agentLogs.length})`}
+      </button>
+      {showLog&&(
+        <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:8,maxHeight:220,overflowY:"auto"}}>
+          {agentLogs.length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>No runs logged yet.</p>}
+          {agentLogs.map((a,i)=>(
+            <div key={a.id||i} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"8px 10px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border)"}}>
+              <div style={{width:7,height:7,borderRadius:"50%",background:a.status==="error"?"#ef4444":"#10b981",marginTop:4,flexShrink:0}}/>
+              <div style={{minWidth:0}}>
+                <p style={{fontSize:12,fontWeight:600}}>{a.action}</p>
+                <p style={{fontSize:10.5,color:"var(--text3)",marginTop:1}}>{parseSqlUtc(a.performed_at)?.toLocaleString()}{a.error_message?` — ${a.error_message.slice(0,120)}`:""}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
 function AgentCard({def, cfg, models, onSave, logs, onBackfill, backfillRunning}) {
   const [model,setModel] = useState(cfg?.model||"claude-sonnet-4-6");
   const [skills,setSkills] = useState(cfg?.skills||"");
@@ -20425,6 +20457,28 @@ function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfill
         <p style={{fontSize:12,color:"var(--text2)",marginTop:8,lineHeight:1.5}}>
           Its actual tone, brand voice, and custom instructions are configured <strong>per client</strong> — open a client → Reply Bot settings — not here, since every client wants it to sound different.
         </p>
+        <StaticAgentLogSection agentId="reply_bot" logs={activityLogs}/>
+      </div>
+
+      {/* CV Screening — informational only, same reasoning as the Bot card
+          above. Two separate trigger paths, same job: scoring a candidate
+          against a job opening. Neither reads config from here. */}
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:22}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:4}}>
+          <div style={{width:38,height:38,borderRadius:10,background:"#8b5cf622",display:"flex",alignItems:"center",justifyContent:"center",color:"#8b5cf6",fontWeight:800,fontSize:15,flexShrink:0}}>CV</div>
+          <div>
+            <p style={{fontWeight:800,fontSize:15}}>CV Screening</p>
+            <p style={{fontSize:12,color:"var(--text3)"}}>Scores job applicants against a role's requirements and summarizes their CV</p>
+          </div>
+          <span style={{marginLeft:"auto",fontSize:10,fontWeight:700,color:"var(--text3)",background:"var(--surface2)",border:"1px solid var(--border2)",padding:"3px 10px",borderRadius:99}}>Server-side</span>
+        </div>
+        <p style={{fontSize:12,color:"var(--text2)",marginTop:12,lineHeight:1.5}}>
+          Runs two separate ways, independently of Pro/Sara: instantly when someone applies through the <strong>/careers</strong> page, and via a background inbox-watching cron job when a CV arrives by <strong>email</strong>. Both fixed on <code style={{background:"var(--surface2)",padding:"1px 6px",borderRadius:4}}>claude-sonnet-4-6</code>, not affected by the Model/Speed settings below.
+        </p>
+        <p style={{fontSize:12,color:"var(--text2)",marginTop:8,lineHeight:1.5}}>
+          Manage the actual outcomes under <strong>Recruitment</strong> — each application's AI score/summary, with a manual re-run option.
+        </p>
+        <StaticAgentLogSection agentId="cv_screening" logs={activityLogs}/>
       </div>
 
       {/* AI Model Selector (Pro supervisor) */}

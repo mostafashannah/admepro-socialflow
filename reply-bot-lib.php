@@ -146,15 +146,36 @@ function generateBotReply(PDO $pdo, string $clientId, string $clientName, string
         'messages' => [['role' => 'user', 'content' => "{$nameLine}{$captionLine}Conversation so far:\n{$convo}\n\n{$label}"]],
     ];
     [$status, $data] = callClaude($payload);
-    if ($status < 200 || $status >= 300) return null;
+    if ($status < 200 || $status >= 300) {
+        logBotActivity($pdo, $clientName, 'error', "HTTP {$status} from Claude");
+        return null;
+    }
 
     $text = '';
     foreach (($data['content'] ?? []) as $block) {
         if (($block['type'] ?? '') === 'text') $text .= $block['text'];
     }
     $text = trim($text);
-    if ($text === '' || $text === 'NEEDS_HUMAN') return null;
+    if ($text === '' || $text === 'NEEDS_HUMAN') {
+        logBotActivity($pdo, $clientName, 'success', $text === 'NEEDS_HUMAN' ? 'Escalated to a human — no auto-reply sent' : 'Empty reply, nothing sent');
+        return null;
+    }
+    logBotActivity($pdo, $clientName, 'success', 'Drafted a reply (' . mb_strlen($text) . ' chars)');
     return $text;
+}
+// Surfaces the reply bot as a real, visible log on the AI Agents page (its
+// card there was informational-only before this — now it has an actual
+// activity trail, same [agent:*] tag convention agentAI() uses client-side.
+function logBotActivity(PDO $pdo, string $clientName, string $status, string $detail) {
+    try {
+        $stmt = $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by, performed_at) VALUES (UUID(), :action, 'agents', :details, :status, 'agent', :now)");
+        $stmt->execute([
+            ':action' => "Bot: {$clientName}",
+            ':details' => "[agent:reply_bot] {$detail}",
+            ':status' => $status,
+            ':now' => date('Y-m-d H:i:s'),
+        ]);
+    } catch (Throwable $e) { /* logging must never break the actual reply flow */ }
 }
 
 // Sends a DM reply via the Graph API (same shape as meta-send-reply.php).
