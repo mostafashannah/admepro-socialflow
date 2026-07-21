@@ -55,13 +55,22 @@ function downloadWhatsAppMedia(string $mediaId) {
 // expense record it gets logged against, the same "attachments" JSON field
 // the Finance page's own upload UI already writes to.
 function saveReceiptImage(string $bytes, string $mimeType): ?string {
-    if (!defined('STORAGE_ROOT') || !defined('STORAGE_PUBLIC_URL')) return null;
+    if (!defined('STORAGE_ROOT') || !defined('STORAGE_PUBLIC_URL')) {
+        error_log('[saveReceiptImage] STORAGE_ROOT/STORAGE_PUBLIC_URL not defined in config.php — receipt photo cannot be saved.');
+        return null;
+    }
     $ext = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'][$mimeType] ?? 'jpg';
     $path = 'wa-receipts/' . date('Y/m') . '/' . bin2hex(random_bytes(8)) . '.' . $ext;
     $dest = STORAGE_ROOT . '/finance-docs/' . $path;
     $dir = dirname($dest);
-    if (!is_dir($dir)) mkdir($dir, 0755, true);
-    if (file_put_contents($dest, $bytes) === false) return null;
+    if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
+        error_log("[saveReceiptImage] mkdir failed for {$dir}");
+        return null;
+    }
+    if (file_put_contents($dest, $bytes) === false) {
+        error_log("[saveReceiptImage] file_put_contents failed writing to {$dest} — check STORAGE_ROOT permissions for the web server user.");
+        return null;
+    }
     return STORAGE_PUBLIC_URL . '/finance-docs/' . $path;
 }
 
@@ -238,7 +247,8 @@ function financeTools() {
         [
             'name' => 'add_transaction',
             'description' => 'Record a new income or expense transaction. Before calling this, make sure you have all required fields from the user — if anything is missing or ambiguous (especially amount or whether it is money in or out), ASK the user instead of guessing. Once saved, confirm back to the user exactly what was recorded (type, amount, category, description, date). '
-                . 'For an "outstanding" expense (money owed but not yet paid — e.g. "X is outstanding", "put this on Fawry installments", "so-and-so paid this for us, we owe them back"): set method to "Outstanding" and fill outstanding_kind. For outstanding_kind="team_member", set outstanding_team_member (their name) — no interest applies, amount is simply what\'s owed. For outstanding_kind="installment" (Fawry), set outstanding_months and, if not given, use Fawry\'s known flat monthly rates: 1mo=3.33%, 3mo=3.21%, 6/9/12/18/24mo=3.04% — ALWAYS tell the user the calculated total (principal + interest) and monthly installment before saving so they can confirm, since interest changes the real amount owed. For installment, treat the "amount" you were given as the PRINCIPAL — the tool computes and stores the true total automatically.',
+                . 'For an "outstanding" expense (money owed but not yet paid — e.g. "X is outstanding", "put this on Fawry installments", "so-and-so paid this for us, we owe them back"): set method to "Outstanding" and fill outstanding_kind. For outstanding_kind="team_member", set outstanding_team_member (their name) — no interest applies, amount is simply what\'s owed. For outstanding_kind="installment" (Fawry), set outstanding_months and, if not given, use Fawry\'s known flat monthly rates: 1mo=3.33%, 3mo=3.21%, 6/9/12/18/24mo=3.04% — ALWAYS tell the user the calculated total (principal + interest) and monthly installment before saving so they can confirm, since interest changes the real amount owed. For installment, treat the "amount" you were given as the PRINCIPAL — the tool computes and stores the true total automatically. '
+                . 'If this call is rejected with an error saying it looks like a repeat of an already-logged transaction, ASK the user whether it\'s a genuine separate transaction or an actual duplicate — never claim it saved successfully when this tool returned an error, that would be lying to the user. If they confirm it\'s genuinely separate, call add_transaction again with the exact same details plus force=true to actually save it this time.',
             'input_schema' => [
                 'type' => 'object',
                 'properties' => [
@@ -254,6 +264,7 @@ function financeTools() {
                     'outstanding_months' => ['type' => 'integer', 'description' => 'Installment plan length in months — required when outstanding_kind=installment.'],
                     'outstanding_monthly_interest_rate' => ['type' => 'number', 'description' => 'Flat monthly interest %. If the user does not give one, use Fawry\'s known rate for that month count (see tool description).'],
                     'photo_url' => ['type' => 'string', 'description' => 'The URL from a "[photo_url: ...]" marker in this conversation, if this transaction came from a receipt/invoice photo the user sent — attaches it to the record. Omit if there was no photo.'],
+                    'force' => ['type' => 'boolean', 'description' => 'Set true ONLY on a retry after the user explicitly confirmed a same-amount transaction flagged as a possible duplicate is genuinely separate. Never set true on a first attempt.'],
                 ],
                 'required' => ['type', 'category', 'description', 'amount'],
             ],
@@ -423,10 +434,17 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
         // trusting the prompt instructions alone to prevent it — widened
         // from 10 to 30 after seeing the same stale transaction re-fire
         // several exchanges into an unrelated conversation.
+        // force=true (only ever set after the user has explicitly confirmed
+        // this is a genuinely separate transaction, not a repeat) bypasses
+        // this check — without it, there was no way to actually save a
+        // legitimate same-amount transaction a second time, and the model
+        // was papering over that dead end by just claiming success in its
+        // reply without the tool having done anything.
+        $force = !empty($input['force']);
         $dupCheck = $pdo->prepare("SELECT ref FROM expenses WHERE type = :type AND amount = :amt AND created_by = :by AND created_at >= (NOW() - INTERVAL 30 MINUTE) LIMIT 1");
         $dupCheck->execute([':type' => $type, ':amt' => $amount, ':by' => $senderName]);
         $dup = $dupCheck->fetchColumn();
-        if ($dup) {
+        if ($dup && !$force) {
             return ['error' => "This looks like a repeat of a transaction already logged moments ago (ref {$dup}) — did not create a duplicate. If this is genuinely a separate transaction, ask the user to confirm explicitly."];
         }
 
