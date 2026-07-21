@@ -1450,6 +1450,7 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
     // failed and were about to send a reply that reads as success, the
     // real error is substituted in before anything goes out to the user.
     $lastMutationResult = null;
+    $mutationAttempted = false;
     for ($turn = 0; $turn < 4; $turn++) {
         $payload = ['model' => 'claude-sonnet-4-6', 'max_tokens' => 500, 'system' => $system, 'messages' => $messages];
         if ($tools) $payload['tools'] = $tools;
@@ -1492,6 +1493,7 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
             $result = runProTool($pdo, $block['name'], $toolInput, (string)$senderRole, $senderId, $senderName, $fromPhone);
             if (in_array($block['name'], ['add_transaction', 'edit_transaction', 'delete_transaction'], true)) {
                 $lastMutationResult = $result;
+                $mutationAttempted = true;
             }
             $toolResults[] = [
                 'type' => 'tool_result',
@@ -1510,8 +1512,21 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
     // question about the error is fine and is left alone (no "done/saved"
     // wording present), but a false success claim gets replaced with the
     // real reason it didn't actually save.
-    if (is_array($lastMutationResult) && !empty($lastMutationResult['error'])) {
-        if (preg_match('/(✅|تم\b|done\b|saved\b|logged\b|recorded\b)/iu', $reply)) {
+    // Covers two failure modes seen in testing: (1) the tool was called and
+    // returned an error, but the reply still claimed success — handled by
+    // checking $lastMutationResult['error']; and (2) worse, the tool was
+    // never called at ALL this exchange, yet the reply still fabricated a
+    // full "تم ✅ — amount, vendor, date" confirmation out of nothing. (2)
+    // is only flagged when the reply itself looks like a transaction
+    // confirmation (has a currency marker), since a plain "✅ done" success
+    // reply for some other unrelated tool is completely legitimate and
+    // must not be touched.
+    $claimsSuccess = preg_match('/(✅|تم\b|done\b|saved\b|logged\b|recorded\b)/iu', $reply);
+    $mentionsMoney = preg_match('/(جنيه|EGP|USD|\$)/iu', $reply);
+    if ($claimsSuccess && $mentionsMoney) {
+        if (!$mutationAttempted) {
+            $reply = "Actually, I didn't save that — something went wrong before I could log it. Please resend your confirmation and I'll try again.";
+        } elseif (is_array($lastMutationResult) && !empty($lastMutationResult['error'])) {
             $reply = "Actually, that wasn't saved — " . $lastMutationResult['error'];
         }
     }
