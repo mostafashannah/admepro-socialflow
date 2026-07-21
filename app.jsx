@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.362";
+const APP_VERSION = "beta 5.363";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -27658,15 +27658,15 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     if(id===proActiveId){ saveActiveChatId("", currentUser?.email); setProActiveId(""); }
   };
   const [proShareToast, setProShareToast] = useState("");
-  const shareProSession = (session, member) => {
+  const shareProSession = async (session, member) => {
     shareProSessionToMember(session, member, currentUser?.name).catch(()=>{});
-    const updated = markSessionShared(session, member);
+    const updated = await markSessionShared(session, member, currentUser?.email);
     setProSessions(prev=>prev.map(s=>s.id===session.id?updated:s));
     setProShareToast(`Shared with ${member.name||member.email}`);
     setTimeout(()=>setProShareToast(""), 2500);
   };
-  const unshareProSession = (session, email) => {
-    const updated = unshareSessionWith(session, email);
+  const unshareProSession = async (session, email) => {
+    const updated = await unshareSessionWith(session, email, currentUser?.email);
     setProSessions(prev=>prev.map(s=>s.id===session.id?updated:s));
   };
 
@@ -28954,21 +28954,30 @@ async function shareProSessionToMember(session, member, senderName){
 // tracked separately from the actual copy shareProSessionToMember() creates
 // for the recipient — the sender's shared_with list is just a record of who
 // they've sent this chat to.
-function markSessionShared(session, member){
-  const entry = {email: member.email, name: member.name||member.email};
-  const shared_with = [...(session.shared_with||[]).filter(x=>x.email!==entry.email), entry];
-  const updated = {...session, shared_with};
-  if(session.id && !String(session.id).startsWith("local_")){
-    ue("ProChatSession", session.id, {shared_with: JSON.stringify(shared_with)}).catch(()=>{});
+async function markSessionShared(session, member, ownerEmail){
+  // A brand-new chat that's never been persisted yet still has a "local_"
+  // id — writing shared_with straight to it silently no-ops (ue() against
+  // a client-only id hits nothing server-side), which is why sharing a
+  // fresh conversation used to leave no trace of the share at all. Force a
+  // real save first so there's an actual row to attach shared_with to.
+  let sess = session;
+  if(!sess.id || String(sess.id).startsWith("local_")){
+    sess = await persistProSessionToServer(sess, ownerEmail);
   }
+  const entry = {email: member.email, name: member.name||member.email};
+  const shared_with = [...(sess.shared_with||[]).filter(x=>x.email!==entry.email), entry];
+  const updated = {...sess, shared_with};
+  await ue("ProChatSession", updated.id, {shared_with: JSON.stringify(shared_with)}).catch(()=>{});
   return updated;
 }
-function unshareSessionWith(session, email){
-  const shared_with = (session.shared_with||[]).filter(x=>x.email!==email);
-  const updated = {...session, shared_with};
-  if(session.id && !String(session.id).startsWith("local_")){
-    ue("ProChatSession", session.id, {shared_with: JSON.stringify(shared_with)}).catch(()=>{});
+async function unshareSessionWith(session, email, ownerEmail){
+  let sess = session;
+  if(!sess.id || String(sess.id).startsWith("local_")){
+    sess = await persistProSessionToServer(sess, ownerEmail);
   }
+  const shared_with = (sess.shared_with||[]).filter(x=>x.email!==email);
+  const updated = {...sess, shared_with};
+  await ue("ProChatSession", updated.id, {shared_with: JSON.stringify(shared_with)}).catch(()=>{});
   return updated;
 }
 // Small "shared with" pill shown on a chat-history row once shared_with has
@@ -29335,15 +29344,15 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
   };
 
   const [shareToast, setShareToast] = useState("");
-  const shareChat = (session, member) => {
+  const shareChat = async (session, member) => {
     shareProSessionToMember(session, member, currentUser?.name).catch(()=>{});
-    const updated = markSessionShared(session, member);
+    const updated = await markSessionShared(session, member, currentUser?.email);
     setSessions(prev=>prev.map(s=>s.id===session.id?updated:s));
     setShareToast(`Shared with ${member.name||member.email}`);
     setTimeout(()=>setShareToast(""), 2500);
   };
-  const unshareChat = (session, email) => {
-    const updated = unshareSessionWith(session, email);
+  const unshareChat = async (session, email) => {
+    const updated = await unshareSessionWith(session, email, currentUser?.email);
     setSessions(prev=>prev.map(s=>s.id===session.id?updated:s));
   };
 
@@ -31194,15 +31203,15 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
   const [editingHomeTitle, setEditingHomeTitle] = useState("");
   const startRenameSession = (s) => { setEditingHomeId(s.id); setEditingHomeTitle(s.title||""); };
   const [shareToast, setShareToast] = useState("");
-  const shareSession = (session, member) => {
+  const shareSession = async (session, member) => {
     shareProSessionToMember(session, member, currentUser?.name).catch(()=>{});
-    const updated = markSessionShared(session, member);
+    const updated = await markSessionShared(session, member, currentUser?.email);
     setChatSessions(prev=>prev.map(s=>s.id===session.id?updated:s));
     setShareToast(`Shared with ${member.name||member.email}`);
     setTimeout(()=>setShareToast(""), 2500);
   };
-  const unshareSession = (session, email) => {
-    const updated = unshareSessionWith(session, email);
+  const unshareSession = async (session, email) => {
+    const updated = await unshareSessionWith(session, email, currentUser?.email);
     setChatSessions(prev=>prev.map(s=>s.id===session.id?updated:s));
   };
   const commitRenameSession = () => {
