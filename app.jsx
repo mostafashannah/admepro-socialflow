@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.354";
+const APP_VERSION = "beta 5.355";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6631,6 +6631,7 @@ function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAdd
   // dashboard scoped to their own work instead of whole-agency aggregates —
   // admin and account managers still see everything.
   const isManager = ["admin","account_manager"].includes(currentUser?.role);
+  const visibleTeam = (team||[]).filter(m=>!["hr","accountant","office_boy"].includes(m.role));
   const myPosts = filteredPosts.filter(p=>p.assigned_to===currentUser?.email);
   const myPerf = perf.find(p=>p.email===currentUser?.email) || {};
 
@@ -6845,11 +6846,11 @@ No markdown, no explanation.`;
                         <span style={{width:6,height:6,borderRadius:"50%",background:"#10b981"}}/>
                         {liveMemberEmails.size} live now
                       </span>
-                      <span style={{fontSize:10,background:"var(--surface2)",color:"var(--text3)",padding:"2px 8px",borderRadius:99,fontWeight:700,border:"1px solid var(--border2)"}}>{team.length} members</span>
+                      <span style={{fontSize:10,background:"var(--surface2)",color:"var(--text3)",padding:"2px 8px",borderRadius:99,fontWeight:700,border:"1px solid var(--border2)"}}>{visibleTeam.length} members</span>
                     </div>
                   </div>
                   <div style={{maxHeight:"min(280px,40vh)",overflowY:"auto"}}>
-                    {team.map(member=>{
+                    {visibleTeam.map(member=>{
                       const mPerf=perf.find(p=>p.email===member.email)||{};
                       const activeTasks=filteredPosts.filter(p=>p.assigned_to===member.email&&!["published","rejected"].includes(p.stage));
                       const isOnline=liveMemberEmails.has(member.email);
