@@ -1154,7 +1154,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.372";
+const APP_VERSION = "beta 5.373";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6582,7 +6582,7 @@ function HRDashboard({team,perfLogs,currentUser,setPage}) {
   );
 }
 
-function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAddTask,onCreateInvoice,onAddProject,onOpenPost,onMarkNotifRead}) {
+function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAddTask,onCreateInvoice,onAddProject,onOpenPost,onMarkNotifRead,onSaveInsights}) {
   if(currentUser?.role==="hr") return <HRDashboard team={data.team} perfLogs={data.perfLogs||[]} currentUser={currentUser} setPage={setPage}/>;
   const {posts,projects,clients,team,timelogs,notifications} = data;
   const perfLogs = data.perfLogs||[];
@@ -6716,6 +6716,12 @@ No markdown, no explanation.`;
       const raw=(d.content||[]).map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
       const parsed=JSON.parse(raw);
       setLiveInsights(parsed);
+      // Previously these only ever lived in this component's own state —
+      // gone the moment you navigated away, and never seen by Team
+      // Performance or My Performance's own "AI Insights" sections, which
+      // read from the real ai_insights table. Persist them for real.
+      const now = new Date().toISOString();
+      onSaveInsights?.(parsed.map(ins=>({...ins, is_read:false, generated_at:now})));
     } catch(e){setLiveInsights([{title:"Error",insight:"Could not generate insights. Check API connection.",action:"",category:"general",priority:"low"}]);}
     setGenInsights(false);
   };
@@ -35870,6 +35876,12 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
                 if(found) setSelectedPost(found);
               }}
               onMarkNotifRead={markNotifRead}
+              onSaveInsights={insights=>{
+                ce("AIInsight", insights).then(r=>{
+                  const created = (r.entities||[]).filter(e=>!e._saveError);
+                  if(created.length) setData(d=>({...d, aiInsights:[...created, ...(d.aiInsights||[])]}));
+                }).catch(()=>{});
+              }}
             />}
         {page==="clients"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"clients.manage"))&&(()=>{
           const selectedClient = data.clients.find(c=>c.id===selectedClientId)||null;
