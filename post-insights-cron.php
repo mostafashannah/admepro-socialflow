@@ -18,6 +18,7 @@
 if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/tiktok-lib.php';
 
 $pdo = new PDO(
     'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4',
@@ -47,7 +48,7 @@ $posts->execute([':since' => $since]);
 $rows = $posts->fetchAll(PDO::FETCH_ASSOC);
 
 $integStmt = $pdo->prepare(
-    "SELECT credentials FROM integrations WHERE status = 'active' AND app_key = :platform
+    "SELECT id, credentials FROM integrations WHERE status = 'active' AND app_key = :platform
        AND (client_id = :client_id OR client_id IS NULL OR client_id = '')
      ORDER BY (client_id = :client_id2) DESC LIMIT 1"
 );
@@ -60,16 +61,38 @@ $update = $pdo->prepare(
 $updated = 0;
 foreach ($rows as $post) {
     $integStmt->execute([':platform' => $post['platform'], ':client_id' => $post['client_id'], ':client_id2' => $post['client_id']]);
-    $credsRaw = $integStmt->fetchColumn();
-    if (!$credsRaw) continue;
-    $creds = json_decode($credsRaw, true) ?: [];
+    $integ = $integStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$integ) continue;
+    $creds = json_decode($integ['credentials'] ?? '{}', true) ?: [];
     $access_token = trim($creds['access_token'] ?? '');
+    if ($post['platform'] === 'tiktok') {
+        $access_token = tiktok_get_fresh_token($pdo, $integ['id'], $creds) ?? $access_token;
+    }
     if (!$access_token) continue;
 
     $postId = $post['external_post_id'];
     $likes = $comments = $shares = $reach = null;
 
-    if ($post['platform'] === 'facebook') {
+    if ($post['platform'] === 'tiktok') {
+        // external_post_id here is the publish_id tiktok_publish_video()
+        // stored, but /video/query/ needs TikTok's own video_id — those
+        // only coincide when the response's publicaly_available_post_id
+        // was captured at publish time (see tiktok_publish_video()), which
+        // is what gets saved as external_post_id by auto-publish.php /
+        // the app's own publish flow. If a post predates that, this will
+        // simply find nothing and get skipped below, same as any other
+        // not-yet-matched post.
+        [$code, $resp] = tiktok_video_insights($access_token, $postId);
+        if ($code === 200) {
+            $v = $resp['data']['videos'][0] ?? null;
+            if ($v) {
+                $likes    = $v['like_count'] ?? null;
+                $comments = $v['comment_count'] ?? null;
+                $shares   = $v['share_count'] ?? null;
+                $reach    = $v['view_count'] ?? null;
+            }
+        }
+    } elseif ($post['platform'] === 'facebook') {
         [$code, $resp] = graph_get("https://graph.facebook.com/{$v}/{$postId}", [
             "fields" => "likes.summary(true),comments.summary(true),shares",
             "access_token" => $access_token,

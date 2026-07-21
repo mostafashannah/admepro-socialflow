@@ -26,6 +26,7 @@ if (PHP_SAPI !== 'cli') { http_response_code(403); exit; }
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/meta-lib.php';
 require_once __DIR__ . '/linkedin-lib.php';
+require_once __DIR__ . '/tiktok-lib.php';
 
 if (!defined('AUTO_PUBLISH_ENABLED') || !AUTO_PUBLISH_ENABLED) {
     echo json_encode(['skipped' => true, 'reason' => 'AUTO_PUBLISH_ENABLED is not true in config.php']);
@@ -61,7 +62,7 @@ foreach ($due as $post) {
     if ($scheduledAt > $now) continue; // not due yet
 
     $platform = strtolower(trim($post['platform'] ?? ''));
-    if (!in_array($platform, ['facebook', 'instagram', 'linkedin'], true)) continue;
+    if (!in_array($platform, ['facebook', 'instagram', 'linkedin', 'tiktok'], true)) continue;
 
     // Prefer an integration scoped to this post's client; fall back to any
     // active integration for the platform (e.g. a single shared Page).
@@ -81,7 +82,13 @@ foreach ($due as $post) {
     $creds        = json_decode($integration['credentials'] ?? '{}', true) ?: [];
     $page_id      = trim($creds['page_id']      ?? '');
     $access_token = trim($creds['access_token'] ?? '');
-    if (!$page_id || !$access_token) continue;
+    if ($platform === 'tiktok') {
+        // TikTok access tokens expire in ~24h — a scheduled post sitting in
+        // the queue for a day would otherwise fail with a stale token even
+        // though tiktok-refresh-cron.php keeps the row itself current.
+        $access_token = tiktok_get_fresh_token($pdo, $integration['id'], $creds) ?? $access_token;
+    }
+    if (!$access_token || ($platform !== 'tiktok' && !$page_id)) continue;
 
     $design_urls   = json_decode($post['design_urls'] ?? '[]', true) ?: [];
     $design_assets = json_decode($post['design_assets'] ?? '[]', true) ?: [];
@@ -101,6 +108,13 @@ foreach ($due as $post) {
 
     if ($platform === 'linkedin') {
         [$code, $resp] = linkedin_publish($page_id, $access_token, $message, $image_url);
+    } elseif ($platform === 'tiktok') {
+        if (!$image_url) {
+            $upd = $pdo->prepare("UPDATE posts SET publish_attempts = :att, publish_error = :err WHERE id = :id");
+            $upd->execute([':att' => $attempts + 1, ':err' => 'TikTok requires a video file attached to this post', ':id' => $post['id']]);
+            continue;
+        }
+        [$code, $resp] = tiktok_publish_video($access_token, $image_url, $message);
     } else {
         [$code, $resp] = meta_publish($platform, $page_id, $access_token, $message, $image_url, null, $story_image_url ?: null, $post['post_type'] ?? null, $cover_url ?: null);
     }
@@ -126,7 +140,10 @@ foreach ($due as $post) {
     $ok = $code >= 200 && $code < 300;
 
     if ($ok) {
-        $extId = $resp['id'] ?? $resp['post_id'] ?? null;
+        // TikTok's publish_id ($resp['id']) can't be looked up by the
+        // insights API — video_id (only present once TikTok finishes
+        // processing) is what post-insights-cron.php needs stored instead.
+        $extId = $resp['video_id'] ?? $resp['id'] ?? $resp['post_id'] ?? null;
         $upd = $pdo->prepare("UPDATE posts SET stage = 'published', published_at = :now, external_post_id = :ext, publish_error = NULL WHERE id = :id");
         $upd->execute([':now' => $now->format('Y-m-d H:i:s'), ':ext' => $extId, ':id' => $post['id']]);
         sara_learn_from_publish($pdo, $post, $platform);

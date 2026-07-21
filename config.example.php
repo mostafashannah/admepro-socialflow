@@ -65,6 +65,16 @@ define('INSTAGRAM_APP_SECRET',       'your_instagram_app_secret');
 define('LINKEDIN_CLIENT_ID',     'your_linkedin_client_id');
 define('LINKEDIN_CLIENT_SECRET', 'your_linkedin_client_secret');
 
+// --- TikTok for Developers app (https://developers.tiktok.com/apps) ---
+// Add the "Login Kit" and "Content Posting API" products, then add this exact
+// redirect URL under Login Kit → redirect URI: https://yourdomain.com/tiktok-oauth-callback.php
+// Note: while your app is in sandbox/pre-audit mode, TikTok only lets you
+// post/read data for accounts added as "Target users" under Login Kit ->
+// sandbox settings — real client accounts need your app to pass TikTok's
+// audit for the video.publish scope first.
+define('TIKTOK_CLIENT_KEY',    'your_tiktok_client_key');
+define('TIKTOK_CLIENT_SECRET', 'your_tiktok_client_secret');
+
 // --- Self-hosted MySQL backend (vps-migration/api.php + storage.php) ---
 // Only needed once you've moved off Supabase onto your own VPS database.
 define('DB_HOST', '127.0.0.1');
