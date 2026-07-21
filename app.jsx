@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.351";
+const APP_VERSION = "beta 5.352";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12519,7 +12519,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
           onAddExpense={onAddExpense}
           canEdit={!isOfficeBoy && hasPerm(currentUser,rolePerms,"hr.edit_team")}
           canEditSalary={!isOfficeBoy && hasPerm(currentUser,rolePerms,"hr.edit_salary")}
-          onBack={isOfficeBoy ? null : ()=>{ try{ window.history.back(); }catch(e){ setViewingMember_(null); } }}
+          onBack={isOfficeBoy ? null : ()=>setViewingMember_(null)}
           onEdit={()=>setEditingMember(live)}
           onDelete={isOfficeBoy ? null : (id)=>{ onRemoveMember(id); setViewingMember(null); }}
           onSelectMember={isOfficeBoy ? null : (m)=>setViewingMember(m)}
