@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.344";
+const APP_VERSION = "beta 5.345";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -24810,6 +24810,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   const isAM = currentUser?.role==="account_manager" || currentUser?.role==="admin";
   const [viewUser, setViewUser] = useState(()=>initialJump?.viewUser||null); // null = self
   const [combinedView, setCombinedView] = useState(()=>!!initialJump?.combined);
+  const [zoom, setZoom] = useState(1); // 1x–4x horizontal stretch on the combined timeline
   const [overrideTarget, setOverrideTarget] = useState(null); // {slot, post}
   const [overrideTime, setOverrideTime] = useState("09:00");
   const effectiveUser = (isAM && viewUser) ? viewUser : currentUser;
@@ -24930,8 +24931,19 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
       {/* Combined timeline — every team member's day on one board (AM/admin only) */}
       {combinedView && (
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+          <div style={{padding:"8px 16px",borderBottom:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:6}}>
+            <span style={{fontSize:11,color:"var(--text3)",marginRight:"auto",fontWeight:700}}>Zoom</span>
+            <button onClick={()=>setZoom(z=>Math.max(1,z-0.5))} disabled={zoom<=1} style={{width:26,height:26,borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",cursor:zoom<=1?"default":"pointer",fontSize:14,fontWeight:700,opacity:zoom<=1?0.4:1}}>−</button>
+            <span style={{fontSize:11,color:"var(--text2)",fontWeight:700,width:32,textAlign:"center"}}>{zoom}x</span>
+            <button onClick={()=>setZoom(z=>Math.min(4,z+0.5))} disabled={zoom>=4} style={{width:26,height:26,borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",cursor:zoom>=4?"default":"pointer",fontSize:14,fontWeight:700,opacity:zoom>=4?0.4:1}}>+</button>
+          </div>
+          {/* Everything below scrolls horizontally together at the chosen zoom
+              level; the name column stays pinned via position:sticky so it
+              doesn't scroll out of view along with the stretched track. */}
+          <div style={{overflowX:"auto"}}>
+          <div style={{minWidth:`${zoom*100}%`}}>
           <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:120,flexShrink:0,fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Combined Timeline</div>
+            <div style={{width:120,flexShrink:0,position:"sticky",left:16,fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",background:"var(--surface2)"}}>Combined Timeline</div>
             {/* Ruler lives in a name-column + flex-timeline split identical to each
                 member row below, so hour ticks (percentage-positioned) line up
                 exactly with the percentage-positioned task bars underneath them. */}
@@ -24951,7 +24963,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
             });
             return (
               <div key={member.email} style={{display:"flex",alignItems:"center",padding:"10px 16px",borderBottom:"1px solid var(--border)",gap:10}}>
-                <div style={{width:120,flexShrink:0,fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                <div style={{width:120,flexShrink:0,position:"sticky",left:16,fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",background:"var(--surface)"}}>
                   {member.name}{member.email===currentUser?.email?" (You)":""}
                 </div>
                 <div style={{position:"relative",flex:1,height:30,background:"var(--surface2)",borderRadius:6,
@@ -24989,7 +25001,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
             if(!sara) return null;
             return (
               <div key="sara-timeline-row" style={{display:"flex",alignItems:"center",padding:"10px 16px",borderBottom:"1px solid var(--border)",gap:10,background:sara.color+"08"}}>
-                <div style={{width:120,flexShrink:0,fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:6}}>
+                <div style={{width:120,flexShrink:0,position:"sticky",left:16,fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:6,background:"var(--surface)"}}>
                   <div style={{width:16,height:16,borderRadius:"50%",background:sara.color,flexShrink:0,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontSize:9,fontWeight:800}}>
                     {avatarUrl?<img src={avatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:"S"}
                   </div>
@@ -25017,6 +25029,8 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
               </div>
             );
           })()}
+          </div>
+          </div>
         </div>
       )}
 
