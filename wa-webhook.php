@@ -61,14 +61,16 @@ $body    = json_decode($raw, true);
 $value   = $body['entry'][0]['changes'][0]['value'] ?? [];
 $message = $value['messages'][0] ?? null;
 $msgType = $message['type'] ?? '';
-if (!$message || !in_array($msgType, ['text', 'audio'], true)) {
-    exit; // ignore statuses, non-text/audio messages, etc.
+if (!$message || !in_array($msgType, ['text', 'audio', 'image'], true)) {
+    exit; // ignore statuses, non-text/audio/image messages, etc.
 }
 
 $phoneNumberId = (string)($value['metadata']['phone_number_id'] ?? ''); // which of our numbers received it
 $from = preg_replace('/\D/', '', $message['from'] ?? ''); // digits only, no '+'
 $contactName = $value['contacts'][0]['profile']['name'] ?? null; // customer display name, if sent
 $isVoiceNote = false;
+$imageBase64 = null;
+$imageMime = null;
 
 if ($msgType === 'audio') {
     // Voice notes only make sense on the Pro number (client inbox numbers
@@ -91,6 +93,22 @@ if ($msgType === 'audio') {
     }
     $text = $transcript;
     $isVoiceNote = true;
+} elseif ($msgType === 'image') {
+    // Photos only make sense on the Pro number too — same reasoning as
+    // voice notes above (client inbox numbers go through the reply bot,
+    // never Pro/tool-use).
+    require_once __DIR__ . '/pro-lib.php';
+    $mediaId = $message['image']['id'] ?? '';
+    if (!$from || !$mediaId) exit;
+    [$bytes, $mime] = downloadWhatsAppMedia($mediaId);
+    if (!$bytes) exit;
+    $imageBase64 = base64_encode($bytes);
+    $imageMime = $mime ?: 'image/jpeg';
+    // A caption becomes the accompanying text; without one, give Pro a
+    // generic instruction so it still has something to "answer" alongside
+    // the image rather than an empty user turn.
+    $caption = trim($message['image']['caption'] ?? '');
+    $text = $caption !== '' ? $caption : "Here's a photo — take a look and help with whatever it's for.";
 } else {
     $text = trim($message['text']['body'] ?? '');
 }
@@ -132,6 +150,13 @@ try {
     // exactly like Messenger/Instagram, instead of going to Pro.
     $proPhoneId = defined('WA_PHONE_ID') ? (string)WA_PHONE_ID : '';
     error_log("[wa-webhook] routing: incoming phone_number_id={$phoneNumberId} configured WA_PHONE_ID={$proPhoneId} from={$from}");
+    if ($msgType === 'image' && $phoneNumberId !== $proPhoneId) {
+        // Photo capture is a Pro-only capability — a customer sending a
+        // photo to a client's own inbox number still just gets ignored,
+        // same as before, instead of the reply bot firing off a reply to
+        // a generic placeholder caption.
+        exit;
+    }
     if ($phoneNumberId && $phoneNumberId !== $proPhoneId) {
         // Match the receiving number to a client's WhatsApp integration.
         $rows = $pdo->query("SELECT client_id, client_name, credentials FROM integrations WHERE app_key='whatsapp' AND status='active' AND client_id IS NOT NULL")->fetchAll(PDO::FETCH_ASSOC);
@@ -163,7 +188,7 @@ try {
         catch (\Throwable $e) { error_log('[wa-webhook] lead-capture EXCEPTION: ' . $e->getMessage()); }
     }
     error_log("[wa-webhook] routing to Pro: senderName=" . var_export($senderName, true) . " senderRole=" . var_export($senderRole, true));
-    $reply = askPro($pdo, $senderName, $senderRole, $contextBlock, $text, $senderId, $isVoiceNote ? $text : null, $from);
+    $reply = askPro($pdo, $senderName, $senderRole, $contextBlock, $text, $senderId, $isVoiceNote ? $text : null, $from, $imageBase64, $imageMime);
     error_log("[wa-webhook] askPro returned: " . var_export($reply, true));
     if ($reply) sendWhatsAppReply($from, $reply);
 } catch (Throwable $e) {

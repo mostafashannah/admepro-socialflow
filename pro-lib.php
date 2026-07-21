@@ -1141,7 +1141,7 @@ function saveProMessage(PDO $pdo, string $phone, string $role, string $content) 
     }
 }
 
-function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $senderId = null, $voiceTranscript = null, $fromPhone = null) {
+function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $senderId = null, $voiceTranscript = null, $fromPhone = null, $imageBase64 = null, $imageMime = null) {
     $isTeam       = $senderName && str_starts_with((string)$senderRole, 'team:');
     $isAdmin      = $senderRole === 'team:admin';
     $isAM         = $senderRole === 'team:account_manager';
@@ -1209,6 +1209,15 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                       . "meeting (mentions a client and what was discussed), extract and save it with "
                       . "save_contact_report, then confirm briefly what you saved. If it's just a normal question "
                       . "instead, answer it normally like any other message."
+                    : '')
+                . ($imageBase64
+                    ? "\n\nThey just sent you a PHOTO (attached). Look at it and help with whatever it's for: if "
+                      . "it's a receipt/invoice, read the amount/vendor/date and, if the context makes clear it "
+                      . "should be logged, use add_transaction; if it's a screenshot of a client message/brief, "
+                      . "summarize the relevant part; if it's a document or ID, read out the text they likely "
+                      . "want; otherwise just describe what's useful in it and ask what they'd like done with it. "
+                      . "Never invent numbers or text you can't actually read clearly in the image — say so and "
+                      . "ask them to confirm instead."
                     : '');
 
         // Recruitment tools follow the app's own Roles & Permissions
@@ -1309,7 +1318,13 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
     // stale recruitment query) instead of the new one when both were
     // just plain, identically-formatted "user" turns in the same list.
     $taggedText = "[CURRENT MESSAGE — this is the ONLY thing to answer. Everything above is history for context only, never something to re-answer, recap, or continue]:\n" . $userText;
-    $messages = array_merge($history, [['role' => 'user', 'content' => $taggedText]]);
+    // A photo message goes in as a real image content block (not just an
+    // OCR'd string beforehand) so Pro can actually look at it directly —
+    // history stays plain text since past images aren't re-sent each turn.
+    $currentContent = $imageBase64
+        ? [['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $imageMime ?: 'image/jpeg', 'data' => $imageBase64]], ['type' => 'text', 'text' => $taggedText]]
+        : $taggedText;
+    $messages = array_merge($history, [['role' => 'user', 'content' => $currentContent]]);
 
     $reply = null;
     for ($turn = 0; $turn < 4; $turn++) {
