@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.347";
+const APP_VERSION = "beta 5.348";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3481,7 +3481,7 @@ function MentionInput({value, onChange, team, placeholder, rows}) {
   // Sara is mentionable everywhere a human teammate is, even though she's
   // not a real team_members row — role shown as "AI" so she reads distinctly
   // in the dropdown.
-  const mentionable = [...(team||[]), {name:"Sara", email:"sara@ai.socialflow", role:"AI"}, {name:"Pro", email:"pro@ai.socialflow", role:"AI"}];
+  const mentionable = [...(team||[]).filter(m=>!["hr","accountant","office_boy"].includes(m.role)), {name:"Sara", email:"sara@ai.socialflow", role:"AI"}, {name:"Pro", email:"pro@ai.socialflow", role:"AI"}];
   const filtered = showDropdown
     ? mentionable.filter(m => m.name && (m.name.toLowerCase().includes(mentionQuery.toLowerCase()) || toUsername(m.name).includes(toUsername(mentionQuery)))).slice(0,6)
     : [];
@@ -3537,7 +3537,7 @@ function MentionInput({value, onChange, team, placeholder, rows}) {
             <div key={m.email} onMouseDown={()=>selectMention(m)} style={{padding:"8px 12px",cursor:"pointer",display:"flex",alignItems:"center",gap:8,fontSize:13}}
               onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
               onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-              <Avatar name={m.name} size={22} role={m.role}/>
+              <Avatar name={m.name} size={22} role={m.role} photoUrl={m.avatar_url}/>
               <span>
                 <span style={{fontWeight:600,display:"block"}}>{m.name}</span>
                 <span style={{fontSize:10,color:"var(--text3)"}}>@{toUsername(m.name)}</span>
@@ -5863,7 +5863,7 @@ const CALENDAR_KIND_DEFS = [
 ];
 function AddCalendarPlanModal({open,onClose,clients,team,preselectedClient,onGenerate,clientKnowledgeList,clientIntelligenceList,clientMemoryList,onUpsertMemory}) {
   const [step,setStep] = useState("form"); // form | generating | preview | done
-  const makeKindDefaults = (count) => ({count, platforms:preselectedClient?.platforms||[], brief:"", assigned_to:""});
+  const makeKindDefaults = (count) => ({count, platforms:preselectedClient?.platforms||[], brief:"", assigned_to:"", due_offset_days:2});
   const [f,setF] = useState({
     client_id: preselectedClient?.id||"",
     campaign: "",
@@ -5998,6 +5998,12 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
       const platform = kind==="article"
         ? (plats.includes("linkedin")?"linkedin":plats[0])
         : plats[platformCursor[kind]++ % plats.length];
+      // Due date = work deadline, offset back from the publish date so the
+      // team has time to review before it goes out — separate from
+      // scheduled_date, which is when it actually publishes.
+      const offsetDays = f.kinds[kind].due_offset_days||0;
+      const dueDate = new Date(date);
+      dueDate.setDate(dueDate.getDate()-offsetDays);
       return {
         id: uid(),
         title: idea?.title||`${kind} ${i+1}`,
@@ -6005,6 +6011,7 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
         hashtags: idea?.hashtags||"",
         scheduled_date: date,
         scheduled_time: ["09:00","12:00","15:00","18:00","20:00"][i%5],
+        due_date: dueDate.toISOString().split("T")[0],
         platform,
         post_type: kind==="article" ? "article" : kind==="story" ? "story" : postTypes[i%postTypes.length],
         stage: "planning",
@@ -6105,10 +6112,10 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
             <Field label="Campaign / Project Name" required>
               <input value={f.campaign} onChange={e=>s("campaign",e.target.value)} placeholder="e.g. Ramadan Campaign 2026" style={inputSt}/>
             </Field>
-            <Field label="Start Date" required>
+            <Field label="Publishing Start Date" required>
               <input type="date" value={f.date_from} onChange={e=>s("date_from",e.target.value)} style={inputSt}/>
             </Field>
-            <Field label="End Date" required>
+            <Field label="Publishing End Date" required>
               <input type="date" value={f.date_to} onChange={e=>s("date_to",e.target.value)} style={inputSt}/>
             </Field>
           </div>
@@ -6133,6 +6140,11 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                     <select value={cfg.assigned_to} onChange={e=>sk(kind,"assigned_to",e.target.value)} style={inputSt}>
                       <option value="">— Unassigned —</option>
                       {team.map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Due Date" hint="Work deadline, before the publish date">
+                    <select value={cfg.due_offset_days} onChange={e=>sk(kind,"due_offset_days",parseInt(e.target.value))} style={inputSt}>
+                      {[0,1,2,3,5,7].map(n=><option key={n} value={n}>{n===0?"Same day as publish":`${n} day${n>1?"s":""} before`}</option>)}
                     </select>
                   </Field>
                 </div>
@@ -24986,8 +24998,9 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
             });
             return (
               <div key={member.email} style={{display:"flex",alignItems:"center",padding:"10px 16px",borderBottom:"1px solid var(--border)",gap:10}}>
-                <div style={{width:120,flexShrink:0,position:"sticky",left:16,fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",background:"var(--surface)"}}>
-                  {member.name}{member.email===currentUser?.email?" (You)":""}
+                <div style={{width:120,flexShrink:0,position:"sticky",left:16,fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:6,background:"var(--surface)"}}>
+                  <Avatar name={member.name} size={16} role={member.role} photoUrl={member.avatar_url}/>
+                  <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{member.name}{member.email===currentUser?.email?" (You)":""}</span>
                 </div>
                 <div style={{position:"relative",flex:1,height:30,background:"var(--surface2)",borderRadius:6,
                   backgroundImage:`repeating-linear-gradient(to right, var(--border) 0, var(--border) 1px, transparent 1px, transparent ${100/(WORKING_END-WORKING_START)}%)`}}>
@@ -28961,7 +28974,7 @@ function ChatSessionMenu({onRename, onDelete, onShare, team}) {
     setMode("main");
     setOpen(o=>!o);
   };
-  const shareable = (team||[]).filter(m=>m.email);
+  const shareable = (team||[]).filter(m=>m.email && !["hr","accountant","office_boy"].includes(m.role));
   return (
     <div style={{flexShrink:0}} onClick={e=>e.stopPropagation()}>
       <button ref={btnRef} onClick={toggleOpen} title="More options" style={{
@@ -28991,7 +29004,8 @@ function ChatSessionMenu({onRename, onDelete, onShare, team}) {
               <div style={{padding:"8px 12px 4px",fontSize:10.5,fontWeight:700,color:"var(--text3)",textTransform:"uppercase"}}>Share with</div>
               {shareable.length===0 && <div style={{padding:"6px 12px 9px",fontSize:12,color:"var(--text3)"}}>No team members found.</div>}
               {shareable.map(m=>(
-                <button key={m.id||m.email} onClick={()=>{setOpen(false);onShare(m);}} style={{display:"block",width:"100%",textAlign:"left",padding:"9px 12px",fontSize:12,fontWeight:600,color:"var(--text2)",background:"transparent",border:"none",cursor:"pointer"}}>
+                <button key={m.id||m.email} onClick={()=>{setOpen(false);onShare(m);}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",textAlign:"left",padding:"9px 12px",fontSize:12,fontWeight:600,color:"var(--text2)",background:"transparent",border:"none",cursor:"pointer"}}>
+                  <Avatar name={m.name} size={20} role={m.role} photoUrl={m.avatar_url}/>
                   {m.name||m.email}
                 </button>
               ))}
@@ -34563,7 +34577,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     const localPosts = tasks.map(t=>({...t,project_id:projectId,id:uid()}));
     setData(d=>({...d,posts:[...localPosts,...d.posts]}));
     const calClient = data.clients.find(c=>c.id===planForm.client_id);
-    const postPayloads = localPosts.map(t=>({title:t.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:t.platform,post_type:t.post_type,stage:"planning",priority:t.priority,caption:t.caption,hashtags:t.hashtags,scheduled_date:t.scheduled_date,scheduled_time:t.scheduled_time,assigned_to:t.assigned_to||""}));
+    const postPayloads = localPosts.map(t=>({title:t.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:t.platform,post_type:t.post_type,stage:"planning",priority:t.priority,caption:t.caption,hashtags:t.hashtags,scheduled_date:t.scheduled_date,scheduled_time:t.scheduled_time,due_date:t.due_date||"",assigned_to:t.assigned_to||""}));
     ce("Post",postPayloads).then(res=>{
       const reals = res.entities||[];
       setData(d=>{
