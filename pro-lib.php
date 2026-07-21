@@ -1143,7 +1143,14 @@ function callClaude(array $payload) {
 // Both wrapped in try/catch so a missing/broken pro_messages table (e.g. the
 // migration hasn't been run yet) degrades to stateless behavior instead of
 // silently killing the whole reply.
-function loadRecentProMessages(PDO $pdo, string $phone, int $limit = 10): array {
+// 10 was too tight for real conversations — a receipt confirmation flow
+// alone (photo -> question -> "yes" -> a follow-up correction) can burn
+// through it in a handful of turns, at which point the actual amount/
+// vendor/date Pro itself just extracted ages out of history and it has to
+// ask again, or worse, loses the thread to an unrelated older topic still
+// sitting in the (now emptier) window. Messages here are short, so a much
+// larger window costs little.
+function loadRecentProMessages(PDO $pdo, string $phone, int $limit = 40): array {
     try {
         $stmt = $pdo->prepare("SELECT role, content FROM pro_messages WHERE phone = :p ORDER BY created_at DESC LIMIT :lim");
         $stmt->bindValue(':p', $phone, PDO::PARAM_STR);
