@@ -328,12 +328,22 @@ const WORKING_END = 19; // 7pm
 const WORKING_MINS = (WORKING_END - WORKING_START) * 60; // 540 mins
 
 // ── Smart Schedule Engine ──────────────────────────────────────
+const DEFAULT_PRIORITY_MULT = {urgent:1.5, high:1.2, medium:1.0, low:0.8};
+// Admin-adjustable overrides (Settings → Task Estimates), mirrored from
+// app_settings.task_durations the same way __SF_AI_AGENTS mirrors agent
+// config — lets estimateDuration() read live settings without prop-drilling
+// appSettings through every place a duration gets computed.
+function getDurationCfg(){
+  try { return window.__SF_DURATION_CFG||{}; } catch(e){ return {}; }
+}
 function estimateDuration(post) {
   // An explicit estimate set on the task always wins — the post_type/priority
   // guess below is only a fallback for tasks nobody has given a real duration.
   if(post.estimated_minutes) return Number(post.estimated_minutes);
-  const base = POST_TYPE_DURATIONS[post.post_type] || POST_TYPE_DURATIONS[post.task_type] || 60;
-  const priorityMult = {urgent:1.5, high:1.2, medium:1.0, low:0.8};
+  const cfg = getDurationCfg();
+  const postTypes = cfg.postTypes || POST_TYPE_DURATIONS;
+  const priorityMult = cfg.priorityMult || DEFAULT_PRIORITY_MULT;
+  const base = postTypes[post.post_type] || postTypes[post.task_type] || 60;
   return Math.round(base * (priorityMult[post.priority] || 1.0));
 }
 
@@ -1132,7 +1142,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.365";
+const APP_VERSION = "beta 5.366";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19738,6 +19748,73 @@ function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh, te
 
 
 // ════════════════════════════════════════════════════════════════
+// TASK DURATION ESTIMATE SETTINGS (admin-adjustable estimateDuration() overrides)
+// ════════════════════════════════════════════════════════════════
+const POST_TYPE_LABELS = {
+  image:"Image", video:"Video", carousel:"Carousel", story:"Story", reel:"Reel",
+  social_post:"Social Post", story_reel:"Story/Reel", caption_copy:"Caption Copy",
+  graphic_design:"Graphic Design", campaign:"Campaign", ad_creative:"Ad Creative", blog:"Blog",
+};
+function TaskDurationSettingsPanel({appSettings, onSaveSettings}){
+  const savedCfg = (()=>{
+    let c = appSettings?.task_durations;
+    if(typeof c==="string"){ try{ c = JSON.parse(c); }catch(e){ c = {}; } }
+    return c||{};
+  })();
+  const [postTypes, setPostTypes] = useState({...POST_TYPE_DURATIONS, ...(savedCfg.postTypes||{})});
+  const [priorityMult, setPriorityMult] = useState({...DEFAULT_PRIORITY_MULT, ...(savedCfg.priorityMult||{})});
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSaveSettings({task_durations: {postTypes, priorityMult}});
+    setSaving(false); setSaved(true); setTimeout(()=>setSaved(false),2500);
+  };
+  const handleReset = () => { setPostTypes({...POST_TYPE_DURATIONS}); setPriorityMult({...DEFAULT_PRIORITY_MULT}); };
+
+  const inputSt2 = {width:80,padding:"6px 8px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:13,fontWeight:600,textAlign:"right"};
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:"min(700px,100%)"}}>
+      <div>
+        <p style={{fontSize:13,color:"var(--text2)"}}>Controls how "Estimated" time is guessed for a task when nobody has set an explicit duration on it — used across My Timeline, Smart Schedule, and My Performance. A task's own manually-set duration always overrides this.</p>
+      </div>
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
+        <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:14}}>Base Minutes per Post Type</p>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
+          {Object.keys(POST_TYPE_DURATIONS).map(type=>(
+            <div key={type} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+              <span style={{fontSize:13,color:"var(--text2)"}}>{POST_TYPE_LABELS[type]||type}</span>
+              <input type="number" min={5} step={5} value={postTypes[type]??0} onChange={e=>setPostTypes(p=>({...p,[type]:parseInt(e.target.value)||0}))} style={inputSt2}/>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
+        <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:14}}>Priority Multiplier</p>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
+          {["urgent","high","medium","low"].map(pri=>(
+            <div key={pri} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+              <span style={{fontSize:13,color:"var(--text2)",textTransform:"capitalize"}}>{pri}</span>
+              <input type="number" min={0.1} step={0.1} value={priorityMult[pri]??1} onChange={e=>setPriorityMult(p=>({...p,[pri]:parseFloat(e.target.value)||1}))} style={inputSt2}/>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div style={{display:"flex",gap:10,alignItems:"center"}}>
+        <button onClick={handleSave} disabled={saving} style={{padding:"10px 22px",borderRadius:"var(--rs)",background:"var(--accent)",color:"#fff",fontWeight:700,fontSize:13,border:"none",cursor:"pointer"}}>
+          {saving?"Saving…":saved?"✓ Saved":"Save Changes"}
+        </button>
+        <button onClick={handleReset} style={{padding:"10px 22px",borderRadius:"var(--rs)",background:"var(--surface2)",color:"var(--text2)",fontWeight:700,fontSize:13,border:"1px solid var(--border2)",cursor:"pointer"}}>
+          Reset to Defaults
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
 // SETTINGS PAGE
 // ════════════════════════════════════════════════════════════════
 function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, integrationLogs, onAddIntegration, onUpdateIntegration, onDeleteIntegration, onRetryIntegration, emailSettings, onSaveEmailSettings, team, posts, clients, timelogs, perfLogs, accentColor, brandingAssets, onSaveBrandingAssets, wallpaper, emailLogs, activityLogs, onRefreshLogs, systemSessions, onRefreshSessions, assets, onFindDuplicateAssets, onRemoveDuplicateAssets, onBackfillSaraMemory, backfillRunning}) {
@@ -19806,7 +19883,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 
       {/* Tab nav */}
       <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",flexWrap:"wrap"}}>
-        {[["branding","Branding"],["logos","Identity"],["integrations","Integrations"],["email","Email"],["ai_model","AI Agents"],["flags","Feature Flags"],["syslog","System Log"]].map(([k,l])=>(
+        {[["branding","Branding"],["logos","Identity"],["integrations","Integrations"],["email","Email"],["ai_model","AI Agents"],["durations","Task Estimates"],["flags","Feature Flags"],["syslog","System Log"]].map(([k,l])=>(
           <button key={k} onClick={()=>setSettingsTab(k)} style={{padding:"9px 20px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${settingsTab===k?"var(--accent)":"transparent"}`,color:settingsTab===k?"var(--accent)":"var(--text2)",transition:"all 0.15s",display:"flex",alignItems:"center",gap:6,position:"relative"}}>
             {l}
             {k==="syslog"&&(activityLogs||[]).filter(a=>a.status==="error").length>0&&(
@@ -19960,6 +20037,11 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
       {/* ── AI & TOKENS TAB ── */}
       {settingsTab==="ai_model"&&(
         <AITokensPanel appSettings={appSettings} onSaveSettings={onSaveSettings} activityLogs={activityLogs||[]} onBackfillSaraMemory={onBackfillSaraMemory} backfillRunning={backfillRunning}/>
+      )}
+
+      {/* ── TASK ESTIMATES TAB ── */}
+      {settingsTab==="durations"&&(
+        <TaskDurationSettingsPanel appSettings={appSettings} onSaveSettings={onSaveSettings}/>
       )}
 
       {/* ── FEATURE FLAGS TAB ── */}
@@ -33089,6 +33171,14 @@ function App() {
     if(typeof agents==="string"){ try{ agents = JSON.parse(agents); }catch(e){ agents = {}; } }
     window.__SF_AI_AGENTS = agents||{};
   },[appSettings?.ai_agents]);
+  // Same mirroring trick for the admin-adjustable task duration estimates —
+  // estimateDuration() is a plain helper called from many places, not a
+  // component, so it can't receive appSettings as a prop.
+  useEffect(()=>{
+    let cfg = appSettings?.task_durations;
+    if(typeof cfg==="string"){ try{ cfg = JSON.parse(cfg); }catch(e){ cfg = {}; } }
+    window.__SF_DURATION_CFG = cfg||{};
+  },[appSettings?.task_durations]);
   // Mirror the client brain (knowledge/intelligence/memory/published posts) the
   // same way so Sara's helpers (clientBrainBlock/saraLearnFromWork) can read
   // it anywhere — including actual published content, not just distilled
