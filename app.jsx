@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.346";
+const APP_VERSION = "beta 5.347";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12334,10 +12334,15 @@ function AgentProfilePage({agent, avatarUrl, activityLogs=[], onBack}) {
   const logs = (activityLogs||[]).filter(a=>(a.details||"").includes(`[agent:${agent.id}]`))
     .sort((a,b)=>new Date(b.performed_at)-new Date(a.performed_at));
   const byDay = {};
-  logs.forEach(l=>{ const d=(l.performed_at||"").slice(0,10); if(d) byDay[d]=(byDay[d]||0)+1; });
+  // performed_at is a naive "Y-m-d H:i:s" UTC string from MySQL — must go
+  // through parseSqlUtc (not a raw slice/new Date) or every timestamp here
+  // is off by the server/viewer UTC offset, same bug class fixed via
+  // fmtDateTime elsewhere in the app.
+  logs.forEach(l=>{ const dt=parseSqlUtc(l.performed_at); if(dt) { const d=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`; byDay[d]=(byDay[d]||0)+1; } });
   const days = Object.entries(byDay).sort((a,b)=>a[0]<b[0]?1:-1); // newest first
   const peakDay = Object.entries(byDay).sort((a,b)=>b[1]-a[1])[0];
-  const today = new Date().toISOString().slice(0,10);
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}-${String(now.getDate()).padStart(2,"0")}`;
   const todayCount = byDay[today]||0;
   const activeDaysCount = days.length;
   const avgPerActiveDay = activeDaysCount ? (logs.length/activeDaysCount).toFixed(1) : "0";
@@ -12410,7 +12415,7 @@ function AgentProfilePage({agent, avatarUrl, activityLogs=[], onBack}) {
               <div style={{width:7,height:7,borderRadius:"50%",background:a.status==="error"?"#ef4444":"#10b981",marginTop:4,flexShrink:0}}/>
               <div style={{minWidth:0,flex:1}}>
                 <p style={{fontSize:12,fontWeight:600}}>{a.action}</p>
-                <p style={{fontSize:10.5,color:"var(--text3)",marginTop:1}}>{new Date(a.performed_at).toLocaleString()}{durLabel}{a.error_message?` — ${a.error_message.slice(0,150)}`:""}</p>
+                <p style={{fontSize:10.5,color:"var(--text3)",marginTop:1}}>{parseSqlUtc(a.performed_at)?.toLocaleString()}{durLabel}{a.error_message?` — ${a.error_message.slice(0,150)}`:""}</p>
               </div>
             </div>
             );
@@ -19658,7 +19663,7 @@ function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh, te
                     <div onClick={()=>setExpandedLog(isExp?null:log.id)}
                       style={{display:"grid",gridTemplateColumns:"140px 1fr 130px 90px",padding:"12px 16px",gap:12,alignItems:"start",cursor:"pointer"}}>
                       <p style={{fontSize:11,fontWeight:600,color:"var(--text2)"}}>
-                        {log.performed_at?new Date(log.performed_at).toLocaleString("en-GB",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}):"—"}
+                        {log.performed_at?parseSqlUtc(log.performed_at).toLocaleString("en-GB",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}):"—"}
                       </p>
                       <div style={{display:"flex",flexDirection:"column",gap:3}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
@@ -20080,7 +20085,7 @@ function AgentCard({def, cfg, models, onSave, logs, onBackfill, backfillRunning}
               <div style={{width:7,height:7,borderRadius:"50%",background:a.status==="error"?"#ef4444":"#10b981",marginTop:4,flexShrink:0}}/>
               <div style={{minWidth:0}}>
                 <p style={{fontSize:12,fontWeight:600}}>{a.action}</p>
-                <p style={{fontSize:10.5,color:"var(--text3)",marginTop:1}}>{new Date(a.performed_at).toLocaleString()}{a.error_message?` — ${a.error_message.slice(0,120)}`:""}</p>
+                <p style={{fontSize:10.5,color:"var(--text3)",marginTop:1}}>{parseSqlUtc(a.performed_at)?.toLocaleString()}{a.error_message?` — ${a.error_message.slice(0,120)}`:""}</p>
               </div>
             </div>
           ))}
@@ -22021,7 +22026,7 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
                     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                       <span style={{fontSize:13,fontWeight:700}}>{a.action}</span>
                       <span style={{fontSize:11,color:"var(--text3)"}}>by {a.performed_by||"system"}</span>
-                      <span style={{fontSize:11,color:"var(--text3)"}}>· {new Date(a.performed_at).toLocaleString()}</span>
+                      <span style={{fontSize:11,color:"var(--text3)"}}>· {parseSqlUtc(a.performed_at)?.toLocaleString()}</span>
                     </div>
                     {a.details&&<p style={{fontSize:12,color:"var(--text2)",marginTop:2}}>{a.details.replace(`[${txn.ref}] `,"")}</p>}
                   </div>
@@ -25013,9 +25018,15 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
             const sara = AI_AGENT_DEFS.find(a=>a.id==="content_creator");
             let agentsCfg=appSettings?.ai_agents; if(typeof agentsCfg==="string"){try{agentsCfg=JSON.parse(agentsCfg);}catch(e){agentsCfg={};}}
             const avatarUrl = (agentsCfg||{})[sara?.id]?.avatar_url;
-            const saraRuns = (activityLogs||[]).filter(l=>(l.details||"").includes(`[agent:${sara?.id}]`) && (l.performed_at||"").slice(0,10)===dateStr)
+            // Filter by the real run start time, not the naive performed_at
+            // column (needs parseSqlUtc to be trustworthy at all). Compared
+            // as a UTC calendar day to match dateStr's own convention above
+            // (viewDate.toISOString()) — same day-boundary convention the
+            // human rows on this page already use, so Sara's row doesn't
+            // disagree with them near local midnight.
+            const saraRuns = (activityLogs||[]).filter(l=>(l.details||"").includes(`[agent:${sara?.id}]`))
               .map(l=>({log:l, timing:parseAgentRunTiming(l.details)}))
-              .filter(r=>r.timing);
+              .filter(r=>r.timing && r.timing.start.toISOString().split("T")[0]===dateStr);
             if(!sara) return null;
             return (
               <div key="sara-timeline-row" style={{display:"flex",alignItems:"center",padding:"10px 16px",borderBottom:"1px solid var(--border)",gap:10,background:sara.color+"08"}}>
