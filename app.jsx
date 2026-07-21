@@ -1154,7 +1154,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.375";
+const APP_VERSION = "beta 5.376";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22148,7 +22148,15 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
   const [savingAttach,setSavingAttach] = useState(false);
   const comments = parseJ(txn.raw?.comments, []);
 
-  React.useEffect(()=>{ setCheckNo(txn.checkNo||""); setAttachments(txn.attachments||[]); },[txn.id]);
+  // Re-syncing only on txn.id meant a transaction opened before its
+  // attachments finished writing (e.g. Pro attaching a receipt moments
+  // after the record itself was created over WhatsApp) would freeze the
+  // local attachments state at empty forever, even once the underlying
+  // data caught up — since the id itself never changes, this effect never
+  // re-ran to pick up the real value. Re-sync on the attachments data
+  // itself too, not just a same-record identity check.
+  const txnAttachmentsKey = JSON.stringify(txn.attachments||[]);
+  React.useEffect(()=>{ setCheckNo(txn.checkNo||""); setAttachments(txn.attachments||[]); },[txn.id, txnAttachmentsKey]);
 
   const submitComment = async () => {
     if(!comment.trim()) return;
