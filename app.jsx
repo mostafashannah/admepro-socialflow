@@ -1151,7 +1151,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.369";
+const APP_VERSION = "beta 5.370";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19123,7 +19123,7 @@ function LogoUploader({logoKey, label, desc, size, value, onChange, required}) {
   );
 }
 
-function BrandingSettingsTab({brandingAssets, onSave, wallpaper, accentColor}) {
+const BrandingSettingsTab = React.forwardRef(function BrandingSettingsTab({brandingAssets, onSave, wallpaper, accentColor, hideSaveButton}, ref) {
   const [b, setB] = useState({...brandingAssets});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -19137,6 +19137,9 @@ function BrandingSettingsTab({brandingAssets, onSave, wallpaper, accentColor}) {
     await onSave(b);
     setSaving(false); setSaved(true); setTimeout(()=>setSaved(false),2500);
   };
+  // Lets the merged Branding tab's single top-level Save button also save
+  // this section's draft, instead of needing its own separate Save click.
+  React.useImperativeHandle(ref, () => ({ save: () => onSave(b) }), [b, onSave]);
 
   // Pick the right logo for the current theme
   const isDark = !["light","soft"].includes(wallpaper||"dark");
@@ -19285,17 +19288,19 @@ function BrandingSettingsTab({brandingAssets, onSave, wallpaper, accentColor}) {
       </div>
 
       {/* Save */}
-      <div style={{display:"flex",alignItems:"center",gap:12,paddingTop:4,borderTop:"1px solid var(--border)"}}>
-        <Btn onClick={handleSave} disabled={saving}>
-          {saving?<><Spinner size={14}/> Saving…</>:<><Ico d={Icons.check} size={15}/> Save Branding</>}
-        </Btn>
-        {saved&&<div className="fade-in" style={{display:"flex",alignItems:"center",gap:6,color:"#10b981",fontSize:13,fontWeight:600}}>
-          <Ico d={Icons.success} size={16} stroke="#10b981"/> Branding updated everywhere!
-        </div>}
-      </div>
+      {!hideSaveButton && (
+        <div style={{display:"flex",alignItems:"center",gap:12,paddingTop:4,borderTop:"1px solid var(--border)"}}>
+          <Btn onClick={handleSave} disabled={saving}>
+            {saving?<><Spinner size={14}/> Saving…</>:<><Ico d={Icons.check} size={15}/> Save Branding</>}
+          </Btn>
+          {saved&&<div className="fade-in" style={{display:"flex",alignItems:"center",gap:6,color:"#10b981",fontSize:13,fontWeight:600}}>
+            <Ico d={Icons.success} size={16} stroke="#10b981"/> Branding updated everywhere!
+          </div>}
+        </div>
+      )}
     </div>
   );
-}
+});
 
 // ── System Log sub-component (needs own state, can't use IIFE with hooks) ──
 // ════════════════════════════════════════════════════════════════
@@ -19912,13 +19917,14 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
     reader.readAsDataURL(file);
   };
 
+  const brandingTabRef = useRef(null);
   const handleSave=async()=>{
     setSaving(true);
     // api.php's PATCH builds one UPDATE from every key in the body with no
     // column filtering — a stray key that isn't a real column (like the old
     // "logo_url" here, when the actual column is "app_logo_url") throws and
     // fails the WHOLE statement, silently dropping every field in this save.
-    await onSaveSettings({...f});
+    await Promise.all([onSaveSettings({...f}), brandingTabRef.current?.save()]);
     setSaving(false); setSaved(true); setTimeout(()=>setSaved(false),2500);
   };
 
@@ -19949,7 +19955,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 
       {/* ── BRANDING TAB ── */}
       {settingsTab==="branding"&&(
-      <div style={{display:"flex",flexDirection:"column",gap:24,maxWidth:"min(700px,100%)"}}>
+      <div style={{display:"flex",flexDirection:"column",gap:24,maxWidth:"min(1100px,100%)"}}>
 
       {/* BRANDING */}
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:24,display:"flex",flexDirection:"column",gap:16}}>
@@ -20035,6 +20041,15 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
         </div>
       </div>
 
+      <BrandingSettingsTab
+        ref={brandingTabRef}
+        hideSaveButton
+        brandingAssets={brandingAssets||SEED.brandingAssets}
+        onSave={onSaveBrandingAssets}
+        wallpaper={wallpaper}
+        accentColor={accentColor}
+      />
+
       {/* Save */}
       <div style={{display:"flex",alignItems:"center",gap:12}}>
         <Btn onClick={handleSave} disabled={saving}>
@@ -20044,13 +20059,6 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
           <Ico d={Icons.success} size={16} stroke="#10b981"/> Settings saved & applied!
         </div>}
       </div>
-
-      <BrandingSettingsTab
-        brandingAssets={brandingAssets||SEED.brandingAssets}
-        onSave={onSaveBrandingAssets}
-        wallpaper={wallpaper}
-        accentColor={accentColor}
-      />
 
       </div>
       )}
