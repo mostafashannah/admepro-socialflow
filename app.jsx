@@ -1154,7 +1154,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.376";
+const APP_VERSION = "beta 5.377";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23115,6 +23115,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   const [typeFilter,setTypeFilter] = useState("all");
   const [categoryFilter,setCategoryFilter] = useState("all");
   const [clientFilter,setClientFilter] = useState("all");
+  const [txnSearch,setTxnSearch] = useState("");
   const [view,setView] = usePersistentState("sf_finance_view","overview"); // overview | clients | partners | ai
   // Outstanding transactions only count toward totals for the portion
   // actually paid so far — loaded once here so both the totals and the
@@ -23261,6 +23262,16 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
     }),
   ].sort(sortTxnsRecent);
   ledger.forEach(l=>{ if(l.countableAmount==null) l.countableAmount = l.amount; });
+
+  // Matches a transaction search query against anything a person would
+  // plausibly search by: label/category, description, reference code,
+  // check number, client name, payment method, or the raw amount.
+  const txnSearchQ = txnSearch.trim().toLowerCase();
+  const matchesTxnSearch = (l) => {
+    if(!txnSearchQ) return true;
+    return [l.label,l.sub,l.ref,l.checkNo,l.clientName,l.method,l.amount!=null?String(l.amount):"",l.createdBy]
+      .some(v=>v && String(v).toLowerCase().includes(txnSearchQ));
+  };
 
   // Clients derived from actual payment history (not the Clients module) —
   // this is what the client dropdown/filter/tab are built from.
@@ -23824,7 +23835,7 @@ No markdown, no explanation.`;
           )}
         </div>
         <button onClick={()=>{
-          const filteredLedger = ledger.filter(l=>(typeFilter==="all"||(typeFilter==="outstanding"?l.isUnsettledOutstanding:l.type===typeFilter))&&(categoryFilter==="all"||l.category===categoryFilter)&&(clientFilter==="all"||l.clientName===clientFilter));
+          const filteredLedger = ledger.filter(l=>(typeFilter==="all"||(typeFilter==="outstanding"?l.isUnsettledOutstanding:l.type===typeFilter))&&(categoryFilter==="all"||l.category===categoryFilter)&&(clientFilter==="all"||l.clientName===clientFilter)&&matchesTxnSearch(l));
           downloadCsv(`finance_${range}_${typeFilter}_${new Date().toISOString().split("T")[0]}.csv`,
             filteredLedger.map(l=>({date:l.date,type:l.type==="in"?"In":"Out",category:l.label,description:l.sub||"",amount:l.amount,currency:l.currency,source:l.source,reference:l.ref||"",check_no:l.checkNo||""})),
             ["date","type","category","description","amount","currency","source","reference","check_no"]
@@ -23832,6 +23843,13 @@ No markdown, no explanation.`;
         }} disabled={ledger.length===0} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)",opacity:ledger.length===0?0.5:1}}>
           <Ico d={Icons.download||Icons.arrowDown} size={13} stroke="var(--text2)"/> Export CSV
         </button>
+        <div style={{position:"relative",minWidth:220}}>
+          <Ico d={Icons.search} size={13} stroke="var(--text3)" style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)"}}/>
+          <input value={txnSearch} onChange={e=>setTxnSearch(e.target.value)} placeholder="Search name, amount, ref…" style={{width:"100%",padding:"7px 12px 7px 32px",borderRadius:99,fontSize:12,fontWeight:600,background:"var(--surface2)",color:"var(--text)",border:"1px solid var(--border2)"}}/>
+          {txnSearch&&(
+            <button onClick={()=>setTxnSearch("")} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontSize:13,padding:2}}>✕</button>
+          )}
+        </div>
       </div>
 
       {/* Ledger */}
@@ -23840,7 +23858,7 @@ No markdown, no explanation.`;
           <h3 style={{fontWeight:700,fontSize:14}}>Transactions</h3>
         </div>
         {(()=>{
-          const filteredLedger = ledger.filter(l=>(typeFilter==="all"||(typeFilter==="outstanding"?l.isUnsettledOutstanding:l.type===typeFilter))&&(categoryFilter==="all"||l.category===categoryFilter)&&(clientFilter==="all"||l.clientName===clientFilter));
+          const filteredLedger = ledger.filter(l=>(typeFilter==="all"||(typeFilter==="outstanding"?l.isUnsettledOutstanding:l.type===typeFilter))&&(categoryFilter==="all"||l.category===categoryFilter)&&(clientFilter==="all"||l.clientName===clientFilter)&&matchesTxnSearch(l));
           return filteredLedger.length===0 ? (
             <EmptyState icon={Icons.wallet} title="No transactions" sub="Payments, subscription income, and expenses will show up here."/>
           ) : (
