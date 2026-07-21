@@ -1154,7 +1154,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.377";
+const APP_VERSION = "beta 5.378";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -23834,21 +23834,25 @@ No markdown, no explanation.`;
             <button onClick={()=>{setCategoryFilter("all");setClientFilter("all");}} style={{padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,background:"var(--surface2)",color:"var(--accent)",border:"1px solid var(--border2)"}}>Clear</button>
           )}
         </div>
-        <button onClick={()=>{
-          const filteredLedger = ledger.filter(l=>(typeFilter==="all"||(typeFilter==="outstanding"?l.isUnsettledOutstanding:l.type===typeFilter))&&(categoryFilter==="all"||l.category===categoryFilter)&&(clientFilter==="all"||l.clientName===clientFilter)&&matchesTxnSearch(l));
-          downloadCsv(`finance_${range}_${typeFilter}_${new Date().toISOString().split("T")[0]}.csv`,
-            filteredLedger.map(l=>({date:l.date,type:l.type==="in"?"In":"Out",category:l.label,description:l.sub||"",amount:l.amount,currency:l.currency,source:l.source,reference:l.ref||"",check_no:l.checkNo||""})),
-            ["date","type","category","description","amount","currency","source","reference","check_no"]
-          );
-        }} disabled={ledger.length===0} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)",opacity:ledger.length===0?0.5:1}}>
-          <Ico d={Icons.download||Icons.arrowDown} size={13} stroke="var(--text2)"/> Export CSV
-        </button>
-        <div style={{position:"relative",minWidth:220}}>
-          <Ico d={Icons.search} size={13} stroke="var(--text3)" style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)"}}/>
-          <input value={txnSearch} onChange={e=>setTxnSearch(e.target.value)} placeholder="Search name, amount, ref…" style={{width:"100%",padding:"7px 12px 7px 32px",borderRadius:99,fontSize:12,fontWeight:600,background:"var(--surface2)",color:"var(--text)",border:"1px solid var(--border2)"}}/>
-          {txnSearch&&(
-            <button onClick={()=>setTxnSearch("")} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontSize:13,padding:2}}>✕</button>
-          )}
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{position:"relative",minWidth:220}}>
+            <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",display:"flex",pointerEvents:"none"}}>
+              <Ico d={Icons.search} size={13} stroke="var(--text3)"/>
+            </span>
+            <input value={txnSearch} onChange={e=>setTxnSearch(e.target.value)} placeholder="Search name, amount, ref…" style={{width:"100%",padding:"7px 28px 7px 32px",borderRadius:99,fontSize:12,fontWeight:600,background:"var(--surface2)",color:"var(--text)",border:"1px solid var(--border2)"}}/>
+            {txnSearch&&(
+              <button onClick={()=>setTxnSearch("")} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontSize:13,padding:2}}>✕</button>
+            )}
+          </div>
+          <button onClick={()=>{
+            const filteredLedger = ledger.filter(l=>(typeFilter==="all"||(typeFilter==="outstanding"?l.isUnsettledOutstanding:l.type===typeFilter))&&(categoryFilter==="all"||l.category===categoryFilter)&&(clientFilter==="all"||l.clientName===clientFilter)&&matchesTxnSearch(l));
+            downloadCsv(`finance_${range}_${typeFilter}_${new Date().toISOString().split("T")[0]}.csv`,
+              filteredLedger.map(l=>({date:l.date,type:l.type==="in"?"In":"Out",category:l.label,description:l.sub||"",amount:l.amount,currency:l.currency,source:l.source,reference:l.ref||"",check_no:l.checkNo||""})),
+              ["date","type","category","description","amount","currency","source","reference","check_no"]
+            );
+          }} disabled={ledger.length===0} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)",opacity:ledger.length===0?0.5:1,flexShrink:0}}>
+            <Ico d={Icons.download||Icons.arrowDown} size={13} stroke="var(--text2)"/> Export CSV
+          </button>
         </div>
       </div>
 
