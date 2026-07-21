@@ -1151,7 +1151,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.370";
+const APP_VERSION = "beta 5.371";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -20400,6 +20400,32 @@ function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfill
         <AgentCard key={def.id} def={def} cfg={agentsCfg[def.id]} models={MODELS} onSave={saveAgent} logs={activityLogs}
           onBackfill={def.id==="content_creator"?onBackfillSaraMemory:null} backfillRunning={backfillRunning}/>
       ))}
+
+      {/* Reply Bot — informational only. It runs server-side (reply-bot-lib.php,
+          triggered by meta-inbox-webhook.php the instant a customer DM comes
+          in) with its own hardcoded model and prompt-building, independent of
+          Pro/Sara's config here — this card just makes it visible, it has no
+          controls that change how the bot actually behaves. Its real behavior
+          is tuned per-client under a client's Reply Bot settings (tone,
+          brain/custom instructions, do's & don'ts). */}
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:22}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:4}}>
+          <div style={{width:38,height:38,borderRadius:10,background:"#0ea5e922",display:"flex",alignItems:"center",justifyContent:"center",color:"#0ea5e9",fontWeight:800,fontSize:15,flexShrink:0}}>B</div>
+          <div>
+            <p style={{fontWeight:800,fontSize:15}}>Bot</p>
+            <p style={{fontSize:12,color:"var(--text3)"}}>Auto-drafts/sends replies to inbound Instagram, Facebook & WhatsApp DMs</p>
+          </div>
+          <span style={{marginLeft:"auto",fontSize:10,fontWeight:700,color:"var(--text3)",background:"var(--surface2)",border:"1px solid var(--border2)",padding:"3px 10px",borderRadius:99}}>Server-side</span>
+        </div>
+        <p style={{fontSize:12,color:"var(--text2)",marginTop:12,lineHeight:1.5}}>
+          Runs independently of Pro and Sara — triggered directly by an inbound DM webhook, not by anyone opening a chat.
+          Its model is fixed at <code style={{background:"var(--surface2)",padding:"1px 6px",borderRadius:4}}>claude-sonnet-4-6</code> and
+          isn't affected by the Model/Speed settings below (those are Pro-only).
+        </p>
+        <p style={{fontSize:12,color:"var(--text2)",marginTop:8,lineHeight:1.5}}>
+          Its actual tone, brand voice, and custom instructions are configured <strong>per client</strong> — open a client → Reply Bot settings — not here, since every client wants it to sound different.
+        </p>
+      </div>
 
       {/* AI Model Selector (Pro supervisor) */}
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:22}}>
