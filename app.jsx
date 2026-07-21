@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.364";
+const APP_VERSION = "beta 5.365";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -24317,6 +24317,28 @@ function ScoreGauge({score}) {
   );
 }
 
+// Same arc gauge as ScoreGauge but smaller and generic — takes its own
+// color/label instead of always deriving perfColor/perfLabel, so it can be
+// reused for any 0-100 (or 0-max) metric, not just the composite score.
+function MiniGauge({value,max=100,color,label,sub}) {
+  const r=32,cx=44,cy=50,circ=2*Math.PI*r;
+  const fullArc=circ*0.75,fill=fullArc*(Math.min(max,value)/max);
+  return (
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
+      <svg width={88} height={82} viewBox="0 0 88 82">
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--border2)" strokeWidth={7}
+          strokeDasharray={`${fullArc} ${circ-fullArc}`} strokeLinecap="round"
+          transform={`rotate(135 ${cx} ${cy})`}/>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth={7}
+          strokeDasharray={`${fill} ${circ-fill}`} strokeLinecap="round"
+          transform={`rotate(135 ${cx} ${cy})`}
+          style={{transition:"stroke-dasharray 0.6s ease"}}/>
+        <text x={cx} y={cy+5} textAnchor="middle" fill="var(--text)" fontSize={15} fontWeight={800} fontFamily="inherit">{sub||value}</text>
+      </svg>
+      <p style={{fontSize:11,color:"var(--text2)",marginTop:2,textAlign:"center"}}>{label}</p>
+    </div>
+  );
+}
 function PerfBar({value,max=100,color,label,sub}) {
   const pct=Math.min(100,(value/max)*100);
   return (
@@ -25453,6 +25475,12 @@ Give 3 specific, actionable recommendations to improve their performance. Be con
         </div>
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:16,padding:"20px 24px"}}>
           <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:16}}>Key Metrics</p>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(80px,1fr))",gap:10,marginBottom:16}}>
+            <MiniGauge value={reviewPerf.completionRate} color="#10b981" label="Completion Rate" sub={reviewPerf.completionRate+"%"}/>
+            <MiniGauge value={reviewPerf.onTimeRate} color="#3b82f6" label="On-Time Delivery" sub={reviewPerf.onTimeRate+"%"}/>
+            <MiniGauge value={reviewPerf.avgQuality} color="#8b5cf6" label="Avg Quality Score" sub={reviewPerf.avgQuality+"%"}/>
+            <MiniGauge value={reviewPerf.avgRevisions} max={5} color={reviewPerf.avgRevisions<=1?"#10b981":reviewPerf.avgRevisions<=2?"#f59e0b":"#ef4444"} label="Avg Revisions" sub={reviewPerf.avgRevisions+" rev"}/>
+          </div>
           <PerfBar value={reviewPerf.completionRate} color="#10b981" label="Completion Rate"/>
           <PerfBar value={reviewPerf.onTimeRate} color="#3b82f6" label="On-Time Delivery"/>
           <PerfBar value={reviewPerf.avgQuality} color="#8b5cf6" label="Avg Quality Score"/>
@@ -34836,14 +34864,22 @@ Return ONLY valid JSON (no markdown, no explanation):
       const qualityScore = (onTime?50:0) + (!wasRejected?50:0);
       const perfEmail = updatedPost.assigned_to;
       if(perfEmail) {
-        ce("PerformanceLog",[{
+        const perfLogPayload = {
           user_email: perfEmail, user_name: (data.team.find(m=>m.email===perfEmail)?.name)||"",
           role: (data.team.find(m=>m.email===perfEmail)?.role)||"",
           post_id: post.id, post_title: post.title, project_id: updatedPost.project_id||"",
           client_name: post.client_name||"", stage_from: post.stage, stage_to: newStage,
           on_time: onTime, quality_score: qualityScore, revision_count: revisionCount,
           client_approved: false, rejected: wasRejected, completed_at: new Date().toISOString(),
-        }]).catch(()=>{});
+        };
+        // perfLogs is only fetched once at load — without merging the new row
+        // into local state too, Review Score/Key Metrics would keep reading
+        // "0 tasks logged" until a hard refresh even though the row is really
+        // there in the database.
+        ce("PerformanceLog",[perfLogPayload]).then(r=>{
+          const created = r.entities?.[0];
+          if(created && !created._saveError) setData(d=>({...d, perfLogs:[...(d.perfLogs||[]), created]}));
+        }).catch(()=>{});
       }
     }
 
