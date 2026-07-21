@@ -1154,7 +1154,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.383";
+const APP_VERSION = "beta 5.384";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1764,7 +1764,7 @@ function getAgentCfg(agentId){
 // a genuine time-slot bar for her instead of a fake proportional count bar —
 // no new DB column: encoded as a parseable "|start:ISO|end:ISO" suffix on the
 // existing activity_logs.details TEXT field (see parseAgentRunTiming below).
-const agentAI = async (agentId, taskLabel, prompt, maxTokens=1000) => {
+const agentAI = async (agentId, taskLabel, prompt, maxTokens=1000, imageUrl=null) => {
   const cfg = getAgentCfg(agentId);
   const model = cfg.model || "claude-sonnet-4-6";
   const skills = (cfg.skills||"").trim();
@@ -1772,12 +1772,19 @@ const agentAI = async (agentId, taskLabel, prompt, maxTokens=1000) => {
   const fullPrompt = skills
     ? `${prompt}\n\n=== YOUR SKILLS & GUIDES (set by the admin — always follow these) ===\n${skills}`
     : prompt;
+  // Lets an agent actually look at an attached photo (e.g. Sara writing a
+  // caption for a specific image) instead of only reasoning from its
+  // filename/metadata — Claude fetches the image itself from this URL,
+  // no base64 round-trip needed client-side.
+  const content = imageUrl
+    ? [{type:"image", source:{type:"url", url:imageUrl}}, {type:"text", text:fullPrompt}]
+    : fullPrompt;
   const startedAt = new Date();
   const timingSuffix = () => `|start:${startedAt.toISOString()}|end:${new Date().toISOString()}`;
   try {
     const r = await fetch(AI_ENDPOINT, {
       method:"POST", headers:AI_HEADERS,
-      body: JSON.stringify({ model, max_tokens:maxTokens, messages:[{role:"user",content:fullPrompt}] })
+      body: JSON.stringify({ model, max_tokens:maxTokens, messages:[{role:"user",content}] })
     });
     if(!r.ok) {
       const errText = await r.text();
@@ -5236,20 +5243,29 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
   const saraGenerate = async () => {
     if(!f.title.trim()){ alert("Give the post a title first — Sara needs to know what it's about."); return; }
     const proj = projects.find(p=>p.id===f.project_id);
+    const clientName = proj?.client_name || clients.find(c=>c.id===activeClientId)?.name || "";
+    // If there's an attached image, send it to Sara as an actual image she
+    // looks at (not just a filename) — she was previously writing captions
+    // blind to what the photo/video actually shows. Video files can't be
+    // "seen" this way (Claude has no video vision), only stills/images.
+    const firstImage = f.media.find(m=>(m.type||"").startsWith("image"));
     setSaraLoading(true);
     try {
       const res = await agentAI("content_creator", `Post content: ${f.title}`, `You are Sara, a senior content creator working under Pro's supervision. Before writing anything, review the ENTIRE client brain below — especially recently published posts — this is mandatory, not optional.
-${clientBrainBlock(proj?.client_id||activeClientId, proj?.client_name)}
-Now write the content for ONE social media post.
+
+Client: ${clientName || "(no client assigned yet — treat this as a generic draft)"}
+${clientBrainBlock(proj?.client_id||activeClientId, clientName)}
+Now write the content for ONE social media post for the CLIENT NAMED ABOVE — never confuse them with any other client mentioned elsewhere in your memory or knowledge base.
 Post title: ${f.title}
 Project: ${proj?.title||"-"}
 Platform(s): ${(f.platforms.length?f.platforms:[f.platform]).join(", ")}
 Post type: ${f.post_type}
 ${f.description?`Existing brief/notes: ${f.description}`:""}
+${firstImage ? "An image is attached above — look at it and write a caption that actually matches what's shown in the photo, not a generic guess based on the title alone." : (f.media.length ? "A video file is attached, but you can't view video content — write the caption based on the title/brief/brand voice only." : "No media has been attached to this post yet — write the caption based on the title/brief/brand voice only.")}
 
 Return ONLY valid JSON (no markdown):
 {"caption":"engaging on-brand caption (2-4 sentences)","hashtags":"#tag1 #tag2 #tag3 #tag4","description":"a short internal brief for the designer/creator (1-2 sentences)"}`,
-      800);
+      800, firstImage?.url || null);
       const pMatch = res.match(/\{[\s\S]*\}/);
       const p = JSON.parse(pMatch ? pMatch[0] : res);
       setF(prev=>({...prev,
