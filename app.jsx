@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.345";
+const APP_VERSION = "beta 5.346";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3040,6 +3040,20 @@ function Modal({open,onClose,title,subtitle,width=560,children,footer,headerActi
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-footer">{footer}</div>}
       </div>
+    </div>,
+    document.body
+  );
+}
+
+// Full-size view of a profile photo — click any avatar image to open it here.
+function ImageLightbox({url, alt, onClose}) {
+  if(!url) return null;
+  return ReactDOM.createPortal(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:1200,display:"flex",alignItems:"center",justifyContent:"center",padding:24,cursor:"zoom-out"}} className="fade-in">
+      <button onClick={onClose} aria-label="Close" style={{position:"absolute",top:20,right:20,width:38,height:38,borderRadius:"50%",background:"rgba(255,255,255,0.12)",border:"none",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <Ico d={Icons.x} size={17} stroke="#fff"/>
+      </button>
+      <img src={url} alt={alt||""} onClick={e=>e.stopPropagation()} style={{maxWidth:"90vw",maxHeight:"90vh",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,0.5)",cursor:"default"}}/>
     </div>,
     document.body
   );
@@ -12330,6 +12344,7 @@ function AgentProfilePage({agent, avatarUrl, activityLogs=[], onBack}) {
   const errorCount = logs.filter(l=>l.status==="error").length;
   const last14 = days.slice(0,14);
   const maxDayCount = Math.max(1, ...last14.map(([,c])=>c));
+  const [showPhoto, setShowPhoto] = useState(false);
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:900}} className="fade-in">
@@ -12338,9 +12353,10 @@ function AgentProfilePage({agent, avatarUrl, activityLogs=[], onBack}) {
       </button>
 
       <div style={{display:"flex",alignItems:"center",gap:14}}>
-        <div style={{width:56,height:56,borderRadius:"50%",background:agent.color,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:20,flexShrink:0,overflow:"hidden"}}>
+        <div onClick={()=>avatarUrl&&setShowPhoto(true)} style={{width:56,height:56,borderRadius:"50%",background:agent.color,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:20,flexShrink:0,overflow:"hidden",cursor:avatarUrl?"zoom-in":"default"}}>
           {avatarUrl?<img src={avatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:agent.name[0]}
         </div>
+        {showPhoto&&<ImageLightbox url={avatarUrl} alt={agent.name} onClose={()=>setShowPhoto(false)}/>}
         <div>
           <p style={{fontWeight:800,fontSize:20,fontFamily:"'Montserrat',sans-serif"}}>{agent.name}</p>
           <p style={{fontSize:13,color:"var(--text3)"}}>{agent.description}</p>
@@ -13107,6 +13123,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
   // Plain state, not persisted — opening any team member should always
   // start on Overview, not silently reopen to whatever tab was last viewed.
   const [tab, setTab] = useState("overview");
+  const [showPhoto, setShowPhoto] = useState(false);
   const manager = (team||[]).find(t=>t.id===member.manager_id);
   const directReports = (team||[]).filter(t=>t.manager_id===member.id);
   // Clients where this member is listed as an account manager — surfaced on
@@ -13173,9 +13190,10 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
       )}
 
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20,display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
-        <div style={{width:56,height:56,borderRadius:"50%",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:20,flexShrink:0,overflow:"hidden"}}>
+        <div onClick={()=>member.avatar_url&&setShowPhoto(true)} style={{width:56,height:56,borderRadius:"50%",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:20,flexShrink:0,overflow:"hidden",cursor:member.avatar_url?"zoom-in":"default"}}>
           {member.avatar_url?<img src={member.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:member.name?.[0]?.toUpperCase()||"?"}
         </div>
+        {showPhoto&&<ImageLightbox url={member.avatar_url} alt={member.name} onClose={()=>setShowPhoto(false)}/>}
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
             <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:20,fontWeight:800}}>{member.name}</h2>
