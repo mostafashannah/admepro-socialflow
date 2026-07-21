@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.363";
+const APP_VERSION = "beta 5.364";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -29050,16 +29050,29 @@ async function syncProSessionsWithServer(email, setSessions){
   if(!email) return;
   const server = await fetchProSessionsFromServer(email);
   if(server.length===0){
+    // Nothing on the server yet — push any never-synced local-only chats up,
+    // but a real (non-"local_") id with nothing to match on the server means
+    // it was deleted elsewhere, not that it needs re-uploading.
     setSessions(prevLocal=>{
-      prevLocal.forEach(s=>{ persistProSessionToServer(s, email).then(saved=>{
-        if(saved.id!==s.id) setSessions(cur=>cur.map(x=>x.id===s.id?{...x,id:saved.id}:x));
-      }); });
-      return prevLocal;
+      prevLocal.filter(s=>String(s.id).startsWith("local_")).forEach(s=>{
+        persistProSessionToServer(s, email).then(saved=>{
+          if(saved.id!==s.id) setSessions(cur=>cur.map(x=>x.id===s.id?{...x,id:saved.id}:x));
+        });
+      });
+      return prevLocal.filter(s=>String(s.id).startsWith("local_"));
     });
     return;
   }
   setSessions(prevLocal=>{
     const byId = new Map(prevLocal.map(s=>[s.id,s]));
+    const serverIds = new Set(server.map(s=>s.id));
+    // A local copy with a real server id that's no longer in the server
+    // response was deleted elsewhere — drop it here too instead of letting
+    // it silently reappear. Still-local-only chats (never synced up yet)
+    // have nothing on the server to compare against, so they're kept as-is.
+    for(const id of [...byId.keys()]){
+      if(!String(id).startsWith("local_") && !serverIds.has(id)) byId.delete(id);
+    }
     for(const srv of server){
       const loc = byId.get(srv.id);
       if(!loc || new Date(srv.updated_at||0) > new Date(loc.updated_at||0)) byId.set(srv.id, srv);
@@ -29339,7 +29352,11 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
       return;
     }
     deleteProSessionFromServer(id);
-    setSessions(prev=>prev.filter(s=>s.id!==id));
+    setSessions(prev=>{
+      const next = prev.filter(s=>s.id!==id);
+      saveProSessions(next, currentUser?.email);
+      return next;
+    });
     if(id===activeChatId) setActiveChatId("");
   };
 
@@ -31195,7 +31212,11 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
       return;
     }
     deleteProSessionFromServer(sessionId);
-    setChatSessions(prev=>prev.filter(s=>s.id!==sessionId));
+    setChatSessions(prev=>{
+      const next = prev.filter(s=>s.id!==sessionId);
+      saveProSessions(next, currentUser?.email);
+      return next;
+    });
     if(sessionId===activeChatId) setActiveChatId("");
   };
 
@@ -32069,7 +32090,12 @@ RULES:
                 <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
                   <SharedWithBadge session={s} onUnshare={email=>unshareSession(s,email)}/>
                   <ChatSessionMenu onRename={()=>startRenameSession(s)} onDelete={()=>{
-                    setChatSessions(prev=>prev.filter(x=>x.id!==s.id));
+                    deleteProSessionFromServer(s.id);
+                    setChatSessions(prev=>{
+                      const next = prev.filter(x=>x.id!==s.id);
+                      saveProSessions(next, currentUser?.email);
+                      return next;
+                    });
                     if(s.id===activeChatId) setActiveChatId("");
                   }} onShare={isSharedCopy(s)?null:m=>shareSession(s,m)} onUnshare={email=>unshareSession(s,email)} sharedWith={s.shared_with} team={(data?.team||[]).filter(m=>m.email!==currentUser?.email)}/>
                 </div>
