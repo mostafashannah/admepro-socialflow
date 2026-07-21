@@ -1154,7 +1154,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.374";
+const APP_VERSION = "beta 5.375";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -20208,12 +20208,13 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 // without any of the model/skills editing controls those don't have.
 function StaticAgentLogSection({agentId, logs}) {
   const [showLog, setShowLog] = useState(false);
-  const agentLogs = (logs||[]).filter(a=>(a.details||"").includes(`[agent:${agentId}]`))
-    .sort((a,b)=>new Date(b.performed_at)-new Date(a.performed_at)).slice(0,15);
+  const allAgentLogs = (logs||[]).filter(a=>(a.details||"").includes(`[agent:${agentId}]`))
+    .sort((a,b)=>new Date(b.performed_at)-new Date(a.performed_at));
+  const agentLogs = allAgentLogs.slice(0,15);
   return (
     <>
       <button onClick={()=>setShowLog(v=>!v)} style={{marginTop:14,padding:"8px 16px",borderRadius:10,background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)",fontSize:12.5,fontWeight:600,cursor:"pointer"}}>
-        {showLog?"Hide Log":`Activity Log (${agentLogs.length})`}
+        {showLog?"Hide Log":`Activity Log (${allAgentLogs.length})`}
       </button>
       {showLog&&(
         <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:8,maxHeight:220,overflowY:"auto"}}>
@@ -20255,8 +20256,12 @@ function AgentCard({def, cfg, models, onSave, logs, onBackfill, backfillRunning}
     } catch(e){ alert("Photo upload failed: "+e.message); }
     setUploadingAvatar(false);
   };
-  const agentLogs = (logs||[]).filter(a=>(a.details||"").includes(`[agent:${def.id}]`))
-    .sort((a,b)=>new Date(b.performed_at)-new Date(a.performed_at)).slice(0,15);
+  const allAgentLogs = (logs||[]).filter(a=>(a.details||"").includes(`[agent:${def.id}]`))
+    .sort((a,b)=>new Date(b.performed_at)-new Date(a.performed_at));
+  // The list itself is capped at 15 rows for a compact dropdown, but the
+  // button label must report the real total — otherwise "(15)" reads as
+  // the actual count even when there are more (e.g. 21) logged runs.
+  const agentLogs = allAgentLogs.slice(0,15);
   return (
     <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:22}}>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:4}}>
@@ -20288,7 +20293,7 @@ function AgentCard({def, cfg, models, onSave, logs, onBackfill, backfillRunning}
           {saved?" Saved!":"Save Agent"}
         </button>
         <button onClick={()=>setShowLog(v=>!v)} style={{padding:"8px 16px",borderRadius:10,background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)",fontSize:12.5,fontWeight:600,cursor:"pointer"}}>
-          {showLog?"Hide Log":`Agent Log (${agentLogs.length})`}
+          {showLog?"Hide Log":`Agent Log (${allAgentLogs.length})`}
         </button>
         {onBackfill&&(
           <button onClick={onBackfill} disabled={backfillRunning} title="One-time: analyze every client's already-published posts and add insights to their Brain memory"
