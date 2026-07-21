@@ -49,6 +49,22 @@ function downloadWhatsAppMedia(string $mediaId) {
     return $bytes ? [$bytes, $mime] : [null, null];
 }
 
+// Saves a WhatsApp photo straight to disk (same storage the app's own
+// uploadToStorage() writes to via storage.php) and returns its public URL —
+// used so a receipt/invoice photo sent to Pro can end up attached to the
+// expense record it gets logged against, the same "attachments" JSON field
+// the Finance page's own upload UI already writes to.
+function saveReceiptImage(string $bytes, string $mimeType): ?string {
+    if (!defined('STORAGE_ROOT') || !defined('STORAGE_PUBLIC_URL')) return null;
+    $ext = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'][$mimeType] ?? 'jpg';
+    $path = 'wa-receipts/' . date('Y/m') . '/' . bin2hex(random_bytes(8)) . '.' . $ext;
+    $dest = STORAGE_ROOT . '/finance-docs/' . $path;
+    $dir = dirname($dest);
+    if (!is_dir($dir)) mkdir($dir, 0755, true);
+    if (file_put_contents($dest, $bytes) === false) return null;
+    return STORAGE_PUBLIC_URL . '/finance-docs/' . $path;
+}
+
 // Transcribes audio bytes via OpenAI's Whisper endpoint. Requires
 // OPENAI_API_KEY in config.php — returns null (not an error) if that's not
 // configured, so the caller can tell the user voice notes aren't set up yet
@@ -237,6 +253,7 @@ function financeTools() {
                     'outstanding_team_member' => ['type' => 'string', 'description' => 'Name of the team member this is owed to — required when outstanding_kind=team_member.'],
                     'outstanding_months' => ['type' => 'integer', 'description' => 'Installment plan length in months — required when outstanding_kind=installment.'],
                     'outstanding_monthly_interest_rate' => ['type' => 'number', 'description' => 'Flat monthly interest %. If the user does not give one, use Fawry\'s known rate for that month count (see tool description).'],
+                    'photo_url' => ['type' => 'string', 'description' => 'The URL from a "[photo_url: ...]" marker in this conversation, if this transaction came from a receipt/invoice photo the user sent — attaches it to the record. Omit if there was no photo.'],
                 ],
                 'required' => ['type', 'category', 'description', 'amount'],
             ],
@@ -450,20 +467,28 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
             }
         }
 
+        // Same "attachments" JSON field the Finance page's own upload UI
+        // writes to (an array of {url,name}) — not a separate column, so a
+        // receipt attached over WhatsApp shows up exactly like one attached
+        // manually in the app.
+        $photoUrl = trim($input['photo_url'] ?? '');
+        $attachments = $photoUrl ? json_encode([['url' => $photoUrl, 'name' => 'Receipt (via WhatsApp)']]) : null;
+
         $ins = $pdo->prepare("INSERT INTO expenses (id, type, category, description, amount, currency, date, created_by, ref, method, source,
-            outstanding_kind, outstanding_status, team_member_id, outstanding_months, outstanding_monthly_interest_rate, outstanding_principal_amount, outstanding_total_payable)
+            outstanding_kind, outstanding_status, team_member_id, outstanding_months, outstanding_monthly_interest_rate, outstanding_principal_amount, outstanding_total_payable, attachments)
             VALUES (:id, :type, :cat, :desc, :amt, :cur, :date, :by, :ref, :method, 'whatsapp',
-            :okind, :ostatus, :tmid, :omonths, :orate, :oprincipal, :ototal)");
+            :okind, :ostatus, :tmid, :omonths, :orate, :oprincipal, :ototal, :attachments)");
         $ins->execute([
             ':id' => $id, ':type' => $type, ':cat' => $category, ':desc' => $description,
             ':amt' => $storedAmount, ':cur' => $currency, ':date' => $date, ':by' => $senderName, ':ref' => $ref, ':method' => $method,
             ':okind' => $outstandingKind, ':ostatus' => $outstandingStatus, ':tmid' => $outstandingTeamMemberId,
             ':omonths' => $outstandingMonths, ':orate' => $outstandingRate, ':oprincipal' => $outstandingPrincipal, ':ototal' => $outstandingTotalPayable,
+            ':attachments' => $attachments,
         ]);
         return [
             'ok' => true, 'type' => $type, 'category' => $category, 'description' => $description,
             'amount' => $storedAmount, 'currency' => $currency, 'date' => $date, 'reference' => $ref, 'method' => $method,
-            'message' => 'Saved to the Finance page.' . $extraMessage,
+            'message' => 'Saved to the Finance page.' . $extraMessage . ($photoUrl ? ' Receipt photo attached.' : ''),
         ];
     }
 
@@ -1161,6 +1186,15 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                 . "again in this message. Never re-paste a previous answer's content (numbers, a report, an "
                 . "error message) into a new reply as filler or as a recap — a short reply to only what was just "
                 . "asked is correct even if it looks incomplete compared to history above it. "
+                . "A short confirmation reply (\"yes\", \"yes cash\", \"correct\", \"do it\", etc.) ALWAYS answers "
+                . "ONLY the question YOU (the assistant) asked in your immediately preceding message in this "
+                . "thread — never any other earlier unresolved question further back, even if that one also "
+                . "wanted a yes/no and never got a clean answer. If your last message asked \"log this as an "
+                . "expense, paid cash?\" about a specific receipt, a reply of \"yes cash\" logs THAT SPECIFIC "
+                . "receipt (its own amount/vendor/date from your last message) — it does NOT re-trigger or repeat "
+                . "any other transaction, request, or action mentioned anywhere earlier in the conversation. If "
+                . "there is no unambiguous immediately-preceding question to confirm, ask what they're confirming "
+                . "rather than guessing which earlier item it might refer to. "
                 . "Today's date is " . date('Y-m-d') . " ("
                 . date('l') . "). When the user gives you a date without a year (e.g. \"13/6\" or \"next Tuesday\"), "
                 . "resolve it relative to today and assume the nearest occurrence on or after today — never assume "
@@ -1213,12 +1247,18 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                 . ($imageBase64
                     ? "\n\nThey just sent you a PHOTO (attached). Look at it and help with whatever it's for: if "
                       . "it's a receipt/invoice, read the amount/vendor/date and, if the context makes clear it "
-                      . "should be logged, use add_transaction; if it's a screenshot of a client message/brief, "
-                      . "summarize the relevant part; if it's a document or ID, read out the text they likely "
-                      . "want; otherwise just describe what's useful in it and ask what they'd like done with it. "
-                      . "Never invent numbers or text you can't actually read clearly in the image — say so and "
-                      . "ask them to confirm instead."
-                    : '');
+                      . "should be logged, use add_transaction — pass the [photo_url: ...] value from this message "
+                      . "as the tool's photo_url so the receipt image ends up attached to the record; if it's a "
+                      . "screenshot of a client message/brief, summarize the relevant part; if it's a document or "
+                      . "ID, read out the text they likely want; otherwise just describe what's useful in it and "
+                      . "ask what they'd like done with it. Never invent numbers or text you can't actually read "
+                      . "clearly in the image — say so and ask them to confirm instead."
+                    : '')
+                . "\n\nA message may end with a hidden marker like \"[photo_url: https://...]\" — this is the "
+                  . "already-uploaded URL of a photo they sent (possibly several turns back, e.g. before you asked "
+                  . "a clarifying question and they confirmed). Never read this marker aloud or mention its literal "
+                  . "text to the user; when calling add_transaction for a transaction that photo represents, pass "
+                  . "that URL as photo_url so the receipt stays attached to the record.";
 
         // Recruitment tools follow the app's own Roles & Permissions
         // (hr.manage_recruitment) rather than a hardcoded role list — same

@@ -104,11 +104,19 @@ if ($msgType === 'audio') {
     if (!$bytes) exit;
     $imageBase64 = base64_encode($bytes);
     $imageMime = $mime ?: 'image/jpeg';
+    // Uploaded immediately (not only if/when a transaction eventually gets
+    // logged) so the URL survives into conversation history as plain text —
+    // the actual add_transaction call often happens on a LATER, image-less
+    // turn (e.g. after "yes cash"), by which point this image is long gone
+    // from the request; the URL embedded in history is what lets that later
+    // turn still attach the receipt.
+    $receiptUrl = saveReceiptImage($bytes, $imageMime);
     // A caption becomes the accompanying text; without one, give Pro a
     // generic instruction so it still has something to "answer" alongside
     // the image rather than an empty user turn.
     $caption = trim($message['image']['caption'] ?? '');
-    $text = $caption !== '' ? $caption : "Here's a photo — take a look and help with whatever it's for.";
+    $text = ($caption !== '' ? $caption : "Here's a photo — take a look and help with whatever it's for.")
+        . ($receiptUrl ? "\n[photo_url: {$receiptUrl}]" : '');
 } else {
     $text = trim($message['text']['body'] ?? '');
 }
