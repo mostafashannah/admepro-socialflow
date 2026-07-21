@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.348";
+const APP_VERSION = "beta 5.349";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3481,7 +3481,10 @@ function MentionInput({value, onChange, team, placeholder, rows}) {
   // Sara is mentionable everywhere a human teammate is, even though she's
   // not a real team_members row — role shown as "AI" so she reads distinctly
   // in the dropdown.
-  const mentionable = [...(team||[]).filter(m=>!["hr","accountant","office_boy"].includes(m.role)), {name:"Sara", email:"sara@ai.socialflow", role:"AI"}, {name:"Pro", email:"pro@ai.socialflow", role:"AI"}];
+  let agentsCfg={}; try{ agentsCfg = window.__SF_AI_AGENTS||{}; }catch(e){}
+  const mentionable = [...(team||[]).filter(m=>!["hr","accountant","office_boy"].includes(m.role)),
+    {name:"Sara", email:"sara@ai.socialflow", role:"AI", avatar_url:agentsCfg?.content_creator?.avatar_url||""},
+    {name:"Pro", email:"pro@ai.socialflow", role:"AI", avatar_url:agentsCfg?.pro?.avatar_url||""}];
   const filtered = showDropdown
     ? mentionable.filter(m => m.name && (m.name.toLowerCase().includes(mentionQuery.toLowerCase()) || toUsername(m.name).includes(toUsername(mentionQuery)))).slice(0,6)
     : [];
