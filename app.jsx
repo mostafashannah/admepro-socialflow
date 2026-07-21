@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.361";
+const APP_VERSION = "beta 5.362";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -27807,7 +27807,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
                           background: s.id===proActiveId ? "var(--accentbg)" : "transparent",
                           cursor:"pointer",
                         }}>
-                          <ScrollingTitle text={s.title || "New conversation"} style={{flex:1,minWidth:0,padding:"6px 10px",color:"var(--text2)",fontSize:12,fontWeight:500}}/>
+                          <ScrollingTitle text={cleanSessionTitle(s.title) || "New conversation"} style={{flex:1,minWidth:0,padding:"6px 10px",color:"var(--text2)",fontSize:12,fontWeight:500}}/>
                           <SharedWithBadge session={s} onUnshare={email=>unshareProSession(s,email)}/>
                           <ChatSessionMenu onRename={()=>startRenameProSession(s)} onDelete={()=>deleteProSession(s.id)} onShare={isSharedCopy(s)?null:m=>shareProSession(s,m)} onUnshare={email=>unshareProSession(s,email)} sharedWith={s.shared_with} team={team.filter(m=>m.email!==currentUser?.email)}/>
                         </div>
@@ -28923,12 +28923,9 @@ async function persistProSessionToServer(session, email){
 const isSharedCopy = (s) => !!(s?.is_shared_copy || (s?.title||"").startsWith("🔗"));
 // Small marker shown before a received chat's title — same glyph as the
 // Share action itself, instead of the 🔗 emoji the title used to be
-// prefixed with.
-const SharedCopyIcon = () => (
-  <span title="Shared with you" style={{display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,width:18,height:18,borderRadius:6,background:"var(--accent)18",color:"var(--accent)"}}>
-    <Ico d={["M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z","M2 19a5.5 5.5 0 0 1 11 0","M17 8v6","M14 11h6"]} size={10} sw={2}/>
-  </span>
-);
+// prefixed with — chats shared before that changed still carry the emoji
+// baked into their stored title, so strip it back out at display time.
+const cleanSessionTitle = (title) => (title||"").replace(/^🔗\s*/, "");
 function deleteProSessionFromServer(id){
   if(!id || String(id).startsWith("local_")) return;
   de("ProChatSession", id).catch(()=>{});
@@ -29985,7 +29982,7 @@ RULES:
                             style={{width:"100%",fontSize:12,fontWeight:700,padding:"2px 4px",borderRadius:6,background:"var(--surface)",border:"1px solid var(--accent)",color:"var(--text)"}}
                           />
                         ) : (
-                          <ScrollingTitle text={s.title||"New conversation"} style={{fontSize:12,fontWeight:700,color:"var(--text)"}}/>
+                          <ScrollingTitle text={cleanSessionTitle(s.title)||"New conversation"} style={{fontSize:12,fontWeight:700,color:"var(--text)"}}/>
                         )}
                         <p style={{fontSize:10,color:"var(--text3)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginTop:1}}>{cName?`${cName} · `:""}{preview||"…"}</p>
                         <p style={{fontSize:9,color:"var(--text3)",marginTop:2}}>{when} · {(s.messages||[]).length} msgs</p>
@@ -32056,7 +32053,7 @@ RULES:
                       style={{width:"100%",fontSize:12,fontWeight:600,padding:"2px 4px",borderRadius:6,background:"var(--surface)",border:"1px solid var(--accent)",color:"var(--text)"}}
                     />
                   ) : (
-                    <ScrollingTitle text={s.title} style={{fontSize:12,fontWeight:600,color:"var(--text)"}}/>
+                    <ScrollingTitle text={cleanSessionTitle(s.title)} style={{fontSize:12,fontWeight:600,color:"var(--text)"}}/>
                   )}
                   <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{new Date(s.updated_at||s.created_at||Date.now()).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</p>
                 </div>
