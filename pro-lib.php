@@ -411,6 +411,7 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
     }
 
     if ($name === 'add_transaction') {
+        error_log('[add_transaction] called with input: ' . json_encode($input));
         $type = $input['type'] ?? '';
         $category = $input['category'] ?? '';
         $description = trim($input['description'] ?? '');
