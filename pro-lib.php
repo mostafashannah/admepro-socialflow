@@ -418,10 +418,12 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
         // the model often rewords it slightly ("Fawry office supplies" vs
         // "Office supplies - Fawry installment"), which let three
         // differently-worded duplicates of the same transaction slip past
-        // an exact-description match. Same sender/type/amount within 10
+        // an exact-description match. Same sender/type/amount within 30
         // minutes is treated as a repeat and rejected outright rather than
-        // trusting the prompt instructions alone to prevent it.
-        $dupCheck = $pdo->prepare("SELECT ref FROM expenses WHERE type = :type AND amount = :amt AND created_by = :by AND created_at >= (NOW() - INTERVAL 10 MINUTE) LIMIT 1");
+        // trusting the prompt instructions alone to prevent it — widened
+        // from 10 to 30 after seeing the same stale transaction re-fire
+        // several exchanges into an unrelated conversation.
+        $dupCheck = $pdo->prepare("SELECT ref FROM expenses WHERE type = :type AND amount = :amt AND created_by = :by AND created_at >= (NOW() - INTERVAL 30 MINUTE) LIMIT 1");
         $dupCheck->execute([':type' => $type, ':amt' => $amount, ':by' => $senderName]);
         $dup = $dupCheck->fetchColumn();
         if ($dup) {
@@ -1364,7 +1366,22 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
     // latching onto an earlier unresolved question (e.g. answering a
     // stale recruitment query) instead of the new one when both were
     // just plain, identically-formatted "user" turns in the same list.
-    $taggedText = "[CURRENT MESSAGE — this is the ONLY thing to answer. Everything above is history for context only, never something to re-answer, recap, or continue]:\n" . $userText;
+    // A short reply ("yes", "cash", "تمام") is almost always confirming
+    // whatever Pro itself just asked — but relying on the model to
+    // correctly pick that one message back out of a growing transcript on
+    // its own kept failing (it would latch onto a different, unrelated
+    // earlier pending item instead, re-triggering an old transaction).
+    // Quoting the assistant's actual last message back at it, right next to
+    // the short reply, removes the need for that lookup entirely.
+    $lastAssistantMsg = null;
+    for ($i = count($history) - 1; $i >= 0; $i--) {
+        if (($history[$i]['role'] ?? '') === 'assistant') { $lastAssistantMsg = $history[$i]['content']; break; }
+    }
+    $isShortReply = str_word_count(trim($userText)) <= 6;
+    $anchor = ($isShortReply && $lastAssistantMsg)
+        ? "\n\n[This reply confirms EXACTLY this, and only this, question you just asked — nothing else pending from earlier in the conversation: \"" . str_replace('"', "'", $lastAssistantMsg) . "\"]"
+        : '';
+    $taggedText = "[CURRENT MESSAGE — this is the ONLY thing to answer. Everything above is history for context only, never something to re-answer, recap, or continue]:\n" . $userText . $anchor;
     // A photo message goes in as a real image content block (not just an
     // OCR'd string beforehand) so Pro can actually look at it directly —
     // history stays plain text since past images aren't re-sent each turn.
