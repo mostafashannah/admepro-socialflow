@@ -6,4 +6,4 @@
 --   mysql -u root -p socialflow < migration-pro-chat-shared-with.sql
 
 ALTER TABLE pro_chat_sessions
-  ADD COLUMN IF NOT EXISTS shared_with JSON DEFAULT ('[]');
+  ADD COLUMN shared_with TEXT;
