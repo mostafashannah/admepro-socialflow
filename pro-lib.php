@@ -499,11 +499,13 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
         // — fall back to a direct lookup of the most recent photo this
         // phone sent, rather than depending on the model to carry it
         // forward through the conversation correctly.
+        error_log('[add_transaction] photo_url from model: ' . var_export($input['photo_url'] ?? null, true) . ' | fromPhone: ' . var_export($fromPhone, true));
         if (!$photoUrl && $fromPhone) {
             try {
                 $stmt = $pdo->prepare("SELECT content FROM pro_messages WHERE phone = :p AND role = 'user' AND content LIKE '%[photo_url:%' AND created_at >= (NOW() - INTERVAL 30 MINUTE) ORDER BY created_at DESC LIMIT 1");
                 $stmt->execute([':p' => $fromPhone]);
                 $recent = $stmt->fetchColumn();
+                error_log('[add_transaction] fallback lookup found: ' . var_export($recent, true));
                 if ($recent && preg_match('/\[photo_url:\s*([^\]]+)\]/', $recent, $m)) {
                     $photoUrl = trim($m[1]);
                 }

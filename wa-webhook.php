@@ -117,6 +117,7 @@ if ($msgType === 'audio') {
     $caption = trim($message['image']['caption'] ?? '');
     $text = ($caption !== '' ? $caption : "Here's a photo — take a look and help with whatever it's for.")
         . ($receiptUrl ? "\n[photo_url: {$receiptUrl}]" : '');
+    error_log('[wa-webhook] image received, receiptUrl=' . var_export($receiptUrl, true) . ' from=' . $from);
 } else {
     $text = trim($message['text']['body'] ?? '');
 }
