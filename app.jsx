@@ -454,9 +454,9 @@ function calcUserPerf(userEmail, perfLogs) {
   const score = Math.min(100, Math.round(completionRate*0.30 + onTimeRate*0.25 + avgQuality*0.35 + revScore*0.10));
   return { score, completionRate, onTimeRate, avgQuality, avgRevisions, total, logs };
 }
-function calcAllPerf(team, perfLogs) {
+function calcAllPerf(team, perfLogs, includeAll) {
   return (team||[])
-    .filter(m=>!["admin","accountant"].includes(m.role))
+    .filter(m=>includeAll || !["admin","accountant"].includes(m.role))
     .map(m=>({...m, perf:calcUserPerf(m.email, perfLogs)}))
     .sort((a,b)=>b.perf.score-a.perf.score);
 }
@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.358";
+const APP_VERSION = "beta 5.359";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -24354,7 +24354,7 @@ function QualitySparkline({logs}) {
 // TEAM PERFORMANCE PAGE (admin / director only)
 // ════════════════════════════════════════════════════════════════
 function TeamPerformancePage({currentUser, perfLogs, aiInsights, team}) {
-  const ranked = calcAllPerf(team, perfLogs);
+  const ranked = calcAllPerf(team, perfLogs, currentUser?.role==="admin");
   const teamAvg = ranked.length ? Math.round(ranked.reduce((a,m)=>a+m.perf.score,0)/ranked.length) : 0;
   const best = ranked[0];
   const worst = ranked[ranked.length-1];
@@ -27809,7 +27809,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
                         }}>
                           <ScrollingTitle text={s.title || "New conversation"} style={{flex:1,minWidth:0,padding:"6px 10px",color:"var(--text2)",fontSize:12,fontWeight:500}}/>
                           <SharedWithBadge session={s} onUnshare={email=>unshareProSession(s,email)}/>
-                          <ChatSessionMenu onRename={()=>startRenameProSession(s)} onDelete={()=>deleteProSession(s.id)} onShare={s.is_shared_copy?null:m=>shareProSession(s,m)} team={team.filter(m=>m.email!==currentUser?.email)}/>
+                          <ChatSessionMenu onRename={()=>startRenameProSession(s)} onDelete={()=>deleteProSession(s.id)} onShare={isSharedCopy(s)?null:m=>shareProSession(s,m)} team={team.filter(m=>m.email!==currentUser?.email)}/>
                         </div>
                       )
                     ))}
@@ -28916,6 +28916,11 @@ async function persistProSessionToServer(session, email){
   const created = r.entities?.[0];
   return (created && created.id && !created._saveError) ? {...session, id:created.id} : session;
 }
+// Detects a shared copy two ways: the is_shared_copy flag (set on every
+// share going forward) and, as a fallback, the "🔗 ... (from X)" title
+// prefix shareProSessionToMember() always writes — catches chats that were
+// shared before the flag existed and never got backfilled.
+const isSharedCopy = (s) => !!(s?.is_shared_copy || (s?.title||"").startsWith("🔗"));
 function deleteProSessionFromServer(id){
   if(!id || String(id).startsWith("local_")) return;
   de("ProChatSession", id).catch(()=>{});
@@ -29108,7 +29113,8 @@ function ChatSessionMenu({onRename, onDelete, onShare, team}) {
         <div ref={menuRef} style={{position:"fixed",top:pos.top,right:pos.right,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.2)",zIndex:9999,minWidth:160,maxHeight:280,overflowY:"auto"}}>
           {mode==="main" ? (
             <>
-              <button onClick={()=>{setOpen(false);onRename();}} style={{display:"block",width:"100%",textAlign:"left",padding:"9px 12px",fontSize:12,fontWeight:600,color:"var(--text2)",background:"transparent",border:"none",cursor:"pointer"}}>
+              <button onClick={()=>{setOpen(false);onRename();}} style={{display:"flex",alignItems:"center",gap:7,width:"100%",textAlign:"left",padding:"9px 12px",fontSize:12,fontWeight:600,color:"var(--text2)",background:"transparent",border:"none",cursor:"pointer"}}>
+                <Ico d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z" size={13} sw={2}/>
                 Rename
               </button>
               {onShare && (
@@ -29117,7 +29123,8 @@ function ChatSessionMenu({onRename, onDelete, onShare, team}) {
                   Share…
                 </button>
               )}
-              <button onClick={()=>{setOpen(false);onDelete();}} style={{display:"block",width:"100%",textAlign:"left",padding:"9px 12px",fontSize:12,fontWeight:600,color:"#ef4444",background:"transparent",border:"none",cursor:"pointer"}}>
+              <button onClick={()=>{setOpen(false);onDelete();}} style={{display:"flex",alignItems:"center",gap:7,width:"100%",textAlign:"left",padding:"9px 12px",fontSize:12,fontWeight:600,color:"#ef4444",background:"transparent",border:"none",cursor:"pointer"}}>
+                <Ico d={["M3 6h18","M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2","M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"]} size={13} sw={2}/>
                 Delete
               </button>
             </>
@@ -29960,7 +29967,7 @@ RULES:
                         <p style={{fontSize:9,color:"var(--text3)",marginTop:2}}>{when} · {(s.messages||[]).length} msgs</p>
                       </div>
                       <SharedWithBadge session={s} onUnshare={email=>unshareChat(s,email)}/>
-                      <ChatSessionMenu onRename={()=>startRenameChat(s)} onDelete={()=>deleteChat(s.id)} onShare={s.is_shared_copy?null:m=>shareChat(s,m)} team={(data?.team||[]).filter(m=>m.email!==currentUser?.email)}/>
+                      <ChatSessionMenu onRename={()=>startRenameChat(s)} onDelete={()=>deleteChat(s.id)} onShare={isSharedCopy(s)?null:m=>shareChat(s,m)} team={(data?.team||[]).filter(m=>m.email!==currentUser?.email)}/>
                     </div>
                   );
                 })}
@@ -32034,7 +32041,7 @@ RULES:
                   <ChatSessionMenu onRename={()=>startRenameSession(s)} onDelete={()=>{
                     setChatSessions(prev=>prev.filter(x=>x.id!==s.id));
                     if(s.id===activeChatId) setActiveChatId("");
-                  }} onShare={s.is_shared_copy?null:m=>shareSession(s,m)} team={(data?.team||[]).filter(m=>m.email!==currentUser?.email)}/>
+                  }} onShare={isSharedCopy(s)?null:m=>shareSession(s,m)} team={(data?.team||[]).filter(m=>m.email!==currentUser?.email)}/>
                 </div>
               </div>
             ))
