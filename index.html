@@ -73,6 +73,12 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline-offset:0
 /* ── Toast is announced by screen readers ── */
 [role="status"]{aria-live:polite}
 [role="alert"]{aria-live:assertive}
+
+/* ── Looping marquee for overflowing chat titles ── */
+@keyframes sfTitleScroll{
+  0%,15%{transform:translateX(0)}
+  85%,100%{transform:translateX(calc(-1 * var(--sf-scroll-dist, 0px)))}
+}
 </style>
 </head>
 <body>
@@ -92,6 +98,6 @@ input:focus-visible,select:focus-visible,textarea:focus-visible{outline-offset:0
      window.pdfjsLib. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>if(window.pdfjsLib){pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";}</script>
-<script src="/app.js?v=695"></script>
+<script src="/app.js?v=696"></script>
 </body>
 </html>

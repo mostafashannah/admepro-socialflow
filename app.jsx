@@ -552,7 +552,7 @@ const SB_SCHEMA = {
   notification_prefs: ["user_email","all_disabled","mentions_only","daily_digest","task_assigned","task_stage_changed","task_due_soon","task_overdue","task_mention","task_comment","project_created","project_task_added","project_deadline_updated","post_approved","post_rejected","client_approval_required","invoice_created","payment_received","subscription_renewal","user_invited","access_approved","access_rejected","permissions_updated"],
   customer_messages: ["client_id","client_name","channel","customer_id","customer_name","direction","message_text","sent_by","thread_status","draft_status","external_id"],
   reply_bot_settings: ["client_id","client_name","enabled","mode","channels","tone","brain","dont_do","fallback_message","updated_by"],
-  pro_chat_sessions: ["user_email","client_id","title","messages","shared_with"],
+  pro_chat_sessions: ["user_email","client_id","title","messages","shared_with","is_shared_copy"],
 };
 function sbSanitize(tableName, payload) {
   const allowed = SB_SCHEMA[tableName];
@@ -1132,7 +1132,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.356";
+const APP_VERSION = "beta 5.357";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -27807,12 +27807,9 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
                           background: s.id===proActiveId ? "var(--accentbg)" : "transparent",
                           cursor:"pointer",
                         }}>
-                          <span style={{flex:1,minWidth:0,padding:"6px 10px",color:"var(--text2)",fontSize:12,fontWeight:500,
-                            whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                            {s.title || "New conversation"}
-                          </span>
+                          <ScrollingTitle text={s.title || "New conversation"} style={{flex:1,minWidth:0,padding:"6px 10px",color:"var(--text2)",fontSize:12,fontWeight:500}}/>
                           <SharedWithBadge session={s} onUnshare={email=>unshareProSession(s,email)}/>
-                          <ChatSessionMenu onRename={()=>startRenameProSession(s)} onDelete={()=>deleteProSession(s.id)} onShare={m=>shareProSession(s,m)} team={team.filter(m=>m.email!==currentUser?.email)}/>
+                          <ChatSessionMenu onRename={()=>startRenameProSession(s)} onDelete={()=>deleteProSession(s.id)} onShare={s.is_shared_copy?null:m=>shareProSession(s,m)} team={team.filter(m=>m.email!==currentUser?.email)}/>
                         </div>
                       )
                     ))}
@@ -28894,7 +28891,7 @@ async function fetchProSessionsFromServer(email){
     let shared_with = [];
     try{ shared_with = typeof row.shared_with==="string" ? JSON.parse(row.shared_with||"[]") : (row.shared_with||[]); }catch(e){}
     return {id:row.id, user_id:row.user_email, client_id:row.client_id||"", title:row.title||"New conversation",
-      created_at:row.created_at, updated_at:row.updated_at, messages, shared_with};
+      created_at:row.created_at, updated_at:row.updated_at, messages, shared_with, is_shared_copy: !!(row.is_shared_copy==1||row.is_shared_copy===true)};
   });
 }
 // Upsert one session to the server. Returns the session, with `id` swapped to
@@ -28908,6 +28905,7 @@ async function persistProSessionToServer(session, email){
     title: session.title||"New conversation",
     messages: JSON.stringify(stripAttachmentBinaries(session.messages)),
     shared_with: JSON.stringify(session.shared_with||[]),
+    is_shared_copy: session.is_shared_copy ? 1 : 0,
   };
   const hasServerId = session.id && !String(session.id).startsWith("local_");
   if(hasServerId){
@@ -28932,6 +28930,7 @@ async function shareProSessionToMember(session, member, senderName){
     client_id: session.client_id||"",
     title: `🔗 ${session.title||"Shared chat"} (from ${senderName||"a teammate"})`,
     messages: JSON.stringify(stripAttachmentBinaries(session.messages||[])),
+    is_shared_copy: 1,
   };
   const r = await ce("ProChatSession", [payload]);
   const notifPayload = {recipient_email:member.email, title:"Pro chat shared with you",
@@ -28985,7 +28984,7 @@ function SharedWithBadge({session, onUnshare}){
         background:"var(--accent)18",border:"1px solid var(--accent)44",color:"var(--accent)",
         fontSize:9.5,fontWeight:700,cursor:"pointer",flexShrink:0,
       }}>
-        <Ico d="M18 8a3 3 0 1 0-2.83-4H15a3 3 0 0 0 .12 1.83l-6.3 3.7a3 3 0 1 0 0 3.94l6.3 3.7A3 3 0 1 0 18 16a3 3 0 0 0-2.83 2h.01l-6.3-3.7a3 3 0 1 0 0-3.94l6.3-3.7A3 3 0 0 0 18 8z" size={9}/>
+        <Ico d={["M9 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6z","M2 19a5.5 5.5 0 0 1 11 0","M17 8v6","M14 11h6"]} size={11} sw={2}/>
         {list.length}
       </button>
       {open && (
@@ -28999,6 +28998,28 @@ function SharedWithBadge({session, onUnshare}){
           ))}
         </div>
       )}
+    </div>
+  );
+}
+// A chat-history title that loops leftward to reveal the full text when it's
+// wider than its row, instead of just clipping with an ellipsis. Measures
+// overflow once per title change and only animates when there's actually
+// something to scroll — a short title just sits still.
+function ScrollingTitle({text, style}){
+  const wrapRef = useRef(null);
+  const textRef = useRef(null);
+  const [dist, setDist] = useState(0);
+  useEffect(()=>{
+    const wrap = wrapRef.current, txt = textRef.current;
+    if(!wrap || !txt) return;
+    const overflow = txt.scrollWidth - wrap.clientWidth;
+    setDist(overflow > 4 ? overflow : 0);
+  },[text]);
+  return (
+    <div ref={wrapRef} style={{overflow:"hidden",whiteSpace:"nowrap",...style}}>
+      <span ref={textRef} style={{display:"inline-block",
+        ...(dist>0 ? {"--sf-scroll-dist":`${dist}px`, animation:"sfTitleScroll 6s ease-in-out infinite"} : {}),
+      }}>{text}</span>
     </div>
   );
 }
@@ -29931,13 +29952,13 @@ RULES:
                             style={{width:"100%",fontSize:12,fontWeight:700,padding:"2px 4px",borderRadius:6,background:"var(--surface)",border:"1px solid var(--accent)",color:"var(--text)"}}
                           />
                         ) : (
-                          <p style={{fontSize:12,fontWeight:700,color:"var(--text)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.title||"New conversation"}</p>
+                          <ScrollingTitle text={s.title||"New conversation"} style={{fontSize:12,fontWeight:700,color:"var(--text)"}}/>
                         )}
                         <p style={{fontSize:10,color:"var(--text3)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginTop:1}}>{cName?`${cName} · `:""}{preview||"…"}</p>
                         <p style={{fontSize:9,color:"var(--text3)",marginTop:2}}>{when} · {(s.messages||[]).length} msgs</p>
                       </div>
                       <SharedWithBadge session={s} onUnshare={email=>unshareChat(s,email)}/>
-                      <ChatSessionMenu onRename={()=>startRenameChat(s)} onDelete={()=>deleteChat(s.id)} onShare={m=>shareChat(s,m)} team={(data?.team||[]).filter(m=>m.email!==currentUser?.email)}/>
+                      <ChatSessionMenu onRename={()=>startRenameChat(s)} onDelete={()=>deleteChat(s.id)} onShare={s.is_shared_copy?null:m=>shareChat(s,m)} team={(data?.team||[]).filter(m=>m.email!==currentUser?.email)}/>
                     </div>
                   );
                 })}
@@ -32002,7 +32023,7 @@ RULES:
                       style={{width:"100%",fontSize:12,fontWeight:600,padding:"2px 4px",borderRadius:6,background:"var(--surface)",border:"1px solid var(--accent)",color:"var(--text)"}}
                     />
                   ) : (
-                    <p style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:"var(--text)"}}>{s.title}</p>
+                    <ScrollingTitle text={s.title} style={{fontSize:12,fontWeight:600,color:"var(--text)"}}/>
                   )}
                   <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{new Date(s.updated_at||s.created_at||Date.now()).toLocaleDateString("en-US",{month:"short",day:"numeric"})}</p>
                 </div>
@@ -32011,7 +32032,7 @@ RULES:
                   <ChatSessionMenu onRename={()=>startRenameSession(s)} onDelete={()=>{
                     setChatSessions(prev=>prev.filter(x=>x.id!==s.id));
                     if(s.id===activeChatId) setActiveChatId("");
-                  }} onShare={m=>shareSession(s,m)} team={(data?.team||[]).filter(m=>m.email!==currentUser?.email)}/>
+                  }} onShare={s.is_shared_copy?null:m=>shareSession(s,m)} team={(data?.team||[]).filter(m=>m.email!==currentUser?.email)}/>
                 </div>
               </div>
             ))
