@@ -1154,7 +1154,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.385";
+const APP_VERSION = "beta 5.386";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -26298,13 +26298,46 @@ function JobOpeningForm({opening, currentUser, onSave, onClose}) {
 // Propose interview time slots to a candidate (emails a public picker
 // link), then shows whichever they picked — or a suggested alternative —
 // once they've responded, with a one-click confirm.
-function InterviewSchedulingSection({application, onSendTimes, sending, onConfirm, confirming}) {
+// Egypt's work week is Sunday-Thursday (weekend Friday/Saturday) — used to
+// compute "next working day" for the interview-slot templates below.
+function addWorkingDays(from, n) {
+  const d = new Date(from);
+  let added = 0;
+  while(added < n) {
+    d.setDate(d.getDate()+1);
+    if(d.getDay()!==5 && d.getDay()!==6) added++; // skip Fri(5)/Sat(6)
+  }
+  return d;
+}
+function slotAt(workingDaysAhead, hh, mm=0) {
+  const d = addWorkingDays(new Date(), workingDaysAhead);
+  d.setHours(hh, mm, 0, 0);
+  return fmtDateTime(d.toISOString());
+}
+function slotRange(workingDaysAhead, startHh, endHh) {
+  const d = addWorkingDays(new Date(), workingDaysAhead);
+  const dateLabel = d.toLocaleDateString("en-US", {weekday:"long", month:"short", day:"numeric"});
+  const fmtHh = (h) => `${h>12?h-12:h}:00 ${h>=12?"PM":"AM"}`;
+  return `${dateLabel}, ${fmtHh(startHh)}–${fmtHh(endHh)} (any time in this window works)`;
+}
+// Quick-pick patterns covering the most common ways this agency proposes
+// interview times — saves retyping the same handful of slot combinations
+// for every candidate.
+const INTERVIEW_SLOT_TEMPLATES = [
+  {label:"Next working day (1pm & 5:30pm) or day after (2pm)", build:()=>[slotAt(1,13,0), slotAt(1,17,30), slotAt(2,14,0)]},
+  {label:"Next 3 working days at 1pm", build:()=>[slotAt(1,13,0), slotAt(2,13,0), slotAt(3,13,0)]},
+  {label:"Next working day, 1pm–6pm (any time)", build:()=>[slotRange(1,13,18)]},
+  {label:"Working day after next, 1pm–6pm (any time)", build:()=>[slotRange(2,13,18)]},
+];
+
+function InterviewSchedulingSection({application, onSendTimes, sending, onConfirm, confirming, onUpdateStatus}) {
   const [editing, setEditing] = useState(false);
   const [slots, setSlots] = useState(()=>parseMaybeJson(application.interview_slots, []));
 
   const setSlot = (i,v) => setSlots(prev=>prev.map((s,idx)=>idx===i?v:s));
   const addSlot = () => setSlots(prev=>[...prev,""]);
   const removeSlot = (i) => setSlots(prev=>prev.filter((_,idx)=>idx!==i));
+  const applyTemplate = (tpl) => setSlots(tpl.build());
 
   const hasResponse = application.interview_selected_slot || application.interview_candidate_note;
 
@@ -26313,7 +26346,14 @@ function InterviewSchedulingSection({application, onSendTimes, sending, onConfir
       <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Interview Scheduling</p>
 
       {application.interview_confirmed_slot && (
-        <p style={{fontSize:13,color:"#10b981",fontWeight:700,marginBottom:10}}>✓ Confirmed for {fmtDateOrText(application.interview_confirmed_slot)}</p>
+        <div style={{marginBottom:10}}>
+          <p style={{fontSize:13,color:"#10b981",fontWeight:700}}>✓ Confirmed for {fmtDateOrText(application.interview_confirmed_slot)}</p>
+          {onUpdateStatus && application.status!=="interview" && (
+            <button onClick={()=>onUpdateStatus(application,"interview")} style={{marginTop:6,padding:"6px 14px",borderRadius:8,background:"var(--accent)",border:"none",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer"}}>
+              Mark Interview Scheduled — Continue
+            </button>
+          )}
+        </div>
       )}
 
       {!application.interview_confirmed_slot && hasResponse && (
@@ -26342,9 +26382,17 @@ function InterviewSchedulingSection({application, onSendTimes, sending, onConfir
         </button>
       ) : (
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:4}}>
+            <p style={{fontSize:11,fontWeight:700,color:"var(--text3)"}}>Quick templates:</p>
+            {INTERVIEW_SLOT_TEMPLATES.map((tpl,i)=>(
+              <button key={i} onClick={()=>applyTemplate(tpl)} style={{textAlign:"left",padding:"6px 10px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>
+                {tpl.label}
+              </button>
+            ))}
+          </div>
           {slots.map((s,i)=>(
             <div key={i} style={{display:"flex",gap:6,alignItems:"center"}}>
-              <input type="datetime-local" value={s} onChange={e=>setSlot(i,e.target.value)} style={{...inputSt,flex:1}}/>
+              <input type="text" value={s} onChange={e=>setSlot(i,e.target.value)} placeholder="e.g. Sunday, Jul 27 at 1:00 PM" style={{...inputSt,flex:1}}/>
               <button onClick={()=>removeSlot(i)} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:16,padding:4}}>×</button>
             </div>
           ))}
@@ -26699,7 +26747,7 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
         </div>
 
         {onSendInterviewTimes&&["shortlisted","interview","offer","hired"].includes(application.status)&&(
-          <InterviewSchedulingSection application={application} onSendTimes={onSendInterviewTimes} sending={sendingInterviewTimes} onConfirm={onConfirmInterview} confirming={confirmingInterview}/>
+          <InterviewSchedulingSection application={application} onSendTimes={onSendInterviewTimes} sending={sendingInterviewTimes} onConfirm={onConfirmInterview} confirming={confirmingInterview} onUpdateStatus={onUpdateStatus}/>
         )}
 
         {onSaveOffer&&["interview","offer","hired"].includes(application.status)&&(
