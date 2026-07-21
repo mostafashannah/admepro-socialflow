@@ -1154,7 +1154,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.373";
+const APP_VERSION = "beta 5.374";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6426,16 +6426,17 @@ function computePerformance(team, posts, timelogs, perfLogs) {
     const approvals = myLogs.filter(l=>l.client_approved).length;
     const approvalRate= myLogs.length ? Math.round(approvals/myLogs.length*100) : 0;
     // Performance score
-    const speedScore = Math.max(0,100-revisions*8);
+    // With zero logged activity, these used to fall back to "neutral"
+    // defaults (speedScore 100, consistScore 50) that aren't real
+    // measurements — someone with literally no PerformanceLog rows would
+    // show "Speed 100" / "Consistency 50" on their card, which reads as a
+    // real (and misleadingly great) score rather than "no data yet". Gate
+    // every component score on myLogs.length the same way perfScore
+    // already was, so an untracked member shows 0 everywhere consistently.
+    const speedScore = myLogs.length ? Math.max(0,100-revisions*8) : 0;
     const prodScore = Math.min(100,completed.length*20);
-    const consistScore = myLogs.length ? Math.round(onTime/myLogs.length*100) : 50;
+    const consistScore = myLogs.length ? Math.round(onTime/myLogs.length*100) : 0;
     const qualityScore = Math.round(avgQuality);
-    // With zero logged activity, consistScore/speedScore fall back to
-    // "neutral" defaults (50/100) that aren't real measurements — without
-    // this guard that produces a nonzero "baseline" score for someone
-    // with literally no data, which contradicts calcUserPerf's score
-    // (used on the Team Performance page) correctly showing 0 for the
-    // exact same person.
     const perfScore = myLogs.length ? Math.round((speedScore*0.25)+(prodScore*0.3)+(consistScore*0.2)+(qualityScore*0.25)) : 0;
     return {
       ...member,
