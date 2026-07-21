@@ -1151,7 +1151,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.368";
+const APP_VERSION = "beta 5.369";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19937,7 +19937,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 
       {/* Tab nav */}
       <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",flexWrap:"nowrap",overflowX:"auto"}}>
-        {[["branding","Branding"],["logos","Identity"],["integrations","Integrations"],["email","Email"],["ai_model","AI Agents"],["durations","Task Estimates"],["flags","Feature Flags"],["syslog","System Log"]].map(([k,l])=>(
+        {[["branding","Branding"],["integrations","Integrations"],["email","Email"],["ai_model","AI Agents"],["durations","Task Estimates"],["flags","Feature Flags"],["syslog","System Log"]].map(([k,l])=>(
           <button key={k} onClick={()=>setSettingsTab(k)} style={{padding:"9px 20px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${settingsTab===k?"var(--accent)":"transparent"}`,color:settingsTab===k?"var(--accent)":"var(--text2)",transition:"all 0.15s",display:"flex",alignItems:"center",gap:6,position:"relative"}}>
             {l}
             {k==="syslog"&&(activityLogs||[]).filter(a=>a.status==="error").length>0&&(
@@ -20045,17 +20045,14 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
         </div>}
       </div>
 
-      </div>
-      )}
+      <BrandingSettingsTab
+        brandingAssets={brandingAssets||SEED.brandingAssets}
+        onSave={onSaveBrandingAssets}
+        wallpaper={wallpaper}
+        accentColor={accentColor}
+      />
 
-      {/* ── INTEGRATIONS TAB ── */}
-      {settingsTab==="logos"&&(
-        <BrandingSettingsTab
-          brandingAssets={brandingAssets||SEED.brandingAssets}
-          onSave={onSaveBrandingAssets}
-          wallpaper={wallpaper}
-          accentColor={accentColor}
-        />
+      </div>
       )}
 
       {settingsTab==="integrations"&&(
