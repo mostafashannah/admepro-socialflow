@@ -65,6 +65,15 @@ define('INSTAGRAM_APP_SECRET',       'your_instagram_app_secret');
 define('LINKEDIN_CLIENT_ID',     'your_linkedin_client_id');
 define('LINKEDIN_CLIENT_SECRET', 'your_linkedin_client_secret');
 
+// Set to true ONLY after LinkedIn has approved this app for the Marketing
+// Developer Platform (Community Management API's "Organization" access) —
+// apply at https://www.linkedin.com/developers/apps under your app ->
+// Products -> "Community Management API", which requires an existing
+// LinkedIn Company Page and a business-use justification, and can take
+// LinkedIn days to review. Leaving this false keeps posting scoped to the
+// connecting member's own personal profile, which needs no approval.
+define('LINKEDIN_ORG_POSTING_ENABLED', false);
+
 // --- TikTok for Developers app (https://developers.tiktok.com/apps) ---
 // Add the "Login Kit" and "Content Posting API" products, then add this exact
 // redirect URL under Login Kit → redirect URI: https://yourdomain.com/tiktok-oauth-callback.php

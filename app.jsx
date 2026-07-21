@@ -1154,7 +1154,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.384";
+const APP_VERSION = "beta 5.385";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -18262,7 +18262,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                   </select>
                 </Field>
                 <div style={{padding:10,background:"#f59e0b22",border:"1px solid #f59e0b55",borderRadius:"var(--rs)",fontSize:12,color:"#b45309"}}>
-                  LinkedIn posts go out as the member who connects below (not a Company Page), and LinkedIn's API doesn't support reading/replying to DMs or comments — publishing only.
+                  LinkedIn's API doesn't support reading/replying to DMs or comments — publishing only. If your app has been approved for Company Page posting (LinkedIn Marketing Developer Platform), you'll be able to pick a Page below instead of your personal profile after connecting; otherwise it defaults to posting as the connecting member.
                 </div>
                 <button onClick={connectWithLinkedIn} disabled={connecting} style={{
                   display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"12px",
@@ -18273,6 +18273,16 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                 </button>
                 {connectError&&(
                   <div style={{padding:10,background:"#ef444422",border:"1px solid #ef444455",borderRadius:"var(--rs)",fontSize:12,color:"#ef4444"}}>{connectError}</div>
+                )}
+                {metaPages&&metaPages.length>1&&(
+                  <div style={{display:"flex",flexDirection:"column",gap:6,padding:12,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
+                    <p style={{fontSize:12,fontWeight:700,color:"var(--text2)"}}>Post as:</p>
+                    {metaPages.map(p=>(
+                      <button key={p.id} onClick={()=>applyMetaPage(p)} style={{textAlign:"left",padding:"8px 10px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600}}>
+                        {p.type==="organization"?" ":" "} {p.name}
+                      </button>
+                    ))}
+                  </div>
                 )}
                 {metaConnected&&(
                   <div style={{padding:10,background:"#10b98122",border:"1px solid #10b98155",borderRadius:"var(--rs)",fontSize:12,color:"#10b981",display:"flex",alignItems:"center",gap:6}}>

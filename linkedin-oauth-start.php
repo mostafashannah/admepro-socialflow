@@ -30,7 +30,19 @@ setcookie('linkedin_oauth_state', $state, [
 // "openid profile" (Sign In with LinkedIn using OpenID Connect) gets us the
 // member's URN via /v2/userinfo; "w_member_social" (Share on LinkedIn) lets
 // us post as that member.
-$scopes = implode(' ', ['openid', 'profile', 'w_member_social']);
+//
+// "w_organization_social" + "rw_organization_admin" let us post as, and list,
+// Company Pages the member administers — but LinkedIn only grants these once
+// the app is approved as a Marketing Developer Platform partner. Unlike
+// TikTok's sandbox model, requesting a scope LinkedIn hasn't provisioned for
+// this app can outright reject the ENTIRE authorization request, breaking
+// even ordinary personal-profile connects. So this stays behind an explicit
+// config flag — flip LINKEDIN_ORG_POSTING_ENABLED to true in config.php only
+// once LinkedIn has actually approved the Marketing Developer Platform
+// application (see linkedin-lib.php's header comment for how to apply).
+$scopes = (defined('LINKEDIN_ORG_POSTING_ENABLED') && LINKEDIN_ORG_POSTING_ENABLED)
+    ? implode(' ', ['openid', 'profile', 'w_member_social', 'w_organization_social', 'rw_organization_admin'])
+    : implode(' ', ['openid', 'profile', 'w_member_social']);
 $params = [
     'response_type' => 'code',
     'client_id'      => LINKEDIN_CLIENT_ID,

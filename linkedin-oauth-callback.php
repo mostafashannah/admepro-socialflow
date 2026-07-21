@@ -91,8 +91,35 @@ if ($err || empty($profile['sub'])) {
 
 $accounts = [[
     'id'           => 'urn:li:person:' . $profile['sub'],
-    'name'         => $profile['name'] ?? ($profile['given_name'] ?? 'LinkedIn Member'),
+    'name'         => ($profile['name'] ?? ($profile['given_name'] ?? 'LinkedIn Member')) . ' (personal profile)',
     'access_token' => $accessToken,
 ]];
+
+// Step 3 (only meaningful once LINKEDIN_ORG_POSTING_ENABLED is on, i.e. the
+// Marketing Developer Platform application has been approved): list Company
+// Pages this member administers, so they can be offered as a "post as"
+// option alongside the personal profile. On an unapproved app this call
+// will 403 (the rw_organization_admin scope was never granted) — that's
+// expected and just means "no Pages available yet", not a hard failure of
+// the whole connect flow.
+if (defined('LINKEDIN_ORG_POSTING_ENABLED') && LINKEDIN_ORG_POSTING_ENABLED) {
+    $orgUrl = 'https://api.linkedin.com/v2/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED'
+        . '&projection=(elements*(organization~(id,localizedName)))';
+    [$orgResp, $orgErr] = li_get($orgUrl, $accessToken);
+    if (!$orgErr && !empty($orgResp['elements'])) {
+        foreach ($orgResp['elements'] as $el) {
+            $org = $el['organization~'] ?? null;
+            if (!$org || empty($org['id'])) continue;
+            $accounts[] = [
+                'id'           => 'urn:li:organization:' . $org['id'],
+                'name'         => ($org['localizedName'] ?? 'Company Page') . ' (Company Page)',
+                'access_token' => $accessToken,
+                'type'         => 'organization',
+            ];
+        }
+    } else {
+        error_log('linkedin-oauth-callback: organizationAcls lookup failed or empty — ' . ($orgErr ?: 'no elements'));
+    }
+}
 
 finish(true, ['accounts' => $accounts]);
