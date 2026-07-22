@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.404";
+const APP_VERSION = "beta 5.405";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -4621,6 +4621,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
           {post.caption&&<div style={{display:"flex",flexDirection:"column",gap:6}}>
             <label style={{fontSize:11,fontWeight:700,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Caption</label>
             <div style={{padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
+              {post.reel_hook&&<p style={{fontSize:13,fontWeight:700,marginBottom:8,paddingBottom:8,borderBottom:"1px dashed var(--border2)",color:"var(--accent)"}}>{"\u{1F3AC}"} Hook (0-3s): {post.reel_hook}</p>}
               {post.text_on_visual&&<p style={{fontSize:13,fontWeight:700,marginBottom:8,paddingBottom:8,borderBottom:"1px dashed var(--border2)"}}>{"\u{1F5BC}️"} Text on Visual: {post.text_on_visual}</p>}
               <p style={{fontSize:13,lineHeight:1.7}}>{post.caption}</p>
               {post.hashtags&&<p style={{fontSize:12,color:"var(--accent)",marginTop:8,fontWeight:500}}>{post.hashtags}</p>}
@@ -6275,7 +6276,8 @@ Return ONLY a JSON array with ${cfg.count} objects, each having:
 - "title": short title (max 8 words)
 - "caption": for posts/stories — an engaging caption (1-3 sentences). For articles — the full long-form body text (several paragraphs).
 - "hashtags": 3-5 relevant hashtags (empty string for stories)
-- "text_on_visual": the short headline/text that goes ON the design itself (what the designer overlays on the image/graphic) — punchy, max ~8 words, NOT the same as the caption (empty string for articles, since those don't have a design overlay)
+- "text_on_visual": the text that goes ON the design itself (what the designer overlays on the image/graphic) — MUST be genuinely catchy and scroll-stopping, max ~8 words, NOT a generic label and NOT the same as the caption (empty string for articles, since those don't have a design overlay)${kind==="reel"?`
+- "hook": the exact line spoken/shown in the FIRST 3 SECONDS of the video. This is the single most important line — if it isn't catchy enough to stop someone scrolling in under 3 seconds, the whole reel fails before the rest of the content matters. Make it a real scroll-stopping opener (a bold claim, a question, a pattern interrupt) — never a generic intro like "Hey guys" or "Check this out".`:""}
 
 No markdown, no explanation, just the JSON array.`, genMaxTokens);
         // Extract the array specifically rather than requiring the whole
@@ -6290,6 +6292,7 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
           caption:`Exciting ${kind} content for ${f.campaign}. Stay tuned for more updates!`,
           hashtags: kind==="story" ? "" : `#${f.campaign.toLowerCase().replace(/\s+/g,"")} #socialmedia`,
           text_on_visual: kind==="article" ? "" : `${f.campaign}`,
+          hook: kind==="reel" ? `Wait — you need to see this.` : "",
         }));
       }
     }
@@ -6314,6 +6317,7 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
           caption: idea?.caption||"",
           hashtags: idea?.hashtags||"",
           text_on_visual: idea?.text_on_visual||"",
+          reel_hook: kind==="reel" ? (idea?.hook||"") : "",
           platform,
           post_type: CALENDAR_KIND_POST_TYPE[kind],
           priority: "medium",
@@ -6356,14 +6360,15 @@ Brief: ${cfg.brief||f.campaign}
 Platform: ${task.platform}
 Current title: ${task.title}
 Current content: ${task.caption}
+${kind==="reel"?`Current hook (first 3 seconds): ${task.reel_hook||"(none)"}`:""}
 ${note?`FEEDBACK FROM THE TEAM — apply this: ${note}`:"The team asked for a fresh alternative — give a different angle than the current one."}
 
 ${kindGuide}
 
-Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":"...","text_on_visual":"..."} (text_on_visual = the short headline overlaid on the design itself, not the caption; empty string for articles)`, kind==="article"?2500:700);
+Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":"...","text_on_visual":"..."${kind==="reel"?`,"hook":"..."`:""}} (text_on_visual = the short headline overlaid on the design itself — MUST be genuinely catchy, not the same as the caption, empty string for articles.${kind==="reel"?` hook = the exact line spoken/shown in the FIRST 3 SECONDS of the video — it MUST be scroll-stopping and catchy, since if it doesn't grab attention in under 3 seconds the whole reel fails before anything else matters. Never a generic opener like "Hey guys".`:""})`, kind==="article"?2500:700);
       const match = aiRes.match(/\{[\s\S]*\}/);
       const idea = JSON.parse(match ? match[0] : aiRes);
-      setGenerated(prev=>prev.map((t,i)=>i===idx?{...t,title:idea.title||t.title,caption:idea.caption||t.caption,hashtags:idea.hashtags??t.hashtags,text_on_visual:idea.text_on_visual??t.text_on_visual,approved:false}:t));
+      setGenerated(prev=>prev.map((t,i)=>i===idx?{...t,title:idea.title||t.title,caption:idea.caption||t.caption,hashtags:idea.hashtags??t.hashtags,text_on_visual:idea.text_on_visual??t.text_on_visual,reel_hook:kind==="reel"?(idea.hook??t.reel_hook):t.reel_hook,approved:false}:t));
       setRegenNotes(prev=>({...prev,[idx]:""}));
     } catch(e) { alert("Sara couldn't regenerate that item — please try again."); }
     setRegenIdx(null);
@@ -6635,6 +6640,11 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                       <Field label="Title">
                         <input value={task.title} onChange={e=>setGenerated(prev=>prev.map((t,idx)=>idx===i?{...t,title:e.target.value}:t))} style={{...inputSt,marginTop:10}}/>
                       </Field>
+                      {task.post_type==="reel"&&(
+                        <Field label="Hook (first 3 seconds)" hint="Must be scroll-stopping — this is what plays before anyone decides to keep watching">
+                          <input value={task.reel_hook||""} onChange={e=>setGenerated(prev=>prev.map((t,idx)=>idx===i?{...t,reel_hook:e.target.value}:t))} style={inputSt}/>
+                        </Field>
+                      )}
                       {task.post_type!=="article"&&(
                         <Field label="Text on Visual" hint="The short headline overlaid on the design itself — not the caption">
                           <input value={task.text_on_visual||""} onChange={e=>setGenerated(prev=>prev.map((t,idx)=>idx===i?{...t,text_on_visual:e.target.value}:t))} style={inputSt}/>
@@ -35848,7 +35858,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     const localPosts = tasks.map(t=>({...t,project_id:projectId,id:uid()}));
     setData(d=>({...d,posts:[...localPosts,...d.posts]}));
     const calClient = data.clients.find(c=>c.id===planForm.client_id);
-    const postPayloads = localPosts.map(t=>({title:t.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:t.platform,post_type:t.post_type,stage:"planning",priority:t.priority,caption:t.caption,hashtags:t.hashtags,text_on_visual:t.text_on_visual||"",notes:t.notes||"",estimated_minutes:t.estimated_minutes,scheduled_date:t.scheduled_date,scheduled_time:t.scheduled_time,due_date:t.due_date||"",due_time:t.due_time||"",assigned_to:t.assigned_to||""}));
+    const postPayloads = localPosts.map(t=>({title:t.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:t.platform,post_type:t.post_type,stage:"planning",priority:t.priority,caption:t.caption,hashtags:t.hashtags,text_on_visual:t.text_on_visual||"",reel_hook:t.reel_hook||"",notes:t.notes||"",estimated_minutes:t.estimated_minutes,scheduled_date:t.scheduled_date,scheduled_time:t.scheduled_time,due_date:t.due_date||"",due_time:t.due_time||"",assigned_to:t.assigned_to||""}));
     ce("Post",postPayloads).then(res=>{
       const reals = res.entities||[];
       setData(d=>{
