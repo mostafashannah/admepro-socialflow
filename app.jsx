@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.402";
+const APP_VERSION = "beta 5.403";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -28129,6 +28129,46 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
     setCleaningUp(false);
   };
 
+  // One-time backfill: before the auto-confirm-on-pick fix, picking a
+  // proposed interview time only sent an internal WhatsApp ping — no
+  // candidate email — and the later SQL backfill that set
+  // interview_confirmed_slot directly in the DB didn't send one either.
+  // Finds anyone confirmed who never got that email, per the activity log,
+  // and sends it now (same template as the live auto-confirm flow).
+  const [backfillingEmails, setBackfillingEmails] = useState(false);
+  const [backfillMsg, setBackfillMsg] = useState("");
+  const [backfillCandidates, setBackfillCandidates] = useState(null); // null=not checked yet
+  const checkBackfillCandidates = () => {
+    const already = new Set(activityLogs.filter(l=>/Interview confirmation email sent/i.test(l.action||"")).map(l=>l.application_id));
+    const list = applications.filter(a=>a.interview_confirmed_slot && a.candidate_email && !already.has(a.id));
+    setBackfillCandidates(list);
+  };
+  const handleBackfillInterviewEmails = async () => {
+    if(!backfillCandidates?.length) return;
+    setBackfillingEmails(true);
+    let sent = 0;
+    for(const app of backfillCandidates) {
+      const slotLabel = fmtDateOrText(app.interview_confirmed_slot);
+      const jobTitle = app.job_title || "the role";
+      const bodyHtml = `
+        <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Hi ${app.candidate_name||"there"},</h2>
+        <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Your interview for the ${jobTitle} position is confirmed for <strong>${slotLabel}</strong>. We look forward to speaking with you!</p>
+        <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
+          <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
+          <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
+          <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
+        </td></tr></table>`;
+      const ok = await sendCareersEmail(app.candidate_email, `Interview confirmed — ${jobTitle}`, bodyHtml, "Admepro Careers").catch(()=>false);
+      logApplicationActivity(app.id, ok ? "Interview confirmation email sent (backfill)" : "Interview confirmation email FAILED to send (backfill)", actorName);
+      sent++;
+      setBackfillMsg(`Sending ${sent}/${backfillCandidates.length}…`);
+    }
+    setBackfillingEmails(false);
+    setBackfillMsg(`Sent ${sent} confirmation email${sent!==1?"s":""}`);
+    setBackfillCandidates(null);
+    setTimeout(()=>setBackfillMsg(""),5000);
+  };
+
   // Auto-heal: an application can get stuck at ai_review_status "pending"
   // forever if the browser tab that triggered its AI review closed mid-call
   // (e.g. a web applicant closing the tab right after submitting), with no
@@ -28298,9 +28338,38 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
             <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
               {(fixMsg||retryMsg||autoAssignMsg||recoverMsg)&&<span style={{fontSize:11,color:"var(--text2)"}}>{fixMsg||retryMsg||autoAssignMsg||recoverMsg}</span>}
               <button onClick={handleCleanUpApplications} disabled={cleaningUp||fixingEmailApps||retryingAll||autoAssigning} style={{padding:"5px 10px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{fixingEmailApps?"Fixing Email Applications…":retryingAll?"Retrying Stuck AI Reviews…":autoAssigning?"Auto-Assigning…":cleaningUp?"Recovering No-CV Applications…":"Clean Up Applications"}</button>
+              <button onClick={checkBackfillCandidates} disabled={backfillingEmails} style={{padding:"5px 10px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{backfillMsg||(backfillingEmails?"Sending…":"Send Missed Interview Confirmation Emails")}</button>
               <button onClick={()=>setHideNoCv(v=>!v)} style={{padding:"5px 10px",borderRadius:99,background:hideNoCv?"var(--accent)":"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:hideNoCv?"#fff":"var(--text2)",cursor:"pointer"}}>{hideNoCv?"Showing With CV Only":"Hide No-CV"}</button>
             </div>
           </div>
+          {backfillCandidates!==null && (
+            <Modal open onClose={()=>setBackfillCandidates(null)} title="Send Missed Interview Confirmation Emails" width={520}>
+              <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                {backfillCandidates.length===0 ? (
+                  <p style={{fontSize:13,color:"var(--text2)"}}>Everyone with a confirmed interview has already received their confirmation email — nothing to send.</p>
+                ) : (
+                  <>
+                    <p style={{fontSize:13,color:"var(--text2)"}}>These {backfillCandidates.length} candidate{backfillCandidates.length!==1?"s":""} have a confirmed interview but never received the confirmation email (picked their time before that was automatic):</p>
+                    <div style={{maxHeight:280,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
+                      {backfillCandidates.map(a=>(
+                        <div key={a.id} style={{padding:"8px 10px",background:"var(--surface2)",borderRadius:8,fontSize:12.5}}>
+                          <strong>{a.candidate_name}</strong> — {a.job_title||"role"} — {fmtDateOrText(a.interview_confirmed_slot)}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+                <div style={{display:"flex",gap:10}}>
+                  <Btn variant="secondary" onClick={()=>setBackfillCandidates(null)} style={{flex:1}}>Cancel</Btn>
+                  {backfillCandidates.length>0 && (
+                    <Btn onClick={handleBackfillInterviewEmails} disabled={backfillingEmails} style={{flex:1}}>
+                      {backfillingEmails?"Sending…":`Send ${backfillCandidates.length} Email${backfillCandidates.length!==1?"s":""}`}
+                    </Btn>
+                  )}
+                </div>
+              </div>
+            </Modal>
+          )}
           {filteredApps.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--text2)"}}>No applications match these filters.</div>}
           {(() => {
             // Group by candidate email so someone who applied to multiple
