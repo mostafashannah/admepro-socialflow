@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.422";
+const APP_VERSION = "beta 5.423";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16713,7 +16713,7 @@ function TaskSubmissionPage({token}) {
         const teamRes = await qe("TeamMember",{},null,500);
         const admins = (teamRes?.entities||[]).filter(m=>m.role==="admin");
         for(const admin of admins) {
-          ce("Notification",[{recipient_email:admin.email, title:"Task submitted", message:`${application.candidate_name||"A candidate"} submitted their task for ${application.job_title||"a role"}.`, type:"info", is_read:false, link_type:"page", link_id:"recruitment"}]).catch(()=>{});
+          ce("Notification",[{recipient_email:admin.email, title:"Task submitted", message:`${application.candidate_name||"A candidate"} submitted their task for ${application.job_title||"a role"}.`, type:"info", is_read:false, link_type:"job_application", link_id:application.id}]).catch(()=>{});
         }
       } catch(e) {}
       setDone(true);
@@ -16938,7 +16938,7 @@ function CareersPage({appSettings}) {
             const recruiters = (teamRes?.entities||[]).filter(m=>m.role==="admin"||hasPerm(m, rpMap, "hr.manage_recruitment"));
             const candidateLabel = `${form.name.trim()}'s application (${selected.title})`;
             for(const staffer of recruiters) {
-              const notifPayload = {recipient_email:staffer.email, title:"New job application", message:`${form.name.trim()} just applied for "${selected.title}"`, type:"comment", is_read:false, link_type:"page", link_id:"recruitment"};
+              const notifPayload = {recipient_email:staffer.email, title:"New job application", message:`${form.name.trim()} just applied for "${selected.title}"`, type:"comment", is_read:false, link_type:"job_application", link_id:created.id};
               ce("Notification",[notifPayload]).catch(()=>{});
               // No access to this staffer's saved notif prefs from an
               // unauthenticated page — sendNotification() defaults to "on".
@@ -36641,13 +36641,15 @@ Return ONLY valid JSON (no markdown, no explanation):
       const mentioned = (data.team||[]).find(m=>m.name===mentionName||m.name.startsWith(mentionName)||toUsername(m.name)===toUsername(mentionName));
       if(!mentioned || mentioned.email === user?.email) continue;
       mentionedEmails.add(mentioned.email);
-      const canViewFull = mentioned.role==="admin" || hasPerm(mentioned, rolePermsMap, "hr.manage_recruitment");
+      // link_type is always "job_application" — the click handler itself
+      // decides (at click time, using the actual clicker's permissions)
+      // whether to open the real Recruitment module or the restricted view.
       const notifPayload = {
         recipient_email: mentioned.email, title: "You were mentioned",
         message: `${user?.name||"Someone"} mentioned you in a comment on ${candidateLabel}`,
         type: "comment", is_read: false,
-        link_type: canViewFull ? "page" : "job_application",
-        link_id: canViewFull ? "recruitment" : application.id,
+        link_type: "job_application",
+        link_id: application.id,
       };
       const localNotif = {...notifPayload, id: uid(), created_date: new Date().toISOString()};
       setData(d=>({...d, notifications:[localNotif, ...d.notifications]}));
@@ -36667,13 +36669,12 @@ Return ONLY valid JSON (no markdown, no explanation):
         if(participantEmail===user?.email || mentionedEmails.has(participantEmail)) continue;
         const participant = (data.team||[]).find(m=>m.email===participantEmail);
         if(!participant) continue;
-        const canViewFull = participant.role==="admin" || hasPerm(participant, rolePermsMap, "hr.manage_recruitment");
         const notifPayload = {
           recipient_email: participant.email, title: "New activity in a thread you're in",
           message: `${user?.name||"Someone"} mentioned someone in a comment thread you're part of on ${candidateLabel}`,
           type: "comment", is_read: false,
-          link_type: canViewFull ? "page" : "job_application",
-          link_id: canViewFull ? "recruitment" : application.id,
+          link_type: "job_application",
+          link_id: application.id,
         };
         const localNotif = {...notifPayload, id: uid(), created_date: new Date().toISOString()};
         setData(d=>({...d, notifications:[localNotif, ...d.notifications]}));
@@ -37519,7 +37520,19 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
               const found = data.posts.find(p=>p.id===post);
               if(found) setSelectedPost(found);
             }}
-            onOpenApplication={id=>setRestrictedApplicationId(id)}
+            onOpenApplication={id=>{
+              // Full-access users (admin / hr.manage_recruitment) jump straight
+              // into the real Recruitment module with this application already
+              // open, instead of the read-only restricted view meant for
+              // teammates who don't have the module at all.
+              const canViewFullRecruitment = currentUser?.role==="admin" || hasPerm(currentUser, rolePermsMap, "hr.manage_recruitment");
+              if(canViewFullRecruitment) {
+                try{ localStorage.setItem("sf_recruitment_open_app", id); }catch(e){}
+                setPage("recruitment"); setSelectedClientId(null);
+              } else {
+                setRestrictedApplicationId(id);
+              }
+            }}
           />
         )}
       </main>
