@@ -1154,7 +1154,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.391";
+const APP_VERSION = "beta 5.392";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16035,6 +16035,20 @@ function InterviewSchedulingPage({token}) {
           ? `📅 *Interview*: ${application.candidate_name||"A candidate"} (${application.job_title||"role"}) suggested a different time: "${suggestion.trim()}"`
           : `📅 *Interview*: ${application.candidate_name||"A candidate"} (${application.job_title||"role"}) confirmed: ${fmtDateTime(selectedSlot)}`
       );
+      if(!suggesting && application.candidate_email) {
+        const slotLabel = fmtDateTime(selectedSlot);
+        const jobTitle = application.job_title || "the role";
+        const bodyHtml = `
+          <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Hi ${application.candidate_name||"there"},</h2>
+          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Your interview for the ${jobTitle} position is confirmed for <strong>${slotLabel}</strong>. We look forward to speaking with you!</p>
+          <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
+            <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
+            <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
+            <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
+          </td></tr></table>`;
+        const ok = await sendCareersEmail(application.candidate_email, `Interview confirmed — ${jobTitle}`, bodyHtml, "Admepro Careers").catch(()=>false);
+        logApplicationActivity(application.id, ok ? "Interview confirmation email sent" : "Interview confirmation email FAILED to send", "System");
+      }
       setDone(true);
     } catch(e) { alert("Something went wrong submitting your response. Please try again."); }
     setSubmitting(false);
