@@ -628,13 +628,14 @@ function recruitmentTools() {
     return [
         [
             'name' => 'list_job_applications',
-            'description' => 'List/search recruitment applications. All filters optional and combinable. Use this to answer questions like "who applied for X", "any new applications", "show shortlisted candidates", "who has an interview today/this week", or "give me their portfolio/Behance/LinkedIn links" — each result includes portfolio_url (a link the candidate pasted, e.g. Behance/Canva/Drive) and, separately, portfolio_attachment_url (a file they uploaded instead of pasting a link) — check both before saying there\'s no portfolio. Also includes interview_slots_proposed (times offered to the candidate), interview_selected_slot (what the candidate picked, if anything), and interview_confirmed_slot (the actual scheduled time once staff confirmed it) — this is the real, in-system interview schedule, so always check these fields before saying interview times aren\'t tracked.',
+            'description' => 'List/search recruitment applications. All filters optional and combinable. Use this to answer questions like "who applied for X", "any new applications", "show shortlisted candidates", "who has an interview today/this week", or "give me their portfolio/Behance/LinkedIn links" — each result includes portfolio_url (a link the candidate pasted, e.g. Behance/Canva/Drive) and, separately, portfolio_attachment_url (a file they uploaded instead of pasting a link) — check both before saying there\'s no portfolio. Also includes interview_slots_proposed (times offered to the candidate), interview_selected_slot (what the candidate picked, if anything), and interview_confirmed_slot (the actual scheduled time once staff confirmed it) — this is the real, in-system interview schedule, so always check these fields before saying interview times aren\'t tracked. IMPORTANT: a candidate can have a confirmed interview slot while their status is still "shortlisted" or another earlier stage (staff don\'t always remember to move the status pill) — when asked about interviews on a specific day, set has_confirmed_interview=true instead of (or in addition to) filtering by status="interview", otherwise confirmed interviews on candidates still sitting in an earlier stage will be missed entirely. Compare each interview_confirmed_slot against today\'s date (given above) yourself to find which ones fall on the day asked about.',
             'input_schema' => [
                 'type' => 'object',
                 'properties' => [
                     'status'      => ['type' => 'string', 'enum' => ['new', 'reviewing', 'shortlisted', 'interview', 'offer', 'hired', 'rejected', 'rejected_after_offer']],
                     'job_title'   => ['type' => 'string', 'description' => 'Partial match on the position applied for'],
                     'name'        => ['type' => 'string', 'description' => 'Partial match on the candidate\'s name'],
+                    'has_confirmed_interview' => ['type' => 'boolean', 'description' => 'true = only applications with a confirmed interview slot set, regardless of their pipeline status.'],
                 ],
                 'required' => [],
             ],
@@ -744,6 +745,7 @@ function runRecruitmentTool(PDO $pdo, string $name, array $input, string $sender
         if (!empty($input['status']))    { $sql .= " AND status = :s";     $params[':s'] = $input['status']; }
         if (!empty($input['job_title'])) { $sql .= " AND job_title LIKE :j"; $params[':j'] = '%' . $input['job_title'] . '%'; }
         if (!empty($input['name']))      { $sql .= " AND candidate_name LIKE :n"; $params[':n'] = '%' . $input['name'] . '%'; }
+        if (!empty($input['has_confirmed_interview'])) { $sql .= " AND interview_confirmed_slot IS NOT NULL AND interview_confirmed_slot <> ''"; }
         $sql .= " ORDER BY created_at DESC LIMIT 25";
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
