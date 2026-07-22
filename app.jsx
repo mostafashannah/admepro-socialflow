@@ -1154,7 +1154,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.392";
+const APP_VERSION = "beta 5.393";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -26528,7 +26528,91 @@ function OfferSection({application, opening, onSave, saving, onSend, sending, on
   );
 }
 
-function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader, onConvertCv, convertingCv, cvConvertFailed, onRateInterview, onSavePortfolioScore, activityLog, onSendCompletionEmail, sendingCompletion, onSendInterviewTimes, sendingInterviewTimes, onConfirmInterview, confirmingInterview, onSaveOffer, savingOffer, onSendOffer, sendingOffer, onMakeTeamMember}) {
+// Comment thread on a job application, with @mention support — lets staff
+// loop in a specific team member (even one without recruitment access,
+// see onOpenApplication/RestrictedApplicationView) by name in a comment.
+function ApplicationCommentsSection({application, comments, team, currentUser, onAddComment}) {
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const thread = comments.filter(c=>c.post_id===application.id).sort((a,b)=>new Date(a.created_date||a.created_at)-new Date(b.created_date||b.created_at));
+
+  const send = async () => {
+    if(!text.trim()) return;
+    setSending(true);
+    await onAddComment(application, text.trim(), currentUser);
+    setText("");
+    setSending(false);
+  };
+
+  return (
+    <div style={{marginTop:18,paddingTop:18,borderTop:"1px solid var(--border)"}}>
+      <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:10}}>Comments</p>
+      <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:12}}>
+        {thread.map(c=>(
+          <div key={c.id} style={{background:"var(--surface2)",borderRadius:10,padding:"10px 12px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",gap:10,marginBottom:4}}>
+              <span style={{fontSize:12,fontWeight:700}}>{c.author_name||"Someone"}</span>
+              <span style={{fontSize:11,color:"var(--text3)"}}>{fmtDateTime(c.created_date||c.created_at)}</span>
+            </div>
+            <p style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content)}</p>
+          </div>
+        ))}
+        {thread.length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>No comments yet.</p>}
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        <MentionInput value={text} onChange={setText} team={team} placeholder="Add a comment… (type @ to mention)" rows={2}/>
+        <Btn onClick={send} disabled={sending||!text.trim()} style={{alignSelf:"flex-start"}}>
+          {sending?<Spinner size={13}/>:<><Ico d={Icons.send} size={13}/> Send</>}
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
+// Standalone fetch-and-render wrapper for opening exactly one job
+// application from a mention notification, without mounting the full
+// Recruitment module (and its hr.manage_recruitment gate) at all — the
+// viewer only ever sees this one record, read-only, no salary fields.
+function RestrictedApplicationView({applicationId, currentUser, team, comments, onAddComment, onClose}) {
+  const [application, setApplication] = useState(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(()=>{
+    (async () => {
+      setLoading(true);
+      const res = await qe("JobApplication", {id: applicationId});
+      setApplication(res.entities?.[0] || null);
+      setLoading(false);
+    })();
+  },[applicationId]);
+
+  return (
+    <Modal open onClose={onClose} title="Application" width={760}>
+      {loading ? (
+        <div style={{padding:40,textAlign:"center"}}><Spinner size={20}/></div>
+      ) : !application ? (
+        <div style={{padding:40,textAlign:"center",color:"var(--text3)"}}>Application not found.</div>
+      ) : (
+        <div style={{padding:"0 4px"}}>
+          <ApplicationDetail
+            application={application}
+            opening={null}
+            openings={[]}
+            onClose={onClose}
+            hideHeader={false}
+            activityLog={[]}
+            comments={comments}
+            onAddComment={onAddComment}
+            team={team}
+            currentUser={currentUser}
+            restrictedView
+          />
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader, onConvertCv, convertingCv, cvConvertFailed, onRateInterview, onSavePortfolioScore, activityLog, onSendCompletionEmail, sendingCompletion, onSendInterviewTimes, sendingInterviewTimes, onConfirmInterview, confirmingInterview, onSaveOffer, savingOffer, onSendOffer, sendingOffer, onMakeTeamMember, comments=[], onAddComment, team=[], currentUser, restrictedView=false}) {
   const [notes, setNotes] = useState(application.notes||"");
   const [rerunning, setRerunning] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -26544,6 +26628,7 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
   const cvNeedsLocalCopy = cvIsDocx || cvIsExternal || cvHasNoExt;
 
   const handleRerun = async () => {
+    if(!onRerunReview) return;
     setRerunning(true);
     await onRerunReview(application);
     setRerunning(false);
@@ -26728,15 +26813,15 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
           </div>
         )}
 
-        {(application.current_salary||application.expected_salary||application.available_start_date||application.open_to_task)&&(
+        {(!restrictedView&&(application.current_salary||application.expected_salary)||application.available_start_date||application.open_to_task)&&(
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-            {application.current_salary&&(
+            {!restrictedView&&application.current_salary&&(
               <div style={{background:"var(--surface2)",borderRadius:10,padding:"10px 14px"}}>
                 <p style={{fontSize:10,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Current Salary</p>
                 <p style={{fontSize:13,fontWeight:700,marginTop:2}}>{application.current_salary}</p>
               </div>
             )}
-            {application.expected_salary&&(
+            {!restrictedView&&application.expected_salary&&(
               <div style={{background:"var(--surface2)",borderRadius:10,padding:"10px 14px"}}>
                 <p style={{fontSize:10,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Expected Salary</p>
                 <p style={{fontSize:13,fontWeight:700,marginTop:2}}>{application.expected_salary}</p>
@@ -26766,19 +26851,26 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
           </div>
         )}
 
-        <div style={{marginBottom:14}}>
-          <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Status</p>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            {APPLICATION_STATUSES.map(s=>(
-              <button key={s.key} onClick={()=>onUpdateStatus(application, s.key)} style={{
-                padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,
-                background:application.status===s.key?s.color:"var(--surface2)",
-                color:application.status===s.key?"#fff":"var(--text2)",
-                border:`1px solid ${application.status===s.key?s.color:"var(--border2)"}`,
-              }}>{s.label}</button>
-            ))}
+        {!restrictedView&&onUpdateStatus&&(
+          <div style={{marginBottom:14}}>
+            <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Status</p>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {APPLICATION_STATUSES.map(s=>(
+                <button key={s.key} onClick={()=>onUpdateStatus(application, s.key)} style={{
+                  padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,
+                  background:application.status===s.key?s.color:"var(--surface2)",
+                  color:application.status===s.key?"#fff":"var(--text2)",
+                  border:`1px solid ${application.status===s.key?s.color:"var(--border2)"}`,
+                }}>{s.label}</button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
+        {restrictedView&&(
+          <div style={{marginBottom:14}}>
+            <Badge label={APPLICATION_STATUSES.find(s=>s.key===application.status)?.label||application.status} color={APPLICATION_STATUSES.find(s=>s.key===application.status)?.color||"#6b7280"}/>
+          </div>
+        )}
 
         {onSendInterviewTimes&&["shortlisted","interview","offer","hired"].includes(application.status)&&(
           <InterviewSchedulingSection application={application} onSendTimes={onSendInterviewTimes} sending={sendingInterviewTimes} onConfirm={onConfirmInterview} confirming={confirmingInterview} onUpdateStatus={onUpdateStatus}/>
@@ -26829,6 +26921,7 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
           </div>
         )}
 
+        {!restrictedView&&onSaveNotes&&(
         <Field label="Notes">
           <textarea value={notes} onChange={e=>setNotes(e.target.value)} onBlur={()=>onSaveNotes(application, notes)} rows={3} style={{...inputSt,resize:"vertical"}}/>
           {notes.trim()&&(
@@ -26837,6 +26930,7 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
             </button>
           )}
         </Field>
+        )}
 
         {activityLog&&activityLog.length>0&&(
           <div style={{marginTop:18,paddingTop:18,borderTop:"1px solid var(--border)"}}>
@@ -26850,6 +26944,10 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
               ))}
             </div>
           </div>
+        )}
+
+        {onAddComment&&(
+          <ApplicationCommentsSection application={application} comments={comments} team={team} currentUser={currentUser} onAddComment={onAddComment}/>
         )}
       </div>
     </div>
@@ -27258,7 +27356,7 @@ function RecruitmentEmailSettingsTab({appSettings, onSaveSettings}) {
   );
 }
 
-function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, clients, onInviteUser}) {
+function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, clients, onInviteUser, comments=[], onAddComment}) {
   const [tab, setTab] = usePersistentState("sf_tab_recruitment","openings");
   const [openings, setOpenings] = useState([]);
   const [applications, setApplications] = useState([]);
@@ -27900,7 +27998,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
 
   if(selectedApp) return (
     <>
-      <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===selectedApp.id} cvConvertFailed={cvConvertFailedId===selectedApp.id} onRateInterview={handleRateInterview} onSavePortfolioScore={handleSavePortfolioScore} activityLog={activityLogs.filter(l=>l.application_id===selectedApp.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===selectedApp.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===selectedApp.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===selectedApp.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===selectedApp.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===selectedApp.id} onMakeTeamMember={setMakeTeamMemberApp}/>
+      <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===selectedApp.id} cvConvertFailed={cvConvertFailedId===selectedApp.id} onRateInterview={handleRateInterview} onSavePortfolioScore={handleSavePortfolioScore} activityLog={activityLogs.filter(l=>l.application_id===selectedApp.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===selectedApp.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===selectedApp.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===selectedApp.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===selectedApp.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===selectedApp.id} onMakeTeamMember={setMakeTeamMemberApp} comments={comments} onAddComment={onAddComment} team={team} currentUser={currentUser}/>
       {makeTeamMemberModal}
     </>
   );
@@ -27916,7 +28014,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:22,margin:0}}>{sortedGroup[0].candidate_name} · {sortedGroup.length} applications</h2>
         </div>
         {sortedGroup.map((app,i)=>(
-          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===app.id} cvConvertFailed={cvConvertFailedId===app.id} onRateInterview={handleRateInterview} onSavePortfolioScore={handleSavePortfolioScore} activityLog={activityLogs.filter(l=>l.application_id===app.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===app.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===app.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===app.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===app.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===app.id} onMakeTeamMember={setMakeTeamMemberApp}/>
+          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===app.id} cvConvertFailed={cvConvertFailedId===app.id} onRateInterview={handleRateInterview} onSavePortfolioScore={handleSavePortfolioScore} activityLog={activityLogs.filter(l=>l.application_id===app.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===app.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===app.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===app.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===app.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===app.id} onMakeTeamMember={setMakeTeamMemberApp} comments={comments} onAddComment={onAddComment} team={team} currentUser={currentUser}/>
         ))}
         {makeTeamMemberModal}
       </div>
@@ -33167,7 +33265,7 @@ function CreateBriefModal({open, onClose, clients, onCreate}) {
   );
 }
 
-function NotificationsPage({notifications, currentUser, onMarkRead, onNavigate, onOpenPost}) {
+function NotificationsPage({notifications, currentUser, onMarkRead, onNavigate, onOpenPost, onOpenApplication}) {
   const [filter, setFilter] = useState("all");
   const myNotifs = (notifications||[]).filter(n=>n.recipient_email===currentUser?.email);
   const unread = myNotifs.filter(n=>!n.is_read);
@@ -33181,6 +33279,8 @@ function NotificationsPage({notifications, currentUser, onMarkRead, onNavigate, 
     if(!n.link_id) return;
     if(n.link_type==="post") {
       onOpenPost&&onOpenPost(n.link_id);
+    } else if(n.link_type==="job_application") {
+      onOpenApplication&&onOpenApplication(n.link_id);
     } else if(n.link_type==="page") {
       onNavigate&&onNavigate(n.link_id);
     } else {
@@ -33613,6 +33713,11 @@ function App() {
     {key:"calendar", label:"Calendar", ico:Icons.calendar},
   ];
   const [selectedPost,setSelectedPost] = useState(null);
+  // Set when a team member clicks a job-application mention notification —
+  // opens a single read-only application (no salary fields, no editing)
+  // even if they lack hr.manage_recruitment, without exposing the rest of
+  // the Recruitment module to them.
+  const [restrictedApplicationId,setRestrictedApplicationId] = useState(null);
   // Restore selected client/project from localStorage so a refresh stays on the detail page being viewed
   const [selectedClientId,setSelectedClientId_] = useState(()=>{
     try{ return page==="clients" ? (localStorage.getItem("sf_selected_client")||null) : null; }catch(e){return null;}
@@ -35754,6 +35859,46 @@ Return ONLY valid JSON (no markdown, no explanation):
     }
   };
 
+  // Comment thread on a job application (reuses the generic `comments`
+  // table via post_id, same as Post comments — there's no real FK
+  // constraint, just a shared id column). A mentioned team member who
+  // lacks hr.manage_recruitment gets a notification that opens a
+  // read-only single-application view (RestrictedApplicationView) instead
+  // of the full Recruitment module they don't have access to — see
+  // onOpenApplication wiring near NotificationsPage below.
+  const handleAddApplicationComment = async (application, content, user) => {
+    const payload = {post_id: application.id, content, author_name: user?.name||"User", author_email: user?.email, type: "comment", audience: "internal"};
+    const local = {...payload, id: uid(), created_date: new Date().toISOString()};
+    setData(d=>({...d, comments:[...d.comments, local]}));
+    ce("Comment",[payload]).then(res=>{
+      const real = res.entities?.[0]; if(real?.id) setData(d=>({...d, comments: d.comments.map(c=>c.id===local.id?{...c,...real}:c)}));
+    }).catch(()=>{});
+
+    const mentions = [...content.matchAll(/@(\w[\w\s]*?)(?=\s|$|[.,!?])/g)].map(m=>m[1].trim());
+    for(const mentionName of mentions) {
+      const mentioned = (data.team||[]).find(m=>m.name===mentionName||m.name.startsWith(mentionName)||toUsername(m.name)===toUsername(mentionName));
+      if(!mentioned || mentioned.email === user?.email) continue;
+      const canViewFull = mentioned.role==="admin" || hasPerm(mentioned, rolePermsMap, "hr.manage_recruitment");
+      const candidateLabel = `${application.candidate_name||"a candidate"}'s application${application.job_title?` (${application.job_title})`:""}`;
+      const notifPayload = {
+        recipient_email: mentioned.email, title: "You were mentioned",
+        message: `${user?.name||"Someone"} mentioned you in a comment on ${candidateLabel}`,
+        type: "comment", is_read: false,
+        link_type: canViewFull ? "page" : "job_application",
+        link_id: canViewFull ? "recruitment" : application.id,
+      };
+      const localNotif = {...notifPayload, id: uid(), created_date: new Date().toISOString()};
+      setData(d=>({...d, notifications:[localNotif, ...d.notifications]}));
+      ce("Notification",[notifPayload]).catch(()=>{});
+      const prefs = getNotifPrefs(mentioned.email);
+      sendNotification("task_mention", mentioned.email,
+        `[SocialFlow] ${user?.name||"Someone"} mentioned you`,
+        EMAIL_TEMPLATES.mentionNotification(mentioned.name, user?.name||"A colleague", candidateLabel, content.slice(0,200), ""),
+        prefs
+      ).catch(()=>{});
+    }
+  };
+
   // Pro replying to a direct @mention on a task/post comment — same idea as
   // Sara's reply, but Pro can also carry out a small, explicit set of real
   // actions on the task itself (never anything destructive or open-ended).
@@ -36461,7 +36606,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
           />
         )}
         {page==="recruitment"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.manage_recruitment"))&&(
-          <RecruitmentPage currentUser={currentUser} appSettings={appSettings} onSaveSettings={saveAppSettings} team={data.team||[]} clients={data.clients||[]} onInviteUser={inviteUser}/>
+          <RecruitmentPage currentUser={currentUser} appSettings={appSettings} onSaveSettings={saveAppSettings} team={data.team||[]} clients={data.clients||[]} onInviteUser={inviteUser} comments={data.comments||[]} onAddComment={handleAddApplicationComment}/>
         )}
         {page==="agents"&&currentUser?.role==="admin"&&(
           <AgentsPage
@@ -36582,6 +36727,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
               const found = data.posts.find(p=>p.id===post);
               if(found) setSelectedPost(found);
             }}
+            onOpenApplication={id=>setRestrictedApplicationId(id)}
           />
         )}
       </main>
@@ -36661,6 +36807,20 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         assets={data.assets||[]}
       />;
     })()}
+
+    {/* Restricted single-application view — opened via a job-application
+        mention notification for a team member without hr.manage_recruitment.
+        Shows one application read-only, comments only, no salary fields. */}
+    {restrictedApplicationId&&(
+      <RestrictedApplicationView
+        applicationId={restrictedApplicationId}
+        currentUser={currentUser}
+        team={data.team||[]}
+        comments={data.comments||[]}
+        onAddComment={handleAddApplicationComment}
+        onClose={()=>setRestrictedApplicationId(null)}
+      />
+    )}
 
     {/* Add Post */}
     {showAddPost&&<AddPostModal open onClose={()=>{setShowAddPost(false);setAddPostForClient(null);}} projects={data.projects} team={data.team} onAdd={addPost} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} presetClient={addPostForClient} assets={data.assets||[]}/>}
