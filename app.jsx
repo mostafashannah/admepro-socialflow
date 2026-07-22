@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.421";
+const APP_VERSION = "beta 5.422";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16204,7 +16204,7 @@ function offerSentEmail(candidateName, form, offerUrl) {
     </td></tr></table>`;
 }
 
-function taskAssignmentEmail(candidateName, jobTitle, taskDescription, dueDateLabel, attachments) {
+function taskAssignmentEmail(candidateName, jobTitle, taskDescription, dueDateLabel, attachments, submitUrl) {
   const attachmentsHtml = (attachments||[]).length
     ? `<ul style="margin:0 0 16px;padding-left:18px;font-size:14px;line-height:1.8;color:#4b5563">${attachments.map(a=>`<li><a href="${a.url}" style="color:#d90b2c;text-decoration:none;font-weight:600">${a.name||"Attachment"}</a></li>`).join("")}</ul>`
     : "";
@@ -16213,8 +16213,9 @@ function taskAssignmentEmail(candidateName, jobTitle, taskDescription, dueDateLa
     <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">As part of our process for the ${jobTitle} position, we'd like you to complete a short task:</p>
     <div style="margin:0 0 16px;padding:16px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;font-size:14px;line-height:1.6;color:#374151;white-space:pre-wrap">${(taskDescription||"").replace(/</g,"&lt;")}</div>
     ${attachmentsHtml}
-    ${dueDateLabel?`<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Please send it back to us by <strong>${dueDateLabel}</strong>.</p>`:""}
-    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Just reply to this email with your submission (attached or linked) — no special portal needed.</p>
+    ${dueDateLabel?`<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Please submit it by <strong>${dueDateLabel}</strong>.</p>`:""}
+    ${submitUrl?`<p style="margin:0 0 20px"><a href="${submitUrl}" style="display:inline-block;padding:12px 24px;background:#d90b2c;color:#ffffff;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none">Submit Your Task</a></p>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Use the link above to submit a file (up to 30MB) or a link (e.g. Google Drive, Behance), with a short note explaining your work.</p>`:""}
     <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
       <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
       <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
@@ -16636,6 +16637,143 @@ function OfferResponsePage({token}) {
             <button onClick={()=>setNegotiating(false)} style={{background:"none",border:"none",color:isDark?"#9099ab":"#666",fontSize:13,fontWeight:600,cursor:"pointer",textDecoration:"underline",width:"100%",textAlign:"center"}}>Back</button>
           </>
         )}
+      </div>
+    </div></>
+  );
+}
+
+// Public task-submission page — socialflow.admepro.com/careers/task?token=...
+// Candidate submits either a link OR a file (up to 30MB), plus an optional
+// note explaining their work. On submit: staff get pinged on WhatsApp + an
+// in-app notification (same pattern as the "new application" alert on
+// CareersPage, since this is an unauthenticated page with no app state to
+// read from), and the submission shows up on the application next to the
+// CV/portfolio.
+const MAX_TASK_SUBMISSION_MB = 30;
+function TaskSubmissionPage({token}) {
+  const [isDark, setIsDark] = useState(()=>{
+    try { return window.matchMedia("(prefers-color-scheme: dark)").matches; } catch(e) { return false; }
+  });
+  useEffect(()=>{
+    try {
+      const mq = window.matchMedia("(prefers-color-scheme: dark)");
+      const onChange = e=>setIsDark(e.matches);
+      mq.addEventListener("change", onChange);
+      return ()=>mq.removeEventListener("change", onChange);
+    } catch(e) {}
+  },[]);
+  const [loading, setLoading] = useState(true);
+  const [application, setApplication] = useState(null);
+  const [notFound, setNotFound] = useState(false);
+  const [done, setDone] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [mode, setMode] = useState("file"); // "file" | "link"
+  const [file, setFile] = useState(null);
+  const [link, setLink] = useState("");
+  const [note, setNote] = useState("");
+  const fileRef = useRef(null);
+
+  useEffect(()=>{
+    (async () => {
+      const res = await qe("JobApplication", {task_token: token});
+      const app = res.entities?.[0];
+      if(!app) { setNotFound(true); setLoading(false); return; }
+      setApplication(app);
+      setLoading(false);
+    })();
+  },[token]);
+
+  const handleFile = (e) => {
+    const f = e.target.files?.[0];
+    if(!f) return;
+    if(f.size > MAX_TASK_SUBMISSION_MB*1024*1024) { alert(`This file is over the ${MAX_TASK_SUBMISSION_MB}MB limit — try a smaller file, or use a link instead.`); return; }
+    setFile(f);
+  };
+
+  const handleSubmit = async () => {
+    if(mode==="file" && !file) return;
+    if(mode==="link" && !link.trim()) return;
+    setSubmitting(true);
+    try {
+      let submissionUrl = null;
+      if(mode==="file" && file) submissionUrl = await uploadToStorage(file, "job-applications/task-submissions");
+      const patch = {
+        task_submission_url: submissionUrl,
+        task_submission_link: mode==="link" ? link.trim() : null,
+        task_submission_note: note.trim() || null,
+        task_submitted_at: new Date().toISOString(),
+        task_token: null,
+      };
+      await ue("JobApplication", application.id, patch);
+      logApplicationActivity(application.id, "Candidate submitted their task", application.candidate_name||"Candidate");
+      notifyRecruitmentUpdate(`✅ *Task submitted*: ${application.candidate_name||"A candidate"} (${application.job_title||"role"}) submitted their task${note.trim()?`:\n"${note.trim().slice(0,300)}"`:"."}`);
+      // No app state to read admin emails from on this public page — look
+      // them up directly, same as CareersPage's new-application notify.
+      try {
+        const teamRes = await qe("TeamMember",{},null,500);
+        const admins = (teamRes?.entities||[]).filter(m=>m.role==="admin");
+        for(const admin of admins) {
+          ce("Notification",[{recipient_email:admin.email, title:"Task submitted", message:`${application.candidate_name||"A candidate"} submitted their task for ${application.job_title||"a role"}.`, type:"info", is_read:false, link_type:"page", link_id:"recruitment"}]).catch(()=>{});
+        }
+      } catch(e) {}
+      setDone(true);
+    } catch(e) { alert("Something went wrong submitting your task. Please try again: " + (e?.message||e)); }
+    setSubmitting(false);
+  };
+
+  const wrapSt = {minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:24,background:isDark?"#0b0e14":"#f7f7f8"};
+  const cardSt = {width:"100%",maxWidth:480,background:isDark?"#161a23":"#fff",borderRadius:20,padding:32,border:`1px solid ${isDark?"#252b38":"#eee"}`};
+  const gstyle = <GStyle wallpaper={isDark?"dark":"light"} accentColor="#d90b2c" photoIsDark={isDark}/>;
+
+  if(loading) return <>{gstyle}<div style={wrapSt}><Spinner size={22}/></div></>;
+  if(notFound) return (
+    <>{gstyle}<div style={wrapSt}>
+      <div style={cardSt}>
+        <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
+        <p style={{fontSize:15,fontWeight:700,color:isDark?"#fff":"#111"}}>This link is invalid or has already been used.</p>
+      </div>
+    </div></>
+  );
+  if(done) return (
+    <>{gstyle}<div style={wrapSt}>
+      <div style={cardSt}>
+        <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
+        <p style={{fontSize:15,fontWeight:700,color:isDark?"#fff":"#111"}}>Thanks — your submission has been received! We'll be in touch soon.</p>
+      </div>
+    </div></>
+  );
+
+  return (
+    <>{gstyle}<div style={wrapSt}>
+      <div style={cardSt}>
+        <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
+        <h2 style={{fontSize:19,fontWeight:800,color:isDark?"#fff":"#111",marginBottom:6}}>Submit your task</h2>
+        <p style={{fontSize:13,color:isDark?"#9099ab":"#666",marginBottom:16}}>Hi {application.candidate_name||"there"}, submit your work for the {application.job_title||"role"} task below.</p>
+
+        {application.task_description && (
+          <div style={{marginBottom:16,padding:14,background:isDark?"#1d222d":"#f9fafb",border:`1px solid ${isDark?"#252b38":"#e5e7eb"}`,borderRadius:10,fontSize:13,lineHeight:1.6,color:isDark?"#c5cad3":"#374151",whiteSpace:"pre-wrap"}}>{application.task_description}</div>
+        )}
+        {application.task_due_date && <p style={{fontSize:12,color:isDark?"#9099ab":"#666",marginBottom:16}}>Due {fmtDate(application.task_due_date)}</p>}
+
+        <div style={{display:"flex",gap:6,marginBottom:14}}>
+          <button type="button" onClick={()=>setMode("file")} style={{flex:1,padding:"9px 6px",borderRadius:8,border:`1.5px solid ${mode==="file"?"#d90b2c":(isDark?"#252b38":"#ddd")}`,background:mode==="file"?"#d90b2c18":"transparent",fontWeight:700,fontSize:12.5,color:mode==="file"?"#d90b2c":(isDark?"#fff":"#111"),cursor:"pointer"}}>Upload a File</button>
+          <button type="button" onClick={()=>setMode("link")} style={{flex:1,padding:"9px 6px",borderRadius:8,border:`1.5px solid ${mode==="link"?"#d90b2c":(isDark?"#252b38":"#ddd")}`,background:mode==="link"?"#d90b2c18":"transparent",fontWeight:700,fontSize:12.5,color:mode==="link"?"#d90b2c":(isDark?"#fff":"#111"),cursor:"pointer"}}>Share a Link</button>
+        </div>
+
+        {mode==="file" ? (
+          <div style={{marginBottom:14}}>
+            <input ref={fileRef} type="file" style={{display:"none"}} onChange={handleFile}/>
+            <button type="button" onClick={()=>fileRef.current?.click()} style={{width:"100%",padding:"12px",borderRadius:10,border:`1.5px dashed ${isDark?"#333a4a":"#ccc"}`,background:"transparent",color:isDark?"#9099ab":"#666",fontSize:13,fontWeight:600,cursor:"pointer"}}>
+              {file ? `📎 ${file.name}` : `Choose a file (up to ${MAX_TASK_SUBMISSION_MB}MB)`}
+            </button>
+          </div>
+        ) : (
+          <input value={link} onChange={e=>setLink(e.target.value)} placeholder="https://drive.google.com/... or https://behance.net/..." style={{...inputSt,marginBottom:14}}/>
+        )}
+
+        <textarea value={note} onChange={e=>setNote(e.target.value)} rows={4} placeholder="Anything you'd like to explain about your submission (optional)…" style={{...inputSt,resize:"vertical",marginBottom:14}}/>
+
+        <Btn onClick={handleSubmit} disabled={submitting||(mode==="file"?!file:!link.trim())} style={{width:"100%"}}>{submitting?"Submitting…":"Submit Task"}</Btn>
       </div>
     </div></>
   );
@@ -19410,7 +19548,7 @@ const SYSTEM_EMAIL_SAMPLES = [
   { group:"Recruitment", key:"interviewRescheduled", label:"Interview Rescheduled", build:()=>interviewProposedEmail("Nourhan Adel","Content Creator",["2026-08-02T13:00:00","2026-08-03T15:30:00"],"https://socialflow.admepro.com/careers/interview?token=sample",true,"Jul 27 at 1:00 PM") },
   { group:"Recruitment", key:"interviewConfirmed", label:"Interview Confirmed", build:()=>interviewConfirmedEmail("Nourhan Adel","Content Creator","Jul 27 at 1:00 PM") },
   { group:"Recruitment", key:"offerSent", label:"Job Offer", build:()=>offerSentEmail("Nourhan Adel",{title:"Content Creator",salary:"12,000 EGP",probation_months:"3",post_probation_salary:"15,000 EGP",start_date:"2026-08-15",vacation_days_annual:"21",wfh_days_monthly:"4",laptop_provided:"company",notes:""},"https://socialflow.admepro.com/careers/offer?token=sample") },
-  { group:"Recruitment", key:"taskAssignment", label:"Task Assignment", build:()=>taskAssignmentEmail("Nourhan Adel","Content Creator","Write a 100-word Instagram caption for a fictional skincare brand launch, in a warm and inspirational tone.","Jul 30",[{url:"#",name:"brand-brief.pdf"}]) },
+  { group:"Recruitment", key:"taskAssignment", label:"Task Assignment", build:()=>taskAssignmentEmail("Nourhan Adel","Content Creator","Write a 100-word Instagram caption for a fictional skincare brand launch, in a warm and inspirational tone.","Jul 30",[{url:"#",name:"brand-brief.pdf"}],"https://socialflow.admepro.com/careers/task?token=sample") },
 ];
 
 function SystemEmailsPreviewTab() {
@@ -27091,6 +27229,14 @@ Return ONLY the rewritten brief text — no markdown headers, no explanation, no
           ))}
         </div>
       )}
+      {application.task_submitted_at && (
+        <div style={{marginBottom:14,padding:"10px 12px",borderRadius:8,background:"#10b98122",border:"1px solid #10b98155"}}>
+          <p style={{fontSize:13,fontWeight:700,color:"#10b981",marginBottom:4}}>✓ Submitted {fmtDateTime(application.task_submitted_at)}</p>
+          {application.task_submission_url && <a href={application.task_submission_url} target="_blank" rel="noreferrer" style={{fontSize:13,color:"var(--accent)",fontWeight:600,display:"block"}}>📎 View Submitted File</a>}
+          {application.task_submission_link && <a href={application.task_submission_link} target="_blank" rel="noreferrer" style={{fontSize:13,color:"var(--accent)",fontWeight:600,display:"block",wordBreak:"break-all"}}>🔗 {application.task_submission_link}</a>}
+          {application.task_submission_note && <p style={{fontSize:13,color:"var(--text2)",marginTop:6,whiteSpace:"pre-wrap"}}>"{application.task_submission_note}"</p>}
+        </div>
+      )}
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         <Field label="Task Description" hint="AI can rewrite this addressed to the candidate by name and organized into clear points">
           <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
@@ -28151,12 +28297,16 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
     if(!app.candidate_email) return;
     setSendingTaskId(app.id);
     try {
-      const patch = {task_description: description, task_due_date: dueDate||null, task_attachments: JSON.stringify(attachments||[]), task_sent_at: new Date().toISOString()};
+      const token = uid().replace("local_","") + uid().replace("local_","");
+      // Resending clears any prior submission so a stale answer doesn't
+      // linger against a revised task.
+      const patch = {task_description: description, task_due_date: dueDate||null, task_attachments: JSON.stringify(attachments||[]), task_sent_at: new Date().toISOString(), task_token: token, task_submission_url: null, task_submission_link: null, task_submission_note: null, task_submitted_at: null};
       await ue("JobApplication", app.id, patch).catch(()=>{});
       setApplications(prev=>prev.map(a=>a.id===app.id?{...a,...patch}:a));
       setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,...patch}:prev);
       const jobTitle = openings.find(o=>o.id===app.job_opening_id)?.title || app.job_title || "the role";
-      const bodyHtml = taskAssignmentEmail(app.candidate_name, jobTitle, description, dueDate?fmtDate(dueDate):"", attachments);
+      const submitUrl = window.location.origin + "/careers/task?token=" + token;
+      const bodyHtml = taskAssignmentEmail(app.candidate_name, jobTitle, description, dueDate?fmtDate(dueDate):"", attachments, submitUrl);
       const ok = await sendCareersEmail(app.candidate_email, `A quick task for the ${jobTitle} role`, bodyHtml, "Admepro Careers").catch(()=>false);
       logActivity(app.id, ok ? "Task assignment sent" : "Task assignment FAILED to send");
     } finally {
@@ -34252,6 +34402,10 @@ function App() {
   const [offerToken] = useState(()=>{
     try { return window.location.pathname==="/careers/offer" ? new URLSearchParams(window.location.search).get("token") : null; } catch(e) { return null; }
   });
+  // Public task-submission page — socialflow.admepro.com/careers/task?token=...
+  const [taskToken] = useState(()=>{
+    try { return window.location.pathname==="/careers/task" ? new URLSearchParams(window.location.search).get("token") : null; } catch(e) { return null; }
+  });
   // Handle OAuth callback (Supabase redirects back with #access_token=...)
   const [oauthEmail] = useState(()=>{
     try {
@@ -36788,6 +36942,9 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
   }
   if(offerToken) {
     return <OfferResponsePage token={offerToken}/>;
+  }
+  if(taskToken) {
+    return <TaskSubmissionPage token={taskToken}/>;
   }
   if(completeToken) {
     return <CompleteApplicationPage token={completeToken}/>;
