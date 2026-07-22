@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.406";
+const APP_VERSION = "beta 5.407";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6458,7 +6458,10 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                   const val = e.target.value;
                   setCampaignChoice(val);
                   if(val==="__new__") s("campaign","");
-                  else { const p=clientProjects.find(pr=>pr.id===val); s("campaign", p?.title||""); }
+                  else {
+                    const p=clientProjects.find(pr=>pr.id===val);
+                    setF(prev=>({...prev, campaign:p?.title||"", date_from:p?.start_date||prev.date_from, date_to:p?.end_date||prev.date_to}));
+                  }
                 }} style={{...inputSt,marginBottom:8}}>
                   <option value="__new__">+ New Campaign / Project</option>
                   {clientProjects.map(p=><option key={p.id} value={p.id}>{p.title} (add more posts)</option>)}
