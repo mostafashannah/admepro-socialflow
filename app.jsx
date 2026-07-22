@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.420";
+const APP_VERSION = "beta 5.421";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -27033,6 +27033,31 @@ function TaskSection({application, onSend, sending}) {
   };
   const removeFile = (i) => setFiles(prev=>prev.filter((_,idx)=>idx!==i));
 
+  const [enhancing, setEnhancing] = useState(false);
+  const handleEnhance = async () => {
+    if(!description.trim()) return;
+    setEnhancing(true);
+    try {
+      const firstName = (application.candidate_name||"there").split(" ")[0];
+      const aiRes = await agentAI("content_creator", "Enhance task brief", `You are helping a recruiter write a clear, professional task/test assignment brief for a job candidate.
+
+Candidate: ${application.candidate_name||"the candidate"} (first name: ${firstName})
+Role: ${application.job_title||"the role"}
+Current draft brief:
+${description.trim()}
+
+Rewrite this into a well-organized brief that:
+- Opens by addressing ${firstName} directly and warmly
+- Clearly states the task/deliverable
+- Breaks requirements into short bullet points if there's more than one
+- Stays concise and professional, no fluff or filler
+
+Return ONLY the rewritten brief text — no markdown headers, no explanation, no quotes around it.`, 500);
+      setDescription((aiRes||"").trim());
+    } catch(e) { alert("Couldn't enhance the brief right now — please try again."); }
+    setEnhancing(false);
+  };
+
   const handleSend = async () => {
     if(!description.trim()) return;
     setUploading(true);
@@ -27067,8 +27092,13 @@ function TaskSection({application, onSend, sending}) {
         </div>
       )}
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        <Field label="Task Description">
-          <textarea value={description} onChange={e=>setDescription(e.target.value)} rows={4} placeholder="e.g. Write a 100-word Instagram caption for a fictional skincare brand launch." style={inputSt}/>
+        <Field label="Task Description" hint="AI can rewrite this addressed to the candidate by name and organized into clear points">
+          <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+            <textarea value={description} onChange={e=>setDescription(e.target.value)} rows={4} placeholder="e.g. Write a 100-word Instagram caption for a fictional skincare brand launch." style={{...inputSt,flex:1}}/>
+            <Btn variant="secondary" onClick={handleEnhance} disabled={enhancing||!description.trim()} style={{whiteSpace:"nowrap",flexShrink:0}}>
+              {enhancing ? <Spinner size={13}/> : <Ico d={Icons.sparkle} size={13}/>} AI Enhance
+            </Btn>
+          </div>
         </Field>
         <Field label="Due Date" hint="Defaults to 3 working days from today — editable">
           <input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} style={inputSt}/>
