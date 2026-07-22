@@ -1154,7 +1154,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.386";
+const APP_VERSION = "beta 5.387";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16029,7 +16029,7 @@ function InterviewSchedulingPage({token}) {
       notifyRecruitmentUpdate(
         suggesting
           ? `📅 *Interview*: ${application.candidate_name||"A candidate"} (${application.job_title||"role"}) suggested a different time: "${suggestion.trim()}"`
-          : `📅 *Interview*: ${application.candidate_name||"A candidate"} (${application.job_title||"role"}) confirmed: ${fmtDateTime(selectedSlot)}`
+          : `📅 *Interview*: ${application.candidate_name||"A candidate"} (${application.job_title||"role"}) picked: ${fmtDateTime(selectedSlot)} — still needs staff to confirm in the app`
       );
       setDone(true);
     } catch(e) { alert("Something went wrong submitting your response. Please try again."); }
