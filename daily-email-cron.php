@@ -117,7 +117,11 @@ function generate_email_html($es, $member, $posts, $timeLogs, $perfLogs, $accent
     $totalHrs = array_sum(array_map(fn($t) => ($t['duration_minutes'] ?? 0) / 60, $myLogs));
     $myPerfLogs = array_values(array_filter($perfLogs, fn($l) => $l['user_email'] === $memberEmail));
     $avgQ = count($myPerfLogs) ? array_sum(array_column($myPerfLogs, 'quality_score')) / count($myPerfLogs) : 0;
-    $score = min(100, round(count($completed) * 18 + $avgQ * 0.4));
+    // Matches the app's Performance page (computePerformance in app.jsx): a
+    // member with zero PerformanceLog rows has no real quality data yet, so
+    // the score is 0 rather than a completed-tasks-only number that would
+    // disagree with what the system itself shows for that same person.
+    $score = count($myPerfLogs) ? min(100, round(count($completed) * 18 + $avgQ * 0.4)) : 0;
     $today = date('l, F j, Y');
     $firstName = explode(' ', $member['name'])[0];
     $acc = $accent;
@@ -254,9 +258,9 @@ $sentCount = 0;
 foreach ($team as $member) {
     if (!$member['email']) continue;
     $html = generate_email_html($es, $member, $posts, $timeLogs, $perfLogs, $accent, $appName, $tagline, $motiv);
-    [$ok, $raw] = send_via_resend($member['email'], $subject, $html, $es['sender_name'] ?: 'Admepro HR');
+    [$ok, $raw] = send_via_resend($member['email'], $subject, $html, $es['sender_name'] ?: 'SocialFlow');
     $insertLog->execute([
-        ':to' => $member['email'], ':subject' => $subject, ':from_name' => $es['sender_name'] ?: 'Admepro HR',
+        ':to' => $member['email'], ':subject' => $subject, ':from_name' => $es['sender_name'] ?: 'SocialFlow',
         ':status' => $ok ? 'sent' : 'failed', ':error_message' => $ok ? '' : $raw,
         ':sent_at' => $now->format('Y-m-d H:i:s'),
     ]);

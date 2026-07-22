@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.430";
+const APP_VERSION = "beta 5.431";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -2012,7 +2012,7 @@ const SEED = {
     send_time:"18:00",
     timezone:"Africa/Cairo",
     subject:"Your Daily Performance Summary — {date}",
-    sender_name:"Admepro HR",
+    sender_name:"SocialFlow",
     sender_email:"no-reply@admepro.com",
     include_working_hours:true,
     include_completed_tasks:true,
@@ -19905,7 +19905,7 @@ function DailyEmailSettings({emailSettings, onSave, team, posts, timelogs, perfL
   const DEFAULT_ES = {
     enabled:true, send_time:"18:00", timezone:"Africa/Cairo",
     subject:"Your Daily Performance Summary — {date}",
-    sender_name:"Admepro HR", sender_email:"no-reply@admepro.com",
+    sender_name:"SocialFlow", sender_email:"no-reply@admepro.com",
     include_working_hours:true, include_completed_tasks:true,
     include_pending_tasks:true, include_overdue_tasks:true,
     include_metrics:true, include_motivation:true,
@@ -19928,7 +19928,7 @@ function DailyEmailSettings({emailSettings, onSave, team, posts, timelogs, perfL
     const completed=assigned.filter(p=>["published","scheduled"].includes(p.stage));
     const myLogs=perfLogs.filter(l=>l.user_email===m.email);
     const avgQ=myLogs.length?myLogs.reduce((a,l)=>a+(l.quality_score||0),0)/myLogs.length:0;
-    const perfScore=Math.min(100,Math.round(completed.length*18+(avgQ*0.4)));
+    const perfScore=myLogs.length?Math.min(100,Math.round(completed.length*18+(avgQ*0.4))):0;
     return {...m,assigned:assigned.length,completed:completed.length,perfScore};
   });
 
@@ -20058,7 +20058,7 @@ function DailyEmailSettings({emailSettings, onSave, team, posts, timelogs, perfL
           <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:14}}>
             <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}> Email Identity</p>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(260px,100%),1fr))",gap:12}}>
-              <Field label="Sender Name"><input value={es.sender_name} onChange={e=>upd("sender_name",e.target.value)} placeholder="Admepro HR" style={inputSt}/></Field>
+              <Field label="Sender Name"><input value={es.sender_name} onChange={e=>upd("sender_name",e.target.value)} placeholder="SocialFlow" style={inputSt}/></Field>
               <Field label="Sender Email"><input type="email" value={es.sender_email} onChange={e=>upd("sender_email",e.target.value)} placeholder="no-reply@admepro.com" style={inputSt}/></Field>
             </div>
             <Field label="Email Subject">
