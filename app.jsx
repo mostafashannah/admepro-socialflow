@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.409";
+const APP_VERSION = "beta 5.410";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6172,6 +6172,10 @@ function AddCalendarPlanModal({open,onClose,clients,team,posts,projects,preselec
   // starts open only for kinds that already have a count set.
   const [expandedKinds,setExpandedKinds] = useState({static:true});
   const toggleKindOpen = (kind) => setExpandedKinds(prev=>({...prev,[kind]:!prev[kind]}));
+  // Brief textarea starts small but can be enlarged (more rows + a taller
+  // resize handle) when there's a lot to type/read, per kind.
+  const [enlargedBrief,setEnlargedBrief] = useState({});
+  const toggleBriefSize = (kind) => setEnlargedBrief(prev=>({...prev,[kind]:!prev[kind]}));
   const s = (k,v) => setF(p=>({...p,[k]:v}));
   const sk = (kind,key,val) => setF(p=>({...p,kinds:{...p.kinds,[kind]:{...p.kinds[kind],[key]:val}}}));
   const togglePlt = (kind,p) => sk(kind,"platforms", f.kinds[kind].platforms.includes(p) ? f.kinds[kind].platforms.filter(x=>x!==p) : [...f.kinds[kind].platforms,p]);
@@ -6581,10 +6585,15 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                 </Field>
                 <Field label={`${label} Brief`} hint="Goal, tone, key messages for this content type — AI will use this">
                   <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
-                    <textarea value={cfg.brief} onChange={e=>sk(kind,"brief",e.target.value)} rows={2} placeholder="e.g. Ramadan campaign to promote our new product line. Warm, inspirational tone." style={{...inputSt,flex:1}}/>
-                    <Btn variant="secondary" onClick={()=>suggestBrief(kind)} disabled={suggestingBrief[kind]} style={{whiteSpace:"nowrap",flexShrink:0}}>
-                      {suggestingBrief[kind] ? <Spinner size={13}/> : <Ico d={Icons.sparkle} size={13}/>} Sara Suggests
-                    </Btn>
+                    <textarea value={cfg.brief} onChange={e=>sk(kind,"brief",e.target.value)} rows={enlargedBrief[kind]?8:2} placeholder="e.g. Ramadan campaign to promote our new product line. Warm, inspirational tone." style={{...inputSt,flex:1,resize:"vertical",minHeight:enlargedBrief[kind]?160:44}}/>
+                    <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
+                      <Btn variant="secondary" onClick={()=>suggestBrief(kind)} disabled={suggestingBrief[kind]} style={{whiteSpace:"nowrap"}}>
+                        {suggestingBrief[kind] ? <Spinner size={13}/> : <Ico d={Icons.sparkle} size={13}/>} Sara Suggests
+                      </Btn>
+                      <button type="button" onClick={()=>toggleBriefSize(kind)} style={{padding:"6px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:11,fontWeight:700,color:"var(--text2)",cursor:"pointer",whiteSpace:"nowrap"}}>
+                        {enlargedBrief[kind]?"Shrink":"Enlarge"}
+                      </button>
+                    </div>
                   </div>
                 </Field>
                 </>)}
