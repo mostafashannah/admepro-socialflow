@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.413";
+const APP_VERSION = "beta 5.414";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -28469,10 +28469,16 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
               <option value="today_interviews">Today's Interviews</option>
             </select>
             <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-              {(fixMsg||retryMsg||autoAssignMsg||recoverMsg)&&<span style={{fontSize:11,color:"var(--text2)"}}>{fixMsg||retryMsg||autoAssignMsg||recoverMsg}</span>}
-              <button onClick={handleCleanUpApplications} disabled={cleaningUp||fixingEmailApps||retryingAll||autoAssigning} style={{padding:"5px 10px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{fixingEmailApps?"Fixing Email Applications…":retryingAll?"Retrying Stuck AI Reviews…":autoAssigning?"Auto-Assigning…":cleaningUp?"Recovering No-CV Applications…":"Clean Up Applications"}</button>
-              <button onClick={checkBackfillCandidates} disabled={backfillingEmails} style={{padding:"5px 10px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>{backfillMsg||(backfillingEmails?"Sending…":"Send Missed Interview Confirmation Emails")}</button>
-              <button onClick={()=>setHideNoCv(v=>!v)} style={{padding:"5px 10px",borderRadius:99,background:hideNoCv?"var(--accent)":"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:hideNoCv?"#fff":"var(--text2)",cursor:"pointer"}}>{hideNoCv?"Showing With CV Only":"Hide No-CV"}</button>
+              {(fixMsg||retryMsg||autoAssignMsg||recoverMsg||backfillMsg)&&<span style={{fontSize:11,color:"var(--text2)"}}>{fixMsg||retryMsg||autoAssignMsg||recoverMsg||backfillMsg}</span>}
+              <button onClick={handleCleanUpApplications} disabled={cleaningUp||fixingEmailApps||retryingAll||autoAssigning} title={fixingEmailApps?"Fixing Email Applications…":retryingAll?"Retrying Stuck AI Reviews…":autoAssigning?"Auto-Assigning…":cleaningUp?"Recovering No-CV Applications…":"Clean Up Applications"} style={{width:30,height:30,borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                {(cleaningUp||fixingEmailApps||retryingAll||autoAssigning)?<Spinner size={13}/>:<Ico d={Icons.refresh} size={14}/>}
+              </button>
+              <button onClick={checkBackfillCandidates} disabled={backfillingEmails} title="Send Missed Interview Confirmation Emails" style={{width:30,height:30,borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text2)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                {backfillingEmails?<Spinner size={13}/>:<Ico d={Icons.send} size={14}/>}
+              </button>
+              <button onClick={()=>setHideNoCv(v=>!v)} title={hideNoCv?"Showing With CV Only":"Hide No-CV"} style={{width:30,height:30,borderRadius:99,background:hideNoCv?"var(--accent)":"var(--surface2)",border:"1px solid var(--border2)",color:hideNoCv?"#fff":"var(--text2)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <Ico d={Icons.eye} size={14} stroke={hideNoCv?"#fff":"var(--text2)"}/>
+              </button>
             </div>
           </div>
           {backfillCandidates!==null && (
