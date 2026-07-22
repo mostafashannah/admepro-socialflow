@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.428";
+const APP_VERSION = "beta 5.429";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -21130,15 +21130,23 @@ function parseEgyptianNationalId(id) {
 // card via Claude's vision — used both right after uploading an ID photo
 // (auto-fill) and via the manual "Read from ID Photo" button. Returns the
 // digit string, or null if nothing readable was found.
+// Converts Eastern Arabic-Indic digits (٠١٢٣٤٥٦٧٨٩) to plain Western digits
+// — Egyptian ID cards are in Arabic and sometimes print the ID number using
+// these instead of 0-9, and a plain \D strip silently drops them instead of
+// converting them, which is what was actually causing "unreadable" results.
+function arabicIndicToWesternDigits(str) {
+  const map = {"٠":"0","١":"1","٢":"2","٣":"3","٤":"4","٥":"5","٦":"6","٧":"7","٨":"8","٩":"9"};
+  return (str||"").replace(/[٠-٩]/g, ch=>map[ch]??ch);
+}
 async function extractNationalIdFromPhoto(photoUrl) {
   if(!photoUrl) return null;
   try {
-    const aiRes = await agentAI("content_creator", "Read national ID number", `This image is an Egyptian national ID card. Read the 14-digit national ID number printed on it exactly as shown (digits only, no spaces or dashes).
+    const aiRes = await agentAI("content_creator", "Read national ID number", `This image is an Egyptian national ID card, printed in Arabic. Read the 14-digit national ID number printed on it exactly as shown. The card may print the number using Eastern Arabic-Indic numerals (٠١٢٣٤٥٦٧٨٩) instead of Western digits — if so, convert each digit to its Western 0-9 equivalent in your answer. Output only Western digits, no spaces or dashes.
 
-Return ONLY valid JSON: {"national_id":"14 digit number, or empty string if unreadable"}`, 200, photoUrl);
+Return ONLY valid JSON: {"national_id":"14 digit number using Western 0-9 digits, or empty string if unreadable"}`, 200, photoUrl);
     const match = aiRes.match(/\{[\s\S]*\}/);
     const parsed = JSON.parse(match ? match[0] : aiRes);
-    const digits = (parsed.national_id||"").replace(/\D/g,"");
+    const digits = arabicIndicToWesternDigits(parsed.national_id||"").replace(/\D/g,"");
     return digits.length===14 ? digits : null;
   } catch(e) { return null; }
 }
