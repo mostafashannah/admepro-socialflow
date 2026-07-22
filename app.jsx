@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.418";
+const APP_VERSION = "beta 5.419";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16132,7 +16132,11 @@ function interviewConfirmedEmail(candidateName, jobTitle, slotLabel) {
 }
 
 function interviewProposedEmail(candidateName, jobTitle, slots, pickUrl, isReschedule, previousConfirmedSlotLabel) {
-  const slotsHtml = (slots||[]).map(s=>`<li>${fmtDateTime(s)}</li>`).join("");
+  // Slots can be a real picked datetime OR free text from a flexible-window
+  // quick template (e.g. "1pm-6pm, any time works") — fmtDateTime() chokes
+  // on the latter and renders "Invalid Date", so use the same dual-format
+  // helper the in-app "sent times" list already uses.
+  const slotsHtml = (slots||[]).map(s=>`<li>${fmtDateOrText(s)}</li>`).join("");
   const introText = isReschedule
     ? `We're sorry, but we need to reschedule your interview for the ${jobTitle} position${previousConfirmedSlotLabel?` (originally confirmed for ${previousConfirmedSlotLabel})`:""}. Here are some new times that work for us:`
     : `We'd love to schedule an interview with you for the ${jobTitle} position. Here are a few times that work for us:`;
@@ -16430,14 +16434,14 @@ function InterviewSchedulingPage({token}) {
         ? {interview_candidate_note: suggestion.trim(), interview_selected_slot: null}
         : {interview_selected_slot: selectedSlot, interview_candidate_note: null, interview_confirmed_slot: selectedSlot, status: "interview"};
       await ue("JobApplication", application.id, patch);
-      logApplicationActivity(application.id, suggesting ? "Candidate suggested a different interview time" : `Interview confirmed — candidate picked: ${fmtDateTime(selectedSlot)}`, application.candidate_name||"Candidate");
+      logApplicationActivity(application.id, suggesting ? "Candidate suggested a different interview time" : `Interview confirmed — candidate picked: ${fmtDateOrText(selectedSlot)}`, application.candidate_name||"Candidate");
       notifyRecruitmentUpdate(
         suggesting
           ? `📅 *Interview*: ${application.candidate_name||"A candidate"} (${application.job_title||"role"}) suggested a different time: "${suggestion.trim()}"`
-          : `📅 *Interview*: ${application.candidate_name||"A candidate"} (${application.job_title||"role"}) confirmed: ${fmtDateTime(selectedSlot)}`
+          : `📅 *Interview*: ${application.candidate_name||"A candidate"} (${application.job_title||"role"}) confirmed: ${fmtDateOrText(selectedSlot)}`
       );
       if(!suggesting && application.candidate_email) {
-        const slotLabel = fmtDateTime(selectedSlot);
+        const slotLabel = fmtDateOrText(selectedSlot);
         const jobTitle = application.job_title || "the role";
         const bodyHtml = interviewConfirmedEmail(application.candidate_name, jobTitle, slotLabel);
         const ok = await sendCareersEmail(application.candidate_email, `Interview confirmed — ${jobTitle}`, bodyHtml, "Admepro Careers").catch(()=>false);
@@ -16483,7 +16487,7 @@ function InterviewSchedulingPage({token}) {
               {slots.map(slot=>(
                 <label key={slot} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",borderRadius:12,border:`1px solid ${selectedSlot===slot?"#d90b2c":(isDark?"#252b38":"#eee")}`,background:selectedSlot===slot?(isDark?"#d90b2c22":"#d90b2c11"):"transparent",cursor:"pointer"}}>
                   <input type="radio" name="slot" checked={selectedSlot===slot} onChange={()=>setSelectedSlot(slot)}/>
-                  <span style={{fontSize:14,fontWeight:600,color:isDark?"#fff":"#111"}}>{fmtDateTime(slot)}</span>
+                  <span style={{fontSize:14,fontWeight:600,color:isDark?"#fff":"#111"}}>{fmtDateOrText(slot)}</span>
                 </label>
               ))}
             </div>
