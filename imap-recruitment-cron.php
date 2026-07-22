@@ -49,6 +49,7 @@ ini_set('memory_limit', '1536M');
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/recruitment-mail-lib.php';
+require_once __DIR__ . '/pro-lib.php'; // sendWhatsAppReply() — used to alert admin about a candidate's reschedule reply
 
 $autoload = __DIR__ . '/vendor/autoload.php';
 if (!file_exists($autoload)) {
@@ -431,8 +432,37 @@ foreach ($messages as $message) {
         // an existing email thread — either our own confirmation being
         // replied to, or back-and-forth conversation — never a fresh
         // application, even if it happens to have an attachment or a
-        // matching subject. Skip it outright.
+        // matching subject. Before skipping it outright, check whether this
+        // is a candidate with a CONFIRMED interview replying to ask for a
+        // different time — that's actionable even though it's not a new
+        // application, so alert the admin instead of silently dropping it.
         if (preg_match('/^\s*(re|fwd?)\s*:/i', $subject)) {
+            $rescheduleWords = '/\b(resched|different time|another time|change (the )?(time|date)|can\'?t make it|conflict|postpone|push (it |the interview )?back|move (it |the interview )?to|earlier|later)\b/i';
+            if (preg_match($rescheduleWords, $bodyText)) {
+                $confirmedStmt = $pdo->prepare("SELECT id, candidate_name, job_title, interview_confirmed_slot FROM job_applications WHERE candidate_email = :e AND interview_confirmed_slot IS NOT NULL AND interview_confirmed_slot <> '' ORDER BY created_at DESC LIMIT 1");
+                $confirmedStmt->execute([':e' => $candidateEmail]);
+                $confirmedApp = $confirmedStmt->fetch(PDO::FETCH_ASSOC);
+                if ($confirmedApp) {
+                    $snippet = trim(preg_replace('/\s+/', ' ', substr($bodyText, 0, 300)));
+                    log_activity($pdo, $confirmedApp['id'], "Candidate emailed asking to change the interview time: \"{$snippet}\"");
+
+                    $adminStmt = $pdo->prepare("SELECT email, whatsapp_number FROM team_members WHERE role = 'admin' AND whatsapp_number IS NOT NULL AND whatsapp_number <> '' LIMIT 5");
+                    $adminStmt->execute();
+                    $admins = $adminStmt->fetchAll(PDO::FETCH_ASSOC);
+                    $alertMsg = "📧 {$confirmedApp['candidate_name']} ({$confirmedApp['job_title']}) emailed asking to change their confirmed interview time ({$confirmedApp['interview_confirmed_slot']}):\n\"{$snippet}\"\n\nOpen Recruitment to propose new times.";
+                    foreach ($admins as $admin) {
+                        if (!empty($admin['whatsapp_number'])) sendWhatsAppReply($admin['whatsapp_number'], $alertMsg);
+                        if (!empty($admin['email'])) {
+                            $notif = $pdo->prepare("INSERT INTO notifications (id, recipient_email, title, message, type, is_read, link_type, link_id) VALUES (:id, :email, :title, :msg, 'info', 0, 'page', 'recruitment')");
+                            $notif->execute([
+                                ':id' => generateProUuid(), ':email' => $admin['email'],
+                                ':title' => 'Candidate wants to reschedule',
+                                ':msg' => "{$confirmedApp['candidate_name']} emailed asking to change their confirmed interview time.",
+                            ]);
+                        }
+                    }
+                }
+            }
             $message->setFlag('Seen');
             continue;
         }
