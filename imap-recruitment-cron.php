@@ -446,11 +446,16 @@ foreach ($messages as $message) {
                     $snippet = trim(preg_replace('/\s+/', ' ', substr($bodyText, 0, 300)));
                     log_activity($pdo, $confirmedApp['id'], "Candidate emailed asking to change the interview time: \"{$snippet}\"");
 
-                    $adminStmt = $pdo->prepare("SELECT email, whatsapp_number FROM team_members WHERE role = 'admin' LIMIT 5");
+                    // Left-joins each admin's notification_prefs so their own
+                    // "Candidate wants to reschedule" toggle (Settings ->
+                    // Account -> Notifications -> Recruitment) is respected —
+                    // a NULL row (no prefs saved yet) defaults to enabled.
+                    $adminStmt = $pdo->prepare("SELECT tm.email, tm.whatsapp_number, np.all_disabled, np.recruitment_reschedule_request FROM team_members tm LEFT JOIN notification_prefs np ON np.user_email = tm.email WHERE tm.role = 'admin' LIMIT 5");
                     $adminStmt->execute();
                     $admins = $adminStmt->fetchAll(PDO::FETCH_ASSOC);
                     $alertMsg = "📧 {$confirmedApp['candidate_name']} ({$confirmedApp['job_title']}) emailed asking to change their confirmed interview time ({$confirmedApp['interview_confirmed_slot']}):\n\"{$snippet}\"\n\nOpen Recruitment to propose new times.";
                     foreach ($admins as $admin) {
+                        if (!empty($admin['all_disabled']) || $admin['recruitment_reschedule_request'] === '0') continue;
                         if (!empty($admin['whatsapp_number'])) sendWhatsAppReply($admin['whatsapp_number'], $alertMsg);
                         if (!empty($admin['email'])) {
                             $notif = $pdo->prepare("INSERT INTO notifications (id, recipient_email, title, message, type, is_read, link_type, link_id) VALUES (:id, :email, :title, :msg, 'info', 0, 'job_application', :appid)");

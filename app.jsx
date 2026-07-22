@@ -576,7 +576,7 @@ const SB_SCHEMA = {
   // "digest_time" field the notification_prefs table never actually had —
   // an UPDATE/INSERT including it errored out at the SQL level, so every
   // single notification-prefs save was silently failing.
-  notification_prefs: ["user_email","all_disabled","mentions_only","daily_digest","task_assigned","task_stage_changed","task_due_soon","task_overdue","task_mention","task_comment","project_created","project_task_added","project_deadline_updated","post_approved","post_rejected","client_approval_required","invoice_created","payment_received","subscription_renewal","user_invited","access_approved","access_rejected","permissions_updated"],
+  notification_prefs: ["user_email","all_disabled","mentions_only","daily_digest","task_assigned","task_stage_changed","task_due_soon","task_overdue","task_mention","task_comment","project_created","project_task_added","project_deadline_updated","post_approved","post_rejected","client_approval_required","invoice_created","payment_received","subscription_renewal","user_invited","access_approved","access_rejected","permissions_updated","recruitment_new_application","recruitment_task_submitted","recruitment_reschedule_request"],
   customer_messages: ["client_id","client_name","channel","customer_id","customer_name","direction","message_text","sent_by","thread_status","draft_status","external_id"],
   reply_bot_settings: ["client_id","client_name","enabled","mode","channels","tone","brain","dont_do","fallback_message","updated_by"],
   pro_chat_sessions: ["user_email","client_id","title","messages","shared_with","is_shared_copy"],
@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.423";
+const APP_VERSION = "beta 5.424";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1565,6 +1565,10 @@ const DEFAULT_NOTIF_PREFS = {
   access_approved: true,
   access_rejected: true,
   permissions_updated: true,
+  // Recruitment events (admin/HR only)
+  recruitment_new_application: true,
+  recruitment_task_submitted: true,
+  recruitment_reschedule_request: true,
   // Digest
   daily_digest: true,
   digest_time: "08:00",
@@ -16706,14 +16710,19 @@ function TaskSubmissionPage({token}) {
       };
       await ue("JobApplication", application.id, patch);
       logApplicationActivity(application.id, "Candidate submitted their task", application.candidate_name||"Candidate");
-      notifyRecruitmentUpdate(`✅ *Task submitted*: ${application.candidate_name||"A candidate"} (${application.job_title||"role"}) submitted their task${note.trim()?`:\n"${note.trim().slice(0,300)}"`:"."}`);
-      // No app state to read admin emails from on this public page — look
-      // them up directly, same as CareersPage's new-application notify.
+      // No app state to read admin prefs from on this public page — look
+      // them up directly, same as CareersPage's new-application notify, and
+      // respect each admin's own toggle for this event (Settings → Account
+      // → Notifications → Recruitment) rather than blasting everyone.
       try {
-        const teamRes = await qe("TeamMember",{},null,500);
+        const [teamRes, npRes] = await Promise.all([qe("TeamMember",{},null,500), qe("NotificationPrefs")]);
         const admins = (teamRes?.entities||[]).filter(m=>m.role==="admin");
+        const message = `✅ *Task submitted*: ${application.candidate_name||"A candidate"} (${application.job_title||"role"}) submitted their task${note.trim()?`:\n"${note.trim().slice(0,300)}"`:"."}`;
         for(const admin of admins) {
+          const prefs = (npRes?.entities||[]).find(p=>p.user_email===admin.email);
+          if(prefs?.all_disabled || prefs?.recruitment_task_submitted===false) continue;
           ce("Notification",[{recipient_email:admin.email, title:"Task submitted", message:`${application.candidate_name||"A candidate"} submitted their task for ${application.job_title||"a role"}.`, type:"info", is_read:false, link_type:"job_application", link_id:application.id}]).catch(()=>{});
+          if(admin.whatsapp_number) sendWhatsApp(admin.whatsapp_number, message).catch(()=>{});
         }
       } catch(e) {}
       setDone(true);
@@ -16933,19 +16942,19 @@ function CareersPage({appSettings}) {
       if(created?.id) {
         (async () => {
           try {
-            const [teamRes, rpRes] = await Promise.all([qe("TeamMember",{},null,500), qe("RolePermission")]);
+            const [teamRes, rpRes, npRes] = await Promise.all([qe("TeamMember",{},null,500), qe("RolePermission"), qe("NotificationPrefs")]);
             const rpMap = buildRolePermsMap(rpRes?.entities||[]);
             const recruiters = (teamRes?.entities||[]).filter(m=>m.role==="admin"||hasPerm(m, rpMap, "hr.manage_recruitment"));
             const candidateLabel = `${form.name.trim()}'s application (${selected.title})`;
             for(const staffer of recruiters) {
+              const prefs = (npRes?.entities||[]).find(p=>p.user_email===staffer.email);
+              if(prefs?.all_disabled) continue;
               const notifPayload = {recipient_email:staffer.email, title:"New job application", message:`${form.name.trim()} just applied for "${selected.title}"`, type:"comment", is_read:false, link_type:"job_application", link_id:created.id};
               ce("Notification",[notifPayload]).catch(()=>{});
-              // No access to this staffer's saved notif prefs from an
-              // unauthenticated page — sendNotification() defaults to "on".
-              sendNotification("task_comment", staffer.email,
+              sendNotification("recruitment_new_application", staffer.email,
                 `[SocialFlow] New application: ${selected.title}`,
                 EMAIL_TEMPLATES.commentAdded(staffer.name, form.name.trim(), candidateLabel, "New application received — review it in Recruitment.", ""),
-                null
+                prefs
               ).catch(()=>{});
             }
           } catch(e) {}
@@ -21496,7 +21505,7 @@ function ProfilePhoto({photoUrl, name, role, size=56, onClick}) {
 // ════════════════════════════════════════════════════════════════
 // MY ACCOUNT PAGE
 // ════════════════════════════════════════════════════════════════
-function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange, wallpaper, notifPrefs, onSaveNotifPrefs}) {
+function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange, wallpaper, notifPrefs, onSaveNotifPrefs, rolePermsMap}) {
   const [tab, setTab] = usePersistentState("sf_tab_account","profile");
   const [form, setForm] = useState({
     display_name: userProfile?.display_name || currentUser?.name || "",
@@ -21739,7 +21748,7 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
       )}
 
       {/* ─── NOTIFICATIONS TAB ─── */}
-      {tab==="notifications"&&<NotificationPrefsTab notifPrefs={notifPrefs} onSaveNotifPrefs={onSaveNotifPrefs} currentUser={currentUser}/>}
+      {tab==="notifications"&&<NotificationPrefsTab notifPrefs={notifPrefs} onSaveNotifPrefs={onSaveNotifPrefs} currentUser={currentUser} rolePermsMap={rolePermsMap}/>}
     </div>
   );
 }
@@ -21748,7 +21757,7 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
 // consistent order — an IIFE calling useState conditionally inside
 // AccountPage's own render (only when tab==="notifications") violates the
 // rules of hooks and threw "Minified React error #310" when switching tabs.
-function NotificationPrefsTab({notifPrefs, onSaveNotifPrefs, currentUser}) {
+function NotificationPrefsTab({notifPrefs, onSaveNotifPrefs, currentUser, rolePermsMap}) {
         const [prefs, setPrefs] = React.useState({...DEFAULT_NOTIF_PREFS,...(notifPrefs||{})});
         const [nsaving, setNSaving] = React.useState(false);
         const [nsaved, setNSaved] = React.useState(false);
@@ -21851,6 +21860,20 @@ function NotificationPrefsTab({notifPrefs, onSaveNotifPrefs, currentUser}) {
                   {k:"invoice_created", label:"New invoice created", desc:"Alert when a new invoice is generated"},
                   {k:"payment_received", label:"Payment received", desc:"Alert when a payment is recorded"},
                   {k:"subscription_renewal",label:"Subscription renewal", desc:"Reminder 7 days before a subscription renews"},
+                ].map(r=><Row key={r.k} {...r} disabled={prefs.all_disabled||prefs.mentions_only}/>)}
+              </div>
+            )}
+
+            {/* Recruitment notifications — admin / hr.manage_recruitment only.
+                Controls both the email AND the WhatsApp + in-app ping these
+                events send, since all three go out together. */}
+            {(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.manage_recruitment"))&&(
+              <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:0}}>
+                <SectionHead title="Recruitment Notifications" color="#8b5cf6"/>
+                {[
+                  {k:"recruitment_new_application", label:"New job application", desc:"Alert when a candidate applies for an open role"},
+                  {k:"recruitment_task_submitted", label:"Candidate submitted a task", desc:"Alert when a candidate submits their test assignment"},
+                  {k:"recruitment_reschedule_request", label:"Candidate wants to reschedule", desc:"Alert when a candidate emails asking to change their interview time"},
                 ].map(r=><Row key={r.k} {...r} disabled={prefs.all_disabled||prefs.mentions_only}/>)}
               </div>
             )}
@@ -37474,6 +37497,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             onWallpaperChange={handleWallpaperChange}
             notifPrefs={getNotifPrefs(currentUser?.email)}
             onSaveNotifPrefs={saveNotifPrefs}
+            rolePermsMap={rolePermsMap}
           />
         )}
         {page==="settings"&&currentUser?.role==="admin"&&(
