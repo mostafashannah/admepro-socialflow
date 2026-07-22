@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.408";
+const APP_VERSION = "beta 5.409";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6178,7 +6178,7 @@ function AddCalendarPlanModal({open,onClose,clients,team,posts,projects,preselec
   const activeKinds = CALENDAR_KIND_DEFS.map(([k])=>k).filter(k=>f.kinds[k].count>0);
   const totalCount = activeKinds.reduce((sum,k)=>sum+f.kinds[k].count,0);
   const allPlatformsUsed = [...new Set(activeKinds.flatMap(k=>f.kinds[k].platforms))];
-  const canGenerate = f.client_id && f.campaign && f.date_from && f.date_to && totalCount>0 && activeKinds.every(k=>f.kinds[k].platforms.length>0);
+  const canGenerate = f.client_id && f.campaign && f.date_from && f.date_to && f.date_to>f.date_from && totalCount>0 && activeKinds.every(k=>f.kinds[k].platforms.length>0);
 
   // When preselectedClient changes, update form
   useEffect(()=>{
@@ -6480,9 +6480,12 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
               <input type="date" value={f.date_from} onChange={e=>s("date_from",e.target.value)} style={inputSt}/>
             </Field>
             <Field label="Publishing End Date" required>
-              <input type="date" value={f.date_to} onChange={e=>s("date_to",e.target.value)} style={inputSt}/>
+              <input type="date" value={f.date_to} min={f.date_from||undefined} onChange={e=>s("date_to",e.target.value)} style={inputSt}/>
             </Field>
           </div>
+          {f.date_from && f.date_to && f.date_to<=f.date_from && (
+            <p style={{fontSize:12,color:"#ef4444",fontWeight:600,marginTop:-8}}>Publishing End Date must be after the Start Date.</p>
+          )}
 
           {/* Per-content-type: count, platforms, assignee, brief — each independent */}
           {CALENDAR_KIND_DEFS.map(([kind,label,hint])=>{
