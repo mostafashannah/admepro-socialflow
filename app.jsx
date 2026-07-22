@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.417";
+const APP_VERSION = "beta 5.418";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16140,6 +16140,7 @@ function interviewProposedEmail(candidateName, jobTitle, slots, pickUrl, isResch
     <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Hi ${candidateName||"there"},</h2>
     <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">${introText}</p>
     <ul style="margin:0 0 16px;padding-left:18px;font-size:14px;line-height:1.8;color:#4b5563">${slotsHtml}</ul>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">📍 The interview will take place at our office: <a href="https://maps.app.goo.gl/ucJfFhpLMmozAfPA8" style="color:#d90b2c;text-decoration:none;font-weight:600">145 El Banafsig 3, New Cairo, Cairo</a></p>
     <p style="margin:0 0 20px"><a href="${pickUrl}" style="display:inline-block;padding:12px 24px;background:#d90b2c;color:#ffffff;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none">Pick a Time</a></p>
     <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">If none of these work, the link lets you suggest a time that does.</p>
     <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
