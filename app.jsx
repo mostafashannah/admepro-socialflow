@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.416";
+const APP_VERSION = "beta 5.417";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16114,6 +16114,91 @@ function applicationReceivedEmail(candidateName, jobTitle, message) {
 </body></html>`;
 }
 
+// The following recruitment email builders are shared between the real send
+// sites (RecruitmentPage handlers, InterviewSchedulingPage) and the "All
+// System Emails" preview gallery (SYSTEM_EMAIL_SAMPLES) — one source of
+// truth so the preview always matches exactly what actually goes out.
+
+function interviewConfirmedEmail(candidateName, jobTitle, slotLabel) {
+  return `
+    <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Hi ${candidateName||"there"},</h2>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Your interview for the ${jobTitle} position is confirmed for <strong>${slotLabel}</strong>. We look forward to speaking with you!</p>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">📍 The interview will take place at our office: <a href="https://maps.app.goo.gl/ucJfFhpLMmozAfPA8" style="color:#d90b2c;text-decoration:none;font-weight:600">145 El Banafsig 3, New Cairo, Cairo</a></p>
+    <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
+      <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
+      <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
+      <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
+    </td></tr></table>`;
+}
+
+function interviewProposedEmail(candidateName, jobTitle, slots, pickUrl, isReschedule, previousConfirmedSlotLabel) {
+  const slotsHtml = (slots||[]).map(s=>`<li>${fmtDateTime(s)}</li>`).join("");
+  const introText = isReschedule
+    ? `We're sorry, but we need to reschedule your interview for the ${jobTitle} position${previousConfirmedSlotLabel?` (originally confirmed for ${previousConfirmedSlotLabel})`:""}. Here are some new times that work for us:`
+    : `We'd love to schedule an interview with you for the ${jobTitle} position. Here are a few times that work for us:`;
+  return `
+    <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Hi ${candidateName||"there"},</h2>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">${introText}</p>
+    <ul style="margin:0 0 16px;padding-left:18px;font-size:14px;line-height:1.8;color:#4b5563">${slotsHtml}</ul>
+    <p style="margin:0 0 20px"><a href="${pickUrl}" style="display:inline-block;padding:12px 24px;background:#d90b2c;color:#ffffff;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none">Pick a Time</a></p>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">If none of these work, the link lets you suggest a time that does.</p>
+    <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
+      <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
+      <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
+      <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
+    </td></tr></table>`;
+}
+
+function completeApplicationEmail(candidateName, intro, missingList, completeUrl) {
+  const missingListHtml = (missingList||[]).length
+    ? `<ul style="margin:0 0 16px;padding-left:18px;font-size:14px;line-height:1.8;color:#4b5563">${missingList.map(m=>`<li>${m}</li>`).join("")}</ul>`
+    : "";
+  return `
+    <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Hi ${candidateName||"there"},</h2>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">${intro}</p>
+    ${missingListHtml}
+    <p style="margin:0 0 20px"><a href="${completeUrl}" style="display:inline-block;padding:12px 24px;background:#d90b2c;color:#ffffff;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none">Complete My Application</a></p>
+    <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
+      <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
+      <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
+      <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
+    </td></tr></table>`;
+}
+
+function offerSentEmail(candidateName, form, offerUrl) {
+  const laptopLine = form.laptop_provided==="company" ? "We'll set you up with a company laptop, ready to go from day one."
+    : form.laptop_provided==="personal" ? "This role works with your own personal laptop."
+    : "";
+  const offerRow = (label,value) => `
+    <tr>
+      <td style="padding:12px 16px;border-bottom:1px solid #f1f1f3;font-size:13px;color:#6b7280">${label}</td>
+      <td style="padding:12px 16px;border-bottom:1px solid #f1f1f3;font-size:14px;font-weight:800;color:#111827;text-align:right">${value}</td>
+    </tr>`;
+  return `
+    <div style="background:linear-gradient(135deg,#d90b2c,#a80822);border-radius:16px;padding:28px 32px;margin-bottom:24px;text-align:center">
+      <h1 style="margin:0 0 6px;font-size:22px;font-weight:800;color:#ffffff">Congratulations, ${candidateName||"there"}!</h1>
+      <p style="margin:0;font-size:14px;color:#ffe0e5">You're one step away from joining the Admepro team as <strong>${form.title||"our newest hire"}</strong></p>
+    </div>
+    <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563">We loved getting to know you through the process, and we're excited to bring you on board. Here's what we're offering:</p>
+    <table width="100%" style="border-collapse:collapse;margin:0 0 20px;border:1px solid #f1f1f3;border-radius:12px;overflow:hidden">
+      ${offerRow("Salary (probation period)", form.salary||"—")}
+      ${offerRow("Probation period", `${form.probation_months||0} month(s)`)}
+      ${offerRow("Salary after probation", form.post_probation_salary||"—")}
+      ${offerRow("Start date", form.start_date?fmtDate(form.start_date):"—")}
+      ${offerRow("Annual vacation", `${form.vacation_days_annual||0} days/year`)}
+      ${offerRow("Work from home", `${form.wfh_days_monthly||0} days/month`)}
+    </table>
+    ${laptopLine?`<p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563">${laptopLine}</p>`:""}
+    ${form.notes?.trim()?`<p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563">${form.notes.trim().replace(/</g,"&lt;")}</p>`:""}
+    <p style="margin:0 0 20px;text-align:center"><a href="${offerUrl}" style="display:inline-block;padding:14px 32px;background:#d90b2c;color:#ffffff;border-radius:10px;font-weight:800;font-size:15px;text-decoration:none">Respond to This Offer</a></p>
+    <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563;text-align:center">Accept, decline, or let us know if you'd like to talk through any of the terms — we're happy to chat.</p>
+    <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
+      <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
+      <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
+      <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
+    </td></tr></table>`;
+}
+
 // Short public form for email-captured applications missing required
 // fields (CV, phone, salary expectations, join date, etc) — reached via
 // the one-time link in the "complete your application" email sent by
@@ -16353,15 +16438,7 @@ function InterviewSchedulingPage({token}) {
       if(!suggesting && application.candidate_email) {
         const slotLabel = fmtDateTime(selectedSlot);
         const jobTitle = application.job_title || "the role";
-        const bodyHtml = `
-          <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Hi ${application.candidate_name||"there"},</h2>
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Your interview for the ${jobTitle} position is confirmed for <strong>${slotLabel}</strong>. We look forward to speaking with you!</p>
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">📍 The interview will take place at our office: <a href="https://maps.app.goo.gl/ucJfFhpLMmozAfPA8" style="color:#d90b2c;text-decoration:none;font-weight:600">145 El Banafsig 3, New Cairo, Cairo</a></p>
-          <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
-            <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
-            <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
-            <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
-          </td></tr></table>`;
+        const bodyHtml = interviewConfirmedEmail(application.candidate_name, jobTitle, slotLabel);
         const ok = await sendCareersEmail(application.candidate_email, `Interview confirmed — ${jobTitle}`, bodyHtml, "Admepro Careers").catch(()=>false);
         logApplicationActivity(application.id, ok ? "Interview confirmation email sent" : "Interview confirmation email FAILED to send", "System");
       }
@@ -19304,6 +19381,12 @@ const SYSTEM_EMAIL_SAMPLES = [
       [{title:"Product Launch Teaser",client_name:"Urban Fitness"}],
       [{title:"Weekly Recap Post",client_name:"Al Mousa Group"}],
       [{title:"Behind the Scenes Story",client_name:"Al Mousa Group"}]) },
+  { group:"Recruitment", key:"applicationReceived", label:"Application Received", build:()=>applicationReceivedEmail("Nourhan Adel","Content Creator") },
+  { group:"Recruitment", key:"completeApplication", label:"Complete Your Application", build:()=>completeApplicationEmail("Nourhan Adel","Thanks for applying! To finish reviewing your application, could you fill in a few more details:",["CV / Resume","Expected Salary","Available Start Date"],"https://socialflow.admepro.com/careers/complete?token=sample") },
+  { group:"Recruitment", key:"interviewProposed", label:"Interview Times Proposed", build:()=>interviewProposedEmail("Nourhan Adel","Content Creator",["2026-07-27T13:00:00","2026-07-28T15:30:00"],"https://socialflow.admepro.com/careers/interview?token=sample",false,"") },
+  { group:"Recruitment", key:"interviewRescheduled", label:"Interview Rescheduled", build:()=>interviewProposedEmail("Nourhan Adel","Content Creator",["2026-08-02T13:00:00","2026-08-03T15:30:00"],"https://socialflow.admepro.com/careers/interview?token=sample",true,"Jul 27 at 1:00 PM") },
+  { group:"Recruitment", key:"interviewConfirmed", label:"Interview Confirmed", build:()=>interviewConfirmedEmail("Nourhan Adel","Content Creator","Jul 27 at 1:00 PM") },
+  { group:"Recruitment", key:"offerSent", label:"Job Offer", build:()=>offerSentEmail("Nourhan Adel",{title:"Content Creator",salary:"12,000 EGP",probation_months:"3",post_probation_salary:"15,000 EGP",start_date:"2026-08-15",vacation_days_annual:"21",wfh_days_monthly:"4",laptop_provided:"company",notes:""},"https://socialflow.admepro.com/careers/offer?token=sample") },
 ];
 
 function SystemEmailsPreviewTab() {
@@ -27829,19 +27912,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
       const introRaw = settings.completion_message || "Thanks for applying! To finish reviewing your application, could you fill in a few more details:";
       const jobTitle = openings.find(o=>o.id===app.job_opening_id)?.title || "";
       const intro = introRaw.replace("{{job}}", jobTitle);
-      const missingListHtml = missingList.length
-        ? `<ul style="margin:0 0 16px;padding-left:18px;font-size:14px;line-height:1.8;color:#4b5563">${missingList.map(m=>`<li>${m}</li>`).join("")}</ul>`
-        : "";
-      const bodyHtml = `
-        <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Hi ${app.candidate_name||"there"},</h2>
-        <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">${intro}</p>
-        ${missingListHtml}
-        <p style="margin:0 0 20px"><a href="${completeUrl}" style="display:inline-block;padding:12px 24px;background:#d90b2c;color:#ffffff;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none">Complete My Application</a></p>
-        <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
-          <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
-          <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
-          <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
-        </td></tr></table>`;
+      const bodyHtml = completeApplicationEmail(app.candidate_name, intro, missingList, completeUrl);
       const ok = await sendCareersEmail(app.candidate_email, subject, bodyHtml, settings.confirmation_from_name||"Admepro Careers").catch(()=>false);
       logActivity(app.id, ok ? "Complete-your-application email sent (manual)" : "Complete-your-application email FAILED to send");
     } finally {
@@ -27867,21 +27938,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
       setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,...patch}:prev);
       const pickUrl = window.location.origin + "/careers/interview?token=" + token;
       const jobTitle = openings.find(o=>o.id===app.job_opening_id)?.title || app.job_title || "the role";
-      const slotsHtml = slots.map(s=>`<li>${fmtDateTime(s)}</li>`).join("");
-      const introText = isReschedule
-        ? `We're sorry, but we need to reschedule your interview for the ${jobTitle} position${app.interview_confirmed_slot?` (originally confirmed for ${fmtDateOrText(app.interview_confirmed_slot)})`:""}. Here are some new times that work for us:`
-        : `We'd love to schedule an interview with you for the ${jobTitle} position. Here are a few times that work for us:`;
-      const bodyHtml = `
-        <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Hi ${app.candidate_name||"there"},</h2>
-        <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">${introText}</p>
-        <ul style="margin:0 0 16px;padding-left:18px;font-size:14px;line-height:1.8;color:#4b5563">${slotsHtml}</ul>
-        <p style="margin:0 0 20px"><a href="${pickUrl}" style="display:inline-block;padding:12px 24px;background:#d90b2c;color:#ffffff;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none">Pick a Time</a></p>
-        <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">If none of these work, the link lets you suggest a time that does.</p>
-        <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
-          <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
-          <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
-          <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
-        </td></tr></table>`;
+      const bodyHtml = interviewProposedEmail(app.candidate_name, jobTitle, slots, pickUrl, isReschedule, app.interview_confirmed_slot?fmtDateOrText(app.interview_confirmed_slot):"");
       const ok = await sendCareersEmail(app.candidate_email, isReschedule ? `Interview Rescheduled — ${jobTitle}` : `Pick an interview time — ${jobTitle}`, bodyHtml, "Admepro Careers").catch(()=>false);
       logActivity(app.id, ok ? (isReschedule ? "Interview rescheduled — new times sent" : "Interview time options sent") : "Interview time options FAILED to send");
     } finally {
@@ -27901,15 +27958,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
 
     if(app.candidate_email) {
       const jobTitle = openings.find(o=>o.id===app.job_opening_id)?.title || app.job_title || "the role";
-      const bodyHtml = `
-        <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Hi ${app.candidate_name||"there"},</h2>
-        <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Your interview for the ${jobTitle} position is confirmed for <strong>${slotLabel}</strong>. We look forward to speaking with you!</p>
-        <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">📍 The interview will take place at our office: <a href="https://maps.app.goo.gl/ucJfFhpLMmozAfPA8" style="color:#d90b2c;text-decoration:none;font-weight:600">145 El Banafsig 3, New Cairo, Cairo</a></p>
-        <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
-          <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
-          <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
-          <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
-        </td></tr></table>`;
+      const bodyHtml = interviewConfirmedEmail(app.candidate_name, jobTitle, slotLabel);
       const ok = await sendCareersEmail(app.candidate_email, `Interview confirmed — ${jobTitle}`, bodyHtml, "Admepro Careers").catch(()=>false);
       logActivity(app.id, ok ? "Interview confirmation email sent" : "Interview confirmation email FAILED to send");
     }
@@ -27950,37 +27999,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
       setApplications(prev=>prev.map(a=>a.id===app.id?{...a,...patch}:a));
       setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,...patch}:prev);
       const offerUrl = window.location.origin + "/careers/offer?token=" + token;
-      const laptopLine = form.laptop_provided==="company" ? "We'll set you up with a company laptop, ready to go from day one."
-        : form.laptop_provided==="personal" ? "This role works with your own personal laptop."
-        : "";
-      const offerRow = (label,value) => `
-        <tr>
-          <td style="padding:12px 16px;border-bottom:1px solid #f1f1f3;font-size:13px;color:#6b7280">${label}</td>
-          <td style="padding:12px 16px;border-bottom:1px solid #f1f1f3;font-size:14px;font-weight:800;color:#111827;text-align:right">${value}</td>
-        </tr>`;
-      const bodyHtml = `
-        <div style="background:linear-gradient(135deg,#d90b2c,#a80822);border-radius:16px;padding:28px 32px;margin-bottom:24px;text-align:center">
-          <h1 style="margin:0 0 6px;font-size:22px;font-weight:800;color:#ffffff">Congratulations, ${app.candidate_name||"there"}!</h1>
-          <p style="margin:0;font-size:14px;color:#ffe0e5">You're one step away from joining the Admepro team as <strong>${form.title||"our newest hire"}</strong></p>
-        </div>
-        <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563">We loved getting to know you through the process, and we're excited to bring you on board. Here's what we're offering:</p>
-        <table width="100%" style="border-collapse:collapse;margin:0 0 20px;border:1px solid #f1f1f3;border-radius:12px;overflow:hidden">
-          ${offerRow("Salary (probation period)", form.salary||"—")}
-          ${offerRow("Probation period", `${form.probation_months||0} month(s)`)}
-          ${offerRow("Salary after probation", form.post_probation_salary||"—")}
-          ${offerRow("Start date", form.start_date?fmtDate(form.start_date):"—")}
-          ${offerRow("Annual vacation", `${form.vacation_days_annual||0} days/year`)}
-          ${offerRow("Work from home", `${form.wfh_days_monthly||0} days/month`)}
-        </table>
-        ${laptopLine?`<p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563">${laptopLine}</p>`:""}
-        ${form.notes?.trim()?`<p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563">${form.notes.trim().replace(/</g,"&lt;")}</p>`:""}
-        <p style="margin:0 0 20px;text-align:center"><a href="${offerUrl}" style="display:inline-block;padding:14px 32px;background:#d90b2c;color:#ffffff;border-radius:10px;font-weight:800;font-size:15px;text-decoration:none">Respond to This Offer</a></p>
-        <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563;text-align:center">Accept, decline, or let us know if you'd like to talk through any of the terms — we're happy to chat.</p>
-        <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
-          <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
-          <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
-          <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
-        </td></tr></table>`;
+      const bodyHtml = offerSentEmail(app.candidate_name, form, offerUrl);
       const ok = await sendCareersEmail(app.candidate_email, `We'd love to have you, ${(app.candidate_name||"").split(" ")[0]||"there"} — your Admepro offer is here!`, bodyHtml, "Admepro Careers").catch(()=>false);
       logActivity(app.id, ok ? "Offer sent" : "Offer FAILED to send");
     } finally {
@@ -28285,15 +28304,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
     for(const app of backfillCandidates) {
       const slotLabel = fmtDateOrText(app.interview_confirmed_slot);
       const jobTitle = app.job_title || "the role";
-      const bodyHtml = `
-        <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Hi ${app.candidate_name||"there"},</h2>
-        <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Your interview for the ${jobTitle} position is confirmed for <strong>${slotLabel}</strong>. We look forward to speaking with you!</p>
-        <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">📍 The interview will take place at our office: <a href="https://maps.app.goo.gl/ucJfFhpLMmozAfPA8" style="color:#d90b2c;text-decoration:none;font-weight:600">145 El Banafsig 3, New Cairo, Cairo</a></p>
-        <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
-          <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
-          <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
-          <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
-        </td></tr></table>`;
+      const bodyHtml = interviewConfirmedEmail(app.candidate_name, jobTitle, slotLabel);
       const ok = await sendCareersEmail(app.candidate_email, `Interview confirmed — ${jobTitle}`, bodyHtml, "Admepro Careers").catch(()=>false);
       logApplicationActivity(app.id, ok ? "Interview confirmation email sent (backfill)" : "Interview confirmation email FAILED to send (backfill)", actorName);
       sent++;
