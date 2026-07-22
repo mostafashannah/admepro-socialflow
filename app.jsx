@@ -388,9 +388,17 @@ function generateDailySchedule(posts, userEmail, date) {
 }
 
 // ── @mention helper ────────────────────────────────────────────
-function renderCommentText(text) {
+function renderCommentText(text, team) {
   if(!text) return null;
-  const parts = text.split(/(@[\w][\w\s]*?)(?=\s|$|[.,!?])/g);
+  // Match against real team-member full names first (longest first, so
+  // "Monay Khalid" matches whole instead of the generic word-boundary
+  // fallback stopping at the first space and leaving "Khalid" unstyled).
+  const names = [...new Set((team||[]).map(m=>m.name).filter(Boolean))]
+    .sort((a,b)=>b.length-a.length)
+    .map(n=>n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'));
+  const namesAlt = names.length ? `${names.join('|')}|` : '';
+  const re = new RegExp(`(@(?:${namesAlt}[\\w][\\w\\s]*?)(?=\\s|$|[.,!?]))`, 'gi');
+  const parts = text.split(re);
   return parts.map((part, i) =>
     part.startsWith('@')
       ? <span key={i} style={{color:"var(--accent)",fontWeight:600,background:"var(--accent)11",borderRadius:3,padding:"0 2px"}}>{part}</span>
@@ -1154,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.394";
+const APP_VERSION = "beta 5.395";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -4938,7 +4946,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                       </div>
                       {c.type==="ai_reply"
                         ? <div style={{fontSize:13,lineHeight:1.6}}>{renderChatMd(c.content)}</div>
-                        : <p style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content)}</p>}
+                        : <p style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content, team)}</p>}
                       {c.file_url&&(
                         c.file_type==="image" ? (
                           <a href={c.file_url} target="_blank" rel="noreferrer" style={{display:"block",marginTop:8,maxWidth:220,borderRadius:8,overflow:"hidden",border:"1px solid var(--border)"}}>
@@ -4991,7 +4999,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                         <span style={{fontSize:12,fontWeight:600}}>{c.author_name||"System"}</span>
                         <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date)}</span>
                       </div>
-                      <p style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content)}</p>
+                      <p style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content, team)}</p>
                       {c.file_url&&(
                         c.file_type==="image" ? (
                           <a href={c.file_url} target="_blank" rel="noreferrer" style={{display:"block",marginTop:8,maxWidth:220,borderRadius:8,overflow:"hidden",border:"1px solid var(--border)"}}>
@@ -6037,20 +6045,67 @@ function AddClientWorkflowModal({open,onClose,onAdd,onGoToCalendar}) {
 // ADD CALENDAR PLAN MODAL
 // ════════════════════════════════════════════════════════════════
 const CALENDAR_KIND_DEFS = [
-  ["post","Posts","Short-form image/carousel/reel captions"],
+  ["static","Static Posts","Single-image captions"],
+  ["reel","Reels","Short-form video captions"],
+  ["carousel","Carousels","Multi-slide captions"],
   ["article","Articles","Long-form, e.g. LinkedIn articles"],
   ["story","Stories","Ephemeral, one punchy line each"],
 ];
-function AddCalendarPlanModal({open,onClose,clients,team,preselectedClient,onGenerate,clientKnowledgeList,clientIntelligenceList,clientMemoryList,onUpsertMemory}) {
+// Each kind block becomes exactly ONE task regardless of count — this maps
+// it to the post_type estimateDuration()/POST_TYPE_DURATIONS already knows
+// how to estimate, so "12 carousels" costs 12x a single carousel's estimate.
+const CALENDAR_KIND_POST_TYPE = {static:"image", reel:"reel", carousel:"carousel", article:"blog", story:"story"};
+
+// Finds the first working day (Egypt week: Sun-Thu, skipping Fri/Sat — same
+// convention as the interview-slot templates) where this person has enough
+// free capacity, within a standard WORKING_START-WORKING_END day, to fit
+// durationMins — spilling over into consecutive working days for anything
+// bigger than one day's capacity. "Busy" is read from their OTHER pending
+// tasks' due_date + estimated_minutes, since there's no separate capacity/
+// calendar model in the app to check against.
+function findFirstAvailableSlot(allPosts, userEmail, durationMins, searchFromDate) {
+  if(!userEmail) return null;
+  let day = searchFromDate ? new Date(searchFromDate) : new Date();
+  let remaining = durationMins;
+  let firstDay = null;
+  for(let guard=0; guard<90; guard++) {
+    if(day.getDay()!==5 && day.getDay()!==6) {
+      const dateStr = day.toISOString().split("T")[0];
+      const busyMins = allPosts
+        .filter(p=>p.assigned_to===userEmail && p.due_date===dateStr && !["published","rejected"].includes(p.stage))
+        .reduce((sum,p)=>sum+estimateDuration(p),0);
+      const freeMins = Math.max(0, WORKING_MINS - busyMins);
+      if(freeMins > 0) {
+        if(firstDay===null) firstDay = dateStr;
+        remaining -= freeMins;
+        if(remaining <= 0) break;
+      }
+    }
+    day = new Date(day.getTime()+86400000);
+  }
+  return firstDay;
+}
+// Total free capacity this person has on one specific day (for the "manual
+// pick a date" mode's availability check).
+function freeCapacityOnDate(allPosts, userEmail, dateStr) {
+  const busyMins = allPosts
+    .filter(p=>p.assigned_to===userEmail && p.due_date===dateStr && !["published","rejected"].includes(p.stage))
+    .reduce((sum,p)=>sum+estimateDuration(p),0);
+  return Math.max(0, WORKING_MINS - busyMins);
+}
+
+function AddCalendarPlanModal({open,onClose,clients,team,posts,preselectedClient,onGenerate,clientKnowledgeList,clientIntelligenceList,clientMemoryList,onUpsertMemory}) {
   const [step,setStep] = useState("form"); // form | generating | preview | done
-  const makeKindDefaults = (count) => ({count, platforms:preselectedClient?.platforms||[], brief:"", assigned_to:"", due_offset_days:2});
+  const makeKindDefaults = (count) => ({count, platforms:preselectedClient?.platforms||[], brief:"", assigned_to:"", due_mode:"auto", manual_due_date:"", manual_due_time:"13:00"});
   const [f,setF] = useState({
     client_id: preselectedClient?.id||"",
     campaign: "",
     date_from: "",
     date_to: "",
     kinds: {
-      post: makeKindDefaults(8),
+      static: makeKindDefaults(8),
+      reel: makeKindDefaults(0),
+      carousel: makeKindDefaults(0),
       article: makeKindDefaults(0),
       story: makeKindDefaults(0),
     },
@@ -6094,29 +6149,34 @@ function AddCalendarPlanModal({open,onClose,clients,team,preselectedClient,onGen
     });
   };
 
+  const selClient = clients?.find?.(c=>c.id===f.client_id);
+
+  // The due date for a kind block (shared by every item in it, since the
+  // whole block becomes one task): "auto" finds this assignee's first free
+  // slot with enough capacity for the WHOLE batch's total time; "manual"
+  // uses the picked date if they have room, otherwise the same
+  // first-available search starting from that date (so the UI can tell the
+  // user "not free then — here's the first day that works instead").
+  const kindDueDate = (kind) => {
+    const cfg = f.kinds[kind];
+    if(!cfg.count || !cfg.assigned_to) return null;
+    const perItemMins = estimateDuration({post_type: CALENDAR_KIND_POST_TYPE[kind], priority:"medium"});
+    const totalMins = perItemMins * cfg.count;
+    if(cfg.due_mode==="manual" && cfg.manual_due_date) {
+      const free = freeCapacityOnDate(posts||[], cfg.assigned_to, cfg.manual_due_date);
+      if(free >= totalMins) return {date: cfg.manual_due_date, conflict:false, suggested:null};
+      const suggested = findFirstAvailableSlot(posts||[], cfg.assigned_to, totalMins, cfg.manual_due_date);
+      return {date: cfg.manual_due_date, conflict:true, suggested};
+    }
+    const auto = findFirstAvailableSlot(posts||[], cfg.assigned_to, totalMins, f.date_from||new Date());
+    return {date: auto, conflict:false, suggested:null};
+  };
+
   const handleGenerate = async () => {
     if(!canGenerate) return;
     setStep("generating");
     setGenPhase("brain");
-
-    // Distribute every piece of content across dates, but interleave the
-    // active content kinds evenly rather than grouping them into blocks (e.g.
-    // 6 posts + 2 articles + 4 stories shouldn't put all posts first) —
-    // built by round-robin-ing each kind's own share of the date range.
-    const dates = distributeDates(f.date_from,f.date_to,totalCount);
-    const kindQueue = [];
-    const done = {post:0,article:0,story:0};
-    for(let i=0;i<totalCount;i++){
-      let best=null, bestRatio=-1;
-      for(const k of activeKinds){
-        const ratio = (f.kinds[k].count-done[k])/f.kinds[k].count;
-        if(done[k]<f.kinds[k].count && ratio>bestRatio){ bestRatio=ratio; best=k; }
-      }
-      kindQueue.push(best); done[best]++;
-    }
     const postTypes = ["image","carousel","reel"];
-
-    const selClient = clients?.find?.(c=>c.id===f.client_id);
     const clientCtxBlock = selClient ? `Client: ${selClient.name}\nIndustry: ${selClient.industry||""}\n${clientBrainBlock(selClient.id, selClient.name)}` : "";
     setGenPhase("brief");
 
@@ -6169,39 +6229,34 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
     }
 
     setGenPhase("dates");
-    const cursor = {post:0,article:0,story:0};
-    const platformCursor = {post:0,article:0,story:0};
-    const tasks = dates.map((date,i)=>{
-      const kind = kindQueue[i];
-      const idea = ideasByKind[kind]?.[cursor[kind]]; cursor[kind]++;
-      const plats = f.kinds[kind].platforms;
-      const platform = kind==="article"
-        ? (plats.includes("linkedin")?"linkedin":plats[0])
-        : plats[platformCursor[kind]++ % plats.length];
-      // Due date = work deadline, offset back from the publish date so the
-      // team has time to review before it goes out — separate from
-      // scheduled_date, which is when it actually publishes.
-      const offsetDays = f.kinds[kind].due_offset_days||0;
-      const dueDate = new Date(date);
-      dueDate.setDate(dueDate.getDate()-offsetDays);
-      return {
-        id: uid(),
-        title: idea?.title||`${kind} ${i+1}`,
-        caption: idea?.caption||"",
-        hashtags: idea?.hashtags||"",
-        scheduled_date: date,
-        scheduled_time: ["09:00","12:00","15:00","18:00","20:00"][i%5],
-        due_date: dueDate.toISOString().split("T")[0],
-        platform,
-        post_type: kind==="article" ? "article" : kind==="story" ? "story" : postTypes[i%postTypes.length],
-        stage: "planning",
-        priority: i<2?"high":"medium",
-        client_id: f.client_id,
-        client_name: selectedClient?.name||"",
-        assigned_to: f.kinds[kind].assigned_to||"",
-        project_name: f.campaign,
-        status:"pending",
-      };
+    // Each idea is still its own reviewable/regeneratable card in the
+    // preview step below — grouping into one task per kind happens at
+    // handleConfirm time, once the user has approved which ideas to keep.
+    const platformCursor = {};
+    const tasks = activeKinds.flatMap(kind=>{
+      const cfg = f.kinds[kind];
+      const plats = cfg.platforms;
+      platformCursor[kind] = platformCursor[kind]||0;
+      return (ideasByKind[kind]||[]).map((idea,i)=>{
+        const platform = kind==="article"
+          ? (plats.includes("linkedin")?"linkedin":plats[0])
+          : plats[platformCursor[kind]++ % plats.length];
+        return {
+          id: uid(),
+          kind,
+          title: idea?.title||`${kind} ${i+1}`,
+          caption: idea?.caption||"",
+          hashtags: idea?.hashtags||"",
+          platform,
+          post_type: CALENDAR_KIND_POST_TYPE[kind],
+          priority: "medium",
+          client_id: f.client_id,
+          client_name: selectedClient?.name||"",
+          assigned_to: cfg.assigned_to||"",
+          project_name: f.campaign,
+          status:"pending",
+        };
+      });
     });
 
     setAiIdeas(Object.values(ideasByKind).flat());
@@ -26554,7 +26609,7 @@ function ApplicationCommentsSection({application, comments, team, currentUser, o
               <span style={{fontSize:12,fontWeight:700}}>{c.author_name||"Someone"}</span>
               <span style={{fontSize:11,color:"var(--text3)"}}>{fmtDateTime(c.created_date||c.created_at)}</span>
             </div>
-            <p style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content)}</p>
+            <p style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content, team)}</p>
           </div>
         ))}
         {thread.length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>No comments yet.</p>}
