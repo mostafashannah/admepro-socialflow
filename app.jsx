@@ -1154,7 +1154,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.389";
+const APP_VERSION = "beta 5.390";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -27824,16 +27824,30 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
     })();
   },[loading, applications.length]);
 
+  // Only reliable for slots that were picked via the calendar (real ISO
+  // dates) — free-text flexible-window slots (e.g. "1pm-6pm, any time
+  // works") can't be matched to a single day, so they're excluded here
+  // rather than guessed at.
+  const isConfirmedToday = (a) => {
+    if(!a.interview_confirmed_slot) return false;
+    const d = new Date(a.interview_confirmed_slot);
+    if(isNaN(d.getTime())) return false;
+    const now = new Date();
+    return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth() && d.getDate()===now.getDate();
+  };
+
   const filteredApps = applications
     .filter(a=>openingFilter==="all"||(openingFilter==="unassigned"?!a.job_opening_id:a.job_opening_id===openingFilter))
     .filter(a=>statusFilter==="all"||a.status===statusFilter)
     .filter(a=>!hideNoCv||a.ai_review_status!=="no_cv")
+    .filter(a=>sortBy!=="today_interviews"||isConfirmedToday(a))
     .filter(a=>{
       if(!searchQuery.trim()) return true;
       const q = searchQuery.trim().toLowerCase();
       return [a.candidate_name,a.job_title,a.candidate_phone,a.candidate_email].some(v=>(v||"").toLowerCase().includes(q));
     })
     .sort((a,b)=>{
+      if(sortBy==="today_interviews") return new Date(a.interview_confirmed_slot)-new Date(b.interview_confirmed_slot);
       if(sortBy==="recent") return new Date(b.created_at)-new Date(a.created_at);
       if(sortBy==="oldest") return new Date(a.created_at)-new Date(b.created_at);
       return applicationRank(b)-applicationRank(a);
@@ -27957,6 +27971,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
               <option value="score">Top Score</option>
               <option value="recent">Most Recent</option>
               <option value="oldest">Oldest First</option>
+              <option value="today_interviews">Today's Interviews</option>
             </select>
             <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
               {(fixMsg||retryMsg||autoAssignMsg||recoverMsg)&&<span style={{fontSize:11,color:"var(--text2)"}}>{fixMsg||retryMsg||autoAssignMsg||recoverMsg}</span>}
