@@ -1154,7 +1154,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.393";
+const APP_VERSION = "beta 5.394";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -26932,6 +26932,10 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
         </Field>
         )}
 
+        {onAddComment&&(
+          <ApplicationCommentsSection application={application} comments={comments} team={team} currentUser={currentUser} onAddComment={onAddComment}/>
+        )}
+
         {activityLog&&activityLog.length>0&&(
           <div style={{marginTop:18,paddingTop:18,borderTop:"1px solid var(--border)"}}>
             <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:10}}>Activity Log</p>
@@ -26944,10 +26948,6 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
               ))}
             </div>
           </div>
-        )}
-
-        {onAddComment&&(
-          <ApplicationCommentsSection application={application} comments={comments} team={team} currentUser={currentUser} onAddComment={onAddComment}/>
         )}
       </div>
     </div>
