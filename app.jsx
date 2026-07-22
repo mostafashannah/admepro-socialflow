@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.401";
+const APP_VERSION = "beta 5.402";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6142,7 +6142,7 @@ function scheduleItemDates(allPosts, userEmail, perItemMins, count, fromDate, to
 
 function AddCalendarPlanModal({open,onClose,clients,team,posts,preselectedClient,onGenerate,clientKnowledgeList,clientIntelligenceList,clientMemoryList,onUpsertMemory}) {
   const [step,setStep] = useState("form"); // form | generating | preview | done
-  const makeKindDefaults = (count) => ({count, platforms:preselectedClient?.platforms||[], brief:"", assigned_to:"", due_mode:"auto", manual_start_date:"", manual_start_time:"10:00", manual_end_date:"", manual_end_time:"19:00"});
+  const makeKindDefaults = (count) => ({count, platforms:preselectedClient?.platforms||[], brief:"", assigned_to:"", due_mode:"auto", manual_due_date:"", manual_due_time:"13:00"});
   const [f,setF] = useState({
     client_id: preselectedClient?.id||"",
     campaign: "",
@@ -6220,16 +6220,16 @@ Return ONLY the brief text — no markdown, no labels, no quotes.`, 300);
 
   // Each post in a kind block stays its own separate task with its own due
   // date — "auto" packs them onto this assignee's real free capacity
-  // starting from the campaign start date; "manual" packs them into the
-  // picked start→end window, and if the batch doesn't fully fit by the end
-  // date, scheduling spills past it and the UI flags that as a conflict.
+  // starting from the campaign start date; "manual" checks the ONE picked
+  // due date/time — if that person doesn't have room there, scheduling
+  // spills onto their next free days and the UI flags that as a conflict.
   const kindDueDate = (kind) => {
     const cfg = f.kinds[kind];
     if(!cfg.count || !cfg.assigned_to) return null;
     const perItemMins = estimateDuration({post_type: CALENDAR_KIND_POST_TYPE[kind], priority:"medium"});
-    if(cfg.due_mode==="manual" && cfg.manual_start_date) {
-      const {dates, overflow} = scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, cfg.count, cfg.manual_start_date, cfg.manual_end_date||cfg.manual_start_date);
-      return {dates, conflict:overflow, requestedEnd: cfg.manual_end_date||cfg.manual_start_date};
+    if(cfg.due_mode==="manual" && cfg.manual_due_date) {
+      const {dates, overflow} = scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, cfg.count, cfg.manual_due_date, cfg.manual_due_date);
+      return {dates, conflict:overflow, requestedEnd: cfg.manual_due_date};
     }
     const {dates} = scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, cfg.count, f.date_from||new Date(), null);
     return {dates, conflict:false, requestedEnd:null};
@@ -6381,8 +6381,8 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
       const cfg = f.kinds[kind]||{};
       const perItemMins = estimateDuration({post_type: CALENDAR_KIND_POST_TYPE[kind], priority:"medium"});
       if(cfg.assigned_to) {
-        const {dates} = cfg.due_mode==="manual" && cfg.manual_start_date
-          ? scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, items.length, cfg.manual_start_date, cfg.manual_end_date||cfg.manual_start_date)
+        const {dates} = cfg.due_mode==="manual" && cfg.manual_due_date
+          ? scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, items.length, cfg.manual_due_date, cfg.manual_due_date)
           : scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, items.length, f.date_from||new Date(), null);
         dueDatesByKind[kind] = dates;
       } else {
@@ -6393,8 +6393,9 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
     const finalTasks = approved.map(t=>{
       kindCursor[t.kind] = kindCursor[t.kind]||0;
       const dueDate = dueDatesByKind[t.kind]?.[kindCursor[t.kind]] || "";
+      const cfg = f.kinds[t.kind]||{};
       kindCursor[t.kind]++;
-      return {...t, due_date: dueDate};
+      return {...t, due_date: dueDate, due_time: cfg.due_mode==="manual" ? (cfg.manual_due_time||"") : ""};
     });
     await onGenerate(f, finalTasks);
     // Sara learns from the plan she just delivered — best-effort, in the
@@ -6470,26 +6471,20 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                   <Field label="Due Date">
                     <div style={{display:"flex",gap:6}}>
                       <button type="button" onClick={()=>sk(kind,"due_mode","auto")} style={{flex:1,padding:"8px 6px",borderRadius:8,border:`1.5px solid ${cfg.due_mode!=="manual"?"var(--accent)":"var(--border2)"}`,background:cfg.due_mode!=="manual"?"var(--accent)18":"var(--surface)",fontWeight:700,fontSize:11.5,color:cfg.due_mode!=="manual"?"var(--accent)":"var(--text2)",cursor:"pointer"}}>Auto</button>
-                      <button type="button" onClick={()=>sk(kind,"due_mode","manual")} style={{flex:1,padding:"8px 6px",borderRadius:8,border:`1.5px solid ${cfg.due_mode==="manual"?"var(--accent)":"var(--border2)"}`,background:cfg.due_mode==="manual"?"var(--accent)18":"var(--surface)",fontWeight:700,fontSize:11.5,color:cfg.due_mode==="manual"?"var(--accent)":"var(--text2)",cursor:"pointer"}}>Pick start/end</button>
+                      <button type="button" onClick={()=>sk(kind,"due_mode","manual")} style={{flex:1,padding:"8px 6px",borderRadius:8,border:`1.5px solid ${cfg.due_mode==="manual"?"var(--accent)":"var(--border2)"}`,background:cfg.due_mode==="manual"?"var(--accent)18":"var(--surface)",fontWeight:700,fontSize:11.5,color:cfg.due_mode==="manual"?"var(--accent)":"var(--text2)",cursor:"pointer"}}>Pick date</button>
                     </div>
                   </Field>
+                  {cfg.due_mode==="manual" && (
+                    <Field label="Due Date">
+                      <input type="date" value={cfg.manual_due_date} onChange={e=>sk(kind,"manual_due_date",e.target.value)} style={inputSt}/>
+                    </Field>
+                  )}
+                  {cfg.due_mode==="manual" && (
+                    <Field label="Due Time">
+                      <input type="time" value={cfg.manual_due_time} onChange={e=>sk(kind,"manual_due_time",e.target.value)} style={inputSt}/>
+                    </Field>
+                  )}
                 </div>
-                {cfg.due_mode==="manual" && (
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(180px,100%),1fr))",gap:10}}>
-                    <Field label="Start Date">
-                      <input type="date" value={cfg.manual_start_date} onChange={e=>sk(kind,"manual_start_date",e.target.value)} style={inputSt}/>
-                    </Field>
-                    <Field label="Start Time">
-                      <input type="time" value={cfg.manual_start_time} onChange={e=>sk(kind,"manual_start_time",e.target.value)} style={inputSt}/>
-                    </Field>
-                    <Field label="End Date">
-                      <input type="date" value={cfg.manual_end_date} onChange={e=>sk(kind,"manual_end_date",e.target.value)} style={inputSt}/>
-                    </Field>
-                    <Field label="End Time">
-                      <input type="time" value={cfg.manual_end_time} onChange={e=>sk(kind,"manual_end_time",e.target.value)} style={inputSt}/>
-                    </Field>
-                  </div>
-                )}
                 {cfg.count>0 && cfg.assigned_to && (()=>{
                   const due = kindDueDate(kind);
                   if(!due || !due.dates?.length) return (
@@ -6504,9 +6499,9 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                       border:`1px solid ${due.conflict?"#f59e0b55":"#10b98155"}`,
                       color:due.conflict?"#b45309":"#059669"}}>
                       {due.conflict
-                        ? `Doesn't all fit by ${fmtDate(due.requestedEnd)} — this teammate's other work pushes the last one to ${fmtDate(last)} (spread ${fmtDate(first)} → ${fmtDate(last)}).`
+                        ? `Not free on ${fmtDate(due.requestedEnd)}${cfg.manual_due_time?` at ${cfg.manual_due_time}`:""} — pushed to this teammate's next free day(s): ${fmtDate(first)}${first!==last?` → ${fmtDate(last)}`:""}.`
                         : first===last
-                        ? `Due ${fmtDate(first)} — this teammate has room for all ${cfg.count} ${label.toLowerCase()} that day.`
+                        ? `Due ${fmtDate(first)}${cfg.due_mode==="manual"&&cfg.manual_due_time?` at ${cfg.manual_due_time}`:""} — this teammate has room for all ${cfg.count} ${label.toLowerCase()} then.`
                         : `Spread across this teammate's free days: ${fmtDate(first)} → ${fmtDate(last)}.`}
                     </div>
                   );
@@ -35775,7 +35770,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     const localPosts = tasks.map(t=>({...t,project_id:projectId,id:uid()}));
     setData(d=>({...d,posts:[...localPosts,...d.posts]}));
     const calClient = data.clients.find(c=>c.id===planForm.client_id);
-    const postPayloads = localPosts.map(t=>({title:t.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:t.platform,post_type:t.post_type,stage:"planning",priority:t.priority,caption:t.caption,hashtags:t.hashtags,notes:t.notes||"",estimated_minutes:t.estimated_minutes,scheduled_date:t.scheduled_date,scheduled_time:t.scheduled_time,due_date:t.due_date||"",assigned_to:t.assigned_to||""}));
+    const postPayloads = localPosts.map(t=>({title:t.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:t.platform,post_type:t.post_type,stage:"planning",priority:t.priority,caption:t.caption,hashtags:t.hashtags,notes:t.notes||"",estimated_minutes:t.estimated_minutes,scheduled_date:t.scheduled_date,scheduled_time:t.scheduled_time,due_date:t.due_date||"",due_time:t.due_time||"",assigned_to:t.assigned_to||""}));
     ce("Post",postPayloads).then(res=>{
       const reals = res.entities||[];
       setData(d=>{
