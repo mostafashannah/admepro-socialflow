@@ -941,6 +941,37 @@ function generateProUuid() {
     return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
 }
 
+// Sends via Resend, same provider/domain as mail.php — used for Pro's
+// server-side notifications (e.g. a manager's leave/WFH approval ping)
+// where there's no browser around to call mail.php from.
+function sendProEmail($to, $subject, $html) {
+    if (!defined('RESEND_API_KEY') || !RESEND_API_KEY) return false;
+    $payload = json_encode([
+        'from' => 'SocialFlow by Admepro <noreply@admepro.com>',
+        'to' => [$to],
+        'subject' => $subject,
+        'html' => $html,
+    ]);
+    $ch = curl_init('https://api.resend.com/emails');
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $payload,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 15,
+        CURLOPT_HTTPHEADER => [
+            'Authorization: Bearer ' . RESEND_API_KEY,
+            'Content-Type: application/json',
+        ],
+    ]);
+    $res = curl_exec($ch);
+    $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err = curl_error($ch);
+    curl_close($ch);
+    $ok = $status >= 200 && $status < 300;
+    if (!$ok) error_log('[wa-webhook] sendProEmail failed: HTTP ' . $status . ' ' . ($err ?: $res));
+    return $ok;
+}
+
 function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?string $senderName) {
     if (!$senderId) return ['error' => 'Could not identify your team member record — ask your admin to add your WhatsApp number to your profile.'];
 
@@ -1015,13 +1046,20 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
         // second channel that doesn't depend on any of that, so the manager
         // still sees the pending request next time they open the app.
         if (!empty($mgr['manager_email'])) {
+            $notifMsg = "{$senderName} requested {$label} for {$range} ({$days} day(s)).{$reasonLine}";
             $notif = $pdo->prepare("INSERT INTO notifications (id, recipient_email, title, message, type, is_read, link_type, link_id) VALUES (:id, :email, :title, :msg, 'info', 0, 'page', 'team')");
             $notif->execute([
                 ':id' => generateProUuid(),
                 ':email' => $mgr['manager_email'],
                 ':title' => 'New leave/WFH request',
-                ':msg' => "{$senderName} requested {$label} for {$range} ({$days} day(s)).{$reasonLine}",
+                ':msg' => $notifMsg,
             ]);
+            sendProEmail($mgr['manager_email'], "New request: {$senderName} — {$label}",
+                '<div style="font-family:sans-serif;font-size:14px;color:#111827;line-height:1.6">' .
+                '<p>' . nl2br(htmlspecialchars($notifMsg)) . '</p>' .
+                '<p>Log in to SocialFlow → Team → Leave & WFH to approve or reject it.</p>' .
+                '</div>'
+            );
         }
 
         return ['ok' => true, 'request_id' => substr($reqId, -8), 'message' => 'Request submitted and your manager has been notified over WhatsApp.'];
