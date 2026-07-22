@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.411";
+const APP_VERSION = "beta 5.413";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6075,15 +6075,16 @@ const WEEKDAY_LABELS = [{d:0,label:"Sun"},{d:1,label:"Mon"},{d:2,label:"Tue"},{d
 // bigger than one day's capacity. "Busy" is read from their OTHER pending
 // tasks' due_date + estimated_minutes, since there's no separate capacity/
 // calendar model in the app to check against.
-function findFirstAvailableSlot(allPosts, userEmail, durationMins, searchFromDate, workDays) {
+function findFirstAvailableSlot(allPosts, userEmail, durationMins, searchFromDate, workDays, holidays) {
   if(!userEmail) return null;
   const days = workDays||WORK_DAYS_DEFAULT;
   let day = searchFromDate ? new Date(searchFromDate) : new Date();
   let remaining = durationMins;
   let firstDay = null;
   for(let guard=0; guard<90; guard++) {
-    if(days.includes(day.getDay())) {
-      const dateStr = day.toISOString().split("T")[0];
+    const dateStr0 = day.toISOString().split("T")[0];
+    if(days.includes(day.getDay()) && !holidays?.has?.(dateStr0)) {
+      const dateStr = dateStr0;
       const busyMins = allPosts
         .filter(p=>p.assigned_to===userEmail && p.due_date===dateStr && !["published","rejected"].includes(p.stage))
         .reduce((sum,p)=>sum+estimateDuration(p),0);
@@ -6109,15 +6110,16 @@ function freeCapacityOnDate(allPosts, userEmail, dateStr) {
 // Sums free capacity across every working day in a start→end window (for the
 // "pick start and end date" manual mode) — same day-level model as
 // freeCapacityOnDate, just accumulated over the range instead of one day.
-function freeCapacityInRange(allPosts, userEmail, startDateStr, endDateStr, workDays) {
+function freeCapacityInRange(allPosts, userEmail, startDateStr, endDateStr, workDays, holidays) {
   if(!startDateStr || !endDateStr) return 0;
   const days = workDays||WORK_DAYS_DEFAULT;
   let day = new Date(startDateStr);
   const end = new Date(endDateStr);
   let total = 0;
   for(let guard=0; guard<120 && day<=end; guard++) {
-    if(days.includes(day.getDay())) {
-      total += freeCapacityOnDate(allPosts, userEmail, day.toISOString().split("T")[0]);
+    const dateStr = day.toISOString().split("T")[0];
+    if(days.includes(day.getDay()) && !holidays?.has?.(dateStr)) {
+      total += freeCapacityOnDate(allPosts, userEmail, dateStr);
     }
     day = new Date(day.getTime()+86400000);
   }
@@ -6129,7 +6131,7 @@ function freeCapacityInRange(allPosts, userEmail, startDateStr, endDateStr, work
 // starting from fromDate. If a hard deadline (toDate) is given and the
 // batch doesn't fit by then, scheduling keeps going past it anyway (so
 // every item still gets a real date) and the caller is told via `overflow`.
-function scheduleItemDates(allPosts, userEmail, perItemMins, count, fromDate, toDate, workDays) {
+function scheduleItemDates(allPosts, userEmail, perItemMins, count, fromDate, toDate, workDays, holidays) {
   if(!userEmail || !count) return {dates:[], overflow:false};
   const days = workDays||WORK_DAYS_DEFAULT;
   const dates = [];
@@ -6137,8 +6139,9 @@ function scheduleItemDates(allPosts, userEmail, perItemMins, count, fromDate, to
   const endLimit = toDate ? new Date(toDate) : null;
   let overflow = false;
   for(let guard=0; guard<200 && dates.length<count; guard++) {
-    if(days.includes(day.getDay())) {
-      const dateStr = day.toISOString().split("T")[0];
+    const dateStr0 = day.toISOString().split("T")[0];
+    if(days.includes(day.getDay()) && !holidays?.has?.(dateStr0)) {
+      const dateStr = dateStr0;
       let free = freeCapacityOnDate(allPosts, userEmail, dateStr) - dates.filter(d=>d===dateStr).length*perItemMins;
       while(free >= perItemMins && dates.length<count) {
         dates.push(dateStr);
@@ -6151,7 +6154,15 @@ function scheduleItemDates(allPosts, userEmail, perItemMins, count, fromDate, to
   return {dates, overflow};
 }
 
-function AddCalendarPlanModal({open,onClose,clients,team,posts,projects,preselectedClient,onGenerate,clientKnowledgeList,clientIntelligenceList,clientMemoryList,onUpsertMemory}) {
+function AddCalendarPlanModal({open,onClose,clients,team,posts,projects,preselectedClient,onGenerate,clientKnowledgeList,clientIntelligenceList,clientMemoryList,onUpsertMemory,appSettings}) {
+  // Company-wide weekend + national holidays (Settings → Attendance Rules)
+  // are the real source of truth for "which days are off" — reuse them here
+  // instead of a hardcoded Sun-Thu guess, so a configured holiday (Eid,
+  // Revolution Day, etc.) is never used as a due date, and the weekend
+  // respects whatever the company actually set (not necessarily Fri/Sat).
+  const attendanceRules = appSettings?.attendance_rules || {};
+  const companyWorkDays = [0,1,2,3,4,5,6].filter(d=>!(attendanceRules.weekendDays??[5,6]).map(n=>n%7).includes(d));
+  const companyHolidays = new Set((attendanceRules.holidays||[]).map(h=>h.date));
   const [step,setStep] = useState("form"); // form | generating | preview | done
   const makeKindDefaults = (count) => ({count, platforms:preselectedClient?.platforms||[], brief:"", assigned_to:"", due_mode:"auto", manual_due_date:"", manual_due_time:"13:00"});
   const [f,setF] = useState({
@@ -6254,12 +6265,12 @@ Return ONLY the brief text — no markdown, no labels, no quotes.`, 300);
     if(!cfg.count || !cfg.assigned_to) return null;
     const perItemMins = estimateDuration({post_type: CALENDAR_KIND_POST_TYPE[kind], priority:"medium"});
     const assignee = (team||[]).find(t=>t.email===cfg.assigned_to);
-    const workDays = assignee?.employment_type==="part_time" ? parseMaybeJson(assignee.work_days, WORK_DAYS_DEFAULT) : WORK_DAYS_DEFAULT;
+    const workDays = assignee?.employment_type==="part_time" ? parseMaybeJson(assignee.work_days, companyWorkDays) : companyWorkDays;
     if(cfg.due_mode==="manual" && cfg.manual_due_date) {
-      const {dates, overflow} = scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, cfg.count, cfg.manual_due_date, cfg.manual_due_date, workDays);
+      const {dates, overflow} = scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, cfg.count, cfg.manual_due_date, cfg.manual_due_date, workDays, companyHolidays);
       return {dates, conflict:overflow, requestedEnd: cfg.manual_due_date};
     }
-    const {dates} = scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, cfg.count, f.date_from||new Date(), null, workDays);
+    const {dates} = scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, cfg.count, f.date_from||new Date(), null, workDays, companyHolidays);
     return {dates, conflict:false, requestedEnd:null};
   };
 
@@ -6417,10 +6428,10 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
       const perItemMins = estimateDuration({post_type: CALENDAR_KIND_POST_TYPE[kind], priority:"medium"});
       if(cfg.assigned_to) {
         const assignee = (team||[]).find(t=>t.email===cfg.assigned_to);
-        const workDays = assignee?.employment_type==="part_time" ? parseMaybeJson(assignee.work_days, WORK_DAYS_DEFAULT) : WORK_DAYS_DEFAULT;
+        const workDays = assignee?.employment_type==="part_time" ? parseMaybeJson(assignee.work_days, companyWorkDays) : companyWorkDays;
         const {dates} = cfg.due_mode==="manual" && cfg.manual_due_date
-          ? scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, items.length, cfg.manual_due_date, cfg.manual_due_date, workDays)
-          : scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, items.length, f.date_from||new Date(), null, workDays);
+          ? scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, items.length, cfg.manual_due_date, cfg.manual_due_date, workDays, companyHolidays)
+          : scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, items.length, f.date_from||new Date(), null, workDays, companyHolidays);
         dueDatesByKind[kind] = dates;
       } else {
         dueDatesByKind[kind] = [];
@@ -13110,6 +13121,11 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
               <span style={{background:ROLES[m.role]?.color+"22",color:ROLES[m.role]?.color,borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600}}>
                 {ROLES[m.role]?.label||m.role}
               </span>
+              {m.employment_type==="part_time"&&(
+                <span title={parseMaybeJson(m.work_days,WORK_DAYS_DEFAULT).map(d=>WEEKDAY_LABELS.find(w=>w.d===d)?.label).join(", ")} style={{background:"#8b5cf622",color:"#8b5cf6",borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600}}>
+                  Part-time
+                </span>
+              )}
               <span style={{
                 background:m.status==="active"?"#10b98122":"#f59e0b22",
                 color:m.status==="active"?"#10b981":"#f59e0b",
@@ -13701,6 +13717,11 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
         </div>
         <span style={{background:ROLES[member.role]?.color+"22",color:ROLES[member.role]?.color,borderRadius:6,padding:"4px 12px",fontSize:12,fontWeight:600}}>{ROLES[member.role]?.label||member.role}</span>
         <span style={{background:member.status==="active"?"#10b98122":"#f59e0b22",color:member.status==="active"?"#10b981":"#f59e0b",borderRadius:6,padding:"4px 12px",fontSize:12,fontWeight:600}}>{member.status||"active"}</span>
+        {member.employment_type==="part_time"&&(
+          <span title={parseMaybeJson(member.work_days,WORK_DAYS_DEFAULT).map(d=>WEEKDAY_LABELS.find(w=>w.d===d)?.label).join(", ")} style={{background:"#8b5cf622",color:"#8b5cf6",borderRadius:6,padding:"4px 12px",fontSize:12,fontWeight:600}}>
+            Part-time · {parseMaybeJson(member.work_days,WORK_DAYS_DEFAULT).map(d=>WEEKDAY_LABELS.find(w=>w.d===d)?.label).join("/")}
+          </span>
+        )}
         {currentUser?.role==="admin"&&member.email!==currentUser?.email&&(
           <button onClick={()=>onImpersonate&&onImpersonate(member)} style={{fontSize:12,fontWeight:700,color:"var(--text2)",background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"7px 14px",cursor:"pointer"}}>Access Account</button>
         )}
@@ -37287,6 +37308,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
       team={data.team}
       posts={data.posts||[]}
       projects={data.projects||[]}
+      appSettings={appSettings}
       preselectedClient={calendarPreselectedClient}
       onGenerate={generateCalendarPlan}
       clientKnowledgeList={data.clientKnowledge||[]}
