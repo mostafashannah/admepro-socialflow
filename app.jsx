@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.395";
+const APP_VERSION = "beta 5.396";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -35903,6 +35903,27 @@ Return ONLY valid JSON (no markdown, no explanation):
         ).catch(()=>{});
       }
     }
+    // A mention should notify the whole thread, not just the person mentioned —
+    // everyone who has already posted in this comment thread gets pulled in too.
+    if(mentionedEmails.size > 0) {
+      const threadParticipants = new Set((data.comments||[]).filter(c=>c.post_id===postId && c.author_email).map(c=>c.author_email));
+      for(const participantEmail of threadParticipants) {
+        if(participantEmail===user?.email || mentionedEmails.has(participantEmail) || participantEmail===post?.assigned_to) continue;
+        const participant = data.team.find(m=>m.email===participantEmail);
+        if(!participant) continue;
+        const postTitle = post?.title||"a post";
+        const notifPayload = {recipient_email:participant.email, title:"New activity in a thread you're in", message:`${user?.name||'Someone'} mentioned someone in a comment thread you're part of on "${postTitle}"`, type:'comment', is_read:false, link_type:"post", link_id:postId};
+        const localNotif = {...notifPayload, id:uid(), created_date:new Date().toISOString()};
+        setData(d=>({...d, notifications:[localNotif,...d.notifications]}));
+        ce("Notification",[notifPayload]).catch(()=>{});
+        const prefs = getNotifPrefs(participant.email);
+        sendNotification("task_comment", participant.email,
+          `[SocialFlow] New comment on: ${postTitle}`,
+          EMAIL_TEMPLATES.commentAdded(participant.name, user?.name||"A colleague", postTitle, content.slice(0,200), project?.title||""),
+          prefs
+        ).catch(()=>{});
+      }
+    }
     // @Sara — she reads the full task + thread and replies in-comment.
     if(/@sara\b/i.test(content) && post) {
       replySaraInComment(post, project, content, user);
@@ -35930,11 +35951,13 @@ Return ONLY valid JSON (no markdown, no explanation):
     }).catch(()=>{});
 
     const mentions = [...content.matchAll(/@(\w[\w\s]*?)(?=\s|$|[.,!?])/g)].map(m=>m[1].trim());
+    const mentionedEmails = new Set();
+    const candidateLabel = `${application.candidate_name||"a candidate"}'s application${application.job_title?` (${application.job_title})`:""}`;
     for(const mentionName of mentions) {
       const mentioned = (data.team||[]).find(m=>m.name===mentionName||m.name.startsWith(mentionName)||toUsername(m.name)===toUsername(mentionName));
       if(!mentioned || mentioned.email === user?.email) continue;
+      mentionedEmails.add(mentioned.email);
       const canViewFull = mentioned.role==="admin" || hasPerm(mentioned, rolePermsMap, "hr.manage_recruitment");
-      const candidateLabel = `${application.candidate_name||"a candidate"}'s application${application.job_title?` (${application.job_title})`:""}`;
       const notifPayload = {
         recipient_email: mentioned.email, title: "You were mentioned",
         message: `${user?.name||"Someone"} mentioned you in a comment on ${candidateLabel}`,
@@ -35951,6 +35974,33 @@ Return ONLY valid JSON (no markdown, no explanation):
         EMAIL_TEMPLATES.mentionNotification(mentioned.name, user?.name||"A colleague", candidateLabel, content.slice(0,200), ""),
         prefs
       ).catch(()=>{});
+    }
+    // A mention should pull in the whole thread, not just the person mentioned —
+    // everyone who already commented on this application gets notified too.
+    if(mentionedEmails.size > 0) {
+      const threadParticipants = new Set((data.comments||[]).filter(c=>c.post_id===application.id && c.author_email).map(c=>c.author_email));
+      for(const participantEmail of threadParticipants) {
+        if(participantEmail===user?.email || mentionedEmails.has(participantEmail)) continue;
+        const participant = (data.team||[]).find(m=>m.email===participantEmail);
+        if(!participant) continue;
+        const canViewFull = participant.role==="admin" || hasPerm(participant, rolePermsMap, "hr.manage_recruitment");
+        const notifPayload = {
+          recipient_email: participant.email, title: "New activity in a thread you're in",
+          message: `${user?.name||"Someone"} mentioned someone in a comment thread you're part of on ${candidateLabel}`,
+          type: "comment", is_read: false,
+          link_type: canViewFull ? "page" : "job_application",
+          link_id: canViewFull ? "recruitment" : application.id,
+        };
+        const localNotif = {...notifPayload, id: uid(), created_date: new Date().toISOString()};
+        setData(d=>({...d, notifications:[localNotif, ...d.notifications]}));
+        ce("Notification",[notifPayload]).catch(()=>{});
+        const prefs = getNotifPrefs(participant.email);
+        sendNotification("task_comment", participant.email,
+          `[SocialFlow] New comment on ${candidateLabel}`,
+          EMAIL_TEMPLATES.commentAdded(participant.name, user?.name||"A colleague", candidateLabel, content.slice(0,200), ""),
+          prefs
+        ).catch(()=>{});
+      }
     }
   };
 
