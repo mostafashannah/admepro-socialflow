@@ -559,7 +559,7 @@ function sbTable(entityName) {
 // Known columns per table — used to strip unknown fields before POST/PATCH
 const SB_SCHEMA = {
   projects: ["title","description","client_id","client_name","status","start_date","end_date","platforms","team_members","project_type","posting_start","posting_end"],
-  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","estimated_minutes","content_assigned_to","due_date","due_time","task_type","revision_count","was_rejected"],
+  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","text_on_visual","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","estimated_minutes","content_assigned_to","due_date","due_time","task_type","revision_count","was_rejected"],
   // address/website/contact_person were never real columns on the clients
   // table (mysql-schema.sql only has name/email/phone/logo_url/industry/
   // status/account_manager_id/notes/platforms/portal_password/username) —
@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.403";
+const APP_VERSION = "beta 5.404";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -4621,6 +4621,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
           {post.caption&&<div style={{display:"flex",flexDirection:"column",gap:6}}>
             <label style={{fontSize:11,fontWeight:700,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Caption</label>
             <div style={{padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
+              {post.text_on_visual&&<p style={{fontSize:13,fontWeight:700,marginBottom:8,paddingBottom:8,borderBottom:"1px dashed var(--border2)"}}>{"\u{1F5BC}️"} Text on Visual: {post.text_on_visual}</p>}
               <p style={{fontSize:13,lineHeight:1.7}}>{post.caption}</p>
               {post.hashtags&&<p style={{fontSize:12,color:"var(--accent)",marginTop:8,fontWeight:500}}>{post.hashtags}</p>}
             </div>
@@ -6274,6 +6275,7 @@ Return ONLY a JSON array with ${cfg.count} objects, each having:
 - "title": short title (max 8 words)
 - "caption": for posts/stories — an engaging caption (1-3 sentences). For articles — the full long-form body text (several paragraphs).
 - "hashtags": 3-5 relevant hashtags (empty string for stories)
+- "text_on_visual": the short headline/text that goes ON the design itself (what the designer overlays on the image/graphic) — punchy, max ~8 words, NOT the same as the caption (empty string for articles, since those don't have a design overlay)
 
 No markdown, no explanation, just the JSON array.`, genMaxTokens);
         // Extract the array specifically rather than requiring the whole
@@ -6287,6 +6289,7 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
           title:`${kind.charAt(0).toUpperCase()+kind.slice(1)} ${i+1} — ${f.campaign}`,
           caption:`Exciting ${kind} content for ${f.campaign}. Stay tuned for more updates!`,
           hashtags: kind==="story" ? "" : `#${f.campaign.toLowerCase().replace(/\s+/g,"")} #socialmedia`,
+          text_on_visual: kind==="article" ? "" : `${f.campaign}`,
         }));
       }
     }
@@ -6310,6 +6313,7 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
           title: idea?.title||`${kind} ${i+1}`,
           caption: idea?.caption||"",
           hashtags: idea?.hashtags||"",
+          text_on_visual: idea?.text_on_visual||"",
           platform,
           post_type: CALENDAR_KIND_POST_TYPE[kind],
           priority: "medium",
@@ -6356,10 +6360,10 @@ ${note?`FEEDBACK FROM THE TEAM — apply this: ${note}`:"The team asked for a fr
 
 ${kindGuide}
 
-Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":"..."}`, kind==="article"?2500:700);
+Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":"...","text_on_visual":"..."} (text_on_visual = the short headline overlaid on the design itself, not the caption; empty string for articles)`, kind==="article"?2500:700);
       const match = aiRes.match(/\{[\s\S]*\}/);
       const idea = JSON.parse(match ? match[0] : aiRes);
-      setGenerated(prev=>prev.map((t,i)=>i===idx?{...t,title:idea.title||t.title,caption:idea.caption||t.caption,hashtags:idea.hashtags??t.hashtags,approved:false}:t));
+      setGenerated(prev=>prev.map((t,i)=>i===idx?{...t,title:idea.title||t.title,caption:idea.caption||t.caption,hashtags:idea.hashtags??t.hashtags,text_on_visual:idea.text_on_visual??t.text_on_visual,approved:false}:t));
       setRegenNotes(prev=>({...prev,[idx]:""}));
     } catch(e) { alert("Sara couldn't regenerate that item — please try again."); }
     setRegenIdx(null);
@@ -6631,6 +6635,11 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                       <Field label="Title">
                         <input value={task.title} onChange={e=>setGenerated(prev=>prev.map((t,idx)=>idx===i?{...t,title:e.target.value}:t))} style={{...inputSt,marginTop:10}}/>
                       </Field>
+                      {task.post_type!=="article"&&(
+                        <Field label="Text on Visual" hint="The short headline overlaid on the design itself — not the caption">
+                          <input value={task.text_on_visual||""} onChange={e=>setGenerated(prev=>prev.map((t,idx)=>idx===i?{...t,text_on_visual:e.target.value}:t))} style={inputSt}/>
+                        </Field>
+                      )}
                       <Field label={task.post_type==="article"?"Article Body":"Caption"}>
                         <textarea value={task.caption} onChange={e=>setGenerated(prev=>prev.map((t,idx)=>idx===i?{...t,caption:e.target.value}:t))} rows={task.post_type==="article"?6:3} style={inputSt}/>
                       </Field>
@@ -35839,7 +35848,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     const localPosts = tasks.map(t=>({...t,project_id:projectId,id:uid()}));
     setData(d=>({...d,posts:[...localPosts,...d.posts]}));
     const calClient = data.clients.find(c=>c.id===planForm.client_id);
-    const postPayloads = localPosts.map(t=>({title:t.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:t.platform,post_type:t.post_type,stage:"planning",priority:t.priority,caption:t.caption,hashtags:t.hashtags,notes:t.notes||"",estimated_minutes:t.estimated_minutes,scheduled_date:t.scheduled_date,scheduled_time:t.scheduled_time,due_date:t.due_date||"",due_time:t.due_time||"",assigned_to:t.assigned_to||""}));
+    const postPayloads = localPosts.map(t=>({title:t.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:t.platform,post_type:t.post_type,stage:"planning",priority:t.priority,caption:t.caption,hashtags:t.hashtags,text_on_visual:t.text_on_visual||"",notes:t.notes||"",estimated_minutes:t.estimated_minutes,scheduled_date:t.scheduled_date,scheduled_time:t.scheduled_time,due_date:t.due_date||"",due_time:t.due_time||"",assigned_to:t.assigned_to||""}));
     ce("Post",postPayloads).then(res=>{
       const reals = res.entities||[];
       setData(d=>{
