@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.397";
+const APP_VERSION = "beta 5.398";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3569,7 +3569,11 @@ function MentionInput({value, onChange, team, placeholder, rows}) {
   const selectMention = (member) => {
     const before = value.slice(0, mentionStart);
     const after = value.slice(textareaRef.current?.selectionStart || mentionStart + mentionQuery.length + 1);
-    onChange(before + '@' + member.name + ' ' + after);
+    // Insert the one-word @username (e.g. "@monaykhalid") instead of the
+    // full display name — a name with a space ("@Monay Khalid") breaks
+    // both the mention-highlighting regex and the mention-detection regex,
+    // which both stop at the first whitespace.
+    onChange(before + '@' + toUsername(member.name) + ' ' + after);
     setShowDropdown(false);
     setMentionStart(-1);
     setTimeout(() => textareaRef.current?.focus(), 0);
