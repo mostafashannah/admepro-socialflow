@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.419";
+const APP_VERSION = "beta 5.420";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16204,6 +16204,24 @@ function offerSentEmail(candidateName, form, offerUrl) {
     </td></tr></table>`;
 }
 
+function taskAssignmentEmail(candidateName, jobTitle, taskDescription, dueDateLabel, attachments) {
+  const attachmentsHtml = (attachments||[]).length
+    ? `<ul style="margin:0 0 16px;padding-left:18px;font-size:14px;line-height:1.8;color:#4b5563">${attachments.map(a=>`<li><a href="${a.url}" style="color:#d90b2c;text-decoration:none;font-weight:600">${a.name||"Attachment"}</a></li>`).join("")}</ul>`
+    : "";
+  return `
+    <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Hi ${candidateName||"there"},</h2>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">As part of our process for the ${jobTitle} position, we'd like you to complete a short task:</p>
+    <div style="margin:0 0 16px;padding:16px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;font-size:14px;line-height:1.6;color:#374151;white-space:pre-wrap">${(taskDescription||"").replace(/</g,"&lt;")}</div>
+    ${attachmentsHtml}
+    ${dueDateLabel?`<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Please send it back to us by <strong>${dueDateLabel}</strong>.</p>`:""}
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Just reply to this email with your submission (attached or linked) — no special portal needed.</p>
+    <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
+      <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
+      <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
+      <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
+    </td></tr></table>`;
+}
+
 // Short public form for email-captured applications missing required
 // fields (CV, phone, salary expectations, join date, etc) — reached via
 // the one-time link in the "complete your application" email sent by
@@ -19392,6 +19410,7 @@ const SYSTEM_EMAIL_SAMPLES = [
   { group:"Recruitment", key:"interviewRescheduled", label:"Interview Rescheduled", build:()=>interviewProposedEmail("Nourhan Adel","Content Creator",["2026-08-02T13:00:00","2026-08-03T15:30:00"],"https://socialflow.admepro.com/careers/interview?token=sample",true,"Jul 27 at 1:00 PM") },
   { group:"Recruitment", key:"interviewConfirmed", label:"Interview Confirmed", build:()=>interviewConfirmedEmail("Nourhan Adel","Content Creator","Jul 27 at 1:00 PM") },
   { group:"Recruitment", key:"offerSent", label:"Job Offer", build:()=>offerSentEmail("Nourhan Adel",{title:"Content Creator",salary:"12,000 EGP",probation_months:"3",post_probation_salary:"15,000 EGP",start_date:"2026-08-15",vacation_days_annual:"21",wfh_days_monthly:"4",laptop_provided:"company",notes:""},"https://socialflow.admepro.com/careers/offer?token=sample") },
+  { group:"Recruitment", key:"taskAssignment", label:"Task Assignment", build:()=>taskAssignmentEmail("Nourhan Adel","Content Creator","Write a 100-word Instagram caption for a fictional skincare brand launch, in a warm and inspirational tone.","Jul 30",[{url:"#",name:"brand-brief.pdf"}]) },
 ];
 
 function SystemEmailsPreviewTab() {
@@ -26997,6 +27016,87 @@ function ApplicationCommentsSection({application, comments, team, currentUser, o
   );
 }
 
+// Send the candidate a written task/test assignment, optionally with file
+// attachments, and a due date (defaults to 3 working days out, editable).
+function TaskSection({application, onSend, sending}) {
+  const [description, setDescription] = useState(application.task_description||"");
+  const [dueDate, setDueDate] = useState(application.task_due_date || addWorkingDays(new Date(),3).toISOString().split("T")[0]);
+  const [files, setFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef(null);
+  const existingAttachments = parseMaybeJson(application.task_attachments, []);
+
+  const handleFiles = (e) => {
+    const picked = Array.from(e.target.files||[]);
+    setFiles(prev=>[...prev, ...picked]);
+    e.target.value = "";
+  };
+  const removeFile = (i) => setFiles(prev=>prev.filter((_,idx)=>idx!==i));
+
+  const handleSend = async () => {
+    if(!description.trim()) return;
+    setUploading(true);
+    try {
+      const uploaded = [];
+      for(const f of files) {
+        const url = await uploadToStorage(f, "job-applications/tasks");
+        uploaded.push({url, name: f.name});
+      }
+      await onSend(application, description.trim(), dueDate, [...existingAttachments, ...uploaded]);
+      setFiles([]);
+    } catch(e) {
+      alert("Couldn't send the task: " + (e?.message||e));
+    }
+    setUploading(false);
+  };
+
+  return (
+    <div style={{marginBottom:14,padding:14,background:"var(--surface2)",borderRadius:10,border:"1px solid var(--border)"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+        <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Task / Test Assignment</p>
+        {application.task_sent_at && <span style={{fontSize:11,fontWeight:700,color:"#10b981"}}>Sent {fmtDateTime(application.task_sent_at)}</span>}
+      </div>
+      {application.task_sent_at && application.task_due_date && (
+        <p style={{fontSize:12,color:"var(--text2)",marginBottom:10}}>Due {fmtDate(application.task_due_date)}</p>
+      )}
+      {existingAttachments.length>0 && (
+        <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:10}}>
+          {existingAttachments.map((a,i)=>(
+            <a key={i} href={a.url} target="_blank" rel="noreferrer" style={{fontSize:12,color:"var(--accent)",fontWeight:600}}>📎 {a.name||"Attachment"}</a>
+          ))}
+        </div>
+      )}
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        <Field label="Task Description">
+          <textarea value={description} onChange={e=>setDescription(e.target.value)} rows={4} placeholder="e.g. Write a 100-word Instagram caption for a fictional skincare brand launch." style={inputSt}/>
+        </Field>
+        <Field label="Due Date" hint="Defaults to 3 working days from today — editable">
+          <input type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} style={inputSt}/>
+        </Field>
+        <Field label="Attach Files (optional)">
+          <input ref={fileRef} type="file" multiple style={{display:"none"}} onChange={handleFiles}/>
+          <button type="button" onClick={()=>fileRef.current?.click()} style={{padding:"8px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer",width:"fit-content"}}>
+            <Ico d={Icons.upload} size={12}/> Choose Files
+          </button>
+          {files.length>0 && (
+            <div style={{display:"flex",flexDirection:"column",gap:4,marginTop:8}}>
+              {files.map((f,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:"var(--text2)"}}>
+                  <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📎 {f.name}</span>
+                  <button type="button" onClick={()=>removeFile(i)} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontWeight:700}}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </Field>
+        <Btn onClick={handleSend} disabled={uploading||sending||!description.trim()} style={{alignSelf:"flex-start"}}>
+          {(uploading||sending) ? <Spinner size={13}/> : <Ico d={Icons.send} size={13}/>} {application.task_sent_at ? "Resend Task" : "Send Task"}
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
 // Standalone fetch-and-render wrapper for opening exactly one job
 // application from a mention notification, without mounting the full
 // Recruitment module (and its hr.manage_recruitment gate) at all — the
@@ -27040,7 +27140,7 @@ function RestrictedApplicationView({applicationId, currentUser, team, comments, 
   );
 }
 
-function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader, onConvertCv, convertingCv, cvConvertFailed, onRateInterview, onSavePortfolioScore, activityLog, onSendCompletionEmail, sendingCompletion, onSendInterviewTimes, sendingInterviewTimes, onConfirmInterview, confirmingInterview, onSaveOffer, savingOffer, onSendOffer, sendingOffer, onMakeTeamMember, comments=[], onAddComment, team=[], currentUser, restrictedView=false}) {
+function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader, onConvertCv, convertingCv, cvConvertFailed, onRateInterview, onSavePortfolioScore, activityLog, onSendCompletionEmail, sendingCompletion, onSendInterviewTimes, sendingInterviewTimes, onConfirmInterview, confirmingInterview, onSaveOffer, savingOffer, onSendOffer, sendingOffer, onSendTask, sendingTask, onMakeTeamMember, comments=[], onAddComment, team=[], currentUser, restrictedView=false}) {
   const [notes, setNotes] = useState(application.notes||"");
   const [rerunning, setRerunning] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -27302,6 +27402,10 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
 
         {onSendInterviewTimes&&["shortlisted","interview","offer","hired"].includes(application.status)&&(
           <InterviewSchedulingSection application={application} onSendTimes={onSendInterviewTimes} sending={sendingInterviewTimes} onConfirm={onConfirmInterview} confirming={confirmingInterview} onUpdateStatus={onUpdateStatus}/>
+        )}
+
+        {onSendTask&&["shortlisted","interview","offer"].includes(application.status)&&(
+          <TaskSection application={application} onSend={onSendTask} sending={sendingTask}/>
         )}
 
         {onSaveOffer&&["interview","offer","hired"].includes(application.status)&&(
@@ -28012,6 +28116,24 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
     }
   };
 
+  const [sendingTaskId, setSendingTaskId] = useState(null);
+  const handleSendTask = async (app, description, dueDate, attachments) => {
+    if(!app.candidate_email) return;
+    setSendingTaskId(app.id);
+    try {
+      const patch = {task_description: description, task_due_date: dueDate||null, task_attachments: JSON.stringify(attachments||[]), task_sent_at: new Date().toISOString()};
+      await ue("JobApplication", app.id, patch).catch(()=>{});
+      setApplications(prev=>prev.map(a=>a.id===app.id?{...a,...patch}:a));
+      setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,...patch}:prev);
+      const jobTitle = openings.find(o=>o.id===app.job_opening_id)?.title || app.job_title || "the role";
+      const bodyHtml = taskAssignmentEmail(app.candidate_name, jobTitle, description, dueDate?fmtDate(dueDate):"", attachments);
+      const ok = await sendCareersEmail(app.candidate_email, `A quick task for the ${jobTitle} role`, bodyHtml, "Admepro Careers").catch(()=>false);
+      logActivity(app.id, ok ? "Task assignment sent" : "Task assignment FAILED to send");
+    } finally {
+      setSendingTaskId(null);
+    }
+  };
+
   const [makeTeamMemberApp, setMakeTeamMemberApp] = useState(null);
   const handleInviteFromApplication = async (formData) => {
     await onInviteUser(formData);
@@ -28396,7 +28518,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
 
   if(selectedApp) return (
     <>
-      <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===selectedApp.id} cvConvertFailed={cvConvertFailedId===selectedApp.id} onRateInterview={handleRateInterview} onSavePortfolioScore={handleSavePortfolioScore} activityLog={activityLogs.filter(l=>l.application_id===selectedApp.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===selectedApp.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===selectedApp.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===selectedApp.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===selectedApp.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===selectedApp.id} onMakeTeamMember={setMakeTeamMemberApp} comments={comments} onAddComment={onAddComment} team={team} currentUser={currentUser}/>
+      <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===selectedApp.id} cvConvertFailed={cvConvertFailedId===selectedApp.id} onRateInterview={handleRateInterview} onSavePortfolioScore={handleSavePortfolioScore} activityLog={activityLogs.filter(l=>l.application_id===selectedApp.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===selectedApp.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===selectedApp.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===selectedApp.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===selectedApp.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===selectedApp.id} onSendTask={handleSendTask} sendingTask={sendingTaskId===selectedApp.id} onMakeTeamMember={setMakeTeamMemberApp} comments={comments} onAddComment={onAddComment} team={team} currentUser={currentUser}/>
       {makeTeamMemberModal}
     </>
   );
@@ -28412,7 +28534,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:22,margin:0}}>{sortedGroup[0].candidate_name} · {sortedGroup.length} applications</h2>
         </div>
         {sortedGroup.map((app,i)=>(
-          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===app.id} cvConvertFailed={cvConvertFailedId===app.id} onRateInterview={handleRateInterview} onSavePortfolioScore={handleSavePortfolioScore} activityLog={activityLogs.filter(l=>l.application_id===app.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===app.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===app.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===app.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===app.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===app.id} onMakeTeamMember={setMakeTeamMemberApp} comments={comments} onAddComment={onAddComment} team={team} currentUser={currentUser}/>
+          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===app.id} cvConvertFailed={cvConvertFailedId===app.id} onRateInterview={handleRateInterview} onSavePortfolioScore={handleSavePortfolioScore} activityLog={activityLogs.filter(l=>l.application_id===app.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===app.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===app.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===app.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===app.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===app.id} onSendTask={handleSendTask} sendingTask={sendingTaskId===app.id} onMakeTeamMember={setMakeTeamMemberApp} comments={comments} onAddComment={onAddComment} team={team} currentUser={currentUser}/>
         ))}
         {makeTeamMemberModal}
       </div>
