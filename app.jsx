@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.425";
+const APP_VERSION = "beta 5.426";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -7051,6 +7051,7 @@ function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAdd
     if(!isAdmin) return;
     let cancelled = false;
     const poll = async () => {
+      if(document.visibilityState!=="visible") return; // skip while this tab is backgrounded
       const res = await qe("TeamMember",{},null,500).catch(()=>null);
       if(!cancelled && res?.entities) setLiveTeam(res.entities);
     };
@@ -20529,7 +20530,7 @@ function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh, te
   };
   useEffect(()=>{
     doRefresh();
-    const id = setInterval(doRefresh, 20000);
+    const id = setInterval(()=>{ if(document.visibilityState==="visible") doRefresh(); }, 20000);
     return () => clearInterval(id);
   },[]);
 
@@ -20551,6 +20552,7 @@ function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh, te
   useEffect(()=>{
     let cancelled = false;
     const poll = async () => {
+      if(document.visibilityState!=="visible") return; // skip while this tab is backgrounded
       const res = await qe("TeamMember",{},null,500).catch(()=>null);
       if(!cancelled && res?.entities) setLiveTeam(res.entities);
     };
@@ -24432,7 +24434,7 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   // transaction shows up without needing a manual refresh or reload.
   React.useEffect(()=>{ onRefresh&&onRefresh(); },[]);
   React.useEffect(()=>{
-    const t = setInterval(()=>{ onRefresh?.(); }, 30000);
+    const t = setInterval(()=>{ if(document.visibilityState==="visible") onRefresh?.(); }, 30000);
     return ()=>clearInterval(t);
   },[]);
   const handleRefresh = async () => { setRefreshing(true); await onRefresh?.(); setRefreshing(false); };
@@ -28175,7 +28177,7 @@ function RecruitmentMailboxTab({appSettings}) {
   // in-progress draft the user is looking at doesn't visually shift.
   useEffect(()=>{
     const t = setInterval(()=>{
-      if(showCompose||sendingReply) return;
+      if(showCompose||sendingReply||document.visibilityState!=="visible") return;
       fetchMailbox()
         .then(json=>{
           if(json.ok) {
@@ -28507,7 +28509,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
   // ever see it after leaving and reopening the page (or a manual
   // browser refresh). Quiet background refresh, no loading spinner.
   useEffect(()=>{
-    const t = setInterval(()=>load(true), 30000);
+    const t = setInterval(()=>{ if(document.visibilityState==="visible") load(true); }, 30000);
     return ()=>clearInterval(t);
   },[]);
 
@@ -34662,6 +34664,7 @@ function App() {
       if(!cancelled) seenNotifIdsRef.current = new Set((res?.entities||[]).map(n=>n.id));
     }).catch(()=>{ if(!cancelled) seenNotifIdsRef.current = new Set(); });
     const poll = async () => {
+      if(document.visibilityState!=="visible") return; // skip while this tab is backgrounded — resumes (and catches up) the moment it's focused again
       const res = await qe("Notification", {recipient_email:currentUser.email}, "-created_at", 50).catch(()=>null);
       if(!res?.entities || !seenNotifIdsRef.current) return;
       const fresh = res.entities.filter(n=>!seenNotifIdsRef.current.has(n.id));
