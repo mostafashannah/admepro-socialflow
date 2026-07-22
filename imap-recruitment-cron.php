@@ -446,18 +446,19 @@ foreach ($messages as $message) {
                     $snippet = trim(preg_replace('/\s+/', ' ', substr($bodyText, 0, 300)));
                     log_activity($pdo, $confirmedApp['id'], "Candidate emailed asking to change the interview time: \"{$snippet}\"");
 
-                    $adminStmt = $pdo->prepare("SELECT email, whatsapp_number FROM team_members WHERE role = 'admin' AND whatsapp_number IS NOT NULL AND whatsapp_number <> '' LIMIT 5");
+                    $adminStmt = $pdo->prepare("SELECT email, whatsapp_number FROM team_members WHERE role = 'admin' LIMIT 5");
                     $adminStmt->execute();
                     $admins = $adminStmt->fetchAll(PDO::FETCH_ASSOC);
                     $alertMsg = "📧 {$confirmedApp['candidate_name']} ({$confirmedApp['job_title']}) emailed asking to change their confirmed interview time ({$confirmedApp['interview_confirmed_slot']}):\n\"{$snippet}\"\n\nOpen Recruitment to propose new times.";
                     foreach ($admins as $admin) {
                         if (!empty($admin['whatsapp_number'])) sendWhatsAppReply($admin['whatsapp_number'], $alertMsg);
                         if (!empty($admin['email'])) {
-                            $notif = $pdo->prepare("INSERT INTO notifications (id, recipient_email, title, message, type, is_read, link_type, link_id) VALUES (:id, :email, :title, :msg, 'info', 0, 'page', 'recruitment')");
+                            $notif = $pdo->prepare("INSERT INTO notifications (id, recipient_email, title, message, type, is_read, link_type, link_id) VALUES (:id, :email, :title, :msg, 'info', 0, 'job_application', :appid)");
                             $notif->execute([
                                 ':id' => generateProUuid(), ':email' => $admin['email'],
                                 ':title' => 'Candidate wants to reschedule',
                                 ':msg' => "{$confirmedApp['candidate_name']} emailed asking to change their confirmed interview time.",
+                                ':appid' => $confirmedApp['id'],
                             ]);
                         }
                     }
