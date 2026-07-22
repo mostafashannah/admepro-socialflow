@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.410";
+const APP_VERSION = "beta 5.411";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6062,6 +6062,12 @@ const CALENDAR_KIND_DEFS = [
 // how to estimate, so "12 carousels" costs 12x a single carousel's estimate.
 const CALENDAR_KIND_POST_TYPE = {static:"image", reel:"reel", carousel:"carousel", article:"blog", story:"story"};
 
+// Egypt work week default (Sun-Thu, same convention used everywhere else —
+// interview-slot templates, calendar-plan scheduling): getDay() 0=Sun..6=Sat.
+// A part-time team member can override this per-person (see EditMemberModal).
+const WORK_DAYS_DEFAULT = [0,1,2,3,4];
+const WEEKDAY_LABELS = [{d:0,label:"Sun"},{d:1,label:"Mon"},{d:2,label:"Tue"},{d:3,label:"Wed"},{d:4,label:"Thu"},{d:5,label:"Fri"},{d:6,label:"Sat"}];
+
 // Finds the first working day (Egypt week: Sun-Thu, skipping Fri/Sat — same
 // convention as the interview-slot templates) where this person has enough
 // free capacity, within a standard WORKING_START-WORKING_END day, to fit
@@ -6069,13 +6075,14 @@ const CALENDAR_KIND_POST_TYPE = {static:"image", reel:"reel", carousel:"carousel
 // bigger than one day's capacity. "Busy" is read from their OTHER pending
 // tasks' due_date + estimated_minutes, since there's no separate capacity/
 // calendar model in the app to check against.
-function findFirstAvailableSlot(allPosts, userEmail, durationMins, searchFromDate) {
+function findFirstAvailableSlot(allPosts, userEmail, durationMins, searchFromDate, workDays) {
   if(!userEmail) return null;
+  const days = workDays||WORK_DAYS_DEFAULT;
   let day = searchFromDate ? new Date(searchFromDate) : new Date();
   let remaining = durationMins;
   let firstDay = null;
   for(let guard=0; guard<90; guard++) {
-    if(day.getDay()!==5 && day.getDay()!==6) {
+    if(days.includes(day.getDay())) {
       const dateStr = day.toISOString().split("T")[0];
       const busyMins = allPosts
         .filter(p=>p.assigned_to===userEmail && p.due_date===dateStr && !["published","rejected"].includes(p.stage))
@@ -6102,13 +6109,14 @@ function freeCapacityOnDate(allPosts, userEmail, dateStr) {
 // Sums free capacity across every working day in a start→end window (for the
 // "pick start and end date" manual mode) — same day-level model as
 // freeCapacityOnDate, just accumulated over the range instead of one day.
-function freeCapacityInRange(allPosts, userEmail, startDateStr, endDateStr) {
+function freeCapacityInRange(allPosts, userEmail, startDateStr, endDateStr, workDays) {
   if(!startDateStr || !endDateStr) return 0;
+  const days = workDays||WORK_DAYS_DEFAULT;
   let day = new Date(startDateStr);
   const end = new Date(endDateStr);
   let total = 0;
   for(let guard=0; guard<120 && day<=end; guard++) {
-    if(day.getDay()!==5 && day.getDay()!==6) {
+    if(days.includes(day.getDay())) {
       total += freeCapacityOnDate(allPosts, userEmail, day.toISOString().split("T")[0]);
     }
     day = new Date(day.getTime()+86400000);
@@ -6121,14 +6129,15 @@ function freeCapacityInRange(allPosts, userEmail, startDateStr, endDateStr) {
 // starting from fromDate. If a hard deadline (toDate) is given and the
 // batch doesn't fit by then, scheduling keeps going past it anyway (so
 // every item still gets a real date) and the caller is told via `overflow`.
-function scheduleItemDates(allPosts, userEmail, perItemMins, count, fromDate, toDate) {
+function scheduleItemDates(allPosts, userEmail, perItemMins, count, fromDate, toDate, workDays) {
   if(!userEmail || !count) return {dates:[], overflow:false};
+  const days = workDays||WORK_DAYS_DEFAULT;
   const dates = [];
   let day = fromDate ? new Date(fromDate) : new Date();
   const endLimit = toDate ? new Date(toDate) : null;
   let overflow = false;
   for(let guard=0; guard<200 && dates.length<count; guard++) {
-    if(day.getDay()!==5 && day.getDay()!==6) {
+    if(days.includes(day.getDay())) {
       const dateStr = day.toISOString().split("T")[0];
       let free = freeCapacityOnDate(allPosts, userEmail, dateStr) - dates.filter(d=>d===dateStr).length*perItemMins;
       while(free >= perItemMins && dates.length<count) {
@@ -6244,11 +6253,13 @@ Return ONLY the brief text — no markdown, no labels, no quotes.`, 300);
     const cfg = f.kinds[kind];
     if(!cfg.count || !cfg.assigned_to) return null;
     const perItemMins = estimateDuration({post_type: CALENDAR_KIND_POST_TYPE[kind], priority:"medium"});
+    const assignee = (team||[]).find(t=>t.email===cfg.assigned_to);
+    const workDays = assignee?.employment_type==="part_time" ? parseMaybeJson(assignee.work_days, WORK_DAYS_DEFAULT) : WORK_DAYS_DEFAULT;
     if(cfg.due_mode==="manual" && cfg.manual_due_date) {
-      const {dates, overflow} = scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, cfg.count, cfg.manual_due_date, cfg.manual_due_date);
+      const {dates, overflow} = scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, cfg.count, cfg.manual_due_date, cfg.manual_due_date, workDays);
       return {dates, conflict:overflow, requestedEnd: cfg.manual_due_date};
     }
-    const {dates} = scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, cfg.count, f.date_from||new Date(), null);
+    const {dates} = scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, cfg.count, f.date_from||new Date(), null, workDays);
     return {dates, conflict:false, requestedEnd:null};
   };
 
@@ -6405,9 +6416,11 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
       const cfg = f.kinds[kind]||{};
       const perItemMins = estimateDuration({post_type: CALENDAR_KIND_POST_TYPE[kind], priority:"medium"});
       if(cfg.assigned_to) {
+        const assignee = (team||[]).find(t=>t.email===cfg.assigned_to);
+        const workDays = assignee?.employment_type==="part_time" ? parseMaybeJson(assignee.work_days, WORK_DAYS_DEFAULT) : WORK_DAYS_DEFAULT;
         const {dates} = cfg.due_mode==="manual" && cfg.manual_due_date
-          ? scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, items.length, cfg.manual_due_date, cfg.manual_due_date)
-          : scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, items.length, f.date_from||new Date(), null);
+          ? scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, items.length, cfg.manual_due_date, cfg.manual_due_date, workDays)
+          : scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, items.length, f.date_from||new Date(), null, workDays);
         dueDatesByKind[kind] = dates;
       } else {
         dueDatesByKind[kind] = [];
@@ -14030,8 +14043,11 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
     status:member.status||"active", manager_id:member.manager_id||"", whatsapp_number:member.whatsapp_number||"",
     salary:member.salary??"", probation_salary:member.probation_salary??"", probation_months:member.probation_months??"",
     vacation_days_total:member.vacation_days_total??21, wfh_days_total:member.wfh_days_total??12,
+    employment_type: member.employment_type||"full_time",
+    work_days: parseMaybeJson(member.work_days, WORK_DAYS_DEFAULT),
   });
   const s = (k,v) => setF(p=>({...p,[k]:v}));
+  const toggleWorkDay = (day) => setF(p=>({...p,work_days: p.work_days.includes(day) ? p.work_days.filter(d=>d!==day) : [...p.work_days,day].sort()}));
   const managers = (team||[]).filter(t=>t.id!==member.id && t.role!=="client");
   const vacUsed = Number(member.vacation_days_used||0), wfhUsed = Number(member.wfh_days_used||0);
   // Any custom title already typed for someone else on the team becomes a
@@ -14045,6 +14061,9 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
     if(updates.salary==="") updates.salary = null;
     if(updates.probation_salary==="") updates.probation_salary = null;
     if(updates.probation_months==="") updates.probation_months = null;
+    // Full-time always means the standard Sun-Thu week (work_days only
+    // matters/persists for part-timers with a custom schedule).
+    updates.work_days = JSON.stringify(updates.employment_type==="part_time" ? updates.work_days : WORK_DAYS_DEFAULT);
     onSave(updates);
   };
 
@@ -14086,6 +14105,26 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
               <option value="inactive">Inactive</option>
             </select>
           </Field>
+          <Field label="Employment Type" hint="Part-time lets you pick which weekdays they actually work — task allocation and due-date scheduling only count those days as available">
+            <select value={f.employment_type} onChange={e=>s("employment_type",e.target.value)} style={inputSt}>
+              <option value="full_time">Full-time</option>
+              <option value="part_time">Part-time</option>
+            </select>
+          </Field>
+          {f.employment_type==="part_time" && (
+            <Field label="Working Days">
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                {WEEKDAY_LABELS.map(({d,label})=>(
+                  <button key={d} type="button" onClick={()=>toggleWorkDay(d)} style={{
+                    padding:"6px 12px",borderRadius:99,fontSize:12,fontWeight:700,
+                    border:`1.5px solid ${f.work_days.includes(d)?"var(--accent)":"var(--border2)"}`,
+                    background:f.work_days.includes(d)?"var(--accent)18":"var(--surface)",
+                    color:f.work_days.includes(d)?"var(--accent)":"var(--text2)",cursor:"pointer",
+                  }}>{label}</button>
+                ))}
+              </div>
+            </Field>
+          )}
           {canEditSalary&&(
             <Field label="Salary"><input type="number" value={f.salary} onChange={e=>s("salary",e.target.value)} placeholder="Monthly salary" style={inputSt}/></Field>
           )}
