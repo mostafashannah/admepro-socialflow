@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.400";
+const APP_VERSION = "beta 5.401";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6097,10 +6097,52 @@ function freeCapacityOnDate(allPosts, userEmail, dateStr) {
     .reduce((sum,p)=>sum+estimateDuration(p),0);
   return Math.max(0, WORKING_MINS - busyMins);
 }
+// Sums free capacity across every working day in a start→end window (for the
+// "pick start and end date" manual mode) — same day-level model as
+// freeCapacityOnDate, just accumulated over the range instead of one day.
+function freeCapacityInRange(allPosts, userEmail, startDateStr, endDateStr) {
+  if(!startDateStr || !endDateStr) return 0;
+  let day = new Date(startDateStr);
+  const end = new Date(endDateStr);
+  let total = 0;
+  for(let guard=0; guard<120 && day<=end; guard++) {
+    if(day.getDay()!==5 && day.getDay()!==6) {
+      total += freeCapacityOnDate(allPosts, userEmail, day.toISOString().split("T")[0]);
+    }
+    day = new Date(day.getTime()+86400000);
+  }
+  return total;
+}
+// Each post in a batch stays its own separate task with its own due date —
+// this packs `count` items of `perItemMins` each onto this assignee's actual
+// free working days (as many as fit per day before spilling to the next),
+// starting from fromDate. If a hard deadline (toDate) is given and the
+// batch doesn't fit by then, scheduling keeps going past it anyway (so
+// every item still gets a real date) and the caller is told via `overflow`.
+function scheduleItemDates(allPosts, userEmail, perItemMins, count, fromDate, toDate) {
+  if(!userEmail || !count) return {dates:[], overflow:false};
+  const dates = [];
+  let day = fromDate ? new Date(fromDate) : new Date();
+  const endLimit = toDate ? new Date(toDate) : null;
+  let overflow = false;
+  for(let guard=0; guard<200 && dates.length<count; guard++) {
+    if(day.getDay()!==5 && day.getDay()!==6) {
+      const dateStr = day.toISOString().split("T")[0];
+      let free = freeCapacityOnDate(allPosts, userEmail, dateStr) - dates.filter(d=>d===dateStr).length*perItemMins;
+      while(free >= perItemMins && dates.length<count) {
+        dates.push(dateStr);
+        free -= perItemMins;
+      }
+      if(endLimit && day>endLimit) overflow = true;
+    }
+    day = new Date(day.getTime()+86400000);
+  }
+  return {dates, overflow};
+}
 
 function AddCalendarPlanModal({open,onClose,clients,team,posts,preselectedClient,onGenerate,clientKnowledgeList,clientIntelligenceList,clientMemoryList,onUpsertMemory}) {
   const [step,setStep] = useState("form"); // form | generating | preview | done
-  const makeKindDefaults = (count) => ({count, platforms:preselectedClient?.platforms||[], brief:"", assigned_to:"", due_mode:"auto", manual_due_date:"", manual_due_time:"13:00"});
+  const makeKindDefaults = (count) => ({count, platforms:preselectedClient?.platforms||[], brief:"", assigned_to:"", due_mode:"auto", manual_start_date:"", manual_start_time:"10:00", manual_end_date:"", manual_end_time:"19:00"});
   const [f,setF] = useState({
     client_id: preselectedClient?.id||"",
     campaign: "",
@@ -6176,28 +6218,21 @@ Return ONLY the brief text — no markdown, no labels, no quotes.`, 300);
     setSuggestingBrief(p=>({...p,[kind]:false}));
   };
 
-  // The due date for a kind block (shared by every item in it, since the
-  // whole block becomes one task): "auto" finds this assignee's first free
-  // slot with enough capacity for the WHOLE batch's total time; "manual"
-  // uses the picked date if they have room, otherwise the same
-  // first-available search starting from that date (so the UI can tell the
-  // user "not free then — here's the first day that works instead").
+  // Each post in a kind block stays its own separate task with its own due
+  // date — "auto" packs them onto this assignee's real free capacity
+  // starting from the campaign start date; "manual" packs them into the
+  // picked start→end window, and if the batch doesn't fully fit by the end
+  // date, scheduling spills past it and the UI flags that as a conflict.
   const kindDueDate = (kind) => {
     const cfg = f.kinds[kind];
     if(!cfg.count || !cfg.assigned_to) return null;
     const perItemMins = estimateDuration({post_type: CALENDAR_KIND_POST_TYPE[kind], priority:"medium"});
-    const totalMins = perItemMins * cfg.count;
-    if(cfg.due_mode==="manual" && cfg.manual_due_date) {
-      const free = freeCapacityOnDate(posts||[], cfg.assigned_to, cfg.manual_due_date);
-      if(free >= totalMins) return {date: cfg.manual_due_date, conflict:false, suggested:null, requested: cfg.manual_due_date};
-      const suggested = findFirstAvailableSlot(posts||[], cfg.assigned_to, totalMins, cfg.manual_due_date);
-      // Not free on the requested day — actually use the first day that IS
-      // free (not the busy day the user picked), while still surfacing what
-      // they asked for so the message reads as a substitution, not a silent one.
-      return {date: suggested, conflict:true, suggested, requested: cfg.manual_due_date};
+    if(cfg.due_mode==="manual" && cfg.manual_start_date) {
+      const {dates, overflow} = scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, cfg.count, cfg.manual_start_date, cfg.manual_end_date||cfg.manual_start_date);
+      return {dates, conflict:overflow, requestedEnd: cfg.manual_end_date||cfg.manual_start_date};
     }
-    const auto = findFirstAvailableSlot(posts||[], cfg.assigned_to, totalMins, f.date_from||new Date());
-    return {date: auto, conflict:false, suggested:null};
+    const {dates} = scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, cfg.count, f.date_from||new Date(), null);
+    return {dates, conflict:false, requestedEnd:null};
   };
 
   const handleGenerate = async () => {
@@ -6334,47 +6369,42 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
 
   const handleConfirm = async () => {
     setStep("generating");
-    // Group approved ideas by kind into ONE task per kind — "8 static posts"
-    // stays one task card even though it carries 8 ideas — aggregating their
-    // captions into `notes` (already a whitelisted plain-text column) and
-    // sizing `estimated_minutes` off the real approved count, not the
-    // originally-requested count (fewer may have survived review).
+    // Every approved idea stays its OWN task (not bundled) — but each one
+    // still needs a real due date, so pack them onto this assignee's actual
+    // free capacity per kind, in order, instead of every item in a kind
+    // landing on the same day.
     const approved = generated.filter(t=>t.approved);
     const byKind = {};
     approved.forEach(t=>{ (byKind[t.kind]=byKind[t.kind]||[]).push(t); });
-    const consolidatedTasks = Object.entries(byKind).map(([kind,items])=>{
+    const dueDatesByKind = {};
+    Object.entries(byKind).forEach(([kind,items])=>{
       const cfg = f.kinds[kind]||{};
       const perItemMins = estimateDuration({post_type: CALENDAR_KIND_POST_TYPE[kind], priority:"medium"});
-      const due = kindDueDate(kind);
-      const notes = items.map((it,i)=>`${i+1}. ${it.title}\n${it.caption}${it.hashtags?`\n${it.hashtags}`:""}`).join("\n\n");
-      return {
-        id: uid(),
-        kind,
-        title: `${items.length} ${CALENDAR_KIND_DEFS.find(([k])=>k===kind)?.[1]||kind} — ${f.campaign}`,
-        caption: items[0]?.caption||"",
-        hashtags: items[0]?.hashtags||"",
-        notes,
-        platform: items[0]?.platform,
-        post_type: CALENDAR_KIND_POST_TYPE[kind],
-        priority: "medium",
-        client_id: f.client_id,
-        client_name: selectedClient?.name||"",
-        assigned_to: cfg.assigned_to||"",
-        project_name: f.campaign,
-        status: "pending",
-        estimated_minutes: perItemMins * items.length,
-        due_date: due?.date || "",
-      };
+      if(cfg.assigned_to) {
+        const {dates} = cfg.due_mode==="manual" && cfg.manual_start_date
+          ? scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, items.length, cfg.manual_start_date, cfg.manual_end_date||cfg.manual_start_date)
+          : scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, items.length, f.date_from||new Date(), null);
+        dueDatesByKind[kind] = dates;
+      } else {
+        dueDatesByKind[kind] = [];
+      }
     });
-    await onGenerate(f, consolidatedTasks);
+    const kindCursor = {};
+    const finalTasks = approved.map(t=>{
+      kindCursor[t.kind] = kindCursor[t.kind]||0;
+      const dueDate = dueDatesByKind[t.kind]?.[kindCursor[t.kind]] || "";
+      kindCursor[t.kind]++;
+      return {...t, due_date: dueDate};
+    });
+    await onGenerate(f, finalTasks);
     // Sara learns from the plan she just delivered — best-effort, in the
     // background, so the user isn't kept waiting on it.
     saraLearnFromWork({
       clientId: f.client_id,
       clientName: selectedClient?.name||"",
       workLabel: `Calendar plan: ${f.campaign}`,
-      workSummary: `Campaign "${f.campaign}" (${f.date_from} → ${f.date_to}): ${approved.length} items across ${consolidatedTasks.length} task(s) — `+
-        approved.slice(0,20).map(t=>`[${t.post_type}/${t.platform}] ${t.title}`).join("; "),
+      workSummary: `Campaign "${f.campaign}" (${f.date_from} → ${f.date_to}): ${finalTasks.length} items — `+
+        finalTasks.slice(0,20).map(t=>`[${t.post_type}/${t.platform}] ${t.title}`).join("; "),
       onUpsertMemory,
     });
     setStep("done");
@@ -6440,71 +6470,82 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                   <Field label="Due Date">
                     <div style={{display:"flex",gap:6}}>
                       <button type="button" onClick={()=>sk(kind,"due_mode","auto")} style={{flex:1,padding:"8px 6px",borderRadius:8,border:`1.5px solid ${cfg.due_mode!=="manual"?"var(--accent)":"var(--border2)"}`,background:cfg.due_mode!=="manual"?"var(--accent)18":"var(--surface)",fontWeight:700,fontSize:11.5,color:cfg.due_mode!=="manual"?"var(--accent)":"var(--text2)",cursor:"pointer"}}>Auto</button>
-                      <button type="button" onClick={()=>sk(kind,"due_mode","manual")} style={{flex:1,padding:"8px 6px",borderRadius:8,border:`1.5px solid ${cfg.due_mode==="manual"?"var(--accent)":"var(--border2)"}`,background:cfg.due_mode==="manual"?"var(--accent)18":"var(--surface)",fontWeight:700,fontSize:11.5,color:cfg.due_mode==="manual"?"var(--accent)":"var(--text2)",cursor:"pointer"}}>Pick date</button>
+                      <button type="button" onClick={()=>sk(kind,"due_mode","manual")} style={{flex:1,padding:"8px 6px",borderRadius:8,border:`1.5px solid ${cfg.due_mode==="manual"?"var(--accent)":"var(--border2)"}`,background:cfg.due_mode==="manual"?"var(--accent)18":"var(--surface)",fontWeight:700,fontSize:11.5,color:cfg.due_mode==="manual"?"var(--accent)":"var(--text2)",cursor:"pointer"}}>Pick start/end</button>
                     </div>
                   </Field>
-                  {cfg.due_mode==="manual" && (
-                    <Field label="Pick Due Date">
-                      <input type="date" value={cfg.manual_due_date} onChange={e=>sk(kind,"manual_due_date",e.target.value)} style={inputSt}/>
-                    </Field>
-                  )}
                 </div>
+                {cfg.due_mode==="manual" && (
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(180px,100%),1fr))",gap:10}}>
+                    <Field label="Start Date">
+                      <input type="date" value={cfg.manual_start_date} onChange={e=>sk(kind,"manual_start_date",e.target.value)} style={inputSt}/>
+                    </Field>
+                    <Field label="Start Time">
+                      <input type="time" value={cfg.manual_start_time} onChange={e=>sk(kind,"manual_start_time",e.target.value)} style={inputSt}/>
+                    </Field>
+                    <Field label="End Date">
+                      <input type="date" value={cfg.manual_end_date} onChange={e=>sk(kind,"manual_end_date",e.target.value)} style={inputSt}/>
+                    </Field>
+                    <Field label="End Time">
+                      <input type="time" value={cfg.manual_end_time} onChange={e=>sk(kind,"manual_end_time",e.target.value)} style={inputSt}/>
+                    </Field>
+                  </div>
+                )}
                 {cfg.count>0 && cfg.assigned_to && (()=>{
                   const due = kindDueDate(kind);
-                  if(!due) return null;
+                  if(!due || !due.dates?.length) return (
+                    <div style={{fontSize:11.5,padding:"8px 10px",borderRadius:8,background:"#f59e0b18",border:"1px solid #f59e0b55",color:"#b45309"}}>
+                      No free slot found for this teammate — try a different assignee.
+                    </div>
+                  );
+                  const first = due.dates[0], last = due.dates[due.dates.length-1];
                   return (
                     <div style={{fontSize:11.5,padding:"8px 10px",borderRadius:8,
                       background:due.conflict?"#f59e0b18":"#10b98118",
                       border:`1px solid ${due.conflict?"#f59e0b55":"#10b98155"}`,
                       color:due.conflict?"#b45309":"#059669"}}>
-                      {!due.date ? "No free slot found in the next 90 days for this teammate — try a different assignee."
-                        : due.conflict
-                        ? `Not free on ${fmtDate(due.requested)} — first available day for this teammate: ${fmtDate(due.date)}`
-                        : cfg.due_mode==="manual"
-                        ? `${fmtDate(due.date)} works — this teammate has room for all ${cfg.count} ${label.toLowerCase()}.`
-                        : `Auto-picked: ${fmtDate(due.date)} — this teammate's first free slot for all ${cfg.count} ${label.toLowerCase()}.`}
+                      {due.conflict
+                        ? `Doesn't all fit by ${fmtDate(due.requestedEnd)} — this teammate's other work pushes the last one to ${fmtDate(last)} (spread ${fmtDate(first)} → ${fmtDate(last)}).`
+                        : first===last
+                        ? `Due ${fmtDate(first)} — this teammate has room for all ${cfg.count} ${label.toLowerCase()} that day.`
+                        : `Spread across this teammate's free days: ${fmtDate(first)} → ${fmtDate(last)}.`}
                     </div>
                   );
                 })()}
                 {cfg.count>0 && !cfg.assigned_to && (
-                  <p style={{fontSize:11,color:"var(--text3)"}}>Assign someone to see their availability and due date.</p>
+                  <p style={{fontSize:11,color:"var(--text3)"}}>Assign someone to see their availability and due dates.</p>
                 )}
-                {cfg.count>0&&(
-                  <>
-                    <Field label="Platforms" required>
-                      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                        {PLATFORMS.map(p=>(
-                          <button key={p} onClick={()=>togglePlt(kind,p)} style={{
-                            display:"flex",alignItems:"center",gap:5,
-                            padding:"6px 12px",borderRadius:99,fontSize:11.5,fontWeight:700,
-                            border:`1.5px solid ${cfg.platforms.includes(p)?PLT_COLOR[p]:"var(--border2)"}`,
-                            background:cfg.platforms.includes(p)?PLT_COLOR[p]+"22":"var(--surface)",
-                            color:cfg.platforms.includes(p)?PLT_COLOR[p]:"var(--text2)",
-                            transition:"all 0.15s",
-                          }}>
-                            {cfg.platforms.includes(p)&&<Ico d={Icons.check} size={10} stroke={PLT_COLOR[p]}/>}
-                            {p.charAt(0).toUpperCase()+p.slice(1)}
-                          </button>
-                        ))}
-                      </div>
-                    </Field>
-                    <Field label={`${label} Brief`} hint="Goal, tone, key messages for this content type — AI will use this">
-                      <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
-                        <textarea value={cfg.brief} onChange={e=>sk(kind,"brief",e.target.value)} rows={2} placeholder="e.g. Ramadan campaign to promote our new product line. Warm, inspirational tone." style={{...inputSt,flex:1}}/>
-                        <Btn variant="secondary" onClick={()=>suggestBrief(kind)} disabled={suggestingBrief[kind]} style={{whiteSpace:"nowrap",flexShrink:0}}>
-                          {suggestingBrief[kind] ? <Spinner size={13}/> : <Ico d={Icons.sparkle} size={13}/>} Sara Suggests
-                        </Btn>
-                      </div>
-                    </Field>
-                  </>
-                )}
+                <Field label="Platforms" required={cfg.count>0}>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                    {PLATFORMS.map(p=>(
+                      <button key={p} onClick={()=>togglePlt(kind,p)} style={{
+                        display:"flex",alignItems:"center",gap:5,
+                        padding:"6px 12px",borderRadius:99,fontSize:11.5,fontWeight:700,
+                        border:`1.5px solid ${cfg.platforms.includes(p)?PLT_COLOR[p]:"var(--border2)"}`,
+                        background:cfg.platforms.includes(p)?PLT_COLOR[p]+"22":"var(--surface)",
+                        color:cfg.platforms.includes(p)?PLT_COLOR[p]:"var(--text2)",
+                        transition:"all 0.15s",
+                      }}>
+                        {cfg.platforms.includes(p)&&<Ico d={Icons.check} size={10} stroke={PLT_COLOR[p]}/>}
+                        {p.charAt(0).toUpperCase()+p.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+                <Field label={`${label} Brief`} hint="Goal, tone, key messages for this content type — AI will use this">
+                  <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+                    <textarea value={cfg.brief} onChange={e=>sk(kind,"brief",e.target.value)} rows={2} placeholder="e.g. Ramadan campaign to promote our new product line. Warm, inspirational tone." style={{...inputSt,flex:1}}/>
+                    <Btn variant="secondary" onClick={()=>suggestBrief(kind)} disabled={suggestingBrief[kind]} style={{whiteSpace:"nowrap",flexShrink:0}}>
+                      {suggestingBrief[kind] ? <Spinner size={13}/> : <Ico d={Icons.sparkle} size={13}/>} Sara Suggests
+                    </Btn>
+                  </div>
+                </Field>
               </div>
             );
           })}
 
           <div style={{padding:12,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",display:"flex",alignItems:"center",gap:10}}>
             <Ico d={Icons.sparkle} size={16} stroke="var(--accent)"/>
-            <p style={{fontSize:12,color:"var(--text2)"}}>AI will generate <strong>{totalCount} pieces of content</strong> across <strong>{activeKinds.length} task{activeKinds.length===1?"":"s"}</strong> ({activeKinds.map(k=>`${f.kinds[k].count} ${k}s`).join(", ")||"none yet — set a count above"}) — one task per content type, due date picked automatically or manually per your settings above.</p>
+            <p style={{fontSize:12,color:"var(--text2)"}}>AI will generate <strong>{totalCount} pieces of content</strong> ({activeKinds.map(k=>`${f.kinds[k].count} ${k}s`).join(", ")||"none yet — set a count above"}) as <strong>{totalCount} separate task cards</strong>, each with its own due date picked automatically or from your chosen window, checked against each assignee's availability.</p>
           </div>
           <div style={{display:"flex",gap:10,paddingTop:6}}>
             <Btn variant="secondary" onClick={()=>{reset();onClose();}} style={{flex:1}}>Cancel</Btn>
