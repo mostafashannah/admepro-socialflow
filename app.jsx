@@ -1154,7 +1154,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.390";
+const APP_VERSION = "beta 5.391";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16021,15 +16021,19 @@ function InterviewSchedulingPage({token}) {
     if(suggesting && !suggestion.trim()) return;
     setSubmitting(true);
     try {
+      // Picking one of OUR proposed times needs no separate staff approval —
+      // we already offered it, so it auto-confirms immediately. Suggesting a
+      // different time we never offered still needs a human to review/accept
+      // it before it's a real commitment.
       const patch = suggesting
         ? {interview_candidate_note: suggestion.trim(), interview_selected_slot: null}
-        : {interview_selected_slot: selectedSlot, interview_candidate_note: null};
+        : {interview_selected_slot: selectedSlot, interview_candidate_note: null, interview_confirmed_slot: selectedSlot, status: "interview"};
       await ue("JobApplication", application.id, patch);
-      logApplicationActivity(application.id, suggesting ? "Candidate suggested a different interview time" : `Candidate picked interview time: ${fmtDateTime(selectedSlot)}`, application.candidate_name||"Candidate");
+      logApplicationActivity(application.id, suggesting ? "Candidate suggested a different interview time" : `Interview confirmed — candidate picked: ${fmtDateTime(selectedSlot)}`, application.candidate_name||"Candidate");
       notifyRecruitmentUpdate(
         suggesting
           ? `📅 *Interview*: ${application.candidate_name||"A candidate"} (${application.job_title||"role"}) suggested a different time: "${suggestion.trim()}"`
-          : `📅 *Interview*: ${application.candidate_name||"A candidate"} (${application.job_title||"role"}) picked: ${fmtDateTime(selectedSlot)} — still needs staff to confirm in the app`
+          : `📅 *Interview*: ${application.candidate_name||"A candidate"} (${application.job_title||"role"}) confirmed: ${fmtDateTime(selectedSlot)}`
       );
       setDone(true);
     } catch(e) { alert("Something went wrong submitting your response. Please try again."); }
