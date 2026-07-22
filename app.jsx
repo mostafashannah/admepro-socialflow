@@ -1154,7 +1154,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.387";
+const APP_VERSION = "beta 5.388";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -26383,16 +26383,21 @@ function InterviewSchedulingSection({application, onSendTimes, sending, onConfir
       ) : (
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:4}}>
-            <p style={{fontSize:11,fontWeight:700,color:"var(--text3)"}}>Quick templates:</p>
+            <p style={{fontSize:11,fontWeight:700,color:"var(--text3)"}}>Quick templates (fills in the manual entries below):</p>
             {INTERVIEW_SLOT_TEMPLATES.map((tpl,i)=>(
               <button key={i} onClick={()=>applyTemplate(tpl)} style={{textAlign:"left",padding:"6px 10px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>
                 {tpl.label}
               </button>
             ))}
           </div>
+          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginTop:6}}>Manual entry — tap the calendar icon to pick a date/time, or type free text (e.g. a flexible window):</p>
           {slots.map((s,i)=>(
             <div key={i} style={{display:"flex",gap:6,alignItems:"center"}}>
               <input type="text" value={s} onChange={e=>setSlot(i,e.target.value)} placeholder="e.g. Sunday, Jul 27 at 1:00 PM" style={{...inputSt,flex:1}}/>
+              <label style={{display:"flex",alignItems:"center",justifyContent:"center",width:32,height:32,borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",cursor:"pointer",flexShrink:0,position:"relative"}} title="Pick date & time">
+
+                <input type="datetime-local" value="" onChange={e=>{ if(e.target.value) setSlot(i, fmtDateTime(new Date(e.target.value).toISOString())); }} style={{position:"absolute",inset:0,opacity:0,cursor:"pointer",width:"100%",height:"100%"}}/>
+              </label>
               <button onClick={()=>removeSlot(i)} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:16,padding:4}}>×</button>
             </div>
           ))}
