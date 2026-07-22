@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.415";
+const APP_VERSION = "beta 5.416";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16356,7 +16356,7 @@ function InterviewSchedulingPage({token}) {
         const bodyHtml = `
           <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Hi ${application.candidate_name||"there"},</h2>
           <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Your interview for the ${jobTitle} position is confirmed for <strong>${slotLabel}</strong>. We look forward to speaking with you!</p>
-          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">📍 Location: <a href="https://maps.app.goo.gl/ucJfFhpLMmozAfPA8" style="color:#d90b2c;text-decoration:none;font-weight:600">145 El Banafsig 3, New Cairo, Cairo</a></p>
+          <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">📍 The interview will take place at our office: <a href="https://maps.app.goo.gl/ucJfFhpLMmozAfPA8" style="color:#d90b2c;text-decoration:none;font-weight:600">145 El Banafsig 3, New Cairo, Cairo</a></p>
           <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
             <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
             <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
@@ -27904,7 +27904,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
       const bodyHtml = `
         <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Hi ${app.candidate_name||"there"},</h2>
         <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Your interview for the ${jobTitle} position is confirmed for <strong>${slotLabel}</strong>. We look forward to speaking with you!</p>
-        <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">📍 Location: <a href="https://maps.app.goo.gl/ucJfFhpLMmozAfPA8" style="color:#d90b2c;text-decoration:none;font-weight:600">145 El Banafsig 3, New Cairo, Cairo</a></p>
+        <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">📍 The interview will take place at our office: <a href="https://maps.app.goo.gl/ucJfFhpLMmozAfPA8" style="color:#d90b2c;text-decoration:none;font-weight:600">145 El Banafsig 3, New Cairo, Cairo</a></p>
         <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
           <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
           <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
@@ -28288,7 +28288,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
       const bodyHtml = `
         <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Hi ${app.candidate_name||"there"},</h2>
         <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Your interview for the ${jobTitle} position is confirmed for <strong>${slotLabel}</strong>. We look forward to speaking with you!</p>
-        <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">📍 Location: <a href="https://maps.app.goo.gl/ucJfFhpLMmozAfPA8" style="color:#d90b2c;text-decoration:none;font-weight:600">145 El Banafsig 3, New Cairo, Cairo</a></p>
+        <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">📍 The interview will take place at our office: <a href="https://maps.app.goo.gl/ucJfFhpLMmozAfPA8" style="color:#d90b2c;text-decoration:none;font-weight:600">145 El Banafsig 3, New Cairo, Cairo</a></p>
         <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
           <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
           <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
