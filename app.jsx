@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.424";
+const APP_VERSION = "beta 5.425";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13019,6 +13019,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
           onSelectMember={isOfficeBoy ? null : (m)=>setViewingMember(m)}
           currentUser={currentUser}
           onImpersonate={onImpersonate}
+          appSettings={appSettings}
         />
         {editingMember&&(
           <EditMemberModal
@@ -13637,13 +13638,70 @@ function computeClientPaymentsInRange(clientName, {invoices=[],payments=[],subsc
   return total;
 }
 
-function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, attendanceRecords, expenses, invoices, payments, subscriptionPayments, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense}) {
+function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, attendanceRecords, expenses, invoices, payments, subscriptionPayments, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense, appSettings}) {
   // Plain state, not persisted — opening any team member should always
   // start on Overview, not silently reopen to whatever tab was last viewed.
   const [tab, setTab] = useState("overview");
   const [showPhoto, setShowPhoto] = useState(false);
   const manager = (team||[]).find(t=>t.id===member.manager_id);
   const directReports = (team||[]).filter(t=>t.manager_id===member.id);
+
+  // Employment contract — merges the admin-edited template (Settings ->
+  // Contract & Policy) with this person's real data, renders it as a real
+  // PDF (same jsPDF technique as CV-to-PDF conversion), and stores it on
+  // their profile so it can be re-downloaded later without regenerating.
+  const [generatingContract, setGeneratingContract] = useState(false);
+  const handleGenerateContract = async () => {
+    setGeneratingContract(true);
+    try {
+      const jspdfLib = await waitForLib(()=>window.jspdf);
+      const jsPDFCtor = jspdfLib?.jsPDF;
+      if(!jsPDFCtor) throw new Error("PDF library failed to load");
+      const template = appSettings?.employment_contract_template || DEFAULT_CONTRACT_TEMPLATE;
+      const text = mergeContractTemplate(template, member, manager, appSettings);
+      const doc = new jsPDFCtor({unit:"pt", format:"a4"});
+      doc.setFont("Helvetica"); doc.setFontSize(11);
+      const marginX = 56, marginY = 64, lineHeight = 15;
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const lines = doc.splitTextToSize(text, pageWidth - marginX*2);
+      let y = marginY;
+      for(const line of lines) {
+        if(y > pageHeight - marginY) { doc.addPage(); y = marginY; }
+        doc.text(line, marginX, y);
+        y += lineHeight;
+      }
+      const pdfBlob = doc.output("blob");
+      const file = new File([pdfBlob], `${member.name.replace(/\s+/g,"_")}_Employment_Contract.pdf`, {type:"application/pdf"});
+      const contract_url = await uploadToStorage(file, "team-members/contracts");
+      const contract_generated_at = new Date().toISOString();
+      await onUpdateTeamMember(member.id, {contract_url, contract_generated_at});
+    } catch(e) { alert("Couldn't generate the contract: " + (e?.message||e)); }
+    setGeneratingContract(false);
+  };
+
+  // Company policy acceptance — a one-time link the employee opens to
+  // review the policy (link/summary set in Settings) and click Accept;
+  // acceptance timestamp shows here once they do.
+  const [sendingPolicy, setSendingPolicy] = useState(false);
+  const handleSendPolicy = async () => {
+    if(!member.email) return;
+    setSendingPolicy(true);
+    try {
+      const token = uid().replace("local_","") + uid().replace("local_","");
+      await onUpdateTeamMember(member.id, {policy_token: token, policy_accepted_at: null});
+      const acceptUrl = window.location.origin + "/policy/accept?token=" + token;
+      const ok = await sendEmail(member.email, "Please review and accept our company policy",
+        `<div style="font-family:sans-serif;font-size:14px;color:#111827;line-height:1.6">
+          <p>Hi ${member.name||"there"},</p>
+          <p>Please review our company policy and confirm your acceptance using the link below.</p>
+          <p><a href="${acceptUrl}" style="display:inline-block;padding:12px 24px;background:#d90b2c;color:#ffffff;border-radius:8px;font-weight:700;text-decoration:none">Review & Accept Policy</a></p>
+        </div>`
+      ).catch(()=>false);
+      if(!ok) alert("Something went wrong sending the policy email — please try again.");
+    } catch(e) { alert("Couldn't send the policy link: " + (e?.message||e)); }
+    setSendingPolicy(false);
+  };
   // Clients where this member is listed as an account manager — surfaced on
   // Overview so assigning an AM to a client is visible from both directions.
   const myClients = (clients||[]).filter(c=>getAccountManagerIds(c).includes(member.id));
@@ -13914,6 +13972,14 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
           {row("Department", member.department)}
           {row("Manager", manager?.name)}
           {row("Mobile / WhatsApp", member.whatsapp_number)}
+          {row("National ID", member.national_id)}
+          {(()=>{ const idInfo = parseEgyptianNationalId(member.national_id); return idInfo ? <>
+            {row("Date of Birth", idInfo.birthDate.toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"}))}
+            {row("Age", `${idInfo.age} years`)}
+          </> : null; })()}
+          {row("Employment Type", member.employment_type==="part_time"
+            ? `Part-time (${parseMaybeJson(member.work_days,WORK_DAYS_DEFAULT).map(d=>WEEKDAY_LABELS.find(w=>w.d===d)?.label).join(", ")})`
+            : "Full-time")}
           {canEditSalary&&row("Salary", member.salary?`EGP ${Number(member.salary).toLocaleString()}`:null)}
           {canEditSalary&&row("Probation Salary", member.probation_salary?`EGP ${Number(member.probation_salary).toLocaleString()}`:null)}
           {canEditSalary&&row("Probation Period", member.probation_months?`${member.probation_months} month(s)`:null)}
@@ -13925,6 +13991,46 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
           {row("WFH Days", `${Number(member.wfh_days_used||0)} used / ${Number(member.wfh_days_total??12)} total`)}
         </div>
       </div>
+
+      {canEdit&&(
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
+            <h3 style={{fontWeight:700,fontSize:14,marginBottom:10}}>Employment Contract</h3>
+            {member.contract_url ? (
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                <p style={{fontSize:12,color:"#10b981",fontWeight:700}}>✓ Generated {fmtDateTime(member.contract_generated_at)}</p>
+                <a href={member.contract_url} target="_blank" rel="noreferrer" style={{fontSize:13,color:"var(--accent)",fontWeight:600}}>📄 View Contract PDF</a>
+                <Btn variant="secondary" onClick={handleGenerateContract} disabled={generatingContract} style={{alignSelf:"flex-start",marginTop:4}}>
+                  {generatingContract?<Spinner size={13}/>:"Regenerate"}
+                </Btn>
+              </div>
+            ) : (
+              <>
+                <p style={{fontSize:13,color:"var(--text2)",marginBottom:10}}>Generate a filled-in employment contract PDF using this person's real data and the company's contract template.</p>
+                <Btn onClick={handleGenerateContract} disabled={generatingContract}>
+                  {generatingContract?<Spinner size={13}/>:"Generate Employee Contract"}
+                </Btn>
+              </>
+            )}
+          </div>
+          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
+            <h3 style={{fontWeight:700,fontSize:14,marginBottom:10}}>Company Policy</h3>
+            {member.policy_accepted_at ? (
+              <p style={{fontSize:13,color:"#10b981",fontWeight:700}}>✓ Accepted {fmtDateTime(member.policy_accepted_at)}</p>
+            ) : member.policy_token ? (
+              <>
+                <p style={{fontSize:13,color:"var(--text2)",marginBottom:10}}>Sent — awaiting their acceptance.</p>
+                <Btn variant="secondary" onClick={handleSendPolicy} disabled={sendingPolicy}>{sendingPolicy?<Spinner size={13}/>:"Resend"}</Btn>
+              </>
+            ) : (
+              <>
+                <p style={{fontSize:13,color:"var(--text2)",marginBottom:10}}>Send a link for this person to review and accept the company policy.</p>
+                <Btn onClick={handleSendPolicy} disabled={sendingPolicy||!member.email}>{sendingPolicy?<Spinner size={13}/>:"Send Policy for Review"}</Btn>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {canEditSalary&&(()=>{
         const now = new Date();
@@ -14070,10 +14176,32 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
     vacation_days_total:member.vacation_days_total??21, wfh_days_total:member.wfh_days_total??12,
     employment_type: member.employment_type||"full_time",
     work_days: parseMaybeJson(member.work_days, WORK_DAYS_DEFAULT),
+    national_id: member.national_id||"",
   });
   const s = (k,v) => setF(p=>({...p,[k]:v}));
   const toggleWorkDay = (day) => setF(p=>({...p,work_days: p.work_days.includes(day) ? p.work_days.filter(d=>d!==day) : [...p.work_days,day].sort()}));
   const managers = (team||[]).filter(t=>t.id!==member.id && t.role!=="client");
+
+  // Reads the ID number straight off the already-attached ID photo instead
+  // of retyping all 14 digits by hand — birth date/age are then derived
+  // from that number itself (see parseEgyptianNationalId), no extra fields.
+  const [extractingId, setExtractingId] = useState(false);
+  const idPhotoUrl = member.id_photo_front_url || member.id_photo_back_url;
+  const handleExtractId = async () => {
+    if(!idPhotoUrl) { alert("No ID photo attached to this profile yet — upload one first."); return; }
+    setExtractingId(true);
+    try {
+      const aiRes = await agentAI("content_creator", "Read national ID number", `This image is an Egyptian national ID card. Read the 14-digit national ID number printed on it exactly as shown (digits only, no spaces or dashes).
+
+Return ONLY valid JSON: {"national_id":"14 digit number, or empty string if unreadable"}`, 200, idPhotoUrl);
+      const match = aiRes.match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(match ? match[0] : aiRes);
+      const digits = (parsed.national_id||"").replace(/\D/g,"");
+      if(digits.length===14) s("national_id", digits);
+      else alert("Couldn't read a clear 14-digit ID number from the photo — please check the image or enter it manually.");
+    } catch(e) { alert("Couldn't read the ID photo right now — please try again or enter it manually."); }
+    setExtractingId(false);
+  };
   const vacUsed = Number(member.vacation_days_used||0), wfhUsed = Number(member.wfh_days_used||0);
   // Any custom title already typed for someone else on the team becomes a
   // selectable option too, not just the fixed starter list — so typing a
@@ -14118,6 +14246,16 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
             )}
           </Field>
           <Field label="Mobile Number"><input value={f.whatsapp_number} onChange={e=>s("whatsapp_number",e.target.value)} placeholder="+20 100 000 0000" style={inputSt}/></Field>
+          <Field label="National ID" hint="Used to fill in the employee contract — birth date/age are derived from these digits automatically">
+            <div style={{display:"flex",gap:8}}>
+              <input value={f.national_id} onChange={e=>s("national_id",e.target.value)} placeholder="e.g. 29001011234567" style={{...inputSt,flex:1}}/>
+              {idPhotoUrl&&(
+                <Btn variant="secondary" onClick={handleExtractId} disabled={extractingId} style={{whiteSpace:"nowrap",flexShrink:0}}>
+                  {extractingId ? <Spinner size={13}/> : <Ico d={Icons.sparkle} size={13}/>} Read from ID Photo
+                </Btn>
+              )}
+            </div>
+          </Field>
           <Field label="Manager">
             <select value={f.manager_id} onChange={e=>s("manager_id",e.target.value)} style={inputSt}>
               <option value="">No manager set</option>
@@ -16783,6 +16921,79 @@ function TaskSubmissionPage({token}) {
         <textarea value={note} onChange={e=>setNote(e.target.value)} rows={4} placeholder="Anything you'd like to explain about your submission (optional)…" style={{...inputSt,resize:"vertical",marginBottom:14}}/>
 
         <Btn onClick={handleSubmit} disabled={submitting||(mode==="file"?!file:!link.trim())} style={{width:"100%"}}>{submitting?"Submitting…":"Submit Task"}</Btn>
+      </div>
+    </div></>
+  );
+}
+
+// Public company-policy acceptance page — socialflow.admepro.com/policy/accept?token=...
+// Sent to a team member from their profile ("Send Policy for Review");
+// clicking Accept records the timestamp on their team_members row.
+function PolicyAcceptancePage({token, appSettings}) {
+  const [isDark, setIsDark] = useState(()=>{
+    try { return window.matchMedia("(prefers-color-scheme: dark)").matches; } catch(e) { return false; }
+  });
+  const [loading, setLoading] = useState(true);
+  const [member, setMember] = useState(null);
+  const [notFound, setNotFound] = useState(false);
+  const [accepted, setAccepted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(()=>{
+    (async () => {
+      const res = await qe("TeamMember", {policy_token: token});
+      const m = res.entities?.[0];
+      if(!m) { setNotFound(true); setLoading(false); return; }
+      setMember(m);
+      if(m.policy_accepted_at) setAccepted(true);
+      setLoading(false);
+    })();
+  },[token]);
+
+  const handleAccept = async () => {
+    setSubmitting(true);
+    try {
+      await ue("TeamMember", member.id, {policy_accepted_at: new Date().toISOString()});
+      setAccepted(true);
+    } catch(e) { alert("Something went wrong — please try again."); }
+    setSubmitting(false);
+  };
+
+  const wrapSt = {minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:24,background:isDark?"#0b0e14":"#f7f7f8"};
+  const cardSt = {width:"100%",maxWidth:480,background:isDark?"#161a23":"#fff",borderRadius:20,padding:32,border:`1px solid ${isDark?"#252b38":"#eee"}`};
+  const gstyle = <GStyle wallpaper={isDark?"dark":"light"} accentColor="#d90b2c" photoIsDark={isDark}/>;
+
+  if(loading) return <>{gstyle}<div style={wrapSt}><Spinner size={22}/></div></>;
+  if(notFound) return (
+    <>{gstyle}<div style={wrapSt}>
+      <div style={cardSt}>
+        <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
+        <p style={{fontSize:15,fontWeight:700,color:isDark?"#fff":"#111"}}>This link is invalid.</p>
+      </div>
+    </div></>
+  );
+  if(accepted) return (
+    <>{gstyle}<div style={wrapSt}>
+      <div style={cardSt}>
+        <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
+        <p style={{fontSize:15,fontWeight:700,color:isDark?"#fff":"#111"}}>✓ Thanks, {member?.name?.split(" ")?.[0]||"there"} — your acceptance has been recorded.</p>
+      </div>
+    </div></>
+  );
+
+  return (
+    <>{gstyle}<div style={wrapSt}>
+      <div style={cardSt}>
+        <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
+        <h2 style={{fontSize:19,fontWeight:800,color:isDark?"#fff":"#111",marginBottom:6}}>Company Policy</h2>
+        <p style={{fontSize:13,color:isDark?"#9099ab":"#666",marginBottom:16}}>Hi {member.name||"there"}, please review our company policy before accepting.</p>
+        {appSettings?.company_policy_summary && (
+          <div style={{marginBottom:16,padding:14,background:isDark?"#1d222d":"#f9fafb",border:`1px solid ${isDark?"#252b38":"#e5e7eb"}`,borderRadius:10,fontSize:13,lineHeight:1.6,color:isDark?"#c5cad3":"#374151",whiteSpace:"pre-wrap"}}>{appSettings.company_policy_summary}</div>
+        )}
+        {appSettings?.company_policy_url && (
+          <a href={appSettings.company_policy_url} target="_blank" rel="noreferrer" style={{display:"block",marginBottom:20,fontSize:13,color:"#d90b2c",fontWeight:600}}>📄 Read the Full Company Policy</a>
+        )}
+        <Btn onClick={handleAccept} disabled={submitting} style={{width:"100%"}}>{submitting?"Submitting…":"I Have Read & Accept This Policy"}</Btn>
       </div>
     </div></>
   );
@@ -20752,6 +20963,152 @@ function TaskDurationSettingsPanel({appSettings, onSaveSettings}){
   );
 }
 
+// Default Egypt-law-flavored employment contract boilerplate — admin can
+// freely rewrite this; merge tags below get replaced with the real
+// employee's data when "Generate Employee Contract" is pressed on their
+// profile. Kept as plain text (not rich HTML) so it prints cleanly to PDF
+// via jsPDF the same way the CV-to-PDF conversion already does.
+const DEFAULT_CONTRACT_TEMPLATE = `EMPLOYMENT CONTRACT
+
+This Employment Contract ("Contract") is made and entered into on {{today}}, by and between:
+
+{{company_name}}, a company operating in Egypt ("Employer")
+
+AND
+
+{{employee_name}}, holder of National ID No. {{national_id}} ("Employee")
+
+Both parties agree to the following terms:
+
+1. POSITION
+The Employee is hired for the position of {{job_title}} in the {{department}} department, reporting to {{manager_name}}.
+
+2. START DATE
+The Employee's employment begins on {{start_date}}.
+
+3. PROBATION PERIOD
+The Employee will serve a probation period of {{probation_months}} month(s), during which either party may terminate this Contract with short notice. During probation, the Employee's monthly salary is {{probation_salary}}.
+
+4. SALARY
+Upon successful completion of the probation period, the Employee's monthly salary will be {{salary}}, payable at the end of each calendar month, subject to applicable taxes and social insurance deductions under Egyptian law.
+
+5. WORKING HOURS
+The Employee's standard working days are {{work_days}}, in line with the Employer's official working hours policy.
+
+6. LEAVE ENTITLEMENT
+The Employee is entitled to {{vacation_days}} annual vacation days and {{wfh_days}} work-from-home days per year, in accordance with the Employer's leave policy and the Egyptian Labor Law No. 12 of 2003 (as amended).
+
+7. CONFIDENTIALITY
+The Employee agrees to keep confidential all proprietary information, client data, and business information of the Employer, both during and after employment.
+
+8. TERMINATION
+This Contract may be terminated by either party in accordance with the notice periods and terms set out in the Egyptian Labor Law No. 12 of 2003 (as amended).
+
+9. GOVERNING LAW
+This Contract is governed by the laws of the Arab Republic of Egypt, and any disputes shall be subject to the jurisdiction of the competent Egyptian courts.
+
+10. COMPANY POLICIES
+The Employee acknowledges having read and agreed to the Employer's company policies, a copy of which has been made available separately.
+
+Signed:
+
+
+_______________________                    _______________________
+Employer                                     Employee
+{{company_name}}                             {{employee_name}}
+Date: {{today}}                              Date: {{today}}`;
+
+// Egyptian national ID cards encode the holder's birth date in the digits
+// themselves (no separate "date of birth" field needed): digit 1 = century
+// (2=1900s, 3=2000s), digits 2-7 = YYMMDD. Returns null for anything that
+// doesn't look like a real 14-digit Egyptian ID.
+function parseEgyptianNationalId(id) {
+  const digits = (id||"").replace(/\D/g,"");
+  if(digits.length !== 14) return null;
+  const centuryDigit = digits[0];
+  const century = centuryDigit==="2" ? 1900 : centuryDigit==="3" ? 2000 : null;
+  if(century===null) return null;
+  const year = century + parseInt(digits.slice(1,3),10);
+  const month = parseInt(digits.slice(3,5),10);
+  const day = parseInt(digits.slice(5,7),10);
+  if(month<1||month>12||day<1||day>31) return null;
+  const birthDate = new Date(year, month-1, day);
+  if(isNaN(birthDate.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - birthDate.getFullYear();
+  const hadBirthdayThisYear = (now.getMonth()>birthDate.getMonth()) || (now.getMonth()===birthDate.getMonth() && now.getDate()>=birthDate.getDate());
+  if(!hadBirthdayThisYear) age--;
+  return {birthDate, age};
+}
+
+// Fills the admin-edited contract template with one specific employee's
+// real data — used by "Generate Employee Contract" on their profile.
+function mergeContractTemplate(template, member, manager, appSettings) {
+  const tags = {
+    employee_name: member.name||"",
+    national_id: member.national_id||"________________",
+    job_title: member.title||ROLES[member.role]?.label||member.role||"",
+    department: member.department||"",
+    manager_name: manager?.name||"—",
+    start_date: member.created_at ? fmtDate(member.created_at) : fmtDate(new Date().toISOString()),
+    salary: member.salary?`EGP ${Number(member.salary).toLocaleString()}`:"________________",
+    probation_months: member.probation_months ?? "3",
+    probation_salary: member.probation_salary?`EGP ${Number(member.probation_salary).toLocaleString()}`:(member.salary?`EGP ${Number(member.salary).toLocaleString()}`:"________________"),
+    vacation_days: member.vacation_days_total ?? 21,
+    wfh_days: member.wfh_days_total ?? 12,
+    work_days: member.employment_type==="part_time"
+      ? parseMaybeJson(member.work_days,WORK_DAYS_DEFAULT).map(d=>WEEKDAY_LABELS.find(w=>w.d===d)?.label).join(", ")
+      : "Sunday through Thursday",
+    company_name: appSettings?.app_name||"Admepro",
+    today: fmtDate(new Date().toISOString()),
+  };
+  return Object.entries(tags).reduce((text,[key,val])=>text.replaceAll(`{{${key}}}`, String(val)), template||"");
+}
+
+function ContractPolicySettingsPanel({appSettings, onSaveSettings}) {
+  const [template, setTemplate] = useState(appSettings?.employment_contract_template || DEFAULT_CONTRACT_TEMPLATE);
+  const [policyUrl, setPolicyUrl] = useState(appSettings?.company_policy_url || "");
+  const [policySummary, setPolicySummary] = useState(appSettings?.company_policy_summary || "");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSaveSettings({employment_contract_template: template, company_policy_url: policyUrl, company_policy_summary: policySummary});
+    setSaving(false); setSaved(true); setTimeout(()=>setSaved(false),2500);
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:"min(900px,100%)"}}>
+      <div>
+        <p style={{fontSize:13,color:"var(--text2)"}}>Edit the master employment contract template used when you press "Generate Employee Contract" on a team member's profile. Merge tags in double curly braces (e.g. <code>{"{{employee_name}}"}</code>) are automatically replaced with that person's real data.</p>
+      </div>
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:12}}>
+        <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Contract Template</p>
+        <p style={{fontSize:11,color:"var(--text3)"}}>Available tags: {"{{employee_name}} {{national_id}} {{job_title}} {{department}} {{manager_name}} {{start_date}} {{salary}} {{probation_months}} {{probation_salary}} {{vacation_days}} {{wfh_days}} {{work_days}} {{company_name}} {{today}}"}</p>
+        <textarea value={template} onChange={e=>setTemplate(e.target.value)} rows={22} style={{...inputSt,fontFamily:"monospace",fontSize:12.5,resize:"vertical"}}/>
+      </div>
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:12}}>
+        <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Company Policy</p>
+        <Field label="Policy Document Link" hint="e.g. a Google Doc / PDF link — sent to new hires to review and accept">
+          <input value={policyUrl} onChange={e=>setPolicyUrl(e.target.value)} placeholder="https://docs.google.com/document/d/..." style={inputSt}/>
+        </Field>
+        <Field label="Short Policy Summary (optional)" hint="Shown on the acceptance page above the link, e.g. key points">
+          <textarea value={policySummary} onChange={e=>setPolicySummary(e.target.value)} rows={4} style={{...inputSt,resize:"vertical"}}/>
+        </Field>
+      </div>
+
+      <div style={{display:"flex",gap:10,alignItems:"center"}}>
+        <button onClick={handleSave} disabled={saving} style={{padding:"10px 22px",borderRadius:"var(--rs)",background:"var(--accent)",color:"#fff",fontWeight:700,fontSize:13,border:"none",cursor:"pointer"}}>
+          {saving?"Saving…":saved?"✓ Saved":"Save Changes"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════
 // SETTINGS PAGE
 // ════════════════════════════════════════════════════════════════
@@ -20822,7 +21179,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 
       {/* Tab nav */}
       <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",flexWrap:"nowrap",overflowX:"auto"}}>
-        {[["branding","Branding"],["integrations","Integrations"],["email","Email"],["ai_model","AI Agents"],["durations","Task Estimates"],["flags","Feature Flags"],["syslog","System Log"]].map(([k,l])=>(
+        {[["branding","Branding"],["integrations","Integrations"],["email","Email"],["ai_model","AI Agents"],["durations","Task Estimates"],["contract","Contract & Policy"],["flags","Feature Flags"],["syslog","System Log"]].map(([k,l])=>(
           <button key={k} onClick={()=>setSettingsTab(k)} style={{padding:"9px 20px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${settingsTab===k?"var(--accent)":"transparent"}`,color:settingsTab===k?"var(--accent)":"var(--text2)",transition:"all 0.15s",display:"flex",alignItems:"center",gap:6,position:"relative"}}>
             {l}
             {k==="syslog"&&(activityLogs||[]).filter(a=>a.status==="error").length>0&&(
@@ -20980,6 +21337,11 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
       {/* ── TASK ESTIMATES TAB ── */}
       {settingsTab==="durations"&&(
         <TaskDurationSettingsPanel appSettings={appSettings} onSaveSettings={onSaveSettings}/>
+      )}
+
+      {/* ── EMPLOYEE CONTRACT & POLICY TAB ── */}
+      {settingsTab==="contract"&&(
+        <ContractPolicySettingsPanel appSettings={appSettings} onSaveSettings={onSaveSettings}/>
       )}
 
       {/* ── FEATURE FLAGS TAB ── */}
@@ -34429,6 +34791,10 @@ function App() {
   const [taskToken] = useState(()=>{
     try { return window.location.pathname==="/careers/task" ? new URLSearchParams(window.location.search).get("token") : null; } catch(e) { return null; }
   });
+  // Public company-policy acceptance page — socialflow.admepro.com/policy/accept?token=...
+  const [policyToken] = useState(()=>{
+    try { return window.location.pathname==="/policy/accept" ? new URLSearchParams(window.location.search).get("token") : null; } catch(e) { return null; }
+  });
   // Handle OAuth callback (Supabase redirects back with #access_token=...)
   const [oauthEmail] = useState(()=>{
     try {
@@ -36969,6 +37335,9 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
   }
   if(taskToken) {
     return <TaskSubmissionPage token={taskToken}/>;
+  }
+  if(policyToken) {
+    return <PolicyAcceptancePage token={policyToken} appSettings={appSettings}/>;
   }
   if(completeToken) {
     return <CompleteApplicationPage token={completeToken}/>;
