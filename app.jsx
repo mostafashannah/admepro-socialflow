@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.399";
+const APP_VERSION = "beta 5.400";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6155,6 +6155,27 @@ function AddCalendarPlanModal({open,onClose,clients,team,posts,preselectedClient
 
   const selClient = clients?.find?.(c=>c.id===f.client_id);
 
+  // "Sara Suggests" — writes a brief for one content-type block using
+  // everything Sara already knows about this client (brand voice, memory,
+  // recently published posts), instead of the user having to type one.
+  const [suggestingBrief,setSuggestingBrief] = useState({});
+  const suggestBrief = async (kind) => {
+    if(!f.client_id) { alert("Pick a client first — Sara needs their brand context."); return; }
+    setSuggestingBrief(p=>({...p,[kind]:true}));
+    try {
+      const label = CALENDAR_KIND_DEFS.find(([k])=>k===kind)?.[1]||kind;
+      const aiRes = await agentAI("content_creator", `Suggest brief: ${label}`, `You are Sara, a senior content creator working under Pro's supervision. Review everything you know about this client below (brand voice, memory, recently published posts).
+${clientBrainBlock(f.client_id, selClient?.name)}
+Campaign: ${f.campaign||"(untitled campaign)"}
+
+Suggest a short, specific content brief (2-3 sentences: goal, tone, key messages) for this client's upcoming "${label}" batch — grounded in their real brand voice and what's worked before, not generic advice.
+
+Return ONLY the brief text — no markdown, no labels, no quotes.`, 300);
+      sk(kind,"brief",(aiRes||"").trim());
+    } catch(e) { alert("Sara couldn't suggest a brief right now — please try again."); }
+    setSuggestingBrief(p=>({...p,[kind]:false}));
+  };
+
   // The due date for a kind block (shared by every item in it, since the
   // whole block becomes one task): "auto" finds this assignee's first free
   // slot with enough capacity for the WHOLE batch's total time; "manual"
@@ -6168,9 +6189,12 @@ function AddCalendarPlanModal({open,onClose,clients,team,posts,preselectedClient
     const totalMins = perItemMins * cfg.count;
     if(cfg.due_mode==="manual" && cfg.manual_due_date) {
       const free = freeCapacityOnDate(posts||[], cfg.assigned_to, cfg.manual_due_date);
-      if(free >= totalMins) return {date: cfg.manual_due_date, conflict:false, suggested:null};
+      if(free >= totalMins) return {date: cfg.manual_due_date, conflict:false, suggested:null, requested: cfg.manual_due_date};
       const suggested = findFirstAvailableSlot(posts||[], cfg.assigned_to, totalMins, cfg.manual_due_date);
-      return {date: cfg.manual_due_date, conflict:true, suggested};
+      // Not free on the requested day — actually use the first day that IS
+      // free (not the busy day the user picked), while still surfacing what
+      // they asked for so the message reads as a substitution, not a silent one.
+      return {date: suggested, conflict:true, suggested, requested: cfg.manual_due_date};
     }
     const auto = findFirstAvailableSlot(posts||[], cfg.assigned_to, totalMins, f.date_from||new Date());
     return {date: auto, conflict:false, suggested:null};
@@ -6277,7 +6301,7 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
     const task = generated[idx];
     if(!task) return;
     setRegenIdx(idx);
-    const kind = task.post_type==="article"?"article":task.post_type==="story"?"story":"post";
+    const kind = task.kind || "static";
     const cfg = f.kinds[kind]||{brief:"",platforms:[task.platform]};
     const kindGuide = kind==="article"
       ? `This is a long-form piece (e.g. a LinkedIn article) — give it a real headline and a longer, structured body (several paragraphs), not a short caption.`
@@ -6310,15 +6334,47 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
 
   const handleConfirm = async () => {
     setStep("generating");
-    await onGenerate(f,generated);
+    // Group approved ideas by kind into ONE task per kind — "8 static posts"
+    // stays one task card even though it carries 8 ideas — aggregating their
+    // captions into `notes` (already a whitelisted plain-text column) and
+    // sizing `estimated_minutes` off the real approved count, not the
+    // originally-requested count (fewer may have survived review).
+    const approved = generated.filter(t=>t.approved);
+    const byKind = {};
+    approved.forEach(t=>{ (byKind[t.kind]=byKind[t.kind]||[]).push(t); });
+    const consolidatedTasks = Object.entries(byKind).map(([kind,items])=>{
+      const cfg = f.kinds[kind]||{};
+      const perItemMins = estimateDuration({post_type: CALENDAR_KIND_POST_TYPE[kind], priority:"medium"});
+      const due = kindDueDate(kind);
+      const notes = items.map((it,i)=>`${i+1}. ${it.title}\n${it.caption}${it.hashtags?`\n${it.hashtags}`:""}`).join("\n\n");
+      return {
+        id: uid(),
+        kind,
+        title: `${items.length} ${CALENDAR_KIND_DEFS.find(([k])=>k===kind)?.[1]||kind} — ${f.campaign}`,
+        caption: items[0]?.caption||"",
+        hashtags: items[0]?.hashtags||"",
+        notes,
+        platform: items[0]?.platform,
+        post_type: CALENDAR_KIND_POST_TYPE[kind],
+        priority: "medium",
+        client_id: f.client_id,
+        client_name: selectedClient?.name||"",
+        assigned_to: cfg.assigned_to||"",
+        project_name: f.campaign,
+        status: "pending",
+        estimated_minutes: perItemMins * items.length,
+        due_date: due?.date || "",
+      };
+    });
+    await onGenerate(f, consolidatedTasks);
     // Sara learns from the plan she just delivered — best-effort, in the
     // background, so the user isn't kept waiting on it.
     saraLearnFromWork({
       clientId: f.client_id,
       clientName: selectedClient?.name||"",
       workLabel: `Calendar plan: ${f.campaign}`,
-      workSummary: `Campaign "${f.campaign}" (${f.date_from} → ${f.date_to}): ${generated.length} items — `+
-        generated.slice(0,20).map(t=>`[${t.post_type}/${t.platform}] ${t.title}`).join("; "),
+      workSummary: `Campaign "${f.campaign}" (${f.date_from} → ${f.date_to}): ${approved.length} items across ${consolidatedTasks.length} task(s) — `+
+        approved.slice(0,20).map(t=>`[${t.post_type}/${t.platform}] ${t.title}`).join("; "),
       onUpsertMemory,
     });
     setStep("done");
@@ -6381,12 +6437,38 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                       {team.map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
                     </select>
                   </Field>
-                  <Field label="Due Date" hint="Work deadline, before the publish date">
-                    <select value={cfg.due_offset_days} onChange={e=>sk(kind,"due_offset_days",parseInt(e.target.value))} style={inputSt}>
-                      {[0,1,2,3,5,7].map(n=><option key={n} value={n}>{n===0?"Same day as publish":`${n} day${n>1?"s":""} before`}</option>)}
-                    </select>
+                  <Field label="Due Date">
+                    <div style={{display:"flex",gap:6}}>
+                      <button type="button" onClick={()=>sk(kind,"due_mode","auto")} style={{flex:1,padding:"8px 6px",borderRadius:8,border:`1.5px solid ${cfg.due_mode!=="manual"?"var(--accent)":"var(--border2)"}`,background:cfg.due_mode!=="manual"?"var(--accent)18":"var(--surface)",fontWeight:700,fontSize:11.5,color:cfg.due_mode!=="manual"?"var(--accent)":"var(--text2)",cursor:"pointer"}}>Auto</button>
+                      <button type="button" onClick={()=>sk(kind,"due_mode","manual")} style={{flex:1,padding:"8px 6px",borderRadius:8,border:`1.5px solid ${cfg.due_mode==="manual"?"var(--accent)":"var(--border2)"}`,background:cfg.due_mode==="manual"?"var(--accent)18":"var(--surface)",fontWeight:700,fontSize:11.5,color:cfg.due_mode==="manual"?"var(--accent)":"var(--text2)",cursor:"pointer"}}>Pick date</button>
+                    </div>
                   </Field>
+                  {cfg.due_mode==="manual" && (
+                    <Field label="Pick Due Date">
+                      <input type="date" value={cfg.manual_due_date} onChange={e=>sk(kind,"manual_due_date",e.target.value)} style={inputSt}/>
+                    </Field>
+                  )}
                 </div>
+                {cfg.count>0 && cfg.assigned_to && (()=>{
+                  const due = kindDueDate(kind);
+                  if(!due) return null;
+                  return (
+                    <div style={{fontSize:11.5,padding:"8px 10px",borderRadius:8,
+                      background:due.conflict?"#f59e0b18":"#10b98118",
+                      border:`1px solid ${due.conflict?"#f59e0b55":"#10b98155"}`,
+                      color:due.conflict?"#b45309":"#059669"}}>
+                      {!due.date ? "No free slot found in the next 90 days for this teammate — try a different assignee."
+                        : due.conflict
+                        ? `Not free on ${fmtDate(due.requested)} — first available day for this teammate: ${fmtDate(due.date)}`
+                        : cfg.due_mode==="manual"
+                        ? `${fmtDate(due.date)} works — this teammate has room for all ${cfg.count} ${label.toLowerCase()}.`
+                        : `Auto-picked: ${fmtDate(due.date)} — this teammate's first free slot for all ${cfg.count} ${label.toLowerCase()}.`}
+                    </div>
+                  );
+                })()}
+                {cfg.count>0 && !cfg.assigned_to && (
+                  <p style={{fontSize:11,color:"var(--text3)"}}>Assign someone to see their availability and due date.</p>
+                )}
                 {cfg.count>0&&(
                   <>
                     <Field label="Platforms" required>
@@ -6407,7 +6489,12 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                       </div>
                     </Field>
                     <Field label={`${label} Brief`} hint="Goal, tone, key messages for this content type — AI will use this">
-                      <textarea value={cfg.brief} onChange={e=>sk(kind,"brief",e.target.value)} rows={2} placeholder="e.g. Ramadan campaign to promote our new product line. Warm, inspirational tone." style={inputSt}/>
+                      <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+                        <textarea value={cfg.brief} onChange={e=>sk(kind,"brief",e.target.value)} rows={2} placeholder="e.g. Ramadan campaign to promote our new product line. Warm, inspirational tone." style={{...inputSt,flex:1}}/>
+                        <Btn variant="secondary" onClick={()=>suggestBrief(kind)} disabled={suggestingBrief[kind]} style={{whiteSpace:"nowrap",flexShrink:0}}>
+                          {suggestingBrief[kind] ? <Spinner size={13}/> : <Ico d={Icons.sparkle} size={13}/>} Sara Suggests
+                        </Btn>
+                      </div>
                     </Field>
                   </>
                 )}
@@ -6417,7 +6504,7 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
 
           <div style={{padding:12,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",display:"flex",alignItems:"center",gap:10}}>
             <Ico d={Icons.sparkle} size={16} stroke="var(--accent)"/>
-            <p style={{fontSize:12,color:"var(--text2)"}}>AI will generate <strong>{totalCount} pieces of content</strong> ({activeKinds.map(k=>`${f.kinds[k].count} ${k}s`).join(", ")||"none yet — set a count above"}), distribute them evenly across your date range, and create individual task cards.</p>
+            <p style={{fontSize:12,color:"var(--text2)"}}>AI will generate <strong>{totalCount} pieces of content</strong> across <strong>{activeKinds.length} task{activeKinds.length===1?"":"s"}</strong> ({activeKinds.map(k=>`${f.kinds[k].count} ${k}s`).join(", ")||"none yet — set a count above"}) — one task per content type, due date picked automatically or manually per your settings above.</p>
           </div>
           <div style={{display:"flex",gap:10,paddingTop:6}}>
             <Btn variant="secondary" onClick={()=>{reset();onClose();}} style={{flex:1}}>Cancel</Btn>
@@ -35647,7 +35734,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     const localPosts = tasks.map(t=>({...t,project_id:projectId,id:uid()}));
     setData(d=>({...d,posts:[...localPosts,...d.posts]}));
     const calClient = data.clients.find(c=>c.id===planForm.client_id);
-    const postPayloads = localPosts.map(t=>({title:t.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:t.platform,post_type:t.post_type,stage:"planning",priority:t.priority,caption:t.caption,hashtags:t.hashtags,scheduled_date:t.scheduled_date,scheduled_time:t.scheduled_time,due_date:t.due_date||"",assigned_to:t.assigned_to||""}));
+    const postPayloads = localPosts.map(t=>({title:t.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:t.platform,post_type:t.post_type,stage:"planning",priority:t.priority,caption:t.caption,hashtags:t.hashtags,notes:t.notes||"",estimated_minutes:t.estimated_minutes,scheduled_date:t.scheduled_date,scheduled_time:t.scheduled_time,due_date:t.due_date||"",assigned_to:t.assigned_to||""}));
     ce("Post",postPayloads).then(res=>{
       const reals = res.entities||[];
       setData(d=>{
@@ -36981,6 +37068,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
       onClose={()=>{setShowFABCalendar(false);setCalendarPreselectedClient(null);}}
       clients={data.clients}
       team={data.team}
+      posts={data.posts||[]}
       preselectedClient={calendarPreselectedClient}
       onGenerate={generateCalendarPlan}
       clientKnowledgeList={data.clientKnowledge||[]}
