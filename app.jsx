@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.429";
+const APP_VERSION = "beta 5.430";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13731,8 +13731,11 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
       // step needed — only fills it in if it was still blank, so it never
       // silently overwrites a value someone already typed/corrected.
       if(!member.national_id) {
-        const digits = await extractNationalIdFromPhoto(url);
-        if(digits) patch.national_id = digits;
+        const result = await extractNationalIdFromPhoto(url);
+        // Prefill even a partial/low-confidence read — worth showing on
+        // the profile as a starting point to verify/correct rather than
+        // nothing at all when the AI couldn't read it perfectly.
+        if(result.digits) patch.national_id = result.digits;
       }
       await onUpdateTeamMember(member.id, patch);
     } catch(e) { alert("Couldn't upload that file: " + (e?.message||e)); }
@@ -14281,9 +14284,13 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
   const handleExtractId = async () => {
     if(!idPhotoUrl) { alert("No ID photo attached to this profile yet — upload one first."); return; }
     setExtractingId(true);
-    const digits = await extractNationalIdFromPhoto(idPhotoUrl);
-    if(digits) s("national_id", digits);
-    else alert("Couldn't read a clear 14-digit ID number from the photo — please check the image or enter it manually.");
+    const result = await extractNationalIdFromPhoto(idPhotoUrl);
+    if(result.digits) {
+      s("national_id", result.digits);
+      if(!result.confident) alert(`Filled in ${result.digits.length===14?"a":"only a partial"} reading (${result.digits.length} digit${result.digits.length!==1?"s":""}) — please double-check it against the photo before saving.${result.reason?`\n\nAI's note: ${result.reason}`:""}`);
+    } else {
+      alert(`Couldn't read the ID number from the photo — please enter it manually.${result.reason?`\n\nAI's note: ${result.reason}`:""}`);
+    }
     setExtractingId(false);
   };
   const vacUsed = Number(member.vacation_days_used||0), wfhUsed = Number(member.wfh_days_used||0);
@@ -21138,17 +21145,20 @@ function arabicIndicToWesternDigits(str) {
   const map = {"٠":"0","١":"1","٢":"2","٣":"3","٤":"4","٥":"5","٦":"6","٧":"7","٨":"8","٩":"9"};
   return (str||"").replace(/[٠-٩]/g, ch=>map[ch]??ch);
 }
+// Returns {digits, confident, reason, raw} instead of a bare string/null —
+// even a partial or low-confidence read is more useful to a human checking
+// it against the photo than a flat "couldn't read anything" dead end.
 async function extractNationalIdFromPhoto(photoUrl) {
-  if(!photoUrl) return null;
+  if(!photoUrl) return {digits:"", confident:false, reason:"No photo provided.", raw:""};
   try {
-    const aiRes = await agentAI("content_creator", "Read national ID number", `This image is an Egyptian national ID card, printed in Arabic. Read the 14-digit national ID number printed on it exactly as shown. The card may print the number using Eastern Arabic-Indic numerals (٠١٢٣٤٥٦٧٨٩) instead of Western digits — if so, convert each digit to its Western 0-9 equivalent in your answer. Output only Western digits, no spaces or dashes.
+    const aiRes = await agentAI("content_creator", "Read national ID number", `This image is a photo of an Egyptian national ID card, printed in Arabic. Find the 14-digit national ID number printed on it (it's a long number, usually under the photo or near "الرقم القومي") and read it as exactly as you can, even if the photo is angled, blurry, or partially cropped — give your best reading rather than giving up. The number may use Eastern Arabic-Indic numerals (٠١٢٣٤٥٦٧٨٩) instead of Western digits — if so, convert each digit to its Western 0-9 equivalent. Output only Western digits, no spaces or dashes, in your answer.
 
-Return ONLY valid JSON: {"national_id":"14 digit number using Western 0-9 digits, or empty string if unreadable"}`, 200, photoUrl);
+Return ONLY valid JSON: {"national_id":"your best reading of the digits (even if fewer or more than 14 — do not pad or guess extra digits)","confident":true or false,"reason":"one short sentence — why it's not fully readable, if it isn't"}`, 300, photoUrl);
     const match = aiRes.match(/\{[\s\S]*\}/);
     const parsed = JSON.parse(match ? match[0] : aiRes);
     const digits = arabicIndicToWesternDigits(parsed.national_id||"").replace(/\D/g,"");
-    return digits.length===14 ? digits : null;
-  } catch(e) { return null; }
+    return {digits, confident: !!parsed.confident && digits.length===14, reason: parsed.reason||"", raw: aiRes};
+  } catch(e) { return {digits:"", confident:false, reason:"AI request failed — "+String(e?.message||e), raw:""}; }
 }
 
 // Fills the admin-edited contract template with one specific employee's
