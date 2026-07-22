@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.396";
+const APP_VERSION = "beta 5.397";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -16428,6 +16428,30 @@ function CareersPage({appSettings}) {
       setDone(true);
       if(created?.id) logApplicationActivity(created.id, "Application submitted via careers page", form.name.trim());
       if(created?.id && cvContent) reviewApplication(created, cvContent, selected).catch(()=>{});
+      // Notify recruitment staff (admins + anyone granted hr.manage_recruitment)
+      // that a new application came in — this page runs unauthenticated, so
+      // fetch team + role permissions fresh rather than relying on app state.
+      if(created?.id) {
+        (async () => {
+          try {
+            const [teamRes, rpRes] = await Promise.all([qe("TeamMember",{},null,500), qe("RolePermission")]);
+            const rpMap = buildRolePermsMap(rpRes?.entities||[]);
+            const recruiters = (teamRes?.entities||[]).filter(m=>m.role==="admin"||hasPerm(m, rpMap, "hr.manage_recruitment"));
+            const candidateLabel = `${form.name.trim()}'s application (${selected.title})`;
+            for(const staffer of recruiters) {
+              const notifPayload = {recipient_email:staffer.email, title:"New job application", message:`${form.name.trim()} just applied for "${selected.title}"`, type:"comment", is_read:false, link_type:"page", link_id:"recruitment"};
+              ce("Notification",[notifPayload]).catch(()=>{});
+              // No access to this staffer's saved notif prefs from an
+              // unauthenticated page — sendNotification() defaults to "on".
+              sendNotification("task_comment", staffer.email,
+                `[SocialFlow] New application: ${selected.title}`,
+                EMAIL_TEMPLATES.commentAdded(staffer.name, form.name.trim(), candidateLabel, "New application received — review it in Recruitment.", ""),
+                null
+              ).catch(()=>{});
+            }
+          } catch(e) {}
+        })();
+      }
       const es = {...RECRUITMENT_EMAIL_DEFAULTS, ...(appSettings?.recruitment_email_settings||{})};
       if(es.confirmation_enabled!==false) {
         sendCareersEmail(form.email.trim(), es.confirmation_subject||"Thanks for applying to Admepro!", applicationReceivedEmail(form.name.trim(), selected.title, es.confirmation_message), es.confirmation_from_name||"Admepro Careers").catch(()=>{});
