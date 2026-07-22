@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.398";
+const APP_VERSION = "beta 5.399";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -25146,7 +25146,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
   // to me" but also "someone looped me in on this".
   const mentionedPostIds = new Set(
     (comments||[])
-      .filter(c => currentUser?.name && (c.content||"").match(new RegExp(`@${currentUser.name.split(" ")[0]}\\b`,"i")))
+      .filter(c => currentUser?.name && (c.content||"").match(new RegExp(`@(?:${toUsername(currentUser.name)}\\b|${currentUser.name.split(" ")[0]}\\b)`,"i")))
       .map(c => c.post_id)
   );
 
