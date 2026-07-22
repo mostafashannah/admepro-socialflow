@@ -1154,7 +1154,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.388";
+const APP_VERSION = "beta 5.389";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -26376,11 +26376,22 @@ function InterviewSchedulingSection({application, onSendTimes, sending, onConfir
         );
       })()}
 
-      {!editing ? (
+      {!editing ? (<>
+        {!application.interview_confirmed_slot && !hasResponse && (() => {
+          const sentSlots = parseMaybeJson(application.interview_slots, []);
+          return sentSlots.length>0 && (
+            <div style={{marginBottom:10,padding:"10px 12px",background:"var(--surface)",borderRadius:8,border:"1px solid var(--border2)"}}>
+              <p style={{fontSize:12,color:"var(--text2)",marginBottom:4}}>Times sent to candidate, awaiting their response:</p>
+              <ul style={{margin:0,paddingLeft:18}}>
+                {sentSlots.map((s,i)=>(<li key={i} style={{fontSize:13,color:"var(--text)",fontWeight:600}}>{fmtDateOrText(s)}</li>))}
+              </ul>
+            </div>
+          );
+        })()}
         <button onClick={()=>setEditing(true)} style={{padding:"6px 14px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text2)",cursor:"pointer"}}>
           {application.interview_confirmed_slot ? "Change Interview Time" : application.interview_slots ? "Propose New Times" : "Propose Interview Times"}
         </button>
-      ) : (
+      </>) : (
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           <div style={{display:"flex",flexDirection:"column",gap:4,marginBottom:4}}>
             <p style={{fontSize:11,fontWeight:700,color:"var(--text3)"}}>Quick templates (fills in the manual entries below):</p>
