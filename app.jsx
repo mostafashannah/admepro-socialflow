@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.407";
+const APP_VERSION = "beta 5.408";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6167,6 +6167,11 @@ function AddCalendarPlanModal({open,onClose,clients,team,posts,projects,preselec
   // title (which is how generateCalendarPlan already matches/reuses a project).
   const [campaignChoice,setCampaignChoice] = useState("__new__");
   const clientProjects = (projects||[]).filter(p=>p.client_id===f.client_id);
+  // Each content-type card collapses to a small summary row (same
+  // expand/collapse pattern as the generated-items preview list below) —
+  // starts open only for kinds that already have a count set.
+  const [expandedKinds,setExpandedKinds] = useState({static:true});
+  const toggleKindOpen = (kind) => setExpandedKinds(prev=>({...prev,[kind]:!prev[kind]}));
   const s = (k,v) => setF(p=>({...p,[k]:v}));
   const sk = (kind,key,val) => setF(p=>({...p,kinds:{...p.kinds,[kind]:{...p.kinds[kind],[key]:val}}}));
   const togglePlt = (kind,p) => sk(kind,"platforms", f.kinds[kind].platforms.includes(p) ? f.kinds[kind].platforms.filter(x=>x!==p) : [...f.kinds[kind].platforms,p]);
@@ -6483,12 +6488,24 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
           {CALENDAR_KIND_DEFS.map(([kind,label,hint])=>{
             const cfg = f.kinds[kind];
             const countOptions = kind==="article" ? [0,1,2,3,4,5,6,8,10] : [0,2,4,6,8,10,12,15,20,24,30];
+            const isOpen = !!expandedKinds[kind];
             return (
-              <div key={kind} style={{border:"1px solid var(--border)",borderRadius:"var(--rs)",padding:14,display:"flex",flexDirection:"column",gap:10,background:cfg.count>0?"var(--surface2)":"transparent"}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                  <p style={{fontWeight:700,fontSize:13}}>{label}</p>
-                  <span style={{fontSize:11,color:"var(--text3)"}}>{hint}</span>
+              <div key={kind} style={{border:"1px solid var(--border)",borderRadius:"var(--rs)",padding:isOpen?14:"10px 14px",display:"flex",flexDirection:"column",gap:isOpen?10:0,background:cfg.count>0?"var(--surface2)":"transparent"}}>
+                <div onClick={()=>toggleKindOpen(kind)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",gap:10}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
+                    <p style={{fontWeight:700,fontSize:13,whiteSpace:"nowrap"}}>{label}</p>
+                    {!isOpen && (
+                      <span style={{fontSize:11.5,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        {cfg.count>0 ? `${cfg.count} · ${cfg.assigned_to ? (team.find(t=>t.email===cfg.assigned_to)?.name||"assigned") : "unassigned"} · ${cfg.platforms.length} platform${cfg.platforms.length!==1?"s":""}` : "0 — not included"}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                    {isOpen && <span style={{fontSize:11,color:"var(--text3)"}}>{hint}</span>}
+                    <span style={{display:"flex",transform:isOpen?"rotate(180deg)":"none",transition:"transform 0.15s"}}><Ico d={Icons.chevD} size={13} stroke="var(--text3)"/></span>
+                  </div>
                 </div>
+                {isOpen && (<>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(180px,100%),1fr))",gap:10}}>
                   <Field label={`Number of ${label}`}>
                     <select value={cfg.count} onChange={e=>sk(kind,"count",parseInt(e.target.value))} style={inputSt}>
@@ -6567,6 +6584,7 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                     </Btn>
                   </div>
                 </Field>
+                </>)}
               </div>
             );
           })}
