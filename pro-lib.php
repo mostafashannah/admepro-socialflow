@@ -984,7 +984,7 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
         }
         $days = max(1, (strtotime($end) - strtotime($start)) / 86400 + 1);
 
-        $mgrStmt = $pdo->prepare("SELECT tm.manager_id, mgr.name AS manager_name, mgr.whatsapp_number AS manager_phone FROM team_members tm LEFT JOIN team_members mgr ON mgr.id = tm.manager_id WHERE tm.id = :id");
+        $mgrStmt = $pdo->prepare("SELECT tm.manager_id, mgr.name AS manager_name, mgr.whatsapp_number AS manager_phone, mgr.email AS manager_email FROM team_members tm LEFT JOIN team_members mgr ON mgr.id = tm.manager_id WHERE tm.id = :id");
         $mgrStmt->execute([':id' => $senderId]);
         $mgr = $mgrStmt->fetch(PDO::FETCH_ASSOC);
         if (!$mgr || !$mgr['manager_id']) {
@@ -999,15 +999,29 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
             ':mid' => $mgr['manager_id'], ':mname' => $mgr['manager_name'],
         ]);
 
+        $shortId = substr($reqId, -8);
+        $range = $start === $end ? $start : "{$start} to {$end}";
+        $label = $type === 'vacation' ? 'vacation' : 'work-from-home';
+        $reasonLine = "\nReason: " . (!empty($input['reason']) ? $input['reason'] : '(none given)');
+
         if (!empty($mgr['manager_phone'])) {
-            $shortId = substr($reqId, -8);
-            $range = $start === $end ? $start : "{$start} to {$end}";
-            $label = $type === 'vacation' ? 'vacation' : 'work-from-home';
-            $reasonLine = "\nReason: " . (!empty($input['reason']) ? $input['reason'] : '(none given)');
             sendWhatsAppReply($mgr['manager_phone'],
                 "🗓️ {$senderName} requested {$label} for {$range} ({$days} day(s)).{$reasonLine}\n\n" .
                 "Reply here to approve or reject it — just tell Pro, e.g. \"approve {$shortId}\" or \"reject {$shortId}\"."
             );
+        }
+        // WhatsApp delivery isn't guaranteed (wrong/outdated number, Meta's
+        // 24h window, muted notifications) — an in-app notification is a
+        // second channel that doesn't depend on any of that, so the manager
+        // still sees the pending request next time they open the app.
+        if (!empty($mgr['manager_email'])) {
+            $notif = $pdo->prepare("INSERT INTO notifications (id, recipient_email, title, message, type, is_read, link_type, link_id) VALUES (:id, :email, :title, :msg, 'info', 0, 'page', 'team')");
+            $notif->execute([
+                ':id' => generateProUuid(),
+                ':email' => $mgr['manager_email'],
+                ':title' => 'New leave/WFH request',
+                ':msg' => "{$senderName} requested {$label} for {$range} ({$days} day(s)).{$reasonLine}",
+            ]);
         }
 
         return ['ok' => true, 'request_id' => substr($reqId, -8), 'message' => 'Request submitted and your manager has been notified over WhatsApp.'];
