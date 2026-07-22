@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.405";
+const APP_VERSION = "beta 5.406";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6142,7 +6142,7 @@ function scheduleItemDates(allPosts, userEmail, perItemMins, count, fromDate, to
   return {dates, overflow};
 }
 
-function AddCalendarPlanModal({open,onClose,clients,team,posts,preselectedClient,onGenerate,clientKnowledgeList,clientIntelligenceList,clientMemoryList,onUpsertMemory}) {
+function AddCalendarPlanModal({open,onClose,clients,team,posts,projects,preselectedClient,onGenerate,clientKnowledgeList,clientIntelligenceList,clientMemoryList,onUpsertMemory}) {
   const [step,setStep] = useState("form"); // form | generating | preview | done
   const makeKindDefaults = (count) => ({count, platforms:preselectedClient?.platforms||[], brief:"", assigned_to:"", due_mode:"auto", manual_due_date:"", manual_due_time:"13:00"});
   const [f,setF] = useState({
@@ -6161,6 +6161,12 @@ function AddCalendarPlanModal({open,onClose,clients,team,posts,preselectedClient
   const [generated,setGenerated] = useState([]);
   const [genPhase,setGenPhase] = useState("brain"); // "brain" | "brief" | "<kind>" | "dates"
   const [aiIdeas,setAiIdeas] = useState([]);
+  // Campaign/project picker: either add more posts onto an existing project
+  // for this client, or start a brand new one — "__new__" reveals the free-
+  // text name field, picking an existing one fills f.campaign with its exact
+  // title (which is how generateCalendarPlan already matches/reuses a project).
+  const [campaignChoice,setCampaignChoice] = useState("__new__");
+  const clientProjects = (projects||[]).filter(p=>p.client_id===f.client_id);
   const s = (k,v) => setF(p=>({...p,[k]:v}));
   const sk = (kind,key,val) => setF(p=>({...p,kinds:{...p.kinds,[kind]:{...p.kinds[kind],[key]:val}}}));
   const togglePlt = (kind,p) => sk(kind,"platforms", f.kinds[kind].platforms.includes(p) ? f.kinds[kind].platforms.filter(x=>x!==p) : [...f.kinds[kind].platforms,p]);
@@ -6437,6 +6443,8 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
             <Field label="Client" required>
               <select value={f.client_id} onChange={e=>{
                 s("client_id",e.target.value);
+                s("campaign","");
+                setCampaignChoice("__new__");
                 const c=clients.find(x=>x.id===e.target.value);
                 if(c&&c.platforms?.length) setF(p=>({...p,kinds:Object.fromEntries(Object.entries(p.kinds).map(([k,v])=>[k,{...v,platforms:c.platforms}]))}));
               }} style={inputSt}>
@@ -6445,7 +6453,20 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
               </select>
             </Field>
             <Field label="Campaign / Project Name" required>
-              <input value={f.campaign} onChange={e=>s("campaign",e.target.value)} placeholder="e.g. Ramadan Campaign 2026" style={inputSt}/>
+              {clientProjects.length>0 && (
+                <select value={campaignChoice} onChange={e=>{
+                  const val = e.target.value;
+                  setCampaignChoice(val);
+                  if(val==="__new__") s("campaign","");
+                  else { const p=clientProjects.find(pr=>pr.id===val); s("campaign", p?.title||""); }
+                }} style={{...inputSt,marginBottom:8}}>
+                  <option value="__new__">+ New Campaign / Project</option>
+                  {clientProjects.map(p=><option key={p.id} value={p.id}>{p.title} (add more posts)</option>)}
+                </select>
+              )}
+              {(campaignChoice==="__new__"||clientProjects.length===0) && (
+                <input value={f.campaign} onChange={e=>s("campaign",e.target.value)} placeholder="e.g. Ramadan Campaign 2026" style={inputSt}/>
+              )}
             </Field>
             <Field label="Publishing Start Date" required>
               <input type="date" value={f.date_from} onChange={e=>s("date_from",e.target.value)} style={inputSt}/>
@@ -37193,6 +37214,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
       clients={data.clients}
       team={data.team}
       posts={data.posts||[]}
+      projects={data.projects||[]}
       preselectedClient={calendarPreselectedClient}
       onGenerate={generateCalendarPlan}
       clientKnowledgeList={data.clientKnowledge||[]}
