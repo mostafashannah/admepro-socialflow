@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.426";
+const APP_VERSION = "beta 5.427";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13714,6 +13714,43 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
   const mySalaryRecords = (expenses||[]).filter(e=>e.team_member_id===member.id && e.category==="salaries").sort((a,b)=>new Date(b.date)-new Date(a.date));
   const totalPaid = mySalaryRecords.reduce((sum,e)=>sum+Number(e.amount||0),0);
   const docs = [member.id_photo_front_url&&{label:"ID Photo — Front", url:member.id_photo_front_url}, member.id_photo_back_url&&{label:"ID Photo — Back", url:member.id_photo_back_url}].filter(Boolean);
+  const extraDocs = parseMaybeJson(member.extra_documents, []);
+
+  // Documents were previously only ever settable at invite time (before
+  // this person even had a profile to come back to) — these let an admin
+  // add/replace/remove the ID photos and any other document afterward too.
+  const [uploadingDoc, setUploadingDoc] = useState(null); // which slot is mid-upload: "front"|"back"|"extra"
+  const idFrontRef = useRef(null), idBackRef = useRef(null), extraDocRef = useRef(null);
+  const handleUploadIdPhoto = async (side, file) => {
+    if(!file) return;
+    setUploadingDoc(side);
+    try {
+      const url = await uploadToStorage(file, "team-id-photos");
+      await onUpdateTeamMember(member.id, side==="front" ? {id_photo_front_url:url} : {id_photo_back_url:url});
+    } catch(e) { alert("Couldn't upload that file: " + (e?.message||e)); }
+    setUploadingDoc(null);
+  };
+  const handleRemoveIdPhoto = async (side) => {
+    if(!confirm(`Remove the ID photo (${side})?`)) return;
+    await onUpdateTeamMember(member.id, side==="front" ? {id_photo_front_url:null} : {id_photo_back_url:null});
+  };
+  const handleAddExtraDoc = async (file) => {
+    if(!file) return;
+    const label = prompt("Label for this document (e.g. Signed Contract, Certificate):", file.name.replace(/\.[^.]+$/,""));
+    if(label===null) return;
+    setUploadingDoc("extra");
+    try {
+      const url = await uploadToStorage(file, "team-documents");
+      const updated = [...extraDocs, {label: label||file.name, url}];
+      await onUpdateTeamMember(member.id, {extra_documents: JSON.stringify(updated)});
+    } catch(e) { alert("Couldn't upload that file: " + (e?.message||e)); }
+    setUploadingDoc(null);
+  };
+  const handleRemoveExtraDoc = async (idx) => {
+    if(!confirm("Remove this document?")) return;
+    const updated = extraDocs.filter((_,i)=>i!==idx);
+    await onUpdateTeamMember(member.id, {extra_documents: JSON.stringify(updated)});
+  };
 
   // Salary raises recorded on Career History, used to prorate "This Month
   // Payroll" below — a raise partway through the month means part of the
@@ -14135,16 +14172,61 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
         )}
       </div>
 
-      {docs.length>0&&(
+      {(docs.length>0 || extraDocs.length>0 || canEdit)&&(
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
           <h3 style={{fontWeight:700,fontSize:14,marginBottom:12}}>Documents</h3>
           <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
-            {docs.map(d=>(
-              <a key={d.label} href={d.url} target="_blank" rel="noreferrer" style={{display:"block",width:140}}>
-                <img src={d.url} alt={d.label} style={{width:140,height:100,objectFit:"cover",borderRadius:8,border:"1px solid var(--border)"}}/>
-                <p style={{fontSize:11,color:"var(--text2)",marginTop:4,textAlign:"center"}}>{d.label}</p>
-              </a>
+            {[["front","ID Photo — Front",member.id_photo_front_url,idFrontRef],["back","ID Photo — Back",member.id_photo_back_url,idBackRef]].map(([side,label,url,ref])=>(
+              <div key={side} style={{width:140}}>
+                {url ? (
+                  <div style={{position:"relative"}}>
+                    <a href={url} target="_blank" rel="noreferrer">
+                      {/\.pdf(?:[?#]|$)/i.test(url) ? (
+                        <div style={{width:140,height:100,borderRadius:8,border:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          <Ico d={Icons.upload} size={22} stroke="var(--text3)"/>
+                        </div>
+                      ) : (
+                        <img src={url} alt={label} style={{width:140,height:100,objectFit:"cover",borderRadius:8,border:"1px solid var(--border)"}}/>
+                      )}
+                    </a>
+                    {canEdit&&(
+                      <button onClick={()=>handleRemoveIdPhoto(side)} title="Remove" style={{position:"absolute",top:4,right:4,width:22,height:22,borderRadius:"50%",background:"rgba(0,0,0,0.6)",color:"#fff",border:"none",cursor:"pointer",fontWeight:700,fontSize:13,lineHeight:1}}>×</button>
+                    )}
+                  </div>
+                ) : canEdit ? (
+                  <button onClick={()=>ref.current?.click()} disabled={uploadingDoc===side} style={{width:140,height:100,borderRadius:8,border:"1.5px dashed var(--border2)",background:"transparent",color:"var(--text3)",fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    {uploadingDoc===side?<Spinner size={14}/>:`+ Add ${label}`}
+                  </button>
+                ) : null}
+                {(url||canEdit)&&<p style={{fontSize:11,color:"var(--text2)",marginTop:4,textAlign:"center"}}>{label}</p>}
+                {canEdit&&<input ref={ref} type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={e=>{handleUploadIdPhoto(side,e.target.files?.[0]); e.target.value="";}}/>}
+              </div>
             ))}
+            {extraDocs.map((d,i)=>(
+              <div key={i} style={{width:140,position:"relative"}}>
+                <a href={d.url} target="_blank" rel="noreferrer">
+                  {/\.pdf(?:[?#]|$)/i.test(d.url) ? (
+                    <div style={{width:140,height:100,borderRadius:8,border:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      <Ico d={Icons.upload} size={22} stroke="var(--text3)"/>
+                    </div>
+                  ) : (
+                    <img src={d.url} alt={d.label} style={{width:140,height:100,objectFit:"cover",borderRadius:8,border:"1px solid var(--border)"}}/>
+                  )}
+                </a>
+                {canEdit&&(
+                  <button onClick={()=>handleRemoveExtraDoc(i)} title="Remove" style={{position:"absolute",top:4,right:4,width:22,height:22,borderRadius:"50%",background:"rgba(0,0,0,0.6)",color:"#fff",border:"none",cursor:"pointer",fontWeight:700,fontSize:13,lineHeight:1}}>×</button>
+                )}
+                <p style={{fontSize:11,color:"var(--text2)",marginTop:4,textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.label}</p>
+              </div>
+            ))}
+            {canEdit&&(
+              <div style={{width:140}}>
+                <button onClick={()=>extraDocRef.current?.click()} disabled={uploadingDoc==="extra"} style={{width:140,height:100,borderRadius:8,border:"1.5px dashed var(--border2)",background:"transparent",color:"var(--text3)",fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  {uploadingDoc==="extra"?<Spinner size={14}/>:"+ Add Document"}
+                </button>
+                <input ref={extraDocRef} type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={e=>{handleAddExtraDoc(e.target.files?.[0]); e.target.value="";}}/>
+              </div>
+            )}
           </div>
         </div>
       )}
