@@ -1162,7 +1162,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.427";
+const APP_VERSION = "beta 5.428";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13726,7 +13726,15 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
     setUploadingDoc(side);
     try {
       const url = await uploadToStorage(file, "team-id-photos");
-      await onUpdateTeamMember(member.id, side==="front" ? {id_photo_front_url:url} : {id_photo_back_url:url});
+      const patch = side==="front" ? {id_photo_front_url:url} : {id_photo_back_url:url};
+      // Auto-read the ID number right after upload — no separate manual
+      // step needed — only fills it in if it was still blank, so it never
+      // silently overwrites a value someone already typed/corrected.
+      if(!member.national_id) {
+        const digits = await extractNationalIdFromPhoto(url);
+        if(digits) patch.national_id = digits;
+      }
+      await onUpdateTeamMember(member.id, patch);
     } catch(e) { alert("Couldn't upload that file: " + (e?.message||e)); }
     setUploadingDoc(null);
   };
@@ -14273,16 +14281,9 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
   const handleExtractId = async () => {
     if(!idPhotoUrl) { alert("No ID photo attached to this profile yet — upload one first."); return; }
     setExtractingId(true);
-    try {
-      const aiRes = await agentAI("content_creator", "Read national ID number", `This image is an Egyptian national ID card. Read the 14-digit national ID number printed on it exactly as shown (digits only, no spaces or dashes).
-
-Return ONLY valid JSON: {"national_id":"14 digit number, or empty string if unreadable"}`, 200, idPhotoUrl);
-      const match = aiRes.match(/\{[\s\S]*\}/);
-      const parsed = JSON.parse(match ? match[0] : aiRes);
-      const digits = (parsed.national_id||"").replace(/\D/g,"");
-      if(digits.length===14) s("national_id", digits);
-      else alert("Couldn't read a clear 14-digit ID number from the photo — please check the image or enter it manually.");
-    } catch(e) { alert("Couldn't read the ID photo right now — please try again or enter it manually."); }
+    const digits = await extractNationalIdFromPhoto(idPhotoUrl);
+    if(digits) s("national_id", digits);
+    else alert("Couldn't read a clear 14-digit ID number from the photo — please check the image or enter it manually.");
     setExtractingId(false);
   };
   const vacUsed = Number(member.vacation_days_used||0), wfhUsed = Number(member.wfh_days_used||0);
@@ -21123,6 +21124,23 @@ function parseEgyptianNationalId(id) {
   const hadBirthdayThisYear = (now.getMonth()>birthDate.getMonth()) || (now.getMonth()===birthDate.getMonth() && now.getDate()>=birthDate.getDate());
   if(!hadBirthdayThisYear) age--;
   return {birthDate, age};
+}
+
+// Reads the 14-digit national ID number straight off a photo of the ID
+// card via Claude's vision — used both right after uploading an ID photo
+// (auto-fill) and via the manual "Read from ID Photo" button. Returns the
+// digit string, or null if nothing readable was found.
+async function extractNationalIdFromPhoto(photoUrl) {
+  if(!photoUrl) return null;
+  try {
+    const aiRes = await agentAI("content_creator", "Read national ID number", `This image is an Egyptian national ID card. Read the 14-digit national ID number printed on it exactly as shown (digits only, no spaces or dashes).
+
+Return ONLY valid JSON: {"national_id":"14 digit number, or empty string if unreadable"}`, 200, photoUrl);
+    const match = aiRes.match(/\{[\s\S]*\}/);
+    const parsed = JSON.parse(match ? match[0] : aiRes);
+    const digits = (parsed.national_id||"").replace(/\D/g,"");
+    return digits.length===14 ? digits : null;
+  } catch(e) { return null; }
 }
 
 // Fills the admin-edited contract template with one specific employee's
