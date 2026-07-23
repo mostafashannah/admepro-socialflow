@@ -1180,7 +1180,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.437";
+const APP_VERSION = "beta 5.438";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3231,8 +3231,17 @@ function PostCard({post,project,team,onClick}) {
 function KanbanView({posts,project,team,onPostClick}) {
   const {isMobile} = useResponsive();
   const [showEmpty,setShowEmpty] = useState(false);
-  const populated = STAGES.filter(s=>posts.some(p=>p.stage===s.key));
-  const empty = STAGES.filter(s=>!posts.some(p=>p.stage===s.key));
+  // "Post" = post_type is one of the actual publishable content shapes
+  // (image/video/carousel/story/reel); anything else stored in post_type
+  // (graphic_design, content_calendar, monthly_report, etc. — the
+  // TASK_TYPES ids used by client-submitted work requests) is a "Task",
+  // i.e. work that isn't itself a piece of social content to publish.
+  const [typeF,setTypeF] = useState("all"); // all | post | task
+  const typedPosts = typeF==="all" ? posts : posts.filter(p=>
+    typeF==="post" ? POST_TYPES.includes(p.post_type) : !POST_TYPES.includes(p.post_type)
+  );
+  const populated = STAGES.filter(s=>typedPosts.some(p=>p.stage===s.key));
+  const empty = STAGES.filter(s=>!typedPosts.some(p=>p.stage===s.key));
   const visibleStages = showEmpty ? STAGES : populated;
   const hasEmpty = empty.length > 0;
 
@@ -3242,9 +3251,16 @@ function KanbanView({posts,project,team,onPostClick}) {
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
-      {/* Toggle control */}
-      {hasEmpty&&(
-        <div style={{display:"flex",justifyContent:"flex-end"}}>
+      {/* Toggle controls — type switcher on the left, stage-visibility toggle on the right */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)"}}>
+          {[["all","All"],["post","Posts"],["task","Tasks"]].map(([k,label])=>(
+            <button key={k} onClick={()=>setTypeF(k)} style={{padding:"4px 12px",borderRadius:99,fontSize:12,fontWeight:700,border:"none",cursor:"pointer",background:typeF===k?"var(--accent)":"none",color:typeF===k?"#fff":"var(--text2)"}}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {hasEmpty&&(
           <button onClick={()=>setShowEmpty(v=>!v)} style={{
             fontSize:12,fontWeight:600,color:"var(--text3)",display:"flex",alignItems:"center",gap:5,
             padding:"4px 12px",borderRadius:99,border:"1px solid var(--border)",background:"var(--surface2)",
@@ -3255,8 +3271,8 @@ function KanbanView({posts,project,team,onPostClick}) {
             <Ico d={showEmpty?Icons.eye:Icons.eye} size={13} stroke="var(--text3)"/>
             {showEmpty?`Hide ${empty.length} empty stages`:`Show all ${STAGES.length} stages`}
           </button>
-        </div>
-      )}
+        )}
+      </div>
       {/* Horizontal-scroll columns on both mobile and desktop. touchAction:"pan-x"
           tells the browser this row only handles horizontal swipes, so a
           vertical swipe on it falls through to the page's own scroll
@@ -3264,7 +3280,7 @@ function KanbanView({posts,project,team,onPostClick}) {
       {isMobile ? (
         <div style={{display:"flex",gap:10,overflowX:"auto",paddingBottom:12,alignItems:"flex-start",WebkitOverflowScrolling:"touch"}}>
           {visibleStages.map(stage=>{
-            const sp = posts.filter(p=>p.stage===stage.key);
+            const sp = typedPosts.filter(p=>p.stage===stage.key);
             return (
               <div key={stage.key} style={{width:230,minWidth:230,maxWidth:230,flexShrink:0,display:"flex",flexDirection:"column",gap:8}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 2px"}}>
@@ -3289,7 +3305,7 @@ function KanbanView({posts,project,team,onPostClick}) {
       ) : (
         <div style={{display:"flex",gap:12,overflowX:"auto",paddingBottom:12,alignItems:"flex-start"}}>
           {visibleStages.map(stage=>{
-            const sp = posts.filter(p=>p.stage===stage.key);
+            const sp = typedPosts.filter(p=>p.stage===stage.key);
             return (
               <div key={stage.key} style={{flex:"1 0 260px",minWidth:260,maxWidth:300,display:"flex",flexDirection:"column",gap:8}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 2px"}}>
@@ -11847,32 +11863,79 @@ function BestPerformingPostsFull({posts, client}) {
   );
 }
 
-// Outer "Insights" tab — houses one sub-tab per connected analytics source
-// (Meta covers Facebook+Instagram together since Graph API returns them
-// together already; a differently-shaped platform — e.g. TikTok/LinkedIn —
-// would get its own sub-tab here once/if a page-level insights backend for
-// it exists, same pattern as Meta's) plus the cross-platform "Best
-// Performing Posts" sub-tab, which already works for any platform since
-// it's driven off the generic insight_likes/comments/shares/reach columns
-// on `posts`, not a platform-specific API call.
+// Rolls every connected platform's post-level engagement (already collected
+// via insight_likes/comments/shares/reach, no live API calls needed — this
+// is a summary, not a fresh fetch) into one glance-able card per platform,
+// for the "All Platforms" sub-tab. Clicking a card jumps straight to that
+// platform's own full-detail sub-tab.
+function AllPlatformsSummaryTab({posts, connectedPlatforms, onSelectPlatform}) {
+  const {isMobile} = useResponsive();
+  const rows = connectedPlatforms.map(pf=>{
+    const pPosts = (posts||[]).filter(p=>p.platform===pf && p.stage==="published");
+    const withData = pPosts.filter(p=>p.insight_likes!=null||p.insight_comments!=null||p.insight_shares!=null||p.insight_reach!=null);
+    const sum = key => withData.reduce((a,p)=>a+(p[key]||0),0);
+    const hasShares = withData.some(p=>p.insight_shares!=null);
+    const hasReach = withData.some(p=>p.insight_reach!=null);
+    return {platform:pf, total:pPosts.length, tracked:withData.length, likes:sum("insight_likes"), comments:sum("insight_comments"), shares:hasShares?sum("insight_shares"):null, reach:hasReach?sum("insight_reach"):null};
+  });
+  if(rows.length===0) return <EmptyState icon={Icons.chart} title="No platforms connected" sub="Connect a Facebook, Instagram, or TikTok integration to see insights here."/>;
+  return (
+    <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fit,minmax(240px,1fr))",gap:12}}>
+      {rows.map(r=>(
+        <div key={r.platform} onClick={()=>onSelectPlatform(r.platform)} data-clickable style={{cursor:"pointer",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <PChip platform={r.platform}/>
+            <Ico d={Icons.chevR||Icons.chevD} size={14} stroke="var(--text3)"/>
+          </div>
+          <p style={{fontSize:12,color:"var(--text3)"}}>{r.total} published post{r.total!==1?"s":""}{r.tracked<r.total?` (${r.tracked} tracked)`:""}</p>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <div><p style={{fontSize:18,fontWeight:800}}>{r.likes}</p><p style={{fontSize:10,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"}}>Likes</p></div>
+            <div><p style={{fontSize:18,fontWeight:800}}>{r.comments}</p><p style={{fontSize:10,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"}}>Comments</p></div>
+            <div><p style={{fontSize:18,fontWeight:800}}>{r.shares??"N/A"}</p><p style={{fontSize:10,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"}}>Shares</p></div>
+            <div><p style={{fontSize:18,fontWeight:800}}>{r.reach??"—"}</p><p style={{fontSize:10,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"}}>Reach</p></div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Outer "Insights" tab. First sub-tab is always "All Platforms" (a
+// zero-API-call summary card per connected platform, from AllPlatformsSummaryTab
+// above). Then one sub-tab per connected platform with full detail: Meta
+// platforms (Facebook/Instagram) get the live Graph API dashboard
+// (MetaInsightsTab, scoped to just that one platform via platformFilter);
+// any other connected platform (TikTok, LinkedIn, ...) — which has no
+// page-level analytics backend yet — gets its own posts ranked by engagement
+// via BestPerformingPostsFull, so it still shows real detail, just without
+// a page-level trend dashboard. "Best Performing Posts" stays as a final
+// cross-platform ranking tab.
 function InsightsTab({client, integrations, posts}) {
-  const [sub, setSub] = usePersistentState("sf_tab_insights_sub","meta");
-  const hasMeta = (integrations||[]).some(i=>["facebook","instagram"].includes(i.app_key) && i.status==="active" && (!i.client_id||i.client_id===client.id));
+  const [sub, setSub] = usePersistentState("sf_tab_insights_sub","all");
+  const activeIntegrations = (integrations||[]).filter(i=>i.status==="active" && (!i.client_id||i.client_id===client.id));
+  const connectedPlatforms = [...new Set(activeIntegrations.map(i=>i.app_key))].filter(p=>["facebook","instagram","tiktok","linkedin","twitter"].includes(p));
+  const isMetaPlatform = p => ["facebook","instagram"].includes(p);
+  const platformLabel = p => p.charAt(0).toUpperCase()+p.slice(1);
+
   const subTabs = [
-    ...(hasMeta ? [["meta","Meta (FB/IG)"]] : []),
+    ["all","All Platforms"],
+    ...connectedPlatforms.map(p=>[p, platformLabel(p)]),
     ["best","Best Performing Posts"],
   ];
-  useEffect(()=>{ if(!subTabs.some(([k])=>k===sub)) setSub(subTabs[0]?.[0]||"best"); },[hasMeta]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(()=>{ if(!subTabs.some(([k])=>k===sub)) setSub("all"); },[connectedPlatforms.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
-      <div style={{display:"flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",width:"fit-content"}}>
+      <div style={{display:"flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",width:"fit-content",flexWrap:"wrap"}}>
         {subTabs.map(([k,label])=>(
           <button key={k} onClick={()=>setSub(k)} style={{padding:"7px 16px",borderRadius:99,background:sub===k?"var(--accent)":"none",color:sub===k?"#fff":"var(--text2)",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
             {label}
           </button>
         ))}
       </div>
-      {sub==="meta" && hasMeta && <MetaInsightsTab client={client} integrations={integrations}/>}
+      {sub==="all" && <AllPlatformsSummaryTab posts={posts} connectedPlatforms={connectedPlatforms} onSelectPlatform={setSub}/>}
+      {connectedPlatforms.includes(sub) && isMetaPlatform(sub) && <MetaInsightsTab key={sub} client={client} integrations={integrations} platformFilter={sub}/>}
+      {connectedPlatforms.includes(sub) && !isMetaPlatform(sub) && <BestPerformingPostsFull key={sub} posts={posts.filter(p=>p.platform===sub)} client={client}/>}
       {sub==="best" && <BestPerformingPostsFull posts={posts} client={client}/>}
     </div>
   );
@@ -12030,9 +12093,9 @@ function MetricLineChart({current, previous, color="#3b82f6", height=220}) {
   );
 }
 
-function MetaInsightsTab({client, integrations}) {
+function MetaInsightsTab({client, integrations, platformFilter}) {
   const matches = integrations.filter(i=>
-    ["facebook","instagram"].includes(i.app_key) && i.status==="active" &&
+    (platformFilter ? i.app_key===platformFilter : ["facebook","instagram"].includes(i.app_key)) && i.status==="active" &&
     (!i.client_id || i.client_id===client.id)
   );
   const [loading, setLoading] = useState(false);
