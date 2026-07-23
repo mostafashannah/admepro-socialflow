@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.458";
+const APP_VERSION = "beta 5.459";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1942,6 +1942,10 @@ Target Audience: ${intel?.target_audience||""}
 Keywords: ${know?.keywords ? (typeof know.keywords==="string"?know.keywords:JSON.stringify(know.keywords)) : ""}
 Do's: ${know?.dos||""}
 Don'ts: ${know?.donts||intel?.donts||""}
+${(()=>{ const c=parseJ(know?.brand_colors); return c.length?`Brand Colors (HEX — use these exactly, never invent a palette): ${c.join(", ")}`:"Brand Colors: not set — ask before assuming a palette."; })()}
+${know?.logo_url?`Logo file: ${know.logo_url}`:"Logo: not uploaded yet."}
+${know?.visual_direction?`Visual Direction (follow this for any design/image work): ${know.visual_direction}`:"Visual Direction: not set."}
+${know?.content_language?`Copy Language: ${know.content_language}`:""}
 ${memBlock ? `LEARNED MEMORY (highest priority — always follow):\n${memBlock}` : ""}
 ${publishedBlock ? `RECENTLY PUBLISHED — ${allPublished.length} total published, showing the ${recentPublished.length} most recent (real examples — match this proven style/format, and do NOT repeat these ideas/angles):\n${publishedBlock}` : "RECENTLY PUBLISHED: none yet for this client."}
 Context: ${(know?.context_file||"").slice(0,400)}
@@ -4713,7 +4717,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
               ) : <span style={{fontSize:12,color:"var(--text3)"}}>Unassigned</span>}
             </div>
           </div>
-          {isManager || currentUser?.email===post.assigned_to ? (
+          {currentUser?.email===post.assigned_to ? (
             <TimeTracker postId={post.id} userEmail={currentUser?.email} timeEntries={timeEntries||[]} onStart={onStartTimer} onPause={onPauseTimer} onResume={onResumeTimer}/>
           ) : (
             <StageTimeline post={post} comments={comments}/>
@@ -9969,7 +9973,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
       {tab==="brain"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           <div style={{display:"flex",gap:4,borderBottom:"1px solid var(--border)"}}>
-            {[["profile","Client Brain"],["scheduling","Scheduling"],["contact_reports","Contact Reports"],...(isPriv?[["integrations","Integrations"],["features","Features"]]:[])].map(([k,l])=>(
+            {[["profile","Client Brain"],["scheduling","Scheduling"],["brand_guidelines","Brand Guidelines"],["contact_reports","Contact Reports"],...(isPriv?[["integrations","Integrations"],["features","Features"]]:[])].map(([k,l])=>(
               <button key={k} onClick={()=>setBrainSubTab(k)} style={{
                 padding:"8px 16px",fontSize:13,fontWeight:700,border:"none",background:"transparent",cursor:"pointer",
                 color:brainSubTab===k?"var(--accent)":"var(--text3)",
@@ -10001,6 +10005,9 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
           )}
           {brainSubTab==="scheduling"&&(
             <ClientIntelligenceTab client={client} intelligence={clientIntelligence} onSave={onSaveIntelligence} integrations={integrations} posts={cPosts}/>
+          )}
+          {brainSubTab==="brand_guidelines"&&(
+            <ClientBrandGuidelinesSubTab client={client} knowledge={knowledge} onSaveKnowledge={onSaveKnowledge}/>
           )}
           {brainSubTab==="contact_reports"&&(
             <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -12984,6 +12991,112 @@ No markdown, no explanation, just the JSON array.`;
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// Brand Guidelines — the specifics Yahia (and Sara) actually need to design
+// on-brand without asking every time: exact HEX colors, the logo file
+// itself, visual direction, and copy language. Saved onto the same
+// ClientKnowledge record the rest of Client Brain uses (client_knowledge
+// table), and read by clientBrainBlock() so every agent call includes it
+// automatically — no separate lookup needed per feature.
+function ClientBrandGuidelinesSubTab({client, knowledge, onSaveKnowledge}) {
+  const [colors, setColors] = useState(parseMaybeJson(knowledge?.brand_colors, []));
+  const [colorInput, setColorInput] = useState("");
+  const [logoUrl, setLogoUrl] = useState(knowledge?.logo_url||"");
+  const [visualDirection, setVisualDirection] = useState(knowledge?.visual_direction||"");
+  const [contentLanguage, setContentLanguage] = useState(knowledge?.content_language||"");
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const addColor = () => {
+    const hex = colorInput.trim().replace(/^#?/, "#");
+    if(!/^#[0-9a-fA-F]{3,8}$/.test(hex)) return;
+    if(!colors.includes(hex)) setColors([...colors, hex]);
+    setColorInput("");
+  };
+  const removeColor = (hex) => setColors(colors.filter(c=>c!==hex));
+
+  const handleLogoUpload = async (file) => {
+    if(!file) return;
+    setUploadingLogo(true);
+    try { const url = await uploadToStorage(file, "client-logos"); setLogoUrl(url); }
+    catch(e) { alert("Logo upload failed: "+e.message); }
+    setUploadingLogo(false);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSaveKnowledge({
+      ...(knowledge||{}), client_id:client.id, client_name:client.name,
+      brand_colors: JSON.stringify(colors),
+      logo_url: logoUrl,
+      visual_direction: visualDirection,
+      content_language: contentLanguage,
+    });
+    setSaving(false); setSaved(true); setTimeout(()=>setSaved(false), 2500);
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:600}}>
+      <div>
+        <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:16}}>Brand Guidelines</h3>
+        <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>The specifics Yahia (and Sara) need to design/write on-brand for {client.name} without guessing.</p>
+      </div>
+
+      <div>
+        <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:6}}>Brand Colors (HEX)</label>
+        <div style={{display:"flex",gap:6,marginBottom:8}}>
+          <input value={colorInput} onChange={e=>setColorInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addColor();}}} placeholder="#1a1a2e" style={{...inputSt,flex:1}}/>
+          <Btn variant="secondary" onClick={addColor}>Add</Btn>
+        </div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+          {colors.map(hex=>(
+            <div key={hex} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",borderRadius:99,border:"1px solid var(--border)",background:"var(--surface2)"}}>
+              <div style={{width:16,height:16,borderRadius:"50%",background:hex,border:"1px solid var(--border2)",flexShrink:0}}/>
+              <span style={{fontSize:12,fontWeight:600,fontFamily:"monospace"}}>{hex}</span>
+              <button onClick={()=>removeColor(hex)} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontWeight:700,fontSize:13,padding:0,lineHeight:1}}>×</button>
+            </div>
+          ))}
+          {colors.length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>No colors saved yet.</p>}
+        </div>
+      </div>
+
+      <div>
+        <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:6}}>Logo</label>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          {logoUrl&&<img src={logoUrl} alt="Logo" style={{width:56,height:56,objectFit:"contain",borderRadius:8,border:"1px solid var(--border)",background:"var(--surface2)",padding:4}}/>}
+          <input type="file" accept="image/*" id="brand-logo-upload" style={{display:"none"}} disabled={uploadingLogo} onChange={e=>{handleLogoUpload(e.target.files?.[0]); e.target.value="";}}/>
+          <label htmlFor="brand-logo-upload" style={{cursor:uploadingLogo?"default":"pointer",fontSize:12,fontWeight:700,color:"var(--accent)",padding:"7px 12px",borderRadius:8,border:"1px solid var(--accent)44",background:"var(--accentbg,var(--surface2))"}}>
+            {uploadingLogo?<Spinner size={12}/>:(logoUrl?"Replace Logo":"Upload Logo")}
+          </label>
+        </div>
+      </div>
+
+      <div>
+        <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:6}}>Visual Direction</label>
+        <textarea value={visualDirection} onChange={e=>setVisualDirection(e.target.value)} rows={4} placeholder="e.g. Industrial/machinery shots, workers in branded protective gear, high-contrast factory floor photography. Never stock-photo cheesy smiles." style={{...inputSt,resize:"vertical"}}/>
+      </div>
+
+      <div>
+        <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:6}}>Copy Language</label>
+        <select value={contentLanguage} onChange={e=>setContentLanguage(e.target.value)} style={inputSt}>
+          <option value="">Not set</option>
+          <option value="arabic">Arabic</option>
+          <option value="english">English</option>
+          <option value="both">Both (Arabic + English)</option>
+          <option value="franco">Franco-Arabic</option>
+        </select>
+      </div>
+
+      <div style={{display:"flex",alignItems:"center",gap:12}}>
+        <button onClick={handleSave} disabled={saving} style={{background:"var(--accent)",color:"#fff",border:"none",borderRadius:9,padding:"10px 28px",cursor:"pointer",fontWeight:700,fontSize:14,opacity:saving?0.7:1}}>
+          {saving?"Saving…":"Save Brand Guidelines"}
+        </button>
+        {saved&&<span style={{color:"#10b981",fontWeight:600,fontSize:13}}>✓ Saved</span>}
+      </div>
     </div>
   );
 }
@@ -22807,7 +22920,25 @@ function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfill
         <p style={{fontWeight:800,fontSize:14,marginBottom:4}}> Your AI Agents</p>
         <p style={{fontSize:12,color:"var(--text3)"}}>Pro is the supervisor agent — it chats with the team and oversees the specialists below. Each agent has its own model, skills, and run log.</p>
         <div style={{display:"flex",alignItems:"center",gap:10,marginTop:14,padding:"12px 14px",background:"var(--surface2)",borderRadius:10,border:"1px solid var(--border)"}}>
-          <div style={{width:10,height:10,borderRadius:"50%",background:"#d90b2c",flexShrink:0}}/>
+          {(()=>{
+            const [uploadingProAvatar, setUploadingProAvatar] = useState(false);
+            const handleProAvatarUpload = async (file) => {
+              if(!file) return;
+              setUploadingProAvatar(true);
+              try {
+                const url = await uploadToStorage(file, "ai-agents");
+                await saveAgent("pro", {...agentsCfg.pro, avatar_url:url});
+              } catch(e){ alert("Photo upload failed: "+e.message); }
+              setUploadingProAvatar(false);
+            };
+            return (
+              <label style={{width:34,height:34,borderRadius:"50%",background:"#d90b2c",flexShrink:0,cursor:"pointer",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:13,position:"relative"}} title="Click to upload a photo">
+                {agentsCfg.pro?.avatar_url?<img src={agentsCfg.pro.avatar_url} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:"P"}
+                {uploadingProAvatar&&<div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center"}}><Spinner size={14}/></div>}
+                <input type="file" accept="image/*" hidden disabled={uploadingProAvatar} onChange={e=>{if(e.target.files[0]) handleProAvatarUpload(e.target.files[0]); e.target.value="";}}/>
+              </label>
+            );
+          })()}
           <div>
             <p style={{fontWeight:700,fontSize:13}}>Pro — AI Supervisor</p>
             <p style={{fontSize:11.5,color:"var(--text3)",marginTop:1}}>Configured by the Model, Speed, and Pro Skills sections below.</p>
