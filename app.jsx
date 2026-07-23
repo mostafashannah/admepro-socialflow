@@ -1193,7 +1193,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.445";
+const APP_VERSION = "beta 5.446";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9636,7 +9636,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
             />
           )}
           {brainSubTab==="scheduling"&&(
-            <ClientIntelligenceTab client={client} intelligence={clientIntelligence} onSave={onSaveIntelligence} integrations={integrations}/>
+            <ClientIntelligenceTab client={client} intelligence={clientIntelligence} onSave={onSaveIntelligence} integrations={integrations} posts={cPosts}/>
           )}
           {brainSubTab==="contact_reports"&&(
             <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -12624,10 +12624,14 @@ No markdown, no explanation, just the JSON array.`;
   );
 }
 
-function ClientIntelligenceTab({client, intelligence, onSave, integrations=[]}) {
+function ClientIntelligenceTab({client, intelligence, onSave, integrations=[], posts=[]}) {
   const existing = intelligence?.find(i=>i.client_id===client.id)||{};
+  // Preferred Platforms mirrors the client account's own connected
+  // platforms (client.platforms, set on the client record itself) rather
+  // than a separately hand-maintained list — so a platform added to the
+  // account later shows up here automatically, already on.
   const [form, setForm] = useState({
-    preferred_platforms: existing.preferred_platforms||[],
+    preferred_platforms: [...new Set([...(existing.preferred_platforms||[]), ...(client.platforms||[])])],
     best_posting_days: existing.best_posting_days||[],
     avoid_weekends: existing.avoid_weekends||false,
     posting_frequency: existing.posting_frequency||3,
@@ -12654,6 +12658,14 @@ function ClientIntelligenceTab({client, intelligence, onSave, integrations=[]}) 
   const [autoError, setAutoError] = useState({});
   const sf = (k,v) => { setForm(p=>({...p,[k]:v})); setSaved(false); };
   const toggleArr = (k,v) => sf(k, form[k].includes(v)?form[k].filter(x=>x!==v):[...form[k],v]);
+  // If staff add a new platform to the client account after this page was
+  // first loaded, pull it in here too — already on — instead of requiring
+  // a manual toggle to notice it exists.
+  useEffect(()=>{
+    const missing = (client.platforms||[]).filter(p=>!form.preferred_platforms.includes(p));
+    if(missing.length) setForm(p=>({...p, preferred_platforms:[...p.preferred_platforms, ...missing]}));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [(client.platforms||[]).join(",")]);
 
   const [autoReason, setAutoReason] = useState({});
 
@@ -12716,6 +12728,67 @@ function ClientIntelligenceTab({client, intelligence, onSave, integrations=[]}) 
     if(mode==="auto") fetchAutoBestTime(pl);
   };
 
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeNote, setAnalyzeNote] = useState("");
+  // Pure data-crunching over this client's own published, insight-tracked
+  // posts — no AI call needed, since likes/comments/shares/reach are
+  // already collected per post by post-insights-cron.php. Fills Active
+  // Hours, Peak Engagement Days, Best Performing Type/Day, and Avg
+  // Engagement Rate all at once from real numbers instead of manual guesses.
+  const analyzeAudienceBehavior = () => {
+    setAnalyzing(true); setAnalyzeNote("");
+    const tracked = (posts||[]).filter(p=>p.stage==="published" && (p.insight_likes!=null||p.insight_comments!=null||p.insight_shares!=null||p.insight_reach!=null));
+    if(tracked.length===0){
+      setAnalyzeNote("No published posts with tracked engagement yet — publish some content and let Insights collect data first.");
+      setAnalyzing(false);
+      return;
+    }
+    const score = p => (p.insight_likes||0) + (p.insight_comments||0)*2 + (p.insight_shares||0)*3;
+    const dayNames = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
+    const normalizeType = t => t==="static" ? "image" : (POST_TYPES.includes(t) ? t : null);
+    const hourBucket = h => h<12 ? "morning" : h<17 ? "afternoon" : h<21 ? "evening" : "night";
+
+    const byType = {}, byDay = {}, byHourBucket = {};
+    let reachRates = [];
+    tracked.forEach(p=>{
+      const s = score(p);
+      const type = normalizeType(p.post_type);
+      if(type) byType[type] = (byType[type]||0) + s;
+      const dateStr = p.published_at || p.scheduled_date;
+      if(dateStr){
+        const day = dayNames[new Date(dateStr).getDay()];
+        byDay[day] = (byDay[day]||0) + s;
+      }
+      if(p.scheduled_time){
+        const hour = parseInt(p.scheduled_time.split(":")[0],10);
+        if(!isNaN(hour)) byHourBucket[hourBucket(hour)] = (byHourBucket[hourBucket(hour)]||0) + s;
+      }
+      if(p.insight_reach){
+        const engagement = (p.insight_likes||0)+(p.insight_comments||0)+(p.insight_shares||0);
+        reachRates.push(engagement/p.insight_reach*100);
+      }
+    });
+
+    const topKey = obj => Object.keys(obj).length ? Object.entries(obj).sort((a,b)=>b[1]-a[1])[0][0] : null;
+    const topDays = Object.entries(byDay).sort((a,b)=>b[1]-a[1]).slice(0,2).map(([d])=>d);
+    const bestType = topKey(byType);
+    const bestDay = topKey(byDay);
+    const bestHourBucket = topKey(byHourBucket);
+    const avgRate = reachRates.length ? Math.round(reachRates.reduce((a,b)=>a+b,0)/reachRates.length*10)/10 : null;
+
+    setForm(p=>({
+      ...p,
+      ...(bestType ? {best_performing_type: bestType} : {}),
+      ...(bestDay ? {best_performing_day: bestDay} : {}),
+      ...(topDays.length ? {peak_engagement_days: topDays} : {}),
+      ...(bestHourBucket ? {active_hours: bestHourBucket} : {}),
+      ...(avgRate!=null ? {avg_engagement_rate: avgRate} : {}),
+    }));
+    setSaved(false);
+    setAnalyzeNote(`Analyzed ${tracked.length} published post${tracked.length!==1?"s":""} with real engagement data.`);
+    setAnalyzing(false);
+  };
+
   const handleSave = async () => {
     setSaving(true);
     await onSave(client, form);
@@ -12753,7 +12826,7 @@ function ClientIntelligenceTab({client, intelligence, onSave, integrations=[]}) 
       {existing.updated_at&&<div style={{color:"var(--text3)",fontSize:12,marginBottom:16}}>Last updated: {new Date(existing.updated_at).toLocaleString()}</div>}
 
       <Section title=" Posting Strategy">
-        <ChipGroup label="Preferred Platforms" options={PLATFORMS} field="preferred_platforms" icons={PLATFORM_ICONS}/>
+        <ChipGroup label="Preferred Platforms" options={client.platforms?.length?client.platforms:PLATFORMS} field="preferred_platforms" icons={PLATFORM_ICONS}/>
         <ChipGroup label="Best Posting Days" options={days} field="best_posting_days"/>
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
           <label style={{fontSize:13,color:"var(--text1)",fontWeight:500}}>Avoid Weekends</label>
@@ -12768,35 +12841,57 @@ function ClientIntelligenceTab({client, intelligence, onSave, integrations=[]}) 
       </Section>
 
       <Section title=" Best Posting Times">
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-          {[["instagram"," Instagram"],["facebook"," Facebook"],["tiktok"," TikTok"],["linkedin"," LinkedIn"]].map(([pl,label])=>{
-            const mode = form[`${pl}_time_mode`]||"manual";
-            const isAuto = mode==="auto";
-            const state = autoState[pl];
-            return (
-              <div key={pl}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}>
-                  <label style={{fontSize:12,fontWeight:600,color:"var(--text2)"}}>{label}</label>
-                  <div style={{display:"flex",gap:2,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:99,padding:2}}>
-                    {["manual","auto"].map(m=>(
-                      <button key={m} type="button" onClick={()=>setTimeMode(pl,m)} style={{
-                        padding:"3px 10px",borderRadius:99,border:"none",fontSize:10,fontWeight:700,cursor:"pointer",textTransform:"uppercase",letterSpacing:"0.04em",
-                        background:mode===m?"var(--accent)":"transparent", color:mode===m?"#fff":"var(--text3)",
-                      }}>{m}</button>
-                    ))}
+        {(()=>{
+          const connectedPlatforms = [["instagram"," Instagram"],["facebook"," Facebook"],["tiktok"," TikTok"],["linkedin"," LinkedIn"]]
+            .filter(([pl])=>integrations.some(i=>i.app_key===pl && i.status==="active" && (i.client_id===client.id||!i.client_id)));
+          if(connectedPlatforms.length===0) return <p style={{fontSize:13,color:"var(--text3)"}}>No connected platforms yet — connect an integration for {client.name} to set best posting times.</p>;
+          return (
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+              {connectedPlatforms.map(([pl,label])=>{
+                const mode = form[`${pl}_time_mode`]||"manual";
+                const isAuto = mode==="auto";
+                const state = autoState[pl];
+                return (
+                  <div key={pl}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}>
+                      <label style={{fontSize:12,fontWeight:600,color:"var(--text2)"}}>{label}</label>
+                      <div style={{display:"flex",gap:2,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:99,padding:2}}>
+                        {["manual","auto"].map(m=>(
+                          <button key={m} type="button" onClick={()=>setTimeMode(pl,m)} style={{
+                            padding:"3px 10px",borderRadius:99,border:"none",fontSize:10,fontWeight:700,cursor:"pointer",textTransform:"uppercase",letterSpacing:"0.04em",
+                            background:mode===m?"var(--accent)":"transparent", color:mode===m?"#fff":"var(--text3)",
+                          }}>{m}</button>
+                        ))}
+                      </div>
+                    </div>
+                    {/* Auto mode still holds a real committed value (set by
+                        fetchAutoBestTime below) — full opacity + a small "AI"
+                        badge so it reads as a real result, not a greyed-out
+                        placeholder hint the way disabled inputs usually look. */}
+                    <div style={{position:"relative"}}>
+                      <input type="time" value={form[`${pl}_best_time`]} onChange={e=>sf(`${pl}_best_time`,e.target.value)} disabled={isAuto} style={{...inSt, opacity:1, color:"var(--text1)", fontWeight:isAuto?700:400, paddingRight:isAuto?54:undefined}}/>
+                      {isAuto&&state==="ok"&&(
+                        <span style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",fontSize:9,fontWeight:800,color:"#10b981",background:"#10b98122",border:"1px solid #10b98144",borderRadius:99,padding:"2px 7px",letterSpacing:"0.04em"}}>AI</span>
+                      )}
+                    </div>
+                    {isAuto&&state==="loading"&&<p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Analyzing {label.trim()} performance & industry data…</p>}
+                    {isAuto&&state==="ok"&&<p style={{fontSize:11,color:"#10b981",marginTop:4}}> AI-predicted{autoReason[pl]?`: ${autoReason[pl]}`:" from reach/engagement & industry data."}</p>}
+                    {isAuto&&state==="error"&&<p style={{fontSize:11,color:"#ef4444",marginTop:4}}>{autoError[pl]||"Couldn't generate a prediction."} <button type="button" onClick={()=>fetchAutoBestTime(pl)} style={{background:"none",border:"none",color:"var(--accent)",cursor:"pointer",fontWeight:700,fontSize:11,padding:0}}>Retry</button></p>}
                   </div>
-                </div>
-                <input type="time" value={form[`${pl}_best_time`]} onChange={e=>sf(`${pl}_best_time`,e.target.value)} disabled={isAuto} style={{...inSt, opacity:isAuto?0.7:1}}/>
-                {isAuto&&state==="loading"&&<p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Analyzing {label.trim()} performance & industry data…</p>}
-                {isAuto&&state==="ok"&&<p style={{fontSize:11,color:"#10b981",marginTop:4}}> AI-predicted{autoReason[pl]?`: ${autoReason[pl]}`:" from reach/engagement & industry data."}</p>}
-                {isAuto&&state==="error"&&<p style={{fontSize:11,color:"#ef4444",marginTop:4}}>{autoError[pl]||"Couldn't generate a prediction."} <button type="button" onClick={()=>fetchAutoBestTime(pl)} style={{background:"none",border:"none",color:"var(--accent)",cursor:"pointer",fontWeight:700,fontSize:11,padding:0}}>Retry</button></p>}
-              </div>
-            );
-          })}
-        </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </Section>
 
       <Section title=" Audience Behavior">
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+          <button type="button" onClick={analyzeAudienceBehavior} disabled={analyzing} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:99,border:"1px solid var(--accent)",background:"var(--accentbg,var(--surface2))",color:"var(--accent)",fontWeight:700,fontSize:12,cursor:analyzing?"default":"pointer"}}>
+            {analyzing?<Spinner size={12}/>:<Ico d={Icons.sparkles||Icons.chart} size={13} stroke="var(--accent)"/>} Analyze from Content & Platforms
+          </button>
+          {analyzeNote&&<span style={{fontSize:12,color:analyzeNote.startsWith("No")?"var(--text3)":"#10b981"}}>{analyzeNote}</span>}
+        </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
           <div>
             <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Active Hours</label>
