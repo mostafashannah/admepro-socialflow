@@ -71,6 +71,7 @@ if (!$access_token) { http_response_code(400); echo json_encode(["error"=>"Integ
 
 $postId = $post['external_post_id'];
 $likes = $comments = $shares = $reach = null;
+$reachUnavailable = false;
 
 if ($post['platform'] === 'tiktok') {
     if (tiktok_looks_like_publish_id($postId)) {
@@ -115,27 +116,16 @@ if ($post['platform'] === 'tiktok') {
         $graphError = $resp['error']['message'] ?? null;
     }
     if ($isVideo) {
-        // Reels use a different metric surface than a plain uploaded Page
-        // video — "total_video_impressions_unique" is a regular-video-only
-        // metric and 400s on a Reel, which is why Reach silently stayed
-        // empty even though likes/comments succeeded. Reels report reach
-        // via "blue_reels_play_count" (play count, the closest available
-        // proxy — Meta doesn't expose a separate unique-reach number for
-        // Reels) with a fallback attempt at the regular metric in case this
-        // was actually a plain video, not a Reel, despite post_type saying so.
-        [$rcode, $rresp] = graph_get("https://graph.facebook.com/{$v}/{$postId}/insights", [
-            "metric" => "blue_reels_play_count", "access_token" => $access_token,
-        ]);
-        if ($rcode === 200) {
-            $reach = $rresp['data'][0]['values'][0]['value'] ?? null;
-        }
-        if ($reach === null) {
-            [$rcode2, $rresp2] = graph_get("https://graph.facebook.com/{$v}/{$postId}/insights", [
-                "metric" => "total_video_impressions_unique", "access_token" => $access_token,
-            ]);
-            if ($rcode2 === 200) { $reach = $rresp2['data'][0]['values'][0]['value'] ?? null; }
-            elseif (empty($graphError)) { $graphError = $rresp2['error']['message'] ?? ($rresp['error']['message'] ?? null); }
-        }
+        // Confirmed by a live "(#100) Tried accessing nonexisting field
+        // (insights)" response: a Facebook Reel's video-node id doesn't
+        // expose the /insights edge at all via this API path (not just the
+        // wrong metric name — the edge itself isn't there for this node
+        // type/permission combo). Rather than keep guessing metric names,
+        // treat Reach as a known-unavailable field for Reels, same
+        // treatment as Shares below — an honest "not obtainable here",
+        // not a scary error.
+        $reach = null;
+        $reachUnavailable = true;
     } else {
         [$rcode, $rresp] = graph_get("https://graph.facebook.com/{$v}/{$postId}/insights", [
             "metric" => "post_impressions_unique", "access_token" => $access_token,
@@ -181,4 +171,4 @@ $update = $pdo->prepare(
 );
 $update->execute([':likes'=>$likes, ':comments'=>$comments, ':shares'=>$shares, ':reach'=>$reach, ':id'=>$post_id]);
 
-echo json_encode(["likes"=>$likes, "comments"=>$comments, "shares"=>$shares, "reach"=>$reach, "fetched_at"=>$fetchedAt, "partial_error"=>$graphError]);
+echo json_encode(["likes"=>$likes, "comments"=>$comments, "shares"=>$shares, "reach"=>$reach, "reach_unavailable"=>$reachUnavailable, "fetched_at"=>$fetchedAt, "partial_error"=>$graphError]);

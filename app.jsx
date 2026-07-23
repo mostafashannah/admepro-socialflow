@@ -1180,7 +1180,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.435";
+const APP_VERSION = "beta 5.436";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5008,7 +5008,14 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                   <div style={{fontSize:11,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"}}>Shares</div>
                 </div>
                 <div style={{padding:"14px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",textAlign:"center"}}>
-                  <div style={{fontSize:22,fontWeight:800,color:"var(--text)"}}>{post.insight_reach??"—"}</div>
+                  {/* Confirmed via a live Graph API error: a Facebook Reel's video
+                      node doesn't expose the /insights edge at all — Reach is a
+                      known-unavailable field there, not "not fetched yet". */}
+                  <div style={{fontSize:22,fontWeight:800,color:"var(--text)"}}>
+                    {post.platform==="facebook" && ["reel","video"].includes(post.post_type)
+                      ? <span style={{fontSize:14,color:"var(--text3)"}}>N/A</span>
+                      : (post.insight_reach??"—")}
+                  </div>
                   <div style={{fontSize:11,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"}}>Reach</div>
                 </div>
               </div>

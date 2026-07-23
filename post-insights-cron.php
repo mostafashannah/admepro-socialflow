@@ -122,25 +122,14 @@ foreach ($rows as $post) {
             $comments = $resp['comments']['summary']['total_count'] ?? null;
             $shares   = $isVideo ? null : ($resp['shares']['count'] ?? 0);
         }
-        // Post-level reach needs the Insights endpoint separately. Reels use
-        // a different metric surface than a plain uploaded Page video —
-        // "total_video_impressions_unique" 400s on a Reel, so try the
-        // Reels-specific play-count metric first (closest available proxy;
-        // Meta doesn't expose a separate unique-reach number for Reels),
-        // falling back to the regular-video metric in case post_type was
-        // wrong about this being a Reel.
-        if ($isVideo) {
-            [$rcode, $rresp] = graph_get("https://graph.facebook.com/{$v}/{$postId}/insights", [
-                "metric" => "blue_reels_play_count", "access_token" => $access_token,
-            ]);
-            if ($rcode === 200) { $reach = $rresp['data'][0]['values'][0]['value'] ?? null; }
-            if ($reach === null) {
-                [$rcode2, $rresp2] = graph_get("https://graph.facebook.com/{$v}/{$postId}/insights", [
-                    "metric" => "total_video_impressions_unique", "access_token" => $access_token,
-                ]);
-                if ($rcode2 === 200) { $reach = $rresp2['data'][0]['values'][0]['value'] ?? null; }
-            }
-        } else {
+        // Post-level reach needs the Insights endpoint separately. Confirmed
+        // by a live "(#100) Tried accessing nonexisting field (insights)"
+        // response: a Facebook Reel's video-node id doesn't expose the
+        // /insights edge at all via this API path — not a wrong metric
+        // name, the edge itself isn't there for this node/permission
+        // combo. So Reach is a known-unavailable field for Reels, same as
+        // Shares above; only try it for a plain (non-Reel) video post.
+        if (!$isVideo) {
             [$rcode, $rresp] = graph_get("https://graph.facebook.com/{$v}/{$postId}/insights", [
                 "metric" => "post_impressions_unique", "access_token" => $access_token,
             ]);
