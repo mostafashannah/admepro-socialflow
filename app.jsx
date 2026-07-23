@@ -1180,7 +1180,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.432";
+const APP_VERSION = "beta 5.433";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -4185,7 +4185,7 @@ function AssetPickerModal({open, assets=[], onPick, onClose, multiple=true}) {
 
 // POST DETAIL MODAL
 // ════════════════════════════════════════════════════════════════
-function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onAddComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[]}) {
+function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onAddComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,onInsightsRefreshed,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[]}) {
   const {isMobile} = useResponsive();
   const [comment,setComment] = useState("");
   const [sending,setSending] = useState(false);
@@ -4436,7 +4436,23 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   };
   const internalComments = postComments.filter(c=>c.audience!=="client");
   const clientComments = postComments.filter(c=>c.audience==="client");
-  const [activityTab, setActivityTab] = useState("internal"); // "internal" | "client"
+  const [activityTab, setActivityTab] = useState("internal"); // "internal" | "client" | "insights"
+  const [insightsRefreshing, setInsightsRefreshing] = useState(false);
+  const [insightsError, setInsightsError] = useState("");
+  const canShowInsights = post.stage==="published" && !!post.external_post_id;
+  const handleRefreshInsights = async () => {
+    setInsightsRefreshing(true); setInsightsError("");
+    try {
+      const res = await fetch("/post-insights-fetch.php", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({post_id: post.id}),
+      });
+      const j = await res.json();
+      if(!res.ok || j.error) { setInsightsError(j.error||"Refresh failed"); }
+      else { onInsightsRefreshed && onInsightsRefreshed({...post, insight_likes:j.likes, insight_comments:j.comments, insight_shares:j.shares, insight_reach:j.reach, insight_fetched_at:j.fetched_at}); }
+    } catch(e) { setInsightsError("Refresh failed — check connection"); }
+    setInsightsRefreshing(false);
+  };
   // Auto-scroll to the newest comment (including AI replies that land a few
   // seconds after a mention, with no user action to trigger a manual scroll).
   const commentsEndRef = useRef(null);
@@ -4958,9 +4974,42 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 Client · {clientComments.length}
               </button>
             )}
+            {canShowInsights&&(
+              <button onClick={()=>setActivityTab("insights")} style={{padding:"6px 14px",borderRadius:99,background:activityTab==="insights"?"var(--accent)":"none",color:activityTab==="insights"?"#fff":"var(--text2)",border:"none",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                Insights
+              </button>
+            )}
           </div>
 
-          {activityTab==="internal" ? (
+          {activityTab==="insights" ? (
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                <div style={{padding:"14px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",textAlign:"center"}}>
+                  <div style={{fontSize:22,fontWeight:800,color:"var(--text)"}}>{post.insight_likes??"—"}</div>
+                  <div style={{fontSize:11,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"}}>Likes</div>
+                </div>
+                <div style={{padding:"14px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",textAlign:"center"}}>
+                  <div style={{fontSize:22,fontWeight:800,color:"var(--text)"}}>{post.insight_comments??"—"}</div>
+                  <div style={{fontSize:11,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"}}>Comments</div>
+                </div>
+                <div style={{padding:"14px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",textAlign:"center"}}>
+                  <div style={{fontSize:22,fontWeight:800,color:"var(--text)"}}>{post.insight_shares??"—"}</div>
+                  <div style={{fontSize:11,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"}}>Shares</div>
+                </div>
+                <div style={{padding:"14px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",textAlign:"center"}}>
+                  <div style={{fontSize:22,fontWeight:800,color:"var(--text)"}}>{post.insight_reach??"—"}</div>
+                  <div style={{fontSize:11,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"}}>Reach</div>
+                </div>
+              </div>
+              {post.insight_fetched_at
+                ? <p style={{fontSize:11,color:"var(--text3)",textAlign:"center"}}>Last updated {fmtDateTime(post.insight_fetched_at)}</p>
+                : <p style={{fontSize:12,color:"var(--text3)",textAlign:"center"}}>No data fetched yet — this refreshes automatically once a day, or click Refresh now.</p>}
+              {insightsError&&<p style={{fontSize:12,color:"#ef4444",textAlign:"center"}}>{insightsError}</p>}
+              <Btn onClick={handleRefreshInsights} disabled={insightsRefreshing} variant="secondary">
+                {insightsRefreshing?<Spinner size={13}/>:<Ico d={Icons.refresh} size={14}/>} {insightsRefreshing?"Refreshing…":"Refresh Now"}
+              </Btn>
+            </div>
+          ) : activityTab==="internal" ? (
             <>
               <div style={{display:"flex",flexDirection:"column",gap:8,overflowY:"auto",flex:isMobile?"none":1,maxHeight:isMobile?220:undefined}}>
                 {internalComments.map((c,i)=>(
@@ -38119,6 +38168,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         onAddComment={handleAddComment}
         onEdit={handleEditPost}
         onDelete={handleDeletePost}
+        onInsightsRefreshed={(updated)=>setData(d=>({...d, posts:d.posts.map(p=>p.id===updated.id?{...p,...updated}:p)}))}
         timeEntries={data.timeEntries||[]}
         onStartTimer={startTimer}
         onPauseTimer={pauseTimer}
