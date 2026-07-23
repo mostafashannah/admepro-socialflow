@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.453";
+const APP_VERSION = "beta 5.454";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1985,6 +1985,13 @@ const transcribeAudioFile = async (file) => {
   });
   const d = await r.json();
   if(!r.ok || !d.ok) throw new Error(d.error || "Transcription failed");
+  // Whisper has no per-call token usage to report — flat per-note estimate
+  // (~1 min average @ $0.006/min) so in-app voice notes still show up in
+  // the OpenAI Usage card instead of being invisible spend. Only covers
+  // this browser-side path — a WhatsApp voice note goes through a
+  // separate server-side transcribeAudio() (pro-lib.php) that has no
+  // access to this browser's storage, so it can't be tracked here.
+  trackOpenAIUsage(null, "whisper-1", 0.006);
   return d.text;
 };
 
