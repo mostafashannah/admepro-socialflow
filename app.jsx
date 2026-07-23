@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.462";
+const APP_VERSION = "beta 5.463";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -36508,8 +36508,9 @@ function App() {
         qe("LeadNotifySetting"), // 44
         qe("Expense",{},"-date",1000), // 45
         qe("FinanceClientNote"), // 46
-        qe("JobOpening",{},"-created_at",100), // 47
-        qe("JobApplication",{},"-created_at",300), // 48
+        // JobOpening/JobApplication removed here — RecruitmentPage already
+        // fetches both itself on mount (see its own `load()`), so these were
+        // an unread duplicate fetch on every single app load/refresh.
       ]);
       if(wave2[13].status==="fulfilled" && wave2[13].value?.entities?.length) setEmailSettings(wave2[13].value.entities[0]);
 
@@ -36560,8 +36561,6 @@ function App() {
         leadNotifySettings: pick(wave2[44], d.leadNotifySettings||[]),
         expenses: pick(wave2[45], d.expenses||[]),
         financeClientNotes: pick(wave2[46], d.financeClientNotes||[]),
-        jobOpenings: pick(wave2[47], d.jobOpenings||[]),
-        jobApplications: pick(wave2[48], d.jobApplications||[]),
       }));
     }
     loadAllDataRef.current = load;
