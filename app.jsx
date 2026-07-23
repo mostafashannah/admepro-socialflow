@@ -1195,7 +1195,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.449";
+const APP_VERSION = "beta 5.450";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -4830,6 +4830,36 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
               {assignee&&<span style={{fontSize:11,color:"var(--text3)",marginLeft:"auto"}}>Assigned to {assignee.name}</span>}
             </div>
 
+            {/* Instagram Reels need a separate cover thumbnail alongside the
+                video itself — lives on the same post/task (not a separate
+                card), stored in carousel_cover (already the shared "reel
+                cover" field used elsewhere in the app, e.g. NewPostModal).
+                Required before this task can leave Design — see the "Move
+                to" button's guard below. */}
+            {post.post_type==="reel" && post.platform==="instagram" && (
+              <div style={{display:"flex",flexDirection:"column",gap:8,padding:12,background:"var(--surface)",borderRadius:"var(--rs)",border:`1px solid ${post.carousel_cover?"var(--border)":"#f59e0b55"}`}}>
+                <p style={{fontSize:12,fontWeight:700,color:post.carousel_cover?"var(--text2)":"#f59e0b"}}>
+                  Instagram Cover {post.carousel_cover?"":"(required before this can move to review)"}
+                </p>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  {post.carousel_cover && (
+                    <img src={post.carousel_cover} alt="Cover" style={{width:56,height:56,objectFit:"cover",borderRadius:8,border:"1px solid var(--border)"}}/>
+                  )}
+                  <input type="file" accept="image/*" id={`ig-cover-${post.id}`} style={{display:"none"}}
+                    onChange={async e=>{
+                      const file = e.target.files?.[0]; e.target.value="";
+                      if(!file) return;
+                      const url = await uploadToStorage(file, monthProjectFolder(project?.title, project?.client_name));
+                      ue("Post", post.id, {carousel_cover:url}).catch(()=>{});
+                      onStageChange({...post, carousel_cover:url}, post.stage);
+                    }}/>
+                  <label htmlFor={`ig-cover-${post.id}`} style={{cursor:"pointer",fontSize:12,fontWeight:700,color:"var(--accent)",padding:"7px 12px",borderRadius:8,border:"1px solid var(--accent)44",background:"var(--accentbg,var(--surface2))"}}>
+                    {post.carousel_cover?"Replace Cover":"Upload Cover"}
+                  </label>
+                </div>
+              </div>
+            )}
+
             {/* Display existing assets */}
             {post.design_assets&&post.design_assets.length>0&&(
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8}}>
@@ -4960,7 +4990,16 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
               }}>Give Edits</button>
             </div>
           )}
+          {(()=>{
+            const needsIgCover = post.stage==="design" && post.post_type==="reel" && post.platform==="instagram" && !post.carousel_cover;
+            return (
           <div style={{display:"flex",gap:8}}>
+            {needsIgCover && (
+              <div style={{width:"100%",padding:"8px 12px",background:"#f59e0b22",border:"1px solid #f59e0b55",borderRadius:"var(--rs)",fontSize:12,color:"#f59e0b",fontWeight:600}}>
+                Upload the Instagram Cover above before moving this reel forward.
+              </div>
+            )}
+            {!needsIgCover && (
             <button onClick={()=>{
               if(post.stage==="client_request"&&next.key==="planning") { setPickedProjectId(""); setShowPickProject(true); return; }
               if(["content_creation","design"].includes(next.key)) { openAssignModal(next.key); return; }
@@ -4973,6 +5012,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
             }}>
               Move to {next.label} <Ico d={Icons.arrow} size={14} stroke={next.color}/>
             </button>
+            )}
             {post.stage==="client_approval"&&(
               <button onClick={()=>onStageChange(post,"rejected")} style={{
                 padding:"10px 16px",borderRadius:"var(--rs)",
@@ -4981,6 +5021,8 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
               }}>Reject</button>
             )}
           </div>
+            );
+          })()}
           {/* Publish Now — shown when post is scheduled and a matching social integration is active */}
           {FEATURE_FLAGS.social_publishing&&post.stage==="scheduled"&&(
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -6292,11 +6334,12 @@ const CALENDAR_KIND_DEFS = [
   ["carousel","Carousels","Multi-slide captions"],
   ["article","Articles","Long-form, e.g. LinkedIn articles"],
   ["story","Stories","Ephemeral, one punchy line each"],
+  ["grid_layout","Full Grid Layout","Design-only — always included once, no caption needed"],
 ];
 // Each kind block becomes exactly ONE task regardless of count — this maps
 // it to the post_type estimateDuration()/POST_TYPE_DURATIONS already knows
 // how to estimate, so "12 carousels" costs 12x a single carousel's estimate.
-const CALENDAR_KIND_POST_TYPE = {static:"image", reel:"reel", carousel:"carousel", article:"blog", story:"story"};
+const CALENDAR_KIND_POST_TYPE = {static:"image", reel:"reel", carousel:"carousel", article:"blog", story:"story", grid_layout:"carousel"};
 
 // Egypt work week default (Sun-Thu, same convention used everywhere else —
 // interview-slot templates, calendar-plan scheduling): getDay() 0=Sun..6=Sat.
@@ -6412,6 +6455,9 @@ function AddCalendarPlanModal({open,onClose,clients,team,posts,projects,preselec
       carousel: makeKindDefaults(0),
       article: makeKindDefaults(0),
       story: makeKindDefaults(0),
+      // Always exactly 1, every plan — not user-adjustable (see the "Number
+      // of..." selector being skipped for this kind below).
+      grid_layout: makeKindDefaults(1),
     },
   });
   const [generated,setGenerated] = useState([]);
@@ -6523,6 +6569,13 @@ Return ONLY the brief text — no markdown, no labels, no quotes.`, 300);
     for(const kind of activeKinds){
       setGenPhase(kind);
       const cfg = f.kinds[kind];
+      // Full Grid Layout is design-only — no caption/hashtag content to
+      // write, so skip the AI call entirely and synthesize its one fixed
+      // idea locally (count is always 1 for this kind).
+      if(kind==="grid_layout") {
+        ideasByKind[kind] = [{title:`Full Grid Layout — ${f.campaign}`, caption:"", hashtags:"", text_on_visual:""}];
+        continue;
+      }
       const kindGuide = kind==="article"
         ? `These are long-form pieces (e.g. a LinkedIn article) — give each a real headline and a longer, structured body (several paragraphs), not a short caption.`
         : kind==="story"
@@ -6774,11 +6827,17 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                 </div>
                 {isOpen && (<>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(180px,100%),1fr))",gap:10}}>
-                  <Field label={`Number of ${label}`}>
-                    <select value={cfg.count} onChange={e=>sk(kind,"count",parseInt(e.target.value))} style={inputSt}>
-                      {countOptions.map(n=><option key={n} value={n}>{n} {label.toLowerCase()}</option>)}
-                    </select>
-                  </Field>
+                  {kind==="grid_layout" ? (
+                    <Field label="Number of Full Grid Layout">
+                      <div style={{...inputSt,display:"flex",alignItems:"center",color:"var(--text3)"}}>1 — always included</div>
+                    </Field>
+                  ) : (
+                    <Field label={`Number of ${label}`}>
+                      <select value={cfg.count} onChange={e=>sk(kind,"count",parseInt(e.target.value))} style={inputSt}>
+                        {countOptions.map(n=><option key={n} value={n}>{n} {label.toLowerCase()}</option>)}
+                      </select>
+                    </Field>
+                  )}
                   <Field label="Assign To">
                     <select value={cfg.assigned_to} onChange={e=>sk(kind,"assigned_to",e.target.value)} style={inputSt}>
                       <option value="">— Unassigned —</option>
@@ -6843,6 +6902,7 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                     ))}
                   </div>
                 </Field>
+                {kind!=="grid_layout" && (
                 <Field label={`${label} Brief`} hint="Goal, tone, key messages for this content type — AI will use this">
                   <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
                     <textarea value={cfg.brief} onChange={e=>sk(kind,"brief",e.target.value)} rows={enlargedBrief[kind]?8:2} placeholder="e.g. Ramadan campaign to promote our new product line. Warm, inspirational tone." style={{...inputSt,flex:1,resize:"vertical",minHeight:enlargedBrief[kind]?160:44}}/>
@@ -6856,6 +6916,7 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                     </div>
                   </div>
                 </Field>
+                )}
                 </>)}
               </div>
             );
