@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.452";
+const APP_VERSION = "beta 5.453";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -4962,24 +4962,40 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 Generates straight into Design Assets, same shape as a
                 manually-uploaded/picked file. */}
             {(()=>{
+              // The description is now optional — Yahia already has everything
+              // he needs to design without being asked twice: the post's own
+              // title/caption/hashtags/text-on-visual (the brief and TOV, in
+              // effect) plus this client's brand/design memory via
+              // clientBrainBlock (the same context Sara uses for captions).
+              // The input becomes a place for extra notes on first generation,
+              // and for edits/feedback before a Regenerate afterward — it's
+              // never cleared, so it's always right there to tweak and rerun.
               const [genPrompt, setGenPrompt] = useState("");
               const [generating, setGenerating] = useState(false);
               const [genError, setGenError] = useState("");
+              const [hasGenerated, setHasGenerated] = useState(!!(post.design_assets||[]).some(a=>a.name?.includes("ai-generated")));
               const handleGenerate = async () => {
-                if(!genPrompt.trim()) return;
                 setGenerating(true); setGenError("");
                 try {
-                  let finalPrompt = genPrompt.trim();
+                  let finalPrompt = "";
                   try {
-                    const brief = await agentAI("graphic_designer", `Design prompt: ${post.title}`, `You are Yahia, the team's AI Senior Graphic Designer. Turn this teammate's short request into a single, detailed, ready-to-use image-generation prompt for an AI image model — grounded in this client's real brand/design history below, not a generic style.
+                    const brief = await agentAI("graphic_designer", `Design prompt: ${post.title}`, `You are Yahia, the team's AI Senior Graphic Designer. Write a single, detailed, ready-to-use image-generation prompt for an AI image model — grounded in this client's real brand/design history below, not a generic style. You already have everything you need from the task itself; don't wait for a separate brief.
 ${clientBrainBlock(post.client_id, post.client_name)}
 
-Task: "${post.title}" — ${post.platform||"social"} ${post.post_type||"post"}${post.text_on_visual?`\nText that must appear on the design: "${post.text_on_visual}"`:""}
-Teammate's request: "${genPrompt.trim()}"
+Task: "${post.title}" — ${post.platform||"social"} ${post.post_type||"post"}
+${post.caption?`Caption: ${post.caption}`:""}
+${post.hashtags?`Hashtags: ${post.hashtags}`:""}
+${post.text_on_visual?`Text that must appear ON the design itself: "${post.text_on_visual}"`:""}
+${hasGenerated?"This is a REGENERATION — a previous version already exists; treat the note below as specific feedback/changes to make, not a fresh brief.":""}
+${genPrompt.trim()?`${hasGenerated?"Feedback / changes requested":"Additional notes from the teammate"}: "${genPrompt.trim()}"`:""}
 
-Return ONLY the final image-generation prompt itself — no markdown, no preamble, no quotes around it. Be specific about composition, color palette, and style, matching this client's established visual identity.`, 400);
-                    if(brief && brief.trim()) finalPrompt = brief.trim();
-                  } catch(e) { /* Yahia's prompt polish is a best-effort enhancement — fall back to the raw request rather than blocking generation */ }
+Return ONLY the final image-generation prompt itself — no markdown, no preamble, no quotes around it. Be specific about composition, color palette, and style, matching this client's established visual identity and tone of voice.`, 400);
+                    finalPrompt = (brief||"").trim();
+                  } catch(e) { /* fall through to the raw context below if Yahia's brief-writing call fails */ }
+                  if(!finalPrompt) {
+                    // Fallback if Yahia's own call failed — still usable, just less refined.
+                    finalPrompt = `${post.title}. ${post.caption||""} ${post.text_on_visual?`Text on design: "${post.text_on_visual}"`:""} ${genPrompt.trim()}`.trim();
+                  }
                   const r = await fetch(OPENAI_ENDPOINT+"?mode=image", {
                     method:"POST", headers:{"Content-Type":"application/json"},
                     body: JSON.stringify({model:"gpt-image-1", prompt:finalPrompt, size:"1024x1024", n:1}),
@@ -5000,18 +5016,18 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
                   const newAssets = [...(post.design_assets||[]), {name:file.name, type:"image", url, uploaded_at:new Date().toISOString()}];
                   ue("Post", post.id, {design_assets: newAssets}).catch(()=>{});
                   onStageChange({...post, design_assets:newAssets}, post.stage);
-                  setGenPrompt("");
+                  setHasGenerated(true);
                 } catch(e) { setGenError(e.message||"Image generation failed"); }
                 setGenerating(false);
               };
               return (
                 <div style={{display:"flex",flexDirection:"column",gap:6,paddingTop:8,borderTop:"1px solid var(--border)"}}>
-                  <p style={{fontSize:11,fontWeight:700,color:"var(--text2)"}}> Generate an image with AI</p>
+                  <p style={{fontSize:11,fontWeight:700,color:"var(--text2)"}}> Design with Yahia</p>
                   <div style={{display:"flex",gap:6}}>
-                    <input value={genPrompt} onChange={e=>setGenPrompt(e.target.value)} placeholder="Describe the image you want…" disabled={generating}
+                    <input value={genPrompt} onChange={e=>setGenPrompt(e.target.value)} placeholder={hasGenerated?"Anything to add or change before regenerating? (optional)":"Anything specific to add? Yahia already has the brief, caption & brand style (optional)"} disabled={generating}
                       style={{...inputSt,flex:1}} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();handleGenerate();}}}/>
-                    <Btn onClick={handleGenerate} disabled={generating||!genPrompt.trim()}>
-                      {generating?<Spinner size={13}/>:<Ico d={Icons.sparkles||Icons.chart} size={14}/>} {generating?"Generating…":"Generate"}
+                    <Btn onClick={handleGenerate} disabled={generating}>
+                      {generating?<Spinner size={13}/>:<Ico d={Icons.sparkles||Icons.chart} size={14}/>} {generating?"Designing…":hasGenerated?"Regenerate":"Generate"}
                     </Btn>
                   </div>
                   {genError&&<p style={{fontSize:11,color:"#ef4444"}}>{genError}</p>}
