@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.457";
+const APP_VERSION = "beta 5.458";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3656,6 +3656,35 @@ function TimeTracker({postId, userEmail, timeEntries, onStart, onPause, onResume
   );
 }
 
+// Compact read-only substitute for TimeTracker — shown to anyone who isn't
+// the person assigned to this task's current phase (and isn't an account
+// manager/admin), since the Start/Pause/Resume controls only make sense for
+// whoever's actually logging their own work. Built from the "stage_change"
+// comments already inserted on every stage move (see handleStageChange),
+// so no new data source is needed.
+function StageTimeline({post, comments}) {
+  const moves = (comments||[])
+    .filter(c=>c.post_id===post.id && c.type==="stage_change")
+    .sort((a,b)=>new Date(a.created_date)-new Date(b.created_date));
+  const steps = [
+    {label:"Created", date:post.created_date},
+    ...moves.map(c=>({label:c.content?.replace(/^Moved to /,"")||"Stage change", date:c.created_date})),
+  ];
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",flexWrap:"wrap",overflowX:"auto"}}>
+      {steps.map((s,i)=>(
+        <React.Fragment key={i}>
+          {i>0&&<Ico d={Icons.arrow} size={11} stroke="var(--text3)"/>}
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}>
+            <span style={{fontSize:11,fontWeight:700,color:"var(--text2)",whiteSpace:"nowrap"}}>{s.label}</span>
+            <span style={{fontSize:9,color:"var(--text3)",whiteSpace:"nowrap"}}>{s.date?fmtDate(s.date):"—"}</span>
+          </div>
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════
 // MENTION INPUT COMPONENT
 // ════════════════════════════════════════════════════════════════
@@ -4684,7 +4713,11 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
               ) : <span style={{fontSize:12,color:"var(--text3)"}}>Unassigned</span>}
             </div>
           </div>
-          <TimeTracker postId={post.id} userEmail={currentUser?.email} timeEntries={timeEntries||[]} onStart={onStartTimer} onPause={onPauseTimer} onResume={onResumeTimer}/>
+          {isManager || currentUser?.email===post.assigned_to ? (
+            <TimeTracker postId={post.id} userEmail={currentUser?.email} timeEntries={timeEntries||[]} onStart={onStartTimer} onPause={onPauseTimer} onResume={onResumeTimer}/>
+          ) : (
+            <StageTimeline post={post} comments={comments}/>
+          )}
         </div>
 
         {/* Delete confirm */}
