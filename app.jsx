@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.455";
+const APP_VERSION = "beta 5.456";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3033,6 +3033,20 @@ function EmptyState({icon=Icons.folder2, title="Nothing here yet", sub="", actio
   );
 }
 
+// Resolves the right photo for a comment author — their real team_members
+// avatar_url if they have one uploaded, or an AI agent's own configured
+// avatar for Sara/Pro/Yahia's in-thread replies. Falls back to no photo
+// (Avatar then shows the colored initials circle it already did before).
+function commentAvatarUrl(comment, team) {
+  const email = (comment?.author_email||"").toLowerCase();
+  if(!email) return "";
+  let agentsCfg={}; try{ agentsCfg = window.__SF_AI_AGENTS||{}; }catch(e){}
+  if(email==="sara@ai.socialflow") return agentsCfg?.content_creator?.avatar_url||"";
+  if(email==="pro@ai.socialflow") return agentsCfg?.pro?.avatar_url||"";
+  if(email==="yahia@ai.socialflow") return agentsCfg?.graphic_designer?.avatar_url||"";
+  const member = (team||[]).find(m=>m.email===email) || (team||[]).find(m=>m.name===comment.author_name);
+  return member?.avatar_url||"";
+}
 function Avatar({name,size=32,role,photoUrl}) {
   const c = role ? (ROLES[role]?.color||clr(name)) : clr(name);
   if(photoUrl) {
@@ -4985,8 +4999,15 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
               // post's own shape (Stories/Reels are vertical, everything else
               // square) but always overridable before generating.
               const [scale, setScale] = useState(["story","reel"].includes(post.post_type) ? "1024x1536" : "1024x1024");
+              // Instagram feed posts are 4:5 — gpt-image-1 has no native 4:5
+              // size (only these 3 raw ones), so "instagram_post" generates
+              // at the closest available (tall portrait) and gets center-
+              // cropped down to a true 4:5 client-side before upload, instead
+              // of quietly reusing the Story/Reel 9:16 size under a
+              // different label.
               const SCALES = [
                 {id:"1024x1024", label:"Square", hint:"1:1"},
+                {id:"instagram_post", label:"Instagram Post", hint:"4:5"},
                 {id:"1024x1536", label:"Portrait", hint:"Story/Reel"},
                 {id:"1536x1024", label:"Landscape", hint:"Wide"},
               ];
@@ -5012,9 +5033,10 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
                     // Fallback if Yahia's own call failed — still usable, just less refined.
                     finalPrompt = `${post.title}. ${post.caption||""} ${post.text_on_visual?`Text on design: "${post.text_on_visual}"`:""} ${genPrompt.trim()}`.trim();
                   }
+                  const apiSize = scale==="instagram_post" ? "1024x1536" : scale;
                   const r = await fetch(OPENAI_ENDPOINT+"?mode=image", {
                     method:"POST", headers:{"Content-Type":"application/json"},
-                    body: JSON.stringify({model:"gpt-image-1", prompt:finalPrompt, size:scale, n:1}),
+                    body: JSON.stringify({model:"gpt-image-1", prompt:finalPrompt, size:apiSize, n:1}),
                   });
                   const d = await r.json();
                   const b64 = d.data?.[0]?.b64_json;
@@ -5026,7 +5048,30 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
                   const byteChars = atob(b64);
                   const bytes = new Uint8Array(byteChars.length);
                   for(let i=0;i<byteChars.length;i++) bytes[i] = byteChars.charCodeAt(i);
-                  const file = new File([bytes], `${renameForTask(post.title,"ai-generated.png","")}`, {type:"image/png"});
+                  // Instagram Post (4:5) has no matching raw size from the
+                  // API — generated at the tallest available (2:3) then
+                  // center-cropped down to a true 4:5 here, so the final
+                  // asset actually matches Instagram's real feed-post ratio.
+                  let finalBytes = bytes;
+                  if(scale==="instagram_post") {
+                    finalBytes = await new Promise((resolve, reject) => {
+                      const img = new Image();
+                      img.onload = () => {
+                        const targetRatio = 4/5;
+                        const cropWidth = img.width;
+                        const cropHeight = Math.round(cropWidth / targetRatio);
+                        const cropTop = Math.max(0, Math.round((img.height - cropHeight) / 2));
+                        const canvas = document.createElement("canvas");
+                        canvas.width = cropWidth; canvas.height = Math.min(cropHeight, img.height);
+                        const ctx = canvas.getContext("2d");
+                        ctx.drawImage(img, 0, cropTop, cropWidth, canvas.height, 0, 0, cropWidth, canvas.height);
+                        canvas.toBlob(blob => { if(!blob) return reject(new Error("Crop failed")); blob.arrayBuffer().then(buf=>resolve(new Uint8Array(buf))); }, "image/png");
+                      };
+                      img.onerror = () => reject(new Error("Couldn't load generated image for cropping"));
+                      img.src = `data:image/png;base64,${b64}`;
+                    }).catch(()=>bytes); // fall back to the uncropped image rather than losing the generation entirely
+                  }
+                  const file = new File([finalBytes], `${renameForTask(post.title,"ai-generated.png","")}`, {type:"image/png"});
                   const url = await uploadToStorage(file, monthProjectFolder(project?.title, project?.client_name));
                   if(onAddAsset) onAddAsset({name:file.name, file_url:url, file_type:"image", category:monthProjectFolder(project?.title, project?.client_name), project_id:post.project_id, tags:["ai-generated"]}).catch(()=>{});
                   const newAssets = [...(post.design_assets||[]), {name:file.name, type:"image", url, uploaded_at:new Date().toISOString()}];
@@ -5297,7 +5342,7 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
               <div style={{display:"flex",flexDirection:"column",gap:8,overflowY:"auto",flex:isMobile?"none":1,maxHeight:isMobile?220:undefined}}>
                 {internalComments.map((c,i)=>(
                   <div key={i} style={{display:"flex",gap:10}}>
-                    <Avatar name={c.author_name||"S"} size={28}/>
+                    <Avatar name={c.author_name||"S"} size={28} photoUrl={commentAvatarUrl(c, team)}/>
                     <div style={{flex:1,background:c.type==="ai_reply"?"#10b98111":"var(--surface2)",borderRadius:"var(--rs)",padding:"9px 12px",border:`1px solid ${c.type==="ai_reply"?"#10b98155":"var(--border)"}`}}>
                       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
                         <span style={{fontSize:12,fontWeight:600}}>{c.author_name||"System"}</span>
@@ -5353,7 +5398,7 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
               <div style={{display:"flex",flexDirection:"column",gap:8,overflowY:"auto",flex:isMobile?"none":1,maxHeight:isMobile?220:undefined}}>
                 {clientComments.map((c,i)=>(
                   <div key={i} style={{display:"flex",gap:10}}>
-                    <Avatar name={c.author_name||"S"} size={28}/>
+                    <Avatar name={c.author_name||"S"} size={28} photoUrl={commentAvatarUrl(c, team)}/>
                     <div style={{flex:1,background:"var(--surface2)",borderRadius:"var(--rs)",padding:"9px 12px",border:"1px solid var(--border)"}}>
                       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
                         <span style={{fontSize:12,fontWeight:600}}>{c.author_name||"System"}</span>
@@ -16013,7 +16058,7 @@ function TemplatesPage({templates}) {
 // ════════════════════════════════════════════════════════════════
 // CLIENT PORTAL
 // ════════════════════════════════════════════════════════════════
-function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tasks=[],onAddTask,onUpdateTask,onAddPost,contract,wallpaper,onWallpaperChange,monthlyBriefs=[],onSubmitBrief,onSelfCreateBrief,messages=[],integrations=[],onSendReply,onApproveDraft,onDismissDraft,assets=[],onAddAsset,onUpdateAsset,onDeleteAsset,leads=[],comments=[],onAddComment}) {
+function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tasks=[],onAddTask,onUpdateTask,onAddPost,contract,wallpaper,onWallpaperChange,monthlyBriefs=[],onSubmitBrief,onSelfCreateBrief,messages=[],integrations=[],onSendReply,onApproveDraft,onDismissDraft,assets=[],onAddAsset,onUpdateAsset,onDeleteAsset,leads=[],comments=[],onAddComment,team=[]}) {
   const {isMobile} = useResponsive();
   const [view,setView] = useState("dashboard");
   const [sel,setSel] = useState(null);
@@ -16262,7 +16307,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                     <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:220,overflowY:"auto"}}>
                       {selComments.map((c,i)=>(
                         <div key={i} style={{display:"flex",gap:10}}>
-                          <Avatar name={c.author_name||"S"} size={26}/>
+                          <Avatar name={c.author_name||"S"} size={26} photoUrl={commentAvatarUrl(c, team)}/>
                           <div style={{flex:1,background:"var(--surface2)",borderRadius:"var(--rs)",padding:"8px 11px",border:"1px solid var(--border)"}}>
                             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
                               <span style={{fontSize:12,fontWeight:600}}>{c.author_name||"Agency"}</span>
@@ -38460,7 +38505,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         </div>
       )}
       <div style={impersonatorUser?{marginTop:48}:{}}>
-        <ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} onAddPost={addPost} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]} comments={data.comments||[]} onAddComment={handleAddComment}/>
+        <ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} onAddPost={addPost} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]} comments={data.comments||[]} onAddComment={handleAddComment} team={data.team||[]}/>
       </div>
     </>);
   }
