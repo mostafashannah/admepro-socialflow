@@ -42,7 +42,9 @@ $pdo = new PDO(
 );
 
 $now = new DateTime();
-$due = $pdo->query("SELECT * FROM posts WHERE stage = 'scheduled'")->fetchAll(PDO::FETCH_ASSOC);
+// task_type 'grid_layout' (Calendar Plan's Full Grid Layout kind) is a
+// design-only deliverable, never actually published to a platform.
+$due = $pdo->query("SELECT * FROM posts WHERE stage = 'scheduled' AND (task_type IS NULL OR task_type <> 'grid_layout')")->fetchAll(PDO::FETCH_ASSOC);
 
 $results = [];
 

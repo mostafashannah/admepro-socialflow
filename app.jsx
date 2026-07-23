@@ -1195,7 +1195,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.450";
+const APP_VERSION = "beta 5.451";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5024,7 +5024,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
             );
           })()}
           {/* Publish Now — shown when post is scheduled and a matching social integration is active */}
-          {FEATURE_FLAGS.social_publishing&&post.stage==="scheduled"&&(
+          {FEATURE_FLAGS.social_publishing&&post.stage==="scheduled"&&post.task_type!=="grid_layout"&&(
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {!socialIntegration&&(
                 <div style={{padding:"8px 12px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",fontSize:12,color:"var(--text3)",display:"flex",alignItems:"center",gap:6}}>
@@ -6443,21 +6443,24 @@ function AddCalendarPlanModal({open,onClose,clients,team,posts,projects,preselec
   const companyWorkDays = [0,1,2,3,4,5,6].filter(d=>!(attendanceRules.weekendDays??[5,6]).map(n=>n%7).includes(d));
   const companyHolidays = new Set((attendanceRules.holidays||[]).map(h=>h.date));
   const [step,setStep] = useState("form"); // form | generating | preview | done
-  const makeKindDefaults = (count) => ({count, platforms:preselectedClient?.platforms||[], brief:"", assigned_to:"", due_mode:"auto", manual_due_date:"", manual_due_time:"13:00"});
+  // Full Grid Layout is Instagram-only, always — never follows whatever
+  // platforms the client happens to have connected, unlike every other kind.
+  const platformsForKind = (kind, clientPlatforms) => kind==="grid_layout" ? ["instagram"] : (clientPlatforms||[]);
+  const makeKindDefaults = (count, kind) => ({count, platforms:platformsForKind(kind, preselectedClient?.platforms), brief:"", assigned_to:"", due_mode:"auto", manual_due_date:"", manual_due_time:"13:00"});
   const [f,setF] = useState({
     client_id: preselectedClient?.id||"",
     campaign: "",
     date_from: "",
     date_to: "",
     kinds: {
-      static: makeKindDefaults(8),
-      reel: makeKindDefaults(0),
-      carousel: makeKindDefaults(0),
-      article: makeKindDefaults(0),
-      story: makeKindDefaults(0),
+      static: makeKindDefaults(8,"static"),
+      reel: makeKindDefaults(0,"reel"),
+      carousel: makeKindDefaults(0,"carousel"),
+      article: makeKindDefaults(0,"article"),
+      story: makeKindDefaults(0,"story"),
       // Always exactly 1, every plan — not user-adjustable (see the "Number
       // of..." selector being skipped for this kind below).
-      grid_layout: makeKindDefaults(1),
+      grid_layout: makeKindDefaults(1,"grid_layout"),
     },
   });
   const [generated,setGenerated] = useState([]);
@@ -6490,7 +6493,7 @@ function AddCalendarPlanModal({open,onClose,clients,team,posts,projects,preselec
   useEffect(()=>{
     if(preselectedClient){
       setF(ff=>({...ff,client_id:preselectedClient.id,
-        kinds: Object.fromEntries(Object.entries(ff.kinds).map(([k,v])=>[k,{...v,platforms:preselectedClient.platforms||[]}]))
+        kinds: Object.fromEntries(Object.entries(ff.kinds).map(([k,v])=>[k,{...v,platforms:platformsForKind(k, preselectedClient.platforms)}]))
       }));
     }
   },[preselectedClient]);
@@ -6646,6 +6649,12 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
           reel_hook: kind==="reel" ? (idea?.hook||"") : "",
           platform,
           post_type: CALENDAR_KIND_POST_TYPE[kind],
+          // Marks this as a design-only deliverable — never actually
+          // published to a platform (see auto-publish.php's WHERE clause
+          // and PostDetail's Publish Now button, both skip task_type
+          // 'grid_layout'). Reuses the existing task_type column rather
+          // than adding a new one.
+          task_type: kind==="grid_layout" ? "grid_layout" : "",
           priority: "medium",
           client_id: f.client_id,
           client_name: selectedClient?.name||"",
@@ -6768,7 +6777,7 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                 s("campaign","");
                 setCampaignChoice("__new__");
                 const c=clients.find(x=>x.id===e.target.value);
-                if(c&&c.platforms?.length) setF(p=>({...p,kinds:Object.fromEntries(Object.entries(p.kinds).map(([k,v])=>[k,{...v,platforms:c.platforms}]))}));
+                if(c&&c.platforms?.length) setF(p=>({...p,kinds:Object.fromEntries(Object.entries(p.kinds).map(([k,v])=>[k,{...v,platforms:platformsForKind(k, c.platforms)}]))}));
               }} style={inputSt}>
                 <option value="">— Select Client —</option>
                 {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
@@ -6885,6 +6894,13 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                 {cfg.count>0 && !cfg.assigned_to && (
                   <p style={{fontSize:11,color:"var(--text3)"}}>Assign someone to see their availability and due dates.</p>
                 )}
+                {kind==="grid_layout" ? (
+                  <Field label="Platforms">
+                    <div style={{display:"flex",alignItems:"center",gap:5,padding:"6px 12px",borderRadius:99,fontSize:11.5,fontWeight:700,border:`1.5px solid ${PLT_COLOR.instagram}`,background:PLT_COLOR.instagram+"22",color:PLT_COLOR.instagram,width:"fit-content"}}>
+                      <Ico d={Icons.check} size={10} stroke={PLT_COLOR.instagram}/> Instagram — always, not togglable
+                    </div>
+                  </Field>
+                ) : (
                 <Field label="Platforms" required={cfg.count>0}>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                     {PLATFORMS.map(p=>(
@@ -6902,6 +6918,7 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                     ))}
                   </div>
                 </Field>
+                )}
                 {kind!=="grid_layout" && (
                 <Field label={`${label} Brief`} hint="Goal, tone, key messages for this content type — AI will use this">
                   <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
