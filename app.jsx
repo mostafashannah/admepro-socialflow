@@ -1193,7 +1193,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.441";
+const APP_VERSION = "beta 5.442";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9415,10 +9415,10 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
     ...(isPriv?[["projects","Projects"]]:[]),
     ["tasks","Tasks"],
     ["calendar","Calendar"],
-    ["assets","Assets"],
-    ...(isPriv?[["inbox",`Inbox${cMessagesNeedReplyCount?` (${cMessagesNeedReplyCount})`:""}`]]:[]),
     ...(isPriv?[["insights","Insights"]]:[]),
-    ...(isPriv?[["brain","Client Brain"],["leads",`Leads${clientLeads.length?` (${clientLeads.length})`:""}`]]:[]),
+    ["assets","Assets"],
+    ...(isPriv?[["community",`Community${cMessagesNeedReplyCount?` (${cMessagesNeedReplyCount})`:""}`]]:[]),
+    ...(isPriv?[["brain","Settings"]]:[]),
   ];
 
   if(showEdit) {
@@ -9551,11 +9551,19 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
         </div>
       )}
       {tab==="tasks"&&<KanbanView posts={cPosts} project={cProjects[0]} team={[]} onPostClick={onPostClick}/>}
-      {tab==="inbox"&&(
-        <ClientInboxTab client={client} messages={cMessages} integrations={integrations} onSendReply={onSendInboxReply}
-          botSettings={(replyBotSettings||[]).find(s=>s.client_id===client.id)}
-          onSaveBotSettings={(patch)=>onSaveReplyBotSettings&&onSaveReplyBotSettings(client.id,client.name,patch)}
-          onApproveDraft={onApproveDraft} onDismissDraft={onDismissDraft}/>
+      {tab==="community"&&(
+        <CommunityTab
+          cMessagesNeedReplyCount={cMessagesNeedReplyCount} clientLeadsCount={clientLeads.length}
+          inbox={
+            <ClientInboxTab client={client} messages={cMessages} integrations={integrations} onSendReply={onSendInboxReply}
+              botSettings={(replyBotSettings||[]).find(s=>s.client_id===client.id)}
+              onSaveBotSettings={(patch)=>onSaveReplyBotSettings&&onSaveReplyBotSettings(client.id,client.name,patch)}
+              onApproveDraft={onApproveDraft} onDismissDraft={onDismissDraft}/>
+          }
+          leads={
+            <ClientLeadsTab clientLeads={clientLeads} clientName={client.name} clientId={client.id} notifySettings={leadNotifySettings.filter(s=>s.client_id===client.id)} onSaveNotifySetting={onSaveLeadNotifySetting} canEditSettings onDeleteLead={currentUser?.role==="admin"?onDeleteLead:null}/>
+          }
+        />
       )}
       {tab==="reports"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -9597,7 +9605,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
       {tab==="brain"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           <div style={{display:"flex",gap:4,borderBottom:"1px solid var(--border)"}}>
-            {[["profile","Brand Profile"],["contact_reports","Contact Reports"]].map(([k,l])=>(
+            {[["profile","Client Brain"],["contact_reports","Contact Reports"]].map(([k,l])=>(
               <button key={k} onClick={()=>setBrainSubTab(k)} style={{
                 padding:"8px 16px",fontSize:13,fontWeight:700,border:"none",background:"transparent",cursor:"pointer",
                 color:brainSubTab===k?"var(--accent)":"var(--text3)",
@@ -9697,9 +9705,6 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
           })}
         </div>
       )}
-
-
-      {tab==="leads"&&<ClientLeadsTab clientLeads={clientLeads} clientName={client.name} clientId={client.id} notifySettings={leadNotifySettings.filter(s=>s.client_id===client.id)} onSaveNotifySetting={onSaveLeadNotifySetting} canEditSettings onDeleteLead={currentUser?.role==="admin"?onDeleteLead:null}/>}
 
       {/* Saved Logins — opened from the key icon in the header, not a tab */}
       {showLogins&&(
@@ -11999,6 +12004,34 @@ function AllPlatformsSummaryTab({posts, connectedPlatforms, onSelectPlatform}) {
 // via BestPerformingPostsFull, so it still shows real detail, just without
 // a page-level trend dashboard. "Best Performing Posts" stays as a final
 // cross-platform ranking tab.
+// Groups the two customer-facing relationship surfaces — the Inbox
+// (message threads) and Leads (pipeline) — under one "Community" tab,
+// as sub-tabs, instead of two separate top-level tabs. Takes the already-
+// rendered Inbox/Leads elements as props rather than re-fetching/re-deriving
+// their data itself, since ClientDetail already computes cMessages/
+// clientLeads and passes fully-configured <ClientInboxTab>/<ClientLeadsTab>
+// elements straight through — this component only owns the sub-tab switch.
+function CommunityTab({inbox, leads, cMessagesNeedReplyCount, clientLeadsCount}) {
+  const [sub, setSub] = usePersistentState("sf_tab_community_sub","inbox");
+  const subTabs = [
+    ["inbox", `Inbox${cMessagesNeedReplyCount?` (${cMessagesNeedReplyCount})`:""}`],
+    ["leads", `Leads${clientLeadsCount?` (${clientLeadsCount})`:""}`],
+  ];
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
+      <div style={{display:"flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",width:"fit-content"}}>
+        {subTabs.map(([k,label])=>(
+          <button key={k} onClick={()=>setSub(k)} style={{padding:"7px 16px",borderRadius:99,background:sub===k?"var(--accent)":"none",color:sub===k?"#fff":"var(--text2)",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {sub==="inbox" && inbox}
+      {sub==="leads" && leads}
+    </div>
+  );
+}
+
 function InsightsTab({client, integrations, posts}) {
   const [sub, setSub] = usePersistentState("sf_tab_insights_sub","all");
   const activeIntegrations = (integrations||[]).filter(i=>i.status==="active" && (!i.client_id||i.client_id===client.id));
