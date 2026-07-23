@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.459";
+const APP_VERSION = "beta 5.460";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1942,8 +1942,19 @@ Target Audience: ${intel?.target_audience||""}
 Keywords: ${know?.keywords ? (typeof know.keywords==="string"?know.keywords:JSON.stringify(know.keywords)) : ""}
 Do's: ${know?.dos||""}
 Don'ts: ${know?.donts||intel?.donts||""}
-${(()=>{ const c=parseJ(know?.brand_colors); return c.length?`Brand Colors (HEX — use these exactly, never invent a palette): ${c.join(", ")}`:"Brand Colors: not set — ask before assuming a palette."; })()}
-${know?.logo_url?`Logo file: ${know.logo_url}`:"Logo: not uploaded yet."}
+${(()=>{
+  const raw = parseJ(know?.brand_colors);
+  const c = Array.isArray(raw) ? {primary:raw, secondary:[]} : (raw||{primary:[],secondary:[]});
+  const lines = [];
+  lines.push((c.primary||[]).length ? `Primary Colors (HEX — use these exactly, never invent a palette): ${c.primary.join(", ")}` : "Primary Colors: not set — ask before assuming a palette.");
+  if((c.secondary||[]).length) lines.push(`Secondary Colors: ${c.secondary.join(", ")}`);
+  return lines.join("\n");
+})()}
+${(()=>{
+  const logos = parseJ(know?.logos);
+  const list = Array.isArray(logos) && logos.length ? logos : (know?.logo_url ? [{label:"Primary Logo", url:know.logo_url}] : []);
+  return list.length ? `Logo variants available: ${list.map(l=>`${l.label} (${l.url})`).join("; ")}` : "Logo: not uploaded yet.";
+})()}
 ${know?.visual_direction?`Visual Direction (follow this for any design/image work): ${know.visual_direction}`:"Visual Direction: not set."}
 ${know?.content_language?`Copy Language: ${know.content_language}`:""}
 ${memBlock ? `LEARNED MEMORY (highest priority — always follow):\n${memBlock}` : ""}
@@ -13002,42 +13013,83 @@ No markdown, no explanation, just the JSON array.`;
 // table), and read by clientBrainBlock() so every agent call includes it
 // automatically — no separate lookup needed per feature.
 function ClientBrandGuidelinesSubTab({client, knowledge, onSaveKnowledge}) {
-  const [colors, setColors] = useState(parseMaybeJson(knowledge?.brand_colors, []));
-  const [colorInput, setColorInput] = useState("");
-  const [logoUrl, setLogoUrl] = useState(knowledge?.logo_url||"");
+  // brand_colors used to be a flat array (single palette) — normalize old
+  // data into {primary:[...]} so existing saved colors aren't lost.
+  const normalizeColors = (raw) => {
+    const parsed = parseMaybeJson(raw, {});
+    if(Array.isArray(parsed)) return {primary:parsed, secondary:[]};
+    return {primary:parsed.primary||[], secondary:parsed.secondary||[]};
+  };
+  // logos used to be a single logo_url string — seed the new multi-variant
+  // list from it so an already-uploaded logo isn't lost.
+  const normalizeLogos = () => {
+    const list = parseMaybeJson(knowledge?.logos, null);
+    if(Array.isArray(list)) return list;
+    return knowledge?.logo_url ? [{id:uid(), label:"Primary Logo", url:knowledge.logo_url}] : [];
+  };
+  const [colors, setColors] = useState(normalizeColors(knowledge?.brand_colors));
+  const [colorInput, setColorInput] = useState({primary:"", secondary:""});
+  const [logos, setLogos] = useState(normalizeLogos());
+  const [newLogoLabel, setNewLogoLabel] = useState("");
   const [visualDirection, setVisualDirection] = useState(knowledge?.visual_direction||"");
   const [contentLanguage, setContentLanguage] = useState(knowledge?.content_language||"");
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const addColor = () => {
-    const hex = colorInput.trim().replace(/^#?/, "#");
+  const addColor = (group) => {
+    const hex = (colorInput[group]||"").trim().replace(/^#?/, "#");
     if(!/^#[0-9a-fA-F]{3,8}$/.test(hex)) return;
-    if(!colors.includes(hex)) setColors([...colors, hex]);
-    setColorInput("");
+    if(!colors[group].includes(hex)) setColors({...colors, [group]:[...colors[group], hex]});
+    setColorInput({...colorInput, [group]:""});
   };
-  const removeColor = (hex) => setColors(colors.filter(c=>c!==hex));
+  const removeColor = (group, hex) => setColors({...colors, [group]:colors[group].filter(c=>c!==hex)});
 
   const handleLogoUpload = async (file) => {
     if(!file) return;
     setUploadingLogo(true);
-    try { const url = await uploadToStorage(file, "client-logos"); setLogoUrl(url); }
+    try {
+      const url = await uploadToStorage(file, "client-logos");
+      setLogos([...logos, {id:uid(), label:newLogoLabel.trim()||`Variant ${logos.length+1}`, url}]);
+      setNewLogoLabel("");
+    }
     catch(e) { alert("Logo upload failed: "+e.message); }
     setUploadingLogo(false);
   };
+  const removeLogo = (id) => setLogos(logos.filter(l=>l.id!==id));
 
   const handleSave = async () => {
     setSaving(true);
     await onSaveKnowledge({
       ...(knowledge||{}), client_id:client.id, client_name:client.name,
       brand_colors: JSON.stringify(colors),
-      logo_url: logoUrl,
+      logos: JSON.stringify(logos),
+      logo_url: logos[0]?.url||"", // kept in sync for any older code still reading the single field
       visual_direction: visualDirection,
       content_language: contentLanguage,
     });
     setSaving(false); setSaved(true); setTimeout(()=>setSaved(false), 2500);
   };
+
+  const ColorGroup = ({group, label}) => (
+    <div>
+      <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:6}}>{label} (HEX) — can add more than one</label>
+      <div style={{display:"flex",gap:6,marginBottom:8}}>
+        <input value={colorInput[group]} onChange={e=>setColorInput({...colorInput,[group]:e.target.value})} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addColor(group);}}} placeholder="#1a1a2e" style={{...inputSt,flex:1}}/>
+        <Btn variant="secondary" onClick={()=>addColor(group)}>Add</Btn>
+      </div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+        {colors[group].map(hex=>(
+          <div key={hex} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",borderRadius:99,border:"1px solid var(--border)",background:"var(--surface2)"}}>
+            <div style={{width:16,height:16,borderRadius:"50%",background:hex,border:"1px solid var(--border2)",flexShrink:0}}/>
+            <span style={{fontSize:12,fontWeight:600,fontFamily:"monospace"}}>{hex}</span>
+            <button onClick={()=>removeColor(group,hex)} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontWeight:700,fontSize:13,padding:0,lineHeight:1}}>×</button>
+          </div>
+        ))}
+        {colors[group].length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>No {label.toLowerCase()} colors saved yet.</p>}
+      </div>
+    </div>
+  );
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:600}}>
@@ -13046,31 +13098,30 @@ function ClientBrandGuidelinesSubTab({client, knowledge, onSaveKnowledge}) {
         <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>The specifics Yahia (and Sara) need to design/write on-brand for {client.name} without guessing.</p>
       </div>
 
-      <div>
-        <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:6}}>Brand Colors (HEX)</label>
-        <div style={{display:"flex",gap:6,marginBottom:8}}>
-          <input value={colorInput} onChange={e=>setColorInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addColor();}}} placeholder="#1a1a2e" style={{...inputSt,flex:1}}/>
-          <Btn variant="secondary" onClick={addColor}>Add</Btn>
-        </div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-          {colors.map(hex=>(
-            <div key={hex} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",borderRadius:99,border:"1px solid var(--border)",background:"var(--surface2)"}}>
-              <div style={{width:16,height:16,borderRadius:"50%",background:hex,border:"1px solid var(--border2)",flexShrink:0}}/>
-              <span style={{fontSize:12,fontWeight:600,fontFamily:"monospace"}}>{hex}</span>
-              <button onClick={()=>removeColor(hex)} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontWeight:700,fontSize:13,padding:0,lineHeight:1}}>×</button>
-            </div>
-          ))}
-          {colors.length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>No colors saved yet.</p>}
-        </div>
-      </div>
+      <ColorGroup group="primary" label="Primary Colors"/>
+      <ColorGroup group="secondary" label="Secondary Colors"/>
 
       <div>
-        <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:6}}>Logo</label>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
-          {logoUrl&&<img src={logoUrl} alt="Logo" style={{width:56,height:56,objectFit:"contain",borderRadius:8,border:"1px solid var(--border)",background:"var(--surface2)",padding:4}}/>}
-          <input type="file" accept="image/*" id="brand-logo-upload" style={{display:"none"}} disabled={uploadingLogo} onChange={e=>{handleLogoUpload(e.target.files?.[0]); e.target.value="";}}/>
-          <label htmlFor="brand-logo-upload" style={{cursor:uploadingLogo?"default":"pointer",fontSize:12,fontWeight:700,color:"var(--accent)",padding:"7px 12px",borderRadius:8,border:"1px solid var(--accent)44",background:"var(--accentbg,var(--surface2))"}}>
-            {uploadingLogo?<Spinner size={12}/>:(logoUrl?"Replace Logo":"Upload Logo")}
+        <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:4}}>Logo Variants</label>
+        <p style={{fontSize:11,color:"var(--text3)",marginBottom:10}}>Upload as many as you have (light/dark background, icon-only, horizontal, etc). Preferred: <strong>PNG with a transparent background</strong>, at least <strong>1000×1000px</strong>, or SVG for a fully scalable vector version.</p>
+        {logos.length>0&&(
+          <div style={{display:"flex",flexWrap:"wrap",gap:10,marginBottom:10}}>
+            {logos.map(l=>(
+              <div key={l.id} style={{position:"relative",display:"flex",flexDirection:"column",alignItems:"center",gap:4,width:88}}>
+                <div style={{position:"relative"}}>
+                  <img src={l.url} alt={l.label} style={{width:72,height:72,objectFit:"contain",borderRadius:8,border:"1px solid var(--border)",background:"var(--surface2)",padding:4}}/>
+                  <button onClick={()=>removeLogo(l.id)} style={{position:"absolute",top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#ef4444",border:"none",color:"#fff",cursor:"pointer",fontSize:11,fontWeight:700,padding:0,lineHeight:"18px"}}>×</button>
+                </div>
+                <span style={{fontSize:10,color:"var(--text3)",textAlign:"center",wordBreak:"break-word"}}>{l.label}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+          <input value={newLogoLabel} onChange={e=>setNewLogoLabel(e.target.value)} placeholder="Label (e.g. Dark Background, Icon Only)" style={{...inputSt,flex:1,minWidth:180}}/>
+          <input type="file" accept="image/*,.svg" id="brand-logo-upload" style={{display:"none"}} disabled={uploadingLogo} onChange={e=>{handleLogoUpload(e.target.files?.[0]); e.target.value="";}}/>
+          <label htmlFor="brand-logo-upload" style={{cursor:uploadingLogo?"default":"pointer",fontSize:12,fontWeight:700,color:"var(--accent)",padding:"9px 14px",borderRadius:8,border:"1px solid var(--accent)44",background:"var(--accentbg,var(--surface2))",whiteSpace:"nowrap"}}>
+            {uploadingLogo?<Spinner size={12}/>:"+ Add Logo Variant"}
           </label>
         </div>
       </div>
