@@ -1180,7 +1180,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.438";
+const APP_VERSION = "beta 5.439";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -11863,6 +11863,29 @@ function BestPerformingPostsFull({posts, client}) {
   );
 }
 
+// A single metric's horizontal bar comparison across platforms — same
+// small building block reused for Likes/Comments/Reach so adding a metric
+// is a one-line call, not a new chart.
+function PlatformCompareBar({label, rows, valueKey}) {
+  const withVal = rows.filter(r=>r[valueKey]!=null);
+  if(withVal.length===0) return null;
+  const max = Math.max(1, ...withVal.map(r=>r[valueKey]));
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      <p style={{fontSize:12,fontWeight:700,color:"var(--text2)"}}>{label}</p>
+      {withVal.map(r=>(
+        <div key={r.platform} style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:74,flexShrink:0}}><PChip platform={r.platform} xs/></div>
+          <div style={{flex:1,height:10,background:"var(--surface2)",borderRadius:99,overflow:"hidden"}}>
+            <div style={{width:`${Math.max(3,(r[valueKey]/max)*100)}%`,height:"100%",background:PLT_COLOR[r.platform]||"var(--accent)",borderRadius:99,transition:"width 0.3s"}}/>
+          </div>
+          <span style={{fontSize:12,fontWeight:700,width:44,textAlign:"right",flexShrink:0}}>{r[valueKey]}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Rolls every connected platform's post-level engagement (already collected
 // via insight_likes/comments/shares/reach, no live API calls needed — this
 // is a summary, not a fresh fetch) into one glance-able card per platform,
@@ -11876,26 +11899,74 @@ function AllPlatformsSummaryTab({posts, connectedPlatforms, onSelectPlatform}) {
     const sum = key => withData.reduce((a,p)=>a+(p[key]||0),0);
     const hasShares = withData.some(p=>p.insight_shares!=null);
     const hasReach = withData.some(p=>p.insight_reach!=null);
-    return {platform:pf, total:pPosts.length, tracked:withData.length, likes:sum("insight_likes"), comments:sum("insight_comments"), shares:hasShares?sum("insight_shares"):null, reach:hasReach?sum("insight_reach"):null};
+    const likes = sum("insight_likes"), comments = sum("insight_comments");
+    const shares = hasShares?sum("insight_shares"):null, reach = hasReach?sum("insight_reach"):null;
+    const engagement = likes + comments*2 + (shares||0)*3;
+    return {
+      platform:pf, total:pPosts.length, tracked:withData.length,
+      likes, comments, shares, reach, engagement,
+      avgLikes: withData.length ? Math.round(likes/withData.length*10)/10 : 0,
+    };
   });
   if(rows.length===0) return <EmptyState icon={Icons.chart} title="No platforms connected" sub="Connect a Facebook, Instagram, or TikTok integration to see insights here."/>;
+
+  const grand = {
+    total: rows.reduce((a,r)=>a+r.total,0),
+    likes: rows.reduce((a,r)=>a+r.likes,0),
+    comments: rows.reduce((a,r)=>a+r.comments,0),
+    reach: rows.some(r=>r.reach!=null) ? rows.reduce((a,r)=>a+(r.reach||0),0) : null,
+  };
+  const topPlatform = [...rows].sort((a,b)=>b.engagement-a.engagement)[0];
+
   return (
-    <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fit,minmax(240px,1fr))",gap:12}}>
-      {rows.map(r=>(
-        <div key={r.platform} onClick={()=>onSelectPlatform(r.platform)} data-clickable style={{cursor:"pointer",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"column",gap:12}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <PChip platform={r.platform}/>
-            <Ico d={Icons.chevR||Icons.chevD} size={14} stroke="var(--text3)"/>
+    <div style={{display:"flex",flexDirection:"column",gap:20}}>
+      {/* Grand totals across every connected platform */}
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(2,1fr)":"repeat(4,1fr)",gap:10}}>
+        {[["Published Posts",grand.total,"var(--text)"],["Total Likes",grand.likes,"#e1306c"],["Total Comments",grand.comments,"#3b82f6"],["Total Reach",grand.reach??"—","#10b981"]].map(([label,val,color])=>(
+          <div key={label} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"14px 16px",textAlign:"center"}}>
+            <p style={{fontSize:24,fontWeight:800,color}}>{val}</p>
+            <p style={{fontSize:11,color:"var(--text3)",marginTop:2,fontWeight:600,textTransform:"uppercase",letterSpacing:".04em"}}>{label}</p>
           </div>
-          <p style={{fontSize:12,color:"var(--text3)"}}>{r.total} published post{r.total!==1?"s":""}{r.tracked<r.total?` (${r.tracked} tracked)`:""}</p>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-            <div><p style={{fontSize:18,fontWeight:800}}>{r.likes}</p><p style={{fontSize:10,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"}}>Likes</p></div>
-            <div><p style={{fontSize:18,fontWeight:800}}>{r.comments}</p><p style={{fontSize:10,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"}}>Comments</p></div>
-            <div><p style={{fontSize:18,fontWeight:800}}>{r.shares??"N/A"}</p><p style={{fontSize:10,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"}}>Shares</p></div>
-            <div><p style={{fontSize:18,fontWeight:800}}>{r.reach??"—"}</p><p style={{fontSize:10,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"}}>Reach</p></div>
-          </div>
+        ))}
+      </div>
+
+      {topPlatform && rows.length>1 && (
+        <div onClick={()=>onSelectPlatform(topPlatform.platform)} data-clickable style={{cursor:"pointer",display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"var(--accentbg,var(--surface2))",border:"1px solid var(--accent)33",borderRadius:"var(--rs)",fontSize:13}}>
+          <Ico d={Icons.trendUp||Icons.chart} size={15} stroke="var(--accent)"/>
+          <span><strong style={{textTransform:"capitalize"}}>{topPlatform.platform}</strong> is your top-performing platform right now — <span style={{color:"var(--accent)",fontWeight:700}}>view details →</span></span>
         </div>
-      ))}
+      )}
+
+      {/* Per-metric comparison bars */}
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"16px 20px",display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:20}}>
+        <PlatformCompareBar label="Likes by Platform" rows={rows} valueKey="likes"/>
+        <PlatformCompareBar label="Comments by Platform" rows={rows} valueKey="comments"/>
+        <PlatformCompareBar label="Reach by Platform" rows={rows} valueKey="reach"/>
+        <PlatformCompareBar label="Engagement Score by Platform" rows={rows} valueKey="engagement"/>
+      </div>
+
+      {/* Per-platform detail cards */}
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fit,minmax(260px,1fr))",gap:12}}>
+        {rows.map(r=>(
+          <div key={r.platform} onClick={()=>onSelectPlatform(r.platform)} data-clickable style={{cursor:"pointer",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <PChip platform={r.platform}/>
+              <Ico d={Icons.chevR||Icons.chevD} size={14} stroke="var(--text3)"/>
+            </div>
+            <p style={{fontSize:12,color:"var(--text3)"}}>{r.total} published post{r.total!==1?"s":""}{r.tracked<r.total?` (${r.tracked} tracked)`:""} · avg {r.avgLikes} likes/post</p>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div><p style={{fontSize:18,fontWeight:800}}>{r.likes}</p><p style={{fontSize:10,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"}}>Likes</p></div>
+              <div><p style={{fontSize:18,fontWeight:800}}>{r.comments}</p><p style={{fontSize:10,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"}}>Comments</p></div>
+              <div><p style={{fontSize:18,fontWeight:800}}>{r.shares??"N/A"}</p><p style={{fontSize:10,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"}}>Shares</p></div>
+              <div><p style={{fontSize:18,fontWeight:800}}>{r.reach??"—"}</p><p style={{fontSize:10,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"}}>Reach</p></div>
+            </div>
+            <div style={{paddingTop:8,borderTop:"1px solid var(--border)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:11,color:"var(--text3)",fontWeight:600}}>ENGAGEMENT SCORE</span>
+              <span style={{fontSize:16,fontWeight:800,color:"var(--accent)"}}>{r.engagement}</span>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
