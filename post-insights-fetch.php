@@ -68,6 +68,17 @@ $postId = $post['external_post_id'];
 $likes = $comments = $shares = $reach = null;
 
 if ($post['platform'] === 'tiktok') {
+    if (tiktok_looks_like_publish_id($postId)) {
+        $resolved = tiktok_resolve_video_id($access_token, $postId);
+        if ($resolved) {
+            $postId = $resolved;
+            $pdo->prepare("UPDATE posts SET external_post_id = :ext WHERE id = :id")->execute([':ext' => $postId, ':id' => $post_id]);
+        } else {
+            http_response_code(502);
+            echo json_encode(["error" => "TikTok hasn't made this video's public ID available yet — it may still be processing, or (if posted as Private) it may never be publicly queryable. Try again in a few minutes."]);
+            exit;
+        }
+    }
     [$code, $resp] = tiktok_video_insights($access_token, $postId);
     if ($code === 200) {
         $vd = $resp['data']['videos'][0] ?? null;

@@ -79,9 +79,18 @@ foreach ($rows as $post) {
         // only coincide when the response's publicaly_available_post_id
         // was captured at publish time (see tiktok_publish_video()), which
         // is what gets saved as external_post_id by auto-publish.php /
-        // the app's own publish flow. If a post predates that, this will
-        // simply find nothing and get skipped below, same as any other
-        // not-yet-matched post.
+        // the app's own publish flow. If a post predates that, try to
+        // resolve the real id now (TikTok may have finished processing it
+        // since publish time) before giving up.
+        if (tiktok_looks_like_publish_id($postId)) {
+            $resolved = tiktok_resolve_video_id($access_token, $postId);
+            if ($resolved) {
+                $postId = $resolved;
+                $pdo->prepare("UPDATE posts SET external_post_id = :ext WHERE id = :id")->execute([':ext' => $postId, ':id' => $post['id']]);
+            } else {
+                continue;
+            }
+        }
         [$code, $resp] = tiktok_video_insights($access_token, $postId);
         if ($code === 200) {
             $v = $resp['data']['videos'][0] ?? null;
