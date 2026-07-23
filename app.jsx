@@ -1176,6 +1176,28 @@ function trackAIUsage(usage, model) {
     window.dispatchEvent(new CustomEvent("sf:tokenusage", {detail: updated}));
   } catch(e) {}
 }
+// Separate tracker for OpenAI calls (chat completions, Whisper
+// transcription, gpt-image-1 generation) — kept apart from trackAIUsage
+// above so the Claude/Anthropic usage card stays a clean read on that
+// spend, with OpenAI's own card showing its own totals rather than the two
+// providers' costs blending together under one number.
+function trackOpenAIUsage(usage, model, extraCost=0) {
+  try {
+    const prev = JSON.parse(localStorage.getItem("sf_token_usage_openai")||"{}");
+    const [pin, pout] = AI_MODEL_PRICES[model] || [1.25, 10.00];
+    const callCost = (usage?.input_tokens||0)/1e6*pin + (usage?.output_tokens||0)/1e6*pout + extraCost;
+    const updated = {
+      input_tokens: (prev.input_tokens||0) + (usage?.input_tokens||0),
+      output_tokens: (prev.output_tokens||0) + (usage?.output_tokens||0),
+      total_calls: (prev.total_calls||0) + 1,
+      est_cost: (prev.est_cost||0) + callCost,
+      last_call: new Date().toISOString(),
+      model,
+    };
+    localStorage.setItem("sf_token_usage_openai", JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent("sf:tokenusage_openai", {detail: updated}));
+  } catch(e) {}
+}
 
 // ── Activity logger ───────────────────────────────────────────────
 function logActivity(action, category, details="", status="success", errorMsg="", user="system") {
@@ -1195,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.451";
+const APP_VERSION = "beta 5.452";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1785,6 +1807,8 @@ const AI_AGENT_DEFS = [
    description:"Works under Pro's supervision on Add Calendar Plan and post content creation — writes post ideas, captions, articles, and stories in the client's brand voice."},
   {id:"lead_generation", name:"Lead Generation Agent", color:"#6366f1",
    description:"Works under Pro's supervision searching for new B2B leads — finds and enriches prospects matching your targeting criteria."},
+  {id:"graphic_designer", name:"Yahia — Senior Graphic Designer", color:"#0ea5e9",
+   description:"Works under Pro's supervision generating designs with AI image models — learns each client's past designs and brand/design guidelines to keep every new piece on-style, then hands the real generation off to gpt-image-1."},
 ];
 // Sara's character when she's talking directly WITH the team (comment
 // mentions) — distinct from her content-writing prompts above, which are
@@ -1796,6 +1820,16 @@ Your character: genuinely dedicated and responsible — you take the task seriou
 Keep it tight: a real Slack-style reply, not an essay. If you don't have enough info to answer well, say so plainly and ask for what you need.
 
 FORMATTING — this is rendered as markdown, so use it: never dump everything into one dense paragraph. Break it up with short paragraphs, a blank line between distinct points, "**bold**" for the one or two things that matter most, and a bullet or numbered list whenever you're giving more than 2 items (options, notes, a checklist). If you're delivering actual content (a caption, a set of notes), put it in its own clearly separated block, not stitched into the sentence before it.`;
+// Yahia's character when he's talking directly WITH the team (comment
+// mentions) — distinct from his prompt-crafting work below, which has no
+// persona voice of its own, just design reasoning.
+const YAHIA_PERSONA = `You are Yahia, the team's AI Senior Graphic Designer. A teammate just mentioned you (@Yahia) in a comment thread on a task. Reply directly to them, in-thread, like a real dedicated teammate would.
+
+Your character: serious and a bit nerdy about the craft — you care about typography, composition, color theory, and brand consistency the way some people care about their favorite sports team. You don't do small talk or forced enthusiasm; you're precise, measured, and quietly confident in your taste. When something is off-brand or sloppy, you say so plainly and explain exactly why (grid alignment, contrast ratio, whatever the actual issue is) — never harsh, just direct and technically grounded. You take genuine pride in matching a client's established visual style rather than winging it.
+
+Keep it tight: a real Slack-style reply, not an essay. If you don't have enough info to answer well, say so plainly and ask for what you need (reference images, brand guideline specifics, the exact platform/placement).
+
+FORMATTING — this is rendered as markdown, so use it: never dump everything into one dense paragraph. Break it up with short paragraphs, a blank line between distinct points, "**bold**" for the one or two things that matter most, and a bullet or numbered list whenever you're giving more than 2 items. If you're delivering an actual design brief or prompt, put it in its own clearly separated block, not stitched into the sentence before it.`;
 // Read the live team-wide agent config; App() mirrors app_settings.ai_agents
 // into this global whenever settings load/change, so non-React helpers
 // (agentAI below) can read it without prop-drilling.
@@ -1855,7 +1889,7 @@ const agentAI = async (agentId, taskLabel, prompt, maxTokens=1000, imageUrl=null
       // Normalize OpenAI's {prompt_tokens,completion_tokens} into the
       // {input_tokens,output_tokens} shape trackAIUsage/AI_MODEL_PRICES
       // already expect from Anthropic responses.
-      trackAIUsage(d.usage ? {input_tokens:d.usage.prompt_tokens, output_tokens:d.usage.completion_tokens} : null, model);
+      trackOpenAIUsage(d.usage ? {input_tokens:d.usage.prompt_tokens, output_tokens:d.usage.completion_tokens} : null, model);
       logActivity(`${def?.name||agentId}: ${taskLabel}`,"agents",`[agent:${agentId}] ${taskLabel} (${model})${timingSuffix()}`,"success","","agent");
       return d.choices?.[0]?.message?.content || "";
     }
@@ -3626,7 +3660,8 @@ function MentionInput({value, onChange, team, placeholder, rows}) {
   let agentsCfg={}; try{ agentsCfg = window.__SF_AI_AGENTS||{}; }catch(e){}
   const mentionable = [...(team||[]).filter(m=>!["hr","accountant","office_boy"].includes(m.role)),
     {name:"Sara", email:"sara@ai.socialflow", role:"AI", avatar_url:agentsCfg?.content_creator?.avatar_url||""},
-    {name:"Pro", email:"pro@ai.socialflow", role:"AI", avatar_url:agentsCfg?.pro?.avatar_url||""}];
+    {name:"Pro", email:"pro@ai.socialflow", role:"AI", avatar_url:agentsCfg?.pro?.avatar_url||""},
+    {name:"Yahia", email:"yahia@ai.socialflow", role:"AI", avatar_url:agentsCfg?.graphic_designer?.avatar_url||""}];
   const filtered = showDropdown
     ? mentionable.filter(m => m.name && (m.name.toLowerCase().includes(mentionQuery.toLowerCase()) || toUsername(m.name).includes(toUsername(mentionQuery)))).slice(0,6)
     : [];
@@ -4917,9 +4952,15 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
 
             <p style={{fontSize:11,color:"var(--text3)"}}> Choose from your existing assets or upload a new file.</p>
 
-            {/* AI image generation — OpenAI gpt-image-1, via openai-proxy.php
-                (key stays server-side in config.php). Generates straight into
-                Design Assets, same shape as a manually-uploaded/picked file. */}
+            {/* AI image generation — Yahia (Senior Graphic Designer agent)
+                first expands the user's short request into a detailed,
+                on-brand image prompt using everything known about this
+                client (brand/design guidelines, memory, recently published
+                posts, via clientBrainBlock — the same context Sara uses for
+                captions), then hands that prompt to OpenAI's gpt-image-1 via
+                openai-proxy.php (key stays server-side in config.php).
+                Generates straight into Design Assets, same shape as a
+                manually-uploaded/picked file. */}
             {(()=>{
               const [genPrompt, setGenPrompt] = useState("");
               const [generating, setGenerating] = useState(false);
@@ -4928,13 +4969,28 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 if(!genPrompt.trim()) return;
                 setGenerating(true); setGenError("");
                 try {
+                  let finalPrompt = genPrompt.trim();
+                  try {
+                    const brief = await agentAI("graphic_designer", `Design prompt: ${post.title}`, `You are Yahia, the team's AI Senior Graphic Designer. Turn this teammate's short request into a single, detailed, ready-to-use image-generation prompt for an AI image model — grounded in this client's real brand/design history below, not a generic style.
+${clientBrainBlock(post.client_id, post.client_name)}
+
+Task: "${post.title}" — ${post.platform||"social"} ${post.post_type||"post"}${post.text_on_visual?`\nText that must appear on the design: "${post.text_on_visual}"`:""}
+Teammate's request: "${genPrompt.trim()}"
+
+Return ONLY the final image-generation prompt itself — no markdown, no preamble, no quotes around it. Be specific about composition, color palette, and style, matching this client's established visual identity.`, 400);
+                    if(brief && brief.trim()) finalPrompt = brief.trim();
+                  } catch(e) { /* Yahia's prompt polish is a best-effort enhancement — fall back to the raw request rather than blocking generation */ }
                   const r = await fetch(OPENAI_ENDPOINT+"?mode=image", {
                     method:"POST", headers:{"Content-Type":"application/json"},
-                    body: JSON.stringify({model:"gpt-image-1", prompt:genPrompt.trim(), size:"1024x1024", n:1}),
+                    body: JSON.stringify({model:"gpt-image-1", prompt:finalPrompt, size:"1024x1024", n:1}),
                   });
                   const d = await r.json();
                   const b64 = d.data?.[0]?.b64_json;
                   if(!r.ok || !b64) throw new Error(d.error?.message||d.error||"Image generation failed");
+                  // gpt-image-1 has no token usage to report — flat per-image
+                  // estimate (1024x1024 standard quality) so it still shows up
+                  // in the OpenAI Usage card instead of being invisible spend.
+                  trackOpenAIUsage(null, "gpt-image-1", 0.04);
                   const byteChars = atob(b64);
                   const bytes = new Uint8Array(byteChars.length);
                   for(let i=0;i<byteChars.length;i++) bytes[i] = byteChars.charCodeAt(i);
@@ -22501,6 +22557,7 @@ function AgentCard({def, cfg, models, onSave, logs, onBackfill, backfillRunning}
 
 function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfillSaraMemory, backfillRunning}) {
   const [usage, setUsage] = useState(null);
+  const [usageOpenAI, setUsageOpenAI] = useState(null);
   const [loading, setLoading] = useState(false);
   const [model, setModel] = useState(() => { try{ return localStorage.getItem("sf_ai_model")||"claude-sonnet-4-6"; }catch(e){return "claude-sonnet-4-6";} });
   const [speed, setSpeed] = useState(() => { try{ return localStorage.getItem("sf_ai_speed")||"medium"; }catch(e){return "medium";} });
@@ -22536,6 +22593,16 @@ function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfill
     const onUsage = (e) => setUsage(e.detail);
     window.addEventListener("sf:tokenusage", onUsage);
     return () => window.removeEventListener("sf:tokenusage", onUsage);
+  }, []);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("sf_token_usage_openai");
+      if(raw) setUsageOpenAI(JSON.parse(raw));
+    } catch(e) {}
+    const onUsage = (e) => setUsageOpenAI(e.detail);
+    window.addEventListener("sf:tokenusage_openai", onUsage);
+    return () => window.removeEventListener("sf:tokenusage_openai", onUsage);
   }, []);
 
   const MODELS = [
@@ -22596,6 +22663,10 @@ function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfill
     try { localStorage.removeItem("sf_token_usage"); } catch(e) {}
     setUsage(null);
   };
+  const resetUsageOpenAI = () => {
+    try { localStorage.removeItem("sf_token_usage_openai"); } catch(e) {}
+    setUsageOpenAI(null);
+  };
 
   // Prefer the per-call accumulated cost (accurate across model switches);
   // fall back to repricing totals at the selected model for usage recorded
@@ -22603,6 +22674,7 @@ function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfill
   const totalCost = usage ? (usage.est_cost != null
     ? usage.est_cost.toFixed(4)
     : ((usage.input_tokens||0)/1e6 * selectedModel.input + (usage.output_tokens||0)/1e6 * selectedModel.output).toFixed(4)) : "0.0000";
+  const totalCostOpenAI = usageOpenAI ? (usageOpenAI.est_cost||0).toFixed(4) : "0.0000";
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:"min(700px,100%)"}}>
@@ -22770,6 +22842,40 @@ function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfill
         )}
         {usage?.last_call&&(
           <p style={{fontSize:11,color:"var(--text3)",marginTop:10}}>Last AI call: {new Date(usage.last_call).toLocaleString()}</p>
+        )}
+      </div>
+
+      {/* OpenAI Usage — kept separate from the Claude/Anthropic card above so
+          the two providers' spend never blend together into one number.
+          Covers GPT chat calls (agentAI routes here for any "gpt-" model),
+          Whisper voice transcription, and gpt-image-1 generation. */}
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:14,padding:22}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+          <div>
+            <p style={{fontWeight:800,fontSize:14,marginBottom:2}}> OpenAI Usage</p>
+            <p style={{fontSize:12,color:"var(--text3)"}}>GPT, Whisper & image generation — tracked since last reset</p>
+          </div>
+          <button onClick={resetUsageOpenAI} style={{padding:"5px 12px",borderRadius:8,fontSize:11,fontWeight:600,background:"#ef444411",color:"#ef4444",border:"1px solid #ef444433",cursor:"pointer"}}>Reset</button>
+        </div>
+        {!usageOpenAI?(
+          <p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:20}}>No OpenAI usage yet — tracked after Yahia/GPT-5.1 calls, voice transcription, or AI image generation.</p>
+        ):(
+          <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12}}>
+            {[
+              {label:"Input Tokens", value:(usageOpenAI.input_tokens||0).toLocaleString(), color:"#6366f1"},
+              {label:"Output Tokens", value:(usageOpenAI.output_tokens||0).toLocaleString(), color:"#10b981"},
+              {label:"Total Calls", value:(usageOpenAI.total_calls||0).toLocaleString(), color:"#f59e0b"},
+              {label:"Est. Cost", value:`$${totalCostOpenAI}`, color:"#ef4444"},
+            ].map(s=>(
+              <div key={s.label} style={{padding:"14px 16px",background:"var(--surface2)",borderRadius:12,border:"1px solid var(--border)"}}>
+                <p style={{fontSize:11,color:"var(--text3)",marginBottom:4}}>{s.label}</p>
+                <p style={{fontSize:22,fontWeight:800,color:s.color,fontVariantNumeric:"tabular-nums"}}>{s.value}</p>
+              </div>
+            ))}
+          </div>
+        )}
+        {usageOpenAI?.last_call&&(
+          <p style={{fontSize:11,color:"var(--text3)",marginTop:10}}>Last call: {new Date(usageOpenAI.last_call).toLocaleString()} ({usageOpenAI.model||"—"})</p>
         )}
       </div>
 
@@ -37962,6 +38068,10 @@ Return ONLY valid JSON (no markdown, no explanation):
     if(/@pro\b/i.test(content) && post) {
       replyProInComment(post, project, content, user);
     }
+    // @Yahia — design-focused reply, same pattern as Sara's.
+    if(/@yahia\b/i.test(content) && post) {
+      replyYahiaInComment(post, project, content, user);
+    }
   };
 
   // Comment thread on a job application (reuses the generic `comments`
@@ -38145,6 +38255,49 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
       // posts his own reply (and can actually act) right after hers.
       if(action.type==="ask_pro" && !isHandoff) {
         replyProInComment(post, project, action.request||triggerContent, {name:"Sara"}, true);
+      }
+    } catch(e) { /* best-effort — a failed reply just means silence, not a broken thread */ }
+  };
+
+  // Yahia replying to a direct @mention — same shape as Sara's, but
+  // design-focused: task + client design/brand context, no stage/assign
+  // actions of his own (he only ever hands decisions to Pro).
+  const replyYahiaInComment = async (post, project, triggerContent, user, isHandoff=false) => {
+    try {
+      const thread = (data.comments||[]).filter(c=>c.post_id===post.id)
+        .sort((a,b)=>new Date(a.created_date)-new Date(b.created_date))
+        .slice(-10)
+        .map(c=>`${c.author_name||"?"}: ${(c.content||"").slice(0,300)}`).join("\n");
+      const taskBlock = `Task: "${post.title}"
+Project: ${project?.title||post.project_name||"-"} | Client: ${post.client_name||"-"}
+Stage: ${post.stage||"-"} | Platform: ${post.platform||"-"} | Type: ${post.post_type||"-"}
+Assigned to: ${post.assigned_to||"unassigned"} | Due: ${post.due_date||post.scheduled_date||"-"}
+${post.text_on_visual?`Text on visual: ${post.text_on_visual}`:""}
+${post.design_assets?.length?`Existing design assets: ${post.design_assets.length} attached`:"No design assets uploaded yet"}`;
+      const raw = await agentAI("graphic_designer", `Comment reply: ${post.title}`, `${YAHIA_PERSONA}
+${clientBrainBlock(post.client_id, post.client_name)}
+${taskBlock}
+
+RECENT THREAD ON THIS TASK:
+${thread||"(no earlier comments)"}
+
+${user?.name||"A teammate"} just wrote: "${triggerContent}"
+
+Reply now, addressed to them. You design/plan visuals and can write a detailed image-generation prompt if asked — you can't assign tasks, change a task's stage, or set due dates/priority yourself. If that's genuinely what's being asked, say so plainly and hand it to Pro instead of guessing or faking it.
+
+Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown formatting is fine)","action":{"type":"ask_pro"|"none","request":"one-line summary of what Pro needs to do, if ask_pro"}}`, 700);
+      const match = raw.match(/\{[\s\S]*\}/);
+      let reply, action = {type:"none"};
+      try { const parsed = JSON.parse(match ? match[0] : raw); reply = parsed.reply; action = parsed.action||action; }
+      catch(e) { reply = raw; }
+      const payload = {post_id:post.id, content:reply||"On it.", author_name:"Yahia", author_email:"yahia@ai.socialflow", type:"ai_reply", audience:"internal"};
+      const local = {...payload, id:uid(), created_date:new Date().toISOString()};
+      setData(d=>({...d,comments:[...d.comments,local]}));
+      ce("Comment",[payload]).then(res=>{
+        const real=res.entities?.[0]; if(real?.id) setData(d=>({...d,comments:d.comments.map(c=>c.id===local.id?{...c,...real}:c)}));
+      }).catch(()=>{});
+      if(action.type==="ask_pro" && !isHandoff) {
+        replyProInComment(post, project, action.request||triggerContent, {name:"Yahia"}, true);
       }
     } catch(e) { /* best-effort — a failed reply just means silence, not a broken thread */ }
   };
