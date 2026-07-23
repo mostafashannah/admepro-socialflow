@@ -1195,7 +1195,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.448";
+const APP_VERSION = "beta 5.449";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5437,7 +5437,7 @@ function AddGenericTaskModal({open,onClose,projects,team,onAdd,onCreateProject,p
   );
 }
 
-function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,onUpdateAsset,presetClient,assets=[],allowClientRequest=false,clients=[]}) {
+function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,onUpdateAsset,presetClient,assets=[],allowClientRequest=false,clients=[],clientIntelligenceList=[]}) {
   const [step,setStep] = useState(1);
   // When opened from a client's profile, only that client's projects should be
   // selectable/defaulted — otherwise this silently defaults to projects[0],
@@ -5580,17 +5580,24 @@ Return ONLY valid JSON (no markdown):
     if(f.content_mode==="ready") {
       const proj = projects.find(p=>p.id===f.project_id);
       const design_urls = JSON.stringify(f.media.map(m=>m.url));
+      // Each platform gets its own client-configured Best Posting Time
+      // (Settings > Scheduling) when the user didn't type an explicit time
+      // for this post — whether that saved time came from the Manual or
+      // Auto (AI-predicted) toggle there doesn't matter here, it's just
+      // the number to use. An explicit time typed on this form always wins.
+      const ci = clientIntelligenceList.find(i=>i.client_id===proj?.client_id);
       const list = f.platforms.map(pl=>{
         const post_type = f.platform_types[pl] || defaultTypeFor();
         const storySrc = f.storyImage || f.media[0];
         const design_assets = pl==="instagram" && f.postStory && storySrc
           ? [...f.media, {...storySrc, kind:"story"}]
           : f.media;
+        const clientBestTime = ci?.[`${pl}_best_time`];
         return {
           title:f.title, client_id:proj?.client_id||"", project_id:f.project_id,
           description:f.description, assigned_to:f.assigned_to,
           scheduled_date: f.publish_mode==="schedule" ? f.scheduled_date : new Date().toISOString().slice(0,10),
-          scheduled_time: f.publish_mode==="schedule" ? f.scheduled_time : "",
+          scheduled_time: f.publish_mode==="schedule" ? (f.scheduled_time || clientBestTime || "") : "",
           platform:pl, post_type, priority:f.priority, stage:"scheduled",
           client_name: proj?.client_name||"", hashtags:"",
           caption:f.caption, design_assets, design_urls,
@@ -5797,7 +5804,19 @@ Return ONLY valid JSON (no markdown):
               <>
                 <Field label="Scheduled Date & Time">
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                    <input type="date" value={f.scheduled_date} onChange={e=>s("scheduled_date",e.target.value)} style={inputSt}/>
+                    <input type="date" value={f.scheduled_date} onChange={e=>{
+                      s("scheduled_date",e.target.value);
+                      // Prefill the client's saved Best Posting Time for this
+                      // platform (Settings > Scheduling) the first time a date
+                      // is picked, instead of leaving Time blank — still fully
+                      // editable, this is just a smart default, not forced.
+                      if(e.target.value && !f.scheduled_time) {
+                        const proj = projects.find(p=>p.id===f.project_id);
+                        const ci = clientIntelligenceList.find(i=>i.client_id===proj?.client_id);
+                        const t = ci?.[`${f.platform}_best_time`];
+                        if(t) s("scheduled_time",t);
+                      }
+                    }} style={inputSt}/>
                     <input type="time" value={f.scheduled_time} onChange={e=>s("scheduled_time",e.target.value)} style={{...inputSt,borderColor:f.scheduled_date&&!f.scheduled_time?"#ef4444":undefined}}/>
                   </div>
                   {f.scheduled_date&&!f.scheduled_time&&<p style={{fontSize:11,color:"#ef4444",marginTop:4}}>A scheduled date needs a time too</p>}
@@ -10389,7 +10408,7 @@ function ProjectsPage({projects, posts, clients, team, assets, clientIntelligenc
 // ════════════════════════════════════════════════════════════════
 // ALL TASKS PAGE (Posts)
 // ════════════════════════════════════════════════════════════════
-function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdateTask,onAddReady,onAddAsset,onUpdateAsset,currentUser,clients=[]}) {
+function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdateTask,onAddReady,onAddAsset,onUpdateAsset,currentUser,clients=[],clientIntelligenceList=[]}) {
   const [view,setView] = usePersistentState("sf_tasks_view","kanban");
   const [stageF,setStageF] = useState("all");
   const [platF,setPlatF] = useState("all");
@@ -10506,7 +10525,7 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
       {view==="kanban"&&<KanbanView posts={filtered} project={null} team={team} onPostClick={onPostClick}/>}
       {view==="list"&&<ListView posts={filtered} projects={projects} team={team} onPostClick={onPostClick}/>}
       {view==="calendar"&&<CalendarView posts={filtered} onPostClick={onPostClick}/>}
-      {showAdd&&<AddPostModal open onClose={()=>setShowAdd(false)} projects={projects} team={team} onAdd={async d=>{onAdd(d);setShowAdd(false);}} onAddReady={onAddReady ? async (list,opts)=>{await onAddReady(list,opts);setShowAdd(false);} : undefined} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset} allowClientRequest={isAdminUser}/>}
+      {showAdd&&<AddPostModal open onClose={()=>setShowAdd(false)} projects={projects} team={team} onAdd={async d=>{onAdd(d);setShowAdd(false);}} onAddReady={onAddReady ? async (list,opts)=>{await onAddReady(list,opts);setShowAdd(false);} : undefined} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset} allowClientRequest={isAdminUser} clients={clients} clientIntelligenceList={clientIntelligenceList}/>}
     </div>
   );
 }
@@ -38540,7 +38559,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
   initialProjectId={selectedProjectId}
   onClearInitialProject={()=>setSelectedProjectId(null)}
 />}
-        {page==="tasks"&&<TasksPage posts={data.posts} projects={data.projects} team={data.team} onPostClick={setSelectedPost} onAdd={addPost} clientTasks={(data.tasks||[])} onUpdateTask={updateClientTask} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} currentUser={currentUser} clients={data.clients}/>}
+        {page==="tasks"&&<TasksPage posts={data.posts} projects={data.projects} team={data.team} onPostClick={setSelectedPost} onAdd={addPost} clientTasks={(data.tasks||[])} onUpdateTask={updateClientTask} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} currentUser={currentUser} clients={data.clients} clientIntelligenceList={data.clientIntelligence||[]}/>}
         {page==="calendar"&&<div className="fade-in"><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800,marginBottom:24}}>Content Calendar</h2><CalendarView posts={data.posts} onPostClick={setSelectedPost}/></div>}
         {page==="assets"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"assets.manage"))&&<AssetsPage assets={data.assets} projects={data.projects} clients={data.clients} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} currentUser={currentUser}/>}
         {page==="templates"&&<TemplatesPage templates={data.templates}/>}
