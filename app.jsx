@@ -1180,7 +1180,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.436";
+const APP_VERSION = "beta 5.437";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9383,7 +9383,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
     ["calendar","Calendar"],
     ["assets","Assets"],
     ...(isPriv?[["inbox",`Inbox${cMessagesNeedReplyCount?` (${cMessagesNeedReplyCount})`:""}`]]:[]),
-    ...(isPriv?[["meta_insights","Meta Insights"]]:[]),
+    ...(isPriv?[["insights","Insights"]]:[]),
     ...(isPriv?[["brain","Client Brain"],["leads",`Leads${clientLeads.length?` (${clientLeads.length})`:""}`]]:[]),
   ];
 
@@ -9627,8 +9627,8 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
           )}
         </div>
       )}
-      {tab==="meta_insights"&&(
-        <MetaInsightsTab client={client} integrations={integrations}/>
+      {tab==="insights"&&(
+        <InsightsTab client={client} integrations={integrations} posts={cPosts}/>
       )}
 
       {tab==="briefs"&&(
@@ -11750,6 +11750,130 @@ function BestPerformingPosts({posts}) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+const INSIGHTS_DATE_RANGES = [
+  ["last_week","Last 7 days"], ["last_month","Last 30 days"], ["90d","Last 90 days"],
+  ["180d","Last 180 days"], ["custom","Custom range"],
+];
+
+// Filterable, full version of BestPerformingPosts — by platform and by a
+// publish-date range — for the dedicated "Best Performing Posts" sub-tab
+// (the plain BestPerformingPosts above stays as the unfiltered top-5 used
+// on dashboard/overview summaries).
+function BestPerformingPostsFull({posts, client}) {
+  const [platform, setPlatform] = useState("all");
+  const [range, setRange] = useState("last_month");
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+
+  const rangeStart = () => {
+    const now = new Date();
+    if(range==="last_week") return new Date(now.getTime()-7*86400000);
+    if(range==="last_month") return new Date(now.getTime()-30*86400000);
+    if(range==="90d") return new Date(now.getTime()-90*86400000);
+    if(range==="180d") return new Date(now.getTime()-180*86400000);
+    return null; // custom, handled separately
+  };
+
+  const platformsAvailable = [...new Set((posts||[]).map(p=>p.platform).filter(Boolean))];
+
+  const filtered = (posts||[])
+    .filter(p=>p.stage==="published" && (p.insight_likes!=null||p.insight_comments!=null||p.insight_shares!=null||p.insight_reach!=null))
+    .filter(p=>platform==="all" || p.platform===platform)
+    .filter(p=>{
+      const d = p.published_at || p.scheduled_date;
+      if(!d) return range==="custom" ? false : true; // no date to compare against — only exclude it under a custom range where we can't tell if it's in-window
+      const dt = new Date(d);
+      if(range==="custom") {
+        if(!customFrom || !customTo) return true;
+        return dt >= new Date(customFrom) && dt <= new Date(customTo+"T23:59:59");
+      }
+      const start = rangeStart();
+      return !start || dt >= start;
+    })
+    .map(p=>({...p, score:(p.insight_likes||0)+(p.insight_comments||0)*2+(p.insight_shares||0)*3}))
+    .sort((a,b)=>b.score-a.score);
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+        <select value={platform} onChange={e=>setPlatform(e.target.value)}
+          style={{height:36,padding:"0 10px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)",fontSize:13,fontWeight:600}}>
+          <option value="all">All Platforms</option>
+          {platformsAvailable.map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+        </select>
+        <select value={range} onChange={e=>setRange(e.target.value)}
+          style={{height:36,padding:"0 10px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)",fontSize:13,fontWeight:600}}>
+          {INSIGHTS_DATE_RANGES.map(([k,l])=><option key={k} value={k}>{l}</option>)}
+        </select>
+        {range==="custom"&&(
+          <>
+            <input type="date" value={customFrom} onChange={e=>setCustomFrom(e.target.value)} style={{height:36,padding:"0 10px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)",fontSize:13}}/>
+            <span style={{color:"var(--text3)",fontSize:12}}>to</span>
+            <input type="date" value={customTo} onChange={e=>setCustomTo(e.target.value)} style={{height:36,padding:"0 10px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)",fontSize:13}}/>
+          </>
+        )}
+      </div>
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"16px 20px"}}>
+        {filtered.length===0 ? (
+          <p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:20}}>No published posts with insight data match these filters yet.</p>
+        ) : (
+          <div style={{display:"flex",flexDirection:"column",gap:2}}>
+            {filtered.map((p,i)=>(
+              <div key={p.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:i<filtered.length-1?"1px solid var(--border)":"none"}}>
+                <span style={{fontSize:13,fontWeight:800,color:"var(--text3)",width:22,flexShrink:0}}>#{i+1}</span>
+                <div style={{minWidth:0,flex:1}}>
+                  <p style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}</p>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginTop:3}}>
+                    <PChip platform={p.platform} xs/>
+                    <span style={{fontSize:11,color:"var(--text3)"}}>{(p.published_at||p.scheduled_date)?new Date(p.published_at||p.scheduled_date).toLocaleDateString():""}</span>
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:14,flexShrink:0,fontSize:12,color:"var(--text2)",whiteSpace:"nowrap"}}>
+                  <span><strong style={{color:"var(--text)"}}>{p.insight_likes??0}</strong> Likes</span>
+                  <span><strong style={{color:"var(--text)"}}>{p.insight_comments??0}</strong> Comments</span>
+                  <span><strong style={{color:"var(--text)"}}>{p.insight_shares??"—"}</strong> Shares</span>
+                  <span><strong style={{color:"var(--text)"}}>{p.insight_reach??"—"}</strong> Reach</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Outer "Insights" tab — houses one sub-tab per connected analytics source
+// (Meta covers Facebook+Instagram together since Graph API returns them
+// together already; a differently-shaped platform — e.g. TikTok/LinkedIn —
+// would get its own sub-tab here once/if a page-level insights backend for
+// it exists, same pattern as Meta's) plus the cross-platform "Best
+// Performing Posts" sub-tab, which already works for any platform since
+// it's driven off the generic insight_likes/comments/shares/reach columns
+// on `posts`, not a platform-specific API call.
+function InsightsTab({client, integrations, posts}) {
+  const [sub, setSub] = usePersistentState("sf_tab_insights_sub","meta");
+  const hasMeta = (integrations||[]).some(i=>["facebook","instagram"].includes(i.app_key) && i.status==="active" && (!i.client_id||i.client_id===client.id));
+  const subTabs = [
+    ...(hasMeta ? [["meta","Meta (FB/IG)"]] : []),
+    ["best","Best Performing Posts"],
+  ];
+  useEffect(()=>{ if(!subTabs.some(([k])=>k===sub)) setSub(subTabs[0]?.[0]||"best"); },[hasMeta]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
+      <div style={{display:"flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",width:"fit-content"}}>
+        {subTabs.map(([k,label])=>(
+          <button key={k} onClick={()=>setSub(k)} style={{padding:"7px 16px",borderRadius:99,background:sub===k?"var(--accent)":"none",color:sub===k?"#fff":"var(--text2)",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {sub==="meta" && hasMeta && <MetaInsightsTab client={client} integrations={integrations}/>}
+      {sub==="best" && <BestPerformingPostsFull posts={posts} client={client}/>}
     </div>
   );
 }
@@ -15244,7 +15368,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
     {key:"dashboard", label:"Dashboard", mLabel:"Home"},
     {key:"posts", label:"Tasks", mLabel:"Tasks"},
     {key:"inbox", label:`Inbox${unreadCount?` (${unreadCount})`:""}`, mLabel:"Inbox"},
-    {key:"meta_insights", label:"Meta Insights", mLabel:"Insights"},
+    {key:"insights", label:"Insights", mLabel:"Insights"},
     {key:"assets", label:"Assets", mLabel:"Assets"},
     {key:"leads", label:`Leads${clientLeads.length?` (${clientLeads.length})`:""}`, mLabel:"Leads"},
     ...(clientSubs.length>0?[{key:"subscriptions",label:"Subscriptions",mLabel:"Billing"}]:[]),
@@ -15633,9 +15757,9 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
           </div>
         )}
 
-        {/* META INSIGHTS VIEW */}
-        {view==="meta_insights"&&(
-          <MetaInsightsTab client={client} integrations={integrations}/>
+        {/* INSIGHTS VIEW */}
+        {view==="insights"&&(
+          <InsightsTab client={client} integrations={integrations} posts={allCPosts}/>
         )}
 
         {/* ASSETS VIEW */}
