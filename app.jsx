@@ -1193,7 +1193,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.444";
+const APP_VERSION = "beta 5.445";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9605,7 +9605,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
       {tab==="brain"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           <div style={{display:"flex",gap:4,borderBottom:"1px solid var(--border)"}}>
-            {[["profile","Client Brain"],["contact_reports","Contact Reports"],...(isPriv?[["integrations","Integrations"],["features","Features"]]:[])].map(([k,l])=>(
+            {[["profile","Client Brain"],["scheduling","Scheduling"],["contact_reports","Contact Reports"],...(isPriv?[["integrations","Integrations"],["features","Features"]]:[])].map(([k,l])=>(
               <button key={k} onClick={()=>setBrainSubTab(k)} style={{
                 padding:"8px 16px",fontSize:13,fontWeight:700,border:"none",background:"transparent",cursor:"pointer",
                 color:brainSubTab===k?"var(--accent)":"var(--text3)",
@@ -9634,6 +9634,9 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
               comments={comments}
               integrations={integrations}
             />
+          )}
+          {brainSubTab==="scheduling"&&(
+            <ClientIntelligenceTab client={client} intelligence={clientIntelligence} onSave={onSaveIntelligence} integrations={integrations}/>
           )}
           {brainSubTab==="contact_reports"&&(
             <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -12719,7 +12722,7 @@ function ClientIntelligenceTab({client, intelligence, onSave, integrations=[]}) 
     setSaving(false); setSaved(true);
   };
 
-  const days = ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"];
+  const days = ["saturday","sunday","monday","tuesday","wednesday","thursday","friday"];
   const inSt = {width:"100%",padding:"8px 10px",borderRadius:8,border:"1px solid var(--border)",background:"var(--surface2)",color:"var(--text1)",fontSize:13};
   const Section = ({title,children})=>(
     <div style={{marginBottom:24}}>
@@ -12997,7 +13000,6 @@ function ClientBrainTab({client, knowledge, clientKnowledge, documents, currentU
   const SUBS = [
     ["profile","Profile & Docs"],
     ["memory","Memory"],
-    ["scheduling","Scheduling"],
     ["training","Train AI"],
     ...(isAdmin?[["export","Export"]]:[]),
   ];
@@ -13013,9 +13015,6 @@ function ClientBrainTab({client, knowledge, clientKnowledge, documents, currentU
       )}
       {sub==="memory"&&(
         <ClientMemoryTab client={client} clientMemory={clientMemory||[]} onUpsert={onUpsertMemory} onDelete={onDeleteMemory} currentUser={currentUser}/>
-      )}
-      {sub==="scheduling"&&(
-        <ClientIntelligenceTab client={client} intelligence={clientIntelligence} onSave={onSaveIntelligence} integrations={integrations}/>
       )}
       {sub==="training"&&(
         <BrandTrainingChat
