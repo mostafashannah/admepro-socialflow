@@ -311,6 +311,14 @@ const STAGES = [
 
 const PLATFORMS = ["instagram","facebook","linkedin","tiktok","twitter"];
 const POST_TYPES = ["image","video","carousel","story","reel"];
+// Every post_type value that represents an actual piece of social content
+// meant to be published to a platform (as opposed to internal/deliverable
+// work like graphic_design, video_production, monthly_report, etc. — see
+// TASK_TYPES below for the full non-social list). Includes both the raw
+// POST_TYPES shapes and the client-request TASK_TYPES ids that are
+// themselves social content (social_post, story_reel), plus "static" and
+// "campaign", both seen in real post_type data as social-content markers.
+const SOCIAL_POST_TYPES = new Set([...POST_TYPES, "social_post", "story_reel", "static", "campaign"]);
 const PRIORITIES = ["low","medium","high","urgent"];
 
 const PLT_COLOR = { instagram:"#e1306c", facebook:"#1877f2", linkedin:"#0a66c2", tiktok:"#69c9d0", twitter:"#1da1f2" };
@@ -1180,7 +1188,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.439";
+const APP_VERSION = "beta 5.440";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -3231,14 +3239,18 @@ function PostCard({post,project,team,onClick}) {
 function KanbanView({posts,project,team,onPostClick}) {
   const {isMobile} = useResponsive();
   const [showEmpty,setShowEmpty] = useState(false);
-  // "Post" = post_type is one of the actual publishable content shapes
-  // (image/video/carousel/story/reel); anything else stored in post_type
-  // (graphic_design, content_calendar, monthly_report, etc. — the
-  // TASK_TYPES ids used by client-submitted work requests) is a "Task",
-  // i.e. work that isn't itself a piece of social content to publish.
+  // "Post" = post_type is an actual social-media content shape meant to be
+  // published to a platform. Everything else stored in post_type
+  // (graphic_design, video_production, content_calendar, monthly_report,
+  // ad_creative, website_update, etc. — the non-social TASK_TYPES ids used
+  // by client-submitted work requests) is a "Task": real work, but not
+  // itself a social media post. POST_TYPES alone was too narrow — social
+  // requests get saved with post_type "social_post"/"story_reel" (their
+  // TASK_TYPES id), not "image"/"reel", so those were wrongly falling into
+  // Tasks.
   const [typeF,setTypeF] = useState("all"); // all | post | task
   const typedPosts = typeF==="all" ? posts : posts.filter(p=>
-    typeF==="post" ? POST_TYPES.includes(p.post_type) : !POST_TYPES.includes(p.post_type)
+    typeF==="post" ? SOCIAL_POST_TYPES.has(p.post_type) : !SOCIAL_POST_TYPES.has(p.post_type)
   );
   const populated = STAGES.filter(s=>typedPosts.some(p=>p.stage===s.key));
   const empty = STAGES.filter(s=>!typedPosts.some(p=>p.stage===s.key));
@@ -3253,17 +3265,18 @@ function KanbanView({posts,project,team,onPostClick}) {
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
       {/* Toggle controls — type switcher on the left, stage-visibility toggle on the right */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-        <div style={{display:"flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:2,height:30,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",boxSizing:"border-box"}}>
           {[["all","All"],["post","Posts"],["task","Tasks"]].map(([k,label])=>(
-            <button key={k} onClick={()=>setTypeF(k)} style={{padding:"4px 12px",borderRadius:99,fontSize:12,fontWeight:700,border:"none",cursor:"pointer",background:typeF===k?"var(--accent)":"none",color:typeF===k?"#fff":"var(--text2)"}}>
+            <button key={k} onClick={()=>setTypeF(k)} style={{height:"100%",padding:"0 14px",borderRadius:99,fontSize:12,fontWeight:700,border:"none",cursor:"pointer",background:typeF===k?"var(--accent)":"none",color:typeF===k?"#fff":"var(--text2)"}}>
               {label}
             </button>
           ))}
         </div>
         {hasEmpty&&(
           <button onClick={()=>setShowEmpty(v=>!v)} style={{
+            height:30,boxSizing:"border-box",
             fontSize:12,fontWeight:600,color:"var(--text3)",display:"flex",alignItems:"center",gap:5,
-            padding:"4px 12px",borderRadius:99,border:"1px solid var(--border)",background:"var(--surface2)",
+            padding:"0 14px",borderRadius:99,border:"1px solid var(--border)",background:"var(--surface2)",
             transition:"all 0.15s",
           }}
           onMouseEnter={e=>e.currentTarget.style.borderColor="var(--accent)"}
