@@ -171,3 +171,20 @@ function tiktok_video_insights($access_token, $video_id) {
     $url = TIKTOK_API_BASE . '/video/query/?fields=' . urlencode($fields);
     return tiktok_curl($url, 'POST', ['filters' => ['video_ids' => [$video_id]]], $access_token);
 }
+
+// A stored external_post_id can end up being the publish_id (e.g.
+// "v_pub_url~v2-1.xxxx") instead of the real numeric video_id, if TikTok
+// hadn't finished processing the video within tiktok_publish_video()'s
+// ~2-minute poll window at publish time — status/fetch/ can resolve the
+// real public video id later once TikTok is done. Real video ids are
+// always a plain numeric string, so that's the cheap way to tell them
+// apart without tracking extra state.
+function tiktok_looks_like_publish_id($id) {
+    return !ctype_digit((string)$id);
+}
+
+function tiktok_resolve_video_id($access_token, $publish_id) {
+    [$code, $resp] = tiktok_curl(TIKTOK_API_BASE . '/post/publish/status/fetch/', 'POST', ['publish_id' => $publish_id], $access_token);
+    if ($code !== 200) return null;
+    return $resp['data']['publicaly_available_post_id'][0] ?? null;
+}
