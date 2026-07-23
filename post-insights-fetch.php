@@ -114,14 +114,37 @@ if ($post['platform'] === 'tiktok') {
     } else {
         $graphError = $resp['error']['message'] ?? null;
     }
-    $reachMetric = $isVideo ? "total_video_impressions_unique" : "post_impressions_unique";
-    [$rcode, $rresp] = graph_get("https://graph.facebook.com/{$v}/{$postId}/insights", [
-        "metric" => $reachMetric, "access_token" => $access_token,
-    ]);
-    if ($rcode === 200) {
-        $reach = $rresp['data'][0]['values'][0]['value'] ?? null;
-    } elseif (empty($graphError)) {
-        $graphError = $rresp['error']['message'] ?? null;
+    if ($isVideo) {
+        // Reels use a different metric surface than a plain uploaded Page
+        // video — "total_video_impressions_unique" is a regular-video-only
+        // metric and 400s on a Reel, which is why Reach silently stayed
+        // empty even though likes/comments succeeded. Reels report reach
+        // via "blue_reels_play_count" (play count, the closest available
+        // proxy — Meta doesn't expose a separate unique-reach number for
+        // Reels) with a fallback attempt at the regular metric in case this
+        // was actually a plain video, not a Reel, despite post_type saying so.
+        [$rcode, $rresp] = graph_get("https://graph.facebook.com/{$v}/{$postId}/insights", [
+            "metric" => "blue_reels_play_count", "access_token" => $access_token,
+        ]);
+        if ($rcode === 200) {
+            $reach = $rresp['data'][0]['values'][0]['value'] ?? null;
+        }
+        if ($reach === null) {
+            [$rcode2, $rresp2] = graph_get("https://graph.facebook.com/{$v}/{$postId}/insights", [
+                "metric" => "total_video_impressions_unique", "access_token" => $access_token,
+            ]);
+            if ($rcode2 === 200) { $reach = $rresp2['data'][0]['values'][0]['value'] ?? null; }
+            elseif (empty($graphError)) { $graphError = $rresp2['error']['message'] ?? ($rresp['error']['message'] ?? null); }
+        }
+    } else {
+        [$rcode, $rresp] = graph_get("https://graph.facebook.com/{$v}/{$postId}/insights", [
+            "metric" => "post_impressions_unique", "access_token" => $access_token,
+        ]);
+        if ($rcode === 200) {
+            $reach = $rresp['data'][0]['values'][0]['value'] ?? null;
+        } elseif (empty($graphError)) {
+            $graphError = $rresp['error']['message'] ?? null;
+        }
     }
 } else {
     $ig_host = str_starts_with($access_token, 'IGAA') ? 'graph.instagram.com' : 'graph.facebook.com';
@@ -158,4 +181,4 @@ $update = $pdo->prepare(
 );
 $update->execute([':likes'=>$likes, ':comments'=>$comments, ':shares'=>$shares, ':reach'=>$reach, ':id'=>$post_id]);
 
-echo json_encode(["likes"=>$likes, "comments"=>$comments, "shares"=>$shares, "reach"=>$reach, "fetched_at"=>$fetchedAt]);
+echo json_encode(["likes"=>$likes, "comments"=>$comments, "shares"=>$shares, "reach"=>$reach, "fetched_at"=>$fetchedAt, "partial_error"=>$graphError]);

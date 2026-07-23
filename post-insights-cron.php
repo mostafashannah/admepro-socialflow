@@ -122,13 +122,29 @@ foreach ($rows as $post) {
             $comments = $resp['comments']['summary']['total_count'] ?? null;
             $shares   = $isVideo ? null : ($resp['shares']['count'] ?? 0);
         }
-        // Post-level reach needs the Insights endpoint separately.
-        $reachMetric = $isVideo ? "total_video_impressions_unique" : "post_impressions_unique";
-        [$rcode, $rresp] = graph_get("https://graph.facebook.com/{$v}/{$postId}/insights", [
-            "metric" => $reachMetric, "access_token" => $access_token,
-        ]);
-        if ($rcode === 200) {
-            $reach = $rresp['data'][0]['values'][0]['value'] ?? null;
+        // Post-level reach needs the Insights endpoint separately. Reels use
+        // a different metric surface than a plain uploaded Page video —
+        // "total_video_impressions_unique" 400s on a Reel, so try the
+        // Reels-specific play-count metric first (closest available proxy;
+        // Meta doesn't expose a separate unique-reach number for Reels),
+        // falling back to the regular-video metric in case post_type was
+        // wrong about this being a Reel.
+        if ($isVideo) {
+            [$rcode, $rresp] = graph_get("https://graph.facebook.com/{$v}/{$postId}/insights", [
+                "metric" => "blue_reels_play_count", "access_token" => $access_token,
+            ]);
+            if ($rcode === 200) { $reach = $rresp['data'][0]['values'][0]['value'] ?? null; }
+            if ($reach === null) {
+                [$rcode2, $rresp2] = graph_get("https://graph.facebook.com/{$v}/{$postId}/insights", [
+                    "metric" => "total_video_impressions_unique", "access_token" => $access_token,
+                ]);
+                if ($rcode2 === 200) { $reach = $rresp2['data'][0]['values'][0]['value'] ?? null; }
+            }
+        } else {
+            [$rcode, $rresp] = graph_get("https://graph.facebook.com/{$v}/{$postId}/insights", [
+                "metric" => "post_impressions_unique", "access_token" => $access_token,
+            ]);
+            if ($rcode === 200) { $reach = $rresp['data'][0]['values'][0]['value'] ?? null; }
         }
     } else {
         $ig_host = str_starts_with($access_token, 'IGAA') ? 'graph.instagram.com' : 'graph.facebook.com';

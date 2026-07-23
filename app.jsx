@@ -1180,7 +1180,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.434";
+const APP_VERSION = "beta 5.435";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -4449,7 +4449,10 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
       });
       const j = await res.json();
       if(!res.ok || j.error) { setInsightsError(j.error||"Refresh failed"); }
-      else { onInsightsRefreshed && onInsightsRefreshed({...post, insight_likes:j.likes, insight_comments:j.comments, insight_shares:j.shares, insight_reach:j.reach, insight_fetched_at:j.fetched_at}); }
+      else {
+        if(j.partial_error) setInsightsError(`Reach unavailable: ${j.partial_error}`);
+        onInsightsRefreshed && onInsightsRefreshed({...post, insight_likes:j.likes, insight_comments:j.comments, insight_shares:j.shares, insight_reach:j.reach, insight_fetched_at:j.fetched_at});
+      }
     } catch(e) { setInsightsError("Refresh failed — check connection"); }
     setInsightsRefreshing(false);
   };
@@ -4993,7 +4996,15 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                   <div style={{fontSize:11,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"}}>Comments</div>
                 </div>
                 <div style={{padding:"14px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",textAlign:"center"}}>
-                  <div style={{fontSize:22,fontWeight:800,color:"var(--text)"}}>{post.insight_shares??"—"}</div>
+                  {/* Instagram's API has no share-count field at all (not "0 shares",
+                      just unmeasurable) — same for Facebook Reels/videos, which use a
+                      Video node with no 'shares' field. Show N/A, not a bare dash that
+                      reads the same as "not fetched yet". */}
+                  <div style={{fontSize:22,fontWeight:800,color:"var(--text)"}}>
+                    {post.platform==="instagram" || (post.platform==="facebook" && ["reel","video"].includes(post.post_type))
+                      ? <span style={{fontSize:14,color:"var(--text3)"}}>N/A</span>
+                      : (post.insight_shares??"—")}
+                  </div>
                   <div style={{fontSize:11,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"}}>Shares</div>
                 </div>
                 <div style={{padding:"14px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",textAlign:"center"}}>
