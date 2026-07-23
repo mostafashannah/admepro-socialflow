@@ -388,6 +388,8 @@ function generateDailySchedule(posts, userEmail, date) {
 }
 
 // ── @mention helper ────────────────────────────────────────────
+const URL_RE = /((?:https?:\/\/|www\.)[^\s<>"']+)/gi;
+
 function renderCommentText(text, team) {
   if(!text) return null;
   // Match against real team-member full names first (longest first, so
@@ -399,11 +401,27 @@ function renderCommentText(text, team) {
   const namesAlt = names.length ? `${names.join('|')}|` : '';
   const re = new RegExp(`(@(?:${namesAlt}[\\w][\\w\\s]*?)(?=\\s|$|[.,!?]))`, 'gi');
   const parts = text.split(re);
-  return parts.map((part, i) =>
-    part.startsWith('@')
-      ? <span key={i} style={{color:"var(--accent)",fontWeight:600,background:"var(--accent)11",borderRadius:3,padding:"0 2px"}}>{part}</span>
-      : part
-  );
+  return parts.map((part, i) => {
+    if(part.startsWith('@')) {
+      return <span key={i} style={{color:"var(--accent)",fontWeight:600,background:"var(--accent)11",borderRadius:3,padding:"0 2px"}}>{part}</span>;
+    }
+    // Strip trailing punctuation (e.g. a period ending the sentence) off the
+    // link itself so it isn't swallowed into the href.
+    const urlParts = part.split(URL_RE);
+    return urlParts.map((seg, j) => {
+      if(j % 2 === 0) return seg;
+      const trailMatch = seg.match(/[.,!?)]+$/);
+      const trail = trailMatch ? trailMatch[0] : '';
+      const clean = trail ? seg.slice(0, -trail.length) : seg;
+      const href = clean.toLowerCase().startsWith('www.') ? `https://${clean}` : clean;
+      return (
+        <React.Fragment key={i+'-'+j}>
+          <a href={href} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{color:"var(--accent)",textDecoration:"underline",wordBreak:"break-all"}}>{clean}</a>
+          {trail}
+        </React.Fragment>
+      );
+    });
+  });
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1162,7 +1180,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.431";
+const APP_VERSION = "beta 5.432";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
