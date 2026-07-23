@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.454";
+const APP_VERSION = "beta 5.455";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -4981,6 +4981,15 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
               const [generating, setGenerating] = useState(false);
               const [genError, setGenError] = useState("");
               const [hasGenerated, setHasGenerated] = useState(!!(post.design_assets||[]).some(a=>a.name?.includes("ai-generated")));
+              // gpt-image-1's three supported sizes — default picked from the
+              // post's own shape (Stories/Reels are vertical, everything else
+              // square) but always overridable before generating.
+              const [scale, setScale] = useState(["story","reel"].includes(post.post_type) ? "1024x1536" : "1024x1024");
+              const SCALES = [
+                {id:"1024x1024", label:"Square", hint:"1:1"},
+                {id:"1024x1536", label:"Portrait", hint:"Story/Reel"},
+                {id:"1536x1024", label:"Landscape", hint:"Wide"},
+              ];
               const handleGenerate = async () => {
                 setGenerating(true); setGenError("");
                 try {
@@ -5005,7 +5014,7 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
                   }
                   const r = await fetch(OPENAI_ENDPOINT+"?mode=image", {
                     method:"POST", headers:{"Content-Type":"application/json"},
-                    body: JSON.stringify({model:"gpt-image-1", prompt:finalPrompt, size:"1024x1024", n:1}),
+                    body: JSON.stringify({model:"gpt-image-1", prompt:finalPrompt, size:scale, n:1}),
                   });
                   const d = await r.json();
                   const b64 = d.data?.[0]?.b64_json;
@@ -5030,6 +5039,13 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
               return (
                 <div style={{display:"flex",flexDirection:"column",gap:6,paddingTop:8,borderTop:"1px solid var(--border)"}}>
                   <p style={{fontSize:11,fontWeight:700,color:"var(--text2)"}}> Design with Yahia</p>
+                  <div style={{display:"flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",width:"fit-content"}}>
+                    {SCALES.map(s=>(
+                      <button key={s.id} type="button" onClick={()=>setScale(s.id)} disabled={generating} style={{padding:"5px 12px",borderRadius:99,fontSize:11,fontWeight:700,border:"none",cursor:generating?"default":"pointer",background:scale===s.id?"var(--accent)":"none",color:scale===s.id?"#fff":"var(--text2)",whiteSpace:"nowrap"}}>
+                        {s.label} <span style={{opacity:0.7,fontWeight:500}}>({s.hint})</span>
+                      </button>
+                    ))}
+                  </div>
                   <div style={{display:"flex",gap:6}}>
                     <input value={genPrompt} onChange={e=>setGenPrompt(e.target.value)} placeholder={hasGenerated?"Anything to add or change before regenerating? (optional)":"Anything specific to add? Yahia already has the brief, caption & brand style (optional)"} disabled={generating}
                       style={{...inputSt,flex:1}} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();handleGenerate();}}}/>
