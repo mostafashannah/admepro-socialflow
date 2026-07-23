@@ -727,6 +727,7 @@ async function de(entityName, id) {
 }
 // ── AI endpoint — always use proxy on server ──
 const AI_ENDPOINT = window.location.origin + "/ai-proxy.php";
+const OPENAI_ENDPOINT = window.location.origin + "/openai-proxy.php";
 const MAIL_ENDPOINT = window.location.origin + "/mail.php";
 const CAREERS_MAIL_ENDPOINT = window.location.origin + "/careers-mail.php";
 const RECRUITMENT_MAILBOX_ENDPOINT = window.location.origin + "/recruitment-mailbox.php";
@@ -1155,6 +1156,7 @@ const AI_MODEL_PRICES = {
   "claude-sonnet-4-6": [3.00, 15.00],
   "claude-opus-4-8": [5.00, 25.00],
   "claude-fable-5": [10.00, 50.00],
+  "gpt-5.1": [1.25, 10.00],
 };
 function trackAIUsage(usage, model) {
   if(!usage) return;
@@ -1193,7 +1195,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.447";
+const APP_VERSION = "beta 5.448";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1824,17 +1826,39 @@ const agentAI = async (agentId, taskLabel, prompt, maxTokens=1000, imageUrl=null
     : fullPrompt;
   const startedAt = new Date();
   const timingSuffix = () => `|start:${startedAt.toISOString()}|end:${new Date().toISOString()}`;
+  const isOpenAI = model.startsWith("gpt-");
   try {
-    const r = await fetch(AI_ENDPOINT, {
-      method:"POST", headers:AI_HEADERS,
-      body: JSON.stringify({ model, max_tokens:maxTokens, messages:[{role:"user",content}] })
-    });
+    // OpenAI's chat completions API has a different request/response shape
+    // than Anthropic's Messages API (no top-level image content blocks —
+    // image goes as an image_url part; usage field names differ; reply
+    // text sits at choices[0].message.content instead of a content array),
+    // so this branches on model prefix instead of trying to force one
+    // shape to fit both providers.
+    const r = isOpenAI
+      ? await fetch(OPENAI_ENDPOINT, {
+          method:"POST", headers:AI_HEADERS,
+          body: JSON.stringify({ model, max_tokens:maxTokens, messages:[{role:"user",content: imageUrl
+            ? [{type:"image_url", image_url:{url:imageUrl}}, {type:"text", text:fullPrompt}]
+            : fullPrompt}] })
+        })
+      : await fetch(AI_ENDPOINT, {
+          method:"POST", headers:AI_HEADERS,
+          body: JSON.stringify({ model, max_tokens:maxTokens, messages:[{role:"user",content}] })
+        });
     if(!r.ok) {
       const errText = await r.text();
       logActivity(`${def?.name||agentId}: ${taskLabel}`,"agents",`[agent:${agentId}] ${taskLabel}${timingSuffix()}`,"error",`API ${r.status}: ${errText.slice(0,200)}`,"agent");
       throw new Error(`AI API error ${r.status}: ${errText.slice(0,120)}`);
     }
     const d = await r.json();
+    if(isOpenAI) {
+      // Normalize OpenAI's {prompt_tokens,completion_tokens} into the
+      // {input_tokens,output_tokens} shape trackAIUsage/AI_MODEL_PRICES
+      // already expect from Anthropic responses.
+      trackAIUsage(d.usage ? {input_tokens:d.usage.prompt_tokens, output_tokens:d.usage.completion_tokens} : null, model);
+      logActivity(`${def?.name||agentId}: ${taskLabel}`,"agents",`[agent:${agentId}] ${taskLabel} (${model})${timingSuffix()}`,"success","","agent");
+      return d.choices?.[0]?.message?.content || "";
+    }
     trackAIUsage(d.usage, model);
     logActivity(`${def?.name||agentId}: ${taskLabel}`,"agents",`[agent:${agentId}] ${taskLabel} (${model})${timingSuffix()}`,"success","","agent");
     return d.content?.map(b=>b.text||"").join("") || "";
@@ -3586,6 +3610,15 @@ function MentionInput({value, onChange, team, placeholder, rows}) {
   const [mentionStart, setMentionStart] = useState(-1);
   const [openUp, setOpenUp] = useState(true);
   const textareaRef = useRef(null);
+  const voiceInputRef = useRef(null);
+  const [transcribing, setTranscribing] = useState(false);
+  const handleVoiceFile = async (file) => {
+    if(!file) return;
+    setTranscribing(true);
+    try { const text = await transcribeAudioFile(file); onChange(value?`${value} ${text}`:text); }
+    catch(e){ alert(e.message||"Transcription failed"); }
+    setTranscribing(false);
+  };
 
   // Sara is mentionable everywhere a human teammate is, even though she's
   // not a real team_members row — role shown as "AI" so she reads distinctly
@@ -3643,9 +3676,18 @@ function MentionInput({value, onChange, team, placeholder, rows}) {
         onChange={handleChange}
         placeholder={placeholder||"Add a comment… (type @ to mention)"}
         rows={rows||2}
-        style={{...inputSt,width:"100%",boxSizing:"border-box"}}
+        style={{...inputSt,width:"100%",boxSizing:"border-box",paddingRight:34}}
         onBlur={()=>setTimeout(()=>setShowDropdown(false),150)}
       />
+      <input ref={voiceInputRef} type="file" accept="audio/*" style={{display:"none"}}
+        onChange={e=>{handleVoiceFile(e.target.files?.[0]); e.target.value="";}}/>
+      <button type="button" onClick={()=>voiceInputRef.current?.click()} disabled={transcribing} title="Add a voice note" style={{
+        position:"absolute",right:6,bottom:6,width:24,height:24,borderRadius:"50%",border:"none",
+        background:"var(--surface2)",color:"var(--text3)",display:"flex",alignItems:"center",justifyContent:"center",
+        cursor:transcribing?"default":"pointer",
+      }}>
+        {transcribing?<Spinner size={11}/>:<Ico d={Icons.mic} size={13} stroke="currentColor"/>}
+      </button>
       {showDropdown && filtered.length > 0 && (
         <div style={{position:"absolute",left:0,background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:"var(--rs)",zIndex:200,minWidth:180,boxShadow:"0 4px 16px rgba(0,0,0,0.18)",
           ...(openUp ? {bottom:"100%",marginBottom:4} : {top:"100%",marginTop:4})}}>
@@ -4844,6 +4886,52 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
             })()}
 
             <p style={{fontSize:11,color:"var(--text3)"}}> Choose from your existing assets or upload a new file.</p>
+
+            {/* AI image generation — OpenAI gpt-image-1, via openai-proxy.php
+                (key stays server-side in config.php). Generates straight into
+                Design Assets, same shape as a manually-uploaded/picked file. */}
+            {(()=>{
+              const [genPrompt, setGenPrompt] = useState("");
+              const [generating, setGenerating] = useState(false);
+              const [genError, setGenError] = useState("");
+              const handleGenerate = async () => {
+                if(!genPrompt.trim()) return;
+                setGenerating(true); setGenError("");
+                try {
+                  const r = await fetch(OPENAI_ENDPOINT+"?mode=image", {
+                    method:"POST", headers:{"Content-Type":"application/json"},
+                    body: JSON.stringify({model:"gpt-image-1", prompt:genPrompt.trim(), size:"1024x1024", n:1}),
+                  });
+                  const d = await r.json();
+                  const b64 = d.data?.[0]?.b64_json;
+                  if(!r.ok || !b64) throw new Error(d.error?.message||d.error||"Image generation failed");
+                  const byteChars = atob(b64);
+                  const bytes = new Uint8Array(byteChars.length);
+                  for(let i=0;i<byteChars.length;i++) bytes[i] = byteChars.charCodeAt(i);
+                  const file = new File([bytes], `${renameForTask(post.title,"ai-generated.png","")}`, {type:"image/png"});
+                  const url = await uploadToStorage(file, monthProjectFolder(project?.title, project?.client_name));
+                  if(onAddAsset) onAddAsset({name:file.name, file_url:url, file_type:"image", category:monthProjectFolder(project?.title, project?.client_name), project_id:post.project_id, tags:["ai-generated"]}).catch(()=>{});
+                  const newAssets = [...(post.design_assets||[]), {name:file.name, type:"image", url, uploaded_at:new Date().toISOString()}];
+                  ue("Post", post.id, {design_assets: newAssets}).catch(()=>{});
+                  onStageChange({...post, design_assets:newAssets}, post.stage);
+                  setGenPrompt("");
+                } catch(e) { setGenError(e.message||"Image generation failed"); }
+                setGenerating(false);
+              };
+              return (
+                <div style={{display:"flex",flexDirection:"column",gap:6,paddingTop:8,borderTop:"1px solid var(--border)"}}>
+                  <p style={{fontSize:11,fontWeight:700,color:"var(--text2)"}}> Generate an image with AI</p>
+                  <div style={{display:"flex",gap:6}}>
+                    <input value={genPrompt} onChange={e=>setGenPrompt(e.target.value)} placeholder="Describe the image you want…" disabled={generating}
+                      style={{...inputSt,flex:1}} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();handleGenerate();}}}/>
+                    <Btn onClick={handleGenerate} disabled={generating||!genPrompt.trim()}>
+                      {generating?<Spinner size={13}/>:<Ico d={Icons.sparkles||Icons.chart} size={14}/>} {generating?"Generating…":"Generate"}
+                    </Btn>
+                  </div>
+                  {genError&&<p style={{fontSize:11,color:"#ef4444"}}>{genError}</p>}
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -22358,6 +22446,7 @@ function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfill
     {id:"claude-sonnet-4-6", name:"Claude Sonnet 4.6", tier:"Balanced", input:3.00, output:15.00, ctx:"1M"},
     {id:"claude-opus-4-8", name:"Claude Opus 4.8", tier:"Most capable", input:5.00, output:25.00, ctx:"1M"},
     {id:"claude-fable-5", name:"Claude Fable 5", tier:"Frontier", input:10.00, output:50.00, ctx:"1M"},
+    {id:"gpt-5.1", name:"GPT-5.1 (OpenAI)", tier:"OpenAI flagship", input:1.25, output:10.00, ctx:"400K"},
   ];
 
   const selectedModel = MODELS.find(m=>m.id===model) || MODELS[0];
