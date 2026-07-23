@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.460";
+const APP_VERSION = "beta 5.462";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1943,17 +1943,20 @@ Keywords: ${know?.keywords ? (typeof know.keywords==="string"?know.keywords:JSON
 Do's: ${know?.dos||""}
 Don'ts: ${know?.donts||intel?.donts||""}
 ${(()=>{
-  const raw = parseJ(know?.brand_colors);
-  const c = Array.isArray(raw) ? {primary:raw, secondary:[]} : (raw||{primary:[],secondary:[]});
+  const c = parseJ(know?.brand_colors) || {};
+  const primary = ["primary_1","primary_2"].map(k=>c[k]).filter(Boolean);
+  const secondary = ["secondary_1","secondary_2","secondary_3","secondary_4"].map(k=>c[k]).filter(Boolean);
   const lines = [];
-  lines.push((c.primary||[]).length ? `Primary Colors (HEX — use these exactly, never invent a palette): ${c.primary.join(", ")}` : "Primary Colors: not set — ask before assuming a palette.");
-  if((c.secondary||[]).length) lines.push(`Secondary Colors: ${c.secondary.join(", ")}`);
+  lines.push(primary.length ? `Primary Colors (HEX — use these exactly, never invent a palette): ${primary.join(", ")}` : "Primary Colors: not set — ask before assuming a palette.");
+  if(secondary.length) lines.push(`Secondary Colors: ${secondary.join(", ")}`);
   return lines.join("\n");
 })()}
 ${(()=>{
-  const logos = parseJ(know?.logos);
-  const list = Array.isArray(logos) && logos.length ? logos : (know?.logo_url ? [{label:"Primary Logo", url:know.logo_url}] : []);
-  return list.length ? `Logo variants available: ${list.map(l=>`${l.label} (${l.url})`).join("; ")}` : "Logo: not uploaded yet.";
+  const logos = parseJ(know?.logos) || {};
+  const slotLabels = {primary_logo:"Primary Logo", secondary_logo:"Secondary Logo", dark_logo:"Dark Mode Logo", light_logo:"Light Mode Logo", icon_logo:"Icon/Favicon", watermark_logo:"Watermark Logo"};
+  const list = Object.keys(slotLabels).filter(k=>logos[k]).map(k=>`${slotLabels[k]} (${logos[k].slice(0,60)}...)`);
+  if(!list.length && know?.logo_url) list.push(`Primary Logo (${know.logo_url})`);
+  return list.length ? `Logo variants available: ${list.join("; ")}` : "Logo: not uploaded yet.";
 })()}
 ${know?.visual_direction?`Visual Direction (follow this for any design/image work): ${know.visual_direction}`:"Visual Direction: not set."}
 ${know?.content_language?`Copy Language: ${know.content_language}`:""}
@@ -3682,8 +3685,8 @@ function StageTimeline({post, comments}) {
     .filter(c=>c.post_id===post.id && c.type==="stage_change")
     .sort((a,b)=>new Date(a.created_date)-new Date(b.created_date));
   const steps = [
-    {label:"Created", date:post.created_date},
-    ...moves.map(c=>({label:c.content?.replace(/^Moved to /,"")||"Stage change", date:c.created_date})),
+    {label:"Created", date:post.created_date||post.created_at},
+    ...moves.map(c=>({label:c.content?.replace(/^Moved to /,"")||"Stage change", date:c.created_date||c.created_at})),
   ];
   return (
     <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",flexWrap:"wrap",overflowX:"auto"}}>
@@ -3692,7 +3695,7 @@ function StageTimeline({post, comments}) {
           {i>0&&<Ico d={Icons.arrow} size={11} stroke="var(--text3)"/>}
           <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}>
             <span style={{fontSize:11,fontWeight:700,color:"var(--text2)",whiteSpace:"nowrap"}}>{s.label}</span>
-            <span style={{fontSize:9,color:"var(--text3)",whiteSpace:"nowrap"}}>{s.date?fmtDate(s.date):"—"}</span>
+            <span style={{fontSize:9,color:"var(--text3)",whiteSpace:"nowrap"}}>{s.date?fmtDateTime(s.date):"—"}</span>
           </div>
         </React.Fragment>
       ))}
@@ -13012,51 +13015,54 @@ No markdown, no explanation, just the JSON array.`;
 // ClientKnowledge record the rest of Client Brain uses (client_knowledge
 // table), and read by clientBrainBlock() so every agent call includes it
 // automatically — no separate lookup needed per feature.
+const CLIENT_BRAND_COLOR_SLOTS = [
+  {key:"primary_1", label:"Primary 1", group:"primary"},
+  {key:"primary_2", label:"Primary 2", group:"primary"},
+  {key:"secondary_1", label:"Secondary 1", group:"secondary"},
+  {key:"secondary_2", label:"Secondary 2", group:"secondary"},
+  {key:"secondary_3", label:"Secondary 3", group:"secondary"},
+  {key:"secondary_4", label:"Secondary 4", group:"secondary"},
+];
+const CLIENT_LOGO_SLOTS = [
+  {key:"primary_logo", label:"Primary Logo", desc:"Main logo used everywhere by default", required:true, size:"Recommended: PNG, transparent background, 1000×1000px+"},
+  {key:"secondary_logo", label:"Secondary Logo", desc:"Alternative layout or horizontal version", required:false, size:"Recommended: 300×80px"},
+  {key:"dark_logo", label:"Dark Mode Logo", desc:"Used on dark backgrounds", required:false, size:"White or light colored"},
+  {key:"light_logo", label:"Light Mode Logo", desc:"Used on light backgrounds", required:false, size:"Dark colored version"},
+  {key:"icon_logo", label:"Icon / Favicon", desc:"Small square icon version", required:false, size:"Recommended: 64×64px"},
+  {key:"watermark_logo", label:"Watermark Logo", desc:"Semi-transparent, for PDFs/overlays", required:false, size:"High contrast, simple"},
+];
+const CLIENT_BRAND_PRESET_COLORS = ["#d90b2c","#2563eb","#7c3aed","#059669","#d97706","#dc2626","#0891b2","#be185d","#111827","#0f172a"];
+
 function ClientBrandGuidelinesSubTab({client, knowledge, onSaveKnowledge}) {
-  // brand_colors used to be a flat array (single palette) — normalize old
-  // data into {primary:[...]} so existing saved colors aren't lost.
+  // brand_colors used to be {primary:[...],secondary:[...]} arrays — migrate
+  // old data into the new fixed-slot shape so nothing already saved is lost.
   const normalizeColors = (raw) => {
     const parsed = parseMaybeJson(raw, {});
-    if(Array.isArray(parsed)) return {primary:parsed, secondary:[]};
-    return {primary:parsed.primary||[], secondary:parsed.secondary||[]};
+    const out = {};
+    if(Array.isArray(parsed.primary)) { out.primary_1 = parsed.primary[0]||""; out.primary_2 = parsed.primary[1]||""; }
+    if(Array.isArray(parsed.secondary)) { out.secondary_1 = parsed.secondary[0]||""; out.secondary_2 = parsed.secondary[1]||""; out.secondary_3 = parsed.secondary[2]||""; out.secondary_4 = parsed.secondary[3]||""; }
+    CLIENT_BRAND_COLOR_SLOTS.forEach(s=>{ if(parsed[s.key]!==undefined) out[s.key] = parsed[s.key]; });
+    return out;
   };
-  // logos used to be a single logo_url string — seed the new multi-variant
-  // list from it so an already-uploaded logo isn't lost.
+  // logos used to be either a single logo_url string or an array of freeform
+  // {id,label,url} variants — migrate into the new fixed-slot object shape.
   const normalizeLogos = () => {
-    const list = parseMaybeJson(knowledge?.logos, null);
-    if(Array.isArray(list)) return list;
-    return knowledge?.logo_url ? [{id:uid(), label:"Primary Logo", url:knowledge.logo_url}] : [];
+    const parsed = parseMaybeJson(knowledge?.logos, null);
+    if(parsed && !Array.isArray(parsed)) return parsed;
+    const out = {};
+    if(Array.isArray(parsed)) parsed.forEach(l=>{ const slot = CLIENT_LOGO_SLOTS.find(s=>s.label===l.label); if(slot) out[slot.key] = l.url; });
+    if(!out.primary_logo && knowledge?.logo_url) out.primary_logo = knowledge.logo_url;
+    return out;
   };
   const [colors, setColors] = useState(normalizeColors(knowledge?.brand_colors));
-  const [colorInput, setColorInput] = useState({primary:"", secondary:""});
   const [logos, setLogos] = useState(normalizeLogos());
-  const [newLogoLabel, setNewLogoLabel] = useState("");
   const [visualDirection, setVisualDirection] = useState(knowledge?.visual_direction||"");
   const [contentLanguage, setContentLanguage] = useState(knowledge?.content_language||"");
-  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const addColor = (group) => {
-    const hex = (colorInput[group]||"").trim().replace(/^#?/, "#");
-    if(!/^#[0-9a-fA-F]{3,8}$/.test(hex)) return;
-    if(!colors[group].includes(hex)) setColors({...colors, [group]:[...colors[group], hex]});
-    setColorInput({...colorInput, [group]:""});
-  };
-  const removeColor = (group, hex) => setColors({...colors, [group]:colors[group].filter(c=>c!==hex)});
-
-  const handleLogoUpload = async (file) => {
-    if(!file) return;
-    setUploadingLogo(true);
-    try {
-      const url = await uploadToStorage(file, "client-logos");
-      setLogos([...logos, {id:uid(), label:newLogoLabel.trim()||`Variant ${logos.length+1}`, url}]);
-      setNewLogoLabel("");
-    }
-    catch(e) { alert("Logo upload failed: "+e.message); }
-    setUploadingLogo(false);
-  };
-  const removeLogo = (id) => setLogos(logos.filter(l=>l.id!==id));
+  const updColor = (key, hex) => setColors(p=>({...p, [key]:hex}));
+  const updLogo = (key, val) => setLogos(p=>({...p, [key]:val}));
 
   const handleSave = async () => {
     setSaving(true);
@@ -13064,65 +13070,55 @@ function ClientBrandGuidelinesSubTab({client, knowledge, onSaveKnowledge}) {
       ...(knowledge||{}), client_id:client.id, client_name:client.name,
       brand_colors: JSON.stringify(colors),
       logos: JSON.stringify(logos),
-      logo_url: logos[0]?.url||"", // kept in sync for any older code still reading the single field
+      logo_url: logos.primary_logo||"", // kept in sync for any older code still reading the single field
       visual_direction: visualDirection,
       content_language: contentLanguage,
     });
     setSaving(false); setSaved(true); setTimeout(()=>setSaved(false), 2500);
   };
 
-  const ColorGroup = ({group, label}) => (
-    <div>
-      <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:6}}>{label} (HEX) — can add more than one</label>
-      <div style={{display:"flex",gap:6,marginBottom:8}}>
-        <input value={colorInput[group]} onChange={e=>setColorInput({...colorInput,[group]:e.target.value})} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addColor(group);}}} placeholder="#1a1a2e" style={{...inputSt,flex:1}}/>
-        <Btn variant="secondary" onClick={()=>addColor(group)}>Add</Btn>
-      </div>
-      <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-        {colors[group].map(hex=>(
-          <div key={hex} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",borderRadius:99,border:"1px solid var(--border)",background:"var(--surface2)"}}>
-            <div style={{width:16,height:16,borderRadius:"50%",background:hex,border:"1px solid var(--border2)",flexShrink:0}}/>
-            <span style={{fontSize:12,fontWeight:600,fontFamily:"monospace"}}>{hex}</span>
-            <button onClick={()=>removeColor(group,hex)} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontWeight:700,fontSize:13,padding:0,lineHeight:1}}>×</button>
-          </div>
+  const ColorSlot = ({slotKey, label}) => (
+    <Field label={label}>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+        {CLIENT_BRAND_PRESET_COLORS.map(c=>(
+          <button key={c} onClick={()=>updColor(slotKey,c)} style={{width:24,height:24,borderRadius:"50%",background:c,border:`3px solid ${colors[slotKey]===c?"var(--text)":"transparent"}`,transition:"all 0.15s",transform:colors[slotKey]===c?"scale(1.2)":"scale(1)",cursor:"pointer"}}/>
         ))}
-        {colors[group].length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>No {label.toLowerCase()} colors saved yet.</p>}
       </div>
-    </div>
+      <div style={{display:"flex",alignItems:"center",gap:8}}>
+        <input type="color" value={colors[slotKey]||"#d90b2c"} onChange={e=>updColor(slotKey,e.target.value)} style={{width:36,height:36,borderRadius:8,border:"2px solid var(--border2)",cursor:"pointer",padding:2}}/>
+        <input value={colors[slotKey]||""} onChange={e=>updColor(slotKey,e.target.value)} placeholder="#d90b2c" style={{...inputSt,width:100,fontFamily:"monospace",fontSize:12}}/>
+      </div>
+    </Field>
   );
 
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:600}}>
+    <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:700}}>
       <div>
         <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:16}}>Brand Guidelines</h3>
         <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>The specifics Yahia (and Sara) need to design/write on-brand for {client.name} without guessing.</p>
       </div>
 
-      <ColorGroup group="primary" label="Primary Colors"/>
-      <ColorGroup group="secondary" label="Secondary Colors"/>
+      {/* Colors */}
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:22,display:"flex",flexDirection:"column",gap:14}}>
+        <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>Brand Colors</p>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(220px,100%),1fr))",gap:16}}>
+          {CLIENT_BRAND_COLOR_SLOTS.map(s=><ColorSlot key={s.key} slotKey={s.key} label={s.label}/>)}
+        </div>
+      </div>
 
-      <div>
-        <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:4}}>Logo Variants</label>
-        <p style={{fontSize:11,color:"var(--text3)",marginBottom:10}}>Upload as many as you have (light/dark background, icon-only, horizontal, etc). Preferred: <strong>PNG with a transparent background</strong>, at least <strong>1000×1000px</strong>, or SVG for a fully scalable vector version.</p>
-        {logos.length>0&&(
-          <div style={{display:"flex",flexWrap:"wrap",gap:10,marginBottom:10}}>
-            {logos.map(l=>(
-              <div key={l.id} style={{position:"relative",display:"flex",flexDirection:"column",alignItems:"center",gap:4,width:88}}>
-                <div style={{position:"relative"}}>
-                  <img src={l.url} alt={l.label} style={{width:72,height:72,objectFit:"contain",borderRadius:8,border:"1px solid var(--border)",background:"var(--surface2)",padding:4}}/>
-                  <button onClick={()=>removeLogo(l.id)} style={{position:"absolute",top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#ef4444",border:"none",color:"#fff",cursor:"pointer",fontSize:11,fontWeight:700,padding:0,lineHeight:"18px"}}>×</button>
-                </div>
-                <span style={{fontSize:10,color:"var(--text3)",textAlign:"center",wordBreak:"break-word"}}>{l.label}</span>
-              </div>
-            ))}
+      {/* Logos */}
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:22,display:"flex",flexDirection:"column",gap:18}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>Logo Versions</p>
+          <div style={{fontSize:11,color:"var(--text3)",display:"flex",alignItems:"center",gap:6}}>
+            <Ico d={Icons.shield} size={13} stroke="var(--text3)"/>
+            Stored securely as base64 · Admin only
           </div>
-        )}
-        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-          <input value={newLogoLabel} onChange={e=>setNewLogoLabel(e.target.value)} placeholder="Label (e.g. Dark Background, Icon Only)" style={{...inputSt,flex:1,minWidth:180}}/>
-          <input type="file" accept="image/*,.svg" id="brand-logo-upload" style={{display:"none"}} disabled={uploadingLogo} onChange={e=>{handleLogoUpload(e.target.files?.[0]); e.target.value="";}}/>
-          <label htmlFor="brand-logo-upload" style={{cursor:uploadingLogo?"default":"pointer",fontSize:12,fontWeight:700,color:"var(--accent)",padding:"9px 14px",borderRadius:8,border:"1px solid var(--accent)44",background:"var(--accentbg,var(--surface2))",whiteSpace:"nowrap"}}>
-            {uploadingLogo?<Spinner size={12}/>:"+ Add Logo Variant"}
-          </label>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(260px,100%),1fr))",gap:20}}>
+          {CLIENT_LOGO_SLOTS.map(slot=>(
+            <LogoUploader key={slot.key} logoKey={slot.key} label={slot.label} desc={slot.desc} size={slot.size} required={slot.required} value={logos[slot.key]} onChange={updLogo}/>
+          ))}
         </div>
       </div>
 
