@@ -317,8 +317,13 @@ const POST_TYPES = ["image","video","carousel","story","reel"];
 // TASK_TYPES below for the full non-social list). Includes both the raw
 // POST_TYPES shapes and the client-request TASK_TYPES ids that are
 // themselves social content (social_post, story_reel), plus "static" and
-// "campaign", both seen in real post_type data as social-content markers.
-const SOCIAL_POST_TYPES = new Set([...POST_TYPES, "social_post", "story_reel", "static", "campaign"]);
+// "campaign", both seen in real post_type data as social-content markers,
+// and "article"/"blog" — a LinkedIn article published to the platform is
+// still a social post, just long-form; CALENDAR_KIND_POST_TYPE maps the
+// Calendar Plan's "article" kind to post_type "blog" at creation time, so
+// both spellings need to count or the classification is inconsistent
+// depending on which code path created the post.
+const SOCIAL_POST_TYPES = new Set([...POST_TYPES, "social_post", "story_reel", "static", "campaign", "article", "blog"]);
 const PRIORITIES = ["low","medium","high","urgent"];
 
 const PLT_COLOR = { instagram:"#e1306c", facebook:"#1877f2", linkedin:"#0a66c2", tiktok:"#69c9d0", twitter:"#1da1f2" };
@@ -1188,7 +1193,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.440";
+const APP_VERSION = "beta 5.441";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
