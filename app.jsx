@@ -600,7 +600,7 @@ const SB_SCHEMA = {
   // and username both exist but were missing from this list, so they always
   // got stripped before the request went out (see
   // migration-client-username.sql for the added username column).
-  clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","account_manager_commissions","username","notes","logo_url","allowed_task_types","platform_credentials"],
+  clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","account_manager_commissions","username","notes","logo_url","allowed_task_types","platform_credentials","portal_features"],
   client_tasks: ["client_id","client_name","title","description","task_type","priority","stage","assigned_to","created_by","deliverable_note"],
   team_member_events: ["team_member_id","team_member_name","event_type","title","previous_value","new_value","amount","effective_date","notes","recorded_by"],
   // DEFAULT_NOTIF_PREFS (used to build every save payload) has a
@@ -1193,7 +1193,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.442";
+const APP_VERSION = "beta 5.443";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9380,7 +9380,7 @@ function ClientLoginsTab({client,onUpdateClient,canAdd=false,canEdit=false}) {
   );
 }
 
-function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,onAddCalendar,onAddTask,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient}) {
+function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,onAddCalendar,onAddTask,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient,integrationLogs=[],onAddIntegration,onUpdateIntegration,onDeleteIntegration,onRetryIntegration}) {
   const {isMobile} = useResponsive();
   // Plain state, not persisted — opening any client should always start on
   // Overview, not silently reopen to whatever tab was last viewed for them.
@@ -9605,7 +9605,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
       {tab==="brain"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           <div style={{display:"flex",gap:4,borderBottom:"1px solid var(--border)"}}>
-            {[["profile","Client Brain"],["contact_reports","Contact Reports"]].map(([k,l])=>(
+            {[["profile","Client Brain"],["contact_reports","Contact Reports"],...(isPriv?[["integrations","Integrations"],["features","Features"]]:[])].map(([k,l])=>(
               <button key={k} onClick={()=>setBrainSubTab(k)} style={{
                 padding:"8px 16px",fontSize:13,fontWeight:700,border:"none",background:"transparent",cursor:"pointer",
                 color:brainSubTab===k?"var(--accent)":"var(--text3)",
@@ -9666,6 +9666,13 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
                 </div>
               ))}
             </div>
+          )}
+          {brainSubTab==="integrations"&&(
+            <ClientIntegrationsSubTab client={client} integrations={integrations} integrationLogs={integrationLogs} currentUser={currentUser}
+              onAdd={onAddIntegration} onUpdate={onUpdateIntegration} onDelete={onDeleteIntegration} onRetry={onRetryIntegration}/>
+          )}
+          {brainSubTab==="features"&&(
+            <ClientFeaturesSubTab client={client} onUpdateClient={onUpdateClient}/>
           )}
         </div>
       )}
@@ -12848,6 +12855,138 @@ function ClientIntelligenceTab({client, intelligence, onSave, integrations=[]}) 
   );
 }
 
+// Every client-portal nav item that can be individually hidden per client
+// via the Features sub-tab. Dashboard is deliberately excluded — a client
+// portal with no landing page at all isn't a sane state to allow.
+const CLIENT_PORTAL_TOGGLEABLE_FEATURES = [
+  ["posts","Tasks"], ["inbox","Inbox"], ["insights","Insights"],
+  ["assets","Assets"], ["leads","Leads"], ["subscriptions","Subscriptions"],
+];
+
+// Client-scoped Integrations sub-tab (under a client's Settings tab) —
+// shows only this client's own integrations and lets staff connect a new
+// one for them, reusing the same IntegrationWizard as the global
+// Integrations page. Account managers can add but not edit/delete/retry —
+// only admins get the full management controls, per the same
+// isAdmin-vs-account_manager split used throughout the rest of the app.
+function ClientIntegrationsSubTab({client, integrations, integrationLogs, currentUser, onAdd, onUpdate, onDelete, onRetry}) {
+  const [showWizard, setShowWizard] = useState(false);
+  const [editIntegration, setEditIntegration] = useState(null);
+  const isAdmin = currentUser?.role==="admin";
+  const canAdd = isAdmin || currentUser?.role==="account_manager";
+  const clientIntegrations = (integrations||[]).filter(i=>i.client_id===client.id);
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div>
+          <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:16}}>Integrations</h3>
+          <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Apps connected specifically for {client.name}</p>
+        </div>
+        {canAdd&&<Btn onClick={()=>{setEditIntegration(null);setShowWizard(true);}}><Ico d={Icons.plus} size={14}/> New Integration</Btn>}
+      </div>
+
+      {clientIntegrations.length===0&&(
+        <div style={{padding:"40px 20px",textAlign:"center",background:"var(--surface2)",borderRadius:"var(--r)",border:"2px dashed var(--border)"}}>
+          <Ico d={Icons.plug} size={32} stroke="var(--text3)"/>
+          <p style={{marginTop:10,fontWeight:700,fontSize:14}}>No integrations for this client yet</p>
+          {canAdd&&<Btn onClick={()=>setShowWizard(true)} style={{margin:"14px auto 0",width:"fit-content"}}><Ico d={Icons.plus} size={13}/> Add Integration</Btn>}
+        </div>
+      )}
+
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {clientIntegrations.map(integ=>{
+          const app = APP_MAP[integ.app_key]||{icon:"",label:integ.app_key,color:"#6b7280"};
+          const st = STATUS_CONFIG[integ.status]||STATUS_CONFIG.inactive;
+          const logs = (integrationLogs||[]).filter(l=>l.integration_id===integ.id);
+          return (
+            <div key={integ.id} style={{background:"var(--surface)",border:`1px solid ${integ.status==="error"?"#ef444444":"var(--border)"}`,borderRadius:"var(--r)",padding:"14px 18px",display:"flex",alignItems:"center",gap:14}}>
+              <div style={{width:40,height:40,borderRadius:10,background:app.color+"22",border:`1.5px solid ${app.color}44`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                {app.icon&&(app.brand?<Ico d={app.icon} size={18} fill={app.color} stroke="none" fillRule="evenodd"/>:<Ico d={app.icon} size={18} stroke={app.color}/>)}
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <p style={{fontWeight:700,fontSize:13}}>{integ.name}</p>
+                  <div style={{padding:"2px 8px",borderRadius:99,background:st.bg,border:`1px solid ${st.color}44`,fontSize:10,fontWeight:700,color:st.color}}>{st.label}</div>
+                  {integ.error_count>0&&<div style={{padding:"2px 8px",borderRadius:99,background:"#ef444422",border:"1px solid #ef444444",fontSize:10,fontWeight:700,color:"#ef4444"}}>{integ.error_count} errors</div>}
+                </div>
+                <p style={{fontSize:11,color:"var(--text3)",marginTop:3}}>{app.label} · {integ.run_count||0} runs{integ.last_run_at?` · Last: ${fmtDate(integ.last_run_at)}`:""} · {logs.length} log{logs.length!==1?"s":""}</p>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                <button onClick={()=>onUpdate({...integ, status: integ.status==="active"?"inactive":"active"})} disabled={!isAdmin} style={{padding:"5px 12px",borderRadius:99,fontSize:11,fontWeight:700,border:"1px solid var(--border)",background:"var(--surface2)",color:"var(--text2)",cursor:isAdmin?"pointer":"not-allowed",opacity:isAdmin?1:0.5}}>
+                  {integ.status==="active"?"Disable":"Enable"}
+                </button>
+                {isAdmin&&(
+                  <>
+                    <button onClick={()=>{setEditIntegration(integ);setShowWizard(true);}} title="Edit" style={{width:30,height:30,borderRadius:8,border:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                      <Ico d={Icons.edit} size={13} stroke="var(--text2)"/>
+                    </button>
+                    {integ.status==="error"&&onRetry&&(
+                      <button onClick={()=>onRetry(integ)} title="Retry" style={{width:30,height:30,borderRadius:8,border:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                        <Ico d={Icons.refresh} size={13} stroke="var(--text2)"/>
+                      </button>
+                    )}
+                    <button onClick={()=>{ if(window.confirm(`Delete "${integ.name}"?`)) onDelete(integ.id); }} title="Delete" style={{width:30,height:30,borderRadius:8,border:"1px solid #ef444444",background:"#ef444411",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                      <Ico d={Icons.trash} size={13} stroke="#ef4444"/>
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {showWizard&&(
+        <IntegrationWizard
+          open
+          onClose={()=>{setShowWizard(false);setEditIntegration(null);}}
+          currentUser={currentUser}
+          clients={[client]}
+          existingIntegration={editIntegration}
+          onSave={async(d)=>{
+            const payload = {...d, client_id: client.id, client_name: client.name};
+            if(editIntegration) await onUpdate({...editIntegration,...payload});
+            else await onAdd(payload);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// Per-client Features sub-tab — switches controlling which client-portal
+// nav items are visible to this specific client, stored as a JSON object
+// on the client row (client.portal_features: {key: false} means hidden;
+// missing/true means shown — so existing clients with no value set default
+// to everything visible, no migration backfill needed).
+function ClientFeaturesSubTab({client, onUpdateClient}) {
+  const features = parseMaybeJson(client.portal_features, {});
+  const isEnabled = key => features[key] !== false;
+  const toggle = (key) => {
+    const next = {...features, [key]: !isEnabled(key)};
+    onUpdateClient(client.id, {portal_features: JSON.stringify(next)});
+  };
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      <div>
+        <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:16}}>Client Portal Features</h3>
+        <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Control which sections {client.name} can see in their own client portal.</p>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:2,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+        {CLIENT_PORTAL_TOGGLEABLE_FEATURES.map(([key,label],i)=>(
+          <div key={key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 18px",borderTop:i>0?"1px solid var(--border)":"none"}}>
+            <span style={{fontSize:13,fontWeight:600}}>{label}</span>
+            <button onClick={()=>toggle(key)} role="switch" aria-checked={isEnabled(key)} style={{width:42,height:24,borderRadius:99,border:"none",cursor:"pointer",background:isEnabled(key)?"var(--accent)":"var(--border2)",position:"relative",transition:"background 0.15s",flexShrink:0}}>
+              <span style={{position:"absolute",top:2,left:isEnabled(key)?20:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.15s",boxShadow:"0 1px 3px rgba(0,0,0,0.3)"}}/>
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════
 // CLIENT BRAIN TAB — consolidates Intelligence/Smart Intel/Memory/
 // Brand Training/Context File into one tab with sub-nav.
@@ -15549,6 +15688,11 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
   const cMessages = (messages||[]).filter(m=>m.client_id===client.id);
   const unreadCount = cMessages.filter(m=>m.direction==="in"&&m.draft_status!=="dismissed").length;
   const clientLeads = (leads||[]).filter(l=>l.client_id===client.id);
+  // Staff can hide any of these per-client from the client's Settings >
+  // Features sub-tab (client.portal_features, {key:false} = hidden).
+  // Dashboard is never hidden — see CLIENT_PORTAL_TOGGLEABLE_FEATURES.
+  const portalFeatures = parseMaybeJson(client.portal_features, {});
+  const featureEnabled = key => portalFeatures[key] !== false;
   const navItems = [
     {key:"dashboard", label:"Dashboard", mLabel:"Home"},
     {key:"posts", label:"Tasks", mLabel:"Tasks"},
@@ -15557,7 +15701,11 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
     {key:"assets", label:"Assets", mLabel:"Assets"},
     {key:"leads", label:`Leads${clientLeads.length?` (${clientLeads.length})`:""}`, mLabel:"Leads"},
     ...(clientSubs.length>0?[{key:"subscriptions",label:"Subscriptions",mLabel:"Billing"}]:[]),
-  ];
+  ].filter(item=>item.key==="dashboard"||featureEnabled(item.key));
+  // If staff disabled the feature the client currently has open (or had it
+  // open before this session started), bounce back to Dashboard rather
+  // than showing a page with no nav item pointing at it.
+  useEffect(()=>{ if(!navItems.some(n=>n.key===view)) setView("dashboard"); },[view, navItems.map(n=>n.key).join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Dashboard stats — client-scoped summary, no internal team/perf data
   const allCPosts = posts.filter(p=>cProjects.some(pr=>pr.id===p.project_id));
@@ -38146,6 +38294,11 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             <ClientDetailPage key={selectedClient.id} client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} onAddAsset={addAsset} currentUser={currentUser} onImpersonateClient={impersonateClient}
               contactReports={data.contactReports||[]}
               integrations={data.integrations||[]}
+              integrationLogs={data.integrationLogs||[]}
+              onAddIntegration={addIntegration}
+              onUpdateIntegration={updateIntegration}
+              onDeleteIntegration={deleteIntegration}
+              onRetryIntegration={retryIntegration}
               invoices={data.invoices||[]}
               leads={data.leads||[]}
               onBack={()=>{ try{ window.history.back(); }catch(e){ setSelectedClientId(null); } }} onPostClick={setSelectedPost}
