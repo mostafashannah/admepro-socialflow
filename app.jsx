@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.456";
+const APP_VERSION = "beta 5.457";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -5040,7 +5040,13 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
                   });
                   const d = await r.json();
                   const b64 = d.data?.[0]?.b64_json;
-                  if(!r.ok || !b64) throw new Error(d.error?.message||d.error||"Image generation failed");
+                  if(!r.ok || !b64) {
+                    // Surface OpenAI's real error text (whatever shape it
+                    // comes back in) instead of a flat generic message, so a
+                    // failure is actually diagnosable instead of a dead end.
+                    const raw = d.error?.message || (typeof d.error==="string" ? d.error : d.error ? JSON.stringify(d.error) : "") || d.message || JSON.stringify(d).slice(0,300);
+                    throw new Error(`Image generation failed (HTTP ${r.status}): ${raw||"no details returned"}`);
+                  }
                   // gpt-image-1 has no token usage to report — flat per-image
                   // estimate (1024x1024 standard quality) so it still shows up
                   // in the OpenAI Usage card instead of being invisible spend.
