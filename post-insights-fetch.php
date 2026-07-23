@@ -28,12 +28,17 @@ $pdo = new PDO(
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]
 );
 
-$stmt = $pdo->prepare("SELECT id, client_id, platform, stage, external_post_id FROM posts WHERE id = :id LIMIT 1");
+$stmt = $pdo->prepare("SELECT id, client_id, platform, stage, post_type, external_post_id FROM posts WHERE id = :id LIMIT 1");
 $stmt->execute([':id' => $post_id]);
 $post = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$post) { http_response_code(404); echo json_encode(["error"=>"Post not found"]); exit; }
-if ($post['stage'] !== 'published' || empty($post['external_post_id'])) {
-    http_response_code(400); echo json_encode(["error"=>"Post has no published external ID yet"]); exit;
+if ($post['stage'] !== 'published') {
+    http_response_code(400); echo json_encode(["error"=>"This post hasn't been published yet"]); exit;
+}
+if (empty($post['external_post_id'])) {
+    http_response_code(400);
+    echo json_encode(["error"=>"No external post ID was recorded for this post, so it can't be looked up on ".ucfirst($post['platform']).". This usually means it was published before insight-tracking was added, or was marked published outside the app's own Publish flow."]);
+    exit;
 }
 
 function graph_get($url, $params) {
@@ -90,20 +95,33 @@ if ($post['platform'] === 'tiktok') {
         }
     }
 } elseif ($post['platform'] === 'facebook') {
+    // Reels/videos are published to the /videos endpoint (meta_publish()),
+    // returning a Video node id — Video nodes don't have a 'shares' field
+    // and don't support the Post-only 'post_impressions_unique' insights
+    // metric, so a plain feed-post field/metric set 400s on them (and Graph
+    // API errors out the *entire* request, not just the bad field, which is
+    // why likes/comments came back null too even though those parts alone
+    // would have worked). Use Video-appropriate fields/metric instead.
+    $isVideo = in_array($post['post_type'], ['reel','video'], true);
+    $fields = $isVideo ? "likes.summary(true),comments.summary(true)" : "likes.summary(true),comments.summary(true),shares";
     [$code, $resp] = graph_get("https://graph.facebook.com/{$v}/{$postId}", [
-        "fields" => "likes.summary(true),comments.summary(true),shares",
-        "access_token" => $access_token,
+        "fields" => $fields, "access_token" => $access_token,
     ]);
     if ($code === 200) {
         $likes    = $resp['likes']['summary']['total_count'] ?? null;
         $comments = $resp['comments']['summary']['total_count'] ?? null;
-        $shares   = $resp['shares']['count'] ?? 0;
+        $shares   = $isVideo ? null : ($resp['shares']['count'] ?? 0);
+    } else {
+        $graphError = $resp['error']['message'] ?? null;
     }
+    $reachMetric = $isVideo ? "total_video_impressions_unique" : "post_impressions_unique";
     [$rcode, $rresp] = graph_get("https://graph.facebook.com/{$v}/{$postId}/insights", [
-        "metric" => "post_impressions_unique", "access_token" => $access_token,
+        "metric" => $reachMetric, "access_token" => $access_token,
     ]);
     if ($rcode === 200) {
         $reach = $rresp['data'][0]['values'][0]['value'] ?? null;
+    } elseif (empty($graphError)) {
+        $graphError = $rresp['error']['message'] ?? null;
     }
 } else {
     $ig_host = str_starts_with($access_token, 'IGAA') ? 'graph.instagram.com' : 'graph.facebook.com';
@@ -114,17 +132,23 @@ if ($post['platform'] === 'tiktok') {
     if ($code === 200) {
         $likes    = $resp['like_count'] ?? null;
         $comments = $resp['comments_count'] ?? null;
+    } else {
+        $graphError = $resp['error']['message'] ?? null;
     }
     [$rcode, $rresp] = graph_get("https://{$ig_host}/{$v}/{$postId}/insights", [
         "metric" => "reach", "access_token" => $access_token,
     ]);
     if ($rcode === 200) {
         $reach = $rresp['data'][0]['values'][0]['value'] ?? null;
+    } elseif (empty($graphError)) {
+        $graphError = $rresp['error']['message'] ?? null;
     }
 }
 
 if ($likes === null && $comments === null && $reach === null) {
-    http_response_code(502); echo json_encode(["error"=>"Platform returned no data — the post may be too new, deleted, or the token may have expired"]); exit;
+    http_response_code(502);
+    echo json_encode(["error"=>$graphError ? "Platform error: {$graphError}" : "Platform returned no data — the post may be too new, deleted, or the token may have expired"]);
+    exit;
 }
 
 $fetchedAt = date('c');
