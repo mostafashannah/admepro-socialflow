@@ -4,28 +4,31 @@
 -- appears to work (no visible error) but a hard refresh reverts everything:
 -- ue()/ce() never throw on a DB error, they just log an "Update Failed" /
 -- "Save Failed" row to Activity Log and silently keep the old optimistic
--- UI state until the next full reload from the server. Safe to re-run —
--- every column uses IF NOT EXISTS (MySQL 8.0.29+). Run once:
---   mysql -u socialflow_app -p socialflow < migration-client-intelligence-fields.sql
+-- UI state until the next full reload from the server.
+--
+-- This server's MySQL/MariaDB doesn't support "ADD COLUMN IF NOT EXISTS",
+-- so each column is its own statement — run with --force so a "Duplicate
+-- column name" error on any column that already exists is skipped instead
+-- of stopping the whole script:
+--   mysql -u socialflow_app -p --force socialflow < migration-client-intelligence-fields.sql
 
-ALTER TABLE client_intelligence
-  ADD COLUMN IF NOT EXISTS preferred_platforms TEXT,
-  ADD COLUMN IF NOT EXISTS best_posting_days TEXT,
-  ADD COLUMN IF NOT EXISTS avoid_weekends TINYINT(1) DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS posting_frequency INT DEFAULT 3,
-  ADD COLUMN IF NOT EXISTS instagram_best_time VARCHAR(10),
-  ADD COLUMN IF NOT EXISTS facebook_best_time VARCHAR(10),
-  ADD COLUMN IF NOT EXISTS tiktok_best_time VARCHAR(10),
-  ADD COLUMN IF NOT EXISTS linkedin_best_time VARCHAR(10),
-  ADD COLUMN IF NOT EXISTS instagram_time_mode VARCHAR(20) DEFAULT 'manual',
-  ADD COLUMN IF NOT EXISTS facebook_time_mode VARCHAR(20) DEFAULT 'manual',
-  ADD COLUMN IF NOT EXISTS tiktok_time_mode VARCHAR(20) DEFAULT 'manual',
-  ADD COLUMN IF NOT EXISTS linkedin_time_mode VARCHAR(20) DEFAULT 'manual',
-  ADD COLUMN IF NOT EXISTS active_hours VARCHAR(20) DEFAULT 'evening',
-  ADD COLUMN IF NOT EXISTS timezone VARCHAR(50) DEFAULT 'Africa/Cairo',
-  ADD COLUMN IF NOT EXISTS peak_engagement_days TEXT,
-  ADD COLUMN IF NOT EXISTS preferred_content_types TEXT,
-  ADD COLUMN IF NOT EXISTS preferred_pillars TEXT,
-  ADD COLUMN IF NOT EXISTS best_performing_type VARCHAR(30),
-  ADD COLUMN IF NOT EXISTS best_performing_day VARCHAR(20),
-  ADD COLUMN IF NOT EXISTS avg_engagement_rate DECIMAL(6,2);
+ALTER TABLE client_intelligence ADD COLUMN preferred_platforms TEXT;
+ALTER TABLE client_intelligence ADD COLUMN best_posting_days TEXT;
+ALTER TABLE client_intelligence ADD COLUMN avoid_weekends TINYINT(1) DEFAULT 0;
+ALTER TABLE client_intelligence ADD COLUMN posting_frequency INT DEFAULT 3;
+ALTER TABLE client_intelligence ADD COLUMN instagram_best_time VARCHAR(10);
+ALTER TABLE client_intelligence ADD COLUMN facebook_best_time VARCHAR(10);
+ALTER TABLE client_intelligence ADD COLUMN tiktok_best_time VARCHAR(10);
+ALTER TABLE client_intelligence ADD COLUMN linkedin_best_time VARCHAR(10);
+ALTER TABLE client_intelligence ADD COLUMN instagram_time_mode VARCHAR(20) DEFAULT 'manual';
+ALTER TABLE client_intelligence ADD COLUMN facebook_time_mode VARCHAR(20) DEFAULT 'manual';
+ALTER TABLE client_intelligence ADD COLUMN tiktok_time_mode VARCHAR(20) DEFAULT 'manual';
+ALTER TABLE client_intelligence ADD COLUMN linkedin_time_mode VARCHAR(20) DEFAULT 'manual';
+ALTER TABLE client_intelligence ADD COLUMN active_hours VARCHAR(20) DEFAULT 'evening';
+ALTER TABLE client_intelligence ADD COLUMN timezone VARCHAR(50) DEFAULT 'Africa/Cairo';
+ALTER TABLE client_intelligence ADD COLUMN peak_engagement_days TEXT;
+ALTER TABLE client_intelligence ADD COLUMN preferred_content_types TEXT;
+ALTER TABLE client_intelligence ADD COLUMN preferred_pillars TEXT;
+ALTER TABLE client_intelligence ADD COLUMN best_performing_type VARCHAR(30);
+ALTER TABLE client_intelligence ADD COLUMN best_performing_day VARCHAR(20);
+ALTER TABLE client_intelligence ADD COLUMN avg_engagement_rate DECIMAL(6,2);
