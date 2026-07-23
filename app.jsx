@@ -1193,7 +1193,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.446";
+const APP_VERSION = "beta 5.447";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -12791,8 +12791,9 @@ function ClientIntelligenceTab({client, intelligence, onSave, integrations=[], p
 
   const handleSave = async () => {
     setSaving(true);
-    await onSave(client, form);
-    setSaving(false); setSaved(true);
+    const ok = await onSave(client, form);
+    setSaving(false);
+    if(ok!==false) setSaved(true); // treat undefined (older callers) as success, only explicit false as failure
   };
 
   const days = ["saturday","sunday","monday","tuesday","wednesday","thursday","friday"];
@@ -36059,16 +36060,22 @@ function App() {
     const payload = {...formData, client_id:client.id, client_name:client.name, updated_at:new Date().toISOString()};
     if(existing?.id) {
       setData(d=>({...d,clientIntelligence:d.clientIntelligence.map(i=>i.client_id===client.id?{...i,...payload}:i)}));
-      ue("ClientIntelligence",existing.id,payload).catch(()=>{});
+      // ue() never throws — it resolves null on a real DB error (e.g. a
+      // missing column) and logs the detail to Activity Log, so the
+      // optimistic UI update above would otherwise look "saved" until the
+      // next full reload silently reverts it. Await and check for that.
+      const result = await ue("ClientIntelligence",existing.id,payload);
+      if(!result) { setToast(`Couldn't save — check Activity Log for the error (Settings → System Log)`); return false; }
     } else {
       const local = {...payload, id:uid(), created_at:new Date().toISOString()};
       setData(d=>({...d,clientIntelligence:[local,...(d.clientIntelligence||[])]}));
-      ce("ClientIntelligence",[payload]).then(res=>{
-        const real=res.entities?.[0];
-        if(real?.id) setData(d=>({...d,clientIntelligence:d.clientIntelligence.map(i=>i.id===local.id?{...i,...real}:i)}));
-      }).catch(()=>{});
+      const res = await ce("ClientIntelligence",[payload]);
+      const real = res.entities?.[0];
+      if(!real?.id || real._saveError) { setToast(`Couldn't save — check Activity Log for the error (Settings → System Log)`); return false; }
+      setData(d=>({...d,clientIntelligence:d.clientIntelligence.map(i=>i.id===local.id?{...i,...real}:i)}));
     }
     setToast(`Intelligence saved for ${client.name}`);
+    return true;
   };
 
   // Minimal, synchronous-return project creation — used when a task is being
