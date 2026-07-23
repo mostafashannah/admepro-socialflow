@@ -1180,7 +1180,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.433";
+const APP_VERSION = "beta 5.434";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -4439,7 +4439,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   const [activityTab, setActivityTab] = useState("internal"); // "internal" | "client" | "insights"
   const [insightsRefreshing, setInsightsRefreshing] = useState(false);
   const [insightsError, setInsightsError] = useState("");
-  const canShowInsights = post.stage==="published" && !!post.external_post_id;
+  const canShowInsights = post.stage==="published" && ["facebook","instagram","tiktok"].includes(post.platform);
   const handleRefreshInsights = async () => {
     setInsightsRefreshing(true); setInsightsError("");
     try {
@@ -5001,13 +5001,19 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                   <div style={{fontSize:11,color:"var(--text3)",textTransform:"uppercase",letterSpacing:".05em"}}>Reach</div>
                 </div>
               </div>
-              {post.insight_fetched_at
-                ? <p style={{fontSize:11,color:"var(--text3)",textAlign:"center"}}>Last updated {fmtDateTime(post.insight_fetched_at)}</p>
-                : <p style={{fontSize:12,color:"var(--text3)",textAlign:"center"}}>No data fetched yet — this refreshes automatically once a day, or click Refresh now.</p>}
+              {!post.external_post_id ? (
+                <p style={{fontSize:12,color:"var(--text3)",textAlign:"center"}}>This post has no recorded {post.platform} ID, so its live stats can't be looked up — it was likely published before insight-tracking was added, or marked published outside the app's own Publish flow.</p>
+              ) : post.insight_fetched_at ? (
+                <p style={{fontSize:11,color:"var(--text3)",textAlign:"center"}}>Last updated {fmtDateTime(post.insight_fetched_at)}</p>
+              ) : (
+                <p style={{fontSize:12,color:"var(--text3)",textAlign:"center"}}>No data fetched yet — this refreshes automatically once a day, or click Refresh now.</p>
+              )}
               {insightsError&&<p style={{fontSize:12,color:"#ef4444",textAlign:"center"}}>{insightsError}</p>}
-              <Btn onClick={handleRefreshInsights} disabled={insightsRefreshing} variant="secondary">
-                {insightsRefreshing?<Spinner size={13}/>:<Ico d={Icons.refresh} size={14}/>} {insightsRefreshing?"Refreshing…":"Refresh Now"}
-              </Btn>
+              {post.external_post_id&&(
+                <Btn onClick={handleRefreshInsights} disabled={insightsRefreshing} variant="secondary">
+                  {insightsRefreshing?<Spinner size={13}/>:<Ico d={Icons.refresh} size={14}/>} {insightsRefreshing?"Refreshing…":"Refresh Now"}
+                </Btn>
+              )}
             </div>
           ) : activityTab==="internal" ? (
             <>

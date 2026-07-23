@@ -40,7 +40,7 @@ $v = defined('META_GRAPH_VERSION') ? META_GRAPH_VERSION : 'v23.0';
 $since = date('Y-m-d H:i:s', strtotime('-30 days'));
 
 $posts = $pdo->prepare(
-    "SELECT id, client_id, platform, external_post_id FROM posts
+    "SELECT id, client_id, platform, post_type, external_post_id FROM posts
      WHERE stage = 'published' AND external_post_id IS NOT NULL AND external_post_id <> ''
        AND (published_at IS NULL OR published_at >= :since)"
 );
@@ -93,27 +93,39 @@ foreach ($rows as $post) {
         }
         [$code, $resp] = tiktok_video_insights($access_token, $postId);
         if ($code === 200) {
-            $v = $resp['data']['videos'][0] ?? null;
-            if ($v) {
-                $likes    = $v['like_count'] ?? null;
-                $comments = $v['comment_count'] ?? null;
-                $shares   = $v['share_count'] ?? null;
-                $reach    = $v['view_count'] ?? null;
+            // Named $tkVideo, not $v — $v is the Graph API version string
+            // used by every Facebook/Instagram post in this same loop;
+            // reusing $v here clobbered it for every FB/IG post processed
+            // afterward in the same run, producing malformed Graph URLs.
+            $tkVideo = $resp['data']['videos'][0] ?? null;
+            if ($tkVideo) {
+                $likes    = $tkVideo['like_count'] ?? null;
+                $comments = $tkVideo['comment_count'] ?? null;
+                $shares   = $tkVideo['share_count'] ?? null;
+                $reach    = $tkVideo['view_count'] ?? null;
             }
         }
     } elseif ($post['platform'] === 'facebook') {
+        // Reels/videos publish to the /videos endpoint (meta_publish()) and
+        // return a Video node id — Video nodes have no 'shares' field and
+        // don't support the Post-only 'post_impressions_unique' metric, so
+        // requesting them 400s the *whole* field/metric request (not just
+        // the unsupported part), which is why likes/comments came back
+        // empty too even though those alone would have worked.
+        $isVideo = in_array($post['post_type'], ['reel','video'], true);
+        $fields = $isVideo ? "likes.summary(true),comments.summary(true)" : "likes.summary(true),comments.summary(true),shares";
         [$code, $resp] = graph_get("https://graph.facebook.com/{$v}/{$postId}", [
-            "fields" => "likes.summary(true),comments.summary(true),shares",
-            "access_token" => $access_token,
+            "fields" => $fields, "access_token" => $access_token,
         ]);
         if ($code === 200) {
             $likes    = $resp['likes']['summary']['total_count'] ?? null;
             $comments = $resp['comments']['summary']['total_count'] ?? null;
-            $shares   = $resp['shares']['count'] ?? 0;
+            $shares   = $isVideo ? null : ($resp['shares']['count'] ?? 0);
         }
         // Post-level reach needs the Insights endpoint separately.
+        $reachMetric = $isVideo ? "total_video_impressions_unique" : "post_impressions_unique";
         [$rcode, $rresp] = graph_get("https://graph.facebook.com/{$v}/{$postId}/insights", [
-            "metric" => "post_impressions_unique", "access_token" => $access_token,
+            "metric" => $reachMetric, "access_token" => $access_token,
         ]);
         if ($rcode === 200) {
             $reach = $rresp['data'][0]['values'][0]['value'] ?? null;
