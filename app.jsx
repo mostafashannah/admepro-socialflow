@@ -1193,7 +1193,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.443";
+const APP_VERSION = "beta 5.444";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9416,8 +9416,8 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
     ["tasks","Tasks"],
     ["calendar","Calendar"],
     ...(isPriv?[["insights","Insights"]]:[]),
-    ["assets","Assets"],
     ...(isPriv?[["community",`Community${cMessagesNeedReplyCount?` (${cMessagesNeedReplyCount})`:""}`]]:[]),
+    ["assets","Assets"],
     ...(isPriv?[["brain","Settings"]]:[]),
   ];
 
