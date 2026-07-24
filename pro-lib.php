@@ -1223,14 +1223,32 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
                 if ($recipients) {
                     $typeLabel = ($input['meeting_type'] ?? '') === 'call' ? 'Call' : 'Meeting';
                     $attendeesLine = implode(', ', array_map(fn($a) => trim(($a['name'] ?? '') . (!empty($a['title']) ? ' (' . $a['title'] . ')' : '')), $attendees));
-                    $body = '<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px">'
-                        . '<h2 style="margin:0 0 4px;color:#111827">' . htmlspecialchars($typeLabel) . ' Report — ' . htmlspecialchars($clientName) . '</h2>'
-                        . '<p style="margin:0 0 16px;font-size:12px;color:#6b7280">' . date('j F Y, g:i A') . ($senderName ? ' &middot; Logged by ' . htmlspecialchars($senderName) : '') . '</p>'
-                        . ($attendeesLine ? '<p style="margin:0 0 16px;font-size:13px"><strong>Attendees:</strong> ' . htmlspecialchars($attendeesLine) . '</p>' : '')
-                        . (!empty($input['summary']) ? '<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#374151">' . nl2br(htmlspecialchars($input['summary'])) . '</p>' : '')
-                        . (!empty($input['key_points']) ? '<p style="margin:0 0 4px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase">Key Points</p><p style="margin:0 0 16px;font-size:13px;line-height:1.6">' . nl2br(htmlspecialchars($input['key_points'])) . '</p>' : '')
-                        . (!empty($input['action_items']) ? '<p style="margin:0 0 4px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase">Action Items</p><p style="margin:0 0 16px;font-size:13px;line-height:1.6">' . nl2br(htmlspecialchars($input['action_items'])) . '</p>' : '')
-                        . '</div>';
+                    $locLabel = trim((($input['location_type'] ?? '') === 'online' ? 'Online' : (($input['location_type'] ?? '') === 'physical' ? 'In-person' : '')) . (!empty($input['location']) ? ' — ' . $input['location'] : ''));
+                    $section = fn($label, $value) => $value
+                        ? '<p style="margin:16px 0 4px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em">' . $label . '</p><p style="margin:0;font-size:14px;line-height:1.7;color:#374151;white-space:pre-wrap">' . htmlspecialchars($value) . '</p>'
+                        : '';
+                    // Same rounded-card template as generateContactReportHTML() in
+                    // app.jsx / applicationReceivedEmail() — one visual family for
+                    // every system email regardless of which side sends it.
+                    $body = '<!DOCTYPE html><html><head><meta charset="UTF-8"/></head>'
+                        . '<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',sans-serif">'
+                        . '<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px"><tr><td align="center">'
+                        . '<table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb">'
+                        . '<tr><td style="padding:32px 36px 0"><img src="https://admepro.com/wp-content/uploads/2024/10/adme-p2.png" alt="Admepro" style="height:28px;width:auto"/></td></tr>'
+                        . '<tr><td style="padding:24px 36px 36px">'
+                        . '<p style="margin:0 0 8px;font-size:11px;font-weight:700;color:#d90b2c;text-transform:uppercase;letter-spacing:0.08em">' . htmlspecialchars($typeLabel) . ' Report</p>'
+                        . '<h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">' . htmlspecialchars($clientName) . '</h2>'
+                        . '<p style="margin:0 0 16px;font-size:13px;color:#6b7280">' . date('j F Y, g:i A') . ($locLabel ? ' &middot; ' . htmlspecialchars($locLabel) : '') . ($senderName ? ' &middot; Logged by ' . htmlspecialchars($senderName) : '') . '</p>'
+                        . ($attendeesLine ? '<p style="margin:0 0 4px;font-size:14px;line-height:1.6;color:#374151"><strong>Attendees:</strong> ' . htmlspecialchars($attendeesLine) . '</p>' : '')
+                        . $section('Summary', $input['summary'] ?? '')
+                        . $section('Key Points', $input['key_points'] ?? '')
+                        . $section('Action Items', $input['action_items'] ?? '')
+                        . '<table width="100%" style="border-top:1px solid #e5e7eb;margin-top:28px;padding-top:20px"><tr><td>'
+                        . '<p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro</p>'
+                        . '<p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>'
+                        . '<p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>'
+                        . '</td></tr></table>'
+                        . '</td></tr></table></td></tr></table></body></html>';
                     foreach ($recipients as $to) { sendProEmail($to, "{$typeLabel} Report — {$clientName}", $body); }
                 }
             }
