@@ -74,6 +74,25 @@ function saveReceiptImage(string $bytes, string $mimeType): ?string {
     return STORAGE_PUBLIC_URL . '/finance-docs/' . $path;
 }
 
+// Saves the raw voice-note bytes (not just its transcript) so a contact
+// report saved from it can link back to the original recording.
+function saveVoiceRecording(string $bytes, string $mimeType): ?string {
+    if (!defined('STORAGE_ROOT') || !defined('STORAGE_PUBLIC_URL')) return null;
+    $ext = ['audio/ogg' => 'ogg', 'audio/opus' => 'opus', 'audio/mpeg' => 'mp3', 'audio/mp4' => 'm4a', 'audio/amr' => 'amr'][$mimeType] ?? 'ogg';
+    $path = 'wa-voice-notes/' . date('Y/m') . '/' . bin2hex(random_bytes(8)) . '.' . $ext;
+    $dest = STORAGE_ROOT . '/socialflow-media/' . $path;
+    $dir = dirname($dest);
+    if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
+        error_log("[saveVoiceRecording] mkdir failed for {$dir}");
+        return null;
+    }
+    if (file_put_contents($dest, $bytes) === false) {
+        error_log("[saveVoiceRecording] file_put_contents failed writing to {$dest}");
+        return null;
+    }
+    return STORAGE_PUBLIC_URL . '/socialflow-media/' . $path;
+}
+
 // Transcribes audio bytes via OpenAI's Whisper endpoint. Requires
 // OPENAI_API_KEY in config.php — returns null (not an error) if that's not
 // configured, so the caller can tell the user voice notes aren't set up yet
@@ -603,6 +622,18 @@ function hrTools() {
                     'action_items'  => ['type' => 'string', 'description' => 'Bullet-style follow-up actions, one per line — empty if none'],
                 ],
                 'required' => ['summary'],
+            ],
+        ],
+        [
+            'name' => 'list_contact_reports',
+            'description' => 'Look up previously saved contact reports (client meetings/calls). Use this whenever asked for "today\'s contact reports", a client\'s meeting history, or anything similar — you DO have access, never say you don\'t.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'when' => ['type' => 'string', 'enum' => ['today', 'this_week', 'all'], 'description' => 'Time filter — defaults to "today" if not specified'],
+                    'client_name' => ['type' => 'string', 'description' => 'Optional — filter to one client, best-effort match'],
+                ],
+                'required' => [],
             ],
         ],
     ];
@@ -1139,7 +1170,7 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
             $c->execute([':n' => '%' . $clientName . '%']);
             if ($row = $c->fetch(PDO::FETCH_ASSOC)) { $clientId = $row['id']; $clientName = $row['name']; }
         }
-        $ins = $pdo->prepare("INSERT INTO contact_reports (id, client_id, client_name, created_by_id, created_by_name, transcript, summary, key_points, action_items, channel, meeting_type, location_type, location, attendees) VALUES (:id, :cid, :cname, :bid, :bname, :transcript, :summary, :points, :actions, 'whatsapp', :mtype, :ltype, :loc, :attendees)");
+        $ins = $pdo->prepare("INSERT INTO contact_reports (id, client_id, client_name, created_by_id, created_by_name, transcript, summary, key_points, action_items, channel, meeting_type, location_type, location, attendees, voice_recording_url) VALUES (:id, :cid, :cname, :bid, :bname, :transcript, :summary, :points, :actions, 'whatsapp', :mtype, :ltype, :loc, :attendees, :voice_url)");
         $reportId = generateProUuid();
         $ins->execute([
             ':id' => $reportId, ':cid' => $clientId, ':cname' => $clientName,
@@ -1148,6 +1179,7 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
             ':summary' => $input['summary'] ?? '', ':points' => $input['key_points'] ?? null, ':actions' => $input['action_items'] ?? null,
             ':mtype' => $input['meeting_type'] ?? null, ':ltype' => $input['location_type'] ?? null,
             ':loc' => $input['location'] ?? null, ':attendees' => $input['attendees'] ?? null,
+            ':voice_url' => $input['_voice_recording_url'] ?? null,
         ]);
         // Feed straight into the client's memory too, so Sara/Yahia/Pro see
         // it automatically in every future prompt (clientBrainBlock's
@@ -1167,6 +1199,24 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
         return ['ok' => true, 'message' => 'Contact report saved' . ($clientName ? " for {$clientName}" : '') . '.'];
     }
 
+    if ($name === 'list_contact_reports') {
+        $when = $input['when'] ?? 'today';
+        $sql = "SELECT client_name, created_by_name, created_at, meeting_type, location_type, location, attendees, summary, key_points, action_items FROM contact_reports WHERE 1=1";
+        $params = [];
+        if ($when === 'today') { $sql .= " AND DATE(created_at) = CURDATE()"; }
+        elseif ($when === 'this_week') { $sql .= " AND created_at >= (NOW() - INTERVAL 7 DAY)"; }
+        if (!empty($input['client_name'])) { $sql .= " AND client_name LIKE :cn"; $params[':cn'] = '%' . $input['client_name'] . '%'; }
+        $sql .= " ORDER BY created_at DESC LIMIT 30";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (!$rows) return ['ok' => true, 'count' => 0, 'message' => 'No contact reports found for that filter.'];
+        return ['ok' => true, 'count' => count($rows), 'reports' => array_map(function($r) {
+            $r['attendees'] = json_decode($r['attendees'] ?? '[]', true) ?: [];
+            return $r;
+        }, $rows)];
+    }
+
     return ['error' => 'Unknown tool: ' . $name];
 }
 
@@ -1179,7 +1229,7 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
     // user. Confirmed in production: a WhatsApp voice-note contact report
     // got a confident "Saved ✅" reply while the tool call itself returned
     // "Unknown tool: save_contact_report" the whole time.
-    if (in_array($name, ['request_time_off', 'decide_pending_request', 'get_my_hr_info', 'message_team_member', 'save_contact_report'], true)) {
+    if (in_array($name, ['request_time_off', 'decide_pending_request', 'get_my_hr_info', 'message_team_member', 'save_contact_report', 'list_contact_reports'], true)) {
         return runHrTool($pdo, $name, $input, $senderId, $senderName);
     }
     if (in_array($name, ['find_client', 'get_finance_summary', 'search_transactions', 'add_transaction', 'edit_transaction', 'delete_transaction'], true)) {
@@ -1305,7 +1355,7 @@ function saveProMessage(PDO $pdo, string $phone, string $role, string $content) 
     }
 }
 
-function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $senderId = null, $voiceTranscript = null, $fromPhone = null, $imageBase64 = null, $imageMime = null) {
+function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $senderId = null, $voiceTranscript = null, $fromPhone = null, $imageBase64 = null, $imageMime = null, $voiceRecordingUrl = null) {
     $isTeam       = $senderName && str_starts_with((string)$senderRole, 'team:');
     $isAdmin      = $senderRole === 'team:admin';
     $isAM         = $senderRole === 'team:account_manager';
@@ -1584,7 +1634,10 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
         foreach ($content as $block) {
             if (($block['type'] ?? '') !== 'tool_use') continue;
             $toolInput = (array)($block['input'] ?? []);
-            if ($block['name'] === 'save_contact_report' && $voiceTranscript) $toolInput['_raw_transcript'] = $voiceTranscript;
+            if ($block['name'] === 'save_contact_report' && $voiceTranscript) {
+                $toolInput['_raw_transcript'] = $voiceTranscript;
+                if ($voiceRecordingUrl) $toolInput['_voice_recording_url'] = $voiceRecordingUrl;
+            }
             $result = runProTool($pdo, $block['name'], $toolInput, (string)$senderRole, $senderId, $senderName, $fromPhone);
             if (in_array($block['name'], ['add_transaction', 'edit_transaction', 'delete_transaction'], true)) {
                 $lastMutationResult = $result;
