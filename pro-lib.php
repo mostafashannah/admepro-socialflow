@@ -786,7 +786,7 @@ function runRecruitmentTool(PDO $pdo, string $name, array $input, string $sender
         $status = $input['status'] ?? '';
         $valid = ['new', 'reviewing', 'shortlisted', 'interview', 'offer', 'hired', 'rejected', 'rejected_after_offer'];
         if (!in_array($status, $valid, true)) return ['error' => 'Invalid status.'];
-        $pdo->prepare("UPDATE job_applications SET status = :s WHERE id = :id")->execute([':s' => $status, ':id' => $a['id']]);
+        $pdo->prepare("UPDATE job_applications SET status = :s, status_updated_at = NOW() WHERE id = :id")->execute([':s' => $status, ':id' => $a['id']]);
         $log = $pdo->prepare("INSERT INTO job_application_activity (id, application_id, action, actor_name) VALUES (UUID(), :aid, :action, :actor)");
         $log->execute([':aid' => $a['id'], ':action' => "Moved to " . ucfirst(str_replace('_', ' ', $status)) . " (via WhatsApp)", ':actor' => $senderName]);
         return ['ok' => true, 'message' => "{$a['candidate_name']}'s application moved to {$status}."];
@@ -856,7 +856,7 @@ function runRecruitmentTool(PDO $pdo, string $name, array $input, string $sender
             . proEmailBtn($pickUrl, 'Pick a Time');
         $sent = send_recruitment_email($pdo, $a['candidate_email'], 'Pick an interview time — ' . ($a['job_title'] ?: 'Admepro'), proEmailBase($body), 'Admepro Careers');
         if (!$sent) return ['error' => 'Email send failed — check the mail server configuration.'];
-        $pdo->prepare("UPDATE job_applications SET status = 'interview' WHERE id = :id")->execute([':id' => $a['id']]);
+        $pdo->prepare("UPDATE job_applications SET status = 'interview', status_updated_at = NOW() WHERE id = :id")->execute([':id' => $a['id']]);
         $log = $pdo->prepare("INSERT INTO job_application_activity (id, application_id, action, actor_name) VALUES (UUID(), :aid, :action, :actor)");
         $log->execute([':aid' => $a['id'], ':action' => 'Interview time options sent (via WhatsApp)', ':actor' => $senderName]);
         return ['ok' => true, 'message' => "Interview invite with " . count($slots) . " time option(s) sent to {$a['candidate_name']}."];
