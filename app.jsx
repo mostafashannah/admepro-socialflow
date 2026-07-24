@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.471";
+const APP_VERSION = "beta 5.472";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -18929,7 +18929,10 @@ function generateQuotePDF(quote, items, branding) {
     </tr>`;
   }).join("");
 
-  const logoHTML = buildLogoHTML(branding);
+  // Same fixed Admepro logo used across the branded email family (contact
+  // reports, recruitment emails) rather than the configurable Settings ->
+  // Branding logo, so every outward-facing document looks consistent.
+  const logoHTML = `<img src="${ADMEPRO_LOGO_BLACK}" alt="${appName}" style="height:30px;width:auto"/>`;
   const watermarkCSS = buildWatermarkStyle(branding);
 
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
@@ -26864,6 +26867,32 @@ function hexToRgb(hex) {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex||"");
   return m ? [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16)] : [217,11,44];
 }
+// Loads a (same- or cross-origin) image as a data URL + its natural
+// dimensions, for embedding into a jsPDF doc via addImage — which needs
+// actual pixel data, not just a URL. Best-effort: returns null on any
+// failure (CORS, network, etc.) so callers can fall back to a text-only
+// header instead of breaking PDF generation entirely.
+async function loadImageForPdf(url) {
+  try {
+    const res = await fetch(url, {mode:"cors"});
+    if (!res.ok) throw new Error("fetch failed");
+    const blob = await res.blob();
+    const dataUrl = await new Promise((resolve,reject)=>{
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+    const dims = await new Promise((resolve)=>{
+      const img = new Image();
+      img.onload = () => resolve({w:img.naturalWidth, h:img.naturalHeight});
+      img.onerror = () => resolve(null);
+      img.src = dataUrl;
+    });
+    if (!dims || !dims.w || !dims.h) return null;
+    return {dataUrl, ...dims};
+  } catch(e) { return null; }
+}
 async function downloadContactReportPDF(report, clientName, branding) {
   const jsPDFCtor = window.jspdf?.jsPDF;
   if (!jsPDFCtor) { alert("PDF library failed to load — please refresh and try again."); return; }
@@ -26876,6 +26905,7 @@ async function downloadContactReportPDF(report, clientName, branding) {
     const when = report.created_at ? new Date(report.created_at).toLocaleString("en-GB",{day:"numeric",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
     const [ar,ag,ab] = hexToRgb(branding?.primary_color||"#d90b2c");
     const appName = branding?.app_name || "Admepro";
+    const logo = await loadImageForPdf(ADMEPRO_LOGO_BLACK);
 
     const doc = new jsPDFCtor({unit:"pt", format:"a4"});
     const marginX = 48, pageWidth = doc.internal.pageSize.getWidth(), pageHeight = doc.internal.pageSize.getHeight();
@@ -26889,11 +26919,16 @@ async function downloadContactReportPDF(report, clientName, branding) {
       for (const line of lines) { ensureRoom(lh); doc.text(line, marginX, y); y += lh; }
     };
 
-    // Header — same label → title → meta hierarchy as the branded email
+    // Header — same logo + label → title → meta hierarchy as the branded email
     doc.setFillColor(ar,ag,ab);
     doc.rect(0, 0, pageWidth, 6, "F");
+    if (logo) {
+      const logoH = 22, logoW = logoH * (logo.w/logo.h);
+      doc.addImage(logo.dataUrl, "PNG", marginX, y-16, logoW, logoH);
+      y += 10;
+    }
     doc.setFont("Helvetica","bold"); doc.setFontSize(9); doc.setTextColor(ar,ag,ab);
-    doc.text(`${appName.toUpperCase()}  ·  ${typeLabel.toUpperCase()} REPORT`, marginX, y); y += 22;
+    doc.text(`${typeLabel.toUpperCase()} REPORT`, marginX, y); y += 22;
     doc.setFont("Helvetica","bold"); doc.setFontSize(20); doc.setTextColor(17,24,39);
     doc.text(clientName, marginX, y); y += 20;
     doc.setFont("Helvetica","normal"); doc.setFontSize(10); doc.setTextColor(107,114,128);
