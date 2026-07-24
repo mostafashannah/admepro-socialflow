@@ -1164,11 +1164,11 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
     }
 
     if ($name === 'save_contact_report') {
-        $clientId = null; $clientName = $input['client_name'] ?? null;
+        $clientId = null; $clientName = $input['client_name'] ?? null; $clientEmail = null;
         if ($clientName) {
-            $c = $pdo->prepare("SELECT id, name FROM clients WHERE name LIKE :n LIMIT 1");
+            $c = $pdo->prepare("SELECT id, name, email FROM clients WHERE name LIKE :n LIMIT 1");
             $c->execute([':n' => '%' . $clientName . '%']);
-            if ($row = $c->fetch(PDO::FETCH_ASSOC)) { $clientId = $row['id']; $clientName = $row['name']; }
+            if ($row = $c->fetch(PDO::FETCH_ASSOC)) { $clientId = $row['id']; $clientName = $row['name']; $clientEmail = $row['email'] ?? null; }
         }
         $ins = $pdo->prepare("INSERT INTO contact_reports (id, client_id, client_name, created_by_id, created_by_name, transcript, summary, key_points, action_items, channel, meeting_type, location_type, location, attendees, voice_recording_url) VALUES (:id, :cid, :cname, :bid, :bname, :transcript, :summary, :points, :actions, 'whatsapp', :mtype, :ltype, :loc, :attendees, :voice_url)");
         $reportId = generateProUuid();
@@ -1194,6 +1194,45 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
             if ($memValue !== '') {
                 $mem = $pdo->prepare("INSERT INTO client_memory (id, client_id, client_name, `key`, value, type) VALUES (UUID(), :cid, :cname, :k, :v, 'contact_report')");
                 $mem->execute([':cid' => $clientId, ':cname' => $clientName, ':k' => 'contact_report_' . $reportId, ':v' => $memValue]);
+            }
+        }
+        // Auto-email on submit — the same per-client switch set from the
+        // Contact Reports tab in the app (client_knowledge.contact_report_
+        // auto_email). Mirrors resolveContactReportRecipients() in app.jsx:
+        // an attendee's own email if given, else matched by name against
+        // team_members, else the client's own contact email.
+        if ($clientId) {
+            $autoRow = $pdo->prepare("SELECT contact_report_auto_email FROM client_knowledge WHERE client_id = :cid LIMIT 1");
+            $autoRow->execute([':cid' => $clientId]);
+            if ((int) $autoRow->fetchColumn() === 1) {
+                $attendees = json_decode($input['attendees'] ?? '[]', true) ?: [];
+                $recipients = $clientEmail ? [$clientEmail] : [];
+                foreach ($attendees as $a) {
+                    $email = trim($a['email'] ?? '');
+                    if (!$email) {
+                        $aName = trim($a['name'] ?? '');
+                        if ($aName) {
+                            $tm = $pdo->prepare("SELECT email FROM team_members WHERE name LIKE :n LIMIT 1");
+                            $tm->execute([':n' => '%' . $aName . '%']);
+                            $email = $tm->fetchColumn() ?: '';
+                        }
+                    }
+                    if ($email) $recipients[] = $email;
+                }
+                $recipients = array_values(array_unique(array_filter($recipients)));
+                if ($recipients) {
+                    $typeLabel = ($input['meeting_type'] ?? '') === 'call' ? 'Call' : 'Meeting';
+                    $attendeesLine = implode(', ', array_map(fn($a) => trim(($a['name'] ?? '') . (!empty($a['title']) ? ' (' . $a['title'] . ')' : '')), $attendees));
+                    $body = '<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px">'
+                        . '<h2 style="margin:0 0 4px;color:#111827">' . htmlspecialchars($typeLabel) . ' Report — ' . htmlspecialchars($clientName) . '</h2>'
+                        . '<p style="margin:0 0 16px;font-size:12px;color:#6b7280">' . date('j F Y, g:i A') . ($senderName ? ' &middot; Logged by ' . htmlspecialchars($senderName) : '') . '</p>'
+                        . ($attendeesLine ? '<p style="margin:0 0 16px;font-size:13px"><strong>Attendees:</strong> ' . htmlspecialchars($attendeesLine) . '</p>' : '')
+                        . (!empty($input['summary']) ? '<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#374151">' . nl2br(htmlspecialchars($input['summary'])) . '</p>' : '')
+                        . (!empty($input['key_points']) ? '<p style="margin:0 0 4px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase">Key Points</p><p style="margin:0 0 16px;font-size:13px;line-height:1.6">' . nl2br(htmlspecialchars($input['key_points'])) . '</p>' : '')
+                        . (!empty($input['action_items']) ? '<p style="margin:0 0 4px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase">Action Items</p><p style="margin:0 0 16px;font-size:13px;line-height:1.6">' . nl2br(htmlspecialchars($input['action_items'])) . '</p>' : '')
+                        . '</div>';
+                    foreach ($recipients as $to) { sendProEmail($to, "{$typeLabel} Report — {$clientName}", $body); }
+                }
             }
         }
         return ['ok' => true, 'message' => 'Contact report saved' . ($clientName ? " for {$clientName}" : '') . '.'];
