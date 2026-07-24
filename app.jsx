@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.473";
+const APP_VERSION = "beta 5.474";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19039,6 +19039,8 @@ function QuoteFormModal({open,onClose,clients,existingQuotes,editQuote,onSave,cu
   const [saving,setSaving] = useState(false);
   const [preview,setPreview] = useState(false);
   const [previewHTML,setPreviewHTML] = useState("");
+  const [sendingQuote,setSendingQuote] = useState(false);
+  const [quoteSent,setQuoteSent] = useState(false);
 
   useEffect(()=>{ if(open&&!isEdit) setF({...blank,quote_number:autoQuoteNum(existingQuotes)}); },[open]);
 
@@ -19072,6 +19074,21 @@ function QuoteFormModal({open,onClose,clients,existingQuotes,editQuote,onSave,cu
     onClose();
   };
 
+  // Emails the quote directly (full branded document as the email body,
+  // same as the Contact Report send flow) — also saves it first if it
+  // hasn't been saved yet, so a sent quote is never missing from the list.
+  const handleSendQuoteEmail = async () => {
+    if(!f.client_email?.trim()) { alert("Add a client email first."); return; }
+    setSendingQuote(true);
+    const payload = {...f,items:JSON.stringify(f.items),subtotal:calc.subtotal,total:calc.total};
+    await onSave(payload);
+    const html = generateQuotePDF({...f,subtotal:calc.subtotal,total:calc.total},f.items,brandingAssets);
+    const ok = await sendEmail(f.client_email.trim(), `Quote ${f.quote_number||""} — ${f.title||"Service Quotation"}`.trim(), html, brandingAssets?.app_name||"Admepro");
+    setSendingQuote(false);
+    if(ok) { setQuoteSent(true); setTimeout(()=>{ setQuoteSent(false); onClose(); },1500); }
+    else alert("Failed to send — check mail settings.");
+  };
+
   if(!open) return null;
 
   if(preview) return (
@@ -19086,6 +19103,9 @@ function QuoteFormModal({open,onClose,clients,existingQuotes,editQuote,onSave,cu
             <Ico d={Icons.download} size={14}/> Download
           </Btn>
           <Btn variant="secondary" size="sm" onClick={()=>setPreview(false)}>← Edit</Btn>
+          <Btn size="sm" onClick={handleSendQuoteEmail} disabled={sendingQuote||quoteSent}>
+            {quoteSent?"✓ Sent":sendingQuote?<><Spinner size={12}/> Sending…</>:"Send to Client by Email"}
+          </Btn>
           <Btn size="sm" onClick={handleSave} disabled={saving}>
             {saving?<><Spinner size={12}/> Saving…</>:"Save Quote"}
           </Btn>
@@ -19106,7 +19126,7 @@ function QuoteFormModal({open,onClose,clients,existingQuotes,editQuote,onSave,cu
         </div>
       </div>
       <div style={{flex:1,overflowY:"auto",padding:"24px",display:"flex",justifyContent:"center"}}>
-      <div style={{display:"flex",flexDirection:"column",gap:20,width:"100%",maxWidth:780}}>
+      <div style={{display:"flex",flexDirection:"column",gap:20,width:"100%",maxWidth:780,margin:"auto 0"}}>
 
         {/* CLIENT INFO */}
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -19123,6 +19143,9 @@ function QuoteFormModal({open,onClose,clients,existingQuotes,editQuote,onSave,cu
             </Field>
             <Field label="Phone">
               <input value={f.client_phone} onChange={e=>s("client_phone",e.target.value)} placeholder="+20 100 000 0000" style={inputSt}/>
+            </Field>
+            <Field label="Client Email">
+              <input type="email" value={f.client_email} onChange={e=>s("client_email",e.target.value)} placeholder="client@example.com" style={inputSt}/>
             </Field>
           </div>
         </div>
