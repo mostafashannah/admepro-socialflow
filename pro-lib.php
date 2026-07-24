@@ -1150,7 +1150,15 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
 }
 
 function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '', ?string $senderId = null, ?string $senderName = null, ?string $fromPhone = null) {
-    if (in_array($name, ['request_time_off', 'decide_pending_request', 'get_my_hr_info'], true)) {
+    // message_team_member and save_contact_report are implemented inside
+    // runHrTool() (organizational leftover, not actually HR-specific) but
+    // were missing from this routing list — every real call to either one
+    // fell through to this function's own "Unknown tool" fallback below,
+    // silently no-opping regardless of what the model said back to the
+    // user. Confirmed in production: a WhatsApp voice-note contact report
+    // got a confident "Saved ✅" reply while the tool call itself returned
+    // "Unknown tool: save_contact_report" the whole time.
+    if (in_array($name, ['request_time_off', 'decide_pending_request', 'get_my_hr_info', 'message_team_member', 'save_contact_report'], true)) {
         return runHrTool($pdo, $name, $input, $senderId, $senderName);
     }
     if (in_array($name, ['find_client', 'get_finance_summary', 'search_transactions', 'add_transaction', 'edit_transaction', 'delete_transaction'], true)) {
