@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.466";
+const APP_VERSION = "beta 5.467";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9762,7 +9762,7 @@ function ClientLoginsTab({client,onUpdateClient,canAdd=false,canEdit=false}) {
   );
 }
 
-function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,onAddCalendar,onAddTask,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],onSaveContactReport,leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient,integrationLogs=[],onAddIntegration,onUpdateIntegration,onDeleteIntegration,onRetryIntegration}) {
+function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,onAddCalendar,onAddTask,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],onSaveContactReport,leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient,integrationLogs=[],onAddIntegration,onUpdateIntegration,onDeleteIntegration,onRetryIntegration,brandingAssets}) {
   const {isMobile} = useResponsive();
   // Plain state, not persisted — opening any client should always start on
   // Overview, not silently reopen to whatever tab was last viewed for them.
@@ -10024,7 +10024,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
             <ClientBrandGuidelinesSubTab client={client} knowledge={knowledge} onSaveKnowledge={onSaveKnowledge}/>
           )}
           {brainSubTab==="contact_reports"&&(
-            <ContactReportsSubTab client={client} contactReports={contactReports} onSaveContactReport={onSaveContactReport}/>
+            <ContactReportsSubTab client={client} contactReports={contactReports} onSaveContactReport={onSaveContactReport} brandingAssets={brandingAssets}/>
           )}
           {brainSubTab==="integrations"&&(
             <ClientIntegrationsSubTab client={client} integrations={integrations} integrationLogs={integrationLogs} currentUser={currentUser}
@@ -26806,40 +26806,55 @@ async function downloadInvoicePDF(inv, payments, branding) {
   }
 }
 
-// ── Contact Report → HTML/PDF/Email ──
-function generateContactReportHTML(report, clientName) {
+// ── Contact Report → HTML/PDF/Email (Admepro-branded, matches invoice look) ──
+function generateContactReportHTML(report, clientName, branding) {
   const attendees = parseMaybeJson(report.attendees, []);
   const typeLabel = report.meeting_type==="call" ? "Call" : report.meeting_type==="meeting" ? "Meeting" : "Contact";
   const locLabel = report.meeting_type==="meeting"
-    ? (report.location_type==="online" ? "Online" : report.location_type==="physical" ? "In-person" : "") + (report.location?` — ${report.location}`:"")
+    ? [report.location_type==="online"?"Online":report.location_type==="physical"?"In-person":null, report.location].filter(Boolean).join(" — ")
     : (report.location||"");
   const when = report.created_at ? new Date(report.created_at).toLocaleString("en-GB",{day:"numeric",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
   const esc = s => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   const lines = s => esc(s).split("\n").filter(Boolean).map(l=>`<li>${l.replace(/^[-•]\s*/,"")}</li>`).join("");
+  const accent = branding?.primary_color || "#d90b2c";
+  const appName = branding?.app_name || "Admepro";
+  const tagline = branding?.agency_tagline || "Social Media Agency";
+  const logoHTML = buildLogoHTML(branding, "light");
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-    body{font-family:Arial,Helvetica,sans-serif;color:#222;margin:0}
-    .page{max-width:720px;margin:0 auto;padding:36px}
-    h1{font-size:20px;margin:0 0 4px}
-    .meta{font-size:12px;color:#777;margin-bottom:20px}
+    *{box-sizing:border-box}
+    body{font-family:Arial,Helvetica,sans-serif;color:#222;margin:0;background:#fff}
+    .page{width:794px;margin:0 auto;padding:48px;background:#fff}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px;padding-bottom:20px;border-bottom:3px solid ${accent}}
+    .header-right{text-align:right}
+    .header-right .type{font-size:11px;font-weight:700;color:${accent};text-transform:uppercase;letter-spacing:0.08em}
+    h1{font-size:20px;margin:6px 0 4px;color:#111}
+    .meta{font-size:12px;color:#777;margin-bottom:24px}
     .section{margin-bottom:18px}
-    .label{font-size:11px;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px}
+    .label{font-size:11px;font-weight:700;color:${accent};text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px}
     .box{background:#f7f7f8;border-radius:8px;padding:14px 16px;font-size:13px;line-height:1.7}
     ul{margin:0;padding-left:18px;font-size:13px;line-height:1.8}
     .attendees{display:flex;flex-wrap:wrap;gap:8px}
-    .attendee{background:#eef0f3;border-radius:20px;padding:5px 12px;font-size:12px}
-    .footer{margin-top:32px;font-size:10px;color:#bbb;border-top:1px solid #eee;padding-top:12px}
+    .attendee{background:#f7f7f8;border:1px solid #eee;border-radius:20px;padding:5px 12px;font-size:12px}
+    .footer{margin-top:36px;font-size:10px;color:#bbb;border-top:1px solid #eee;padding-top:14px}
   </style></head><body><div class="page">
-    <h1>${typeLabel} Report — ${esc(clientName)}</h1>
+    <div class="header">
+      ${logoHTML}
+      <div class="header-right">
+        <div class="type">${typeLabel} Report</div>
+        <h1>${esc(clientName)}</h1>
+        <div style="font-size:11px;color:#999">${tagline}</div>
+      </div>
+    </div>
     <div class="meta">${when}${locLabel?` · ${esc(locLabel)}`:""} · Logged by ${esc(report.created_by_name||"")}</div>
     ${attendees.length?`<div class="section"><div class="label">Attendees</div><div class="attendees">${attendees.map(a=>`<span class="attendee">${esc(a.name)}${a.title?` — ${esc(a.title)}`:""}</span>`).join("")}</div></div>`:""}
     ${report.summary?`<div class="section"><div class="label">Summary</div><div class="box">${esc(report.summary)}</div></div>`:""}
     ${report.key_points?`<div class="section"><div class="label">Key Points</div><ul>${lines(report.key_points)}</ul></div>`:""}
     ${report.action_items?`<div class="section"><div class="label">Action Items</div><ul>${lines(report.action_items)}</ul></div>`:""}
-    <div class="footer">Generated ${new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}</div>
+    <div class="footer">${appName} · Generated ${new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}</div>
   </div></body></html>`;
 }
-async function downloadContactReportPDF(report, clientName) {
-  const html = generateContactReportHTML(report, clientName);
+async function downloadContactReportPDF(report, clientName, branding) {
+  const html = generateContactReportHTML(report, clientName, branding);
   const parsed = (new DOMParser()).parseFromString(html, "text/html");
   const pageEl = parsed.querySelector(".page");
   const styleText = parsed.querySelector("style")?.textContent || "";
@@ -26848,7 +26863,11 @@ async function downloadContactReportPDF(report, clientName) {
   styleEl.textContent = styleText;
   document.head.appendChild(styleEl);
   const wrapper = document.createElement("div");
-  wrapper.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:794px;background:#fff;";
+  // Near-zero opacity within the actual viewport (not a large negative
+  // offset) — some browsers/html2canvas versions render a blank canvas for
+  // elements positioned far outside the viewport bounds, which is what
+  // caused the empty PDF this replaces.
+  wrapper.style.cssText = "position:fixed;top:0;left:0;width:794px;background:#fff;opacity:0.01;pointer-events:none;z-index:-1;";
   if (pageEl) wrapper.appendChild(pageEl);
   document.body.appendChild(wrapper);
   try {
@@ -26856,9 +26875,11 @@ async function downloadContactReportPDF(report, clientName) {
       margin: 0,
       filename: `Contact Report - ${clientName} - ${(report.created_at||"").slice(0,10)}.pdf`,
       image: { type: "jpeg", quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, logging: false },
+      html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: "#ffffff" },
       jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
     }).from(wrapper).save();
+  } catch(e) {
+    alert("PDF generation failed: " + (e?.message||e));
   } finally {
     document.body.removeChild(wrapper);
     const s = document.getElementById("__cr_pdf_style");
@@ -26866,7 +26887,7 @@ async function downloadContactReportPDF(report, clientName) {
   }
 }
 
-function ContactReportsSubTab({client, contactReports=[], onSaveContactReport}) {
+function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, brandingAssets}) {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [emailingId, setEmailingId] = useState(null);
@@ -26885,9 +26906,9 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport}) 
     const to = emailTo.split(",").map(s=>s.trim()).filter(Boolean);
     if(!to.length) { alert("Enter at least one recipient email."); return; }
     setSendingEmail(true);
-    const html = generateContactReportHTML(r, client.name);
+    const html = generateContactReportHTML(r, client.name, brandingAssets);
     const typeLabel = r.meeting_type==="call"?"Call":"Meeting";
-    const ok = await sendEmail(to, `${typeLabel} Report — ${client.name}`, html);
+    const ok = await sendEmail(to, `${typeLabel} Report — ${client.name}`, html, brandingAssets?.app_name||"Admepro");
     setSendingEmail(false);
     if(ok) { setEmailSentId(r.id); setEmailingId(null); } else { alert("Failed to send — check mail settings."); }
   };
@@ -26923,7 +26944,7 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport}) 
               </div>
               <div style={{display:"flex",gap:6}}>
                 <button onClick={()=>{setEditing(r);setShowModal(true);}} title="Edit" style={{padding:"5px 10px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>Edit</button>
-                <button onClick={()=>downloadContactReportPDF(r, client.name)} title="Download PDF" style={{padding:"5px 10px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>PDF</button>
+                <button onClick={()=>downloadContactReportPDF(r, client.name, brandingAssets)} title="Download PDF" style={{padding:"5px 10px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>PDF</button>
                 <button onClick={()=>startEmail(r)} title="Send by Email" style={{padding:"5px 10px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>Email</button>
               </div>
             </div>
@@ -39569,6 +39590,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             <ClientDetailPage key={selectedClient.id} client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} onAddAsset={addAsset} currentUser={currentUser} onImpersonateClient={impersonateClient}
               contactReports={data.contactReports||[]}
               onSaveContactReport={saveContactReport}
+              brandingAssets={brandingAssets}
               integrations={data.integrations||[]}
               integrationLogs={data.integrationLogs||[]}
               onAddIntegration={addIntegration}
