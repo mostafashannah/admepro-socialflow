@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.477";
+const APP_VERSION = "beta 5.478";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -18856,7 +18856,19 @@ const autoQuoteNum = (existing=[]) => {
   return `QT-${year}-${String(next).padStart(3,"0")}`;
 };
 
-const parseItems = (s) => { try { return JSON.parse(s||"[]"); } catch(e) { return []; } };
+// api.php's castRow() auto-decodes any TEXT column whose value looks like
+// JSON (starts with [ or {) before it ever reaches the browser — so
+// quote/invoice `items` frequently arrives as an already-parsed array, not
+// the JSON string this used to assume. JSON.parse() on a non-string value
+// coerces it via String() first ("[object Object],[object Object]"), which
+// isn't valid JSON, so the old version silently swallowed that into [] —
+// which is exactly why item tables were rendering empty everywhere despite
+// the underlying data (and the separately-stored subtotal/total) being
+// completely fine.
+const parseItems = (s) => {
+  if (Array.isArray(s)) return s;
+  try { return JSON.parse(s||"[]"); } catch(e) { return []; }
+};
 
 const calcQuote = (items,discVal,discType,taxRate) => {
   const subtotal = items.reduce((a,it)=>a+(parseFloat(it.qty||0)*parseFloat(it.unit_price||0)),0);
@@ -19043,7 +19055,7 @@ async function downloadQuotePDF(quote, items, branding) {
     // Header — wordmark left, quote # right
     wordmark(marginX, y, 26);
     doc.setFont("Helvetica","bold"); doc.setFontSize(20); doc.setTextColor(20,20,20);
-    doc.text(`Quotation #${(quote.quote_number||"").replace(/\D/g,"")||quote.quote_number||""}`, pageWidth-marginX, y-6, {align:"right"});
+    doc.text(`Quotation ${quote.quote_number||""}`, pageWidth-marginX, y-6, {align:"right"});
     y += 34;
 
     // Date/Valid-Until (left) + company contact (right)
@@ -19261,7 +19273,7 @@ function QuoteFormModal({open,onClose,clients,existingQuotes,editQuote,onSave,cu
           </Btn>
         </div>
       </div>
-      <iframe srcDoc={previewHTML} style={{flex:1,border:"none",background:"#fff"}} title="Quote Preview"/>
+      <iframe srcDoc={previewHTML} style={{flex:1,minHeight:0,border:"none",background:"#fff"}} title="Quote Preview"/>
     </div>
   );
 
@@ -19447,8 +19459,8 @@ function QuotesPage({quotes,clients,currentUser,onAdd,onEdit,onDuplicate,onDelet
     return true;
   });
 
-  const totalValue = filtered.reduce((a,q)=>a+(q.total||0),0);
-  const approvedValue = filtered.filter(q=>q.status==="approved").reduce((a,q)=>a+(q.total||0),0);
+  const totalValue = filtered.reduce((a,q)=>a+(Number(q.total)||0),0);
+  const approvedValue = filtered.filter(q=>q.status==="approved").reduce((a,q)=>a+(Number(q.total)||0),0);
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
@@ -19458,9 +19470,9 @@ function QuotesPage({quotes,clients,currentUser,onAdd,onEdit,onDuplicate,onDelet
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Quotes</h2>
           <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>{quotes.length} quotations · {fmtMoney(approvedValue,"USD")} approved</p>
         </div>
-        {canEdit&&<Btn onClick={()=>{setEditQuote(null);setShowForm(true);}}>
-          <Ico d={Icons.plus} size={15}/> Create Quote
-        </Btn>}
+        {canEdit&&<button onClick={()=>{setEditQuote(null);setShowForm(true);}} aria-label="Create Quote" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
+          <Ico d={Icons.plus} size={15} stroke="#fff"/>
+        </button>}
         {isAccountant&&<div style={{padding:"8px 14px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",fontSize:12,color:"var(--text3)"}}> View Only</div>}
       </div>
 
@@ -19470,7 +19482,7 @@ function QuotesPage({quotes,clients,currentUser,onAdd,onEdit,onDuplicate,onDelet
           {label:"Total Quotes",val:quotes.length,color:"#3b82f6"},
           {label:"Approved",val:quotes.filter(q=>q.status==="approved").length,color:"#10b981"},
           {label:"Pending",val:quotes.filter(q=>q.status==="sent").length,color:"#f59e0b"},
-          {label:"Total Value",val:fmtMoney(quotes.reduce((a,q)=>a+(q.total||0),0),"USD"),color:"#d90b2c"},
+          {label:"Total Value",val:fmtMoney(quotes.reduce((a,q)=>a+(Number(q.total)||0),0),"USD"),color:"#d90b2c"},
         ].map(s=>(
           <div key={s.label} style={{padding:"16px 20px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)"}}>
             <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>{s.label}</p>
@@ -19566,7 +19578,7 @@ function QuotesPage({quotes,clients,currentUser,onAdd,onEdit,onDuplicate,onDelet
               <Btn variant="secondary" size="sm" onClick={()=>setPreviewQ(null)}><Ico d={Icons.x} size={14}/> Close</Btn>
             </div>
           </div>
-          <iframe srcDoc={generateQuotePDF(previewQ,parseItems(previewQ.items),brandingAssets)} style={{flex:1,border:"none",background:"#fff"}} title="Quote PDF"/>
+          <iframe srcDoc={generateQuotePDF(previewQ,parseItems(previewQ.items),brandingAssets)} style={{flex:1,minHeight:0,border:"none",background:"#fff"}} title="Quote PDF"/>
         </div>
       )}
 
