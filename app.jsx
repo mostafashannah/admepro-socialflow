@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.464";
+const APP_VERSION = "beta 5.465";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22795,7 +22795,66 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 
       {/* ── STORAGE TAB ── */}
       {settingsTab==="storage"&&(
-        <StorageSettingsPanel appSettings={appSettings} onSaveSettings={onSaveSettings} currentUser={currentUser}/>
+        <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:800}}>
+          <StorageSettingsPanel appSettings={appSettings} onSaveSettings={onSaveSettings} currentUser={currentUser}/>
+
+          <div style={{padding:16,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
+            <div style={{fontSize:14,fontWeight:700}}>Max Upload Size</div>
+            <div style={{fontSize:12,color:"var(--text3)",marginTop:2,marginBottom:10}}>
+              Caps file size for uploads across the app (assets, reels, designs, CVs, etc.) so people get an
+              instant, clear error instead of the upload silently hanging or failing partway. This only ever
+              narrows what the server already allows — it can't raise your server's own nginx/PHP upload
+              limits, which have to be changed on the server itself.
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <input type="number" min={1} max={2000} value={flags.max_upload_mb||DEFAULT_MAX_UPLOAD_MB}
+                onChange={e=>setFlags(p=>({...p,max_upload_mb:Math.max(1,parseInt(e.target.value)||DEFAULT_MAX_UPLOAD_MB)}))}
+                style={{width:90,padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text1)",fontSize:13}}/>
+              <span style={{fontSize:13,color:"var(--text2)"}}>MB</span>
+              <button onClick={async()=>{ await onSaveSettings({feature_flags:flags}); setFlagsSaved(true); setTimeout(()=>setFlagsSaved(false),2000); }}
+                style={{padding:"7px 14px",borderRadius:8,background:"var(--accent)",color:"#fff",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                Save
+              </button>
+              {flagsSaved&&<span style={{fontSize:12,color:"#10b981",fontWeight:600}}>✓ Saved</span>}
+            </div>
+          </div>
+
+          {onRemoveDuplicateAssets&&(
+            <div style={{padding:16,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
+              <div style={{fontSize:14,fontWeight:700}}>Remove Duplicate Assets</div>
+              <div style={{fontSize:12,color:"var(--text3)",marginTop:2,marginBottom:10}}>
+                Finds assets with the same name (case/whitespace-insensitive) and the same folder — usually
+                the same file uploaded more than once — and removes every copy except the earliest one. This
+                only deletes the library record; the underlying uploaded file is left on the server either way.
+              </div>
+              {!confirmingDupRemove ? (
+                <button onClick={()=>{ setDupCount((onFindDuplicateAssets?.()||[]).length); setConfirmingDupRemove(true); setDupRemoveResult(null); }}
+                  style={{padding:"7px 14px",borderRadius:8,background:"var(--surface)",color:"var(--text1)",border:"1px solid var(--border2)",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                  Scan for Duplicates
+                </button>
+              ) : dupCount===0 ? (
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:13,color:"var(--text2)"}}>No duplicates found.</span>
+                  <button onClick={()=>setConfirmingDupRemove(false)} style={{padding:"6px 12px",borderRadius:8,background:"var(--surface)",color:"var(--text2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>OK</button>
+                </div>
+              ) : (
+                <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                  <span style={{fontSize:13,color:"var(--text2)"}}>Found <strong>{dupCount}</strong> duplicate file{dupCount===1?"":"s"} to remove.</span>
+                  <button disabled={removingDups} onClick={async()=>{
+                      setRemovingDups(true);
+                      const removed = await onRemoveDuplicateAssets();
+                      setRemovingDups(false); setConfirmingDupRemove(false); setDupCount(null);
+                      setDupRemoveResult(removed);
+                    }} style={{padding:"7px 14px",borderRadius:8,background:"#ef4444",color:"#fff",border:"none",fontSize:13,fontWeight:700,cursor:removingDups?"default":"pointer",opacity:removingDups?0.6:1}}>
+                    {removingDups?"Removing…":`Remove ${dupCount}`}
+                  </button>
+                  <button disabled={removingDups} onClick={()=>{setConfirmingDupRemove(false);setDupCount(null);}} style={{padding:"7px 12px",borderRadius:8,background:"var(--surface)",color:"var(--text2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Cancel</button>
+                </div>
+              )}
+              {dupRemoveResult!=null&&<p style={{fontSize:12,color:"#10b981",fontWeight:600,marginTop:8}}>✓ Removed {dupRemoveResult} duplicate{dupRemoveResult===1?"":"s"}.</p>}
+            </div>
+          )}
+        </div>
       )}
 
       {/* ── AI & TOKENS TAB ── */}
@@ -22838,62 +22897,6 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
             </div>
           ))}
           {flagsSaved&&<p style={{fontSize:12,color:"#10b981",fontWeight:600}}>✓ Saved</p>}
-
-          <div style={{padding:16,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
-            <div style={{fontSize:14,fontWeight:700}}>Max Upload Size</div>
-            <div style={{fontSize:12,color:"var(--text3)",marginTop:2,marginBottom:10}}>
-              Caps file size for uploads across the app (assets, reels, designs, CVs, etc.) so people get an
-              instant, clear error instead of the upload silently hanging or failing partway. This only ever
-              narrows what the server already allows — it can't raise your server's own nginx/PHP upload
-              limits, which have to be changed on the server itself.
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <input type="number" min={1} max={2000} value={flags.max_upload_mb||DEFAULT_MAX_UPLOAD_MB}
-                onChange={e=>setFlags(p=>({...p,max_upload_mb:Math.max(1,parseInt(e.target.value)||DEFAULT_MAX_UPLOAD_MB)}))}
-                style={{width:90,padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text1)",fontSize:13}}/>
-              <span style={{fontSize:13,color:"var(--text2)"}}>MB</span>
-              <button onClick={async()=>{ await onSaveSettings({feature_flags:flags}); setFlagsSaved(true); setTimeout(()=>setFlagsSaved(false),2000); }}
-                style={{padding:"7px 14px",borderRadius:8,background:"var(--accent)",color:"#fff",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                Save
-              </button>
-            </div>
-          </div>
-
-          {onRemoveDuplicateAssets&&(
-            <div style={{padding:16,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
-              <div style={{fontSize:14,fontWeight:700}}>Remove Duplicate Assets</div>
-              <div style={{fontSize:12,color:"var(--text3)",marginTop:2,marginBottom:10}}>
-                Finds assets with the same name (case/whitespace-insensitive) and the same folder — usually
-                the same file uploaded more than once — and removes every copy except the earliest one. This
-                only deletes the library record; the underlying uploaded file is left on the server either way.
-              </div>
-              {!confirmingDupRemove ? (
-                <button onClick={()=>{ setDupCount((onFindDuplicateAssets?.()||[]).length); setConfirmingDupRemove(true); setDupRemoveResult(null); }}
-                  style={{padding:"7px 14px",borderRadius:8,background:"var(--surface)",color:"var(--text1)",border:"1px solid var(--border2)",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                  Scan for Duplicates
-                </button>
-              ) : dupCount===0 ? (
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <span style={{fontSize:13,color:"var(--text2)"}}>No duplicates found.</span>
-                  <button onClick={()=>setConfirmingDupRemove(false)} style={{padding:"6px 12px",borderRadius:8,background:"var(--surface)",color:"var(--text2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>OK</button>
-                </div>
-              ) : (
-                <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                  <span style={{fontSize:13,color:"var(--text2)"}}>Found <strong>{dupCount}</strong> duplicate file{dupCount===1?"":"s"} to remove.</span>
-                  <button disabled={removingDups} onClick={async()=>{
-                      setRemovingDups(true);
-                      const removed = await onRemoveDuplicateAssets();
-                      setRemovingDups(false); setConfirmingDupRemove(false); setDupCount(null);
-                      setDupRemoveResult(removed);
-                    }} style={{padding:"7px 14px",borderRadius:8,background:"#ef4444",color:"#fff",border:"none",fontSize:13,fontWeight:700,cursor:removingDups?"default":"pointer",opacity:removingDups?0.6:1}}>
-                    {removingDups?"Removing…":`Remove ${dupCount}`}
-                  </button>
-                  <button disabled={removingDups} onClick={()=>{setConfirmingDupRemove(false);setDupCount(null);}} style={{padding:"7px 12px",borderRadius:8,background:"var(--surface)",color:"var(--text2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Cancel</button>
-                </div>
-              )}
-              {dupRemoveResult!=null&&<p style={{fontSize:12,color:"#10b981",fontWeight:600,marginTop:8}}>✓ Removed {dupRemoveResult} duplicate{dupRemoveResult===1?"":"s"}.</p>}
-            </div>
-          )}
         </div>
       )}
     </div>
@@ -29886,6 +29889,117 @@ function RecruitmentMailboxTab({appSettings}) {
   );
 }
 
+const RECRUITMENT_CLEANUP_URL = window.location.origin + "/recruitment-attachment-cleanup-cron.php";
+function RecruitmentCleanupRulesTab({appSettings, onSaveSettings, currentUser}) {
+  const ff = (()=>{ const raw=appSettings?.feature_flags; return typeof raw==="string"?parseJ(raw,{}):(raw||{}); })();
+  const [rules, setRules] = useState(()=>{
+    const saved = ff.recruitment_cleanup_rules;
+    return Array.isArray(saved) && saved.length ? saved : [];
+  });
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [runResult, setRunResult] = useState(null);
+  const [error, setError] = useState(null);
+
+  const addRule = () => setRules(r=>[...r, {status:"rejected", days:30}]);
+  const updateRule = (i,patch) => setRules(r=>r.map((x,idx)=>idx===i?{...x,...patch}:x));
+  const removeRule = (i) => setRules(r=>r.filter((_,idx)=>idx!==i));
+
+  const saveRules = async () => {
+    setSaving(true);
+    await onSaveSettings({feature_flags:{...ff, recruitment_cleanup_rules:rules}});
+    setSaving(false); setSaved(true); setTimeout(()=>setSaved(false),2500);
+  };
+
+  const call = async (action) => {
+    const r = await fetch(`${RECRUITMENT_CLEANUP_URL}?action=${action}`, {
+      method:"POST",
+      headers:{apikey:SB_KEY, Authorization:`Bearer ${SB_KEY}`, "Content-Type":"application/json"},
+      body: JSON.stringify({rules, actor_email: currentUser?.email||""}),
+    });
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error||"Request failed");
+    return d;
+  };
+  const runPreview = async () => {
+    setPreviewing(true); setError(null); setRunResult(null);
+    try { setPreview(await call("preview")); } catch(e) { setError(e.message); }
+    setPreviewing(false);
+  };
+  const runNow = async () => {
+    if(!confirm("Delete these attachments now? Application records and history are kept — only the CV/portfolio files are removed. This cannot be undone.")) return;
+    setRunning(true); setError(null);
+    try { const d = await call("run"); setRunResult(d); setPreview(null); } catch(e) { setError(e.message); }
+    setRunning(false);
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16,maxWidth:"min(750px,100%)"}}>
+      <p style={{fontSize:13,color:"var(--text2)"}}>
+        Automatically delete a candidate's CV/portfolio FILES (never the application record, notes, or AI review)
+        once they've sat in a given stage for long enough — e.g. remove attachments for anything Rejected for
+        30+ days. Frees storage from old candidates without ever touching active applications.
+      </p>
+
+      {error&&<div style={{padding:"10px 14px",borderRadius:"var(--rs)",background:"#ef444411",border:"1px solid #ef444433",color:"#ef4444",fontSize:13}}>{error}</div>}
+
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {rules.map((rule,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:14,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",flexWrap:"wrap"}}>
+            <span style={{fontSize:13,color:"var(--text2)"}}>Delete attachments when status is</span>
+            <select value={rule.status} onChange={e=>updateRule(i,{status:e.target.value})} style={{...inputSt,width:170,padding:"6px 10px"}}>
+              {APPLICATION_STATUSES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
+            </select>
+            <span style={{fontSize:13,color:"var(--text2)"}}>for at least</span>
+            <input type="number" min={1} max={3650} value={rule.days} onChange={e=>updateRule(i,{days:Math.max(1,parseInt(e.target.value)||30)})} style={{...inputSt,width:80,padding:"6px 10px"}}/>
+            <span style={{fontSize:13,color:"var(--text2)"}}>days</span>
+            <button onClick={()=>removeRule(i)} style={{marginLeft:"auto",fontSize:12,fontWeight:600,color:"#ef4444",background:"none",border:"none",cursor:"pointer"}}>Remove</button>
+          </div>
+        ))}
+        {rules.length===0&&<p style={{fontSize:13,color:"var(--text3)"}}>No cleanup rules yet — nothing is auto-deleted until you add one.</p>}
+      </div>
+
+      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+        <Btn variant="secondary" onClick={addRule}>+ Add Rule</Btn>
+        <button onClick={saveRules} disabled={saving} style={{background:"var(--accent)",color:"#fff",border:"none",borderRadius:9,padding:"9px 20px",cursor:"pointer",fontWeight:700,fontSize:13,opacity:saving?0.7:1}}>
+          {saving?"Saving…":"Save Rules"}
+        </button>
+        {saved&&<span style={{fontSize:12,color:"#10b981",fontWeight:600,alignSelf:"center"}}>✓ Saved</span>}
+      </div>
+
+      <p style={{fontSize:12,color:"var(--text3)"}}>
+        Saved rules run automatically once a day via a scheduled job. You can also check what a rule would do
+        right now, or run it immediately, below.
+      </p>
+      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+        <Btn variant="secondary" onClick={runPreview} disabled={previewing||!rules.length}>{previewing?"Checking…":"Preview (no changes)"}</Btn>
+        <button onClick={runNow} disabled={running||!rules.length} style={{background:"#ef4444",color:"#fff",border:"none",borderRadius:9,padding:"9px 20px",cursor:"pointer",fontWeight:700,fontSize:13,opacity:(running||!rules.length)?0.6:1}}>
+          {running?"Running…":"Run Now"}
+        </button>
+      </div>
+
+      {preview&&(
+        <div style={{padding:14,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",fontSize:13}}>
+          <p style={{fontWeight:700,marginBottom:8}}>Preview — nothing deleted yet</p>
+          {preview.rules.map((r,i)=>(
+            <p key={i} style={{color:"var(--text2)",marginBottom:4}}>
+              <strong>{APPLICATION_STATUSES.find(s=>s.key===r.status)?.label||r.status}</strong> ({r.days}+ days): {r.count} application(s) would have attachments removed{r.count>0?` — ${r.candidates.slice(0,5).join(", ")}${r.count>5?", …":""}`:""}.
+            </p>
+          ))}
+        </div>
+      )}
+      {runResult&&(
+        <p style={{fontSize:13,color:"#10b981",fontWeight:600}}>
+          ✓ Done — {runResult.totalFreedHuman} freed across {runResult.rules.reduce((a,r)=>a+r.count,0)} application(s).
+        </p>
+      )}
+    </div>
+  );
+}
+
 function RecruitmentEmailSettingsTab({appSettings, onSaveSettings}) {
   const saved = appSettings?.recruitment_email_settings || {};
   const [f, setF] = useState({...RECRUITMENT_EMAIL_DEFAULTS, ...saved});
@@ -30064,9 +30178,10 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
     logApplicationActivity(applicationId, action, actorName);
   };
   const handleUpdateStatus = async (app, status) => {
-    setApplications(prev=>prev.map(a=>a.id===app.id?{...a,status}:a));
-    setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,status}:prev);
-    await ue("JobApplication", app.id, {status}).catch(()=>{});
+    const status_updated_at = new Date().toISOString();
+    setApplications(prev=>prev.map(a=>a.id===app.id?{...a,status,status_updated_at}:a));
+    setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,status,status_updated_at}:prev);
+    await ue("JobApplication", app.id, {status, status_updated_at}).catch(()=>{});
     const fromLabel = APPLICATION_STATUSES.find(s=>s.key===app.status)?.label||app.status;
     const toLabel = APPLICATION_STATUSES.find(s=>s.key===status)?.label||status;
     logActivity(app.id, `Moved from ${fromLabel} to ${toLabel}`);
@@ -30664,7 +30779,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
       </div>
 
       <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)",alignSelf:"flex-start"}}>
-        {[["openings","Job Openings"],["applications","Applications"],["inbox","Inbox"],["email","Email Settings"]].map(([k,l])=>(
+        {[["openings","Job Openings"],["applications","Applications"],["inbox","Inbox"],["email","Email Settings"],["cleanup","Cleanup Rules"]].map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)} style={{padding:"7px 16px",borderRadius:"var(--rxs)",fontSize:12,fontWeight:700,background:tab===k?"var(--accent)":"none",color:tab===k?"#fff":"var(--text2)"}}>{l}</button>
         ))}
       </div>
@@ -30823,6 +30938,8 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
       {tab==="inbox"&&<RecruitmentMailboxTab appSettings={appSettings}/>}
 
       {tab==="email"&&<RecruitmentEmailSettingsTab appSettings={appSettings} onSaveSettings={onSaveSettings}/>}
+
+      {tab==="cleanup"&&<RecruitmentCleanupRulesTab appSettings={appSettings} onSaveSettings={onSaveSettings} currentUser={currentUser}/>}
 
       {makeTeamMemberApp&&(
         <InviteUserModal
