@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.463";
+const APP_VERSION = "beta 5.464";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -22352,6 +22352,183 @@ function mergeContractTemplate(template, member, manager, appSettings) {
   return Object.entries(tags).reduce((text,[key,val])=>text.replaceAll(`{{${key}}}`, String(val)), template||"");
 }
 
+const STORAGE_SCAN_URL = window.location.origin + "/storage-scan.php";
+function StorageSettingsPanel({appSettings, onSaveSettings, currentUser}) {
+  const [summary, setSummary] = useState(null);
+  const [loadingSummary, setLoadingSummary] = useState(true);
+  const [orphans, setOrphans] = useState(null);
+  const [loadingOrphans, setLoadingOrphans] = useState(false);
+  const [minAgeDays, setMinAgeDays] = useState(2);
+  const [selected, setSelected] = useState(()=>new Set());
+  const [deleting, setDeleting] = useState(false);
+  const [lastResult, setLastResult] = useState(null);
+  const [error, setError] = useState(null);
+
+  const ff = (()=>{ const raw=appSettings?.feature_flags; return typeof raw==="string"?parseJ(raw,{}):(raw||{}); })();
+  const [autoEnabled, setAutoEnabled] = useState(!!ff.storage_auto_delete_enabled);
+  const [autoDays, setAutoDays] = useState(ff.storage_auto_delete_days||30);
+  const [savingAuto, setSavingAuto] = useState(false);
+
+  const authedFetch = (url) => fetch(url, {headers:{apikey:SB_KEY, Authorization:`Bearer ${SB_KEY}`}});
+
+  const loadSummary = async () => {
+    setLoadingSummary(true); setError(null);
+    try {
+      const r = await authedFetch(`${STORAGE_SCAN_URL}?action=summary`);
+      const d = await r.json();
+      if(!r.ok) throw new Error(d.error||"Failed to load storage summary");
+      setSummary(d);
+    } catch(e) { setError(e.message); }
+    setLoadingSummary(false);
+  };
+  const loadOrphans = async () => {
+    setLoadingOrphans(true); setError(null); setSelected(new Set());
+    try {
+      const r = await authedFetch(`${STORAGE_SCAN_URL}?action=orphans&min_age_days=${minAgeDays}`);
+      const d = await r.json();
+      if(!r.ok) throw new Error(d.error||"Failed to scan for orphaned files");
+      setOrphans(d);
+    } catch(e) { setError(e.message); }
+    setLoadingOrphans(false);
+  };
+  useEffect(()=>{ loadSummary(); }, []);
+
+  const toggleSelect = (path) => setSelected(prev=>{ const n=new Set(prev); n.has(path)?n.delete(path):n.add(path); return n; });
+  const selectAll = () => setSelected(new Set((orphans?.orphans||[]).map(o=>o.path)));
+  const clearSelection = () => setSelected(new Set());
+
+  const deleteSelected = async () => {
+    if(!selected.size) return;
+    if(!confirm(`Delete ${selected.size} file(s)? This cannot be undone.`)) return;
+    setDeleting(true); setError(null);
+    try {
+      const r = await fetch(`${STORAGE_SCAN_URL}?action=delete`, {
+        method:"POST",
+        headers:{apikey:SB_KEY, Authorization:`Bearer ${SB_KEY}`, "Content-Type":"application/json"},
+        body: JSON.stringify({paths:[...selected], actor_email: currentUser?.email||""}),
+      });
+      const d = await r.json();
+      if(!r.ok) throw new Error(d.error||"Delete failed");
+      setLastResult(d);
+      await loadSummary();
+      await loadOrphans();
+    } catch(e) { setError(e.message); }
+    setDeleting(false);
+  };
+
+  const saveAutoDelete = async () => {
+    setSavingAuto(true);
+    await onSaveSettings({feature_flags:{...ff, storage_auto_delete_enabled:autoEnabled, storage_auto_delete_days:Number(autoDays)||30}});
+    setSavingAuto(false);
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:20,maxWidth:800}}>
+      <div>
+        <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:16}}>Storage</h3>
+        <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>See where disk space is going, and clean up files no longer referenced anywhere in the app.</p>
+      </div>
+
+      {error&&<div style={{padding:"10px 14px",borderRadius:"var(--rs)",background:"#ef444411",border:"1px solid #ef444433",color:"#ef4444",fontSize:13}}>{error}</div>}
+
+      {/* Summary */}
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:22,display:"flex",flexDirection:"column",gap:14}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>Usage Breakdown</p>
+          <button onClick={loadSummary} disabled={loadingSummary} style={{fontSize:12,fontWeight:600,color:"var(--accent)",background:"none",border:"none",cursor:"pointer"}}>{loadingSummary?"Loading…":"Refresh"}</button>
+        </div>
+        {summary&&(
+          <>
+            <div style={{display:"flex",gap:24,flexWrap:"wrap"}}>
+              <div><p style={{fontSize:22,fontWeight:800}}>{summary.totalHuman}</p><p style={{fontSize:11,color:"var(--text3)"}}>Files ({summary.totalFiles})</p></div>
+              <div><p style={{fontSize:22,fontWeight:800}}>{summary.dbSizeHuman}</p><p style={{fontSize:11,color:"var(--text3)"}}>Database</p></div>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {summary.folders.map(f=>(
+                <div key={f.folder} style={{display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:12,fontWeight:600,width:180,flexShrink:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.folder}</span>
+                  <div style={{flex:1,height:8,background:"var(--surface2)",borderRadius:99,overflow:"hidden"}}>
+                    <div style={{width:`${summary.totalBytes?Math.max(2,(f.sizeBytes/summary.totalBytes)*100):0}%`,height:"100%",background:"var(--accent)"}}/>
+                  </div>
+                  <span style={{fontSize:12,color:"var(--text2)",width:90,textAlign:"right",flexShrink:0}}>{f.sizeHuman}</span>
+                  <span style={{fontSize:11,color:"var(--text3)",width:70,textAlign:"right",flexShrink:0}}>{f.fileCount} files</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Orphan scan + manual delete */}
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:22,display:"flex",flexDirection:"column",gap:14}}>
+        <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>Find Unused Files</p>
+        <p style={{fontSize:12,color:"var(--text3)"}}>Scans every table for files still referenced anywhere in the app. Anything left over — and older than the age below, so nothing mid-upload gets flagged — is safe to delete.</p>
+        <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+          <label style={{fontSize:12,color:"var(--text2)"}}>Only flag files older than</label>
+          <select value={minAgeDays} onChange={e=>setMinAgeDays(Number(e.target.value))} style={{...inputSt,width:100,padding:"6px 10px"}}>
+            {[1,2,7,14,30].map(d=><option key={d} value={d}>{d} day{d>1?"s":""}</option>)}
+          </select>
+          <Btn variant="secondary" onClick={loadOrphans} disabled={loadingOrphans}>{loadingOrphans?"Scanning…":"Scan for Unused Files"}</Btn>
+        </div>
+
+        {orphans&&(
+          <>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+              <p style={{fontSize:13,fontWeight:700}}>{orphans.orphanCount} unused file{orphans.orphanCount===1?"":"s"} found — {orphans.orphanHuman}</p>
+              {orphans.orphanCount>0&&(
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={selectAll} style={{fontSize:12,fontWeight:600,color:"var(--accent)",background:"none",border:"none",cursor:"pointer"}}>Select all</button>
+                  <button onClick={clearSelection} style={{fontSize:12,fontWeight:600,color:"var(--text3)",background:"none",border:"none",cursor:"pointer"}}>Clear</button>
+                </div>
+              )}
+            </div>
+            {orphans.orphanCount>0&&(
+              <div style={{maxHeight:280,overflowY:"auto",display:"flex",flexDirection:"column",gap:4,border:"1px solid var(--border)",borderRadius:"var(--rs)",padding:8}}>
+                {orphans.orphans.map(o=>(
+                  <label key={o.path} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 6px",borderRadius:6,cursor:"pointer"}}>
+                    <input type="checkbox" checked={selected.has(o.path)} onChange={()=>toggleSelect(o.path)}/>
+                    <span style={{fontSize:12,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o.path}</span>
+                    <span style={{fontSize:11,color:"var(--text3)",flexShrink:0}}>{o.sizeHuman}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+            {selected.size>0&&(
+              <button onClick={deleteSelected} disabled={deleting} style={{alignSelf:"flex-start",background:"#ef4444",color:"#fff",border:"none",borderRadius:9,padding:"9px 20px",cursor:"pointer",fontWeight:700,fontSize:13,opacity:deleting?0.7:1}}>
+                {deleting?"Deleting…":`Delete ${selected.size} selected file(s)`}
+              </button>
+            )}
+            {lastResult&&<p style={{fontSize:12,color:"#10b981"}}>✓ Deleted {lastResult.deleted.length} file(s), freed {lastResult.freedHuman}{lastResult.skipped?.length?` (${lastResult.skipped.length} skipped — still referenced or already gone)`:""}.</p>}
+          </>
+        )}
+      </div>
+
+      {/* Auto-delete settings */}
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:22,display:"flex",flexDirection:"column",gap:14}}>
+        <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>Auto-Delete</p>
+        <p style={{fontSize:12,color:"var(--text3)"}}>Off by default. When on, a scheduled job removes unused files older than the retention period below automatically — every deletion is still logged in the System Log.</p>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <button onClick={()=>setAutoEnabled(v=>!v)} style={{width:44,height:24,borderRadius:99,background:autoEnabled?"var(--accent)":"var(--surface2)",border:"1px solid var(--border2)",position:"relative",cursor:"pointer",transition:"background 0.15s"}}>
+            <div style={{width:18,height:18,borderRadius:"50%",background:"#fff",position:"absolute",top:2,left:autoEnabled?23:2,transition:"left 0.15s"}}/>
+          </button>
+          <span style={{fontSize:13,fontWeight:600}}>{autoEnabled?"Enabled":"Disabled"}</span>
+        </div>
+        {autoEnabled&&(
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <label style={{fontSize:12,color:"var(--text2)"}}>Delete files unused for longer than</label>
+            <select value={autoDays} onChange={e=>setAutoDays(Number(e.target.value))} style={{...inputSt,width:100,padding:"6px 10px"}}>
+              {[7,14,30,60].map(d=><option key={d} value={d}>{d} days</option>)}
+            </select>
+          </div>
+        )}
+        <button onClick={saveAutoDelete} disabled={savingAuto} style={{alignSelf:"flex-start",background:"var(--accent)",color:"#fff",border:"none",borderRadius:9,padding:"9px 22px",cursor:"pointer",fontWeight:700,fontSize:13,opacity:savingAuto?0.7:1}}>
+          {savingAuto?"Saving…":"Save Auto-Delete Setting"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ContractPolicySettingsPanel({appSettings, onSaveSettings}) {
   const [template, setTemplate] = useState(appSettings?.employment_contract_template || DEFAULT_CONTRACT_TEMPLATE);
   const [policyUrl, setPolicyUrl] = useState(appSettings?.company_policy_url || "");
@@ -22466,7 +22643,7 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 
       {/* Tab nav */}
       <div className="tab-nav" style={{display:"flex",gap:2,borderBottom:"1px solid var(--border)",flexWrap:"nowrap",overflowX:"auto"}}>
-        {[["branding","Branding"],["integrations","Integrations"],["email","Email"],["ai_model","AI Agents"],["durations","Task Estimates"],["contract","Contract & Policy"],["flags","Feature Flags"],["syslog","System Log"]].map(([k,l])=>(
+        {[["branding","Branding"],["integrations","Integrations"],["email","Email"],["ai_model","AI Agents"],["durations","Task Estimates"],["contract","Contract & Policy"],["flags","Feature Flags"],["storage","Storage"],["syslog","System Log"]].map(([k,l])=>(
           <button key={k} onClick={()=>setSettingsTab(k)} style={{padding:"9px 20px",fontSize:13,fontWeight:600,borderBottom:`2px solid ${settingsTab===k?"var(--accent)":"transparent"}`,color:settingsTab===k?"var(--accent)":"var(--text2)",transition:"all 0.15s",display:"flex",alignItems:"center",gap:6,position:"relative"}}>
             {l}
             {k==="syslog"&&(activityLogs||[]).filter(a=>a.status==="error").length>0&&(
@@ -22615,6 +22792,11 @@ function SettingsPage({appSettings, onSaveSettings, currentUser, integrations, i
 
       {/* ── SYSTEM LOG TAB ── */}
       {settingsTab==="syslog"&&<SystemLogPage activityLogs={activityLogs} systemSessions={systemSessions} currentUser={currentUser} team={team} onRefresh={()=>{ onRefreshLogs&&onRefreshLogs(); onRefreshSessions&&onRefreshSessions(); }}/>}
+
+      {/* ── STORAGE TAB ── */}
+      {settingsTab==="storage"&&(
+        <StorageSettingsPanel appSettings={appSettings} onSaveSettings={onSaveSettings} currentUser={currentUser}/>
+      )}
 
       {/* ── AI & TOKENS TAB ── */}
       {settingsTab==="ai_model"&&(
