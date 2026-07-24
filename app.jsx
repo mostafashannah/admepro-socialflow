@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.476";
+const APP_VERSION = "beta 5.477";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -27761,10 +27761,16 @@ function CreateInvoiceModal({open,onClose,clients,existingInvoices,sourceQuote,o
 }
 
 // ── Invoices Page ──
-function InvoicesPage({invoices,payments,clients,quotes,currentUser,appSettings,brandingAssets,onCreateInvoice,onConfirmPayment,onDuplicate,onToast}) {
+function InvoicesPage({invoices,payments,clients,quotes,currentUser,appSettings,brandingAssets,onCreateInvoice,onConfirmPayment,onDuplicate,onToast,sourceQuote:incomingSourceQuote,onSourceQuoteConsumed}) {
   const [sel,setSel]=useState(null);
   const [showCreate,setShowCreate]=useState(false);
   const [sourceQuote,setSourceQuote]=useState(null);
+  // "Convert to Invoice" on the Quotes page navigates here and passes the
+  // quote in via this prop — it was never actually read before, so the
+  // create-invoice modal never opened and nothing appeared to happen.
+  useEffect(()=>{
+    if(incomingSourceQuote) { setSourceQuote(incomingSourceQuote); setShowCreate(true); }
+  },[incomingSourceQuote]);
   const [statusF,setStatusF]=useState("all");
   const [clientF,setClientF]=useState("all");
   const [search,setSearch]=useState("");
@@ -27889,7 +27895,7 @@ function InvoicesPage({invoices,payments,clients,quotes,currentUser,appSettings,
       {showCreate&&(
         <CreateInvoiceModal
           open
-          onClose={()=>{setShowCreate(false);setSourceQuote(null);}}
+          onClose={()=>{setShowCreate(false);setSourceQuote(null);onSourceQuoteConsumed&&onSourceQuoteConsumed();}}
           clients={clients}
           existingInvoices={invoices}
           sourceQuote={sourceQuote}
@@ -40042,6 +40048,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             appSettings={appSettings}
             brandingAssets={brandingAssets}
             sourceQuote={convertQuote}
+            onSourceQuoteConsumed={()=>setConvertQuote(null)}
             onCreateInvoice={async(d)=>{setConvertQuote(null);await createInvoice(d);}}
             onConfirmPayment={confirmPayment}
             onDuplicate={duplicateInvoice}
