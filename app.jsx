@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.468";
+const APP_VERSION = "beta 5.469";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9762,7 +9762,7 @@ function ClientLoginsTab({client,onUpdateClient,canAdd=false,canEdit=false}) {
   );
 }
 
-function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,onAddCalendar,onAddTask,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],onSaveContactReport,leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient,integrationLogs=[],onAddIntegration,onUpdateIntegration,onDeleteIntegration,onRetryIntegration,brandingAssets}) {
+function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,onAddCalendar,onAddTask,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],onSaveContactReport,onDeleteContactReport,leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient,integrationLogs=[],onAddIntegration,onUpdateIntegration,onDeleteIntegration,onRetryIntegration,brandingAssets}) {
   const {isMobile} = useResponsive();
   // Plain state, not persisted — opening any client should always start on
   // Overview, not silently reopen to whatever tab was last viewed for them.
@@ -10024,7 +10024,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
             <ClientBrandGuidelinesSubTab client={client} knowledge={knowledge} onSaveKnowledge={onSaveKnowledge}/>
           )}
           {brainSubTab==="contact_reports"&&(
-            <ContactReportsSubTab client={client} contactReports={contactReports} onSaveContactReport={onSaveContactReport} brandingAssets={brandingAssets} team={team}/>
+            <ContactReportsSubTab client={client} contactReports={contactReports} onSaveContactReport={onSaveContactReport} onDeleteContactReport={onDeleteContactReport} brandingAssets={brandingAssets} team={team} currentUser={currentUser}/>
           )}
           {brainSubTab==="integrations"&&(
             <ClientIntegrationsSubTab client={client} integrations={integrations} integrationLogs={integrationLogs} currentUser={currentUser}
@@ -26921,13 +26921,22 @@ async function downloadContactReportPDF(report, clientName, branding) {
   }
 }
 
-function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, brandingAssets, team=[]}) {
+function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, onDeleteContactReport, brandingAssets, team=[], currentUser}) {
+  const isAdmin = currentUser?.role==="admin";
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [emailingId, setEmailingId] = useState(null);
   const [emailTo, setEmailTo] = useState(client.email||"");
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailSentId, setEmailSentId] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async (r) => {
+    setDeleting(true);
+    await onDeleteContactReport(r);
+    setDeleting(false); setConfirmDeleteId(null);
+  };
 
   const reports = (contactReports||[]).filter(r=>r.client_id===client.id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
 
@@ -26994,8 +27003,18 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, b
                 <button onClick={()=>{setEditing(r);setShowModal(true);}} title="Edit" style={{padding:"5px 10px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>Edit</button>
                 <button onClick={()=>downloadContactReportPDF(r, client.name, brandingAssets)} title="Download PDF" style={{padding:"5px 10px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>PDF</button>
                 <button onClick={()=>startEmail(r)} title="Send by Email" style={{padding:"5px 10px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>Email</button>
+                {isAdmin&&onDeleteContactReport&&(
+                  <button onClick={()=>setConfirmDeleteId(r.id)} title="Delete (admin only)" style={{padding:"5px 10px",borderRadius:"var(--rxs)",background:"#ef444411",border:"1px solid #ef444433",fontSize:12,fontWeight:600,color:"#ef4444",cursor:"pointer"}}>Delete</button>
+                )}
               </div>
             </div>
+            {confirmDeleteId===r.id&&(
+              <div style={{marginBottom:10,padding:"10px 14px",borderRadius:"var(--rs)",background:"#ef444411",border:"1px solid #ef444433",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                <span style={{fontSize:13,color:"var(--text2)"}}>Delete this contact report? It will also be removed from {client.name}'s memory. This cannot be undone.</span>
+                <button disabled={deleting} onClick={()=>handleDelete(r)} style={{padding:"6px 14px",borderRadius:8,background:"#ef4444",color:"#fff",border:"none",fontSize:12,fontWeight:700,cursor:deleting?"default":"pointer",opacity:deleting?0.6:1}}>{deleting?"Deleting…":"Delete"}</button>
+                <button disabled={deleting} onClick={()=>setConfirmDeleteId(null)} style={{padding:"6px 12px",borderRadius:8,background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Cancel</button>
+              </div>
+            )}
             {attendees.length>0&&(
               <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
                 {attendees.map((a,i)=>(
@@ -38417,6 +38436,17 @@ Return ONLY the JSON array, no markdown.`;
     setToast("Contact report saved");
   };
 
+  // Admin-only delete (gated in the UI) — also removes the client_memory
+  // row saveContactReport created for it, so a deleted report doesn't keep
+  // quietly influencing Sara/Yahia's content generation after it's gone.
+  const deleteContactReport = async (report) => {
+    setData(d=>({...d, contactReports:(d.contactReports||[]).filter(r=>r.id!==report.id)}));
+    de("ContactReport", report.id).catch(()=>{});
+    const mem = (data.clientMemory||[]).find(m=>m.client_id===report.client_id && m.key===`contact_report_${report.id}`);
+    if(mem) deleteClientMemory(mem.id);
+    setToast("Contact report deleted");
+  };
+
   const createInvoice = async (invData) => {
     const local = {...invData,id:uid(),created_date:new Date().toISOString()};
     setData(d=>({...d,invoices:[local,...d.invoices]}));
@@ -39680,6 +39710,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             <ClientDetailPage key={selectedClient.id} client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} onAddAsset={addAsset} currentUser={currentUser} onImpersonateClient={impersonateClient}
               contactReports={data.contactReports||[]}
               onSaveContactReport={saveContactReport}
+              onDeleteContactReport={deleteContactReport}
               brandingAssets={brandingAssets}
               integrations={data.integrations||[]}
               integrationLogs={data.integrationLogs||[]}
