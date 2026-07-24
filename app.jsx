@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.469";
+const APP_VERSION = "beta 5.470";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10024,7 +10024,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
             <ClientBrandGuidelinesSubTab client={client} knowledge={knowledge} onSaveKnowledge={onSaveKnowledge}/>
           )}
           {brainSubTab==="contact_reports"&&(
-            <ContactReportsSubTab client={client} contactReports={contactReports} onSaveContactReport={onSaveContactReport} onDeleteContactReport={onDeleteContactReport} brandingAssets={brandingAssets} team={team} currentUser={currentUser}/>
+            <ContactReportsSubTab client={client} contactReports={contactReports} onSaveContactReport={onSaveContactReport} onDeleteContactReport={onDeleteContactReport} brandingAssets={brandingAssets} team={team} currentUser={currentUser} knowledge={knowledge} onSaveKnowledge={onSaveKnowledge}/>
           )}
           {brainSubTab==="integrations"&&(
             <ClientIntegrationsSubTab client={client} integrations={integrations} integrationLogs={integrationLogs} currentUser={currentUser}
@@ -26921,8 +26921,36 @@ async function downloadContactReportPDF(report, clientName, branding) {
   }
 }
 
-function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, onDeleteContactReport, brandingAssets, team=[], currentUser}) {
+// An attendee logged during a voice note rarely comes with an email
+// attached — resolve it by matching their name against team members (and
+// the client's own contact) so "Alaa" et al don't have to be re-typed by
+// hand before sending. Shared by the manual "Email" button and the
+// auto-email-on-submit path.
+function resolveContactReportRecipients(report, client, team=[]) {
+  const attendees = parseMaybeJson(report.attendees, []);
+  const resolveOne = (a) => {
+    if (a.email) return a.email;
+    const name = (a.name||"").trim().toLowerCase();
+    if (!name) return null;
+    const teamMatch = team.find(m => (m.name||"").trim().toLowerCase()===name || (m.name||"").toLowerCase().includes(name) || name.includes((m.name||"").toLowerCase()));
+    if (teamMatch?.email) return teamMatch.email;
+    if (client?.name && (client.name.toLowerCase().includes(name) || name.includes(client.name.toLowerCase())) && client.email) return client.email;
+    return null;
+  };
+  const resolvedEmails = attendees.map(resolveOne).filter(Boolean);
+  return [...new Set([...(client?.email?[client.email]:[]), ...resolvedEmails])];
+}
+
+function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, onDeleteContactReport, brandingAssets, team=[], currentUser, knowledge, onSaveKnowledge}) {
   const isAdmin = currentUser?.role==="admin";
+  const [autoEmail, setAutoEmail] = useState(!!knowledge?.contact_report_auto_email);
+  const [savingAutoEmail, setSavingAutoEmail] = useState(false);
+  const toggleAutoEmail = async () => {
+    const next = !autoEmail;
+    setAutoEmail(next); setSavingAutoEmail(true);
+    await onSaveKnowledge({...(knowledge||{}), client_id:client.id, client_name:client.name, contact_report_auto_email:next});
+    setSavingAutoEmail(false);
+  };
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [emailingId, setEmailingId] = useState(null);
@@ -26940,23 +26968,8 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
 
   const reports = (contactReports||[]).filter(r=>r.client_id===client.id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
 
-  // An attendee logged during a voice note rarely comes with an email
-  // attached — resolve it by matching their name against team members (and
-  // the client's own contact) so "Alaa" et al don't have to be re-typed by
-  // hand every time before sending.
-  const resolveAttendeeEmail = (a) => {
-    if (a.email) return a.email;
-    const name = (a.name||"").trim().toLowerCase();
-    if (!name) return null;
-    const teamMatch = team.find(m => (m.name||"").trim().toLowerCase()===name || (m.name||"").toLowerCase().includes(name) || name.includes((m.name||"").toLowerCase()));
-    if (teamMatch?.email) return teamMatch.email;
-    if (client.name && (client.name.toLowerCase().includes(name) || name.includes(client.name.toLowerCase())) && client.email) return client.email;
-    return null;
-  };
   const startEmail = (r) => {
-    const attendees = parseMaybeJson(r.attendees, []);
-    const resolvedEmails = attendees.map(resolveAttendeeEmail).filter(Boolean);
-    const defaults = [...new Set([...(client.email?[client.email]:[]), ...resolvedEmails])];
+    const defaults = resolveContactReportRecipients(r, client, team);
     setEmailingId(r.id); setEmailTo(defaults.join(", ")); setEmailSentId(null);
   };
   const sendReportEmail = async (r) => {
@@ -26972,7 +26985,16 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
-      <div style={{display:"flex",justifyContent:"flex-end"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <button onClick={toggleAutoEmail} disabled={savingAutoEmail} style={{width:40,height:22,borderRadius:99,background:autoEmail?"var(--accent)":"var(--surface2)",border:"1px solid var(--border2)",position:"relative",cursor:"pointer",transition:"background 0.15s",flexShrink:0}}>
+            <div style={{width:16,height:16,borderRadius:"50%",background:"#fff",position:"absolute",top:2,left:autoEmail?21:2,transition:"left 0.15s"}}/>
+          </button>
+          <div>
+            <p style={{fontSize:13,fontWeight:600}}>Auto-email on submit</p>
+            <p style={{fontSize:11,color:"var(--text3)"}}>Send every new contact report to attendees automatically — no manual click needed.</p>
+          </div>
+        </div>
         <Btn onClick={()=>{setEditing(null);setShowModal(true);}}>+ Add Report</Btn>
       </div>
       {reports.length===0&&(
@@ -38430,6 +38452,18 @@ Return ONLY the JSON array, no markdown.`;
           setData(d=>({...d,contactReports:d.contactReports.map(r=>r.id===local.id?{...r,...real}:r)}));
           const val = memoryValueFor(rData);
           if(val) upsertClientMemory(rData.client_id, rData.client_name, `contact_report_${real.id}`, val, "contact_report");
+          // Auto-email on submit — per-client switch (Contact Reports tab).
+          // Only fires for a brand-new report, never a re-save via Edit.
+          const client = (data.clients||[]).find(c=>c.id===rData.client_id);
+          const know = (data.clientKnowledge||[]).find(k=>k.client_id===rData.client_id);
+          if(know?.contact_report_auto_email && client) {
+            const to = resolveContactReportRecipients(real, client, data.team||[]);
+            if(to.length) {
+              const html = generateContactReportHTML(real, client.name, brandingAssets);
+              const typeLabel = real.meeting_type==="call"?"Call":"Meeting";
+              sendEmail(to, `${typeLabel} Report — ${client.name}`, html, brandingAssets?.app_name||"Admepro");
+            }
+          }
         }
       }).catch(()=>{});
     }
