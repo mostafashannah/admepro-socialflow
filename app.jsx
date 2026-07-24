@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.470";
+const APP_VERSION = "beta 5.471";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -20991,6 +20991,14 @@ const SYSTEM_EMAIL_SAMPLES = [
       [{title:"Product Launch Teaser",client_name:"Urban Fitness"}],
       [{title:"Weekly Recap Post",client_name:"Al Mousa Group"}],
       [{title:"Behind the Scenes Story",client_name:"Al Mousa Group"}]) },
+  { group:"Client Reports", key:"contactReport", label:"Contact Report", build:()=>generateContactReportHTML(
+      {meeting_type:"meeting", location_type:"physical", location:"Client's office, Cairo", created_at:"2026-07-24T21:11:00",
+       created_by_name:"Mostafa Shannah",
+       attendees:JSON.stringify([{name:"Mr. Alaa",title:"CEO"},{name:"Mostafa Shannah",title:""},{name:"Monay Khaled",title:"Account Manager"}]),
+       summary:"In-office meeting with Mr. Alaa (Brand CEO), Mostafa, and Monay Khaled. Discussed the new content calendar and next campaign direction. Client requested a more aggressive ad push and a shoot for the upcoming campaign.",
+       key_points:"Reviewed the new content calendar\nClient requested pushing ads harder\nPlanned a shoot for the next campaign",
+       action_items:"Push ads more aggressively as per client request\nPlan and schedule a shoot for the next campaign"},
+      "Arabia Uniform", null) },
   { group:"Recruitment", key:"applicationReceived", label:"Application Received", build:()=>applicationReceivedEmail("Nourhan Adel","Content Creator") },
   { group:"Recruitment", key:"completeApplication", label:"Complete Your Application", build:()=>completeApplicationEmail("Nourhan Adel","Thanks for applying! To finish reviewing your application, could you fill in a few more details:",["CV / Resume","Expected Salary","Available Start Date"],"https://socialflow.admepro.com/careers/complete?token=sample") },
   { group:"Recruitment", key:"interviewProposed", label:"Interview Times Proposed", build:()=>interviewProposedEmail("Nourhan Adel","Content Creator",["2026-07-27T13:00:00","2026-07-28T15:30:00"],"https://socialflow.admepro.com/careers/interview?token=sample",false,"") },
@@ -26806,7 +26814,9 @@ async function downloadInvoicePDF(inv, payments, branding) {
   }
 }
 
-// ── Contact Report → HTML/PDF/Email (Admepro-branded, matches invoice look) ──
+// ── Contact Report → HTML/PDF/Email — same rounded-card style as the
+// recruitment emails (applicationReceivedEmail etc.), so every system
+// email looks like one family instead of two different templates.
 function generateContactReportHTML(report, clientName, branding) {
   const attendees = parseMaybeJson(report.attendees, []);
   const typeLabel = report.meeting_type==="call" ? "Call" : report.meeting_type==="meeting" ? "Meeting" : "Contact";
@@ -26815,43 +26825,36 @@ function generateContactReportHTML(report, clientName, branding) {
     : (report.location||"");
   const when = report.created_at ? new Date(report.created_at).toLocaleString("en-GB",{day:"numeric",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
   const esc = s => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-  const lines = s => esc(s).split("\n").filter(Boolean).map(l=>`<li>${l.replace(/^[-•]\s*/,"")}</li>`).join("");
   const accent = branding?.primary_color || "#d90b2c";
-  const appName = branding?.app_name || "Admepro";
-  const tagline = branding?.agency_tagline || "Social Media Agency";
-  const logoHTML = buildLogoHTML(branding, "light");
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
-    *{box-sizing:border-box}
-    body{font-family:Arial,Helvetica,sans-serif;color:#222;margin:0;background:#fff}
-    .page{width:794px;margin:0 auto;padding:48px;background:#fff}
-    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:32px;padding-bottom:20px;border-bottom:3px solid ${accent}}
-    .header-right{text-align:right}
-    .header-right .type{font-size:11px;font-weight:700;color:${accent};text-transform:uppercase;letter-spacing:0.08em}
-    h1{font-size:20px;margin:6px 0 4px;color:#111}
-    .meta{font-size:12px;color:#777;margin-bottom:24px}
-    .section{margin-bottom:18px}
-    .label{font-size:11px;font-weight:700;color:${accent};text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px}
-    .box{background:#f7f7f8;border-radius:8px;padding:14px 16px;font-size:13px;line-height:1.7}
-    ul{margin:0;padding-left:18px;font-size:13px;line-height:1.8}
-    .attendees{display:flex;flex-wrap:wrap;gap:8px}
-    .attendee{background:#f7f7f8;border:1px solid #eee;border-radius:20px;padding:5px 12px;font-size:12px}
-    .footer{margin-top:36px;font-size:10px;color:#bbb;border-top:1px solid #eee;padding-top:14px}
-  </style></head><body><div class="page">
-    <div class="header">
-      ${logoHTML}
-      <div class="header-right">
-        <div class="type">${typeLabel} Report</div>
-        <h1>${esc(clientName)}</h1>
-        <div style="font-size:11px;color:#999">${tagline}</div>
-      </div>
-    </div>
-    <div class="meta">${when}${locLabel?` · ${esc(locLabel)}`:""} · Logged by ${esc(report.created_by_name||"")}</div>
-    ${attendees.length?`<div class="section"><div class="label">Attendees</div><div class="attendees">${attendees.map(a=>`<span class="attendee">${esc(a.name)}${a.title?` — ${esc(a.title)}`:""}</span>`).join("")}</div></div>`:""}
-    ${report.summary?`<div class="section"><div class="label">Summary</div><div class="box">${esc(report.summary)}</div></div>`:""}
-    ${report.key_points?`<div class="section"><div class="label">Key Points</div><ul>${lines(report.key_points)}</ul></div>`:""}
-    ${report.action_items?`<div class="section"><div class="label">Action Items</div><ul>${lines(report.action_items)}</ul></div>`:""}
-    <div class="footer">${appName} · Generated ${new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}</div>
-  </div></body></html>`;
+  const attendeesLine = attendees.map(a=>esc(a.name)+(a.title?` (${esc(a.title)})`:"")).join(", ");
+  const section = (label, value) => value ? `
+      <p style="margin:16px 0 4px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em">${label}</p>
+      <p style="margin:0;font-size:14px;line-height:1.7;color:#374151;white-space:pre-wrap">${esc(value)}</p>` : "";
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
+<tr><td align="center">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb">
+  <tr><td style="padding:32px 36px 0">
+    <img src="${ADMEPRO_LOGO_BLACK}" alt="${esc(branding?.app_name||"Admepro")}" style="height:28px;width:auto"/>
+  </td></tr>
+  <tr><td style="padding:24px 36px 36px">
+    <p style="margin:0 0 8px;font-size:11px;font-weight:700;color:${accent};text-transform:uppercase;letter-spacing:0.08em">${typeLabel} Report</p>
+    <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">${esc(clientName)}</h2>
+    <p style="margin:0 0 16px;font-size:13px;color:#6b7280">${when}${locLabel?` &middot; ${esc(locLabel)}`:""}${report.created_by_name?` &middot; Logged by ${esc(report.created_by_name)}`:""}</p>
+    ${attendeesLine?`<p style="margin:0 0 4px;font-size:14px;line-height:1.6;color:#374151"><strong>Attendees:</strong> ${attendeesLine}</p>`:""}
+    ${section("Summary", report.summary)}
+    ${section("Key Points", report.key_points)}
+    ${section("Action Items", report.action_items)}
+    <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:28px;padding-top:20px"><tr><td>
+      <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">${esc(branding?.app_name||"Admepro")}</p>
+      <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
+      <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
+    </td></tr></table>
+  </td></tr>
+</table>
+</td></tr></table>
+</body></html>`;
 }
 // Rendered as real text via jsPDF, not html2canvas — this exact CDN
 // html2pdf bundle is already documented elsewhere in this file (see
@@ -26886,17 +26889,17 @@ async function downloadContactReportPDF(report, clientName, branding) {
       for (const line of lines) { ensureRoom(lh); doc.text(line, marginX, y); y += lh; }
     };
 
-    // Header
+    // Header — same label → title → meta hierarchy as the branded email
     doc.setFillColor(ar,ag,ab);
     doc.rect(0, 0, pageWidth, 6, "F");
-    doc.setFont("Helvetica","bold"); doc.setFontSize(10); doc.setTextColor(ar,ag,ab);
-    doc.text(appName.toUpperCase(), marginX, y); y += 20;
-    doc.setFont("Helvetica","bold"); doc.setFontSize(19); doc.setTextColor(20,20,20);
-    doc.text(`${typeLabel} Report — ${clientName}`, marginX, y); y += 20;
-    doc.setFont("Helvetica","normal"); doc.setFontSize(10); doc.setTextColor(120,120,120);
+    doc.setFont("Helvetica","bold"); doc.setFontSize(9); doc.setTextColor(ar,ag,ab);
+    doc.text(`${appName.toUpperCase()}  ·  ${typeLabel.toUpperCase()} REPORT`, marginX, y); y += 22;
+    doc.setFont("Helvetica","bold"); doc.setFontSize(20); doc.setTextColor(17,24,39);
+    doc.text(clientName, marginX, y); y += 20;
+    doc.setFont("Helvetica","normal"); doc.setFontSize(10); doc.setTextColor(107,114,128);
     doc.text([when, locLabel, report.created_by_name?`Logged by ${report.created_by_name}`:""].filter(Boolean).join("  ·  "), marginX, y);
-    y += 14;
-    doc.setDrawColor(ar,ag,ab); doc.setLineWidth(1.2);
+    y += 16;
+    doc.setDrawColor(229,231,235); doc.setLineWidth(1);
     doc.line(marginX, y, pageWidth-marginX, y);
     y += 22;
 
