@@ -338,6 +338,22 @@ foreach ($messages as $message) {
             if ($o['title'] !== '' && (stripos($subject, $o['title']) !== false || stripos($o['title'], $subject) !== false)) { $matchedOpening = $o; break; }
         }
 
+        // Same email + same opening already has an application (e.g. it came
+        // in earlier through the public /careers form under a different
+        // email_message_id, so the checkDup lookup above never matches it).
+        // This MUST run before any attachment is downloaded/saved below —
+        // it used to run after, which meant this exact email got its
+        // attachments re-uploaded to disk on every single cron run forever
+        // (this cron deliberately re-scans the last 2 days every time, see
+        // the unseen() comment above), even though the resulting duplicate
+        // application insert was correctly skipped every time. That silently
+        // wrote gigabytes of duplicate files over time.
+        if ($matchedOpening) {
+            $dupCheck = $pdo->prepare("SELECT 1 FROM job_applications WHERE candidate_email = :e AND job_opening_id = :o LIMIT 1");
+            $dupCheck->execute([':e' => $candidateEmail, ':o' => $matchedOpening['id']]);
+            if ($dupCheck->fetchColumn()) { $message->setFlag('Seen'); continue; }
+        }
+
         // Grab the first PDF attachment as the CV, and (if present) a second
         // attachment (any type) as the optional portfolio attachment.
         $cvUrl = null;
@@ -481,16 +497,6 @@ foreach ($messages as $message) {
         if ($strictFiltering && !$matchedOpening && !$cvUrl) {
             $message->setFlag('Seen');
             continue;
-        }
-
-        // Same guard as the public form: the same email applying to the
-        // same opening again (a forwarded/resent copy, an accidental
-        // second email) would otherwise create a duplicate application and
-        // re-upload/duplicate the CV file. A different opening is fine.
-        if ($matchedOpening) {
-            $dupCheck = $pdo->prepare("SELECT 1 FROM job_applications WHERE candidate_email = :e AND job_opening_id = :o LIMIT 1");
-            $dupCheck->execute([':e' => $candidateEmail, ':o' => $matchedOpening['id']]);
-            if ($dupCheck->fetchColumn()) { $message->setFlag('Seen'); continue; }
         }
 
         $insert->execute([
