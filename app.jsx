@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.475";
+const APP_VERSION = "beta 5.476";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -18927,7 +18927,7 @@ function generateQuotePDF(quote, items, branding) {
       <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;text-align:right;font-size:13px">${fmtMoney(it.unit_price,cur)}</td>
       <td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;text-align:right;font-weight:700;font-size:13px">${fmtMoney(lineTotal,cur)}</td>
     </tr>`;
-  }).join("");
+  }).join("") || `<tr><td colspan="5" style="padding:24px 14px;text-align:center;color:#999;font-size:13px">No items added to this quote yet.</td></tr>`;
 
   // Same fixed Admepro logo used across the branded email family (contact
   // reports, recruitment emails) rather than the configurable Settings ->
@@ -19014,140 +19014,156 @@ function generateQuotePDF(quote, items, branding) {
 
 // A real PDF (jsPDF, real text — not an .html file renamed, and not
 // html2canvas, which this codebase already found reliably blanks out on
-// this CDN bundle — see the note above downloadContactReportPDF). Modern
-// card-style layout: logo, small red accent details, a short welcome
-// line, rounded item table, totals card.
+// this CDN bundle — see the note above downloadContactReportPDF). The
+// "admepro." wordmark is drawn as real text (black + a small red dot),
+// not a fetched image — avoids the admepro.com CORS issue entirely and
+// matches the reference design exactly. Red is used sparingly (just the
+// dot + a couple of small labels), everything else is black/gray.
 async function downloadQuotePDF(quote, items, branding) {
   const jsPDFCtor = window.jspdf?.jsPDF;
   if (!jsPDFCtor) { alert("PDF library failed to load — please refresh and try again."); return; }
   try {
     const calc = calcQuote(items, quote.discount_value, quote.discount_type, quote.tax_rate);
     const cur = quote.currency || "USD";
-    const [ar,ag,ab] = hexToRgb(branding?.primary_color || "#d90b2c");
-    const logo = await loadImageForPdf(ADMEPRO_LOGO_BLACK);
+    const [rr,rg,rb] = hexToRgb(branding?.primary_color || "#d90b2c");
 
     const doc = new jsPDFCtor({unit:"pt", format:"a4"});
-    const marginX = 48, pageWidth = doc.internal.pageSize.getWidth(), pageHeight = doc.internal.pageSize.getHeight();
+    const marginX = 50, pageWidth = doc.internal.pageSize.getWidth(), pageHeight = doc.internal.pageSize.getHeight();
     const maxW = pageWidth - marginX*2;
-    let y = 50;
-    const ensureRoom = (needed) => { if (y + needed > pageHeight - 60) { doc.addPage(); y = 50; } };
+    let y = 60;
+    const ensureRoom = (needed) => { if (y + needed > pageHeight - 60) { doc.addPage(); y = 60; } };
+    const wordmark = (x, yPos, size) => {
+      doc.setFont("Helvetica","bold"); doc.setFontSize(size); doc.setTextColor(20,20,20);
+      doc.text("admepro", x, yPos);
+      const w = doc.getTextWidth("admepro");
+      doc.setTextColor(rr,rg,rb);
+      doc.text(".", x+w+1, yPos);
+    };
 
-    // Header
-    if (logo) {
-      const logoH = 24, logoW = logoH * (logo.w/logo.h);
-      doc.addImage(logo.dataUrl, "PNG", marginX, y, logoW, logoH);
-    }
-    doc.setFont("Helvetica","bold"); doc.setFontSize(9); doc.setTextColor(ar,ag,ab);
-    doc.text("ADMEPRO ADVERTISING AGENCY", pageWidth-marginX, y+8, {align:"right"});
-    doc.setFont("Helvetica","bold"); doc.setFontSize(24); doc.setTextColor(17,24,39);
-    doc.text("QUOTATION", pageWidth-marginX, y+30, {align:"right"});
+    // Header — wordmark left, quote # right
+    wordmark(marginX, y, 26);
+    doc.setFont("Helvetica","bold"); doc.setFontSize(20); doc.setTextColor(20,20,20);
+    doc.text(`Quotation #${(quote.quote_number||"").replace(/\D/g,"")||quote.quote_number||""}`, pageWidth-marginX, y-6, {align:"right"});
+    y += 34;
+
+    // Date/Valid-Until (left) + company contact (right)
+    doc.setFont("Helvetica","bold"); doc.setFontSize(9.5); doc.setTextColor(30,30,30);
+    doc.text("Date: ", marginX, y);
+    doc.setFont("Helvetica","normal"); doc.text(quote.date||"", marginX+34, y);
+    doc.setFont("Helvetica","bold"); doc.text("Valid Until: ", marginX, y+14);
+    doc.setFont("Helvetica","normal"); doc.text(quote.due_date||"", marginX+62, y+14);
+
+    doc.setFont("Helvetica","normal"); doc.setFontSize(9.5); doc.setTextColor(30,30,30);
+    doc.text("Villa 145 Al Banafsig 3, New Cairo", pageWidth-marginX, y, {align:"right"});
+    doc.text("+20 100 037 0140", pageWidth-marginX, y+14, {align:"right"});
+    doc.text("www.admepro.com", pageWidth-marginX, y+28, {align:"right"});
     y += 46;
-    doc.setDrawColor(ar,ag,ab); doc.setLineWidth(2);
-    doc.line(marginX, y, pageWidth-marginX, y);
-    y += 28;
 
-    // Welcome line
-    doc.setFont("Helvetica","italic"); doc.setFontSize(11); doc.setTextColor(90,90,90);
-    doc.text(`Thank you for the opportunity to work with ${quote.client_name||"you"} — here's our proposal.`, marginX, y);
-    y += 26;
+    // Customer (left) + Special instructions (right)
+    doc.setFont("Helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(20,20,20);
+    doc.text("CUSTOMER", marginX, y);
+    doc.setFont("Helvetica","normal"); doc.setFontSize(10.5); doc.setTextColor(60,60,60);
+    doc.text(quote.client_name||"", marginX, y+15);
 
-    // Quote meta (right) + Bill To (left)
-    const metaTop = y;
-    doc.setFont("Helvetica","bold"); doc.setFontSize(9); doc.setTextColor(ar,ag,ab);
-    doc.text("BILL TO", marginX, y);
-    doc.setFont("Helvetica","bold"); doc.setFontSize(13); doc.setTextColor(17,24,39);
-    doc.text(quote.client_name||"", marginX, y+16);
-    doc.setFont("Helvetica","normal"); doc.setFontSize(9.5); doc.setTextColor(107,114,128);
-    let by = y+30;
-    if (quote.client_email) { doc.text(quote.client_email, marginX, by); by += 13; }
-    if (quote.client_phone) { doc.text(quote.client_phone, marginX, by); by += 13; }
-
-    doc.setFont("Helvetica","bold"); doc.setFontSize(9); doc.setTextColor(ar,ag,ab);
-    doc.text("QUOTE #", pageWidth-marginX, y, {align:"right"});
-    doc.setFont("Helvetica","bold"); doc.setFontSize(13); doc.setTextColor(17,24,39);
-    doc.text(quote.quote_number||"", pageWidth-marginX, y+16, {align:"right"});
-    doc.setFont("Helvetica","normal"); doc.setFontSize(9.5); doc.setTextColor(107,114,128);
-    doc.text(`Date: ${quote.date||""}`, pageWidth-marginX, y+30, {align:"right"});
-    if (quote.due_date) doc.text(`Valid Until: ${quote.due_date}`, pageWidth-marginX, y+43, {align:"right"});
-
-    y = Math.max(by, y+43) + 24;
     if (quote.title) {
-      doc.setFont("Helvetica","bold"); doc.setFontSize(13); doc.setTextColor(17,24,39);
-      ensureRoom(20); doc.text(quote.title, marginX, y); y += 24;
+      doc.setFont("Helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(20,20,20);
+      doc.text("SPECIAL INSTRUCTIONS:", pageWidth-marginX, y, {align:"right"});
+      doc.setFont("Helvetica","normal"); doc.setFontSize(9.5); doc.setTextColor(60,60,60);
+      doc.text(quote.title, pageWidth-marginX, y+15, {align:"right"});
     }
-
-    // Items table
-    const colX = { item: marginX, qty: marginX+300, price: marginX+360, total: pageWidth-marginX };
-    ensureRoom(30);
-    doc.setFillColor(ar,ag,ab);
-    doc.roundedRect(marginX, y, maxW, 26, 4, 4, "F");
-    doc.setFont("Helvetica","bold"); doc.setFontSize(9); doc.setTextColor(255,255,255);
-    doc.text("ITEM", colX.item+10, y+17);
-    doc.text("QTY", colX.qty, y+17, {align:"center"});
-    doc.text("PRICE", colX.price, y+17, {align:"right"});
-    doc.text("TOTAL", colX.total, y+17, {align:"right"});
-    y += 26;
-
-    items.forEach((it,i)=>{
-      const lineTotal = (parseFloat(it.qty||0)*parseFloat(it.unit_price||0));
-      const descLines = it.description ? doc.setFont("Helvetica","normal").setFontSize(8.5).splitTextToSize(it.description, 260) : [];
-      const rowH = 20 + (descLines.length*11);
-      ensureRoom(rowH);
-      if (i%2===1) { doc.setFillColor(248,248,249); doc.rect(marginX, y, maxW, rowH, "F"); }
-      doc.setFont("Helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(30,30,30);
-      doc.text(it.name||"", colX.item+10, y+14);
-      doc.setFont("Helvetica","normal"); doc.setFontSize(8.5); doc.setTextColor(130,130,130);
-      descLines.forEach((l,li)=>doc.text(l, colX.item+10, y+26+li*11));
-      doc.setFont("Helvetica","normal"); doc.setFontSize(10); doc.setTextColor(60,60,60);
-      doc.text(String(it.qty||0), colX.qty, y+14, {align:"center"});
-      doc.text(fmtMoney(it.unit_price,cur), colX.price, y+14, {align:"right"});
-      doc.setFont("Helvetica","bold");
-      doc.text(fmtMoney(lineTotal,cur), colX.total, y+14, {align:"right"});
-      y += rowH;
-    });
-    doc.setDrawColor(230,230,232); doc.setLineWidth(1);
+    y += 34;
+    doc.setDrawColor(60,60,60); doc.setLineWidth(1);
     doc.line(marginX, y, pageWidth-marginX, y);
-    y += 20;
+    y += 24;
 
-    // Totals card
-    const totalsW = 240, totalsX = pageWidth-marginX-totalsW;
-    ensureRoom(100);
-    const totalsRows = [["Subtotal", fmtMoney(calc.subtotal,cur), false]];
-    if (calc.discAmt>0) totalsRows.push([`Discount${quote.discount_type==="percent"?` (${quote.discount_value}%)`:""}`, `− ${fmtMoney(calc.discAmt,cur)}`, false]);
-    if (calc.taxAmt>0) totalsRows.push([`VAT (${quote.tax_rate}%)`, fmtMoney(calc.taxAmt,cur), false]);
-    doc.setFont("Helvetica","normal"); doc.setFontSize(10); doc.setTextColor(80,80,80);
-    totalsRows.forEach(([label,val])=>{
-      doc.text(label, totalsX, y);
-      doc.text(val, pageWidth-marginX, y, {align:"right"});
-      y += 18;
+    // Items table — grouped like the reference: item name bold, its
+    // description as separate lines beneath (no bullets), one qty/price/
+    // total per group, thin vertical rules between columns per row.
+    const colDescW = 300, colQtyX = marginX+colDescW+40, colPriceX = colQtyX+90, colTotalX = pageWidth-marginX;
+    doc.setFont("Helvetica","bold"); doc.setFontSize(9.5); doc.setTextColor(20,20,20);
+    doc.text("DESCRIPTION", marginX, y);
+    doc.text("QUANTITY", colQtyX, y, {align:"center"});
+    doc.text("PRICE", colPriceX, y, {align:"center"});
+    doc.text("TOTAL", colTotalX, y, {align:"right"});
+    y += 10;
+    doc.setDrawColor(20,20,20); doc.setLineWidth(1);
+    doc.line(marginX, y, pageWidth-marginX, y);
+    y += 22;
+
+    if (!items.length) {
+      doc.setFont("Helvetica","normal"); doc.setFontSize(10); doc.setTextColor(140,140,140);
+      doc.text("No items added to this quote yet.", pageWidth/2, y, {align:"center"});
+      y += 20;
+    }
+    items.forEach((it)=>{
+      const lineTotal = (parseFloat(it.qty||0)*parseFloat(it.unit_price||0));
+      doc.setFont("Helvetica","normal"); doc.setFontSize(10);
+      const descLines = it.description ? it.description.split("\n").filter(Boolean) : [];
+      const rowH = Math.max(46, 20 + descLines.length*16);
+      ensureRoom(rowH+16);
+      const rowTop = y;
+
+      doc.setFont("Helvetica","bold"); doc.setFontSize(11); doc.setTextColor(20,20,20);
+      doc.text(it.name||"", marginX, y);
+      doc.setFont("Helvetica","normal"); doc.setFontSize(10); doc.setTextColor(70,70,70);
+      descLines.forEach((l,li)=>doc.text(l, marginX, y+18+li*15));
+
+      const midY = rowTop + rowH/2 - 8;
+      doc.setFont("Helvetica","normal"); doc.setFontSize(10.5); doc.setTextColor(30,30,30);
+      doc.text(String(it.qty||0), colQtyX, midY, {align:"center"});
+      doc.text(fmtMoney(it.unit_price,cur), colPriceX, midY, {align:"center"});
+      doc.setFont("Helvetica","bold");
+      doc.text(fmtMoney(lineTotal,cur), colTotalX, midY, {align:"right"});
+
+      // Column separators for this row
+      doc.setDrawColor(180,180,180); doc.setLineWidth(0.75);
+      [marginX+colDescW+10, colQtyX+45, colPriceX+45].forEach(lx=>doc.line(lx, rowTop-14, lx, rowTop+rowH-10));
+
+      y += rowH;
+      doc.setDrawColor(210,210,210); doc.setLineWidth(0.75);
+      doc.line(marginX, y-8, pageWidth-marginX, y-8);
+      y += 14;
     });
-    doc.setFillColor(ar,ag,ab);
-    doc.roundedRect(totalsX, y, totalsW, 32, 5, 5, "F");
-    doc.setFont("Helvetica","bold"); doc.setFontSize(12); doc.setTextColor(255,255,255);
-    doc.text("TOTAL", totalsX+12, y+21);
-    doc.text(fmtMoney(calc.total,cur), pageWidth-marginX-12, y+21, {align:"right"});
-    y += 50;
+    y += 10;
 
+    // Payment terms (left) + Totals (right)
+    const totalsTop = y;
     if (quote.payment_terms) {
-      ensureRoom(50);
-      doc.setDrawColor(ar,ag,ab); doc.setLineWidth(3);
-      doc.line(marginX, y, marginX, y+40);
-      doc.setFont("Helvetica","bold"); doc.setFontSize(9); doc.setTextColor(ar,ag,ab);
-      doc.text("PAYMENT TERMS", marginX+12, y+12);
-      doc.setFont("Helvetica","normal"); doc.setFontSize(9.5); doc.setTextColor(80,80,80);
-      const termLines = doc.splitTextToSize(quote.payment_terms, maxW-20);
-      termLines.forEach((l,li)=>{ ensureRoom(14); doc.text(l, marginX+12, y+26+li*13); });
-      y += 26 + termLines.length*13 + 10;
-    }
-    if (quote.notes) {
-      ensureRoom(20);
-      doc.setFont("Helvetica","italic"); doc.setFontSize(9); doc.setTextColor(140,140,140);
-      const noteLines = doc.splitTextToSize(`Notes: ${quote.notes}`, maxW);
-      noteLines.forEach(l=>{ ensureRoom(13); doc.text(l, marginX, y); y += 13; });
+      doc.setFont("Helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(20,20,20);
+      doc.text("Payment Terms", marginX, y);
+      doc.setFont("Helvetica","normal"); doc.setFontSize(9.5); doc.setTextColor(60,60,60);
+      const termLines = doc.splitTextToSize(quote.payment_terms, colDescW);
+      termLines.forEach((l,li)=>doc.text(l, marginX, y+16+li*13));
+      y += 16 + termLines.length*13 + 18;
+      doc.setFont("Helvetica","normal"); doc.setFontSize(9);
+      const contactLines = doc.splitTextToSize("If you have any questions concerning this quotation, please contact admepro at hello@admepro.com.", colDescW);
+      contactLines.forEach((l,li)=>doc.text(l, marginX, y+li*12));
+      y += contactLines.length*12;
     }
 
-    doc.setFont("Helvetica","normal"); doc.setFontSize(8); doc.setTextColor(180,180,180);
-    doc.text(`Admepro Advertising Agency · 145 El Banafsig 3, New Cairo, Cairo · hello@admepro.com`, marginX, pageHeight-32);
+    let ty = totalsTop;
+    const totalsX = colQtyX-10;
+    doc.setFont("Helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(20,20,20);
+    doc.text("SUBTOTAL:", totalsX, ty); doc.text(fmtMoney(calc.subtotal,cur), pageWidth-marginX, ty, {align:"right"}); ty += 24;
+    doc.text("SALES TAX:", totalsX, ty); doc.text(calc.taxAmt>0?fmtMoney(calc.taxAmt,cur):"0", pageWidth-marginX, ty, {align:"right"}); ty += 24;
+    doc.text("PACKAGE DISCOUNT:", totalsX, ty); doc.text(calc.discAmt>0?fmtMoney(calc.discAmt,cur):"0", pageWidth-marginX, ty, {align:"right"}); ty += 30;
+    doc.setFontSize(16);
+    doc.text("TOTAL:", totalsX, ty); doc.text(fmtMoney(calc.total,cur), pageWidth-marginX, ty, {align:"right"});
+
+    y = Math.max(y, ty) + 50;
+    ensureRoom(50);
+
+    // Footer — small wordmark mark + thank-you, centered
+    doc.setFont("Helvetica","bold"); doc.setFontSize(16); doc.setTextColor(20,20,20);
+    const markW = doc.getTextWidth("p");
+    const dotW = doc.getTextWidth(".");
+    const cx = pageWidth/2 - (markW+dotW)/2;
+    doc.text("p", cx, y);
+    doc.setTextColor(rr,rg,rb);
+    doc.text(".", cx+markW+1, y);
+    y += 18;
+    doc.setFont("Helvetica","bold"); doc.setFontSize(9); doc.setTextColor(20,20,20);
+    doc.text("THANK YOU FOR YOUR BUSINESS!", pageWidth/2, y, {align:"center"});
 
     doc.save(`${quote.quote_number||"quote"}.pdf`);
   } catch(e) {
