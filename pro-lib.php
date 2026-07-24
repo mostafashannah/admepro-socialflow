@@ -1515,6 +1515,8 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
     // real error is substituted in before anything goes out to the user.
     $lastMutationResult = null;
     $mutationAttempted = false;
+    $lastContactReportResult = null;
+    $contactReportAttempted = false;
     for ($turn = 0; $turn < 4; $turn++) {
         $payload = ['model' => 'claude-sonnet-4-6', 'max_tokens' => 500, 'system' => $system, 'messages' => $messages];
         if ($tools) $payload['tools'] = $tools;
@@ -1559,6 +1561,10 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                 $lastMutationResult = $result;
                 $mutationAttempted = true;
             }
+            if ($block['name'] === 'save_contact_report') {
+                $lastContactReportResult = $result;
+                $contactReportAttempted = true;
+            }
             $toolResults[] = [
                 'type' => 'tool_result',
                 'tool_use_id' => $block['id'],
@@ -1592,6 +1598,20 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
             $reply = "Actually, I didn't save that — something went wrong before I could log it. Please resend your confirmation and I'll try again.";
         } elseif (is_array($lastMutationResult) && !empty($lastMutationResult['error'])) {
             $reply = "Actually, that wasn't saved — " . $lastMutationResult['error'];
+        }
+    }
+    // Same class of bug, different tool: seen in production where a voice-note
+    // debrief got a confident "Saved ✅ — meeting with X, key points..." reply
+    // with real-sounding details lifted straight from the transcript, but the
+    // model never actually issued the save_contact_report tool call — so
+    // nothing was in fact written to contact_reports. Only ever relevant on a
+    // voice-note turn (contact reports are voice-note-only), so this can't
+    // misfire on an unrelated "✅ done" reply for some other legitimate tool.
+    if ($voiceTranscript && $claimsSuccess && preg_match('/(contact report|تقرير)/iu', $reply)) {
+        if (!$contactReportAttempted) {
+            $reply = "Actually, I didn't save that — something went wrong before I could log it. Please resend the voice note and I'll try again.";
+        } elseif (is_array($lastContactReportResult) && !empty($lastContactReportResult['error'])) {
+            $reply = "Actually, that wasn't saved — " . $lastContactReportResult['error'];
         }
     }
 
