@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.472";
+const APP_VERSION = "beta 5.473";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -18970,7 +18970,7 @@ function generateQuotePDF(quote, items, branding) {
       <div class="quote-meta">
         <div class="quote-title-big">QUOTATION</div>
         <div class="quote-num">${quote.quote_number||"QT-2026-001"}</div>
-        <div class="quote-date">Date: ${quote.date||""} ${quote.due_date?`· Due: ${quote.due_date}`:""}</div>
+        <div class="quote-date">Date: ${quote.date||""} ${quote.due_date?`· Valid Until: ${quote.due_date}`:""}</div>
       </div>
     </div>
     <div class="section">
@@ -19140,7 +19140,7 @@ function QuoteFormModal({open,onClose,clients,existingQuotes,editQuote,onSave,cu
             <Field label="Date">
               <input type="date" value={f.date} onChange={e=>s("date",e.target.value)} style={inputSt}/>
             </Field>
-            <Field label="Due Date">
+            <Field label="Valid Until">
               <input type="date" value={f.due_date} onChange={e=>s("due_date",e.target.value)} style={inputSt}/>
             </Field>
             <Field label="Currency">
