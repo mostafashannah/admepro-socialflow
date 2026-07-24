@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.465";
+const APP_VERSION = "beta 5.466";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9762,7 +9762,7 @@ function ClientLoginsTab({client,onUpdateClient,canAdd=false,canEdit=false}) {
   );
 }
 
-function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,onAddCalendar,onAddTask,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient,integrationLogs=[],onAddIntegration,onUpdateIntegration,onDeleteIntegration,onRetryIntegration}) {
+function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,onAddCalendar,onAddTask,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],onSaveContactReport,leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient,integrationLogs=[],onAddIntegration,onUpdateIntegration,onDeleteIntegration,onRetryIntegration}) {
   const {isMobile} = useResponsive();
   // Plain state, not persisted — opening any client should always start on
   // Overview, not silently reopen to whatever tab was last viewed for them.
@@ -10024,36 +10024,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
             <ClientBrandGuidelinesSubTab client={client} knowledge={knowledge} onSaveKnowledge={onSaveKnowledge}/>
           )}
           {brainSubTab==="contact_reports"&&(
-            <div style={{display:"flex",flexDirection:"column",gap:16}}>
-              {(contactReports||[]).filter(r=>r.client_id===client.id).length===0&&(
-                <div style={{padding:"40px 0",textAlign:"center",color:"var(--text3)",fontSize:14}}>
-                  No contact reports yet. Send Pro a voice note on WhatsApp after a client call and it'll show up here.
-                </div>
-              )}
-              {(contactReports||[]).filter(r=>r.client_id===client.id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).map(r=>(
-                <div key={r.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-                    <div>
-                      <p style={{fontWeight:700,fontSize:14}}>{r.created_by_name||"Unknown"}</p>
-                      <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>{r.created_at?new Date(r.created_at).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):""} · via {r.channel}</p>
-                    </div>
-                  </div>
-                  {r.summary&&<p style={{fontSize:13,lineHeight:1.7,color:"var(--text)",marginBottom:10}}>{r.summary}</p>}
-                  {r.key_points&&(
-                    <div style={{marginBottom:10}}>
-                      <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:3}}>KEY POINTS</p>
-                      <p style={{fontSize:13,lineHeight:1.7,color:"var(--text)",whiteSpace:"pre-wrap"}}>{r.key_points}</p>
-                    </div>
-                  )}
-                  {r.action_items&&(
-                    <div>
-                      <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:3}}>ACTION ITEMS</p>
-                      <p style={{fontSize:13,lineHeight:1.7,color:"var(--text)",whiteSpace:"pre-wrap"}}>{r.action_items}</p>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+            <ContactReportsSubTab client={client} contactReports={contactReports} onSaveContactReport={onSaveContactReport}/>
           )}
           {brainSubTab==="integrations"&&(
             <ClientIntegrationsSubTab client={client} integrations={integrations} integrationLogs={integrationLogs} currentUser={currentUser}
@@ -26835,6 +26806,242 @@ async function downloadInvoicePDF(inv, payments, branding) {
   }
 }
 
+// ── Contact Report → HTML/PDF/Email ──
+function generateContactReportHTML(report, clientName) {
+  const attendees = parseMaybeJson(report.attendees, []);
+  const typeLabel = report.meeting_type==="call" ? "Call" : report.meeting_type==="meeting" ? "Meeting" : "Contact";
+  const locLabel = report.meeting_type==="meeting"
+    ? (report.location_type==="online" ? "Online" : report.location_type==="physical" ? "In-person" : "") + (report.location?` — ${report.location}`:"")
+    : (report.location||"");
+  const when = report.created_at ? new Date(report.created_at).toLocaleString("en-GB",{day:"numeric",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
+  const esc = s => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const lines = s => esc(s).split("\n").filter(Boolean).map(l=>`<li>${l.replace(/^[-•]\s*/,"")}</li>`).join("");
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+    body{font-family:Arial,Helvetica,sans-serif;color:#222;margin:0}
+    .page{max-width:720px;margin:0 auto;padding:36px}
+    h1{font-size:20px;margin:0 0 4px}
+    .meta{font-size:12px;color:#777;margin-bottom:20px}
+    .section{margin-bottom:18px}
+    .label{font-size:11px;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px}
+    .box{background:#f7f7f8;border-radius:8px;padding:14px 16px;font-size:13px;line-height:1.7}
+    ul{margin:0;padding-left:18px;font-size:13px;line-height:1.8}
+    .attendees{display:flex;flex-wrap:wrap;gap:8px}
+    .attendee{background:#eef0f3;border-radius:20px;padding:5px 12px;font-size:12px}
+    .footer{margin-top:32px;font-size:10px;color:#bbb;border-top:1px solid #eee;padding-top:12px}
+  </style></head><body><div class="page">
+    <h1>${typeLabel} Report — ${esc(clientName)}</h1>
+    <div class="meta">${when}${locLabel?` · ${esc(locLabel)}`:""} · Logged by ${esc(report.created_by_name||"")}</div>
+    ${attendees.length?`<div class="section"><div class="label">Attendees</div><div class="attendees">${attendees.map(a=>`<span class="attendee">${esc(a.name)}${a.title?` — ${esc(a.title)}`:""}</span>`).join("")}</div></div>`:""}
+    ${report.summary?`<div class="section"><div class="label">Summary</div><div class="box">${esc(report.summary)}</div></div>`:""}
+    ${report.key_points?`<div class="section"><div class="label">Key Points</div><ul>${lines(report.key_points)}</ul></div>`:""}
+    ${report.action_items?`<div class="section"><div class="label">Action Items</div><ul>${lines(report.action_items)}</ul></div>`:""}
+    <div class="footer">Generated ${new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}</div>
+  </div></body></html>`;
+}
+async function downloadContactReportPDF(report, clientName) {
+  const html = generateContactReportHTML(report, clientName);
+  const parsed = (new DOMParser()).parseFromString(html, "text/html");
+  const pageEl = parsed.querySelector(".page");
+  const styleText = parsed.querySelector("style")?.textContent || "";
+  const styleEl = document.createElement("style");
+  styleEl.id = "__cr_pdf_style";
+  styleEl.textContent = styleText;
+  document.head.appendChild(styleEl);
+  const wrapper = document.createElement("div");
+  wrapper.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:794px;background:#fff;";
+  if (pageEl) wrapper.appendChild(pageEl);
+  document.body.appendChild(wrapper);
+  try {
+    await window.html2pdf().set({
+      margin: 0,
+      filename: `Contact Report - ${clientName} - ${(report.created_at||"").slice(0,10)}.pdf`,
+      image: { type: "jpeg", quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true, logging: false },
+      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+    }).from(wrapper).save();
+  } finally {
+    document.body.removeChild(wrapper);
+    const s = document.getElementById("__cr_pdf_style");
+    if (s) document.head.removeChild(s);
+  }
+}
+
+function ContactReportsSubTab({client, contactReports=[], onSaveContactReport}) {
+  const [showModal, setShowModal] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [emailingId, setEmailingId] = useState(null);
+  const [emailTo, setEmailTo] = useState(client.email||"");
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailSentId, setEmailSentId] = useState(null);
+
+  const reports = (contactReports||[]).filter(r=>r.client_id===client.id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+
+  const startEmail = (r) => {
+    const attendeeEmails = parseMaybeJson(r.attendees, []).map(a=>a.email).filter(Boolean);
+    const defaults = [...new Set([...(client.email?[client.email]:[]), ...attendeeEmails])];
+    setEmailingId(r.id); setEmailTo(defaults.join(", ")); setEmailSentId(null);
+  };
+  const sendReportEmail = async (r) => {
+    const to = emailTo.split(",").map(s=>s.trim()).filter(Boolean);
+    if(!to.length) { alert("Enter at least one recipient email."); return; }
+    setSendingEmail(true);
+    const html = generateContactReportHTML(r, client.name);
+    const typeLabel = r.meeting_type==="call"?"Call":"Meeting";
+    const ok = await sendEmail(to, `${typeLabel} Report — ${client.name}`, html);
+    setSendingEmail(false);
+    if(ok) { setEmailSentId(r.id); setEmailingId(null); } else { alert("Failed to send — check mail settings."); }
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      <div style={{display:"flex",justifyContent:"flex-end"}}>
+        <Btn onClick={()=>{setEditing(null);setShowModal(true);}}>+ Add Report</Btn>
+      </div>
+      {reports.length===0&&(
+        <div style={{padding:"40px 0",textAlign:"center",color:"var(--text3)",fontSize:14}}>
+          No contact reports yet. Send Pro a voice note on WhatsApp after a client call, or add one manually.
+        </div>
+      )}
+      {reports.map(r=>{
+        const attendees = parseMaybeJson(r.attendees, []);
+        const typeLabel = r.meeting_type==="call" ? "Call" : r.meeting_type==="meeting" ? "Meeting" : null;
+        const locLabel = r.meeting_type==="meeting"
+          ? [r.location_type==="online"?"Online":r.location_type==="physical"?"In-person":null, r.location].filter(Boolean).join(" — ")
+          : r.location;
+        return (
+          <div key={r.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,flexWrap:"wrap",gap:8}}>
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                  <p style={{fontWeight:700,fontSize:14}}>{r.created_by_name||"Unknown"}</p>
+                  {typeLabel&&<Badge label={typeLabel} color={r.meeting_type==="call"?"#8b5cf6":"#3b82f6"} xs/>}
+                </div>
+                <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>
+                  {r.created_at?new Date(r.created_at).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):""} · via {r.channel}
+                  {locLabel?` · ${locLabel}`:""}
+                </p>
+              </div>
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={()=>{setEditing(r);setShowModal(true);}} title="Edit" style={{padding:"5px 10px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>Edit</button>
+                <button onClick={()=>downloadContactReportPDF(r, client.name)} title="Download PDF" style={{padding:"5px 10px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>PDF</button>
+                <button onClick={()=>startEmail(r)} title="Send by Email" style={{padding:"5px 10px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>Email</button>
+              </div>
+            </div>
+            {attendees.length>0&&(
+              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+                {attendees.map((a,i)=>(
+                  <span key={i} style={{fontSize:11,padding:"3px 9px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border)",color:"var(--text2)"}}>{a.name}{a.title?` · ${a.title}`:""}</span>
+                ))}
+              </div>
+            )}
+            {r.summary&&<p style={{fontSize:13,lineHeight:1.7,color:"var(--text)",marginBottom:10}}>{r.summary}</p>}
+            {r.key_points&&(
+              <div style={{marginBottom:10}}>
+                <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:3}}>KEY POINTS</p>
+                <p style={{fontSize:13,lineHeight:1.7,color:"var(--text)",whiteSpace:"pre-wrap"}}>{r.key_points}</p>
+              </div>
+            )}
+            {r.action_items&&(
+              <div>
+                <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:3}}>ACTION ITEMS</p>
+                <p style={{fontSize:13,lineHeight:1.7,color:"var(--text)",whiteSpace:"pre-wrap"}}>{r.action_items}</p>
+              </div>
+            )}
+            {emailingId===r.id&&(
+              <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid var(--border)",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                <input value={emailTo} onChange={e=>setEmailTo(e.target.value)} placeholder="recipient@email.com, another@email.com" style={{...inputSt,flex:1,minWidth:220}}/>
+                <Btn onClick={()=>sendReportEmail(r)} disabled={sendingEmail}>{sendingEmail?"Sending…":"Send"}</Btn>
+                <Btn variant="secondary" onClick={()=>setEmailingId(null)}>Cancel</Btn>
+              </div>
+            )}
+            {emailSentId===r.id&&<p style={{fontSize:12,color:"#10b981",fontWeight:600,marginTop:8}}>✓ Sent</p>}
+          </div>
+        );
+      })}
+      {showModal&&(
+        <ContactReportModal open onClose={()=>setShowModal(false)} onSave={onSaveContactReport} clientId={client.id} clientName={client.name} report={editing}/>
+      )}
+    </div>
+  );
+}
+
+function ContactReportModal({open, onClose, onSave, clientId, clientName, report}) {
+  const [f,setF] = useState(()=>({
+    meeting_type: report?.meeting_type||"meeting",
+    location_type: report?.location_type||"physical",
+    location: report?.location||"",
+    attendees: parseMaybeJson(report?.attendees, []),
+    summary: report?.summary||"",
+    key_points: report?.key_points||"",
+    action_items: report?.action_items||"",
+  }));
+  const [newAttendee, setNewAttendee] = useState({name:"", title:"", email:""});
+  const [saving, setSaving] = useState(false);
+  if(!open) return null;
+  const sf = (k,v) => setF(p=>({...p,[k]:v}));
+  const addAttendee = () => { if(!newAttendee.name.trim()) return; setF(p=>({...p,attendees:[...p.attendees,{...newAttendee, name:newAttendee.name.trim(), email:newAttendee.email.trim()}]})); setNewAttendee({name:"",title:"",email:""}); };
+  const removeAttendee = (i) => setF(p=>({...p,attendees:p.attendees.filter((_,idx)=>idx!==i)}));
+  const handleSave = async () => {
+    if(!f.summary.trim()) { alert("Please add a summary."); return; }
+    setSaving(true);
+    await onSave({
+      ...(report?{id:report.id}:{}),
+      client_id: clientId, client_name: clientName,
+      meeting_type: f.meeting_type,
+      location_type: f.meeting_type==="meeting" ? f.location_type : null,
+      location: f.location.trim(),
+      attendees: JSON.stringify(f.attendees),
+      summary: f.summary.trim(), key_points: f.key_points.trim(), action_items: f.action_items.trim(),
+    });
+    setSaving(false); onClose();
+  };
+  return (
+    <Modal open onClose={onClose} title={report?"Edit Contact Report":"Add Contact Report"} width={560}>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <div style={{display:"flex",gap:16}}>
+          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,cursor:"pointer"}}><input type="radio" checked={f.meeting_type==="meeting"} onChange={()=>sf("meeting_type","meeting")}/> Meeting</label>
+          <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,cursor:"pointer"}}><input type="radio" checked={f.meeting_type==="call"} onChange={()=>sf("meeting_type","call")}/> Call</label>
+        </div>
+        {f.meeting_type==="meeting"&&(
+          <div style={{display:"flex",gap:16}}>
+            <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,cursor:"pointer"}}><input type="radio" checked={f.location_type==="physical"} onChange={()=>sf("location_type","physical")}/> In-person</label>
+            <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,cursor:"pointer"}}><input type="radio" checked={f.location_type==="online"} onChange={()=>sf("location_type","online")}/> Online</label>
+          </div>
+        )}
+        <Field label={f.meeting_type==="meeting"?"Location":"Number / Platform (optional)"}>
+          <input value={f.location} onChange={e=>sf("location",e.target.value)} placeholder={f.meeting_type==="meeting"?(f.location_type==="online"?"e.g. Zoom, Google Meet":"e.g. Client's office, Cairo"):"e.g. WhatsApp call"} style={inputSt}/>
+        </Field>
+        <Field label="Attendees">
+          <p style={{fontSize:11,color:"var(--text3)",marginBottom:8,marginTop:-4}}>Add an email so the report can be sent to them directly.</p>
+          {f.attendees.length>0&&(
+            <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:8}}>
+              {f.attendees.map((a,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",borderRadius:99,border:"1px solid var(--border)",background:"var(--surface2)",fontSize:12}}>
+                  <span>{a.name}{a.title?` — ${a.title}`:""}{a.email?` (${a.email})`:""}</span>
+                  <button onClick={()=>removeAttendee(i)} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontWeight:700,padding:0}}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            <input value={newAttendee.name} onChange={e=>setNewAttendee(p=>({...p,name:e.target.value}))} placeholder="Name" style={{...inputSt,flex:"1 1 140px"}}/>
+            <input value={newAttendee.title} onChange={e=>setNewAttendee(p=>({...p,title:e.target.value}))} placeholder="Title (optional)" style={{...inputSt,flex:"1 1 140px"}}/>
+            <input value={newAttendee.email} onChange={e=>setNewAttendee(p=>({...p,email:e.target.value}))} placeholder="Email (optional)" style={{...inputSt,flex:"1 1 160px"}} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addAttendee();}}}/>
+            <Btn variant="secondary" onClick={addAttendee}>Add</Btn>
+          </div>
+        </Field>
+        <Field label="Summary"><textarea value={f.summary} onChange={e=>sf("summary",e.target.value)} rows={3} style={{...inputSt,resize:"vertical"}}/></Field>
+        <Field label="Key Points (one per line)"><textarea value={f.key_points} onChange={e=>sf("key_points",e.target.value)} rows={3} style={{...inputSt,resize:"vertical"}}/></Field>
+        <Field label="Action Items (one per line)"><textarea value={f.action_items} onChange={e=>sf("action_items",e.target.value)} rows={3} style={{...inputSt,resize:"vertical"}}/></Field>
+        <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
+          <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={handleSave} disabled={saving}>{saving?"Saving…":"Save Report"}</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Confirm Payment Modal ──
 function ConfirmPaymentModal({open,onClose,invoice,onConfirm,currentUser}) {
   const [f,setF]=useState({amount:"",payment_date:new Date().toISOString().split("T")[0],method:"bank",reference:"",notes:""});
@@ -38070,6 +38277,35 @@ Return ONLY the JSON array, no markdown.`;
     setToast("Knowledge profile updated");
   };
 
+  // Manual create/edit for a Contact Report from the app itself, not just
+  // the WhatsApp/Pro voice-note path — used by the Add/Edit modal on the
+  // client's Contact Reports tab. Also feeds the discussion into that
+  // client's memory (same as the WhatsApp path does server-side), so Sara/
+  // Yahia automatically factor it into future content — keyed by the
+  // report's own id so a later edit updates the same memory row instead of
+  // creating a duplicate.
+  const memoryValueFor = (r) => [r.summary, r.key_points?`Key points: ${r.key_points}`:"", r.action_items?`Action items: ${r.action_items}`:""].filter(Boolean).join("\n");
+  const saveContactReport = async (rData) => {
+    if(rData.id) {
+      setData(d=>({...d,contactReports:d.contactReports.map(r=>r.id===rData.id?{...r,...rData}:r)}));
+      await ue("ContactReport",rData.id,rData).catch(()=>{});
+      const val = memoryValueFor(rData);
+      if(val) upsertClientMemory(rData.client_id, rData.client_name, `contact_report_${rData.id}`, val, "contact_report");
+    } else {
+      const local = {...rData,id:uid(),created_at:new Date().toISOString(),created_by_name:rData.created_by_name||currentUser?.name||"Admin",channel:rData.channel||"manual"};
+      setData(d=>({...d,contactReports:[local,...d.contactReports]}));
+      ce("ContactReport",[{...rData,created_by_name:local.created_by_name,channel:local.channel}]).then(res=>{
+        const real=res.entities?.[0];
+        if(real?.id) {
+          setData(d=>({...d,contactReports:d.contactReports.map(r=>r.id===local.id?{...r,...real}:r)}));
+          const val = memoryValueFor(rData);
+          if(val) upsertClientMemory(rData.client_id, rData.client_name, `contact_report_${real.id}`, val, "contact_report");
+        }
+      }).catch(()=>{});
+    }
+    setToast("Contact report saved");
+  };
+
   const createInvoice = async (invData) => {
     const local = {...invData,id:uid(),created_date:new Date().toISOString()};
     setData(d=>({...d,invoices:[local,...d.invoices]}));
@@ -39332,6 +39568,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
           return (
             <ClientDetailPage key={selectedClient.id} client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} onAddAsset={addAsset} currentUser={currentUser} onImpersonateClient={impersonateClient}
               contactReports={data.contactReports||[]}
+              onSaveContactReport={saveContactReport}
               integrations={data.integrations||[]}
               integrationLogs={data.integrationLogs||[]}
               onAddIntegration={addIntegration}
