@@ -589,14 +589,18 @@ function hrTools() {
         ],
         [
             'name' => 'save_contact_report',
-            'description' => 'Save a structured contact/call report from a client interaction — typically after the user sends a voice note debriefing a call or meeting. Extract the client name, a short summary, key discussion points, and any action items from what they told you, then save it here so it shows up on that client\'s profile in the app. Confirm to the user once saved.',
+            'description' => 'Save a structured contact report from a client interaction — typically after the user sends a voice note debriefing a call or meeting. Extract the client name, whether it was a call or an in-person/online meeting, where it took place, who attended (with their titles/roles if mentioned), a short summary, key discussion points, and any action items, then save it here so it shows up on that client\'s profile in the app. Confirm to the user once saved.',
             'input_schema' => [
                 'type' => 'object',
                 'properties' => [
-                    'client_name'  => ['type' => 'string', 'description' => 'The client this report is about — best-effort match, does not need to be exact'],
-                    'summary'      => ['type' => 'string', 'description' => '2-3 sentence summary of the interaction'],
-                    'key_points'   => ['type' => 'string', 'description' => 'Bullet-style key discussion points, one per line'],
-                    'action_items' => ['type' => 'string', 'description' => 'Bullet-style follow-up actions, one per line — empty if none'],
+                    'client_name'   => ['type' => 'string', 'description' => 'The client this report is about — best-effort match, does not need to be exact'],
+                    'meeting_type'  => ['type' => 'string', 'enum' => ['call', 'meeting'], 'description' => 'Was this a phone/voice call, or an in-person or video meeting?'],
+                    'location_type' => ['type' => 'string', 'enum' => ['online', 'physical'], 'description' => 'For a meeting: was it online (Zoom/Meet/Teams call) or physical (in-person, e.g. at the client\'s office)? Omit for a plain phone call.'],
+                    'location'      => ['type' => 'string', 'description' => 'Where specifically — e.g. "Client\'s office, Cairo", "Google Meet", "Zoom call". Omit if not mentioned.'],
+                    'attendees'     => ['type' => 'string', 'description' => 'JSON array of who attended, each as {"name":"...","title":"...","email":"..."} — title/role and email if mentioned, empty string for either if not given (voice notes rarely include emails, that\'s fine). Always include the sender themself if they were present. Example: [{"name":"Mr. Alaa","title":"CEO","email":""},{"name":"Mostafa","title":"","email":""}]'],
+                    'summary'       => ['type' => 'string', 'description' => '2-3 sentence summary of the interaction'],
+                    'key_points'    => ['type' => 'string', 'description' => 'Bullet-style key discussion points, one per line'],
+                    'action_items'  => ['type' => 'string', 'description' => 'Bullet-style follow-up actions, one per line — empty if none'],
                 ],
                 'required' => ['summary'],
             ],
@@ -1135,14 +1139,31 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
             $c->execute([':n' => '%' . $clientName . '%']);
             if ($row = $c->fetch(PDO::FETCH_ASSOC)) { $clientId = $row['id']; $clientName = $row['name']; }
         }
-        $ins = $pdo->prepare("INSERT INTO contact_reports (id, client_id, client_name, created_by_id, created_by_name, transcript, summary, key_points, action_items, channel) VALUES (:id, :cid, :cname, :bid, :bname, :transcript, :summary, :points, :actions, 'whatsapp')");
+        $ins = $pdo->prepare("INSERT INTO contact_reports (id, client_id, client_name, created_by_id, created_by_name, transcript, summary, key_points, action_items, channel, meeting_type, location_type, location, attendees) VALUES (:id, :cid, :cname, :bid, :bname, :transcript, :summary, :points, :actions, 'whatsapp', :mtype, :ltype, :loc, :attendees)");
         $reportId = generateProUuid();
         $ins->execute([
             ':id' => $reportId, ':cid' => $clientId, ':cname' => $clientName,
             ':bid' => $senderId, ':bname' => $senderName,
             ':transcript' => $input['_raw_transcript'] ?? null,
             ':summary' => $input['summary'] ?? '', ':points' => $input['key_points'] ?? null, ':actions' => $input['action_items'] ?? null,
+            ':mtype' => $input['meeting_type'] ?? null, ':ltype' => $input['location_type'] ?? null,
+            ':loc' => $input['location'] ?? null, ':attendees' => $input['attendees'] ?? null,
         ]);
+        // Feed straight into the client's memory too, so Sara/Yahia/Pro see
+        // it automatically in every future prompt (clientBrainBlock's
+        // "LEARNED MEMORY" section) without anyone having to re-tell them
+        // what was discussed. Keyed by this report's own id so an edit
+        // later (from the app) can update the same memory row instead of
+        // creating a duplicate.
+        if ($clientId) {
+            $memValue = trim(($input['summary'] ?? '') .
+                (!empty($input['key_points']) ? "\nKey points: " . $input['key_points'] : '') .
+                (!empty($input['action_items']) ? "\nAction items: " . $input['action_items'] : ''));
+            if ($memValue !== '') {
+                $mem = $pdo->prepare("INSERT INTO client_memory (id, client_id, client_name, `key`, value, type) VALUES (UUID(), :cid, :cname, :k, :v, 'contact_report')");
+                $mem->execute([':cid' => $clientId, ':cname' => $clientName, ':k' => 'contact_report_' . $reportId, ':v' => $memValue]);
+            }
+        }
         return ['ok' => true, 'message' => 'Contact report saved' . ($clientName ? " for {$clientName}" : '') . '.'];
     }
 
