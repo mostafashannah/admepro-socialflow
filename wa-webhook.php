@@ -93,6 +93,10 @@ if ($msgType === 'audio') {
     }
     $text = $transcript;
     $isVoiceNote = true;
+    // Saved unconditionally (not only when it turns out to be a contact
+    // report) so the URL is ready to attach if save_contact_report ends up
+    // being called this turn — same reasoning as $receiptUrl below.
+    $voiceRecordingUrl = saveVoiceRecording($bytes, $mime ?: 'audio/ogg');
 } elseif ($msgType === 'image') {
     // Photos only make sense on the Pro number too — same reasoning as
     // voice notes above (client inbox numbers go through the reply bot,
@@ -197,7 +201,7 @@ try {
         catch (\Throwable $e) { error_log('[wa-webhook] lead-capture EXCEPTION: ' . $e->getMessage()); }
     }
     error_log("[wa-webhook] routing to Pro: senderName=" . var_export($senderName, true) . " senderRole=" . var_export($senderRole, true));
-    $reply = askPro($pdo, $senderName, $senderRole, $contextBlock, $text, $senderId, $isVoiceNote ? $text : null, $from, $imageBase64, $imageMime);
+    $reply = askPro($pdo, $senderName, $senderRole, $contextBlock, $text, $senderId, $isVoiceNote ? $text : null, $from, $imageBase64, $imageMime, $voiceRecordingUrl ?? null);
     error_log("[wa-webhook] askPro returned: " . var_export($reply, true));
     if ($reply) sendWhatsAppReply($from, $reply);
 } catch (Throwable $e) {

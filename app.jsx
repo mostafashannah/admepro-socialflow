@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.467";
+const APP_VERSION = "beta 5.468";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10024,7 +10024,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
             <ClientBrandGuidelinesSubTab client={client} knowledge={knowledge} onSaveKnowledge={onSaveKnowledge}/>
           )}
           {brainSubTab==="contact_reports"&&(
-            <ContactReportsSubTab client={client} contactReports={contactReports} onSaveContactReport={onSaveContactReport} brandingAssets={brandingAssets}/>
+            <ContactReportsSubTab client={client} contactReports={contactReports} onSaveContactReport={onSaveContactReport} brandingAssets={brandingAssets} team={team}/>
           )}
           {brainSubTab==="integrations"&&(
             <ClientIntegrationsSubTab client={client} integrations={integrations} integrationLogs={integrationLogs} currentUser={currentUser}
@@ -26853,41 +26853,75 @@ function generateContactReportHTML(report, clientName, branding) {
     <div class="footer">${appName} · Generated ${new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}</div>
   </div></body></html>`;
 }
+// Rendered as real text via jsPDF, not html2canvas — this exact CDN
+// html2pdf bundle is already documented elsewhere in this file (see
+// convertCvToPdfForStorage above) as reliably producing a blank page for
+// off-screen/invisible source elements, which is what was happening here.
+function hexToRgb(hex) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex||"");
+  return m ? [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16)] : [217,11,44];
+}
 async function downloadContactReportPDF(report, clientName, branding) {
-  const html = generateContactReportHTML(report, clientName, branding);
-  const parsed = (new DOMParser()).parseFromString(html, "text/html");
-  const pageEl = parsed.querySelector(".page");
-  const styleText = parsed.querySelector("style")?.textContent || "";
-  const styleEl = document.createElement("style");
-  styleEl.id = "__cr_pdf_style";
-  styleEl.textContent = styleText;
-  document.head.appendChild(styleEl);
-  const wrapper = document.createElement("div");
-  // Near-zero opacity within the actual viewport (not a large negative
-  // offset) — some browsers/html2canvas versions render a blank canvas for
-  // elements positioned far outside the viewport bounds, which is what
-  // caused the empty PDF this replaces.
-  wrapper.style.cssText = "position:fixed;top:0;left:0;width:794px;background:#fff;opacity:0.01;pointer-events:none;z-index:-1;";
-  if (pageEl) wrapper.appendChild(pageEl);
-  document.body.appendChild(wrapper);
+  const jsPDFCtor = window.jspdf?.jsPDF;
+  if (!jsPDFCtor) { alert("PDF library failed to load — please refresh and try again."); return; }
   try {
-    await window.html2pdf().set({
-      margin: 0,
-      filename: `Contact Report - ${clientName} - ${(report.created_at||"").slice(0,10)}.pdf`,
-      image: { type: "jpeg", quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: "#ffffff" },
-      jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-    }).from(wrapper).save();
+    const attendees = parseMaybeJson(report.attendees, []);
+    const typeLabel = report.meeting_type==="call" ? "Call" : report.meeting_type==="meeting" ? "Meeting" : "Contact";
+    const locLabel = report.meeting_type==="meeting"
+      ? [report.location_type==="online"?"Online":report.location_type==="physical"?"In-person":null, report.location].filter(Boolean).join(" — ")
+      : (report.location||"");
+    const when = report.created_at ? new Date(report.created_at).toLocaleString("en-GB",{day:"numeric",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
+    const [ar,ag,ab] = hexToRgb(branding?.primary_color||"#d90b2c");
+    const appName = branding?.app_name || "Admepro";
+
+    const doc = new jsPDFCtor({unit:"pt", format:"a4"});
+    const marginX = 48, pageWidth = doc.internal.pageSize.getWidth(), pageHeight = doc.internal.pageSize.getHeight();
+    const maxW = pageWidth - marginX*2;
+    let y = 56;
+    const ensureRoom = (needed) => { if (y + needed > pageHeight - 48) { doc.addPage(); y = 56; } };
+    const heading = (text, size=11) => { doc.setFont("Helvetica","bold"); doc.setFontSize(size); doc.setTextColor(ar,ag,ab); ensureRoom(size+8); doc.text(text, marginX, y); y += size+8; };
+    const body = (text, size=10.5, lh=14) => {
+      doc.setFont("Helvetica","normal"); doc.setFontSize(size); doc.setTextColor(30,30,30);
+      const lines = doc.splitTextToSize(text, maxW);
+      for (const line of lines) { ensureRoom(lh); doc.text(line, marginX, y); y += lh; }
+    };
+
+    // Header
+    doc.setFillColor(ar,ag,ab);
+    doc.rect(0, 0, pageWidth, 6, "F");
+    doc.setFont("Helvetica","bold"); doc.setFontSize(10); doc.setTextColor(ar,ag,ab);
+    doc.text(appName.toUpperCase(), marginX, y); y += 20;
+    doc.setFont("Helvetica","bold"); doc.setFontSize(19); doc.setTextColor(20,20,20);
+    doc.text(`${typeLabel} Report — ${clientName}`, marginX, y); y += 20;
+    doc.setFont("Helvetica","normal"); doc.setFontSize(10); doc.setTextColor(120,120,120);
+    doc.text([when, locLabel, report.created_by_name?`Logged by ${report.created_by_name}`:""].filter(Boolean).join("  ·  "), marginX, y);
+    y += 14;
+    doc.setDrawColor(ar,ag,ab); doc.setLineWidth(1.2);
+    doc.line(marginX, y, pageWidth-marginX, y);
+    y += 22;
+
+    if (attendees.length) {
+      heading("ATTENDEES");
+      body(attendees.map(a=>a.name+(a.title?` (${a.title})`:"")).join("   •   "));
+      y += 10;
+    }
+    if (report.summary) { heading("SUMMARY"); body(report.summary); y += 10; }
+    if (report.key_points) { heading("KEY POINTS"); report.key_points.split("\n").filter(Boolean).forEach(l=>body("• "+l.replace(/^[-•]\s*/,""))); y += 10; }
+    if (report.action_items) { heading("ACTION ITEMS"); report.action_items.split("\n").filter(Boolean).forEach(l=>body("• "+l.replace(/^[-•]\s*/,""))); y += 10; }
+
+    doc.setFont("Helvetica","normal"); doc.setFontSize(8); doc.setTextColor(180,180,180);
+    doc.text(`${appName} · Generated ${new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}`, marginX, pageHeight-32);
+
+    const pdfBlob = doc.output("blob");
+    if (pdfBlob.size < 300) throw new Error(`Rendered PDF looks empty (${pdfBlob.size} bytes)`);
+    doc.save(`Contact Report - ${clientName} - ${(report.created_at||"").slice(0,10)}.pdf`);
   } catch(e) {
+    console.error("downloadContactReportPDF failed:", e);
     alert("PDF generation failed: " + (e?.message||e));
-  } finally {
-    document.body.removeChild(wrapper);
-    const s = document.getElementById("__cr_pdf_style");
-    if (s) document.head.removeChild(s);
   }
 }
 
-function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, brandingAssets}) {
+function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, brandingAssets, team=[]}) {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
   const [emailingId, setEmailingId] = useState(null);
@@ -26897,9 +26931,23 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, b
 
   const reports = (contactReports||[]).filter(r=>r.client_id===client.id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
 
+  // An attendee logged during a voice note rarely comes with an email
+  // attached — resolve it by matching their name against team members (and
+  // the client's own contact) so "Alaa" et al don't have to be re-typed by
+  // hand every time before sending.
+  const resolveAttendeeEmail = (a) => {
+    if (a.email) return a.email;
+    const name = (a.name||"").trim().toLowerCase();
+    if (!name) return null;
+    const teamMatch = team.find(m => (m.name||"").trim().toLowerCase()===name || (m.name||"").toLowerCase().includes(name) || name.includes((m.name||"").toLowerCase()));
+    if (teamMatch?.email) return teamMatch.email;
+    if (client.name && (client.name.toLowerCase().includes(name) || name.includes(client.name.toLowerCase())) && client.email) return client.email;
+    return null;
+  };
   const startEmail = (r) => {
-    const attendeeEmails = parseMaybeJson(r.attendees, []).map(a=>a.email).filter(Boolean);
-    const defaults = [...new Set([...(client.email?[client.email]:[]), ...attendeeEmails])];
+    const attendees = parseMaybeJson(r.attendees, []);
+    const resolvedEmails = attendees.map(resolveAttendeeEmail).filter(Boolean);
+    const defaults = [...new Set([...(client.email?[client.email]:[]), ...resolvedEmails])];
     setEmailingId(r.id); setEmailTo(defaults.join(", ")); setEmailSentId(null);
   };
   const sendReportEmail = async (r) => {
@@ -26968,6 +27016,12 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, b
                 <p style={{fontSize:13,lineHeight:1.7,color:"var(--text)",whiteSpace:"pre-wrap"}}>{r.action_items}</p>
               </div>
             )}
+            {r.voice_recording_url&&(
+              <div style={{marginTop:12}}>
+                <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:6}}>VOICE RECORDING</p>
+                <audio controls src={r.voice_recording_url} style={{height:32,width:"100%",maxWidth:360}}/>
+              </div>
+            )}
             {emailingId===r.id&&(
               <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid var(--border)",display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                 <input value={emailTo} onChange={e=>setEmailTo(e.target.value)} placeholder="recipient@email.com, another@email.com" style={{...inputSt,flex:1,minWidth:220}}/>
@@ -26995,10 +27049,19 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
     summary: report?.summary||"",
     key_points: report?.key_points||"",
     action_items: report?.action_items||"",
+    voice_recording_url: report?.voice_recording_url||"",
   }));
   const [newAttendee, setNewAttendee] = useState({name:"", title:"", email:""});
   const [saving, setSaving] = useState(false);
+  const [uploadingVoice, setUploadingVoice] = useState(false);
   if(!open) return null;
+  const handleVoiceUpload = async (file) => {
+    if(!file) return;
+    setUploadingVoice(true);
+    try { const url = await uploadToStorage(file, "contact-reports/voice"); setF(p=>({...p,voice_recording_url:url})); }
+    catch(e) { alert("Upload failed: "+e.message); }
+    setUploadingVoice(false);
+  };
   const sf = (k,v) => setF(p=>({...p,[k]:v}));
   const addAttendee = () => { if(!newAttendee.name.trim()) return; setF(p=>({...p,attendees:[...p.attendees,{...newAttendee, name:newAttendee.name.trim(), email:newAttendee.email.trim()}]})); setNewAttendee({name:"",title:"",email:""}); };
   const removeAttendee = (i) => setF(p=>({...p,attendees:p.attendees.filter((_,idx)=>idx!==i)}));
@@ -27013,6 +27076,7 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
       location: f.location.trim(),
       attendees: JSON.stringify(f.attendees),
       summary: f.summary.trim(), key_points: f.key_points.trim(), action_items: f.action_items.trim(),
+      voice_recording_url: f.voice_recording_url,
     });
     setSaving(false); onClose();
   };
@@ -27054,6 +27118,19 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
         <Field label="Summary"><textarea value={f.summary} onChange={e=>sf("summary",e.target.value)} rows={3} style={{...inputSt,resize:"vertical"}}/></Field>
         <Field label="Key Points (one per line)"><textarea value={f.key_points} onChange={e=>sf("key_points",e.target.value)} rows={3} style={{...inputSt,resize:"vertical"}}/></Field>
         <Field label="Action Items (one per line)"><textarea value={f.action_items} onChange={e=>sf("action_items",e.target.value)} rows={3} style={{...inputSt,resize:"vertical"}}/></Field>
+        <Field label="Voice Recording (optional)">
+          {f.voice_recording_url ? (
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              <audio controls src={f.voice_recording_url} style={{height:32,maxWidth:280}}/>
+              <button onClick={()=>sf("voice_recording_url","")} style={{padding:"5px 10px",borderRadius:"var(--rxs)",background:"#ef444411",border:"1px solid #ef444433",fontSize:12,fontWeight:600,color:"#ef4444",cursor:"pointer"}}>Remove</button>
+            </div>
+          ) : (
+            <label style={{display:"inline-block",cursor:uploadingVoice?"default":"pointer",fontSize:12,fontWeight:700,color:"var(--accent)",padding:"9px 14px",borderRadius:8,border:"1px solid var(--accent)44",background:"var(--surface2)"}}>
+              {uploadingVoice?"Uploading…":"+ Attach Voice Recording"}
+              <input type="file" accept="audio/*" style={{display:"none"}} disabled={uploadingVoice} onChange={e=>{handleVoiceUpload(e.target.files?.[0]); e.target.value="";}}/>
+            </label>
+          )}
+        </Field>
         <div style={{display:"flex",justifyContent:"flex-end",gap:10}}>
           <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
           <Btn onClick={handleSave} disabled={saving}>{saving?"Saving…":"Save Report"}</Btn>
@@ -31743,6 +31820,15 @@ const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId) => {
   const allTeam = data?.team||[];
   const allLeads = data?.leads||[];
 
+  const allContactReports = data?.contactReports||[];
+  const todayStr = new Date().toISOString().slice(0,10);
+  const todaysReports = allContactReports.filter(r=>(r.created_at||"").slice(0,10)===todayStr);
+  const recentReports = [...allContactReports].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,20);
+  const contactReportsBlock = recentReports.map(r=>{
+    const attendees = (()=>{ try{ const p=JSON.parse(r.attendees||"[]"); return Array.isArray(p)?p.map(a=>a.name+(a.title?` (${a.title})`:"")).join(", "):""; }catch(e){ return ""; } })();
+    return `- [${(r.created_at||"").slice(0,10)} ${(r.created_at||"").slice(11,16)}] ${r.client_name||"?"} (${r.meeting_type==="call"?"call":r.meeting_type==="meeting"?"meeting":"contact"}${r.location?", "+r.location:""}) logged by ${r.created_by_name||"?"}${attendees?` | Attendees: ${attendees}`:""}${r.summary?` | Summary: ${r.summary.slice(0,250)}`:""}${r.key_points?` | Key points: ${r.key_points.replace(/\n/g," ; ").slice(0,250)}`:""}${r.action_items?` | Action items: ${r.action_items.replace(/\n/g," ; ").slice(0,200)}`:""}`;
+  }).join("\n");
+
   const overdue = allPosts.filter(p=>p.scheduled_date&&new Date(p.scheduled_date)<new Date()&&!["published","rejected"].includes(p.stage));
   const pendAppr = allPosts.filter(p=>p.stage==="client_approval");
   const myTasks = allPosts.filter(p=>p.assigned_to===user?.email&&!["published","rejected"].includes(p.stage));
@@ -31976,6 +32062,10 @@ ${hrBlock}
 
 CLIENT DATA:
 ${clientBlocks||"No clients yet."}
+
+═══ CONTACT REPORTS — today: ${todaysReports.length}, showing ${recentReports.length} most recent ═══
+You have full access to these. When asked for "today's contact reports" or any contact-report question, answer directly from this list — NEVER say you don't have access or can't see them.
+${contactReportsBlock||"None logged yet."}
 
 ═══ OVERDUE TASKS (${overdue.length}) ═══
 ${overdue.slice(0,10).map(p=>`- "${p.title}" | Client: ${p.client_name||"?"} | Assigned: ${p.assigned_to||"unassigned"} | Due: ${p.scheduled_date} | Stage: ${p.stage}`).join("\n")||"None"}

@@ -8,3 +8,4 @@ ALTER TABLE contact_reports ADD COLUMN meeting_type VARCHAR(20);
 ALTER TABLE contact_reports ADD COLUMN location_type VARCHAR(20);
 ALTER TABLE contact_reports ADD COLUMN location TEXT;
 ALTER TABLE contact_reports ADD COLUMN attendees TEXT;
+ALTER TABLE contact_reports ADD COLUMN voice_recording_url TEXT;
