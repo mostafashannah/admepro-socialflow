@@ -182,36 +182,43 @@ foreach ($clients as $client) {
                     . " — likes:" . ($p['insight_likes'] ?? '?') . " comments:" . ($p['insight_comments'] ?? '?')
                     . " shares:" . ($p['insight_shares'] ?? '?') . " reach:" . ($p['insight_reach'] ?? '?');
             }, $postRows);
-            $prompt = "You are Mai, the agency's internal AI Account Executive. Write a short (120-180 word) internal-only daily "
-                . "performance analysis for the client \"{$clientName}\", based on their last 14 days of published posts below. "
-                . "Cover: what's working, what's underperforming, and one concrete recommendation for the team. This is NEVER shown "
-                . "to the client — be direct and specific, not diplomatic filler.\n\n" . implode("\n", $postLines);
-            [$status, $data] = callClaude(['model' => 'claude-sonnet-4-6', 'max_tokens' => 500, 'messages' => [['role' => 'user', 'content' => $prompt]]]);
-            $analysis = '';
+            $prompt = "You are Mai, the agency's internal AI Account Executive, analyzing the client \"{$clientName}\"'s last 14 days "
+                . "of published posts below. This is NEVER shown to the client — be direct and specific, not diplomatic filler.\n\n"
+                . implode("\n", $postLines)
+                . "\n\nReturn ONLY valid JSON (no markdown): {\"analysis\":\"120-180 word internal analysis covering what's working, "
+                . "what's underperforming, and one concrete recommendation\",\"takeaway\":\"ONE short punchy sentence, under 15 words, "
+                . "no jargon — this exact sentence gets texted to a teammate on WhatsApp, so it must stand alone and make sense with zero "
+                . "other context\"}";
+            [$status, $data] = callClaude(['model' => 'claude-sonnet-4-6', 'max_tokens' => 600, 'messages' => [['role' => 'user', 'content' => $prompt]]]);
+            $raw = '';
             if ($status >= 200 && $status < 300) {
-                foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $analysis .= $block['text']; }
+                foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $raw .= $block['text']; }
             }
-            if (trim($analysis) !== '') {
+            $analysis = ''; $takeaway = '';
+            if (preg_match('/\{[\s\S]*\}/', $raw, $m)) {
+                $parsed = json_decode($m[0], true);
+                if (is_array($parsed)) { $analysis = trim($parsed['analysis'] ?? ''); $takeaway = trim($parsed['takeaway'] ?? ''); }
+            }
+            if ($analysis !== '') {
                 $todayStr = date('Y-m-d');
                 $existing = $pdo->prepare("SELECT id FROM client_memory WHERE client_id = :cid AND `key` = :k");
                 $existing->execute([':cid' => $clientId, ':k' => "mai_daily_report_{$todayStr}"]);
                 if ($row = $existing->fetch(PDO::FETCH_ASSOC)) {
-                    $pdo->prepare("UPDATE client_memory SET value = :v WHERE id = :id")->execute([':v' => trim($analysis), ':id' => $row['id']]);
+                    $pdo->prepare("UPDATE client_memory SET value = :v WHERE id = :id")->execute([':v' => $analysis, ':id' => $row['id']]);
                 } else {
                     $pdo->prepare("INSERT INTO client_memory (id, client_id, client_name, `key`, value, type) VALUES (UUID(), :cid, :cname, :k, :v, 'mai_daily_report')")
-                        ->execute([':cid' => $clientId, ':cname' => $clientName, ':k' => "mai_daily_report_{$todayStr}", ':v' => trim($analysis)]);
+                        ->execute([':cid' => $clientId, ':cname' => $clientName, ':k' => "mai_daily_report_{$todayStr}", ':v' => $analysis]);
                 }
                 $summary['reports_written']++;
 
                 foreach (clientAlertRecipients($pdo, $client, $admins) as $r) {
-                    notify($pdo, $r['email'], "Daily report — {$clientName}", trim($analysis), 'daily_report', $clientId, 'client');
+                    notify($pdo, $r['email'], "Daily report — {$clientName}", $analysis, 'daily_report', $clientId, 'client');
                 }
-                // Only a short one-line takeaway feeds the WhatsApp message —
-                // the full analysis lives in the notification/memory, not
+                // Only the short takeaway feeds the WhatsApp message — the
+                // full analysis lives in the notification/memory, never
                 // repeated verbatim in the text that gets sent.
-                $firstLine = trim(explode("\n", trim($analysis))[0]);
-                addFinding($recipientFindings, $pdo, $client, $admins, $clientName, 'report', mb_substr($firstLine, 0, 160));
-                logMaiActivity($pdo, "Daily performance report — {$clientName}", trim($analysis));
+                if ($takeaway !== '') addFinding($recipientFindings, $pdo, $client, $admins, $clientName, 'report', mb_substr($takeaway, 0, 160));
+                logMaiActivity($pdo, "Daily performance report — {$clientName}", $analysis);
             }
         }
 
@@ -267,13 +274,16 @@ foreach ($clients as $client) {
 $maiWaSystem = "You are Mai, the agency's AI Account Executive, sending a WhatsApp update to a teammate. Your character: "
     . "analytical and decisive, warm but not chatty, no corporate filler. You never open with the exact same line twice — "
     . "vary your phrasing/greeting naturally like a real person texting, not a template.\n\n"
-    . "HARD RULES:\n"
-    . "- ONE message only, SHORT — a few lines total, not a report. This is WhatsApp, not an email.\n"
+    . "HARD RULES — these are not suggestions, a long message defeats the entire point:\n"
+    . "- STRICT LENGTH LIMIT: the ENTIRE message must be under 500 characters total, no exceptions. If you have many clients, that means "
+    . "one short clause each, not a paragraph — group the fine ones into a single line rather than listing each individually.\n"
+    . "- ONE message only. This is a WhatsApp ping, not an email or a report — nobody will read a wall of text, so being readable matters "
+    . "more than being complete.\n"
     . "- Use ⚠️ ONLY for a client with a REAL problem below (cadence behind schedule, or pipeline low/empty). Never use it for a client that's fine.\n"
-    . "- For clients with no problems, mention them briefly or in a single grouped line (e.g. \"X and Y are on track\") — do not write a paragraph per healthy client.\n"
-    . "- Do not repeat full report text — you only have a one-line takeaway per client for that, which is enough for a WhatsApp ping.\n"
-    . "- End by pointing to SocialFlow notifications/dashboard for full details, and invite them to ask you directly for more on any specific account.\n"
-    . "- Never use markdown headers or bullet-point '-' lists — write like a real WhatsApp text (short lines/emoji are fine, formal lists are not).";
+    . "- For clients with no problems, mention them briefly or in a single grouped line (e.g. \"X and Y are on track\") — never a paragraph per healthy client.\n"
+    . "- NEVER repeat/paste full report text, numbers, or multiple sentences per client — one short clause per client, max.\n"
+    . "- End with ONE short line pointing to SocialFlow notifications for full details and inviting them to ask you for more — not a full sentence per client repeating this.\n"
+    . "- Never use markdown headers, '#', or bullet-point '-' lists — write like a real WhatsApp text (short lines/emoji are fine, formal lists/headers are not).";
 
 foreach ($recipientFindings as $email => $entry) {
     if (empty($entry['clients'])) continue;
@@ -293,6 +303,16 @@ foreach ($recipientFindings as $email => $entry) {
         foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $msg .= $block['text']; }
     }
     $msg = trim($msg);
+    // Belt-and-suspenders: the system prompt asks for under 500 characters,
+    // but never trust a model's length compliance completely — a message
+    // nobody will actually read defeats the entire point of this rewrite.
+    // Cut at the last whole word before the limit rather than mid-word.
+    if (mb_strlen($msg) > 550) {
+        $cut = mb_substr($msg, 0, 500);
+        $lastSpace = mb_strrpos($cut, ' ');
+        if ($lastSpace !== false) $cut = mb_substr($cut, 0, $lastSpace);
+        $msg = $cut . "… full details in SocialFlow notifications.";
+    }
     if ($msg === '') {
         // Fallback if the AI call itself fails — still one message, still
         // short, just without her usual phrasing variety.
