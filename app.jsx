@@ -761,6 +761,7 @@ const WA_ENDPOINT = window.location.origin + "/whatsapp.php";
 const PUBLISH_ENDPOINT      = window.location.origin + "/social-publish.php";
 const REEL_STATUS_ENDPOINT  = window.location.origin + "/reel-status.php";
 const META_INSIGHTS_ENDPOINT = window.location.origin + "/meta-insights.php";
+const META_INTEGRATION_BACKFILL_ENDPOINT = window.location.origin + "/meta-integration-backfill.php";
 const PUSH_ENDPOINT = window.location.origin + "/push-send.php";
 // Public VAPID key — safe to ship client-side (it's the public half of the keypair)
 const VAPID_PUBLIC_KEY = "BGFP5W8qioz7-199m_66qK9dm1dXRK2RxXF8HC3nNCcQqP6IoxUC17kOFAzwwBoZ9MpWURXprtMx9SEF2yCPepc";
@@ -1217,7 +1218,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.503";
+const APP_VERSION = "beta 5.504";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -39269,11 +39270,27 @@ Return ONLY the JSON array, no markdown.`;
     ue("Expense", id, {comments:commentsStr}).catch(()=>{});
   };
 
+  // One-time historical pull (last 30 days of insights, plus ads if an Ad
+  // Account ID is set) right after a Facebook/Instagram integration goes
+  // live — otherwise a newly-connected client's Insights/Ads tabs stay
+  // empty until the next scheduled cron run. Best-effort/fire-and-forget:
+  // a failure here never blocks the integration save itself.
+  const triggerMetaBackfill = (integrationId, appKey, credentials) => {
+    if(!integrationId || !["facebook","instagram"].includes(appKey)) return;
+    let creds = {}; try { creds = typeof credentials==="string" ? JSON.parse(credentials) : (credentials||{}); } catch(e){}
+    if(!creds.page_id || !creds.access_token) return;
+    fetch(META_INTEGRATION_BACKFILL_ENDPOINT, {
+      method:"POST", headers:{"Content-Type":"application/json",apikey:SB_KEY},
+      body: JSON.stringify({integration_id:integrationId}),
+    }).catch(()=>{});
+  };
+
   const addIntegration = async (integData) => {
     const local = {...integData, id:uid(), created_date:new Date().toISOString(), run_count:0, error_count:0, last_run_status:"never"};
     setData(d=>({...d, integrations:[local,...d.integrations]}));
     ce("Integration",[integData]).then(res=>{
       const real=res.entities?.[0]; if(real?.id) setData(d=>({...d,integrations:d.integrations.map(i=>i.id===local.id?{...i,...real}:i)}));
+      if(integData.status==="active") triggerMetaBackfill(real?.id||local.id, integData.app_key, integData.credentials);
     }).catch(()=>{});
     logActivity("Integration Added","integrations",integData.name,"success","",currentUser?.email||"admin");
     setToast(`Integration "${integData.name}" ${integData.status==="active"?"activated":"saved"}`);
@@ -39286,6 +39303,15 @@ Return ONLY the JSON array, no markdown.`;
     logActivity("Integration Updated","integrations",integData.name||integData.id,"success","",currentUser?.email||"admin");
     if(!wasToggle) setToast(`Integration "${integData.name}" updated`);
     else setToast(`Integration ${integData.status==="active"?"enabled":"disabled"}`);
+    // Same one-time backfill as a new connection — covers reconnects and
+    // "activate later" flows where the integration was created inactive
+    // first and only later flipped to active (a simple status-only toggle
+    // won't carry credentials/app_key in integData, so fall back to what's
+    // already in state for those fields).
+    if(integData.status==="active") {
+      const existing = data.integrations.find(i=>i.id===integData.id);
+      triggerMetaBackfill(integData.id, integData.app_key||existing?.app_key, integData.credentials||existing?.credentials);
+    }
   };
 
   const deleteIntegration = async (integId) => {
