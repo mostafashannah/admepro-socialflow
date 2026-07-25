@@ -609,7 +609,7 @@ const SB_SCHEMA = {
   // single notification-prefs save was silently failing.
   notification_prefs: ["user_email","all_disabled","mentions_only","daily_digest","task_assigned","task_stage_changed","task_due_soon","task_overdue","task_mention","task_comment","project_created","project_task_added","project_deadline_updated","post_approved","post_rejected","client_approval_required","invoice_created","payment_received","subscription_renewal","user_invited","access_approved","access_rejected","permissions_updated","recruitment_new_application","recruitment_task_submitted","recruitment_reschedule_request"],
   customer_messages: ["client_id","client_name","channel","customer_id","customer_name","direction","message_text","sent_by","thread_status","draft_status","external_id"],
-  reply_bot_settings: ["client_id","client_name","enabled","mode","channels","tone","brain","dont_do","fallback_message","updated_by","external_bot"],
+  reply_bot_settings: ["client_id","client_name","enabled","mode","channels","tone","brain","dont_do","fallback_message","updated_by","external_bot","external_webhook_url","external_api_key"],
   pro_chat_sessions: ["user_email","client_id","title","messages","shared_with","is_shared_copy"],
 };
 function sbSanitize(tableName, payload) {
@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.493";
+const APP_VERSION = "beta 5.494";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10476,6 +10476,34 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
                 <span style={{position:"absolute",top:3,left:bot.external_bot?21:3,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left 0.15s"}}/>
               </button>
             </div>
+
+            {bot.external_bot&&(
+              <div style={{display:"flex",flexDirection:"column",gap:12,padding:"12px 12px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:8}}>
+                <p style={{fontSize:12,color:"var(--text3)"}}>
+                  {client.name}'s bot connects THROUGH SocialFlow instead of needing its own separate Meta app: every inbound message gets forwarded to their webhook below, and their system calls our reply endpoint to actually send the answer — using our connected Meta credentials, which are never handed to them directly.
+                </p>
+                <Field label="Their webhook URL (we POST every inbound message here)">
+                  <input value={bot.external_webhook_url||""} onChange={e=>onSaveBotSettings&&onSaveBotSettings({external_webhook_url:e.target.value})}
+                    onBlur={e=>onSaveBotSettings&&onSaveBotSettings({external_webhook_url:e.target.value})}
+                    placeholder="https://their-system.com/socialflow-webhook" style={inputSt}/>
+                </Field>
+                <Field label="Their API key (to authenticate both directions)">
+                  <div style={{display:"flex",gap:8}}>
+                    <input value={bot.external_api_key||""} readOnly placeholder="Not generated yet" style={{...inputSt,flex:1,fontFamily:"monospace",fontSize:12}}/>
+                    <Btn variant="secondary" size="sm" onClick={()=>{
+                      const bytes = new Uint8Array(24); crypto.getRandomValues(bytes);
+                      const key = Array.from(bytes,b=>b.toString(16).padStart(2,"0")).join("");
+                      onSaveBotSettings&&onSaveBotSettings({external_api_key:key});
+                    }}>{bot.external_api_key?"Regenerate":"Generate"}</Btn>
+                  </div>
+                  <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Give this to {client.name}'s dev team — they send it as header <code>X-Api-Key</code> when calling our reply endpoint, and we sign our forwarded messages to their webhook with it too, so both sides can verify the request is real. Regenerating invalidates the old key immediately.</p>
+                </Field>
+                <Field label="Reply endpoint (their system POSTs here to send a message)">
+                  <input readOnly value={`${window.location.origin}/external-bot-reply.php`} style={{...inputSt,fontFamily:"monospace",fontSize:12}} onClick={e=>e.target.select()}/>
+                  <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>POST JSON: {`{client_id:"${client.id}", channel, recipient_id (or external_id for comments), message}`} with the API key above as <code>X-Api-Key</code>.</p>
+                </Field>
+              </div>
+            )}
 
             {!bot.external_bot&&<div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div>

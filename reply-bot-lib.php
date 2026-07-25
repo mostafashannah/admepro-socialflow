@@ -20,6 +20,54 @@ function getReplyBotSettings(PDO $pdo, string $clientId) {
     return $row;
 }
 
+// Relays an inbound message to a client's own reply-bot system, so it can
+// connect through SocialFlow instead of needing its own separate Meta app/
+// webhook subscription. Signed the same way our own Meta webhook signature
+// works (HMAC-SHA256, sent as X-SocialFlow-Signature: sha256=...) using this
+// client's own external_api_key, so their endpoint can verify the request
+// really came from us. Best-effort and fire-and-forget-ish (short timeout,
+// failure only logged) — a slow/broken client endpoint must never block or
+// delay processing of the webhook batch.
+function forwardToExternalBot(PDO $pdo, array $settings, string $clientId, string $clientName, string $channel, string $customerId, ?string $customerName, ?string $externalId, ?string $postCaption) {
+    $url = trim((string)($settings['external_webhook_url'] ?? ''));
+    $key = trim((string)($settings['external_api_key'] ?? ''));
+    if (!$url || !$key) { error_log("forwardToExternalBot [{$clientName}/{$channel}]: no webhook URL or API key configured, skipping forward"); return; }
+
+    $stmt = $pdo->prepare("SELECT direction, message_text, created_at FROM customer_messages WHERE client_id = :cid AND channel = :ch AND customer_id = :custid ORDER BY created_at DESC LIMIT 12");
+    $stmt->execute([':cid' => $clientId, ':ch' => $channel, ':custid' => $customerId]);
+    $thread = array_reverse($stmt->fetchAll(PDO::FETCH_ASSOC));
+
+    $payload = json_encode([
+        'client_id'      => $clientId,
+        'client_name'    => $clientName,
+        'channel'        => $channel,
+        'customer_id'    => $customerId,
+        'customer_name'  => $customerName,
+        'external_id'    => $externalId,   // comment_id for fb_comment/ig_comment, null for DMs
+        'post_caption'   => $postCaption,  // the post/reel a comment was left on, if applicable
+        'thread'         => $thread,       // most recent messages, oldest first
+        'sent_at'        => date('c'),
+    ]);
+    $signature = 'sha256=' . hash_hmac('sha256', $payload, $key);
+
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => $payload,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_TIMEOUT        => 8,
+        CURLOPT_HTTPHEADER     => ['Content-Type: application/json', "X-SocialFlow-Signature: {$signature}"],
+    ]);
+    $res = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err = curl_error($ch);
+    curl_close($ch);
+    if ($err || $code < 200 || $code >= 300) {
+        error_log("forwardToExternalBot [{$clientName}/{$channel}]: forward failed — HTTP {$code} {$err}");
+    }
+}
+
 function findIntegrationCreds(PDO $pdo, string $clientId, string $channel) {
     // channel is already resolved to an app_key by the caller (instagram|facebook|whatsapp).
     $appKey = in_array($channel, ['instagram', 'facebook', 'whatsapp'], true) ? $channel : 'facebook';
@@ -518,14 +566,22 @@ function maybeAutoReply(PDO $pdo, string $clientId, string $clientName, string $
     };
 
     $settings = getReplyBotSettings($pdo, $clientId);
-    if (!$settings || !$settings['enabled']) { $log('bot disabled or no settings row'); return; }
-    // This client runs their own reply bot on their own system (subscribed to
-    // the same Meta account via their own app) — SocialFlow still stores/shows
-    // every message in the Inbox (storeMessage() already ran before this
-    // function was called), it just never sends a reply of its own here, no
-    // matter what `enabled`/`mode` say. Checked before anything else below so
-    // there's no code path that can accidentally double-reply a customer.
-    if (!empty($settings['external_bot'])) { $log('external bot — view only, not replying'); return; }
+    if (!$settings) { $log('no settings row'); return; }
+    // This client runs their own reply bot on their own system — rather than
+    // that system needing its own separate Meta app/webhook subscription, it
+    // connects THROUGH SocialFlow: we forward every inbound message to their
+    // configured webhook URL (signed with their per-client key), and they
+    // call external-bot-reply.php to actually send the reply, using our
+    // connected Meta credentials (never handed to them directly). Checked
+    // before the `enabled` check below (and independent of it) so this works
+    // whether or not our own bot is separately toggled on — the two are
+    // mutually exclusive by design, only one can ever reply to a customer.
+    if (!empty($settings['external_bot'])) {
+        $log('external bot — forwarding to client system, not replying ourselves');
+        forwardToExternalBot($pdo, $settings, $clientId, $clientName, $channel, $customerId, $customerName, $externalId, $postCaption);
+        return;
+    }
+    if (!$settings['enabled']) { $log('bot disabled'); return; }
     if (!in_array($channel, $settings['channels'], true)) { $log('channel not enabled in settings: ' . json_encode($settings['channels'])); return; }
 
     $isComment   = $channel === 'fb_comment' || $channel === 'ig_comment';
