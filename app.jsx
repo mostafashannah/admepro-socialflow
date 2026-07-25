@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.495";
+const APP_VERSION = "beta 5.496";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9907,6 +9907,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
     ["tasks","Tasks"],
     ["calendar","Calendar"],
     ...(isPriv?[["insights","Insights"]]:[]),
+    ...(isPriv?[["ads","Ads"]]:[]),
     ...(isPriv?[["community",`Community${cMessagesNeedReplyCount?` (${cMessagesNeedReplyCount})`:""}`]]:[]),
     ["assets","Assets"],
     ...(isPriv?[["brain","Settings"]]:[]),
@@ -10146,6 +10147,9 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
       )}
       {tab==="insights"&&(
         <InsightsTab client={client} integrations={integrations} posts={cPosts}/>
+      )}
+      {tab==="ads"&&(
+        <ClientAdsTab client={client} integrations={integrations}/>
       )}
 
       {tab==="briefs"&&(
@@ -13163,6 +13167,112 @@ const CLIENT_LOGO_SLOTS = [
   {key:"watermark_logo", label:"Watermark Logo", desc:"Semi-transparent, for PDFs/overlays", required:false, size:"High contrast, simple"},
 ];
 const CLIENT_BRAND_PRESET_COLORS = ["#d90b2c","#2563eb","#7c3aed","#059669","#d97706","#dc2626","#0891b2","#be185d","#111827","#0f172a"];
+
+// Individual running/paused ads under this client's connected Ad Account
+// (Settings → Integrations → Ad Account ID), not just the account-wide
+// totals MetaInsightsTab already shows — each ad's own status, campaign,
+// and results (spend/impressions/clicks/CTR/CPC/reach/leads).
+const ADS_STATUS_COLOR = {ACTIVE:"#10b981", PAUSED:"#6b7280", PENDING_REVIEW:"#f59e0b", DISAPPROVED:"#ef4444", ARCHIVED:"#6b7280", DELETED:"#ef4444", IN_PROCESS:"#f59e0b", WITH_ISSUES:"#ef4444"};
+function ClientAdsTab({client, integrations}) {
+  const [adsByInteg, setAdsByInteg] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  const matches = (integrations||[]).filter(i=>i.status==="active" && ["facebook","instagram"].includes(i.app_key) && (!i.client_id||i.client_id===client.id) && (()=>{
+    const creds = typeof i.credentials==="string" ? parseJ(i.credentials,{}) : (i.credentials||{});
+    return !!creds.ad_account_id;
+  })());
+
+  const fetchAds = async () => {
+    setLoading(true);
+    const next = {};
+    for(const integ of matches) {
+      const creds = typeof integ.credentials==="string" ? parseJ(integ.credentials,{}) : (integ.credentials||{});
+      try {
+        const res = await fetch(META_INSIGHTS_ENDPOINT, {method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({mode:"ads_list", platform:integ.app_key, page_id:creds.page_id, access_token:creds.access_token, ad_account_id:creds.ad_account_id})});
+        const d = await res.json();
+        next[integ.id] = d.ok ? {ads:d.ads||[]} : {error:d.error||"Failed to load ads"};
+      } catch(e) { next[integ.id] = {error:e.message||"Failed to load ads"}; }
+    }
+    setAdsByInteg(next);
+    setLoading(false);
+  };
+  useEffect(()=>{ if(matches.length) fetchAds(); }, [matches.map(m=>m.id).join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const allAds = Object.values(adsByInteg).flatMap(v=>v.ads||[]);
+  const statuses = [...new Set(allAds.map(a=>a.status))].filter(Boolean);
+  const shownAds = statusFilter==="all" ? allAds : allAds.filter(a=>a.status===statusFilter);
+
+  if(!matches.length) {
+    return (
+      <div style={{padding:14,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",fontSize:13,color:"var(--text2)"}}>
+        No connected integration has an Ad Account ID set for {client.name} yet. Add one in <strong>Settings → Integrations</strong> to see running ads and their results here.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          {["all",...statuses].map(s=>(
+            <button key={s} onClick={()=>setStatusFilter(s)} style={{
+              padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:700,cursor:"pointer",
+              border:`1px solid ${statusFilter===s?"var(--accent)":"var(--border)"}`,
+              background:statusFilter===s?"var(--accent)":"transparent",color:statusFilter===s?"#fff":"var(--text2)",
+            }}>{s==="all"?"All":s.replace(/_/g," ")}</button>
+          ))}
+        </div>
+        <Btn variant="secondary" onClick={fetchAds} disabled={loading}>
+          {loading?<><Spinner size={14}/> Loading…</>:<><Ico d={Icons.refresh||Icons.sync||Icons.clock} size={15}/> Refresh</>}
+        </Btn>
+      </div>
+
+      {Object.entries(adsByInteg).map(([integId,v])=>v.error&&(
+        <div key={integId} style={{padding:12,background:"#ef444411",border:"1px solid #ef444444",borderRadius:"var(--rs)",fontSize:12,color:"#ef4444"}}>{typeof v.error==="string"?v.error:JSON.stringify(v.error)}</div>
+      ))}
+
+      {!loading && allAds.length===0 && !Object.values(adsByInteg).some(v=>v.error) && (
+        <div style={{padding:14,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",fontSize:13,color:"var(--text2)"}}>No ads found on this ad account.</div>
+      )}
+
+      {shownAds.length>0 && (
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              <thead>
+                <tr style={{background:"var(--surface2)",borderBottom:"1px solid var(--border)"}}>
+                  {["Ad","Campaign","Status","Spend","Impressions","Clicks","CTR","CPC","Reach","Leads"].map(h=>(
+                    <th key={h} style={{textAlign:"left",padding:"10px 14px",fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.04em",whiteSpace:"nowrap"}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {shownAds.map(ad=>(
+                  <tr key={ad.id} style={{borderBottom:"1px solid var(--border)"}}>
+                    <td style={{padding:"10px 14px",fontWeight:600,maxWidth:220}}>{ad.name||"—"}</td>
+                    <td style={{padding:"10px 14px",color:"var(--text2)"}}>{ad.campaign||"—"}</td>
+                    <td style={{padding:"10px 14px"}}>
+                      <span style={{fontSize:10,fontWeight:800,padding:"2px 8px",borderRadius:99,color:ADS_STATUS_COLOR[ad.status]||"#6b7280",background:(ADS_STATUS_COLOR[ad.status]||"#6b7280")+"18"}}>{(ad.status||"—").replace(/_/g," ")}</span>
+                    </td>
+                    <td style={{padding:"10px 14px"}}>{ad.spend!=null?`${ad.spend}`:"—"}</td>
+                    <td style={{padding:"10px 14px"}}>{ad.impressions!=null?Number(ad.impressions).toLocaleString():"—"}</td>
+                    <td style={{padding:"10px 14px"}}>{ad.clicks!=null?Number(ad.clicks).toLocaleString():"—"}</td>
+                    <td style={{padding:"10px 14px"}}>{ad.ctr!=null?`${Number(ad.ctr).toFixed(2)}%`:"—"}</td>
+                    <td style={{padding:"10px 14px"}}>{ad.cpc!=null?ad.cpc:"—"}</td>
+                    <td style={{padding:"10px 14px"}}>{ad.reach!=null?Number(ad.reach).toLocaleString():"—"}</td>
+                    <td style={{padding:"10px 14px"}}>{ad.leads||0}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ClientBrandGuidelinesSubTab({client, knowledge, onSaveKnowledge}) {
   // brand_colors used to be {primary:[...],secondary:[...]} arrays — migrate
