@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.502";
+const APP_VERSION = "beta 5.503";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -38055,9 +38055,11 @@ function App() {
       }
       const sys = `You are Mai, the agency's AI Account Executive. A brand-new client "${client.name}" (industry: ${client.industry||"unspecified"}) was just added to the system. Use your web_search tool to actually research this business thoroughly — this is a one-time deep pass, not a quick single lookup, so use your full search budget.
 
-${client.website?`Don't stop at their homepage — deliberately search for and check their key inner pages too: About/Who We Are, Products/Services, Pricing (if any), Contact/Locations, and anything else that surfaces real detail (e.g. "site:${client.website.replace(/^https?:\/\//,"").replace(/\/$/,"")} services", "site:${client.website.replace(/^https?:\/\//,"").replace(/\/$/,"")} about", etc.) — the homepage alone is rarely enough to answer the questions below well.`:""}${socialLines.length?`\n\nAlso check the social profiles below directly — read actual recent posts/bio for real tone and content style, not just a guess:\n${socialLines.join("\n")}`:""}
+CRITICAL — identity anchoring: business names collide constantly (there can easily be an unrelated company somewhere else in the world with this exact same or a very similar name). You are ONLY researching the specific business reachable at the website/social links given below — never substitute, blend in, or fall back to a different same-named business you find via a generic name search, even if it looks like a more prominent or easier-to-research result. If a search for the plain name surfaces a company that does NOT match the given URL/handle (different domain, different country, different socials), IGNORE that result entirely. If you cannot confirm real details specifically for the exact website/handle given, say so plainly (e.g. "not confirmed" / "not publicly available") rather than filling in facts about a different company that happens to share the name.
 
-Gather:
+${client.website?`Their real website: ${client.website} — don't stop at the homepage, deliberately search for and check their key inner pages too: About/Who We Are, Products/Services, Pricing (if any), Contact/Locations, and anything else that surfaces real detail (e.g. "site:${client.website.replace(/^https?:\/\//,"").replace(/\/$/,"")} services", "site:${client.website.replace(/^https?:\/\//,"").replace(/\/$/,"")} about", etc.) — the homepage alone is rarely enough to answer the questions below well.`:""}${socialLines.length?`\n\nTheir real social profiles — check these directly, they are the ground truth for identity (read actual recent posts/bio for real tone and content style, not just a guess):\n${socialLines.join("\n")}`:""}
+
+Gather, specifically about the exact business at the URL/handles above:
 1. What they actually sell/do (products/services) — a couple of concrete sentences, not generic filler.
 2. Their brand tone/voice as it genuinely comes across online (site + social content, if given).
 3. Their physical location/city if findable.
@@ -38134,15 +38136,19 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
     logActivity("Client Updated","clients",`${cl?.name||id} — ${Object.keys(updates).join(", ")}`,"success","",currentUser?.email||"admin");
     setToast(" Client updated");
 
-    // If a website/social link was just added on a client that had neither
-    // before, run Mai's research now — same as at creation time — instead of
-    // that client being permanently stuck blank because it wasn't added at
-    // creation. Only fires on the empty→filled transition, never re-runs on
-    // every later edit of an already-researched client.
+    // If a website/social link is present after this edit and Mai hasn't
+    // already researched this client (no mai_research_* memory facts yet),
+    // run her research now — same as at creation time, so a client that
+    // didn't have a website/socials when first added isn't permanently stuck
+    // blank forever. Checking her own memory facts (rather than comparing
+    // old vs new field values, which broke before due to a JSON-vs-object
+    // parsing mismatch) means this is idempotent — it simply won't re-fire
+    // on a later edit once she's already left real research facts behind.
     const asObj = (v) => (v && typeof v==="object") ? v : (parseJ(v,{})||{});
-    const hadNone = !cl?.website && !Object.values(asObj(cl?.social_links)).some(Boolean);
-    const nowHasSomething = !!(updates.website||cl?.website) || Object.values(asObj(updates.social_links??cl?.social_links)).some(Boolean);
-    if(hadNone && nowHasSomething) maiResearchNewClient({...cl, ...updates, id});
+    const merged = {...cl, ...updates};
+    const hasSomething = !!merged.website || Object.values(asObj(merged.social_links)).some(Boolean);
+    const alreadyResearched = (data.clientMemory||[]).some(m=>m.client_id===id && (m.key||"").startsWith("mai_research_"));
+    if(hasSomething && !alreadyResearched) maiResearchNewClient({...merged, id});
   };
 
   const deleteClient = async (id) => {
