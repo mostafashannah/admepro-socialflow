@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.479";
+const APP_VERSION = "beta 5.480";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -13944,8 +13944,18 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
 // her own activity log (no separate storage needed: every run she does is
 // already logged there, tagged [agent:<id>], so this doubles as her "file").
 function AgentProfilePage({agent, avatarUrl, activityLogs=[], onBack}) {
-  const logs = (activityLogs||[]).filter(a=>(a.details||"").includes(`[agent:${agent.id}]`))
+  const allAgentLogs = (activityLogs||[]).filter(a=>(a.details||"").includes(`[agent:${agent.id}]`))
     .sort((a,b)=>new Date(b.performed_at)-new Date(a.performed_at));
+  // Pro runs as two separate implementations (in-app vs WhatsApp, see
+  // pro-lib.php) with no shared session — merging their history into one
+  // feed made it look like one agent when it's really two independent
+  // conversation threads. WhatsApp-originated log rows are tagged
+  // [channel:whatsapp]; anything without that tag is the in-app agent.
+  const isMultiChannel = agent.id === "pro";
+  const [channel, setChannel] = useState("app");
+  const logs = !isMultiChannel ? allAgentLogs
+    : channel === "whatsapp" ? allAgentLogs.filter(a=>(a.details||"").includes("[channel:whatsapp]"))
+    : allAgentLogs.filter(a=>!(a.details||"").includes("[channel:whatsapp]"));
   const byDay = {};
   // performed_at is a naive "Y-m-d H:i:s" UTC string from MySQL — must go
   // through parseSqlUtc (not a raw slice/new Date) or every timestamp here
@@ -13987,6 +13997,16 @@ function AgentProfilePage({agent, avatarUrl, activityLogs=[], onBack}) {
         </div>
         <span style={{marginLeft:"auto",background:agent.color+"22",color:agent.color,borderRadius:6,padding:"4px 12px",fontSize:11,fontWeight:700,flexShrink:0}}>AI Team Member</span>
       </div>
+
+      {isMultiChannel&&(
+        <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)",alignSelf:"flex-start"}}>
+          {[["app","App"],["whatsapp","WhatsApp"]].map(([k,l])=>(
+            <button key={k} onClick={()=>setChannel(k)} style={{padding:"7px 18px",borderRadius:"var(--rxs)",fontSize:12,fontWeight:700,background:channel===k?agent.color:"none",color:channel===k?"#fff":"var(--text2)"}}>
+              {l} ({allAgentLogs.filter(a=>k==="whatsapp"?(a.details||"").includes("[channel:whatsapp]"):!(a.details||"").includes("[channel:whatsapp]")).length})
+            </button>
+          ))}
+        </div>
+      )}
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10}}>
         {[

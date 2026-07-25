@@ -1696,6 +1696,20 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                 if ($voiceRecordingUrl) $toolInput['_voice_recording_url'] = $voiceRecordingUrl;
             }
             $result = runProTool($pdo, $block['name'], $toolInput, (string)$senderRole, $senderId, $senderName, $fromPhone);
+            // Feeds the same "Full History" view the app's own Pro agent
+            // page reads (activity_logs, filtered on the [agent:pro] tag)
+            // — WhatsApp Pro never wrote here before, so its actions were
+            // completely invisible on that page. [channel:whatsapp] lets
+            // the UI split the two apart instead of merging them.
+            try {
+                $actLog = $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), :action, 'ai_agent', :details, :status, :actor)");
+                $actLog->execute([
+                    ':action' => 'Pro (WhatsApp): ' . str_replace('_', ' ', $block['name']),
+                    ':details' => '[agent:pro][channel:whatsapp] ' . ($senderName ? "for {$senderName}" : ''),
+                    ':status' => (is_array($result) && !empty($result['error'])) ? 'error' : 'success',
+                    ':actor' => $senderName ?: 'whatsapp',
+                ]);
+            } catch (Throwable $e) { /* best-effort — never block the actual reply over logging */ }
             if (in_array($block['name'], ['add_transaction', 'edit_transaction', 'delete_transaction'], true)) {
                 $lastMutationResult = $result;
                 $mutationAttempted = true;
