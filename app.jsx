@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.491";
+const APP_VERSION = "beta 5.492";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -37848,7 +37848,11 @@ function App() {
         logActivity(`Mai: New-client research — ${client?.name||"?"}`,"agents",`[agent:account_executive] Skipped — no website or social links given`,"success","","agent");
         return;
       }
-      const sys = `You are Mai, the agency's AI Account Executive. A brand-new client "${client.name}" (industry: ${client.industry||"unspecified"}) was just added to the system. Use your web_search tool to actually research this business — visit/search their website${client.website?` (${client.website})`:""}, the social profiles listed below (read their actual posts/bio for real tone and content style, not just a generic guess), and anything else publicly findable about them.${socialLines.length?`\n\nSocial profiles:\n${socialLines.join("\n")}`:""} Gather:
+      const sys = `You are Mai, the agency's AI Account Executive. A brand-new client "${client.name}" (industry: ${client.industry||"unspecified"}) was just added to the system. Use your web_search tool to actually research this business thoroughly — this is a one-time deep pass, not a quick single lookup, so use your full search budget.
+
+${client.website?`Don't stop at their homepage — deliberately search for and check their key inner pages too: About/Who We Are, Products/Services, Pricing (if any), Contact/Locations, and anything else that surfaces real detail (e.g. "site:${client.website.replace(/^https?:\/\//,"").replace(/\/$/,"")} services", "site:${client.website.replace(/^https?:\/\//,"").replace(/\/$/,"")} about", etc.) — the homepage alone is rarely enough to answer the questions below well.`:""}${socialLines.length?`\n\nAlso check the social profiles below directly — read actual recent posts/bio for real tone and content style, not just a guess:\n${socialLines.join("\n")}`:""}
+
+Gather:
 1. What they actually sell/do (products/services) — a couple of concrete sentences, not generic filler.
 2. Their brand tone/voice as it genuinely comes across online (site + social content, if given).
 3. Their physical location/city if findable.
@@ -37862,9 +37866,9 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
       const res = await fetch(AI_ENDPOINT, {
         method:"POST", headers:AI_HEADERS,
         body: JSON.stringify({
-          model:"claude-sonnet-4-6", max_tokens:1200, system:sys,
-          messages:[{role:"user", content:`Research ${client.name}${client.website?` — ${client.website}`:""}`}],
-          tools:[{type:"web_search_20250305", name:"web_search", max_uses:5}],
+          model:"claude-sonnet-4-6", max_tokens:1600, system:sys,
+          messages:[{role:"user", content:`Research ${client.name}${client.website?` — ${client.website}`:""} thoroughly, not just the homepage.`}],
+          tools:[{type:"web_search_20250305", name:"web_search", max_uses:12}],
         }),
       });
       const d = await res.json();
