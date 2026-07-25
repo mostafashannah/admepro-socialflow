@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.490";
+const APP_VERSION = "beta 5.491";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -37845,7 +37845,7 @@ function App() {
       const social = (client.social_links && typeof client.social_links==="object") ? client.social_links : parseJ(client.social_links, {});
       const socialLines = Object.entries(social||{}).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`);
       if(!client?.website && !socialLines.length) {
-        logActivity("Mai: New-client research","agents",`[agent:account_executive] Skipped ${client?.name||"?"} — no website or social links given`,"success","","agent");
+        logActivity(`Mai: New-client research — ${client?.name||"?"}`,"agents",`[agent:account_executive] Skipped — no website or social links given`,"success","","agent");
         return;
       }
       const sys = `You are Mai, the agency's AI Account Executive. A brand-new client "${client.name}" (industry: ${client.industry||"unspecified"}) was just added to the system. Use your web_search tool to actually research this business — visit/search their website${client.website?` (${client.website})`:""}, the social profiles listed below (read their actual posts/bio for real tone and content style, not just a generic guess), and anything else publicly findable about them.${socialLines.length?`\n\nSocial profiles:\n${socialLines.join("\n")}`:""} Gather:
@@ -37893,9 +37893,9 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
           await upsertClientMemory(client.id, client.name, `mai_research_${key}`, value, "ai", {source:"mai_website_research"});
         }
       }
-      logActivity("Mai: New-client research","agents",`[agent:account_executive] Researched ${client.name} from ${client.website}`,"success","","agent");
+      logActivity(`Mai: New-client research — ${client.name}`,"agents",`[agent:account_executive] Researched ${client.name} from ${client.website||"social profiles"}`,"success","","agent");
     } catch(e) {
-      logActivity("Mai: New-client research","agents",`[agent:account_executive] ${client.name}`,"error",String(e.message).slice(0,200),"agent");
+      logActivity(`Mai: New-client research — ${client.name}`,"agents",`[agent:account_executive] ${client.name}`,"error",String(e.message).slice(0,200),"agent");
     }
   };
 
@@ -37924,6 +37924,15 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
     await ue("Client", id, updates).catch(()=>{});
     logActivity("Client Updated","clients",`${cl?.name||id} — ${Object.keys(updates).join(", ")}`,"success","",currentUser?.email||"admin");
     setToast(" Client updated");
+
+    // If a website/social link was just added on a client that had neither
+    // before, run Mai's research now — same as at creation time — instead of
+    // that client being permanently stuck blank because it wasn't added at
+    // creation. Only fires on the empty→filled transition, never re-runs on
+    // every later edit of an already-researched client.
+    const hadNone = !cl?.website && !Object.values(parseJ(cl?.social_links,{})||{}).some(Boolean);
+    const nowHasSomething = !!(updates.website||cl?.website) || Object.values(parseJ(updates.social_links??cl?.social_links,{})||{}).some(Boolean);
+    if(hadNone && nowHasSomething) maiResearchNewClient({...cl, ...updates, id});
   };
 
   const deleteClient = async (id) => {
