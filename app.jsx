@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.494";
+const APP_VERSION = "beta 5.495";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -20815,6 +20815,11 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                 )}
                 {!metaConnected&&(
                   <p style={{fontSize:11,color:"#ef4444"}}>Pick a Client and connect with {f.app_key==="instagram"?"Instagram":"Facebook"} before you can continue — otherwise messages will never reach this integration.</p>
+                )}
+                {metaConnected&&(
+                  <Field label="Ad Account ID (optional)" hint="Meta Ads Manager → Business Settings → Ad Accounts — the numeric ID, without the 'act_' prefix. Pulls spend/impressions/clicks/CTR/CPC/CPM/reach into this client's Insights alongside their organic post data.">
+                    <input value={f.credentials?.ad_account_id||""} onChange={e=>scred("ad_account_id",e.target.value.replace(/^act_/i,"").trim())} placeholder="1234567890" style={inputSt}/>
+                  </Field>
                 )}
               </>)}
               {f.app_key==="whatsapp"&&(<>
