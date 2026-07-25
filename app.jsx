@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.486";
+const APP_VERSION = "beta 5.487";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6214,12 +6214,12 @@ function AddProjectModal({open,onClose,clients,onAdd}) {
 // ADD CLIENT MODAL
 // ════════════════════════════════════════════════════════════════
 function AddClientModal({open,onClose,onAdd}) {
-  const [f,setF] = useState({name:"",email:"",phone:"",industry:"",status:"active",platforms:[],notes:"",portal_password:""});
+  const [f,setF] = useState({name:"",email:"",phone:"",website:"",industry:"",status:"active",platforms:[],notes:"",portal_password:""});
   const [saving,setSaving] = useState(false);
   const [done,setDone] = useState(false);
   const s = (k,v) => setF(p=>({...p,[k]:v}));
   const togglePlt = p => s("platforms",f.platforms.includes(p)?f.platforms.filter(x=>x!==p):[...f.platforms,p]);
-  const reset = () => { setF({name:"",email:"",phone:"",industry:"",status:"active",platforms:[],notes:"",portal_password:""}); setDone(false); };
+  const reset = () => { setF({name:"",email:"",phone:"",website:"",industry:"",status:"active",platforms:[],notes:"",portal_password:""}); setDone(false); };
   const submit = async () => {
     if(!f.name||!f.email) return;
     setSaving(true);
@@ -6275,6 +6275,9 @@ function AddClientModal({open,onClose,onAdd}) {
           </Field>
           <Field label="Industry">
             <input value={f.industry} onChange={e=>s("industry",e.target.value)} placeholder="e.g. Fashion, Tech…" style={inputSt}/>
+          </Field>
+          <Field label="Website" hint="Mai will research it automatically once added">
+            <input value={f.website} onChange={e=>s("website",e.target.value)} placeholder="https://…" style={inputSt} autoComplete="off"/>
           </Field>
           <Field label="Status">
             <select value={f.status} onChange={e=>s("status",e.target.value)} style={inputSt}>
@@ -6476,7 +6479,7 @@ function AddClientWorkflowModal({open,onClose,onAdd,onGoToCalendar}) {
   const [newClient,setNewClient] = useState(null);
   const [f,setF] = useState({
     name:"",platforms:[],assets:[],
-    email:"",portal_password:"",status:"active",
+    email:"",website:"",portal_password:"",status:"active",
   });
   const s = (k,v) => setF(p=>({...p,[k]:v}));
   const togglePlt = p => s("platforms",f.platforms.includes(p)?f.platforms.filter(x=>x!==p):[...f.platforms,p]);
@@ -6492,7 +6495,7 @@ function AddClientWorkflowModal({open,onClose,onAdd,onGoToCalendar}) {
     setStep("success");
   };
 
-  const reset = () => { setStep("form"); setF({name:"",platforms:[],assets:[],email:"",portal_password:"",status:"active"}); setNewClient(null); };
+  const reset = () => { setStep("form"); setF({name:"",platforms:[],assets:[],email:"",website:"",portal_password:"",status:"active"}); setNewClient(null); };
 
   if(!open) return null;
   return (
@@ -6507,6 +6510,9 @@ function AddClientWorkflowModal({open,onClose,onAdd,onGoToCalendar}) {
           </Field>
           <Field label="Contact Email">
             <input type="email" value={f.email} onChange={e=>s("email",e.target.value)} placeholder="client@company.com" style={inputSt}/>
+          </Field>
+          <Field label="Website" hint="Mai will research it automatically once added">
+            <input value={f.website} onChange={e=>s("website",e.target.value)} placeholder="https://…" style={inputSt}/>
           </Field>
           <Field label="Default Platforms">
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -37799,6 +37805,68 @@ function App() {
     return true;
   };
 
+  // Mai researches a brand-new client's own website (and whatever else is
+  // publicly findable) so the memory/knowledge tabs aren't a blank page on
+  // day one — a real starting point for the account team to verify and
+  // refine, never presented as confirmed fact. Fire-and-forget: never blocks
+  // client creation, and any field she fills in here is trivially overwritten
+  // the moment the account team edits it (Client Knowledge is a single row
+  // per field; memory facts are normal editable/deletable entries like any
+  // other, just tagged so it's obvious at a glance where they came from).
+  const maiResearchNewClient = async (client) => {
+    if(!client?.website) return;
+    try {
+      const sys = `You are Mai, the agency's AI Account Executive. A brand-new client "${client.name}" (industry: ${client.industry||"unspecified"}) was just added to the system with website ${client.website}. Use your web_search tool to actually research this business — visit/search their website and anything else publicly findable about them. Gather:
+1. What they actually sell/do (products/services) — a couple of concrete sentences, not generic filler.
+2. Their brand tone/voice as it genuinely comes across online.
+3. Their physical location/city if findable.
+4. 2-4 REAL named competitors in the same industry and, ideally, the same location/market — only names you can actually identify, never invented ones.
+5. A rough sense of their pricing/positioning (budget/mid-range/premium) ONLY if genuinely visible somewhere (their own site, a competitor comparison, reviews) — if you can't find real pricing, say "not publicly available", never guess a number.
+6. Their apparent target audience.
+
+This is a STARTING POINT for the account team to verify and refine, not a finished brief — be honest about anything you couldn't confirm rather than filling in a plausible-sounding guess.
+
+Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...","location":"...","competitors":"comma-separated real names, or empty","pricing_positioning":"...","target_audience":"...","keywords":"comma-separated"}`;
+      const res = await fetch(AI_ENDPOINT, {
+        method:"POST", headers:AI_HEADERS,
+        body: JSON.stringify({
+          model:"claude-sonnet-4-6", max_tokens:1200, system:sys,
+          messages:[{role:"user", content:`Research ${client.name} — ${client.website}`}],
+          tools:[{type:"web_search_20250305", name:"web_search", max_uses:5}],
+        }),
+      });
+      const d = await res.json();
+      if(d.error) throw new Error(d.error.message||"AI API error");
+      trackAIUsage(d.usage, "claude-sonnet-4-6");
+      const raw = (d.content?.map(b=>b.text||"").join("")||"").trim();
+      const m = raw.match(/\{[\s\S]*\}/);
+      if(!m) throw new Error("No structured result returned");
+      const parsed = JSON.parse(m[0]);
+
+      await saveClientKnowledge({
+        client_id: client.id, client_name: client.name,
+        tone: parsed.tone||"", content_preferences: parsed.content_preferences||"", keywords: parsed.keywords||"",
+        context_file: `Auto-researched by Mai from ${client.website} on ${new Date().toLocaleDateString()} — verify and refine:\n${parsed.content_preferences||""}${parsed.location?`\nLocation: ${parsed.location}`:""}${parsed.pricing_positioning?`\nPricing/positioning: ${parsed.pricing_positioning}`:""}`,
+      });
+
+      const facts = [
+        ["business_overview", parsed.content_preferences],
+        ["location", parsed.location],
+        ["competitors", parsed.competitors],
+        ["pricing_positioning", parsed.pricing_positioning],
+        ["target_audience", parsed.target_audience],
+      ];
+      for(const [key,value] of facts) {
+        if(value && !/not publicly available|^n\/a$|^unknown$/i.test(value.trim())) {
+          await upsertClientMemory(client.id, client.name, `mai_research_${key}`, value, "ai", {source:"mai_website_research"});
+        }
+      }
+      logActivity("Mai: New-client research","agents",`[agent:account_executive] Researched ${client.name} from ${client.website}`,"success","","agent");
+    } catch(e) {
+      logActivity("Mai: New-client research","agents",`[agent:account_executive] ${client.name}`,"error",String(e.message).slice(0,200),"agent");
+    }
+  };
+
   const addClient = async (clientData) => {
     const local = {...clientData, id:uid(), created_date:new Date().toISOString()};
     logActivity("Client Created","clients",`New client: ${clientData.name}`, "success","",currentUser?.email||"admin");
@@ -37814,6 +37882,7 @@ function App() {
       };
       addClientUser(cuPayload).catch(()=>{});
     }
+    if(clientData.website) maiResearchNewClient({...clientData, id:created?.id||local.id});
     return created;
   };
 
