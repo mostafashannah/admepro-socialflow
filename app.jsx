@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.478";
+const APP_VERSION = "beta 5.479";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -19040,67 +19040,84 @@ async function downloadQuotePDF(quote, items, branding) {
     const [rr,rg,rb] = hexToRgb(branding?.primary_color || "#d90b2c");
 
     const doc = new jsPDFCtor({unit:"pt", format:"a4"});
-    const marginX = 50, pageWidth = doc.internal.pageSize.getWidth(), pageHeight = doc.internal.pageSize.getHeight();
+    const marginX = 54, pageWidth = doc.internal.pageSize.getWidth(), pageHeight = doc.internal.pageSize.getHeight();
     const maxW = pageWidth - marginX*2;
-    let y = 60;
-    const ensureRoom = (needed) => { if (y + needed > pageHeight - 60) { doc.addPage(); y = 60; } };
-    const wordmark = (x, yPos, size) => {
+    let y = 64;
+    const ensureRoom = (needed) => { if (y + needed > pageHeight - 64) { doc.addPage(); y = 64; } };
+    // "p." mark — real vector text, not a fetched image (avoids the
+    // admepro.com CORS issue entirely) and matches the compact mark used
+    // in-app rather than spelling out the full wordmark.
+    const mark = (x, yPos, size, centered) => {
       doc.setFont("Helvetica","bold"); doc.setFontSize(size); doc.setTextColor(20,20,20);
-      doc.text("admepro", x, yPos);
-      const w = doc.getTextWidth("admepro");
+      const w = doc.getTextWidth("p") + doc.getTextWidth(".") + 1;
+      const startX = centered ? x - w/2 : x;
+      doc.text("p", startX, yPos);
+      const pw = doc.getTextWidth("p");
       doc.setTextColor(rr,rg,rb);
-      doc.text(".", x+w+1, yPos);
+      doc.text(".", startX+pw+1, yPos);
+      return w;
     };
 
-    // Header — wordmark left, quote # right
-    wordmark(marginX, y, 26);
-    doc.setFont("Helvetica","bold"); doc.setFontSize(20); doc.setTextColor(20,20,20);
-    doc.text(`Quotation ${quote.quote_number||""}`, pageWidth-marginX, y-6, {align:"right"});
-    y += 34;
+    // Column layout for the items table, computed once and reused by the
+    // header row + every item row so everything lines up precisely.
+    const col = {
+      descX: marginX,
+      descW: 250,
+      qtyCenter: marginX + 250 + 45,
+      priceRight: marginX + 250 + 90 + 95,
+      totalRight: pageWidth - marginX,
+    };
+    const vLine1 = marginX + col.descW + 12;
+    const vLine2 = col.qtyCenter + 45;
+    const vLine3 = col.priceRight + 12;
 
-    // Date/Valid-Until (left) + company contact (right)
-    doc.setFont("Helvetica","bold"); doc.setFontSize(9.5); doc.setTextColor(30,30,30);
-    doc.text("Date: ", marginX, y);
-    doc.setFont("Helvetica","normal"); doc.text(quote.date||"", marginX+34, y);
-    doc.setFont("Helvetica","bold"); doc.text("Valid Until: ", marginX, y+14);
-    doc.setFont("Helvetica","normal"); doc.text(quote.due_date||"", marginX+62, y+14);
+    // ── Header — "p." mark left, quote # right ──
+    mark(marginX, y, 30);
+    doc.setFont("Helvetica","bold"); doc.setFontSize(19); doc.setTextColor(20,20,20);
+    doc.text(`Quotation ${quote.quote_number||""}`, pageWidth-marginX, y-4, {align:"right"});
+    y += 42;
 
-    doc.setFont("Helvetica","normal"); doc.setFontSize(9.5); doc.setTextColor(30,30,30);
+    // Date / Valid Until (left) — company contact (right)
+    const metaLh = 14;
+    doc.setFontSize(9.5);
+    doc.setFont("Helvetica","bold"); doc.setTextColor(30,30,30); doc.text("Date:", marginX, y);
+    doc.setFont("Helvetica","normal"); doc.text(quote.date||"", marginX+40, y);
+    doc.setFont("Helvetica","bold"); doc.text("Valid Until:", marginX, y+metaLh);
+    doc.setFont("Helvetica","normal"); doc.text(quote.due_date||"", marginX+68, y+metaLh);
+
+    doc.setFont("Helvetica","normal"); doc.setFontSize(9.5); doc.setTextColor(90,90,90);
     doc.text("Villa 145 Al Banafsig 3, New Cairo", pageWidth-marginX, y, {align:"right"});
-    doc.text("+20 100 037 0140", pageWidth-marginX, y+14, {align:"right"});
-    doc.text("www.admepro.com", pageWidth-marginX, y+28, {align:"right"});
-    y += 46;
+    doc.text("+20 100 037 0140", pageWidth-marginX, y+metaLh, {align:"right"});
+    doc.text("www.admepro.com", pageWidth-marginX, y+metaLh*2, {align:"right"});
+    y += metaLh*2 + 24;
 
-    // Customer (left) + Special instructions (right)
-    doc.setFont("Helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(20,20,20);
+    // Customer (left) — Special instructions (right)
+    doc.setFont("Helvetica","bold"); doc.setFontSize(9.5); doc.setTextColor(20,20,20);
     doc.text("CUSTOMER", marginX, y);
-    doc.setFont("Helvetica","normal"); doc.setFontSize(10.5); doc.setTextColor(60,60,60);
-    doc.text(quote.client_name||"", marginX, y+15);
+    doc.setFont("Helvetica","bold"); doc.setFontSize(12); doc.setTextColor(20,20,20);
+    doc.text(quote.client_name||"", marginX, y+17);
 
     if (quote.title) {
-      doc.setFont("Helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(20,20,20);
-      doc.text("SPECIAL INSTRUCTIONS:", pageWidth-marginX, y, {align:"right"});
-      doc.setFont("Helvetica","normal"); doc.setFontSize(9.5); doc.setTextColor(60,60,60);
-      doc.text(quote.title, pageWidth-marginX, y+15, {align:"right"});
+      doc.setFont("Helvetica","bold"); doc.setFontSize(9.5); doc.setTextColor(20,20,20);
+      doc.text("SPECIAL INSTRUCTIONS", pageWidth-marginX, y, {align:"right"});
+      doc.setFont("Helvetica","normal"); doc.setFontSize(10.5); doc.setTextColor(60,60,60);
+      doc.text(quote.title, pageWidth-marginX, y+17, {align:"right"});
     }
-    y += 34;
-    doc.setDrawColor(60,60,60); doc.setLineWidth(1);
+    y += 38;
+    doc.setDrawColor(30,30,30); doc.setLineWidth(1.2);
     doc.line(marginX, y, pageWidth-marginX, y);
-    y += 24;
+    y += 26;
 
-    // Items table — grouped like the reference: item name bold, its
-    // description as separate lines beneath (no bullets), one qty/price/
-    // total per group, thin vertical rules between columns per row.
-    const colDescW = 300, colQtyX = marginX+colDescW+40, colPriceX = colQtyX+90, colTotalX = pageWidth-marginX;
-    doc.setFont("Helvetica","bold"); doc.setFontSize(9.5); doc.setTextColor(20,20,20);
-    doc.text("DESCRIPTION", marginX, y);
-    doc.text("QUANTITY", colQtyX, y, {align:"center"});
-    doc.text("PRICE", colPriceX, y, {align:"center"});
-    doc.text("TOTAL", colTotalX, y, {align:"right"});
-    y += 10;
+    // ── Items table header ──
+    doc.setFont("Helvetica","bold"); doc.setFontSize(9); doc.setTextColor(20,20,20);
+    doc.text("DESCRIPTION", col.descX, y);
+    doc.text("QUANTITY", col.qtyCenter, y, {align:"center"});
+    doc.text("PRICE", col.priceRight, y, {align:"right"});
+    doc.text("TOTAL", col.totalRight, y, {align:"right"});
+    y += 8;
     doc.setDrawColor(20,20,20); doc.setLineWidth(1);
     doc.line(marginX, y, pageWidth-marginX, y);
-    y += 22;
+    y += 26;
 
     if (!items.length) {
       doc.setFont("Helvetica","normal"); doc.setFontSize(10); doc.setTextColor(140,140,140);
@@ -19109,70 +19126,67 @@ async function downloadQuotePDF(quote, items, branding) {
     }
     items.forEach((it)=>{
       const lineTotal = (parseFloat(it.qty||0)*parseFloat(it.unit_price||0));
-      doc.setFont("Helvetica","normal"); doc.setFontSize(10);
-      const descLines = it.description ? it.description.split("\n").filter(Boolean) : [];
-      const rowH = Math.max(46, 20 + descLines.length*16);
-      ensureRoom(rowH+16);
+      const descLines = it.description ? doc.setFont("Helvetica","normal").setFontSize(9.5).splitTextToSize(it.description.split("\n").filter(Boolean).join("  •  "), col.descW) : [];
+      const nameLh = 16, descLh = 13;
+      const contentH = nameLh + descLines.length*descLh;
+      const rowH = Math.max(52, contentH + 22);
+      ensureRoom(rowH+10);
       const rowTop = y;
+      const textStartY = rowTop + 16;
 
-      doc.setFont("Helvetica","bold"); doc.setFontSize(11); doc.setTextColor(20,20,20);
-      doc.text(it.name||"", marginX, y);
-      doc.setFont("Helvetica","normal"); doc.setFontSize(10); doc.setTextColor(70,70,70);
-      descLines.forEach((l,li)=>doc.text(l, marginX, y+18+li*15));
+      doc.setFont("Helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(20,20,20);
+      doc.text(it.name||"(Untitled item)", col.descX, textStartY);
+      doc.setFont("Helvetica","normal"); doc.setFontSize(9.5); doc.setTextColor(100,100,100);
+      descLines.forEach((l,li)=>doc.text(l, col.descX, textStartY+nameLh+li*descLh));
 
-      const midY = rowTop + rowH/2 - 8;
-      doc.setFont("Helvetica","normal"); doc.setFontSize(10.5); doc.setTextColor(30,30,30);
-      doc.text(String(it.qty||0), colQtyX, midY, {align:"center"});
-      doc.text(fmtMoney(it.unit_price,cur), colPriceX, midY, {align:"center"});
-      doc.setFont("Helvetica","bold");
-      doc.text(fmtMoney(lineTotal,cur), colTotalX, midY, {align:"right"});
-
-      // Column separators for this row
-      doc.setDrawColor(180,180,180); doc.setLineWidth(0.75);
-      [marginX+colDescW+10, colQtyX+45, colPriceX+45].forEach(lx=>doc.line(lx, rowTop-14, lx, rowTop+rowH-10));
+      const midY = rowTop + rowH/2 + 4;
+      doc.setFont("Helvetica","normal"); doc.setFontSize(10); doc.setTextColor(40,40,40);
+      doc.text(String(it.qty||0), col.qtyCenter, midY, {align:"center"});
+      doc.text(fmtMoney(it.unit_price,cur), col.priceRight, midY, {align:"right"});
+      doc.setFont("Helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(20,20,20);
+      doc.text(fmtMoney(lineTotal,cur), col.totalRight, midY, {align:"right"});
 
       y += rowH;
-      doc.setDrawColor(210,210,210); doc.setLineWidth(0.75);
-      doc.line(marginX, y-8, pageWidth-marginX, y-8);
-      y += 14;
+      // Column separators + row divider, both spanning this row's actual height
+      doc.setDrawColor(215,215,215); doc.setLineWidth(0.75);
+      [vLine1, vLine2, vLine3].forEach(lx=>doc.line(lx, rowTop, lx, y));
+      doc.line(marginX, y, pageWidth-marginX, y);
+      y += 20;
     });
-    y += 10;
+    y += 6;
 
-    // Payment terms (left) + Totals (right)
+    // ── Payment terms (left) + Totals (right) ──
     const totalsTop = y;
     if (quote.payment_terms) {
       doc.setFont("Helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(20,20,20);
       doc.text("Payment Terms", marginX, y);
-      doc.setFont("Helvetica","normal"); doc.setFontSize(9.5); doc.setTextColor(60,60,60);
-      const termLines = doc.splitTextToSize(quote.payment_terms, colDescW);
-      termLines.forEach((l,li)=>doc.text(l, marginX, y+16+li*13));
-      y += 16 + termLines.length*13 + 18;
-      doc.setFont("Helvetica","normal"); doc.setFontSize(9);
-      const contactLines = doc.splitTextToSize("If you have any questions concerning this quotation, please contact admepro at hello@admepro.com.", colDescW);
+      doc.setFont("Helvetica","normal"); doc.setFontSize(9.5); doc.setTextColor(70,70,70);
+      const termLines = doc.splitTextToSize(quote.payment_terms, col.descW);
+      termLines.forEach((l,li)=>doc.text(l, marginX, y+18+li*13));
+      y += 18 + termLines.length*13 + 20;
+      doc.setFont("Helvetica","normal"); doc.setFontSize(9); doc.setTextColor(100,100,100);
+      const contactLines = doc.splitTextToSize("If you have any questions concerning this quotation, please contact admepro at hello@admepro.com.", col.descW);
       contactLines.forEach((l,li)=>doc.text(l, marginX, y+li*12));
       y += contactLines.length*12;
     }
 
     let ty = totalsTop;
-    const totalsX = colQtyX-10;
-    doc.setFont("Helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(20,20,20);
-    doc.text("SUBTOTAL:", totalsX, ty); doc.text(fmtMoney(calc.subtotal,cur), pageWidth-marginX, ty, {align:"right"}); ty += 24;
-    doc.text("SALES TAX:", totalsX, ty); doc.text(calc.taxAmt>0?fmtMoney(calc.taxAmt,cur):"0", pageWidth-marginX, ty, {align:"right"}); ty += 24;
-    doc.text("PACKAGE DISCOUNT:", totalsX, ty); doc.text(calc.discAmt>0?fmtMoney(calc.discAmt,cur):"0", pageWidth-marginX, ty, {align:"right"}); ty += 30;
-    doc.setFontSize(16);
-    doc.text("TOTAL:", totalsX, ty); doc.text(fmtMoney(calc.total,cur), pageWidth-marginX, ty, {align:"right"});
+    const totalsLabelX = col.qtyCenter - 45;
+    const rowGap = 22;
+    doc.setFont("Helvetica","bold"); doc.setFontSize(10); doc.setTextColor(60,60,60);
+    doc.text("SUBTOTAL", totalsLabelX, ty); doc.text(fmtMoney(calc.subtotal,cur), col.totalRight, ty, {align:"right"}); ty += rowGap;
+    doc.text("SALES TAX", totalsLabelX, ty); doc.text(calc.taxAmt>0?fmtMoney(calc.taxAmt,cur):"—", col.totalRight, ty, {align:"right"}); ty += rowGap;
+    doc.text("PACKAGE DISCOUNT", totalsLabelX, ty); doc.text(calc.discAmt>0?fmtMoney(calc.discAmt,cur):"—", col.totalRight, ty, {align:"right"}); ty += rowGap+4;
+    doc.setDrawColor(210,210,210); doc.setLineWidth(0.75);
+    doc.line(totalsLabelX, ty-16, pageWidth-marginX, ty-16);
+    doc.setFont("Helvetica","bold"); doc.setFontSize(15); doc.setTextColor(20,20,20);
+    doc.text("TOTAL", totalsLabelX, ty); doc.text(fmtMoney(calc.total,cur), col.totalRight, ty, {align:"right"});
 
-    y = Math.max(y, ty) + 50;
+    y = Math.max(y, ty) + 56;
     ensureRoom(50);
 
-    // Footer — small wordmark mark + thank-you, centered
-    doc.setFont("Helvetica","bold"); doc.setFontSize(16); doc.setTextColor(20,20,20);
-    const markW = doc.getTextWidth("p");
-    const dotW = doc.getTextWidth(".");
-    const cx = pageWidth/2 - (markW+dotW)/2;
-    doc.text("p", cx, y);
-    doc.setTextColor(rr,rg,rb);
-    doc.text(".", cx+markW+1, y);
+    // Footer — small "p." mark + thank-you, centered
+    mark(pageWidth/2, y, 16, true);
     y += 18;
     doc.setFont("Helvetica","bold"); doc.setFontSize(9); doc.setTextColor(20,20,20);
     doc.text("THANK YOU FOR YOUR BUSINESS!", pageWidth/2, y, {align:"center"});
