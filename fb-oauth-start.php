@@ -53,6 +53,12 @@ $scopes = implode(',', [
     // without it Facebook rejects the whole OAuth dialog for the app, not just
     // this scope. Re-added after 5eb3476 wrongly dropped it as "deprecated".
     'pages_read_user_content',
+    // Needed for the client's Ad Account ID field (Settings → Integrations) to
+    // actually pull anything — without this, every /act_{id}/insights and
+    // /act_{id}/ads call 400s with "(#200) Ad account owner has NOT grant
+    // ads_management or ads_read permission" regardless of which ad account is
+    // entered, since the token itself never carries the permission at all.
+    'ads_read',
 ]);
 $params = [
     'client_id'     => META_APP_ID,
