@@ -1563,7 +1563,22 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                       . "transcription errors, use your judgement. If it sounds like a debrief of a client call/"
                       . "meeting (mentions a client and what was discussed), extract and save it with "
                       . "save_contact_report, then confirm briefly what you saved. If it's just a normal question "
-                      . "instead, answer it normally like any other message."
+                      . "instead, answer it normally like any other message.\n\n"
+                      . "CRITICAL for attendee names: voice transcription frequently mishears similar-sounding "
+                      . "names (e.g. Arabic \"علاء\"/Alaa vs \"علي\"/Ali are commonly confused). Our real team "
+                      . "members are:\n" . (function() use ($pdo) {
+                          $names = $pdo->query("SELECT name FROM team_members WHERE status = 'active'")->fetchAll(PDO::FETCH_COLUMN);
+                          return $names ? implode(', ', $names) : '(none loaded)';
+                      })() . "\n\nBefore calling save_contact_report, check every attendee name in the transcript "
+                      . "against this list (and against the client's own known contact name if you can identify "
+                      . "it from context). If a name closely matches one of these (allowing for an obvious "
+                      . "mis-transcription), use the CORRECT real name, not the literal transcribed one. If a name "
+                      . "does NOT clearly match anyone on this list or a known client contact, do NOT guess or "
+                      . "silently keep the mis-transcribed version — ask the sender directly to confirm exactly "
+                      . "who that was, before saving. Getting a name wrong in a contact report is a real problem: "
+                      . "these reports can be emailed to the client and to the account manager, so a wrong name "
+                      . "looks unprofessional and undermines trust — it's much better to ask a quick follow-up "
+                      . "question than to guess."
                     : '')
                 . ($imageBase64
                     ? "\n\nThey just sent you a PHOTO (attached). Look at it and help with whatever it's for: if "
