@@ -5,13 +5,11 @@
 // Four fixed jobs, purely internal (never visible to clients):
 //   1. Posting-cadence check — compares actual posts published in the last
 //      7 days against the client's configured posting_frequency
-//      (client_intelligence.posting_frequency, posts/week). If behind,
-//      notifies the account manager + all admins.
-//   1b. Scheduled-pipeline runway check — if the client's queue of already-
-//      scheduled posts runs out within the next 10 working days (or is
-//      empty), notifies the account manager + all admins. Re-alerts every
-//      day this keeps running until new scheduled posts push the runway
-//      back out past 10 working days.
+//      (client_intelligence.posting_frequency, posts/week).
+//   1b. Scheduled-pipeline runway check — flags if the client's queue of
+//      already-scheduled posts runs out within the next 10 working days
+//      (or is empty). Re-flags every day this keeps running until new
+//      scheduled posts push the runway back out past 10 working days.
 //   2. Daily performance analysis — reads recent published posts (with
 //      their insight_* metrics) + client_intelligence, asks Claude for a
 //      short internal-only summary, saved into that client's memory.
@@ -19,6 +17,18 @@
 //      together with recent contact reports and assigns each a priority
 //      (1-5), so the app can show the most important facts about a
 //      client first instead of just insertion order.
+//
+// Every finding still gets a full, permanent in-app notification (so
+// "check SocialFlow for details" is always literally true) — but the
+// WhatsApp side is different: instead of a wall of near-identical
+// templated messages (one per client per issue), every recipient gets
+// exactly ONE message per run, covering every client they're scoped to.
+// Claude writes that single message in Mai's voice from the raw structured
+// findings below (not a fill-in-the-blank PHP string), so wording varies
+// run to run instead of reading like a bot template, warning emoji are
+// used only for a genuine problem (behind on cadence / pipeline running
+// dry), and it stays short — full detail lives in SocialFlow notifications,
+// which the message points to.
 //
 // Suggested cron: 0 6 * * * php /var/www/socialflow/mai-daily-report-cron.php >> /var/www/socialflow/mai-daily-report.log 2>&1
 // ================================================================
@@ -49,8 +59,8 @@ function logMaiActivity(PDO $pdo, string $action, string $details, string $statu
     } catch (Throwable $e) { /* best-effort — never block the actual cron job over logging */ }
 }
 
-// The recipient set every one of Mai's per-client alerts/reports shares:
-// that client's own account manager (only, not every AM) plus every admin,
+// The recipient set every one of Mai's per-client findings shares: that
+// client's own account manager (only, not every AM) plus every admin,
 // deduped by email.
 function clientAlertRecipients(PDO $pdo, array $client, array $admins): array {
     $recipients = [];
@@ -88,13 +98,19 @@ $clients = $pdo->query("SELECT id, name, account_manager_id FROM clients WHERE s
 $admins = $pdo->query("SELECT email, whatsapp_number FROM team_members WHERE role = 'admin'")->fetchAll(PDO::FETCH_ASSOC);
 $summary = ['clients_checked' => count($clients), 'cadence_alerts' => 0, 'pipeline_alerts' => 0, 'reports_written' => 0, 'memory_curated' => 0, 'errors' => []];
 
-// Daily performance reports are collected per recipient across all their
-// clients and sent as ONE combined WhatsApp message at the end of the run,
-// instead of one message per client — an admin managing 6 accounts was
-// getting 6 separate WhatsApp texts every morning. Cadence/pipeline alerts
-// stay per-client (they're time-sensitive, one-off issues, not a routine
-// digest) and are unaffected by this.
-$dailyReportBuffer = []; // email => ['whatsapp_number'=>string, 'sections'=>[client_name => text]]
+// Raw structured findings per recipient — no pre-written prose. One Claude
+// call per recipient at the end of the run turns this into their single
+// WhatsApp message, in Mai's voice.
+$recipientFindings = []; // email => ['whatsapp_number'=>string, 'clients'=>[clientName => {cadence, pipeline, report}]]
+
+function addFinding(array &$recipientFindings, PDO $pdo, array $client, array $admins, string $clientName, string $field, $value) {
+    foreach (clientAlertRecipients($pdo, $client, $admins) as $r) {
+        if (empty($r['whatsapp_number'])) continue;
+        if (!isset($recipientFindings[$r['email']])) $recipientFindings[$r['email']] = ['whatsapp_number' => $r['whatsapp_number'], 'clients' => []];
+        if (!isset($recipientFindings[$r['email']]['clients'][$clientName])) $recipientFindings[$r['email']]['clients'][$clientName] = [];
+        $recipientFindings[$r['email']]['clients'][$clientName][$field] = $value;
+    }
+}
 
 foreach ($clients as $client) {
     $clientId = $client['id'];
@@ -113,17 +129,15 @@ foreach ($clients as $client) {
         $lastPub->execute([':cid' => $clientId]);
         $lastPublishedAt = $lastPub->fetchColumn();
 
-        if ($expectedPerWeek > 0 && $actualLast7 < $expectedPerWeek) {
+        $cadenceBehind = $expectedPerWeek > 0 && $actualLast7 < $expectedPerWeek;
+        if ($cadenceBehind) {
             $daysSince = $lastPublishedAt ? floor((time() - strtotime($lastPublishedAt)) / 86400) : null;
             $msg = "{$clientName} is behind its posting schedule — {$actualLast7} published in the last 7 days vs a target of {$expectedPerWeek}/week."
                 . ($daysSince !== null ? " Last post was {$daysSince} day(s) ago." : " No posts published yet.");
-            $waMsg = "Hey, it's Mai 👋 Just checked {$clientName}'s posting and we're a bit behind — {$actualLast7} published in the last 7 days vs the {$expectedPerWeek}/week we aim for."
-                . ($daysSince !== null ? " Last post went out {$daysSince} day(s) ago." : " Nothing's gone out yet.")
-                . " Can we get something scheduled soon?";
             foreach (clientAlertRecipients($pdo, $client, $admins) as $r) {
                 notify($pdo, $r['email'], "Posting behind schedule — {$clientName}", $msg, 'performance_alert', $clientId, 'client');
-                if (!empty($r['whatsapp_number'])) sendWhatsAppReply($r['whatsapp_number'], $waMsg);
             }
+            addFinding($recipientFindings, $pdo, $client, $admins, $clientName, 'cadence', "BEHIND: {$actualLast7}/{$expectedPerWeek} per week published in last 7 days" . ($daysSince !== null ? ", last post {$daysSince}d ago" : ", nothing published yet"));
             logMaiActivity($pdo, "Posting-cadence alert — {$clientName}", $msg);
             $summary['cadence_alerts']++;
         }
@@ -131,26 +145,24 @@ foreach ($clients as $client) {
         // ── 1b. Scheduled-pipeline runway check ───────────────────
         // How many working days of already-scheduled posts does this client
         // still have queued up? If the last scheduled post runs out within
-        // the next 10 working days (or nothing is scheduled at all), alert
-        // the account manager + admins — and keep alerting every day this
-        // cron runs until fresh scheduled posts push that runway back out.
+        // the next 10 working days (or nothing is scheduled at all), flag it
+        // — and keep flagging every day this cron runs until fresh scheduled
+        // posts push that runway back out.
         $lastScheduled = $pdo->prepare("SELECT MAX(scheduled_date) FROM posts WHERE client_id = :cid AND stage = 'scheduled' AND scheduled_date IS NOT NULL");
         $lastScheduled->execute([':cid' => $clientId]);
         $lastScheduledDate = $lastScheduled->fetchColumn();
         $today = new DateTime('today');
         $runwayDays = $lastScheduledDate ? workingDaysBetween($today, new DateTime($lastScheduledDate)) : 0;
 
-        if ($runwayDays < 10) {
+        $pipelineLow = $runwayDays < 10;
+        if ($pipelineLow) {
             $msg = $lastScheduledDate
                 ? "{$clientName}'s scheduled-post pipeline runs out in {$runwayDays} working day(s) (last scheduled post: {$lastScheduledDate}). Add more scheduled posts to keep at least 10 working days of runway."
                 : "{$clientName} has no scheduled posts queued up at all. Add scheduled posts to build a pipeline.";
-            $waMsg = $lastScheduledDate
-                ? "Hey, it's Mai 👋 Heads up — {$clientName}'s scheduled posts run out in {$runwayDays} working day(s) (last one's set for {$lastScheduledDate}). Let's line up more so we don't lose the runway. Happy to help pull together ideas if that'd save you time."
-                : "Hey, it's Mai 👋 {$clientName} doesn't have anything scheduled right now — the pipeline's empty. Let's get some posts queued up. Happy to help pull together ideas if that'd save you time.";
             foreach (clientAlertRecipients($pdo, $client, $admins) as $r) {
                 notify($pdo, $r['email'], "Scheduled posts running low — {$clientName}", $msg, 'pipeline_alert', $clientId, 'client');
-                if (!empty($r['whatsapp_number'])) sendWhatsAppReply($r['whatsapp_number'], $waMsg);
             }
+            addFinding($recipientFindings, $pdo, $client, $admins, $clientName, 'pipeline', $lastScheduledDate ? "LOW: only {$runwayDays} working days of scheduled posts left" : "EMPTY: nothing scheduled at all");
             logMaiActivity($pdo, "Pipeline-runway alert — {$clientName}", $msg);
             $summary['pipeline_alerts']++;
         }
@@ -180,28 +192,25 @@ foreach ($clients as $client) {
                 foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $analysis .= $block['text']; }
             }
             if (trim($analysis) !== '') {
-                $today = date('Y-m-d');
+                $todayStr = date('Y-m-d');
                 $existing = $pdo->prepare("SELECT id FROM client_memory WHERE client_id = :cid AND `key` = :k");
-                $existing->execute([':cid' => $clientId, ':k' => "mai_daily_report_{$today}"]);
+                $existing->execute([':cid' => $clientId, ':k' => "mai_daily_report_{$todayStr}"]);
                 if ($row = $existing->fetch(PDO::FETCH_ASSOC)) {
                     $pdo->prepare("UPDATE client_memory SET value = :v WHERE id = :id")->execute([':v' => trim($analysis), ':id' => $row['id']]);
                 } else {
                     $pdo->prepare("INSERT INTO client_memory (id, client_id, client_name, `key`, value, type) VALUES (UUID(), :cid, :cname, :k, :v, 'mai_daily_report')")
-                        ->execute([':cid' => $clientId, ':cname' => $clientName, ':k' => "mai_daily_report_{$today}", ':v' => trim($analysis)]);
+                        ->execute([':cid' => $clientId, ':cname' => $clientName, ':k' => "mai_daily_report_{$todayStr}", ':v' => trim($analysis)]);
                 }
                 $summary['reports_written']++;
 
-                // In-app notification stays per-client (each one is its own
-                // real record, that's fine); the WhatsApp send is buffered
-                // instead and combined into one message per recipient at the
-                // end of the run — see $dailyReportBuffer above.
                 foreach (clientAlertRecipients($pdo, $client, $admins) as $r) {
                     notify($pdo, $r['email'], "Daily report — {$clientName}", trim($analysis), 'daily_report', $clientId, 'client');
-                    if (!empty($r['whatsapp_number'])) {
-                        if (!isset($dailyReportBuffer[$r['email']])) $dailyReportBuffer[$r['email']] = ['whatsapp_number' => $r['whatsapp_number'], 'sections' => []];
-                        $dailyReportBuffer[$r['email']]['sections'][$clientName] = trim($analysis);
-                    }
                 }
+                // Only a short one-line takeaway feeds the WhatsApp message —
+                // the full analysis lives in the notification/memory, not
+                // repeated verbatim in the text that gets sent.
+                $firstLine = trim(explode("\n", trim($analysis))[0]);
+                addFinding($recipientFindings, $pdo, $client, $admins, $clientName, 'report', mb_substr($firstLine, 0, 160));
                 logMaiActivity($pdo, "Daily performance report — {$clientName}", trim($analysis));
             }
         }
@@ -249,20 +258,49 @@ foreach ($clients as $client) {
     }
 }
 
-// One combined WhatsApp message per recipient, covering every client they
-// got a report for today (an admin sees all of them; an account manager
-// only their own clients — same scoping clientAlertRecipients already did
-// per-message before).
-foreach ($dailyReportBuffer as $email => $entry) {
-    if (empty($entry['sections'])) continue;
-    $intro = count($entry['sections']) > 1
-        ? "Hey, it's Mai 👋 Here's today's read across your accounts:"
-        : "Hey, it's Mai 👋 Here's today's read on " . array_key_first($entry['sections']) . ":";
-    $body = implode("\n\n", array_map(
-        fn($name, $text) => count($entry['sections']) > 1 ? "*{$name}*\n{$text}" : $text,
-        array_keys($entry['sections']), array_values($entry['sections'])
-    ));
-    $msg = $intro . "\n\n" . $body . "\n\nLet me know if you want a hand with anything on these accounts.";
+// ── One WhatsApp message per recipient, written by Claude in Mai's voice ──
+// Real problems (cadence behind / pipeline low-or-empty) get flagged with
+// ⚠️; clients with nothing wrong get at most a quick mention, not a full
+// writeup. Always short, always closes by pointing to SocialFlow
+// notifications for the full detail and offering to elaborate if asked —
+// never a fixed template, so the wording genuinely varies run to run.
+$maiWaSystem = "You are Mai, the agency's AI Account Executive, sending a WhatsApp update to a teammate. Your character: "
+    . "analytical and decisive, warm but not chatty, no corporate filler. You never open with the exact same line twice — "
+    . "vary your phrasing/greeting naturally like a real person texting, not a template.\n\n"
+    . "HARD RULES:\n"
+    . "- ONE message only, SHORT — a few lines total, not a report. This is WhatsApp, not an email.\n"
+    . "- Use ⚠️ ONLY for a client with a REAL problem below (cadence behind schedule, or pipeline low/empty). Never use it for a client that's fine.\n"
+    . "- For clients with no problems, mention them briefly or in a single grouped line (e.g. \"X and Y are on track\") — do not write a paragraph per healthy client.\n"
+    . "- Do not repeat full report text — you only have a one-line takeaway per client for that, which is enough for a WhatsApp ping.\n"
+    . "- End by pointing to SocialFlow notifications/dashboard for full details, and invite them to ask you directly for more on any specific account.\n"
+    . "- Never use markdown headers or bullet-point '-' lists — write like a real WhatsApp text (short lines/emoji are fine, formal lists are not).";
+
+foreach ($recipientFindings as $email => $entry) {
+    if (empty($entry['clients'])) continue;
+    $lines = [];
+    foreach ($entry['clients'] as $name => $facts) {
+        $parts = [];
+        if (!empty($facts['cadence'])) $parts[] = "cadence: " . $facts['cadence'];
+        if (!empty($facts['pipeline'])) $parts[] = "pipeline: " . $facts['pipeline'];
+        if (!empty($facts['report'])) $parts[] = "today's read: " . $facts['report'];
+        if (!$parts) $parts[] = "no issues, nothing new to flag";
+        $lines[] = "{$name} — " . implode(" | ", $parts);
+    }
+    $userMsg = "Today's findings across your accounts:\n" . implode("\n", $lines) . "\n\nWrite the one WhatsApp message now.";
+    [$status, $data] = callClaude(['model' => 'claude-sonnet-4-6', 'max_tokens' => 400, 'system' => $maiWaSystem, 'messages' => [['role' => 'user', 'content' => $userMsg]]]);
+    $msg = '';
+    if ($status >= 200 && $status < 300) {
+        foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $msg .= $block['text']; }
+    }
+    $msg = trim($msg);
+    if ($msg === '') {
+        // Fallback if the AI call itself fails — still one message, still
+        // short, just without her usual phrasing variety.
+        $msg = "Mai here — quick account check: " . implode("; ", array_map(
+            fn($n, $f) => $n . (!empty($f['cadence']) || !empty($f['pipeline']) ? " ⚠️" : " ✅"),
+            array_keys($entry['clients']), array_values($entry['clients'])
+        )) . ". Full details in SocialFlow notifications — ask me for more on any account.";
+    }
     sendWhatsAppReply($entry['whatsapp_number'], $msg);
 }
 
