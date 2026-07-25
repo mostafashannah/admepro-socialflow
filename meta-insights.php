@@ -212,5 +212,53 @@ if ($ad_account_id) {
     $out["ads_insights"] = $code === 200 ? $resp["data"] ?? [] : ["error" => $resp];
 }
 
+// Per-ad breakdown (Settings → Integrations → Ad Account ID) for the client's
+// "Ads" tab — every individual ad under the account with its own status +
+// results, not just the account-wide totals above. Requesting insights as a
+// nested edge field (rather than a second call per ad) keeps this to one
+// Graph API round trip regardless of how many ads exist.
+if (($data["mode"] ?? "") === "ads_list") {
+    if (!$ad_account_id) {
+        http_response_code(200);
+        echo json_encode(["ok" => false, "error" => "No Ad Account ID set for this integration — add one in Settings → Integrations."]);
+        exit;
+    }
+    [$code, $resp] = graph_get("https://graph.facebook.com/{$v}/act_{$ad_account_id}/ads", [
+        "fields"       => "id,name,status,effective_status,created_time,campaign{name,objective},adset{name,daily_budget,lifetime_budget},insights.time_range({\"since\":\"" . date('Y-m-d', $since) . "\",\"until\":\"" . date('Y-m-d', $until) . "\"}){spend,impressions,clicks,ctr,cpc,cpm,reach,actions}",
+        "limit"        => 100,
+        "access_token" => $access_token,
+    ]);
+    if ($code !== 200) {
+        http_response_code(200);
+        echo json_encode(["ok" => false, "error" => $resp["error"]["message"] ?? "Failed to load ads"]);
+        exit;
+    }
+    $ads = array_map(function ($ad) {
+        $ins = $ad["insights"]["data"][0] ?? [];
+        $leads = 0;
+        foreach (($ins["actions"] ?? []) as $a) { if (($a["action_type"] ?? "") === "lead") $leads += (int) ($a["value"] ?? 0); }
+        return [
+            "id"          => $ad["id"] ?? "",
+            "name"        => $ad["name"] ?? "",
+            "status"      => $ad["effective_status"] ?? ($ad["status"] ?? ""),
+            "campaign"    => $ad["campaign"]["name"] ?? "",
+            "objective"   => $ad["campaign"]["objective"] ?? "",
+            "adset"       => $ad["adset"]["name"] ?? "",
+            "created_time"=> $ad["created_time"] ?? "",
+            "spend"       => $ins["spend"] ?? null,
+            "impressions" => $ins["impressions"] ?? null,
+            "clicks"      => $ins["clicks"] ?? null,
+            "ctr"         => $ins["ctr"] ?? null,
+            "cpc"         => $ins["cpc"] ?? null,
+            "cpm"         => $ins["cpm"] ?? null,
+            "reach"       => $ins["reach"] ?? null,
+            "leads"       => $leads,
+        ];
+    }, $resp["data"] ?? []);
+    http_response_code(200);
+    echo json_encode(["ok" => true, "ads" => $ads]);
+    exit;
+}
+
 http_response_code(200);
 echo json_encode($out);
