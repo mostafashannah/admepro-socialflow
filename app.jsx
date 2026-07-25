@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.499";
+const APP_VERSION = "beta 5.502";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6213,20 +6213,32 @@ function AddProjectModal({open,onClose,clients,onAdd}) {
 // ════════════════════════════════════════════════════════════════
 // ADD CLIENT MODAL
 // ════════════════════════════════════════════════════════════════
-function AddClientModal({open,onClose,onAdd}) {
+function AddClientModal({open,onClose,onAdd,team=[]}) {
   const blankSocial = {instagram:"",facebook:"",tiktok:"",linkedin:""};
-  const [f,setF] = useState({name:"",email:"",phone:"",website:"",social:blankSocial,industry:"",status:"active",platforms:[],notes:"",portal_password:""});
+  const blankForm = {name:"",username:"",email:"",phone:"",website:"",social:blankSocial,industry:"",status:"active",platforms:[],notes:"",portal_password:"",logo_url:"",account_manager_ids:[]};
+  const [f,setF] = useState(blankForm);
   const [saving,setSaving] = useState(false);
+  const [uploadingLogo,setUploadingLogo] = useState(false);
   const [done,setDone] = useState(false);
   const s = (k,v) => setF(p=>({...p,[k]:v}));
   const sSocial = (k,v) => setF(p=>({...p,social:{...p.social,[k]:v}}));
   const togglePlt = p => s("platforms",f.platforms.includes(p)?f.platforms.filter(x=>x!==p):[...f.platforms,p]);
-  const reset = () => { setF({name:"",email:"",phone:"",website:"",social:blankSocial,industry:"",status:"active",platforms:[],notes:"",portal_password:""}); setDone(false); };
+  const toggleAM = id => s("account_manager_ids",f.account_manager_ids.includes(id)?f.account_manager_ids.filter(v=>v!==id):[...f.account_manager_ids,id]);
+  const accountManagers = team.filter(t=>t.role==="account_manager");
+  const reset = () => { setF(blankForm); setDone(false); };
+  const handleLogoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if(!file) return;
+    setUploadingLogo(true);
+    try { const url = await uploadToStorage(file, "client-logos"); s("logo_url",url); }
+    catch(err) { alert("Upload failed: "+err.message); }
+    setUploadingLogo(false);
+  };
   const submit = async () => {
     if(!f.name||!f.email) return;
     setSaving(true);
-    const {social, ...rest} = f;
-    await onAdd({...rest, social_links: JSON.stringify(social), portal_password:f.portal_password||f.name.toLowerCase().replace(/\s/g,"")+Math.floor(Math.random()*9000+1000)});
+    const {social, account_manager_ids, ...rest} = f;
+    await onAdd({...rest, social_links: JSON.stringify(social), account_manager_id: account_manager_ids.length?JSON.stringify(account_manager_ids):"", portal_password:f.portal_password||f.name.toLowerCase().replace(/\s/g,"")+Math.floor(Math.random()*9000+1000)});
     setSaving(false);
     setDone(true);
   };
@@ -6263,6 +6275,19 @@ function AddClientModal({open,onClose,onAdd}) {
       }>
       <div style={{display:"flex",flexDirection:"column",gap:16}}>
 
+        <Field label="Profile Image">
+          <div style={{display:"flex",alignItems:"center",gap:14}}>
+            <Avatar name={f.name||"?"} size={56} photoUrl={f.logo_url}/>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <label style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:"var(--rs)",border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:uploadingLogo?"default":"pointer",opacity:uploadingLogo?0.6:1}}>
+                {uploadingLogo?<Spinner size={13}/>:<Ico d={Icons.upload} size={13}/>} {f.logo_url?"Change":"Upload"}
+                <input type="file" accept="image/*" style={{display:"none"}} disabled={uploadingLogo} onChange={handleLogoUpload}/>
+              </label>
+              {f.logo_url&&<button type="button" onClick={()=>s("logo_url","")} style={{fontSize:12,fontWeight:600,color:"#ef4444",background:"none",border:"none",cursor:"pointer"}}>Remove</button>}
+            </div>
+          </div>
+        </Field>
+
         {/* Basic info */}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <div style={{gridColumn:"1/-1"}}>
@@ -6272,6 +6297,9 @@ function AddClientModal({open,onClose,onAdd}) {
           </div>
           <Field label="Email" required>
             <input type="email" value={f.email} onChange={e=>s("email",e.target.value)} placeholder="client@company.com" style={inputSt} autoComplete="off"/>
+          </Field>
+          <Field label="Contact Username" hint="Displayed in client portal instead of company name">
+            <input value={f.username} onChange={e=>s("username",e.target.value)} placeholder="e.g. Ahmed" style={inputSt} autoComplete="off"/>
           </Field>
           <Field label="Phone">
             <input value={f.phone} onChange={e=>s("phone",e.target.value)} placeholder="+20 XXX XXX XXXX" style={inputSt}/>
@@ -6322,6 +6350,17 @@ function AddClientModal({open,onClose,onAdd}) {
                 </button>
               );
             })}
+          </div>
+        </Field>
+
+        <Field label="Account Manager(s)" hint="Who this client's requests/notifications get scoped to — pick as many as needed">
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>
+            {accountManagers.length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>No account managers on the team yet.</p>}
+            {accountManagers.map(m=>(
+              <button key={m.id} onClick={()=>toggleAM(m.id)} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",border:"none",background:f.account_manager_ids.includes(m.id)?"var(--accent)":"var(--surface2)",color:f.account_manager_ids.includes(m.id)?"#fff":"var(--text2)",outline:f.account_manager_ids.includes(m.id)?"none":"1px solid var(--border2)"}}>
+                {m.name}
+              </button>
+            ))}
           </div>
         </Field>
 
@@ -8338,7 +8377,7 @@ No markdown, no explanation.`;
 // ════════════════════════════════════════════════════════════════
 // CLIENTS PAGE
 // ════════════════════════════════════════════════════════════════
-function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggleHide}) {
+function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggleHide,team=[]}) {
   const [search,setSearch] = useState("");
   const [showAdd,setShowAdd] = useState(false);
   const [showHidden,setShowHidden] = useState(false);
@@ -8421,7 +8460,7 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
           <p style={{marginTop:12,fontSize:15}}>No clients found</p>
         </div>}
       </div>
-      {showAdd&&<AddClientModal open onClose={()=>setShowAdd(false)} onAdd={async d=>{onAdd(d);setShowAdd(false);}}/>}
+      {showAdd&&<AddClientModal open onClose={()=>setShowAdd(false)} onAdd={async d=>{onAdd(d);setShowAdd(false);}} team={team}/>}
     </div>
   );
 }
@@ -9127,7 +9166,7 @@ function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUs
 }
 
 function EditClientPage({client,onBack,onSave,canDelete,onRequestDelete,team=[]}) {
-  const [f,setF] = useState({name:client.name||"",username:client.username||"",email:client.email||"",phone:client.phone||"",website:client.website||"",social:{instagram:"",facebook:"",tiktok:"",linkedin:"",...(parseJ(client.social_links,{})||{})},industry:client.industry||"",status:client.status||"active",platforms:client.platforms||[],portal_password:client.portal_password||"",account_manager_ids:getAccountManagerIds(client),logo_url:client.logo_url||"",allowed_task_types:client.allowed_task_types?.length?client.allowed_task_types:TASK_TYPES.map(t=>t.id)});
+  const [f,setF] = useState({name:client.name||"",username:client.username||"",email:client.email||"",phone:client.phone||"",website:client.website||"",social:{instagram:"",facebook:"",tiktok:"",linkedin:"",...((client.social_links && typeof client.social_links==="object") ? client.social_links : (parseJ(client.social_links,{})||{}))},industry:client.industry||"",status:client.status||"active",platforms:client.platforms||[],portal_password:client.portal_password||"",account_manager_ids:getAccountManagerIds(client),logo_url:client.logo_url||"",allowed_task_types:client.allowed_task_types?.length?client.allowed_task_types:TASK_TYPES.map(t=>t.id)});
   const sSocial = (k,v) => setF(x=>({...x,social:{...x.social,[k]:v}}));
   const toggleTaskType = id => setF(x=>({...x,allowed_task_types:x.allowed_task_types.includes(id)?x.allowed_task_types.filter(v=>v!==id):[...x.allowed_task_types,id]}));
   const [showPw,setShowPw] = useState(false);
@@ -38100,8 +38139,9 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
     // that client being permanently stuck blank because it wasn't added at
     // creation. Only fires on the empty→filled transition, never re-runs on
     // every later edit of an already-researched client.
-    const hadNone = !cl?.website && !Object.values(parseJ(cl?.social_links,{})||{}).some(Boolean);
-    const nowHasSomething = !!(updates.website||cl?.website) || Object.values(parseJ(updates.social_links??cl?.social_links,{})||{}).some(Boolean);
+    const asObj = (v) => (v && typeof v==="object") ? v : (parseJ(v,{})||{});
+    const hadNone = !cl?.website && !Object.values(asObj(cl?.social_links)).some(Boolean);
+    const nowHasSomething = !!(updates.website||cl?.website) || Object.values(asObj(updates.social_links??cl?.social_links)).some(Boolean);
     if(hadNone && nowHasSomething) maiResearchNewClient({...cl, ...updates, id});
   };
 
@@ -40442,7 +40482,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         {page==="clients"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"clients.manage"))&&(()=>{
           const selectedClient = data.clients.find(c=>c.id===selectedClientId)||null;
           if(!selectedClient) return (
-            <ClientsPage clients={data.clients} projects={data.projects} posts={data.posts}
+            <ClientsPage clients={data.clients} projects={data.projects} posts={data.posts} team={data.team}
               onAdd={addClient} onSelect={c=>{setSelectedClientId(c.id);}}
               currentUser={currentUser} onToggleHide={toggleHideClient}/>
           );
@@ -40870,7 +40910,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
     />}
 
     {/* FAB — Add Client — same modal/fields as the Clients page's "+ Add Client" */}
-    {showFABClient&&<AddClientModal open onClose={()=>setShowFABClient(false)} onAdd={async d=>{await addClient(d); setShowFABClient(false);}}/>}
+    {showFABClient&&<AddClientModal open onClose={()=>setShowFABClient(false)} onAdd={async d=>{await addClient(d); setShowFABClient(false);}} team={data.team}/>}
 
     {/* FAB — Add Calendar Plan */}
     {showFABCalendar&&<AddCalendarPlanModal open
