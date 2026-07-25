@@ -36,6 +36,26 @@ function notify(PDO $pdo, string $email, string $title, string $message, string 
     $stmt->execute([':email' => $email, ':title' => $title, ':msg' => $message, ':type' => $type, ':lid' => $linkId, ':ltype' => $linkType]);
 }
 
+// The recipient set every one of Mai's per-client alerts/reports shares:
+// that client's own account manager (only, not every AM) plus every admin,
+// deduped by email.
+function clientAlertRecipients(PDO $pdo, array $client, array $admins): array {
+    $recipients = [];
+    if (!empty($client['account_manager_id'])) {
+        $am = $pdo->prepare("SELECT email, whatsapp_number FROM team_members WHERE id = :id");
+        $am->execute([':id' => $client['account_manager_id']]);
+        if ($row = $am->fetch(PDO::FETCH_ASSOC)) $recipients[] = $row;
+    }
+    foreach ($admins as $a) $recipients[] = $a;
+    $seen = []; $out = [];
+    foreach ($recipients as $r) {
+        if (empty($r['email']) || isset($seen[$r['email']])) continue;
+        $seen[$r['email']] = true;
+        $out[] = $r;
+    }
+    return $out;
+}
+
 // Counts working days (Sun-Thu; matches the app's own addWorkingDays() in
 // app.jsx, which treats Fri(5)/Sat(6) as the weekend) strictly between two
 // dates. Returns 0 if $to is today or in the past.
@@ -76,19 +96,12 @@ foreach ($clients as $client) {
             $daysSince = $lastPublishedAt ? floor((time() - strtotime($lastPublishedAt)) / 86400) : null;
             $msg = "{$clientName} is behind its posting schedule — {$actualLast7} published in the last 7 days vs a target of {$expectedPerWeek}/week."
                 . ($daysSince !== null ? " Last post was {$daysSince} day(s) ago." : " No posts published yet.");
-            $recipients = [];
-            if (!empty($client['account_manager_id'])) {
-                $am = $pdo->prepare("SELECT email, whatsapp_number FROM team_members WHERE id = :id");
-                $am->execute([':id' => $client['account_manager_id']]);
-                if ($row = $am->fetch(PDO::FETCH_ASSOC)) $recipients[] = $row;
-            }
-            foreach ($admins as $a) $recipients[] = $a;
-            $seen = [];
-            foreach ($recipients as $r) {
-                if (empty($r['email']) || isset($seen[$r['email']])) continue;
-                $seen[$r['email']] = true;
+            $waMsg = "Hey, it's Mai 👋 Just checked {$clientName}'s posting and we're a bit behind — {$actualLast7} published in the last 7 days vs the {$expectedPerWeek}/week we aim for."
+                . ($daysSince !== null ? " Last post went out {$daysSince} day(s) ago." : " Nothing's gone out yet.")
+                . " Can we get something scheduled soon?";
+            foreach (clientAlertRecipients($pdo, $client, $admins) as $r) {
                 notify($pdo, $r['email'], "Posting behind schedule — {$clientName}", $msg, 'performance_alert', $clientId, 'client');
-                if (!empty($r['whatsapp_number'])) sendWhatsAppReply($r['whatsapp_number'], "⚠️ " . $msg);
+                if (!empty($r['whatsapp_number'])) sendWhatsAppReply($r['whatsapp_number'], $waMsg);
             }
             $summary['cadence_alerts']++;
         }
@@ -109,19 +122,12 @@ foreach ($clients as $client) {
             $msg = $lastScheduledDate
                 ? "{$clientName}'s scheduled-post pipeline runs out in {$runwayDays} working day(s) (last scheduled post: {$lastScheduledDate}). Add more scheduled posts to keep at least 10 working days of runway."
                 : "{$clientName} has no scheduled posts queued up at all. Add scheduled posts to build a pipeline.";
-            $recipients = [];
-            if (!empty($client['account_manager_id'])) {
-                $am = $pdo->prepare("SELECT email, whatsapp_number FROM team_members WHERE id = :id");
-                $am->execute([':id' => $client['account_manager_id']]);
-                if ($row = $am->fetch(PDO::FETCH_ASSOC)) $recipients[] = $row;
-            }
-            foreach ($admins as $a) $recipients[] = $a;
-            $seen = [];
-            foreach ($recipients as $r) {
-                if (empty($r['email']) || isset($seen[$r['email']])) continue;
-                $seen[$r['email']] = true;
+            $waMsg = $lastScheduledDate
+                ? "Hey, it's Mai 👋 Heads up — {$clientName}'s scheduled posts run out in {$runwayDays} working day(s) (last one's set for {$lastScheduledDate}). Let's line up more so we don't lose the runway. Happy to help pull together ideas if that'd save you time."
+                : "Hey, it's Mai 👋 {$clientName} doesn't have anything scheduled right now — the pipeline's empty. Let's get some posts queued up. Happy to help pull together ideas if that'd save you time.";
+            foreach (clientAlertRecipients($pdo, $client, $admins) as $r) {
                 notify($pdo, $r['email'], "Scheduled posts running low — {$clientName}", $msg, 'pipeline_alert', $clientId, 'client');
-                if (!empty($r['whatsapp_number'])) sendWhatsAppReply($r['whatsapp_number'], "⚠️ " . $msg);
+                if (!empty($r['whatsapp_number'])) sendWhatsAppReply($r['whatsapp_number'], $waMsg);
             }
             $summary['pipeline_alerts']++;
         }
@@ -161,6 +167,19 @@ foreach ($clients as $client) {
                         ->execute([':cid' => $clientId, ':cname' => $clientName, ':k' => "mai_daily_report_{$today}", ':v' => trim($analysis)]);
                 }
                 $summary['reports_written']++;
+
+                // Push today's report out — same recipients as the alerts:
+                // the client's own account manager + every admin. The saved
+                // client_memory copy stays purely analytical (that's what
+                // other prompts read back later); the WhatsApp copy gets a
+                // friendlier teammate-style wrapper around the same content,
+                // plus an offer to help.
+                $reportMsg = "Hey, it's Mai 👋 Here's today's read on {$clientName}:\n\n" . trim($analysis)
+                    . "\n\nLet me know if you want a hand with anything on this account.";
+                foreach (clientAlertRecipients($pdo, $client, $admins) as $r) {
+                    notify($pdo, $r['email'], "Daily report — {$clientName}", trim($analysis), 'daily_report', $clientId, 'client');
+                    if (!empty($r['whatsapp_number'])) sendWhatsAppReply($r['whatsapp_number'], $reportMsg);
+                }
             }
         }
 
