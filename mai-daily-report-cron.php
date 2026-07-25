@@ -36,6 +36,19 @@ function notify(PDO $pdo, string $email, string $title, string $message, string 
     $stmt->execute([':email' => $email, ':title' => $title, ':msg' => $message, ':type' => $type, ':lid' => $linkId, ':ltype' => $linkType]);
 }
 
+// Every other AI agent's actions land in activity_logs (tagged
+// [agent:<id>], read by AgentProfilePage) via the JS-side agentAI()/
+// logActivity() helpers — this cron runs entirely server-side with no
+// browser involved, so without this call Mai's whole daily routine was
+// invisible on her profile page even while she was actively sending real
+// WhatsApp alerts/reports out.
+function logMaiActivity(PDO $pdo, string $action, string $details, string $status = 'success') {
+    try {
+        $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), :action, 'ai_agent', :details, :status, 'cron')")
+            ->execute([':action' => $action, ':details' => '[agent:account_executive] ' . $details, ':status' => $status]);
+    } catch (Throwable $e) { /* best-effort — never block the actual cron job over logging */ }
+}
+
 // The recipient set every one of Mai's per-client alerts/reports shares:
 // that client's own account manager (only, not every AM) plus every admin,
 // deduped by email.
@@ -103,6 +116,7 @@ foreach ($clients as $client) {
                 notify($pdo, $r['email'], "Posting behind schedule — {$clientName}", $msg, 'performance_alert', $clientId, 'client');
                 if (!empty($r['whatsapp_number'])) sendWhatsAppReply($r['whatsapp_number'], $waMsg);
             }
+            logMaiActivity($pdo, "Posting-cadence alert — {$clientName}", $msg);
             $summary['cadence_alerts']++;
         }
 
@@ -129,6 +143,7 @@ foreach ($clients as $client) {
                 notify($pdo, $r['email'], "Scheduled posts running low — {$clientName}", $msg, 'pipeline_alert', $clientId, 'client');
                 if (!empty($r['whatsapp_number'])) sendWhatsAppReply($r['whatsapp_number'], $waMsg);
             }
+            logMaiActivity($pdo, "Pipeline-runway alert — {$clientName}", $msg);
             $summary['pipeline_alerts']++;
         }
 
@@ -180,6 +195,7 @@ foreach ($clients as $client) {
                     notify($pdo, $r['email'], "Daily report — {$clientName}", trim($analysis), 'daily_report', $clientId, 'client');
                     if (!empty($r['whatsapp_number'])) sendWhatsAppReply($r['whatsapp_number'], $reportMsg);
                 }
+                logMaiActivity($pdo, "Daily performance report — {$clientName}", trim($analysis));
             }
         }
 
@@ -215,6 +231,7 @@ foreach ($clients as $client) {
                         $p = max(1, min(5, (int) ($s['priority'] ?? 1)));
                         $upd->execute([':p' => $p, ':cid' => $clientId, ':k' => $s['key']]);
                     }
+                    logMaiActivity($pdo, "Memory curation — {$clientName}", "Re-scored " . count($scores) . " memory fact(s) by current importance.");
                     $summary['memory_curated']++;
                 }
             }
