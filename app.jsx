@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.487";
+const APP_VERSION = "beta 5.488";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -6214,16 +6214,19 @@ function AddProjectModal({open,onClose,clients,onAdd}) {
 // ADD CLIENT MODAL
 // ════════════════════════════════════════════════════════════════
 function AddClientModal({open,onClose,onAdd}) {
-  const [f,setF] = useState({name:"",email:"",phone:"",website:"",industry:"",status:"active",platforms:[],notes:"",portal_password:""});
+  const blankSocial = {instagram:"",facebook:"",tiktok:"",linkedin:""};
+  const [f,setF] = useState({name:"",email:"",phone:"",website:"",social:blankSocial,industry:"",status:"active",platforms:[],notes:"",portal_password:""});
   const [saving,setSaving] = useState(false);
   const [done,setDone] = useState(false);
   const s = (k,v) => setF(p=>({...p,[k]:v}));
+  const sSocial = (k,v) => setF(p=>({...p,social:{...p.social,[k]:v}}));
   const togglePlt = p => s("platforms",f.platforms.includes(p)?f.platforms.filter(x=>x!==p):[...f.platforms,p]);
-  const reset = () => { setF({name:"",email:"",phone:"",website:"",industry:"",status:"active",platforms:[],notes:"",portal_password:""}); setDone(false); };
+  const reset = () => { setF({name:"",email:"",phone:"",website:"",social:blankSocial,industry:"",status:"active",platforms:[],notes:"",portal_password:""}); setDone(false); };
   const submit = async () => {
     if(!f.name||!f.email) return;
     setSaving(true);
-    await onAdd({...f, portal_password:f.portal_password||f.name.toLowerCase().replace(/\s/g,"")+Math.floor(Math.random()*9000+1000)});
+    const {social, ...rest} = f;
+    await onAdd({...rest, social_links: JSON.stringify(social), portal_password:f.portal_password||f.name.toLowerCase().replace(/\s/g,"")+Math.floor(Math.random()*9000+1000)});
     setSaving(false);
     setDone(true);
   };
@@ -6287,6 +6290,18 @@ function AddClientModal({open,onClose,onAdd}) {
             </select>
           </Field>
         </div>
+
+        {/* Social profile links — public URLs Mai can read directly during
+            her new-client research, separate from the real connected API
+            integrations set up later under Platforms/Integrations. */}
+        <Field label="Social Media Links" hint="Optional — Mai will read these directly when researching this client">
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <input value={f.social.instagram} onChange={e=>sSocial("instagram",e.target.value)} placeholder="Instagram URL" style={inputSt} autoComplete="off"/>
+            <input value={f.social.facebook} onChange={e=>sSocial("facebook",e.target.value)} placeholder="Facebook URL" style={inputSt} autoComplete="off"/>
+            <input value={f.social.tiktok} onChange={e=>sSocial("tiktok",e.target.value)} placeholder="TikTok URL" style={inputSt} autoComplete="off"/>
+            <input value={f.social.linkedin} onChange={e=>sSocial("linkedin",e.target.value)} placeholder="LinkedIn URL" style={inputSt} autoComplete="off"/>
+          </div>
+        </Field>
 
         {/* Platforms */}
         <Field label="Social Platforms">
@@ -37814,11 +37829,13 @@ function App() {
   // per field; memory facts are normal editable/deletable entries like any
   // other, just tagged so it's obvious at a glance where they came from).
   const maiResearchNewClient = async (client) => {
-    if(!client?.website) return;
+    const social = parseJ(client.social_links, {}) || {};
+    const socialLines = Object.entries(social).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`);
+    if(!client?.website && !socialLines.length) return;
     try {
-      const sys = `You are Mai, the agency's AI Account Executive. A brand-new client "${client.name}" (industry: ${client.industry||"unspecified"}) was just added to the system with website ${client.website}. Use your web_search tool to actually research this business — visit/search their website and anything else publicly findable about them. Gather:
+      const sys = `You are Mai, the agency's AI Account Executive. A brand-new client "${client.name}" (industry: ${client.industry||"unspecified"}) was just added to the system. Use your web_search tool to actually research this business — visit/search their website${client.website?` (${client.website})`:""}, the social profiles listed below (read their actual posts/bio for real tone and content style, not just a generic guess), and anything else publicly findable about them.${socialLines.length?`\n\nSocial profiles:\n${socialLines.join("\n")}`:""} Gather:
 1. What they actually sell/do (products/services) — a couple of concrete sentences, not generic filler.
-2. Their brand tone/voice as it genuinely comes across online.
+2. Their brand tone/voice as it genuinely comes across online (site + social content, if given).
 3. Their physical location/city if findable.
 4. 2-4 REAL named competitors in the same industry and, ideally, the same location/market — only names you can actually identify, never invented ones.
 5. A rough sense of their pricing/positioning (budget/mid-range/premium) ONLY if genuinely visible somewhere (their own site, a competitor comparison, reviews) — if you can't find real pricing, say "not publicly available", never guess a number.
@@ -37831,7 +37848,7 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
         method:"POST", headers:AI_HEADERS,
         body: JSON.stringify({
           model:"claude-sonnet-4-6", max_tokens:1200, system:sys,
-          messages:[{role:"user", content:`Research ${client.name} — ${client.website}`}],
+          messages:[{role:"user", content:`Research ${client.name}${client.website?` — ${client.website}`:""}`}],
           tools:[{type:"web_search_20250305", name:"web_search", max_uses:5}],
         }),
       });
@@ -37846,7 +37863,7 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
       await saveClientKnowledge({
         client_id: client.id, client_name: client.name,
         tone: parsed.tone||"", content_preferences: parsed.content_preferences||"", keywords: parsed.keywords||"",
-        context_file: `Auto-researched by Mai from ${client.website} on ${new Date().toLocaleDateString()} — verify and refine:\n${parsed.content_preferences||""}${parsed.location?`\nLocation: ${parsed.location}`:""}${parsed.pricing_positioning?`\nPricing/positioning: ${parsed.pricing_positioning}`:""}`,
+        context_file: `Auto-researched by Mai from ${client.website||"public social profiles"} on ${new Date().toLocaleDateString()} — verify and refine:\n${parsed.content_preferences||""}${parsed.location?`\nLocation: ${parsed.location}`:""}${parsed.pricing_positioning?`\nPricing/positioning: ${parsed.pricing_positioning}`:""}`,
       });
 
       const facts = [
@@ -37882,7 +37899,7 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
       };
       addClientUser(cuPayload).catch(()=>{});
     }
-    if(clientData.website) maiResearchNewClient({...clientData, id:created?.id||local.id});
+    if(clientData.website || clientData.social_links) maiResearchNewClient({...clientData, id:created?.id||local.id});
     return created;
   };
 
