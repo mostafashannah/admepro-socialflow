@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.481";
+const APP_VERSION = "beta 5.482";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1832,6 +1832,16 @@ Your character: serious and a bit nerdy about the craft — you care about typog
 Keep it tight: a real Slack-style reply, not an essay. If you don't have enough info to answer well, say so plainly and ask for what you need (reference images, brand guideline specifics, the exact platform/placement).
 
 FORMATTING — this is rendered as markdown, so use it: never dump everything into one dense paragraph. Break it up with short paragraphs, a blank line between distinct points, "**bold**" for the one or two things that matter most, and a bullet or numbered list whenever you're giving more than 2 items. If you're delivering an actual design brief or prompt, put it in its own clearly separated block, not stitched into the sentence before it.`;
+// Mai's character when she's talking directly WITH the team (comment
+// mentions) — distinct from her silent daily cron job, which has no
+// persona voice of its own, just fixed reporting logic.
+const MAI_PERSONA = `You are Mai, the agency's AI Account Executive. A teammate just mentioned you (@Mai) in a comment thread on a task. Reply directly to them, in-thread, like a real dedicated teammate would.
+
+Your character: analytical and outcome-driven — you think in terms of what the client's data actually shows (past post performance, engagement patterns, posting cadence, what's in their memory/brand knowledge, recent contact reports), not opinions or vibes. You're decisive and to the point, comfortable giving a clear "this will land" / "this won't land, here's why" instead of hedging. You're not a writer or a designer — you don't draft captions or design visuals — you give the account-strategy read: will this work for THIS client given what's known about them, and what would make it work better. When you don't have enough real data to back up a read, you say so plainly instead of guessing.
+
+Keep it tight: a real Slack-style reply, not an essay. Ground your answer in specifics from the client knowledge/memory/recent posts you're given — reference the actual fact, not a vague generality.
+
+FORMATTING — this is rendered as markdown, so use it: short paragraphs, "**bold**" for the one or two things that matter most, and a bullet list if you're giving more than 2 points.`;
 // Read the live team-wide agent config; App() mirrors app_settings.ai_agents
 // into this global whenever settings load/change, so non-React helpers
 // (agentAI below) can read it without prop-drilling.
@@ -3064,6 +3074,7 @@ function commentAvatarUrl(comment, team) {
   if(email==="sara@ai.socialflow") return agentsCfg?.content_creator?.avatar_url||"";
   if(email==="pro@ai.socialflow") return agentsCfg?.pro?.avatar_url||"";
   if(email==="yahia@ai.socialflow") return agentsCfg?.graphic_designer?.avatar_url||"";
+  if(email==="mai@ai.socialflow") return agentsCfg?.account_executive?.avatar_url||"";
   const member = (team||[]).find(m=>m.email===email) || (team||[]).find(m=>m.name===comment.author_name);
   return member?.avatar_url||"";
 }
@@ -3731,7 +3742,8 @@ function MentionInput({value, onChange, team, placeholder, rows}) {
   const mentionable = [...(team||[]).filter(m=>!["hr","accountant","office_boy"].includes(m.role)),
     {name:"Sara", email:"sara@ai.socialflow", role:"AI", avatar_url:agentsCfg?.content_creator?.avatar_url||""},
     {name:"Pro", email:"pro@ai.socialflow", role:"AI", avatar_url:agentsCfg?.pro?.avatar_url||""},
-    {name:"Yahia", email:"yahia@ai.socialflow", role:"AI", avatar_url:agentsCfg?.graphic_designer?.avatar_url||""}];
+    {name:"Yahia", email:"yahia@ai.socialflow", role:"AI", avatar_url:agentsCfg?.graphic_designer?.avatar_url||""},
+    {name:"Mai", email:"mai@ai.socialflow", role:"AI", avatar_url:agentsCfg?.account_executive?.avatar_url||""}];
   const filtered = showDropdown
     ? mentionable.filter(m => m.name && (m.name.toLowerCase().includes(mentionQuery.toLowerCase()) || toUsername(m.name).includes(toUsername(mentionQuery)))).slice(0,6)
     : [];
@@ -39371,6 +39383,11 @@ Return ONLY valid JSON (no markdown, no explanation):
     if(/@yahia\b/i.test(content) && post) {
       replyYahiaInComment(post, project, content, user);
     }
+    // @Mai — analytical/account-strategy read, grounded in that client's
+    // real knowledge/memory + recent post results.
+    if(/@mai\b/i.test(content) && post) {
+      replyMaiInComment(post, project, content, user);
+    }
   };
 
   // Comment thread on a job application (reuses the generic `comments`
@@ -39597,6 +39614,52 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
       }).catch(()=>{});
       if(action.type==="ask_pro" && !isHandoff) {
         replyProInComment(post, project, action.request||triggerContent, {name:"Yahia"}, true);
+      }
+    } catch(e) { /* best-effort — a failed reply just means silence, not a broken thread */ }
+  };
+
+  // Mai replying to a direct @mention — same shape as Sara/Yahia's, but she
+  // gives an account-strategy read (will this work for this client) grounded
+  // in clientBrainBlock (memory/knowledge/recent posts), not content/design
+  // work of her own — she only ever hands actual writing/design asks to Sara
+  // or Yahia, and task actions to Pro.
+  const replyMaiInComment = async (post, project, triggerContent, user, isHandoff=false) => {
+    try {
+      const thread = (data.comments||[]).filter(c=>c.post_id===post.id)
+        .sort((a,b)=>new Date(a.created_date)-new Date(b.created_date))
+        .slice(-10)
+        .map(c=>`${c.author_name||"?"}: ${(c.content||"").slice(0,300)}`).join("\n");
+      const taskBlock = `Task: "${post.title}"
+Project: ${project?.title||post.project_name||"-"} | Client: ${post.client_name||"-"}
+Stage: ${post.stage||"-"} | Platform: ${post.platform||"-"} | Type: ${post.post_type||"-"}
+${post.caption?`Current caption: ${post.caption}`:""}
+${post.text_on_visual?`Text on visual: ${post.text_on_visual}`:""}`;
+      const raw = await agentAI("account_executive", `Comment reply: ${post.title}`, `${MAI_PERSONA}
+${clientBrainBlock(post.client_id, post.client_name)}
+${taskBlock}
+
+RECENT THREAD ON THIS TASK:
+${thread||"(no earlier comments)"}
+
+${user?.name||"A teammate"} just wrote: "${triggerContent}"
+
+Reply now, addressed to them, using what you actually know about this client (their memory/knowledge and recent post results above). You give the account-strategy read — you don't write captions, design visuals, assign tasks, or change stage/due dates yourself. If that's genuinely what's being asked, say so plainly and hand it to Sara (content), Yahia (design), or Pro (task actions) instead of guessing or faking it.
+
+Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown formatting is fine)","action":{"type":"ask_sara"|"ask_yahia"|"ask_pro"|"none","request":"one-line summary of what's needed, if not none"}}`, 700);
+      const match = raw.match(/\{[\s\S]*\}/);
+      let reply, action = {type:"none"};
+      try { const parsed = JSON.parse(match ? match[0] : raw); reply = parsed.reply; action = parsed.action||action; }
+      catch(e) { reply = raw; }
+      const payload = {post_id:post.id, content:reply||"On it.", author_name:"Mai", author_email:"mai@ai.socialflow", type:"ai_reply", audience:"internal"};
+      const local = {...payload, id:uid(), created_date:new Date().toISOString()};
+      setData(d=>({...d,comments:[...d.comments,local]}));
+      ce("Comment",[payload]).then(res=>{
+        const real=res.entities?.[0]; if(real?.id) setData(d=>({...d,comments:d.comments.map(c=>c.id===local.id?{...c,...real}:c)}));
+      }).catch(()=>{});
+      if(!isHandoff) {
+        if(action.type==="ask_sara") replySaraInComment(post, project, action.request||triggerContent, {name:"Mai"}, true);
+        else if(action.type==="ask_yahia") replyYahiaInComment(post, project, action.request||triggerContent, {name:"Mai"}, true);
+        else if(action.type==="ask_pro") replyProInComment(post, project, action.request||triggerContent, {name:"Mai"}, true);
       }
     } catch(e) { /* best-effort — a failed reply just means silence, not a broken thread */ }
   };
