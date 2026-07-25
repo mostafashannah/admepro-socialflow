@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.488";
+const APP_VERSION = "beta 5.489";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -9127,7 +9127,8 @@ function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUs
 }
 
 function EditClientPage({client,onBack,onSave,canDelete,onRequestDelete,team=[]}) {
-  const [f,setF] = useState({name:client.name||"",username:client.username||"",email:client.email||"",phone:client.phone||"",industry:client.industry||"",status:client.status||"active",platforms:client.platforms||[],portal_password:client.portal_password||"",account_manager_ids:getAccountManagerIds(client),logo_url:client.logo_url||"",allowed_task_types:client.allowed_task_types?.length?client.allowed_task_types:TASK_TYPES.map(t=>t.id)});
+  const [f,setF] = useState({name:client.name||"",username:client.username||"",email:client.email||"",phone:client.phone||"",website:client.website||"",social:{instagram:"",facebook:"",tiktok:"",linkedin:"",...(parseJ(client.social_links,{})||{})},industry:client.industry||"",status:client.status||"active",platforms:client.platforms||[],portal_password:client.portal_password||"",account_manager_ids:getAccountManagerIds(client),logo_url:client.logo_url||"",allowed_task_types:client.allowed_task_types?.length?client.allowed_task_types:TASK_TYPES.map(t=>t.id)});
+  const sSocial = (k,v) => setF(x=>({...x,social:{...x.social,[k]:v}}));
   const toggleTaskType = id => setF(x=>({...x,allowed_task_types:x.allowed_task_types.includes(id)?x.allowed_task_types.filter(v=>v!==id):[...x.allowed_task_types,id]}));
   const [showPw,setShowPw] = useState(false);
   const [uploadingLogo,setUploadingLogo] = useState(false);
@@ -9183,6 +9184,17 @@ function EditClientPage({client,onBack,onSave,canDelete,onRequestDelete,team=[]}
             </select>
           </Field>
         </div>
+        <Field label="Website" hint="Mai researches this if it's set/changed and memory is still empty">
+          <input value={f.website||""} onChange={e=>setF(x=>({...x,website:e.target.value}))} style={inputSt} placeholder="https://…"/>
+        </Field>
+        <Field label="Social Media Links" hint="Optional — Mai reads these directly during research">
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <input value={f.social.instagram||""} onChange={e=>sSocial("instagram",e.target.value)} placeholder="Instagram URL" style={inputSt}/>
+            <input value={f.social.facebook||""} onChange={e=>sSocial("facebook",e.target.value)} placeholder="Facebook URL" style={inputSt}/>
+            <input value={f.social.tiktok||""} onChange={e=>sSocial("tiktok",e.target.value)} placeholder="TikTok URL" style={inputSt}/>
+            <input value={f.social.linkedin||""} onChange={e=>sSocial("linkedin",e.target.value)} placeholder="LinkedIn URL" style={inputSt}/>
+          </div>
+        </Field>
         <Field label="Platforms">
           <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:4}}>
             {PLATFORMS.map(p=>(
@@ -9228,8 +9240,8 @@ function EditClientPage({client,onBack,onSave,canDelete,onRequestDelete,team=[]}
           <Btn variant="secondary" onClick={onBack}>Cancel</Btn>
           <Btn onClick={()=>{
             if(!f.name?.trim()) return;
-            const {account_manager_ids, ...rest} = f;
-            onSave({...rest, username:f.username?.trim()||"", portal_password:f.portal_password?.trim()||client?.portal_password||"", account_manager_id: account_manager_ids.length?JSON.stringify(account_manager_ids):""});
+            const {account_manager_ids, social, ...rest} = f;
+            onSave({...rest, social_links:JSON.stringify(social), username:f.username?.trim()||"", portal_password:f.portal_password?.trim()||client?.portal_password||"", account_manager_id: account_manager_ids.length?JSON.stringify(account_manager_ids):""});
           }}>Save Changes</Btn>
         </div>
       </div>
