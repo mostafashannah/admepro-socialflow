@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.485";
+const APP_VERSION = "beta 5.486";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -39171,6 +39171,14 @@ Return ONLY valid JSON (no markdown, no explanation):
       project_id: overrides.project_id || post.project_id,
       revision_count: revisionCount,
       was_rejected: wasRejected,
+      // Manually moving a post to Published never stamped this — every date-
+      // filtered query downstream (Mai's cadence/report crons, post-insights-
+      // cron, "last published post" everywhere in the app) silently saw
+      // nothing for posts published this way, only ones sent by the real
+      // auto-publish flow (which always set it). Only stamp it the first
+      // time a post actually reaches Published, never overwrite an existing
+      // real timestamp on a later stage-change.
+      published_at: newStage==="published" ? (post.published_at || new Date().toISOString()) : post.published_at,
     };
     setData(d=>({...d,posts:d.posts.map(p=>p.id===post.id?updatedPost:p)}));
 
@@ -39307,7 +39315,8 @@ Return ONLY valid JSON (no markdown, no explanation):
       await ue("Post", post.id, {stage:newStage, assigned_to:updatedPost.assigned_to,
         due_date:updatedPost.due_date, due_time:updatedPost.due_time,
         estimated_minutes:updatedPost.estimated_minutes, content_assigned_to:updatedPost.content_assigned_to,
-        project_id:updatedPost.project_id, revision_count:updatedPost.revision_count, was_rejected:updatedPost.was_rejected});
+        project_id:updatedPost.project_id, revision_count:updatedPost.revision_count, was_rejected:updatedPost.was_rejected,
+        published_at:updatedPost.published_at});
       await ce("Comment",[{post_id:post.id,author_name:comment.author_name,type:"stage_change",content:comment.content}]);
     } catch(e){ logActivity("Post Stage Change Failed","tasks",`"${post.title}" → ${stageLabel}`,"error",String(e),currentUser?.email||"admin"); }
   };
