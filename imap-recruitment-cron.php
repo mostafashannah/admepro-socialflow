@@ -462,6 +462,48 @@ foreach ($messages as $message) {
                     $snippet = trim(preg_replace('/\s+/', ' ', substr($bodyText, 0, 300)));
                     log_activity($pdo, $confirmedApp['id'], "Candidate emailed asking to change the interview time: \"{$snippet}\"");
 
+                    // Actually extract the specific new time they're asking for
+                    // (e.g. "4pm instead of 2pm") instead of just alerting with
+                    // the raw email text and leaving a human to re-read it and
+                    // manually update the record. If Claude can confidently
+                    // parse a concrete alternative, this supersedes the old
+                    // confirmed slot the exact same way the app's own "Propose
+                    // New Times" flow does (moved into interview_slot_history)
+                    // and drops the proposal into interview_candidate_note —
+                    // which is the SAME field the candidate-facing slot-picker
+                    // page already writes to, so the existing "Candidate
+                    // suggested: X" + "Confirm This Time" button on the
+                    // application page picks it up with no new UI needed.
+                    $proposedTime = null;
+                    try {
+                        $extractPrompt = "A candidate's confirmed interview was set for \"{$confirmedApp['interview_confirmed_slot']}\". "
+                            . "They just emailed this reply:\n\n\"{$snippet}\"\n\n"
+                            . "Today's date is " . date('Y-m-d, l') . ". If they clearly state a SPECIFIC alternative day/time they want instead "
+                            . "(even shorthand like \"4 instead of 2pm\", meaning same day just a different hour), resolve it to a concrete, "
+                            . "human-readable string (e.g. \"Sunday, Jul 27 at 4:00 PM\"). If they only vaguely say they can't make it or ask "
+                            . "to reschedule without stating a real alternative, return null.\n\n"
+                            . "Return ONLY valid JSON (no markdown): {\"proposed_time\": \"...\" or null}";
+                        [$exStatus, $exData] = callClaude(['model' => 'claude-haiku-4-5-20251001', 'max_tokens' => 200, 'messages' => [['role' => 'user', 'content' => $extractPrompt]]]);
+                        $exText = '';
+                        if ($exStatus >= 200 && $exStatus < 300) {
+                            foreach (($exData['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $exText .= $block['text']; }
+                        }
+                        if (preg_match('/\{[\s\S]*\}/', $exText, $exM)) {
+                            $exParsed = json_decode($exM[0], true);
+                            if (is_array($exParsed) && !empty($exParsed['proposed_time'])) $proposedTime = trim($exParsed['proposed_time']);
+                        }
+                    } catch (Throwable $e) { /* best-effort — falls back to the raw-snippet alert below either way */ }
+
+                    if ($proposedTime) {
+                        $histStmt = $pdo->prepare("SELECT interview_slot_history FROM job_applications WHERE id = :id");
+                        $histStmt->execute([':id' => $confirmedApp['id']]);
+                        $existingHistory = json_decode($histStmt->fetchColumn() ?: '[]', true) ?: [];
+                        $existingHistory[] = $confirmedApp['interview_confirmed_slot'];
+                        $pdo->prepare("UPDATE job_applications SET interview_confirmed_slot = NULL, interview_selected_slot = NULL, interview_candidate_note = :note, interview_slot_history = :hist WHERE id = :id")
+                            ->execute([':note' => $proposedTime, ':hist' => json_encode($existingHistory), ':id' => $confirmedApp['id']]);
+                        log_activity($pdo, $confirmedApp['id'], "Captured candidate's requested new time: \"{$proposedTime}\" — awaiting approval in Recruitment.");
+                    }
+
                     // Left-joins each admin's notification_prefs so their own
                     // "Candidate wants to reschedule" toggle (Settings ->
                     // Account -> Notifications -> Recruitment) is respected —
@@ -469,7 +511,9 @@ foreach ($messages as $message) {
                     $adminStmt = $pdo->prepare("SELECT tm.email, tm.whatsapp_number, np.all_disabled, np.recruitment_reschedule_request FROM team_members tm LEFT JOIN notification_prefs np ON np.user_email = tm.email WHERE tm.role = 'admin' LIMIT 5");
                     $adminStmt->execute();
                     $admins = $adminStmt->fetchAll(PDO::FETCH_ASSOC);
-                    $alertMsg = "📧 {$confirmedApp['candidate_name']} ({$confirmedApp['job_title']}) emailed asking to change their confirmed interview time ({$confirmedApp['interview_confirmed_slot']}):\n\"{$snippet}\"\n\nOpen Recruitment to propose new times.";
+                    $alertMsg = $proposedTime
+                        ? "📧 {$confirmedApp['candidate_name']} ({$confirmedApp['job_title']}) wants to move their interview from {$confirmedApp['interview_confirmed_slot']} to {$proposedTime}.\n\nOpen Recruitment to approve or propose a different time."
+                        : "📧 {$confirmedApp['candidate_name']} ({$confirmedApp['job_title']}) emailed asking to change their confirmed interview time ({$confirmedApp['interview_confirmed_slot']}):\n\"{$snippet}\"\n\nOpen Recruitment to propose new times.";
                     foreach ($admins as $admin) {
                         if (!empty($admin['all_disabled']) || $admin['recruitment_reschedule_request'] === '0') continue;
                         if (!empty($admin['whatsapp_number'])) sendWhatsAppReply($admin['whatsapp_number'], $alertMsg);
@@ -478,7 +522,9 @@ foreach ($messages as $message) {
                             $notif->execute([
                                 ':id' => generateProUuid(), ':email' => $admin['email'],
                                 ':title' => 'Candidate wants to reschedule',
-                                ':msg' => "{$confirmedApp['candidate_name']} emailed asking to change their confirmed interview time.",
+                                ':msg' => $proposedTime
+                                    ? "{$confirmedApp['candidate_name']} wants {$proposedTime} instead of {$confirmedApp['interview_confirmed_slot']}."
+                                    : "{$confirmedApp['candidate_name']} emailed asking to change their confirmed interview time.",
                                 ':appid' => $confirmedApp['id'],
                             ]);
                         }
