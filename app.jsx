@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.489";
+const APP_VERSION = "beta 5.490";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -37841,10 +37841,13 @@ function App() {
   // per field; memory facts are normal editable/deletable entries like any
   // other, just tagged so it's obvious at a glance where they came from).
   const maiResearchNewClient = async (client) => {
-    const social = parseJ(client.social_links, {}) || {};
-    const socialLines = Object.entries(social).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`);
-    if(!client?.website && !socialLines.length) return;
     try {
+      const social = (client.social_links && typeof client.social_links==="object") ? client.social_links : parseJ(client.social_links, {});
+      const socialLines = Object.entries(social||{}).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`);
+      if(!client?.website && !socialLines.length) {
+        logActivity("Mai: New-client research","agents",`[agent:account_executive] Skipped ${client?.name||"?"} — no website or social links given`,"success","","agent");
+        return;
+      }
       const sys = `You are Mai, the agency's AI Account Executive. A brand-new client "${client.name}" (industry: ${client.industry||"unspecified"}) was just added to the system. Use your web_search tool to actually research this business — visit/search their website${client.website?` (${client.website})`:""}, the social profiles listed below (read their actual posts/bio for real tone and content style, not just a generic guess), and anything else publicly findable about them.${socialLines.length?`\n\nSocial profiles:\n${socialLines.join("\n")}`:""} Gather:
 1. What they actually sell/do (products/services) — a couple of concrete sentences, not generic filler.
 2. Their brand tone/voice as it genuinely comes across online (site + social content, if given).
