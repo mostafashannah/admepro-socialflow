@@ -88,6 +88,14 @@ $clients = $pdo->query("SELECT id, name, account_manager_id FROM clients WHERE s
 $admins = $pdo->query("SELECT email, whatsapp_number FROM team_members WHERE role = 'admin'")->fetchAll(PDO::FETCH_ASSOC);
 $summary = ['clients_checked' => count($clients), 'cadence_alerts' => 0, 'pipeline_alerts' => 0, 'reports_written' => 0, 'memory_curated' => 0, 'errors' => []];
 
+// Daily performance reports are collected per recipient across all their
+// clients and sent as ONE combined WhatsApp message at the end of the run,
+// instead of one message per client — an admin managing 6 accounts was
+// getting 6 separate WhatsApp texts every morning. Cadence/pipeline alerts
+// stay per-client (they're time-sensitive, one-off issues, not a routine
+// digest) and are unaffected by this.
+$dailyReportBuffer = []; // email => ['whatsapp_number'=>string, 'sections'=>[client_name => text]]
+
 foreach ($clients as $client) {
     $clientId = $client['id'];
     $clientName = $client['name'];
@@ -183,17 +191,16 @@ foreach ($clients as $client) {
                 }
                 $summary['reports_written']++;
 
-                // Push today's report out — same recipients as the alerts:
-                // the client's own account manager + every admin. The saved
-                // client_memory copy stays purely analytical (that's what
-                // other prompts read back later); the WhatsApp copy gets a
-                // friendlier teammate-style wrapper around the same content,
-                // plus an offer to help.
-                $reportMsg = "Hey, it's Mai 👋 Here's today's read on {$clientName}:\n\n" . trim($analysis)
-                    . "\n\nLet me know if you want a hand with anything on this account.";
+                // In-app notification stays per-client (each one is its own
+                // real record, that's fine); the WhatsApp send is buffered
+                // instead and combined into one message per recipient at the
+                // end of the run — see $dailyReportBuffer above.
                 foreach (clientAlertRecipients($pdo, $client, $admins) as $r) {
                     notify($pdo, $r['email'], "Daily report — {$clientName}", trim($analysis), 'daily_report', $clientId, 'client');
-                    if (!empty($r['whatsapp_number'])) sendWhatsAppReply($r['whatsapp_number'], $reportMsg);
+                    if (!empty($r['whatsapp_number'])) {
+                        if (!isset($dailyReportBuffer[$r['email']])) $dailyReportBuffer[$r['email']] = ['whatsapp_number' => $r['whatsapp_number'], 'sections' => []];
+                        $dailyReportBuffer[$r['email']]['sections'][$clientName] = trim($analysis);
+                    }
                 }
                 logMaiActivity($pdo, "Daily performance report — {$clientName}", trim($analysis));
             }
@@ -240,6 +247,23 @@ foreach ($clients as $client) {
         $summary['errors'][] = "{$clientName}: " . $e->getMessage();
         error_log("[mai-daily-report-cron] {$clientName}: " . $e->getMessage());
     }
+}
+
+// One combined WhatsApp message per recipient, covering every client they
+// got a report for today (an admin sees all of them; an account manager
+// only their own clients — same scoping clientAlertRecipients already did
+// per-message before).
+foreach ($dailyReportBuffer as $email => $entry) {
+    if (empty($entry['sections'])) continue;
+    $intro = count($entry['sections']) > 1
+        ? "Hey, it's Mai 👋 Here's today's read across your accounts:"
+        : "Hey, it's Mai 👋 Here's today's read on " . array_key_first($entry['sections']) . ":";
+    $body = implode("\n\n", array_map(
+        fn($name, $text) => count($entry['sections']) > 1 ? "*{$name}*\n{$text}" : $text,
+        array_keys($entry['sections']), array_values($entry['sections'])
+    ));
+    $msg = $intro . "\n\n" . $body . "\n\nLet me know if you want a hand with anything on these accounts.";
+    sendWhatsAppReply($entry['whatsapp_number'], $msg);
 }
 
 header('Content-Type: application/json');
