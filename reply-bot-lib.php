@@ -519,6 +519,13 @@ function maybeAutoReply(PDO $pdo, string $clientId, string $clientName, string $
 
     $settings = getReplyBotSettings($pdo, $clientId);
     if (!$settings || !$settings['enabled']) { $log('bot disabled or no settings row'); return; }
+    // This client runs their own reply bot on their own system (subscribed to
+    // the same Meta account via their own app) — SocialFlow still stores/shows
+    // every message in the Inbox (storeMessage() already ran before this
+    // function was called), it just never sends a reply of its own here, no
+    // matter what `enabled`/`mode` say. Checked before anything else below so
+    // there's no code path that can accidentally double-reply a customer.
+    if (!empty($settings['external_bot'])) { $log('external bot — view only, not replying'); return; }
     if (!in_array($channel, $settings['channels'], true)) { $log('channel not enabled in settings: ' . json_encode($settings['channels'])); return; }
 
     $isComment   = $channel === 'fb_comment' || $channel === 'ig_comment';

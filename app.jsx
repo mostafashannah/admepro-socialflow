@@ -609,7 +609,7 @@ const SB_SCHEMA = {
   // single notification-prefs save was silently failing.
   notification_prefs: ["user_email","all_disabled","mentions_only","daily_digest","task_assigned","task_stage_changed","task_due_soon","task_overdue","task_mention","task_comment","project_created","project_task_added","project_deadline_updated","post_approved","post_rejected","client_approval_required","invoice_created","payment_received","subscription_renewal","user_invited","access_approved","access_rejected","permissions_updated","recruitment_new_application","recruitment_task_submitted","recruitment_reschedule_request"],
   customer_messages: ["client_id","client_name","channel","customer_id","customer_name","direction","message_text","sent_by","thread_status","draft_status","external_id"],
-  reply_bot_settings: ["client_id","client_name","enabled","mode","channels","tone","brain","dont_do","fallback_message","updated_by"],
+  reply_bot_settings: ["client_id","client_name","enabled","mode","channels","tone","brain","dont_do","fallback_message","updated_by","external_bot"],
   pro_chat_sessions: ["user_email","client_id","title","messages","shared_with","is_shared_copy"],
 };
 function sbSanitize(tableName, payload) {
@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.492";
+const APP_VERSION = "beta 5.493";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -10450,13 +10450,34 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <Ico d={Icons.robot||Icons.chat} size={15} stroke="#6366f1"/>
             <p style={{fontWeight:700,fontSize:13}}>Reply Bot</p>
-            <Badge label={bot.enabled?(bot.mode==="auto"?"Auto-send":"Drafting"):"Off"} color={bot.enabled?(bot.mode==="auto"?"#10b981":"#6366f1"):"#6b7280"} xs/>
+            <Badge label={bot.external_bot?"External Bot":(bot.enabled?(bot.mode==="auto"?"Auto-send":"Drafting"):"Off")} color={bot.external_bot?"#f59e0b":(bot.enabled?(bot.mode==="auto"?"#10b981":"#6366f1"):"#6b7280")} xs/>
           </div>
           <Ico d={Icons.chevD} size={14} stroke="var(--text3)" style={{transform:botPanelOpen?"rotate(180deg)":"none",transition:"transform 0.2s"}}/>
         </div>
         {botPanelOpen&&(
           <div style={{padding:16,display:"flex",flexDirection:"column",gap:14,borderTop:"1px solid var(--border)"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            {/* This client runs their own reply bot on their own system,
+                connected to the same Meta Page/Instagram account via their
+                own app — we still receive and show every message in the
+                Inbox below for visibility/reporting, but SocialFlow's bot
+                must never reply too or the customer gets two answers. This
+                is a distinct, explicit state from just leaving "Enable AI
+                auto-replies" off, so it's clear at a glance why replying is
+                disabled and nobody accidentally flips it back on. */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 12px",background:"#f59e0b12",border:"1px solid #f59e0b33",borderRadius:8}}>
+              <div>
+                <p style={{fontWeight:600,fontSize:13,color:"#b45309"}}>Client has their own reply bot</p>
+                <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>View-only: messages still appear in the Inbox below, but SocialFlow never sends a reply — {client.name}'s own system (connected to this same account) handles that.</p>
+              </div>
+              <button onClick={()=>onSaveBotSettings&&onSaveBotSettings({external_bot:!bot.external_bot})}
+                style={{width:42,height:24,borderRadius:99,border:"none",cursor:"pointer",position:"relative",
+                  background:bot.external_bot?"#f59e0b":"var(--border2)",transition:"background 0.15s",flexShrink:0}}
+                aria-pressed={!!bot.external_bot} aria-label="Toggle external reply bot">
+                <span style={{position:"absolute",top:3,left:bot.external_bot?21:3,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left 0.15s"}}/>
+              </button>
+            </div>
+
+            {!bot.external_bot&&<div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div>
                 <p style={{fontWeight:600,fontSize:13}}>Enable AI auto-replies for {client.name}</p>
                 <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>Uses this client's Client Brain tone plus the reply-bot brain below to answer DMs and, if enabled, public post comments.</p>
@@ -10467,8 +10488,9 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
                 aria-pressed={!!bot.enabled} aria-label="Toggle reply bot">
                 <span style={{position:"absolute",top:3,left:bot.enabled?21:3,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left 0.15s"}}/>
               </button>
-            </div>
+            </div>}
 
+            {!bot.external_bot&&<>
             <div>
               <p style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>Send mode</p>
               <div style={{display:"flex",gap:8}}>
@@ -10537,6 +10559,7 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
                 style={{...inputSt,width:"100%",minHeight:60,resize:"vertical",fontFamily:"inherit"}}/>
               <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Leave empty to use the default generic fallback. The thread still stays flagged "needs human" either way so your team follows up.</p>
             </div>
+            </>}
           </div>
         )}
       </div>}
