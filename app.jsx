@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.483";
+const APP_VERSION = "beta 5.484";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1839,6 +1839,8 @@ const MAI_PERSONA = `You are Mai, the agency's AI Account Executive. A teammate 
 
 Your character: analytical and outcome-driven — you think in terms of what the client's data actually shows (past post performance, engagement patterns, posting cadence, what's in their memory/brand knowledge, recent contact reports), not opinions or vibes. You're decisive and to the point, comfortable giving a clear "this will land" / "this won't land, here's why" instead of hedging. You're not a writer or a designer — you don't draft captions or design visuals — you give the account-strategy read: will this work for THIS client given what's known about them, and what would make it work better. When you don't have enough real data to back up a read, you say so plainly instead of guessing.
 
+If an image is attached, actually look at it — judge the visual itself (style, color, composition, tone), not just the caption/text-on-visual. Compare what you see against this client's established visual taste (their brand knowledge/visual direction and what they've actually published before) and against the PERFORMANCE SNAPSHOT below: if their audience has historically engaged more with a certain format/style/platform, say so explicitly and use it to back up your read — don't just say "looks nice," ground it in what's actually worked or flopped for THIS client's real audience.
+
 Keep it tight: a real Slack-style reply, not an essay. Ground your answer in specifics from the client knowledge/memory/recent posts you're given — reference the actual fact, not a vague generality.
 
 FORMATTING — this is rendered as markdown, so use it: short paragraphs, "**bold**" for the one or two things that matter most, and a bullet list if you're giving more than 2 points.`;
@@ -1976,6 +1978,30 @@ ${memBlock ? `LEARNED MEMORY (highest priority — always follow):\n${memBlock}`
 ${publishedBlock ? `RECENTLY PUBLISHED — ${allPublished.length} total published, showing the ${recentPublished.length} most recent (real examples — match this proven style/format, and do NOT repeat these ideas/angles):\n${publishedBlock}` : "RECENTLY PUBLISHED: none yet for this client."}
 Context: ${(know?.context_file||"").slice(0,400)}
 === END CLIENT BRAIN ===`;
+  } catch(e){ return ""; }
+}
+// Mai's data-grounded read on how a client's real audience actually responds
+// — ranks their published posts by engagement so she can point at what
+// concretely worked/flopped (format, platform, visual type) instead of
+// guessing. Distinct from clientBrainBlock's publishedBlock, which only
+// lists captions with no performance numbers attached.
+function maiPerformanceBlock(clientId){
+  try {
+    const b = window.__SF_CLIENT_BRAIN||{};
+    const posts = (b.publishedPosts||[]).filter(p=>p.client_id===clientId);
+    if(!posts.length) return "PERFORMANCE SNAPSHOT: no published posts with data yet for this client.";
+    const scored = posts.map(p=>{
+      const engagement = (Number(p.insight_likes)||0) + (Number(p.insight_comments)||0)*2 + (Number(p.insight_shares)||0)*3;
+      return {...p, engagement};
+    }).sort((a,c)=>c.engagement-a.engagement);
+    const line = p => `- [${p.platform||"?"}/${p.post_type||"post"}] "${p.title}" — likes:${p.insight_likes??"?"} comments:${p.insight_comments??"?"} shares:${p.insight_shares??"?"} reach:${p.insight_reach??"?"}`;
+    const top = scored.slice(0,5).map(line).join("\n");
+    const bottom = scored.slice(-3).reverse().map(line).join("\n");
+    return `PERFORMANCE SNAPSHOT (${posts.length} published posts with data) — use this to judge what this client's real audience actually responds to, not just what looks nice:
+BEST PERFORMING:
+${top||"(no data)"}
+WORST PERFORMING:
+${bottom||"(no data)"}`;
   } catch(e){ return ""; }
 }
 // After Sara finishes a piece of work, extract durable brand insights from it
@@ -39629,13 +39655,17 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         .sort((a,b)=>new Date(a.created_date)-new Date(b.created_date))
         .slice(-10)
         .map(c=>`${c.author_name||"?"}: ${(c.content||"").slice(0,300)}`).join("\n");
+      const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
+      const postImageUrl = (designAssets||[]).find(a=>(a.type||"").startsWith("image"))?.url || null;
       const taskBlock = `Task: "${post.title}"
 Project: ${project?.title||post.project_name||"-"} | Client: ${post.client_name||"-"}
 Stage: ${post.stage||"-"} | Platform: ${post.platform||"-"} | Type: ${post.post_type||"-"}
 ${post.caption?`Current caption: ${post.caption}`:""}
-${post.text_on_visual?`Text on visual: ${post.text_on_visual}`:""}`;
+${post.text_on_visual?`Text on visual: ${post.text_on_visual}`:""}
+${postImageUrl?"An image of this exact post/visual is attached above — look at it.":"No image attached to this task yet — judge only from what's described here."}`;
       const raw = await agentAI("account_executive", `Comment reply: ${post.title}`, `${MAI_PERSONA}
 ${clientBrainBlock(post.client_id, post.client_name)}
+${maiPerformanceBlock(post.client_id)}
 ${taskBlock}
 
 RECENT THREAD ON THIS TASK:
@@ -39643,9 +39673,9 @@ ${thread||"(no earlier comments)"}
 
 ${user?.name||"A teammate"} just wrote: "${triggerContent}"
 
-Reply now, addressed to them, using what you actually know about this client (their memory/knowledge and recent post results above). You give the account-strategy read — you don't write captions, design visuals, assign tasks, or change stage/due dates yourself. If that's genuinely what's being asked, say so plainly and hand it to Sara (content), Yahia (design), or Pro (task actions) instead of guessing or faking it.
+Reply now, addressed to them, using what you actually know about this client (their memory/knowledge, the performance snapshot, and — if attached — the actual image of this post) and recent post results above. You give the account-strategy read — you don't write captions, design visuals, assign tasks, or change stage/due dates yourself. If that's genuinely what's being asked, say so plainly and hand it to Sara (content), Yahia (design), or Pro (task actions) instead of guessing or faking it.
 
-Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown formatting is fine)","action":{"type":"ask_sara"|"ask_yahia"|"ask_pro"|"none","request":"one-line summary of what's needed, if not none"}}`, 700);
+Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown formatting is fine)","action":{"type":"ask_sara"|"ask_yahia"|"ask_pro"|"none","request":"one-line summary of what's needed, if not none"}}`, 700, postImageUrl);
       const match = raw.match(/\{[\s\S]*\}/);
       let reply, action = {type:"none"};
       try { const parsed = JSON.parse(match ? match[0] : raw); reply = parsed.reply; action = parsed.action||action; }
