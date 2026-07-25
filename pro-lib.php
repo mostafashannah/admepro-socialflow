@@ -202,6 +202,19 @@ function proTools() {
             ],
         ],
         [
+            'name' => 'ask_ai_teammate',
+            'description' => 'Ask one of your fellow AI teammates (Sara, Yahia, or Mai) a question and get their real answer back — use this whenever the user explicitly asks you to check with/ask one of them something (e.g. "ask Sara for a caption idea", "ask Mai if this will work for the client", "check with Yahia about this design"). Sara is the Senior Content Creator (captions, content ideas, copywriting). Yahia is the Senior Graphic Designer (visuals, design, brand consistency). Mai is the Account Executive (analytical account-strategy reads grounded in a client\'s real performance data, memory, and knowledge — "will this work for the client", posting cadence, priorities). Pass their real answer back to the user, attributed to them by name (e.g. "Sara says: ...").',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'agent'       => ['type' => 'string', 'enum' => ['sara', 'yahia', 'mai'], 'description' => 'Which teammate to ask'],
+                    'question'    => ['type' => 'string', 'description' => 'The question to ask them, in their own words as much as possible'],
+                    'client_name' => ['type' => 'string', 'description' => 'The client this question is about, if any — lets them ground their answer in that client\'s real knowledge/memory/recent posts. Omit if not about a specific client.'],
+                ],
+                'required' => ['agent', 'question'],
+            ],
+        ],
+        [
             'name' => 'search_tasks',
             'description' => 'Search posts/tasks. All filters are optional and combinable: query matches the task title, stage filters by exact pipeline stage, client_name matches the client (partial match ok), assigned_to matches the exact team member name. Returns up to 15 results.',
             'input_schema' => [
@@ -1304,6 +1317,9 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
     $isAdmin = $senderRole === 'team:admin';
     $isAM    = $senderRole === 'team:account_manager';
 
+    if ($name === 'ask_ai_teammate') {
+        return askAiTeammate($pdo, $input['agent'] ?? '', $input['question'] ?? '', $input['client_name'] ?? null);
+    }
     if ($name === 'list_clients') {
         if ($isAdmin) {
             $stmt = $pdo->query("SELECT name, industry, status FROM clients ORDER BY name ASC LIMIT 100");
@@ -1352,6 +1368,55 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
     return ['error' => 'Unknown tool: ' . $name];
+}
+
+// Lets WhatsApp Pro relay a question to one of the other AI teammates (Sara,
+// Yahia, Mai) and bring their real answer back — same idea as @mentioning
+// them in an app comment thread, just triggered from a WhatsApp chat with
+// Pro instead. Grounds the answer in the named client's real memory/
+// knowledge/recent posts when a client is given, mirroring clientBrainBlock
+// in app.jsx (kept intentionally simpler here — this is a one-off Q&A call,
+// not a persistent client-brain builder used across many prompts).
+function askAiTeammate(PDO $pdo, string $agent, string $question, ?string $clientName = null) {
+    if (!$question) return ['error' => 'No question given to ask.'];
+    $personas = [
+        'sara' => ["name" => "Sara", "role" => "Senior Content Creator", "persona" =>
+            "You are Sara, the team's AI Senior Content Creator. A teammate is asking you a question via Pro (WhatsApp). Reply directly, like a real dedicated teammate would — genuinely dedicated, warm, and specific, never filler corporate tone. Keep it tight, WhatsApp-style — a few sentences, not an essay."],
+        'yahia' => ["name" => "Yahia", "role" => "Senior Graphic Designer", "persona" =>
+            "You are Yahia, the team's AI Senior Graphic Designer. A teammate is asking you a question via Pro (WhatsApp). Reply directly — precise, measured, technically grounded in typography/composition/brand consistency when relevant. Keep it tight, WhatsApp-style — a few sentences, not an essay."],
+        'mai' => ["name" => "Mai", "role" => "Account Executive", "persona" =>
+            "You are Mai, the agency's AI Account Executive. A teammate is asking you a question via Pro (WhatsApp). You think in terms of what the client's real data shows (performance, posting cadence, memory/knowledge, recent contact reports) — decisive and specific, not vague. Keep it tight, WhatsApp-style — a few sentences, not an essay."],
+    ];
+    $p = $personas[strtolower($agent)] ?? null;
+    if (!$p) return ['error' => 'Unknown teammate — must be one of: Sara, Yahia, Mai.'];
+
+    $clientBlock = '';
+    if ($clientName) {
+        $c = $pdo->prepare("SELECT id, name FROM clients WHERE name LIKE :n LIMIT 1");
+        $c->execute([':n' => '%' . $clientName . '%']);
+        if ($client = $c->fetch(PDO::FETCH_ASSOC)) {
+            $clientBlock = "\n\nCLIENT: {$client['name']}\n";
+            $mem = $pdo->prepare("SELECT `key`, value FROM client_memory WHERE client_id = :cid ORDER BY priority DESC, updated_at DESC LIMIT 15");
+            $mem->execute([':cid' => $client['id']]);
+            $memRows = $mem->fetchAll(PDO::FETCH_ASSOC);
+            if ($memRows) $clientBlock .= "Known facts:\n" . implode("\n", array_map(fn($m) => "- {$m['value']}", $memRows)) . "\n";
+            $posts = $pdo->prepare("SELECT title, platform, post_type, published_at, insight_likes, insight_comments FROM posts WHERE client_id = :cid AND stage = 'published' ORDER BY published_at DESC LIMIT 8");
+            $posts->execute([':cid' => $client['id']]);
+            $postRows = $posts->fetchAll(PDO::FETCH_ASSOC);
+            if ($postRows) $clientBlock .= "Recent published posts:\n" . implode("\n", array_map(fn($r) => "- [{$r['platform']}/{$r['post_type']}] \"{$r['title']}\" — likes:" . ($r['insight_likes'] ?? '?') . " comments:" . ($r['insight_comments'] ?? '?'), $postRows)) . "\n";
+        } else {
+            $clientBlock = "\n\n(Client \"{$clientName}\" mentioned but not found in the system — answer generally if possible, or say you can't find that client.)";
+        }
+    }
+
+    $prompt = $p['persona'] . $clientBlock . "\n\nQUESTION: " . $question;
+    [$status, $data] = callClaude(['model' => 'claude-sonnet-4-6', 'max_tokens' => 500, 'messages' => [['role' => 'user', 'content' => $prompt]]]);
+    $text = '';
+    if ($status >= 200 && $status < 300) {
+        foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $text .= $block['text']; }
+    }
+    if (trim($text) === '') return ['error' => "{$p['name']} didn't respond — try again."];
+    return ['ok' => true, 'agent' => $p['name'], 'role' => $p['role'], 'answer' => trim($text)];
 }
 
 function callClaude(array $payload) {
@@ -1482,7 +1547,17 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                 . "message is an explicit, unambiguous approve/reject decision — a question like \"why?\" is NOT a "
                 . "decision, just answer it. If a manager wants to check something with the requester first (e.g. "
                 . "\"ask her why\"), use message_team_member to actually relay that over WhatsApp instead of saying "
-                . "you can't — you can, for their own direct reports (or any team member, if the asker is admin)."
+                . "you can't — you can, for their own direct reports (or any team member, if the asker is admin).\n\n"
+                . "You have two other AI teammates besides yourself: Sara (Senior Content Creator — captions, "
+                . "content ideas, copywriting) and Yahia (Senior Graphic Designer — visuals, design, brand "
+                . "consistency), plus Mai (AI Account Executive — analytical account-strategy reads grounded in a "
+                . "client's real performance data/memory/knowledge, e.g. \"will this content work for the "
+                . "client\", posting cadence, priorities). When the user explicitly asks you to check with, ask, "
+                . "or get an opinion from one of them (e.g. \"ask Sara for caption ideas\", \"hi pro can you ask "
+                . "mai if this post will do well with the client\", \"check with Yahia about this\"), use "
+                . "ask_ai_teammate to actually relay the question and get their real answer — then pass that "
+                . "answer back to the user, attributed to them by name (e.g. \"Sara says: ...\"). Never fabricate "
+                . "what they'd say yourself — always actually ask via the tool."
                 . ($voiceTranscript
                     ? "\n\nThis message is a transcript of a VOICE NOTE they just sent you — it may contain "
                       . "transcription errors, use your judgement. If it sounds like a debrief of a client call/"
