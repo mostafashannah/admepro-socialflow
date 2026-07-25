@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.480";
+const APP_VERSION = "beta 5.481";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1809,6 +1809,8 @@ const AI_AGENT_DEFS = [
    description:"Works under Pro's supervision searching for new B2B leads — finds and enriches prospects matching your targeting criteria."},
   {id:"graphic_designer", name:"Yahia — Senior Graphic Designer", color:"#0ea5e9",
    description:"Works under Pro's supervision generating designs with AI image models — learns each client's past designs and brand/design guidelines to keep every new piece on-style, then hands the real generation off to gpt-image-1."},
+  {id:"account_executive", name:"Mai — Account Executive", color:"#a855f7",
+   description:"Runs a fixed daily routine on every active client, internal-only: checks whether posting is keeping pace with the client's configured schedule (alerting the account manager + admins if not), writes a short daily performance analysis from that client's real post results, and keeps each client's memory sorted with the most important facts first. Runs server-side once a day (mai-daily-report-cron.php) — not a chat agent."},
 ];
 // Sara's character when she's talking directly WITH the team (comment
 // mentions) — distinct from her content-writing prompts above, which are
@@ -8920,7 +8922,14 @@ function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUs
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({key:"brand_tone", customKey:"", value:""});
 
-  const myMem = clientMemory.filter(m=>m.client_id===client?.id);
+  // Mai (the AI Account Executive) reviews this list daily and assigns a
+  // priority (1-5) to each fact based on what actually matters right now
+  // for this client — sorting by it here means the important stuff (a
+  // hard brand rule, an urgent recent request) surfaces first instead of
+  // just whatever was saved most recently. mai_daily_report entries are a
+  // separate log, not curated facts, so they're excluded here.
+  const myMem = clientMemory.filter(m=>m.client_id===client?.id && m.type!=="mai_daily_report")
+    .sort((a,b)=>(b.priority||0)-(a.priority||0));
   const manual = myMem.filter(m=>m.type==="manual");
   const aiMem = myMem.filter(m=>m.type==="ai");
   const autoMem= myMem.filter(m=>m.type==="auto");
@@ -8949,6 +8958,7 @@ function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUs
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
           <span style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>{mem.key.replace(/_/g," ")}</span>
           <span style={{fontSize:10,fontWeight:700,color:typeColors[mem.type]||"#888",background:`${typeColors[mem.type]||"#888"}22`,borderRadius:4,padding:"1px 6px"}}>{typeLabels[mem.type]||mem.type}</span>
+          {mem.priority>=4&&<span title="High priority — flagged by Mai" style={{fontSize:10,fontWeight:700,color:"#a855f7",background:"#a855f722",borderRadius:4,padding:"1px 6px"}}>★ Priority</span>}
         </div>
         <p style={{fontSize:13,color:"var(--text)",lineHeight:1.5}}>{mem.value}</p>
         <p style={{fontSize:10,color:"var(--text3)",marginTop:4}}>{mem.updated_at?new Date(mem.updated_at).toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}):""}</p>
@@ -8988,6 +8998,22 @@ function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUs
           <Ico d={Icons.plus} size={13}/>{adding?"Cancel":"Add Memory"}
         </Btn>
       </div>
+
+      {/* Mai's latest daily report */}
+      {(()=>{
+        const reports = clientMemory.filter(m=>m.client_id===client?.id && m.type==="mai_daily_report").sort((a,b)=>new Date(b.updated_at||b.created_at)-new Date(a.updated_at||a.created_at));
+        const latest = reports[0];
+        if(!latest) return null;
+        return (
+          <div style={{background:"#a855f711",border:"1px solid #a855f733",borderRadius:"var(--r)",padding:16}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+              <span style={{fontSize:11,fontWeight:800,color:"#a855f7",textTransform:"uppercase",letterSpacing:"0.06em"}}>Mai — Daily Report</span>
+              <span style={{fontSize:11,color:"var(--text3)"}}>{fmtDate(latest.updated_at||latest.created_at)}</span>
+            </div>
+            <p style={{fontSize:13,color:"var(--text)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{latest.value}</p>
+          </div>
+        );
+      })()}
 
       {/* Add / Edit form */}
       {adding&&(
