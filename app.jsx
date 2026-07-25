@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.498";
+const APP_VERSION = "beta 5.499";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -40869,18 +40869,8 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
       clientIntelligence={data.clientIntelligence||[]}
     />}
 
-    {/* FAB — Add Client */}
-    {showFABClient&&<AddClientWorkflowModal open
-      onClose={()=>setShowFABClient(false)}
-      onAdd={async d=>{
-        const nc={...d,id:uid(),created_date:new Date().toISOString()}; setData(x=>({...x,clients:[nc,...x.clients]}));
-        let real=nc;
-        try{ const res=await ce("Client",[d]); real=res.entities?.[0]||nc; if(real?.id) setData(x=>({...x,clients:x.clients.map(c=>c.id===nc.id?{...c,...real}:c)})); }catch(e){}
-        if(d.website||d.social_links) maiResearchNewClient({...d, id:real?.id||nc.id});
-        return real;
-      }}
-      onGoToCalendar={client=>{ setCalendarPreselectedClient(client); setShowFABCalendar(true); }}
-    />}
+    {/* FAB — Add Client — same modal/fields as the Clients page's "+ Add Client" */}
+    {showFABClient&&<AddClientModal open onClose={()=>setShowFABClient(false)} onAdd={async d=>{await addClient(d); setShowFABClient(false);}}/>}
 
     {/* FAB — Add Calendar Plan */}
     {showFABCalendar&&<AddCalendarPlanModal open
