@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.484";
+const APP_VERSION = "beta 5.485";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -2003,6 +2003,18 @@ ${top||"(no data)"}
 WORST PERFORMING:
 ${bottom||"(no data)"}`;
   } catch(e){ return ""; }
+}
+// Resolves the actual best-posting-time to prefill for a given platform+date:
+// the per-weekday AI prediction if one exists (Auto mode), falling back to
+// the single flat time (Manual mode, or Auto before its first prediction).
+function bestTimeForDate(ci, pl, dateStr) {
+  if(!ci) return "";
+  const byDay = parseJ(ci[`${pl}_best_times_by_day`], null);
+  if(byDay && dateStr) {
+    const dow = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"][new Date(dateStr+"T00:00:00").getDay()];
+    if(byDay[dow]) return byDay[dow];
+  }
+  return ci[`${pl}_best_time`]||"";
 }
 // After Sara finishes a piece of work, extract durable brand insights from it
 // and save them into the client's memory — same discipline as Pro's
@@ -5871,7 +5883,7 @@ Return ONLY valid JSON (no markdown):
         const design_assets = pl==="instagram" && f.postStory && storySrc
           ? [...f.media, {...storySrc, kind:"story"}]
           : f.media;
-        const clientBestTime = ci?.[`${pl}_best_time`];
+        const clientBestTime = bestTimeForDate(ci, pl, f.scheduled_date);
         return {
           title:f.title, client_id:proj?.client_id||"", project_id:f.project_id,
           description:f.description, assigned_to:f.assigned_to,
@@ -6092,7 +6104,7 @@ Return ONLY valid JSON (no markdown):
                       if(e.target.value && !f.scheduled_time) {
                         const proj = projects.find(p=>p.id===f.project_id);
                         const ci = clientIntelligenceList.find(i=>i.client_id===proj?.client_id);
-                        const t = ci?.[`${f.platform}_best_time`];
+                        const t = bestTimeForDate(ci, f.platform, e.target.value);
                         if(t) s("scheduled_time",t);
                       }
                     }} style={inputSt}/>
@@ -13198,6 +13210,10 @@ function ClientIntelligenceTab({client, intelligence, onSave, integrations=[], p
     facebook_best_time: existing.facebook_best_time||"12:00",
     tiktok_best_time: existing.tiktok_best_time||"19:00",
     linkedin_best_time: existing.linkedin_best_time||"09:00",
+    instagram_best_times_by_day: existing.instagram_best_times_by_day||"",
+    facebook_best_times_by_day: existing.facebook_best_times_by_day||"",
+    tiktok_best_times_by_day: existing.tiktok_best_times_by_day||"",
+    linkedin_best_times_by_day: existing.linkedin_best_times_by_day||"",
     instagram_time_mode: existing.instagram_time_mode||"manual",
     facebook_time_mode: existing.facebook_time_mode||"manual",
     tiktok_time_mode: existing.tiktok_time_mode||"manual",
@@ -13235,17 +13251,21 @@ function ClientIntelligenceTab({client, intelligence, onSave, integrations=[], p
     return out;
   };
 
-  const aiPredictBestTime = async (pl, metrics, onlineFollowers) => {
-    const sys = `You are a social media scheduling expert. Given a client's industry and recent platform performance data, predict the single best hour of day to publish on ${pl} to maximize reach and engagement. Reply with ONLY JSON: {"best_time":"HH:MM","reason":"≤140 chars"}. Use 24h format. If audience-online-hour data is provided, weigh it heavily alongside industry norms and the reach/engagement numbers; otherwise rely on general industry posting-time best practices for ${pl}.`;
+  // Predicts a full per-weekday map, not one flat hour — Monday's best time
+  // for a client rarely matches Saturday's (different audience behavior,
+  // different competing content), so one number was always an approximation.
+  const aiPredictBestTimes = async (pl, metrics, onlineFollowers) => {
+    const sys = `You are a social media scheduling expert. Given a client's industry and recent platform performance data, predict the best hour of day to publish on ${pl} to maximize reach and engagement — separately for EACH day of the week, since audience behavior genuinely differs by weekday (e.g. weekday work-hour patterns vs weekend leisure patterns, B2B vs B2C norms for this industry). Reply with ONLY JSON: {"times":{"saturday":"HH:MM","sunday":"HH:MM","monday":"HH:MM","tuesday":"HH:MM","wednesday":"HH:MM","thursday":"HH:MM","friday":"HH:MM"},"reason":"≤160 chars summarizing the overall pattern"}. Use 24h format for every day. If audience-online-hour data is provided, weigh it heavily alongside industry norms and the reach/engagement numbers; otherwise rely on general industry posting-time best practices for ${pl}.`;
     const userMsg = `Industry: ${client.industry||"unspecified"}\nPlatform: ${pl}\nRecent 30-day metrics: ${JSON.stringify(metrics)}${onlineFollowers?`\nAudience online-hour breakdown: ${JSON.stringify(onlineFollowers)}`:""}`;
     const res = await fetch(AI_ENDPOINT,{method:"POST",headers:AI_HEADERS,
-      body: JSON.stringify({model:"claude-haiku-4-5-20251001", max_tokens:200, system:sys, messages:[{role:"user",content:userMsg}]})});
+      body: JSON.stringify({model:"claude-haiku-4-5-20251001", max_tokens:400, system:sys, messages:[{role:"user",content:userMsg}]})});
     const d = await res.json();
     const raw = (d.content?.map(b=>b.text||"").join("")||"").trim();
     const m = raw.match(/\{[\s\S]*\}/);
     if(!m) throw new Error("AI returned no prediction");
     const parsed = JSON.parse(m[0]);
-    if(!/^\d{2}:\d{2}$/.test(parsed.best_time||"")) throw new Error("AI returned an invalid time");
+    const days = ["saturday","sunday","monday","tuesday","wednesday","thursday","friday"];
+    if(!parsed.times || days.some(dy=>!/^\d{2}:\d{2}$/.test(parsed.times[dy]||""))) throw new Error("AI returned an invalid time for one or more days");
     return parsed;
   };
 
@@ -13273,8 +13293,13 @@ function ClientIntelligenceTab({client, intelligence, onSave, integrations=[], p
         if(bestD.ok && bestD.online_followers) onlineFollowers = bestD.online_followers;
       }catch{ /* optional signal — AI prediction still works without it */ }
 
-      const predicted = await aiPredictBestTime(pl, metrics, onlineFollowers);
-      sf(`${pl}_best_time`, predicted.best_time);
+      const predicted = await aiPredictBestTimes(pl, metrics, onlineFollowers);
+      sf(`${pl}_best_times_by_day`, JSON.stringify(predicted.times));
+      // Keep the old single-value field in sync too, as a fallback for any
+      // code path that hasn't been updated to read the per-day map — today's
+      // weekday's time is the most sensible single value to fall back to.
+      const todayDow = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"][new Date().getDay()];
+      sf(`${pl}_best_time`, predicted.times[todayDow]||Object.values(predicted.times)[0]);
       setAutoReason(r=>({...r,[pl]:predicted.reason||""}));
       setAutoState(s=>({...s,[pl]:"ok"}));
     }catch(err){
@@ -13424,18 +13449,28 @@ function ClientIntelligenceTab({client, intelligence, onSave, integrations=[], p
                         ))}
                       </div>
                     </div>
-                    {/* Auto mode still holds a real committed value (set by
-                        fetchAutoBestTime below) — full opacity + a small "AI"
-                        badge so it reads as a real result, not a greyed-out
-                        placeholder hint the way disabled inputs usually look. */}
-                    <div style={{position:"relative"}}>
-                      <input type="time" value={form[`${pl}_best_time`]} onChange={e=>sf(`${pl}_best_time`,e.target.value)} disabled={isAuto} style={{...inSt, opacity:1, color:"var(--text1)", fontWeight:isAuto?700:400, paddingRight:isAuto?54:undefined}}/>
-                      {isAuto&&state==="ok"&&(
-                        <span style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",fontSize:9,fontWeight:800,color:"#10b981",background:"#10b98122",border:"1px solid #10b98144",borderRadius:99,padding:"2px 7px",letterSpacing:"0.04em"}}>AI</span>
-                      )}
-                    </div>
-                    {isAuto&&state==="loading"&&<p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Analyzing {label.trim()} performance & industry data…</p>}
-                    {isAuto&&state==="ok"&&<p style={{fontSize:11,color:"#10b981",marginTop:4}}> AI-predicted{autoReason[pl]?`: ${autoReason[pl]}`:" from reach/engagement & industry data."}</p>}
+                    {/* Auto mode predicts a time per weekday, not one flat
+                        value — shown as a compact 7-row list instead of the
+                        single time input manual mode uses. */}
+                    {isAuto ? (()=>{
+                      const byDay = parseJ(form[`${pl}_best_times_by_day`], null);
+                      const dayLabels = [["saturday","Sat"],["sunday","Sun"],["monday","Mon"],["tuesday","Tue"],["wednesday","Wed"],["thursday","Thu"],["friday","Fri"]];
+                      if(!byDay && state!=="loading" && state!=="error") return <p style={{fontSize:11,color:"var(--text3)"}}>No prediction yet.</p>;
+                      return byDay ? (
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"2px 10px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:8,padding:"6px 10px"}}>
+                          {dayLabels.map(([dy,lbl])=>(
+                            <div key={dy} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"2px 0"}}>
+                              <span style={{color:"var(--text3)"}}>{lbl}</span>
+                              <span style={{fontWeight:700,color:"var(--text1)"}}>{byDay[dy]||"—"}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null;
+                    })() : (
+                      <input type="time" value={form[`${pl}_best_time`]} onChange={e=>sf(`${pl}_best_time`,e.target.value)} style={{...inSt, opacity:1, color:"var(--text1)"}}/>
+                    )}
+                    {isAuto&&state==="loading"&&<p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Analyzing {label.trim()} performance & industry data, per weekday…</p>}
+                    {isAuto&&state==="ok"&&<p style={{fontSize:11,color:"#10b981",marginTop:4}}> AI-predicted per weekday{autoReason[pl]?`: ${autoReason[pl]}`:" from reach/engagement & industry data."} — refreshes weekly.</p>}
                     {isAuto&&state==="error"&&<p style={{fontSize:11,color:"#ef4444",marginTop:4}}>{autoError[pl]||"Couldn't generate a prediction."} <button type="button" onClick={()=>fetchAutoBestTime(pl)} style={{background:"none",border:"none",color:"var(--accent)",cursor:"pointer",fontWeight:700,fontSize:11,padding:0}}>Retry</button></p>}
                   </div>
                 );
