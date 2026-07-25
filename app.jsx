@@ -1217,7 +1217,7 @@ function logActivity(action, category, details="", status="success", errorMsg=""
 
 // ── Email HTML templates ─────────────────────────────────────────
 const APP_URL = "https://socialflow.admepro.com";
-const APP_VERSION = "beta 5.482";
+const APP_VERSION = "beta 5.483";
 
 function emailBase(content) {
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -1810,7 +1810,7 @@ const AI_AGENT_DEFS = [
   {id:"graphic_designer", name:"Yahia — Senior Graphic Designer", color:"#0ea5e9",
    description:"Works under Pro's supervision generating designs with AI image models — learns each client's past designs and brand/design guidelines to keep every new piece on-style, then hands the real generation off to gpt-image-1."},
   {id:"account_executive", name:"Mai — Account Executive", color:"#a855f7",
-   description:"Runs a fixed daily routine on every active client, internal-only: checks whether posting is keeping pace with the client's configured schedule (alerting the account manager + admins if not), writes a short daily performance analysis from that client's real post results, and keeps each client's memory sorted with the most important facts first. Runs server-side once a day (mai-daily-report-cron.php) — not a chat agent."},
+   description:"Runs a fixed daily routine on every active client, internal-only: checks whether posting is keeping pace with the client's configured schedule (alerting the account manager + admins if not), checks whether the scheduled-post pipeline will run dry within 10 working days (alerting until new scheduled posts are added), writes a short daily performance analysis from that client's real post results, and keeps each client's memory sorted with the most important facts first. Runs server-side once a day (mai-daily-report-cron.php). Also mentionable directly in any task/post comment thread (type @Mai) for an on-demand analytical read grounded in that client's knowledge/memory."},
 ];
 // Sara's character when she's talking directly WITH the team (comment
 // mentions) — distinct from her content-writing prompts above, which are
