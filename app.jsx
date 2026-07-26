@@ -3498,7 +3498,7 @@ function KanbanView({posts,project,team,onPostClick,onStageChange}) {
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:8,minHeight:60}}>
                   {sp.map(p=>(
-                    <div key={p.id} draggable onDragStart={()=>{dragPost.current=p;}} onDragEnd={()=>{dragPost.current=null;}} style={{cursor:"grab"}}>
+                    <div key={p.id} draggable onDragStart={e=>{dragPost.current=p;e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",p.id);}} onDragEnd={()=>{dragPost.current=null;}} style={{cursor:"grab"}}>
                       <PostCard post={p} project={project} team={team} onClick={onPostClick}/>
                     </div>
                   ))}
@@ -3535,7 +3535,7 @@ function KanbanView({posts,project,team,onPostClick,onStageChange}) {
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:8,minHeight:60}}>
                   {sp.map(p=>(
-                    <div key={p.id} draggable onDragStart={()=>{dragPost.current=p;}} onDragEnd={()=>{dragPost.current=null;}} style={{cursor:"grab"}}>
+                    <div key={p.id} draggable onDragStart={e=>{dragPost.current=p;e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",p.id);}} onDragEnd={()=>{dragPost.current=null;}} style={{cursor:"grab"}}>
                       <PostCard post={p} project={project} team={team} onClick={onPostClick}/>
                     </div>
                   ))}
@@ -14332,7 +14332,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
               return (
                 <div key={post.id}
                   draggable
-                  onDragStart={()=>{dragTaskRef.current=post.id;}}
+                  onDragStart={e=>{dragTaskRef.current=post.id;e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",post.id);}}
                   onDragOver={e=>{e.preventDefault();}}
                   onDrop={e=>{
                     e.preventDefault();
