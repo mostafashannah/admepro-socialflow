@@ -3951,7 +3951,7 @@ function ContentPhaseGenerator({post, project, clientKnowledge, clientIntelligen
       tov_label: post.tov_used || "Selected",
       tov: CONTENT_TOVS.find(t=>t.label===post.tov_used)?.key || "professional",
       languages: post.content_language ? [post.content_language] : ["english"],
-      caption: post.caption||"", hashtags: post.hashtags||"",
+      caption: post.caption||"", hashtags: post.hashtags||"", text_on_visual: post.text_on_visual||"",
       hook: post.reel_hook||"", script: post.reel_script||"", cta: post.reel_cta||"",
       cover: post.carousel_cover||"", slides: parseJ(post.carousel_slides||"[]"),
       cta_slide:"", music_direction: post.music_direction||"",
@@ -4143,6 +4143,7 @@ Return ONLY a valid JSON array with exactly 3 objects:
 [
   {
     "tov_label": "Name of this tone/angle",
+    ${post.post_type!=="story"?`"text_on_visual": "Short catchy headline (max 8 words) that sits ON the design/graphic itself, distinct from the caption",`:""}
     "caption": "The full caption. Match the length, style, emoji usage, and energy of the approved examples above. This should feel like an authentic continuation of this client's feed.",
     "hashtags": "max 5 hashtags matching the client's typical hashtag format"
   }
@@ -4201,7 +4202,7 @@ No markdown, no explanation. Return the JSON array only.`;
       ? `{"tov_label":"...","hook":"...","script":"...","cta":"...","caption":"...","hashtags":"...","music_direction":"..."}`
       : isCarousel
       ? `{"tov_label":"...","cover":"...","slides":[{"title":"...","body":"..."},{"title":"...","body":"..."},{"title":"...","body":"..."},{"title":"...","body":"..."}],"cta_slide":"...","caption":"...","hashtags":"..."}`
-      : `{"tov_label":"...","caption":"...","hashtags":"..."}`;
+      : `{"tov_label":"...",${post.post_type!=="story"?`"text_on_visual":"...",`:""}"caption":"...","hashtags":"..."}`;
     const optLangs = (opt.languages&&opt.languages.length) ? opt.languages : langs;
     const optTov = opt.tov || tov;
     const customTov = (opt.tov_custom||"").trim();
@@ -4235,7 +4236,7 @@ ${shapeInstr}`;
       ? `{"tov_label":"...","hook":"...","script":"...","cta":"...","caption":"...","hashtags":"...","music_direction":"..."}`
       : isCarousel
       ? `{"tov_label":"...","cover":"...","slides":[{"title":"...","body":"..."},{"title":"...","body":"..."},{"title":"...","body":"..."},{"title":"...","body":"..."}],"cta_slide":"...","caption":"...","hashtags":"..."}`
-      : `{"tov_label":"...","caption":"...","hashtags":"..."}`;
+      : `{"tov_label":"...",${post.post_type!=="story"?`"text_on_visual":"...",`:""}"caption":"...","hashtags":"..."}`;
     const existing = (result||[]).map(o=>`- "${o.tov_label||""}": ${(o.caption||o.hook||"").slice(0,150)}`).join("\n") || "(none yet)";
     const prompt = `${buildSharedHeader(langs)}
 
@@ -4271,7 +4272,7 @@ ${shapeInstr}`;
       onMemoryLearn(client.id, client.name, "preferred_language", optLangs.map(k=>langOf(k).label.trim()).join(" + "), "auto");
       if(opt.tov_label) onMemoryLearn(client.id, client.name, "chosen_tov", opt.tov_label, "auto");
     }
-    onChoose({...post, caption, hashtags,
+    onChoose({...post, caption, hashtags, text_on_visual: opt.text_on_visual||"",
       reel_hook: opt.hook||"", reel_script: opt.script||"", reel_cta: opt.cta||"",
       carousel_cover: opt.cover||"", carousel_slides: JSON.stringify(opt.slides||[]),
       music_direction: opt.music_direction||"",
@@ -4481,11 +4482,18 @@ ${shapeInstr}`;
               <div style={{padding:14}}>
                 {editingIdx===idx ? (
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {post.post_type!=="story"&&(
+                      <div>
+                        <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:5}}>Text on Visual</p>
+                        <input value={opt.text_on_visual||""} onChange={e=>updateField(idx,"text_on_visual",e.target.value)} placeholder="Short headline that sits on the design itself…" style={{width:"100%",fontSize:13,padding:"8px 10px",borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontFamily:"inherit"}}/>
+                      </div>
+                    )}
                     <textarea value={opt.caption||""} onChange={e=>updateField(idx,"caption",e.target.value)} rows={5} style={{width:"100%",fontSize:13,lineHeight:1.7,color:"var(--text)",background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:6,padding:"8px 10px",resize:"vertical",fontFamily:"inherit"}}/>
                     <input value={opt.hashtags||""} onChange={e=>updateField(idx,"hashtags",e.target.value)} placeholder="#hashtags" style={{width:"100%",fontSize:12,padding:"6px 10px",borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--accent)",fontFamily:"inherit"}}/>
                   </div>
                 ) : (
                   <>
+                    {opt.text_on_visual&&<p style={{fontSize:13,fontWeight:700,marginBottom:8,paddingBottom:8,borderBottom:"1px dashed var(--border2)"}}>{"\u{1F5BC}️"} Text on Visual: {opt.text_on_visual}</p>}
                     <p style={{fontSize:13,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{opt.caption}</p>
                     {opt.hashtags&&<p style={{fontSize:12,color:"var(--accent)",marginTop:8,fontWeight:500}}>{opt.hashtags}</p>}
                   </>
@@ -5257,7 +5265,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
             onMemoryLearn={onMemoryLearn}
             onChoose={(updatedPost)=>{
               ue("Post", post.id, {
-                caption:updatedPost.caption, hashtags:updatedPost.hashtags,
+                caption:updatedPost.caption, hashtags:updatedPost.hashtags, text_on_visual:updatedPost.text_on_visual,
                 reel_hook:updatedPost.reel_hook, reel_script:updatedPost.reel_script,
                 reel_cta:updatedPost.reel_cta, carousel_cover:updatedPost.carousel_cover,
                 carousel_slides:updatedPost.carousel_slides, music_direction:updatedPost.music_direction,
