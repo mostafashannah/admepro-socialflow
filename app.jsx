@@ -4453,6 +4453,8 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [saraFeedback, setSaraFeedback] = useState("");
+  const [saraRegen, setSaraRegen] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishResult, setPublishResult] = useState(null);
   // TikTok Content Sharing Guidelines require the posting UI to be built
@@ -4904,69 +4906,54 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 <input type="number" min={5} step={5} value={editForm.estimated_minutes||""} onChange={e=>setEditForm(f=>({...f,estimated_minutes:e.target.value?Number(e.target.value):""}))} placeholder={`Auto (${estimateDuration({post_type:editForm.post_type,priority:editForm.priority})} min)`} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
               </div>
             </div>
-            {/* Content fields — same as the calendar plan preview */}
-            {(()=>{
-              const [saraFeedback,setSaraFeedback] = React.useState("");
-              const [saraRegen,setSaraRegen] = React.useState(false);
-              const regenWithSara = async () => {
-                if(!post.client_id && !post.client_name) { alert("No client associated with this post — Sara needs that context."); return; }
+            {/* Content fields */}
+            <div style={{borderTop:"1px solid var(--border2)",paddingTop:10,gridColumn:"1/-1"}}>
+              <p style={{fontSize:11,fontWeight:700,color:"var(--accent)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Content</p>
+            </div>
+            {editForm.post_type==="reel"&&(
+              <div style={{gridColumn:"1/-1"}}>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Hook (first 3 seconds)</label>
+                <input value={editForm.reel_hook||""} onChange={e=>setEditForm(f=>({...f,reel_hook:e.target.value}))} placeholder="Scroll-stopping opener..." style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
+              </div>
+            )}
+            {editForm.post_type!=="article"&&(
+              <div style={{gridColumn:"1/-1"}}>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Text on Visual</label>
+                <input value={editForm.text_on_visual||""} onChange={e=>setEditForm(f=>({...f,text_on_visual:e.target.value}))} placeholder="Short catchy headline on the design..." style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
+              </div>
+            )}
+            <div style={{gridColumn:"1/-1"}}>
+              <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>{editForm.post_type==="article"?"Article Body":"Caption"}</label>
+              <textarea value={editForm.caption||""} onChange={e=>setEditForm(f=>({...f,caption:e.target.value}))} rows={editForm.post_type==="article"?8:4} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)",resize:"vertical",fontFamily:"inherit"}}/>
+            </div>
+            {editForm.post_type!=="story"&&(
+              <div style={{gridColumn:"1/-1"}}>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Hashtags</label>
+                <input value={editForm.hashtags||""} onChange={e=>setEditForm(f=>({...f,hashtags:e.target.value}))} placeholder="#hashtag1 #hashtag2" style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
+              </div>
+            )}
+            <div style={{gridColumn:"1/-1",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:8,padding:10,display:"flex",gap:8,alignItems:"flex-end"}}>
+              <div style={{flex:1}}>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Feedback for Sara (optional)</label>
+                <input value={saraFeedback} onChange={e=>setSaraFeedback(e.target.value)} placeholder="e.g. more playful tone, mention the summer sale..." style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:12,color:"var(--text)"}}/>
+              </div>
+              <button onClick={async()=>{
+                if(!post.client_id&&!post.client_name){alert("No client — Sara needs brand context.");return;}
                 setSaraRegen(true);
-                try {
-                  const kind = post.post_type==="reel" ? "reel" : post.post_type==="carousel" ? "carousel" : post.post_type==="article" ? "article" : post.post_type==="story" ? "story" : "static";
-                  const aiRes = await agentAI("content_creator", `Rewrite: ${editForm.title}`,
-                    `You are Sara, a senior content creator. Review the client brain below before rewriting.\n${clientBrainBlock(post.client_id, post.client_name)}\n\nPost title: ${editForm.title}\nCurrent caption: ${editForm.caption}\nCurrent text on visual: ${editForm.text_on_visual}\nCurrent hashtags: ${editForm.hashtags}\n${kind==="reel"?`Current hook: ${editForm.reel_hook}\n`:""}\nFeedback to apply: ${saraFeedback||"Fresh rewrite — different angle than current."}\n\nReturn ONLY valid JSON (no markdown): {"caption":"...","hashtags":"...","text_on_visual":"..."${kind==="reel"?`,"reel_hook":"..."`:""}}\n(text_on_visual = short catchy headline overlaid on the design, not the same as caption; empty string for articles and stories.)`,
-                    kind==="article"?2500:700);
-                  const match = aiRes.match(/\{[\s\S]*\}/);
-                  const idea = JSON.parse(match ? match[0] : aiRes);
-                  setEditForm(f=>({...f,
-                    caption: idea.caption||f.caption,
-                    hashtags: idea.hashtags??f.hashtags,
-                    text_on_visual: idea.text_on_visual??f.text_on_visual,
-                    reel_hook: kind==="reel" ? (idea.reel_hook||f.reel_hook) : f.reel_hook,
-                  }));
+                try{
+                  const kind=editForm.post_type==="reel"?"reel":editForm.post_type==="carousel"?"carousel":editForm.post_type==="article"?"article":editForm.post_type==="story"?"story":"static";
+                  const aiRes=await agentAI("content_creator",`Rewrite: ${editForm.title}`,`You are Sara, a senior content creator. Review the client brain below.\n${clientBrainBlock(post.client_id,post.client_name)}\n\nPost: ${editForm.title}\nCaption: ${editForm.caption}\nText on Visual: ${editForm.text_on_visual}\nHashtags: ${editForm.hashtags}\n${kind==="reel"?`Hook: ${editForm.reel_hook}\n`:""}\nFeedback: ${saraFeedback||"Fresh rewrite, different angle."}\n\nReturn ONLY valid JSON: {"caption":"...","hashtags":"...","text_on_visual":"..."${kind==="reel"?`,"reel_hook":"..."`:""}}`
+                  ,kind==="article"?2500:700);
+                  const m=aiRes.match(/\{[\s\S]*\}/);
+                  const idea=JSON.parse(m?m[0]:aiRes);
+                  setEditForm(f=>({...f,caption:idea.caption||f.caption,hashtags:idea.hashtags??f.hashtags,text_on_visual:idea.text_on_visual??f.text_on_visual,reel_hook:kind==="reel"?(idea.reel_hook||f.reel_hook):f.reel_hook}));
                   setSaraFeedback("");
-                } catch(e) { alert("Sara couldn't rewrite this — please try again."); }
+                }catch(e){alert("Sara couldn't rewrite this — please try again.");}
                 setSaraRegen(false);
-              };
-              return (
-                <>
-                  <div style={{borderTop:"1px solid var(--border2)",paddingTop:10,gridColumn:"1/-1"}}>
-                    <p style={{fontSize:11,fontWeight:700,color:"var(--accent)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Content</p>
-                  </div>
-                  {post.post_type==="reel"&&(
-                    <div style={{gridColumn:"1/-1"}}>
-                      <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Hook (first 3 seconds)</label>
-                      <input value={editForm.reel_hook} onChange={e=>setEditForm(f=>({...f,reel_hook:e.target.value}))} placeholder="Scroll-stopping opener..." style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
-                    </div>
-                  )}
-                  {post.post_type!=="article"&&(
-                    <div style={{gridColumn:"1/-1"}}>
-                      <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Text on Visual</label>
-                      <input value={editForm.text_on_visual} onChange={e=>setEditForm(f=>({...f,text_on_visual:e.target.value}))} placeholder="Short catchy headline on the design..." style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
-                    </div>
-                  )}
-                  <div style={{gridColumn:"1/-1"}}>
-                    <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>{post.post_type==="article"?"Article Body":"Caption"}</label>
-                    <textarea value={editForm.caption} onChange={e=>setEditForm(f=>({...f,caption:e.target.value}))} rows={post.post_type==="article"?8:4} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)",resize:"vertical",fontFamily:"inherit"}}/>
-                  </div>
-                  {post.post_type!=="story"&&(
-                    <div style={{gridColumn:"1/-1"}}>
-                      <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Hashtags</label>
-                      <input value={editForm.hashtags} onChange={e=>setEditForm(f=>({...f,hashtags:e.target.value}))} placeholder="#hashtag1 #hashtag2" style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
-                    </div>
-                  )}
-                  <div style={{gridColumn:"1/-1",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:8,padding:10,display:"flex",gap:8,alignItems:"flex-end"}}>
-                    <div style={{flex:1}}>
-                      <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Feedback for Sara (optional)</label>
-                      <input value={saraFeedback} onChange={e=>setSaraFeedback(e.target.value)} placeholder="e.g. more playful tone, mention the summer sale..." style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:12,color:"var(--text)"}}/>
-                    </div>
-                    <button onClick={regenWithSara} disabled={saraRegen} style={{display:"flex",alignItems:"center",gap:5,padding:"8px 14px",borderRadius:7,border:"1px solid #10b98166",background:"#10b98111",color:"#10b981",fontSize:12,fontWeight:700,cursor:saraRegen?"wait":"pointer",whiteSpace:"nowrap",flexShrink:0}}>
-                      {saraRegen?<><Spinner size={13}/> Sara is writing…</>:<><Ico d={Icons.sparkle} size={13} stroke="#10b981"/> Regenerate with Sara</>}
-                    </button>
-                  </div>
-                </>
-              );
-            })()}
+              }} disabled={saraRegen} style={{display:"flex",alignItems:"center",gap:5,padding:"8px 14px",borderRadius:7,border:"1px solid #10b98166",background:"#10b98111",color:"#10b981",fontSize:12,fontWeight:700,cursor:saraRegen?"wait":"pointer",whiteSpace:"nowrap",flexShrink:0}}>
+                {saraRegen?<><Spinner size={13}/> Writing…</>:<><Ico d={Icons.sparkle} size={13} stroke="#10b981"/> Regenerate with Sara</>}
+              </button>
+            </div>
             <div style={{display:"flex",gap:8,justifyContent:"flex-end",gridColumn:"1/-1"}}>
               <button onClick={()=>setEditing(false)} style={{padding:"7px 16px",borderRadius:7,fontSize:12,fontWeight:600,background:"var(--surface)",border:"1px solid var(--border2)",color:"var(--text2)"}}>Cancel</button>
               <Btn onClick={saveEdit} disabled={(editForm.scheduled_date&&!editForm.scheduled_time)||(editForm.due_date&&!editForm.due_time)}><Ico d={Icons.check} size={13}/> Save Changes</Btn>
