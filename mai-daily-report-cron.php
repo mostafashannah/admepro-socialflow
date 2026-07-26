@@ -289,9 +289,7 @@ $maiWaSystem = "You are Mai, the agency's AI Account Executive, sending a WhatsA
     . "- End with ONE short line pointing to SocialFlow notifications for full details and inviting them to ask you for more — not a full sentence per client repeating this.\n"
     . "- Never use markdown headers, '#', or bullet-point '-' lists — write like a real WhatsApp text (short lines/emoji are fine, formal lists/headers are not).";
 
-error_log('[mai-debug] recipientFindings count: ' . count($recipientFindings) . ' — keys: ' . implode(', ', array_keys($recipientFindings)));
 foreach ($recipientFindings as $email => $entry) {
-    error_log('[mai-debug] processing recipient: ' . $email . ' clients: ' . implode(', ', array_keys($entry['clients'] ?? [])));
     if (empty($entry['clients'])) continue;
     $lines = [];
     foreach ($entry['clients'] as $name => $facts) {
@@ -304,13 +302,11 @@ foreach ($recipientFindings as $email => $entry) {
     }
     $userMsg = "Today's findings across your accounts:\n" . implode("\n", $lines) . "\n\nWrite the one WhatsApp message now.";
     [$status, $data] = callClaude(['model' => 'claude-sonnet-4-6', 'max_tokens' => 400, 'system' => $maiWaSystem, 'messages' => [['role' => 'user', 'content' => $userMsg]]]);
-    error_log('[mai-debug] Claude call status: ' . $status . ' error: ' . ($data['error']['message'] ?? 'none'));
     $msg = '';
     if ($status >= 200 && $status < 300) {
         foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $msg .= $block['text']; }
     }
     $msg = trim($msg);
-    error_log('[mai-debug] msg length: ' . mb_strlen($msg) . ' wa_number: ' . $entry['whatsapp_number']);
     // Belt-and-suspenders: the system prompt asks for under 500 characters,
     // but never trust a model's length compliance completely — a message
     // nobody will actually read defeats the entire point of this rewrite.
