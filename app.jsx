@@ -40114,6 +40114,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       post_type: updatedPost.post_type,
       priority: updatedPost.priority,
       assigned_to: updatedPost.assigned_to,
+      assigned_to_extra: updatedPost.assigned_to_extra||null,
       scheduled_date: updatedPost.scheduled_date||null,
       scheduled_time: updatedPost.scheduled_time||null,
       due_date: updatedPost.due_date||null,
@@ -40123,7 +40124,9 @@ Return ONLY valid JSON (no markdown, no explanation):
       hashtags: updatedPost.hashtags||null,
       text_on_visual: updatedPost.text_on_visual||null,
       reel_hook: updatedPost.reel_hook||null,
-    }).catch(()=>{});
+    }).then(ok=>{
+      if(ok===false) setToast(" Couldn't save — the server rejected the update");
+    }).catch(()=>{ setToast(" Couldn't save — the server rejected the update"); });
     logActivity("Task Edited","tasks",`"${updatedPost.title}" edited by ${currentUser?.name}`,"success","",currentUser?.email);
     setToast(" Task updated");
   };
