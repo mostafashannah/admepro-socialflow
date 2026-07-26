@@ -4715,8 +4715,11 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
     });
   };
   const saveEdit = () => {
-    if(editForm.scheduled_date && !editForm.scheduled_time) return; // publish date needs a time too
-    if(editForm.due_date && !editForm.due_time) return; // due date needs a time too
+    // These used to just silently no-op the Save button (disabled, no
+    // explanation) — someone could add an assignee, click Save, see nothing
+    // happen, and only discover on refresh that it was never actually sent.
+    if(editForm.scheduled_date && !editForm.scheduled_time) { alert("Publish Date is set but Publish Time is empty — add a time or clear the Publish Date before saving."); return; }
+    if(editForm.due_date && !editForm.due_time) { alert("Due Date is set but Due Time is empty — add a time or clear the Due Date before saving."); return; }
     // Keep the singular `platform` field (used everywhere else — Kanban
     // columns, calendar icons, filters) as the first picked platform, while
     // `platforms` carries the full set for showing every badge here.
@@ -5130,7 +5133,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
             </div>
             <div style={{display:"flex",gap:8,justifyContent:"flex-end",gridColumn:"1/-1"}}>
               <button onClick={()=>setEditing(false)} style={{padding:"7px 16px",borderRadius:7,fontSize:12,fontWeight:600,background:"var(--surface)",border:"1px solid var(--border2)",color:"var(--text2)"}}>Cancel</button>
-              <Btn onClick={saveEdit} disabled={(editForm.scheduled_date&&!editForm.scheduled_time)||(editForm.due_date&&!editForm.due_time)}><Ico d={Icons.check} size={13}/> Save Changes</Btn>
+              <Btn onClick={saveEdit}><Ico d={Icons.check} size={13}/> Save Changes</Btn>
             </div>
           </div>
         )}
