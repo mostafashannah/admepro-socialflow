@@ -3949,6 +3949,7 @@ function ContentPhaseGenerator({post, project, clientKnowledge, clientIntelligen
     if(!post?.caption) return null;
     return [{
       tov_label: post.tov_used || "Selected",
+      tov: CONTENT_TOVS.find(t=>t.label===post.tov_used)?.key || "professional",
       language: post.content_language || "english",
       caption: post.caption||"", hashtags: post.hashtags||"",
       hook: post.reel_hook||"", script: post.reel_script||"", cta: post.reel_cta||"",
@@ -3976,6 +3977,12 @@ function ContentPhaseGenerator({post, project, clientKnowledge, clientIntelligen
   const [regenIdx, setRegenIdx] = useState(null);
   const [addingOption, setAddingOption] = useState(false);
   const [addOptionNote, setAddOptionNote] = useState("");
+  const [addOptionLangs, setAddOptionLangs] = useState(()=>[langs[0]]);
+  const toggleAddOptionLang = (key) => setAddOptionLangs(prev=>{
+    const has = prev.includes(key);
+    if(has) return prev.length>1 ? prev.filter(k=>k!==key) : prev;
+    return [...prev, key];
+  });
 
   // Persist result
   useEffect(()=>{ if(!lsKey) return; try{ result ? localStorage.setItem(lsKey,JSON.stringify(result)) : localStorage.removeItem(lsKey); }catch(e){} },[result]);
@@ -3985,7 +3992,9 @@ function ContentPhaseGenerator({post, project, clientKnowledge, clientIntelligen
   const isCarousel = postType === "carousel";
 
   const langOf = (key) => CONTENT_LANGUAGES.find(l=>l.key===key) || CONTENT_LANGUAGES[0];
-  const tovObj = CONTENT_TOVS.find(t=>t.key===tov) || CONTENT_TOVS[0];
+  const tovOf = (key) => CONTENT_TOVS.find(t=>t.key===key) || CONTENT_TOVS[0];
+  const tovObj = tovOf(tov);
+  const tovKeyFromLabel = (label) => CONTENT_TOVS.find(t=>t.label===label)?.key || null;
 
   // Hard rule: never more than 5 hashtags, regardless of what Sara returns.
   const capHashtags = (h) => {
@@ -4034,9 +4043,10 @@ ${approvedBlock}
 ${rejectedBlock}`.trim();
   };
 
-  const buildSharedHeader = (langKey) => {
+  const buildSharedHeader = (langKey, tovKey) => {
     const langInstr = langOf(langKey||langs[0]).instruction;
-    const tovInstr = `Tone of Voice: ${tovObj.label} — ${tovObj.desc}`;
+    const tovForThis = tovOf(tovKey||tov);
+    const tovInstr = `Tone of Voice: ${tovForThis.label} — ${tovForThis.desc}`;
     const ctx = clientCtx();
     const hasPastCaptions = (allClientPosts||[]).some(p=>["published","scheduled"].includes(p.stage)&&p.caption);
     const learningNote = hasPastCaptions
@@ -4161,7 +4171,7 @@ No markdown, no explanation. Return the JSON array only.`;
       }
       const arr = Array.isArray(parsed) ? parsed : [];
       const optionLangs = [0,1,2].map(i=>langs[i%langs.length]);
-      setResult(arr.map((o,i)=>capOptHashtags({...o, language: (CONTENT_LANGUAGES.some(l=>l.key===o.language)?o.language:optionLangs[i]||langs[0])})));
+      setResult(arr.map((o,i)=>capOptHashtags({...o, tov, language: (CONTENT_LANGUAGES.some(l=>l.key===o.language)?o.language:optionLangs[i]||langs[0])})));
     } catch(e) {
       console.error("[ContentGen] Generation error:", e.message);
       setResult([{tov_label:"Error",caption:`Generation failed: ${e.message}`,hashtags:"",hook:"",script:"",cta:"",cover:"",slides:[],cta_slide:"",music_direction:""}]);
@@ -4190,7 +4200,8 @@ No markdown, no explanation. Return the JSON array only.`;
       ? `{"tov_label":"...","cover":"...","slides":[{"title":"...","body":"..."},{"title":"...","body":"..."},{"title":"...","body":"..."},{"title":"...","body":"..."}],"cta_slide":"...","caption":"...","hashtags":"..."}`
       : `{"tov_label":"...","caption":"...","hashtags":"..."}`;
     const optLang = opt.language || langs[0];
-    const prompt = `${buildSharedHeader(optLang)}
+    const optTov = opt.tov || tov;
+    const prompt = `${buildSharedHeader(optLang, optTov)}
 
 You previously wrote this option (angle: "${opt.tov_label||""}"):
 ${JSON.stringify(opt)}
@@ -4204,7 +4215,7 @@ ${shapeInstr}`;
       const raw = await agentAI("content_creator", `Regenerate option: ${post?.title||"post"}`, prompt, 3000);
       const objMatch = (raw||"").match(/\{[\s\S]*\}/);
       const parsed = JSON.parse(objMatch ? objMatch[0] : raw);
-      setResult(prev=>prev.map((o,i)=>i===idx?capOptHashtags({...o,...parsed,language:optLang}):o));
+      setResult(prev=>prev.map((o,i)=>i===idx?capOptHashtags({...o,...parsed,language:optLang,tov:optTov}):o));
       setOptionNotes(prev=>({...prev,[idx]:""}));
     } catch(e) { alert("Sara couldn't regenerate that option — please try again."); }
     setRegenIdx(null);
@@ -4221,13 +4232,17 @@ ${shapeInstr}`;
       ? `{"tov_label":"...","cover":"...","slides":[{"title":"...","body":"..."},{"title":"...","body":"..."},{"title":"...","body":"..."},{"title":"...","body":"..."}],"cta_slide":"...","caption":"...","hashtags":"..."}`
       : `{"tov_label":"...","caption":"...","hashtags":"..."}`;
     const existing = (result||[]).map(o=>`- "${o.tov_label||""}": ${(o.caption||o.hook||"").slice(0,150)}`).join("\n") || "(none yet)";
-    const newLang = langs[(result||[]).length % langs.length];
+    const newLang = addOptionLangs[0]||langs[0];
+    const langNote = addOptionLangs.length>1
+      ? `Write this new option in ${addOptionLangs.map(k=>langOf(k).label.trim()).join(" mixed with ")}.`
+      : "";
     const prompt = `${buildSharedHeader(newLang)}
 
 These options already exist for this post — the new one must feel different from ALL of them, a fresh angle, not a rewording:
 ${existing}
 
-${note ? `FEEDBACK FROM THE TEAM — apply this to the new option: ${note}` : "Give a genuinely different angle/energy than the options above."}
+${note ? `FEEDBACK FROM THE TEAM — apply this to the new option, this is the most important instruction: ${note}` : "Give a genuinely different angle/energy than the options above."}
+${langNote}
 
 Return ONLY one valid JSON object in this exact shape, no markdown, no explanation:
 ${shapeInstr}`;
@@ -4235,8 +4250,12 @@ ${shapeInstr}`;
       const raw = await agentAI("content_creator", `Add option: ${post?.title||"post"}`, prompt, 3000);
       const objMatch = (raw||"").match(/\{[\s\S]*\}/);
       const parsed = JSON.parse(objMatch ? objMatch[0] : raw);
-      setResult(prev=>[...(prev||[]), capOptHashtags({...parsed, language:newLang})]);
+      setResult(prev=>[capOptHashtags({...parsed, language:newLang, tov}), ...(prev||[])]);
       setAddOptionNote("");
+      // Everything shifted down by one slot since the new option was prepended.
+      setChosenIdx(prev=>prev==null?null:prev+1);
+      setEditingIdx(prev=>prev==null?null:prev+1);
+      setOptionNotes(prev=>Object.fromEntries(Object.entries(prev).map(([k,v])=>[Number(k)+1,v])));
     } catch(e) { alert("Sara couldn't create another option — please try again."); }
     setAddingOption(false);
   };
@@ -4309,6 +4328,29 @@ ${shapeInstr}`;
           </div>
         </div>
 
+        {/* Add one more option, without wiping the existing ones — its own
+            language pick + note are applied only to this new option, and it
+            lands at the top of the list once generated. */}
+        {result&&result.length>0&&(
+          <div style={{display:"flex",flexDirection:"column",gap:8,padding:"12px 14px",border:"1px dashed var(--border2)",borderRadius:"var(--rs)"}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+              <span style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>New option language:</span>
+              {CONTENT_LANGUAGES.map(l=>(
+                <button key={l.key} onClick={()=>toggleAddOptionLang(l.key)} style={{padding:"2px 9px",borderRadius:12,fontSize:10.5,fontWeight:600,border:"none",cursor:"pointer",background:addOptionLangs.includes(l.key)?"var(--accent)":"var(--surface)",color:addOptionLangs.includes(l.key)?"#fff":"var(--text2)",outline:addOptionLangs.includes(l.key)?"none":"1px solid var(--border2)"}}>
+                  {addOptionLangs.includes(l.key)&&"✓ "}{l.label.trim()}
+                </button>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <input value={addOptionNote} onChange={e=>setAddOptionNote(e.target.value)}
+                placeholder="Notes for the new option (optional)…" style={{flex:1,fontSize:12,padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontFamily:"inherit"}}/>
+              <button onClick={addAnotherOption} disabled={addingOption} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:8,fontSize:12,fontWeight:700,background:"var(--accent)",color:"#fff",border:"none",cursor:addingOption?"wait":"pointer",whiteSpace:"nowrap",flexShrink:0}}>
+                {addingOption?<><Spinner size={12}/> Sara is writing…</>:<><Ico d={Icons.sparkle} size={12} stroke="#fff"/> Add Another Option</>}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Empty state */}
         {!result&&!generating&&(
           <div style={{padding:32,textAlign:"center",border:"2px dashed var(--border2)",borderRadius:"var(--rs)"}}>
@@ -4344,6 +4386,17 @@ ${shapeInstr}`;
               {CONTENT_LANGUAGES.map(l=>(
                 <button key={l.key} onClick={()=>updateField(idx,"language",l.key)} style={{padding:"2px 9px",borderRadius:12,fontSize:10.5,fontWeight:600,border:"none",cursor:"pointer",background:(opt.language||langs[0])===l.key?"var(--accent)":"var(--surface)",color:(opt.language||langs[0])===l.key?"#fff":"var(--text2)",outline:(opt.language||langs[0])===l.key?"none":"1px solid var(--border2)"}}>
                   {l.label.trim()}
+                </button>
+              ))}
+            </div>
+
+            {/* Per-option tone of voice — same idea as language: independent
+                per option, used the next time this option is regenerated */}
+            <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderBottom:"1px solid var(--border)",flexWrap:"wrap"}}>
+              <span style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Tone:</span>
+              {CONTENT_TOVS.map(t=>(
+                <button key={t.key} title={t.desc} onClick={()=>updateField(idx,"tov",t.key)} style={{padding:"2px 9px",borderRadius:12,fontSize:10.5,fontWeight:600,border:"none",cursor:"pointer",background:(opt.tov||tov)===t.key?"var(--accent)":"var(--surface)",color:(opt.tov||tov)===t.key?"#fff":"var(--text2)",outline:(opt.tov||tov)===t.key?"none":"1px solid var(--border2)"}}>
+                  {t.label}
                 </button>
               ))}
             </div>
@@ -4449,16 +4502,6 @@ ${shapeInstr}`;
           </div>
         ))}
 
-        {/* Add one more option, without wiping the existing ones */}
-        {result&&result.length>0&&(
-          <div style={{display:"flex",gap:8,padding:"12px 14px",border:"1px dashed var(--border2)",borderRadius:"var(--rs)"}}>
-            <input value={addOptionNote} onChange={e=>setAddOptionNote(e.target.value)}
-              placeholder="Notes for the new option (optional)…" style={{flex:1,fontSize:12,padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontFamily:"inherit"}}/>
-            <button onClick={addAnotherOption} disabled={addingOption} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:8,fontSize:12,fontWeight:700,background:"var(--accent)",color:"#fff",border:"none",cursor:addingOption?"wait":"pointer",whiteSpace:"nowrap",flexShrink:0}}>
-              {addingOption?<><Spinner size={12}/> Sara is writing…</>:<><Ico d={Icons.sparkle} size={12} stroke="#fff"/> Add Another Option</>}
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
