@@ -3957,8 +3957,6 @@ function ContentPhaseGenerator({post, project, clientKnowledge, clientIntelligen
       cta_slide:"", music_direction: post.music_direction||"",
     }];
   };
-  const initialResult = loadSaved() || seedFromExistingCaption();
-
   // Global picks seed new options; each option also carries its own
   // language (editable per option, since a client's reply may want one
   // option kept in Egyptian Arabic while another gets rewritten in English).
@@ -3969,6 +3967,17 @@ function ContentPhaseGenerator({post, project, clientKnowledge, clientIntelligen
     if(has) return prev.length>1 ? prev.filter(k=>k!==key) : prev; // keep at least one
     return [...prev, key];
   });
+
+  // Drafts saved before per-option language/tone existed won't have those
+  // fields — backfill them here with a fixed snapshot of the current
+  // globals so each option's display is frozen at load time, not left to
+  // silently track whatever the global selectors change to afterward.
+  const initialResult = (()=>{
+    const raw = loadSaved() || seedFromExistingCaption();
+    if(!raw) return raw;
+    return raw.map(o=>({...o, tov: o.tov||tov, language: o.language||langs[0]}));
+  })();
+
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState(()=>initialResult);
   const [chosenIdx, setChosenIdx] = useState(()=>initialResult&&post?.caption?0:null);
