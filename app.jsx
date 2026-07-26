@@ -4204,7 +4204,9 @@ No markdown, no explanation. Return the JSON array only.`;
       : `{"tov_label":"...","caption":"...","hashtags":"..."}`;
     const optLangs = (opt.languages&&opt.languages.length) ? opt.languages : langs;
     const optTov = opt.tov || tov;
+    const customTov = (opt.tov_custom||"").trim();
     const prompt = `${buildSharedHeader(optLangs, optTov)}
+${customTov ? `ADDITIONAL TONE NOTE (layer this on top of the tone of voice above): ${customTov}` : ""}
 
 You previously wrote this option (angle: "${opt.tov_label||""}"):
 ${JSON.stringify(opt)}
@@ -4218,7 +4220,7 @@ ${shapeInstr}`;
       const raw = await agentAI("content_creator", `Regenerate option: ${post?.title||"post"}`, prompt, 3000);
       const objMatch = (raw||"").match(/\{[\s\S]*\}/);
       const parsed = JSON.parse(objMatch ? objMatch[0] : raw);
-      setResult(prev=>prev.map((o,i)=>i===idx?capOptHashtags({...o,...parsed,languages:optLangs,tov:optTov}):o));
+      setResult(prev=>prev.map((o,i)=>i===idx?capOptHashtags({...o,...parsed,languages:optLangs,tov:optTov,tov_custom:customTov}):o));
       setOptionNotes(prev=>({...prev,[idx]:""}));
     } catch(e) { alert("Sara couldn't regenerate that option — please try again."); }
     setRegenIdx(null);
@@ -4400,6 +4402,14 @@ ${shapeInstr}`;
                   {t.label}
                 </button>
               ))}
+            </div>
+
+            {/* Separate free-text tone field — for a specific angle beyond
+                the 5 presets (e.g. "nostalgic", "urgent"), applied on top of
+                whichever preset chip above is selected when regenerating */}
+            <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderBottom:"1px solid var(--border)"}}>
+              <span style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",flexShrink:0}}>Custom tone:</span>
+              <input value={opt.tov_custom||""} onChange={e=>updateField(idx,"tov_custom",e.target.value)} placeholder="e.g. nostalgic, urgent, playful-but-formal…" style={{flex:1,fontSize:11.5,padding:"3px 8px",borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontFamily:"inherit"}}/>
             </div>
 
             {/* REEL content */}
@@ -4636,8 +4646,6 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [saraFeedback, setSaraFeedback] = useState("");
-  const [saraRegen, setSaraRegen] = useState(false);
   const [captionInlineEdit, setCaptionInlineEdit] = useState(false);
   const [captionDraft, setCaptionDraft] = useState({caption:"",hashtags:"",text_on_visual:"",reel_hook:""});
   const [publishing, setPublishing] = useState(false);
@@ -4675,15 +4683,12 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
       post_type: post.post_type||"image",
       priority: post.priority||"medium",
       assigned_to: post.assigned_to||"",
+      assigned_to_extra: parseJ(post.assigned_to_extra||"[]"),
       scheduled_date: post.scheduled_date||"",
       scheduled_time: post.scheduled_time||"",
       due_date: post.due_date||"",
       due_time: post.due_time||"",
       estimated_minutes: post.estimated_minutes||"",
-      caption: post.caption||"",
-      hashtags: post.hashtags||"",
-      text_on_visual: post.text_on_visual||"",
-      reel_hook: post.reel_hook||"",
     });
     setEditing(true);
   };
@@ -4694,6 +4699,13 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
       return {...f, platforms: next.length?next:[p]}; // never let it go fully empty
     });
   };
+  const toggleExtraAssignee = (email) => {
+    setEditForm(f=>{
+      const cur = f.assigned_to_extra||[];
+      const has = cur.includes(email);
+      return {...f, assigned_to_extra: has ? cur.filter(e=>e!==email) : [...cur, email]};
+    });
+  };
   const saveEdit = () => {
     if(editForm.scheduled_date && !editForm.scheduled_time) return; // publish date needs a time too
     if(editForm.due_date && !editForm.due_time) return; // due date needs a time too
@@ -4701,8 +4713,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
     // columns, calendar icons, filters) as the first picked platform, while
     // `platforms` carries the full set for showing every badge here.
     onEdit&&onEdit({...post, ...editForm, platform: editForm.platforms[0],
-      caption: editForm.caption, hashtags: editForm.hashtags,
-      text_on_visual: editForm.text_on_visual, reel_hook: editForm.reel_hook});
+      assigned_to_extra: JSON.stringify((editForm.assigned_to_extra||[]).filter(e=>e&&e!==editForm.assigned_to))});
     setEditing(false);
   };
   const handleDelete = () => {
@@ -4998,9 +5009,13 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
             <div style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
               <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Assigned To</p>
               {assignee ? (
-                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                   <Avatar name={assignee.name} size={20} role={assignee.role}/>
                   <span style={{fontSize:13,fontWeight:600}}>{assignee.name}</span>
+                  {parseJ(post.assigned_to_extra||"[]").map(email=>{
+                    const m = team?.find(t=>t.email===email);
+                    return m ? <Avatar key={email} name={m.name} size={20} role={m.role} title={m.name}/> : null;
+                  })}
                 </div>
               ) : <span style={{fontSize:12,color:"var(--text3)"}}>Unassigned</span>}
             </div>
@@ -5062,11 +5077,25 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 </select>
               </div>
               <div>
-                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Assign To</label>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Assign To <span style={{fontWeight:400}}>(primary)</span></label>
                 <select value={editForm.assigned_to} onChange={e=>setEditForm(f=>({...f,assigned_to:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}>
                   <option value="">— Unassigned —</option>
                   {(team||[]).map(m=><option key={m.email} value={m.email}>{m.name}</option>)}
                 </select>
+              </div>
+              <div style={{gridColumn:"1/-1"}}>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Also Assign <span style={{fontWeight:400}}>(optional extra members)</span></label>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {(team||[]).filter(m=>m.email!==editForm.assigned_to).map(m=>{
+                    const active = (editForm.assigned_to_extra||[]).includes(m.email);
+                    return (
+                      <button key={m.email} type="button" onClick={()=>toggleExtraAssignee(m.email)} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px 5px 6px",borderRadius:99,border:`1px solid ${active?"var(--accent)":"var(--border2)"}`,background:active?"var(--accent)22":"var(--surface)",color:active?"var(--accent)":"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                        <Avatar name={m.name} size={18} role={m.role}/>
+                        {m.name}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
               <div>
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Due Date <span style={{fontWeight:400}}>(deadline to finish)</span></label>
@@ -5090,54 +5119,6 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Est. Duration (mins, for Timeline)</label>
                 <input type="number" min={5} step={5} value={editForm.estimated_minutes||""} onChange={e=>setEditForm(f=>({...f,estimated_minutes:e.target.value?Number(e.target.value):""}))} placeholder={`Auto (${estimateDuration({post_type:editForm.post_type,priority:editForm.priority})} min)`} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
               </div>
-            </div>
-            {/* Content fields */}
-            <div style={{borderTop:"1px solid var(--border2)",paddingTop:10,gridColumn:"1/-1"}}>
-              <p style={{fontSize:11,fontWeight:700,color:"var(--accent)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Content</p>
-            </div>
-            {editForm.post_type==="reel"&&(
-              <div style={{gridColumn:"1/-1"}}>
-                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Hook (first 3 seconds)</label>
-                <input value={editForm.reel_hook||""} onChange={e=>setEditForm(f=>({...f,reel_hook:e.target.value}))} placeholder="Scroll-stopping opener..." style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
-              </div>
-            )}
-            {editForm.post_type!=="article"&&(
-              <div style={{gridColumn:"1/-1"}}>
-                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Text on Visual</label>
-                <input value={editForm.text_on_visual||""} onChange={e=>setEditForm(f=>({...f,text_on_visual:e.target.value}))} placeholder="Short catchy headline on the design..." style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
-              </div>
-            )}
-            <div style={{gridColumn:"1/-1"}}>
-              <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>{editForm.post_type==="article"?"Article Body":"Caption"}</label>
-              <textarea value={editForm.caption||""} onChange={e=>setEditForm(f=>({...f,caption:e.target.value}))} rows={editForm.post_type==="article"?8:4} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)",resize:"vertical",fontFamily:"inherit"}}/>
-            </div>
-            {editForm.post_type!=="story"&&(
-              <div style={{gridColumn:"1/-1"}}>
-                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Hashtags</label>
-                <input value={editForm.hashtags||""} onChange={e=>setEditForm(f=>({...f,hashtags:e.target.value}))} placeholder="#hashtag1 #hashtag2" style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
-              </div>
-            )}
-            <div style={{gridColumn:"1/-1",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:8,padding:10,display:"flex",gap:8,alignItems:"flex-end"}}>
-              <div style={{flex:1}}>
-                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Feedback for Sara (optional)</label>
-                <input value={saraFeedback} onChange={e=>setSaraFeedback(e.target.value)} placeholder="e.g. more playful tone, mention the summer sale..." style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:12,color:"var(--text)"}}/>
-              </div>
-              <button onClick={async()=>{
-                if(!post.client_id&&!post.client_name){alert("No client — Sara needs brand context.");return;}
-                setSaraRegen(true);
-                try{
-                  const kind=editForm.post_type==="reel"?"reel":editForm.post_type==="carousel"?"carousel":editForm.post_type==="article"?"article":editForm.post_type==="story"?"story":"static";
-                  const aiRes=await agentAI("content_creator",`Rewrite: ${editForm.title}`,`You are Sara, a senior content creator. Review the client brain below.\n${clientBrainBlock(post.client_id,post.client_name)}\n\nPost: ${editForm.title}\nCaption: ${editForm.caption}\nText on Visual: ${editForm.text_on_visual}\nHashtags: ${editForm.hashtags}\n${kind==="reel"?`Hook: ${editForm.reel_hook}\n`:""}\nFeedback: ${saraFeedback||"Fresh rewrite, different angle."}\n\nReturn ONLY valid JSON: {"caption":"...","hashtags":"...","text_on_visual":"..."${kind==="reel"?`,"reel_hook":"..."`:""}}`
-                  ,kind==="article"?2500:700);
-                  const m=aiRes.match(/\{[\s\S]*\}/);
-                  const idea=JSON.parse(m?m[0]:aiRes);
-                  setEditForm(f=>({...f,caption:idea.caption||f.caption,hashtags:idea.hashtags??f.hashtags,text_on_visual:idea.text_on_visual??f.text_on_visual,reel_hook:kind==="reel"?(idea.reel_hook||f.reel_hook):f.reel_hook}));
-                  setSaraFeedback("");
-                }catch(e){alert("Sara couldn't rewrite this — please try again.");}
-                setSaraRegen(false);
-              }} disabled={saraRegen} style={{display:"flex",alignItems:"center",gap:5,padding:"8px 14px",borderRadius:7,border:"1px solid #10b98166",background:"#10b98111",color:"#10b981",fontSize:12,fontWeight:700,cursor:saraRegen?"wait":"pointer",whiteSpace:"nowrap",flexShrink:0}}>
-                {saraRegen?<><Spinner size={13}/> Writing…</>:<><Ico d={Icons.sparkle} size={13} stroke="#10b981"/> Regenerate with Sara</>}
-              </button>
             </div>
             <div style={{display:"flex",gap:8,justifyContent:"flex-end",gridColumn:"1/-1"}}>
               <button onClick={()=>setEditing(false)} style={{padding:"7px 16px",borderRadius:7,fontSize:12,fontWeight:600,background:"var(--surface)",border:"1px solid var(--border2)",color:"var(--text2)"}}>Cancel</button>
