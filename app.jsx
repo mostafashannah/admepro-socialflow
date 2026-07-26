@@ -3950,7 +3950,7 @@ function ContentPhaseGenerator({post, project, clientKnowledge, clientIntelligen
     return [{
       tov_label: post.tov_used || "Selected",
       tov: CONTENT_TOVS.find(t=>t.label===post.tov_used)?.key || "professional",
-      language: post.content_language || "english",
+      languages: post.content_language ? [post.content_language] : ["english"],
       caption: post.caption||"", hashtags: post.hashtags||"",
       hook: post.reel_hook||"", script: post.reel_script||"", cta: post.reel_cta||"",
       cover: post.carousel_cover||"", slides: parseJ(post.carousel_slides||"[]"),
@@ -3975,7 +3975,7 @@ function ContentPhaseGenerator({post, project, clientKnowledge, clientIntelligen
   const initialResult = (()=>{
     const raw = loadSaved() || seedFromExistingCaption();
     if(!raw) return raw;
-    return raw.map(o=>({...o, tov: o.tov||tov, language: o.language||langs[0]}));
+    return raw.map(o=>({...o, tov: o.tov||tov, languages: (o.languages&&o.languages.length?o.languages:(o.language?[o.language]:langs))}));
   })();
 
   const [generating, setGenerating] = useState(false);
@@ -3995,6 +3995,15 @@ function ContentPhaseGenerator({post, project, clientKnowledge, clientIntelligen
   const isCarousel = postType === "carousel";
 
   const langOf = (key) => CONTENT_LANGUAGES.find(l=>l.key===key) || CONTENT_LANGUAGES[0];
+  // Selecting more than one language means this ONE option should contain
+  // all of them together (e.g. an Arabic + English bilingual caption) —
+  // not that each option gets a different single language.
+  const combinedLangInstruction = (keys) => {
+    const arr = (keys&&keys.length) ? keys : ["english"];
+    if(arr.length===1) return langOf(arr[0]).instruction;
+    return `Write this content so it includes ALL of the following languages together in the SAME piece (e.g. one language's version, then a line break, then the other's — do not pick only one and drop the rest):\n` +
+      arr.map(k=>`- ${langOf(k).label.trim()}: ${langOf(k).instruction}`).join("\n");
+  };
   const tovOf = (key) => CONTENT_TOVS.find(t=>t.key===key) || CONTENT_TOVS[0];
   const tovObj = tovOf(tov);
   const tovKeyFromLabel = (label) => CONTENT_TOVS.find(t=>t.label===label)?.key || null;
@@ -4046,8 +4055,8 @@ ${approvedBlock}
 ${rejectedBlock}`.trim();
   };
 
-  const buildSharedHeader = (langKey, tovKey) => {
-    const langInstr = langOf(langKey||langs[0]).instruction;
+  const buildSharedHeader = (langKeys, tovKey) => {
+    const langInstr = combinedLangInstruction(langKeys&&langKeys.length?langKeys:langs);
     const tovForThis = tovOf(tovKey||tov);
     const tovInstr = `Tone of Voice: ${tovForThis.label} — ${tovForThis.desc}`;
     const ctx = clientCtx();
@@ -4083,25 +4092,16 @@ ${postInfo}`;
   };
 
   const buildPrompt = () => {
-    const sharedHeader = buildSharedHeader(langs[0]);
-    // Each of the 3 initial options gets its own language — cycling through
-    // whichever languages are selected, so a multi-language pick produces a
-    // genuine mix instead of 3 options all in the same one.
-    const optionLangs = [0,1,2].map(i=>langs[i%langs.length]);
-    const langAssignment = optionLangs.map((k,i)=>`Option ${i+1}: write in ${langOf(k).label.trim()} — ${langOf(k).instruction}`).join("\n");
+    const sharedHeader = buildSharedHeader(langs);
 
     if(isReel) return `${sharedHeader}
 
-Generate 3 REEL content options. Each must use a different angle/energy. Study the approved examples above and match that client's style.
-
-LANGUAGE PER OPTION (override the single LANGUAGE INSTRUCTION above with this per-option assignment):
-${langAssignment}
+Generate 3 REEL content options. Each must use a different angle/energy. Study the approved examples above and match that client's style. Every option must follow the LANGUAGE INSTRUCTION above exactly — if it lists more than one language, EVERY option must contain all of them together, not just one.
 
 Return ONLY a valid JSON array with exactly 3 objects:
 [
   {
     "tov_label": "Name of this tone angle",
-    "language": "one of: ${CONTENT_LANGUAGES.map(l=>l.key).join(", ")} — matching the assignment above",
     "hook": "Scroll-stopping opening line (max 15 words) — make it feel like THIS client's voice",
     "script": "Full reel script 30-45 seconds. Use [PAUSE] for pauses. Match client's speaking style.",
     "cta": "Call-to-action (1 sentence, match client's CTA style from past captions)",
@@ -4114,16 +4114,12 @@ No markdown, no explanation outside JSON. Return array only.`;
 
     if(isCarousel) return `${sharedHeader}
 
-Generate 3 CAROUSEL options, each with a different angle. Match this client's approved caption style.
-
-LANGUAGE PER OPTION (override the single LANGUAGE INSTRUCTION above with this per-option assignment):
-${langAssignment}
+Generate 3 CAROUSEL options, each with a different angle. Match this client's approved caption style. Every option must follow the LANGUAGE INSTRUCTION above exactly — if it lists more than one language, EVERY option must contain all of them together, not just one.
 
 Return ONLY a valid JSON array with exactly 3 objects:
 [
   {
     "tov_label": "Name of this angle",
-    "language": "one of: ${CONTENT_LANGUAGES.map(l=>l.key).join(", ")} — matching the assignment above",
     "cover": "Cover slide headline (max 8 words, matches client's style)",
     "slides": [
       {"title": "Slide title (short)", "body": "1-2 sentences matching client's writing style"},
@@ -4141,16 +4137,12 @@ Exactly 4 slides per option. No markdown. Return array only.`;
     // Default: Image / Story / Static
     return `${sharedHeader}
 
-LANGUAGE PER OPTION (override the single LANGUAGE INSTRUCTION above with this per-option assignment):
-${langAssignment}
-
-Generate 3 CAPTION options, each with a completely different tone angle. The captions must feel like they were written by someone who knows this client deeply — not generic social media copy.
+Generate 3 CAPTION options, each with a completely different tone angle. The captions must feel like they were written by someone who knows this client deeply — not generic social media copy. Every option must follow the LANGUAGE INSTRUCTION above exactly — if it lists more than one language, EVERY option must contain all of them together, not just one.
 
 Return ONLY a valid JSON array with exactly 3 objects:
 [
   {
     "tov_label": "Name of this tone/angle",
-    "language": "one of: ${CONTENT_LANGUAGES.map(l=>l.key).join(", ")} — matching the assignment above",
     "caption": "The full caption. Match the length, style, emoji usage, and energy of the approved examples above. This should feel like an authentic continuation of this client's feed.",
     "hashtags": "max 5 hashtags matching the client's typical hashtag format"
   }
@@ -4173,8 +4165,7 @@ No markdown, no explanation. Return the JSON array only.`;
         setGenerating(false); return;
       }
       const arr = Array.isArray(parsed) ? parsed : [];
-      const optionLangs = [0,1,2].map(i=>langs[i%langs.length]);
-      setResult(arr.map((o,i)=>capOptHashtags({...o, tov, language: (CONTENT_LANGUAGES.some(l=>l.key===o.language)?o.language:optionLangs[i]||langs[0])})));
+      setResult(arr.map(o=>capOptHashtags({...o, tov, languages:[...langs]})));
     } catch(e) {
       console.error("[ContentGen] Generation error:", e.message);
       setResult([{tov_label:"Error",caption:`Generation failed: ${e.message}`,hashtags:"",hook:"",script:"",cta:"",cover:"",slides:[],cta_slide:"",music_direction:""}]);
@@ -4184,6 +4175,15 @@ No markdown, no explanation. Return the JSON array only.`;
 
   const updateField = (optIdx, field, val) => {
     setResult(prev=>prev.map((o,i)=>i===optIdx?{...o,[field]:val}:o));
+  };
+  const toggleOptionLang = (optIdx, key) => {
+    setResult(prev=>prev.map((o,i)=>{
+      if(i!==optIdx) return o;
+      const cur = (o.languages&&o.languages.length) ? o.languages : langs;
+      const has = cur.includes(key);
+      const next = has ? (cur.length>1?cur.filter(k=>k!==key):cur) : [...cur, key];
+      return {...o, languages: next};
+    }));
   };
   const updateSlide = (optIdx, slideIdx, field, val) => {
     setResult(prev=>prev.map((o,i)=>i===optIdx?{...o,slides:o.slides.map((s,si)=>si===slideIdx?{...s,[field]:val}:s)}:o));
@@ -4202,15 +4202,15 @@ No markdown, no explanation. Return the JSON array only.`;
       : isCarousel
       ? `{"tov_label":"...","cover":"...","slides":[{"title":"...","body":"..."},{"title":"...","body":"..."},{"title":"...","body":"..."},{"title":"...","body":"..."}],"cta_slide":"...","caption":"...","hashtags":"..."}`
       : `{"tov_label":"...","caption":"...","hashtags":"..."}`;
-    const optLang = opt.language || langs[0];
+    const optLangs = (opt.languages&&opt.languages.length) ? opt.languages : langs;
     const optTov = opt.tov || tov;
-    const prompt = `${buildSharedHeader(optLang, optTov)}
+    const prompt = `${buildSharedHeader(optLangs, optTov)}
 
 You previously wrote this option (angle: "${opt.tov_label||""}"):
 ${JSON.stringify(opt)}
 
 ${note ? `FEEDBACK FROM THE TEAM — apply this: ${note}` : "The team asked for a fresh alternative on this same angle — don't just repeat the same wording."}
-Keep writing in ${langOf(optLang).label.trim()} unless the feedback explicitly asks to change the language.
+Keep following the LANGUAGE INSTRUCTION above unless the feedback explicitly asks to change the language(s).
 
 Return ONLY one valid JSON object in this exact shape, no markdown, no explanation:
 ${shapeInstr}`;
@@ -4218,7 +4218,7 @@ ${shapeInstr}`;
       const raw = await agentAI("content_creator", `Regenerate option: ${post?.title||"post"}`, prompt, 3000);
       const objMatch = (raw||"").match(/\{[\s\S]*\}/);
       const parsed = JSON.parse(objMatch ? objMatch[0] : raw);
-      setResult(prev=>prev.map((o,i)=>i===idx?capOptHashtags({...o,...parsed,language:optLang,tov:optTov}):o));
+      setResult(prev=>prev.map((o,i)=>i===idx?capOptHashtags({...o,...parsed,languages:optLangs,tov:optTov}):o));
       setOptionNotes(prev=>({...prev,[idx]:""}));
     } catch(e) { alert("Sara couldn't regenerate that option — please try again."); }
     setRegenIdx(null);
@@ -4235,17 +4235,12 @@ ${shapeInstr}`;
       ? `{"tov_label":"...","cover":"...","slides":[{"title":"...","body":"..."},{"title":"...","body":"..."},{"title":"...","body":"..."},{"title":"...","body":"..."}],"cta_slide":"...","caption":"...","hashtags":"..."}`
       : `{"tov_label":"...","caption":"...","hashtags":"..."}`;
     const existing = (result||[]).map(o=>`- "${o.tov_label||""}": ${(o.caption||o.hook||"").slice(0,150)}`).join("\n") || "(none yet)";
-    const newLang = langs[(result||[]).length % langs.length];
-    const langNote = langs.length>1
-      ? `Write this new option in ${langOf(newLang).label.trim()}.`
-      : "";
-    const prompt = `${buildSharedHeader(newLang)}
+    const prompt = `${buildSharedHeader(langs)}
 
 These options already exist for this post — the new one must feel different from ALL of them, a fresh angle, not a rewording:
 ${existing}
 
 ${note ? `FEEDBACK FROM THE TEAM — apply this to the new option, this is the most important instruction: ${note}` : "Give a genuinely different angle/energy than the options above."}
-${langNote}
 
 Return ONLY one valid JSON object in this exact shape, no markdown, no explanation:
 ${shapeInstr}`;
@@ -4253,7 +4248,7 @@ ${shapeInstr}`;
       const raw = await agentAI("content_creator", `Add option: ${post?.title||"post"}`, prompt, 3000);
       const objMatch = (raw||"").match(/\{[\s\S]*\}/);
       const parsed = JSON.parse(objMatch ? objMatch[0] : raw);
-      setResult(prev=>[capOptHashtags({...parsed, language:newLang, tov}), ...(prev||[])]);
+      setResult(prev=>[capOptHashtags({...parsed, languages:[...langs], tov}), ...(prev||[])]);
       setAddOptionNote("");
       // Everything shifted down by one slot since the new option was prepended.
       setChosenIdx(prev=>prev==null?null:prev+1);
@@ -4268,16 +4263,17 @@ ${shapeInstr}`;
     setChosenIdx(idx);
     const caption = opt.caption||"";
     const hashtags = opt.hashtags||"";
+    const optLangs = (opt.languages&&opt.languages.length) ? opt.languages : langs;
     if(onCaptionChosen) onCaptionChosen(post, caption);
     if(onMemoryLearn && client?.id) {
-      onMemoryLearn(client.id, client.name, "preferred_language", lang, "auto");
+      onMemoryLearn(client.id, client.name, "preferred_language", optLangs.map(k=>langOf(k).label.trim()).join(" + "), "auto");
       if(opt.tov_label) onMemoryLearn(client.id, client.name, "chosen_tov", opt.tov_label, "auto");
     }
     onChoose({...post, caption, hashtags,
       reel_hook: opt.hook||"", reel_script: opt.script||"", reel_cta: opt.cta||"",
       carousel_cover: opt.cover||"", carousel_slides: JSON.stringify(opt.slides||[]),
       music_direction: opt.music_direction||"",
-      tov_used: opt.tov_label||tov, content_language: lang,
+      tov_used: opt.tov_label||opt.tov||tov, content_language: optLangs[0]||langs[0],
     });
   };
 
@@ -4379,15 +4375,20 @@ ${shapeInstr}`;
               </div>
             </div>
 
-            {/* Per-option language — independent of the other options, used
-                the next time this specific option is regenerated */}
+            {/* Per-option language(s) — independent of the other options; if
+                more than one is picked, this option should contain all of
+                them together (bilingual), used the next time it's regenerated */}
             <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderBottom:"1px solid var(--border)",flexWrap:"wrap"}}>
               <span style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Language:</span>
-              {CONTENT_LANGUAGES.map(l=>(
-                <button key={l.key} onClick={()=>updateField(idx,"language",l.key)} style={{padding:"2px 9px",borderRadius:12,fontSize:10.5,fontWeight:600,border:"none",cursor:"pointer",background:(opt.language||langs[0])===l.key?"var(--accent)":"var(--surface)",color:(opt.language||langs[0])===l.key?"#fff":"var(--text2)",outline:(opt.language||langs[0])===l.key?"none":"1px solid var(--border2)"}}>
-                  {l.label.trim()}
-                </button>
-              ))}
+              {CONTENT_LANGUAGES.map(l=>{
+                const optLangs = (opt.languages&&opt.languages.length) ? opt.languages : langs;
+                const active = optLangs.includes(l.key);
+                return (
+                  <button key={l.key} onClick={()=>toggleOptionLang(idx,l.key)} style={{padding:"2px 9px",borderRadius:12,fontSize:10.5,fontWeight:600,border:"none",cursor:"pointer",background:active?"var(--accent)":"var(--surface)",color:active?"#fff":"var(--text2)",outline:active?"none":"1px solid var(--border2)"}}>
+                    {active&&"✓ "}{l.label.trim()}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Per-option tone of voice — same idea as language: independent
