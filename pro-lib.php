@@ -1343,19 +1343,33 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
     if ($name === 'search_tasks') {
-        $sql = "SELECT title, stage, scheduled_date, client_name FROM posts WHERE 1=1";
+        // Resolve the sender's email — assigned_to stores email, not name/id.
+        $senderEmail = null;
+        if ($senderId) {
+            $em = $pdo->prepare("SELECT email FROM team_members WHERE id = :id LIMIT 1");
+            $em->execute([':id' => $senderId]);
+            $senderEmail = $em->fetchColumn() ?: null;
+        }
+
+        $sql = "SELECT title, stage, scheduled_date, client_name, assigned_to, due_date, priority FROM posts WHERE 1=1";
         $params = [];
         if (!empty($input['query']))       { $sql .= " AND title LIKE :q";       $params[':q'] = '%' . $input['query'] . '%'; }
         if (!empty($input['stage']))       { $sql .= " AND stage = :s";          $params[':s'] = $input['stage']; }
         if (!empty($input['client_name'])) { $sql .= " AND client_name LIKE :c"; $params[':c'] = '%' . $input['client_name'] . '%'; }
 
         if ($isAdmin) {
-            if (!empty($input['assigned_to'])) { $sql .= " AND assigned_to = :a"; $params[':a'] = $input['assigned_to']; }
+            if (!empty($input['assigned_to'])) { $sql .= " AND assigned_to LIKE :a"; $params[':a'] = '%' . $input['assigned_to'] . '%'; }
         } elseif ($isAM) {
-            $sql .= " AND client_id IN (SELECT id FROM clients WHERE account_manager_id = :mid)";
+            // account_manager_id is a JSON array — use JSON_CONTAINS
+            $sql .= " AND client_id IN (SELECT id FROM clients WHERE JSON_CONTAINS(account_manager_id, JSON_QUOTE(:mid)))";
             $params[':mid'] = $senderId;
         } else {
-            $sql .= " AND assigned_to = :a"; $params[':a'] = $senderName;
+            // Non-admin: show only tasks assigned to this person (match by email)
+            if ($senderEmail) {
+                $sql .= " AND assigned_to = :a"; $params[':a'] = $senderEmail;
+            } else {
+                $sql .= " AND assigned_to = :a"; $params[':a'] = $senderName;
+            }
         }
 
         // DESC, not ASC — with only 15 rows returned, ascending order meant
