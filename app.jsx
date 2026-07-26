@@ -3977,12 +3977,6 @@ function ContentPhaseGenerator({post, project, clientKnowledge, clientIntelligen
   const [regenIdx, setRegenIdx] = useState(null);
   const [addingOption, setAddingOption] = useState(false);
   const [addOptionNote, setAddOptionNote] = useState("");
-  const [addOptionLangs, setAddOptionLangs] = useState(()=>[langs[0]]);
-  const toggleAddOptionLang = (key) => setAddOptionLangs(prev=>{
-    const has = prev.includes(key);
-    if(has) return prev.length>1 ? prev.filter(k=>k!==key) : prev;
-    return [...prev, key];
-  });
 
   // Persist result
   useEffect(()=>{ if(!lsKey) return; try{ result ? localStorage.setItem(lsKey,JSON.stringify(result)) : localStorage.removeItem(lsKey); }catch(e){} },[result]);
@@ -4232,9 +4226,9 @@ ${shapeInstr}`;
       ? `{"tov_label":"...","cover":"...","slides":[{"title":"...","body":"..."},{"title":"...","body":"..."},{"title":"...","body":"..."},{"title":"...","body":"..."}],"cta_slide":"...","caption":"...","hashtags":"..."}`
       : `{"tov_label":"...","caption":"...","hashtags":"..."}`;
     const existing = (result||[]).map(o=>`- "${o.tov_label||""}": ${(o.caption||o.hook||"").slice(0,150)}`).join("\n") || "(none yet)";
-    const newLang = addOptionLangs[0]||langs[0];
-    const langNote = addOptionLangs.length>1
-      ? `Write this new option in ${addOptionLangs.map(k=>langOf(k).label.trim()).join(" mixed with ")}.`
+    const newLang = langs[(result||[]).length % langs.length];
+    const langNote = langs.length>1
+      ? `Write this new option in ${langOf(newLang).label.trim()}.`
       : "";
     const prompt = `${buildSharedHeader(newLang)}
 
@@ -4300,9 +4294,14 @@ ${shapeInstr}`;
             <p style={{fontSize:11,color:"var(--text3)"}}>3 options to start · add more anytime · editable · push to Design</p>
           </div>
         </div>
-        <Btn size="sm" onClick={handleGenerate} disabled={generating}>
-          {generating?<><Spinner size={12}/> Sara is now working…</>:<><Ico d={Icons.sparkle} size={12}/>{result?"Regenerate":"Generate 3 Options"}</>}
-        </Btn>
+        {/* Only shown before anything exists — once options are generated,
+            each one has its own Regenerate, so a global "wipe all 3" button
+            here just duplicates that with no real use. */}
+        {!result&&(
+          <Btn size="sm" onClick={handleGenerate} disabled={generating}>
+            {generating?<><Spinner size={12}/> Sara is now working…</>:<><Ico d={Icons.sparkle} size={12}/>Generate 3 Options</>}
+          </Btn>
+        )}
       </div>
 
       <div style={{padding:"14px 18px",display:"flex",flexDirection:"column",gap:16}}>
@@ -4328,19 +4327,11 @@ ${shapeInstr}`;
           </div>
         </div>
 
-        {/* Add one more option, without wiping the existing ones — its own
-            language pick + note are applied only to this new option, and it
-            lands at the top of the list once generated. */}
+        {/* Add one more option, without wiping the existing ones — uses
+            whichever Language(s) + Tone are picked above, and lands at the
+            top of the list once generated. */}
         {result&&result.length>0&&(
           <div style={{display:"flex",flexDirection:"column",gap:8,padding:"12px 14px",border:"1px dashed var(--border2)",borderRadius:"var(--rs)"}}>
-            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-              <span style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>New option language:</span>
-              {CONTENT_LANGUAGES.map(l=>(
-                <button key={l.key} onClick={()=>toggleAddOptionLang(l.key)} style={{padding:"2px 9px",borderRadius:12,fontSize:10.5,fontWeight:600,border:"none",cursor:"pointer",background:addOptionLangs.includes(l.key)?"var(--accent)":"var(--surface)",color:addOptionLangs.includes(l.key)?"#fff":"var(--text2)",outline:addOptionLangs.includes(l.key)?"none":"1px solid var(--border2)"}}>
-                  {addOptionLangs.includes(l.key)&&"✓ "}{l.label.trim()}
-                </button>
-              ))}
-            </div>
             <div style={{display:"flex",gap:8}}>
               <input value={addOptionNote} onChange={e=>setAddOptionNote(e.target.value)}
                 placeholder="Notes for the new option (optional)…" style={{flex:1,fontSize:12,padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontFamily:"inherit"}}/>
