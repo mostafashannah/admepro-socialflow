@@ -3418,9 +3418,12 @@ function PostCard({post,project,team,onClick}) {
 // ════════════════════════════════════════════════════════════════
 // KANBAN
 // ════════════════════════════════════════════════════════════════
-function KanbanView({posts,project,team,onPostClick}) {
+function KanbanView({posts,project,team,onPostClick,onStageChange}) {
   const {isMobile} = useResponsive();
   const [showEmpty,setShowEmpty] = useState(false);
+  // Drag state — track which post is being dragged and which column it's over
+  const dragPost = React.useRef(null);
+  const dragOverStage = React.useRef(null);
   // "Post" = post_type is an actual social-media content shape meant to be
   // published to a platform. Everything else stored in post_type
   // (graphic_design, video_production, content_calendar, monthly_report,
@@ -3477,7 +3480,15 @@ function KanbanView({posts,project,team,onPostClick}) {
           {visibleStages.map(stage=>{
             const sp = typedPosts.filter(p=>p.stage===stage.key);
             return (
-              <div key={stage.key} style={{width:230,minWidth:230,maxWidth:230,flexShrink:0,display:"flex",flexDirection:"column",gap:8}}>
+              <div key={stage.key} style={{width:230,minWidth:230,maxWidth:230,flexShrink:0,display:"flex",flexDirection:"column",gap:8}}
+                onDragOver={e=>{e.preventDefault();dragOverStage.current=stage.key;}}
+                onDrop={e=>{
+                  e.preventDefault();
+                  const p = dragPost.current;
+                  if(p && p.stage!==stage.key && onStageChange) onStageChange(p, stage.key);
+                  dragPost.current=null;
+                }}
+              >
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 2px"}}>
                   <div style={{display:"flex",alignItems:"center",gap:7}}>
                     <div style={{width:8,height:8,borderRadius:"50%",background:stage.color}}/>
@@ -3486,7 +3497,11 @@ function KanbanView({posts,project,team,onPostClick}) {
                   <span style={{fontSize:11,color:"var(--text3)",background:"var(--surface2)",padding:"2px 8px",borderRadius:99,border:"1px solid var(--border)"}}>{sp.length}</span>
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:8,minHeight:60}}>
-                  {sp.map(p=><PostCard key={p.id} post={p} project={project} team={team} onClick={onPostClick}/>)}
+                  {sp.map(p=>(
+                    <div key={p.id} draggable onDragStart={()=>{dragPost.current=p;}} onDragEnd={()=>{dragPost.current=null;}} style={{cursor:"grab"}}>
+                      <PostCard post={p} project={project} team={team} onClick={onPostClick}/>
+                    </div>
+                  ))}
                   {sp.length===0&&showEmpty&&(
                     <div style={{border:"1px dashed var(--border)",borderRadius:"var(--r)",padding:"20px 16px",textAlign:"center",color:"var(--text3)",fontSize:12,opacity:0.6}}>
                       No posts
@@ -3502,7 +3517,15 @@ function KanbanView({posts,project,team,onPostClick}) {
           {visibleStages.map(stage=>{
             const sp = typedPosts.filter(p=>p.stage===stage.key);
             return (
-              <div key={stage.key} style={{flex:"1 0 260px",minWidth:260,maxWidth:300,display:"flex",flexDirection:"column",gap:8}}>
+              <div key={stage.key} style={{flex:"1 0 260px",minWidth:260,maxWidth:300,display:"flex",flexDirection:"column",gap:8}}
+                onDragOver={e=>{e.preventDefault();dragOverStage.current=stage.key;}}
+                onDrop={e=>{
+                  e.preventDefault();
+                  const p = dragPost.current;
+                  if(p && p.stage!==stage.key && onStageChange) onStageChange(p, stage.key);
+                  dragPost.current=null;
+                }}
+              >
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 2px"}}>
                   <div style={{display:"flex",alignItems:"center",gap:7}}>
                     <div style={{width:8,height:8,borderRadius:"50%",background:stage.color}}/>
@@ -3511,7 +3534,11 @@ function KanbanView({posts,project,team,onPostClick}) {
                   <span style={{fontSize:10,color:"var(--text3)",background:"var(--surface2)",padding:"1px 7px",borderRadius:99,border:"1px solid var(--border)"}}>{sp.length}</span>
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:8,minHeight:60}}>
-                  {sp.map(p=><PostCard key={p.id} post={p} project={project} team={team} onClick={onPostClick}/>)}
+                  {sp.map(p=>(
+                    <div key={p.id} draggable onDragStart={()=>{dragPost.current=p;}} onDragEnd={()=>{dragPost.current=null;}} style={{cursor:"grab"}}>
+                      <PostCard post={p} project={project} team={team} onClick={onPostClick}/>
+                    </div>
+                  ))}
                   {sp.length===0&&showEmpty&&(
                     <div style={{border:"1px dashed var(--border)",borderRadius:"var(--r)",padding:"20px 16px",textAlign:"center",color:"var(--text3)",fontSize:12,opacity:0.6}}>
                       No posts
@@ -4455,6 +4482,8 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [saraFeedback, setSaraFeedback] = useState("");
   const [saraRegen, setSaraRegen] = useState(false);
+  const [captionInlineEdit, setCaptionInlineEdit] = useState(false);
+  const [captionDraft, setCaptionDraft] = useState({caption:"",hashtags:"",text_on_visual:"",reel_hook:""});
   const [publishing, setPublishing] = useState(false);
   const [publishResult, setPublishResult] = useState(null);
   // TikTok Content Sharing Guidelines require the posting UI to be built
@@ -4981,11 +5010,59 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(320px,1fr))",gap:16,alignItems:"start"}}>
           {post.caption&&<div style={{display:"flex",flexDirection:"column",gap:6}}>
             <label style={{fontSize:11,fontWeight:700,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Caption</label>
-            <div style={{padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
-              {post.reel_hook&&<p style={{fontSize:13,fontWeight:700,marginBottom:8,paddingBottom:8,borderBottom:"1px dashed var(--border2)",color:"var(--accent)"}}>{"\u{1F3AC}"} Hook (0-3s): {post.reel_hook}</p>}
-              {post.text_on_visual&&<p style={{fontSize:13,fontWeight:700,marginBottom:8,paddingBottom:8,borderBottom:"1px dashed var(--border2)"}}>{"\u{1F5BC}️"} Text on Visual: {post.text_on_visual}</p>}
-              <p style={{fontSize:13,lineHeight:1.7}}>{post.caption}</p>
-              {post.hashtags&&<p style={{fontSize:12,color:"var(--accent)",marginTop:8,fontWeight:500}}>{post.hashtags}</p>}
+            <div style={{border:"2px solid var(--accent)",borderRadius:"var(--rs)",overflow:"hidden"}}>
+              {/* Card header */}
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 14px",background:"var(--surface2)",borderBottom:"1px solid var(--border)"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{width:22,height:22,borderRadius:"50%",background:"var(--accent)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,flexShrink:0}}>✓</div>
+                  <span style={{fontSize:12,fontWeight:700}}>Selected Caption</span>
+                </div>
+                <div style={{display:"flex",gap:6}}>
+                  <button onClick={()=>{ setCaptionDraft({caption:post.caption||"",hashtags:post.hashtags||"",text_on_visual:post.text_on_visual||"",reel_hook:post.reel_hook||""}); setCaptionInlineEdit(v=>!v); }} style={{padding:"3px 10px",borderRadius:6,fontSize:11,fontWeight:600,background:captionInlineEdit?"var(--accent)":"var(--surface)",color:captionInlineEdit?"#fff":"var(--text2)",border:"1px solid var(--border2)",cursor:"pointer"}}>
+                    {captionInlineEdit?"Done":"Edit"}
+                  </button>
+                </div>
+              </div>
+              {/* Content */}
+              <div style={{padding:14,background:"var(--accentbg,var(--surface))",display:"flex",flexDirection:"column",gap:10}}>
+                {captionInlineEdit ? (
+                  <>
+                    {post.post_type==="reel"&&(
+                      <div>
+                        <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:5}}>🎬 Hook (0-3s)</p>
+                        <input value={captionDraft.reel_hook} onChange={e=>setCaptionDraft(d=>({...d,reel_hook:e.target.value}))} style={{width:"100%",fontSize:13,padding:"8px 10px",borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontFamily:"inherit"}}/>
+                      </div>
+                    )}
+                    {post.post_type!=="article"&&(
+                      <div>
+                        <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:5}}>🖼️ Text on Visual</p>
+                        <input value={captionDraft.text_on_visual} onChange={e=>setCaptionDraft(d=>({...d,text_on_visual:e.target.value}))} style={{width:"100%",fontSize:13,padding:"8px 10px",borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontFamily:"inherit"}}/>
+                      </div>
+                    )}
+                    <div>
+                      <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:5}}>{post.post_type==="article"?"Article Body":"Caption"}</p>
+                      <textarea value={captionDraft.caption} onChange={e=>setCaptionDraft(d=>({...d,caption:e.target.value}))} rows={4} style={{width:"100%",fontSize:13,lineHeight:1.7,color:"var(--text)",background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:6,padding:"8px 10px",resize:"vertical",fontFamily:"inherit"}}/>
+                    </div>
+                    {post.post_type!=="story"&&(
+                      <div>
+                        <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:5}}>Hashtags</p>
+                        <input value={captionDraft.hashtags} onChange={e=>setCaptionDraft(d=>({...d,hashtags:e.target.value}))} style={{width:"100%",fontSize:13,padding:"8px 10px",borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontFamily:"inherit"}}/>
+                      </div>
+                    )}
+                    <div style={{display:"flex",gap:8,justifyContent:"flex-end",paddingTop:4}}>
+                      <button onClick={()=>setCaptionInlineEdit(false)} style={{padding:"6px 14px",borderRadius:7,fontSize:12,fontWeight:600,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",cursor:"pointer"}}>Cancel</button>
+                      <button onClick={()=>{ onEdit&&onEdit({...post,...captionDraft}); setCaptionInlineEdit(false); }} style={{padding:"6px 14px",borderRadius:7,fontSize:12,fontWeight:700,border:"none",background:"var(--accent)",color:"#fff",cursor:"pointer"}}>Save</button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {post.reel_hook&&<p style={{fontSize:13,fontWeight:700,marginBottom:0,paddingBottom:8,borderBottom:"1px dashed var(--border2)",color:"var(--accent)"}}>{"\u{1F3AC}"} Hook (0-3s): {post.reel_hook}</p>}
+                    {post.text_on_visual&&<p style={{fontSize:13,fontWeight:700,marginBottom:0,paddingBottom:8,borderBottom:"1px dashed var(--border2)"}}>{"\u{1F5BC}️"} Text on Visual: {post.text_on_visual}</p>}
+                    <p style={{fontSize:13,lineHeight:1.7,margin:0}}>{post.caption}</p>
+                    {post.hashtags&&<p style={{fontSize:12,color:"var(--accent)",marginTop:4,fontWeight:500,margin:0}}>{post.hashtags}</p>}
+                  </>
+                )}
+              </div>
             </div>
           </div>}
 
@@ -6869,6 +6946,7 @@ function AddCalendarPlanModal({open,onClose,clients,team,posts,projects,preselec
   // Each content-type card collapses to a small summary row (same
   // expand/collapse pattern as the generated-items preview list below) —
   // starts open only for kinds that already have a count set.
+  const [startStage,setStartStage] = useState("content_creation");
   const [expandedKinds,setExpandedKinds] = useState({static:true});
   const toggleKindOpen = (kind) => setExpandedKinds(prev=>({...prev,[kind]:!prev[kind]}));
   // Brief textarea starts small but can be enlarged (more rows + a taller
@@ -7139,7 +7217,7 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
       kindCursor[t.kind]++;
       return {...t, due_date: dueDate, due_time: cfg.due_mode==="manual" ? (cfg.manual_due_time||"") : ""};
     });
-    await onGenerate(f, finalTasks);
+    await onGenerate({...f, start_stage: startStage}, finalTasks);
     // Sara learns from the plan she just delivered — best-effort, in the
     // background, so the user isn't kept waiting on it.
     saraLearnFromWork({
@@ -7208,6 +7286,19 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
           {f.date_from && f.date_to && f.date_to<=f.date_from && (
             <p style={{fontSize:12,color:"#ef4444",fontWeight:600,marginTop:-8}}>Publishing End Date must be after the Start Date.</p>
           )}
+
+          {/* Start phase selector */}
+          <div>
+            <p style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:8}}>Posts start at phase</p>
+            <div style={{display:"flex",gap:8}}>
+              {[["content_creation","Content","✍️"],["design","Design","🎨"],["planning","Brief","📋"]].map(([key,label,icon])=>(
+                <button key={key} onClick={()=>setStartStage(key)} style={{flex:1,padding:"10px 8px",borderRadius:9,border:`2px solid ${startStage===key?"var(--accent)":"var(--border)"}`,background:startStage===key?"var(--accentbg,var(--surface2))":"var(--surface2)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,transition:"all 0.15s"}}>
+                  <span style={{fontSize:18}}>{icon}</span>
+                  <span style={{fontSize:12,fontWeight:700,color:startStage===key?"var(--accent)":"var(--text2)"}}>{label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Per-content-type: count, platforms, assignee, brief — each independent */}
           {CALENDAR_KIND_DEFS.map(([kind,label,hint])=>{
@@ -14060,6 +14151,8 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
   // Plain state, not persisted — opening any project should always start on
   // Overview, not silently reopen to whatever tab was last viewed for it.
   const [tab, setTab] = useState("overview");
+  const [taskOrder, setTaskOrder] = React.useState(null); // null = natural order
+  const dragTaskRef = React.useRef(null);
 
   const projectPosts = posts.filter(p=>p.project_id===project.id);
   const projType = PROJECT_TYPES.find(t=>t.id===project.project_type)||PROJECT_TYPES[0];
@@ -14215,14 +14308,51 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
 
       {/* Tasks Tab */}
       {tab==="tasks"&&(
-        <div>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {/* View toggle: list vs kanban */}
+          {projectPosts.length>0&&(
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+              <span style={{fontSize:12,color:"var(--text3)"}}>Drag rows to reorder publishing schedule</span>
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={()=>setTaskOrder(null)} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:taskOrder===null?"var(--accent)":"var(--surface2)",color:taskOrder===null?"#fff":"var(--text2)"}}>List</button>
+                <button onClick={()=>setTaskOrder("kanban")} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:taskOrder==="kanban"?"var(--accent)":"var(--surface2)",color:taskOrder==="kanban"?"#fff":"var(--text2)"}}>Kanban</button>
+              </div>
+            </div>
+          )}
           {projectPosts.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--text3)"}}>No tasks yet.</div>}
+          {taskOrder==="kanban" ? (
+            <KanbanView posts={projectPosts} project={project} team={team} onPostClick={onPostClick} onStageChange={onStageChange}/>
+          ) : (
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {projectPosts.map(post=>{
+            {(()=>{
+              const ordered = taskOrder && taskOrder!=="kanban" ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort((a,b)=>(a.scheduled_date||"").localeCompare(b.scheduled_date||""));
+              return ordered.map((post,idx)=>{
               const stageInfo = STAGE_MAP[post.stage]||{label:post.stage,color:"#888"};
               const assignee = team.find(m=>m.email===post.assigned_to);
               return (
-                <div key={post.id} onClick={()=>onPostClick&&onPostClick(post)} style={{background:"var(--surface1)",borderRadius:10,padding:"12px 16px",border:"1px solid var(--border)",cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
+                <div key={post.id}
+                  draggable
+                  onDragStart={()=>{dragTaskRef.current=post.id;}}
+                  onDragOver={e=>{e.preventDefault();}}
+                  onDrop={e=>{
+                    e.preventDefault();
+                    const fromId = dragTaskRef.current;
+                    if(!fromId || fromId===post.id) return;
+                    const base = taskOrder && taskOrder!=="kanban" ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort((a,b)=>(a.scheduled_date||"").localeCompare(b.scheduled_date||""));
+                    const ids = base.map(p=>p.id);
+                    const fromIdx = ids.indexOf(fromId);
+                    const toIdx = ids.indexOf(post.id);
+                    if(fromIdx<0||toIdx<0) return;
+                    const newIds = [...ids];
+                    newIds.splice(fromIdx,1);
+                    newIds.splice(toIdx,0,fromId);
+                    setTaskOrder(newIds);
+                    dragTaskRef.current=null;
+                  }}
+                  onClick={()=>onPostClick&&onPostClick(post)}
+                  style={{background:"var(--surface1)",borderRadius:10,padding:"12px 16px",border:"1px solid var(--border)",cursor:"grab",display:"flex",alignItems:"center",gap:12}}
+                >
+                  <div style={{color:"var(--text3)",fontSize:16,cursor:"grab",flexShrink:0}}>⠿</div>
                   <div style={{flex:1}}>
                     <div style={{fontWeight:600,fontSize:13,color:"var(--text1)"}}>{post.title}</div>
                     <div style={{color:"var(--text3)",fontSize:12,marginTop:2}}>
@@ -14239,14 +14369,34 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                   <span style={{background:stageInfo.color+"22",color:stageInfo.color,borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600,flexShrink:0}}>{stageInfo.label}</span>
                 </div>
               );
-            })}
+            });})()}
           </div>
+          )}
         </div>
       )}
 
       {/* Calendar Tab */}
       {tab==="calendar"&&(
         <div>
+          {/* Posting date range bar */}
+          {(calStart||calEnd)&&(
+            <div style={{display:"flex",alignItems:"center",gap:16,padding:"10px 16px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",marginBottom:12,flexWrap:"wrap"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Start</span>
+                <span style={{fontSize:13,fontWeight:700,color:"var(--text1)"}}>{calStart||"—"}</span>
+              </div>
+              <div style={{width:40,height:2,background:"var(--accent)",borderRadius:2,flexShrink:0}}/>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>End</span>
+                <span style={{fontSize:13,fontWeight:700,color:"var(--text1)"}}>{calEnd||"—"}</span>
+              </div>
+              {calStart&&calEnd&&(
+                <span style={{marginLeft:"auto",fontSize:12,color:"var(--text3)"}}>
+                  {Math.round((new Date(calEnd)-new Date(calStart))/(86400000))} days
+                </span>
+              )}
+            </div>
+          )}
           {weeks.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--text3)"}}>No posting dates set. Add a posting start/end date to your project.</div>}
           {weeks.length>0&&(
             <div>
@@ -39564,7 +39714,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     const localPosts = tasks.map(t=>({...t,project_id:projectId,id:uid()}));
     setData(d=>({...d,posts:[...localPosts,...d.posts]}));
     const calClient = data.clients.find(c=>c.id===planForm.client_id);
-    const postPayloads = localPosts.map(t=>({title:t.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:t.platform,platforms:t.platforms||[t.platform],post_type:t.post_type,task_type:t.task_type||"",stage:"planning",priority:t.priority,caption:t.caption,hashtags:t.hashtags,text_on_visual:t.text_on_visual||"",reel_hook:t.reel_hook||"",notes:t.notes||"",estimated_minutes:t.estimated_minutes,scheduled_date:t.scheduled_date,scheduled_time:t.scheduled_time,due_date:t.due_date||"",due_time:t.due_time||"",assigned_to:t.assigned_to||""}));
+    const postPayloads = localPosts.map(t=>({title:t.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:t.platform,platforms:t.platforms||[t.platform],post_type:t.post_type,task_type:t.task_type||"",stage:planForm.start_stage||"content_creation",priority:t.priority,caption:t.caption,hashtags:t.hashtags,text_on_visual:t.text_on_visual||"",reel_hook:t.reel_hook||"",notes:t.notes||"",estimated_minutes:t.estimated_minutes,scheduled_date:t.scheduled_date,scheduled_time:t.scheduled_time,due_date:t.due_date||"",due_time:t.due_time||"",assigned_to:t.assigned_to||""}));
     ce("Post",postPayloads).then(res=>{
       const reals = res.entities||[];
       setData(d=>{
