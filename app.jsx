@@ -3949,6 +3949,7 @@ function ContentPhaseGenerator({post, project, clientKnowledge, clientIntelligen
     if(!post?.caption) return null;
     return [{
       tov_label: post.tov_used || "Selected",
+      language: post.content_language || "english",
       caption: post.caption||"", hashtags: post.hashtags||"",
       hook: post.reel_hook||"", script: post.reel_script||"", cta: post.reel_cta||"",
       cover: post.carousel_cover||"", slides: parseJ(post.carousel_slides||"[]"),
@@ -3957,8 +3958,16 @@ function ContentPhaseGenerator({post, project, clientKnowledge, clientIntelligen
   };
   const initialResult = loadSaved() || seedFromExistingCaption();
 
-  const [lang, setLang] = usePersistentState(`sf_lang_${post?.id}`,"english");
+  // Global picks seed new options; each option also carries its own
+  // language (editable per option, since a client's reply may want one
+  // option kept in Egyptian Arabic while another gets rewritten in English).
+  const [langs, setLangs] = usePersistentState(`sf_langs_${post?.id}`,["english"]);
   const [tov, setTov] = usePersistentState(`sf_tov_${post?.id}`, "professional");
+  const toggleLang = (key) => setLangs(prev=>{
+    const has = prev.includes(key);
+    if(has) return prev.length>1 ? prev.filter(k=>k!==key) : prev; // keep at least one
+    return [...prev, key];
+  });
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState(()=>initialResult);
   const [chosenIdx, setChosenIdx] = useState(()=>initialResult&&post?.caption?0:null);
@@ -3975,8 +3984,15 @@ function ContentPhaseGenerator({post, project, clientKnowledge, clientIntelligen
   const isReel = ["reel","video"].includes(postType);
   const isCarousel = postType === "carousel";
 
-  const langObj = CONTENT_LANGUAGES.find(l=>l.key===lang) || CONTENT_LANGUAGES[0];
+  const langOf = (key) => CONTENT_LANGUAGES.find(l=>l.key===key) || CONTENT_LANGUAGES[0];
   const tovObj = CONTENT_TOVS.find(t=>t.key===tov) || CONTENT_TOVS[0];
+
+  // Hard rule: never more than 5 hashtags, regardless of what Sara returns.
+  const capHashtags = (h) => {
+    const tags = String(h||"").match(/#\S+/g) || [];
+    return tags.length<=5 ? (h||"") : tags.slice(0,5).join(" ");
+  };
+  const capOptHashtags = (opt) => ({...opt, hashtags: capHashtags(opt?.hashtags)});
 
   const clientCtx = ()=>{
     const ck = clientKnowledge; const ci = clientIntelligence;
@@ -4018,8 +4034,8 @@ ${approvedBlock}
 ${rejectedBlock}`.trim();
   };
 
-  const buildSharedHeader = () => {
-    const langInstr = langObj.instruction;
+  const buildSharedHeader = (langKey) => {
+    const langInstr = langOf(langKey||langs[0]).instruction;
     const tovInstr = `Tone of Voice: ${tovObj.label} — ${tovObj.desc}`;
     const ctx = clientCtx();
     const hasPastCaptions = (allClientPosts||[]).some(p=>["published","scheduled"].includes(p.stage)&&p.caption);
@@ -4042,6 +4058,7 @@ Brief/Description: ${post.description||"(no brief provided)"}`;
 
 LANGUAGE INSTRUCTION: ${langInstr}
 ${tovInstr}
+HASHTAG RULE (hard limit, always follow): never return more than 5 hashtags, no matter what the client's past style used.
 
 ${learningNote}
 
@@ -4053,20 +4070,30 @@ ${postInfo}`;
   };
 
   const buildPrompt = () => {
-    const sharedHeader = buildSharedHeader();
+    const sharedHeader = buildSharedHeader(langs[0]);
+    // Each of the 3 initial options gets its own language — cycling through
+    // whichever languages are selected, so a multi-language pick produces a
+    // genuine mix instead of 3 options all in the same one.
+    const optionLangs = [0,1,2].map(i=>langs[i%langs.length]);
+    const langAssignment = optionLangs.map((k,i)=>`Option ${i+1}: write in ${langOf(k).label.trim()} — ${langOf(k).instruction}`).join("\n");
+
     if(isReel) return `${sharedHeader}
 
 Generate 3 REEL content options. Each must use a different angle/energy. Study the approved examples above and match that client's style.
+
+LANGUAGE PER OPTION (override the single LANGUAGE INSTRUCTION above with this per-option assignment):
+${langAssignment}
 
 Return ONLY a valid JSON array with exactly 3 objects:
 [
   {
     "tov_label": "Name of this tone angle",
+    "language": "one of: ${CONTENT_LANGUAGES.map(l=>l.key).join(", ")} — matching the assignment above",
     "hook": "Scroll-stopping opening line (max 15 words) — make it feel like THIS client's voice",
     "script": "Full reel script 30-45 seconds. Use [PAUSE] for pauses. Match client's speaking style.",
     "cta": "Call-to-action (1 sentence, match client's CTA style from past captions)",
     "caption": "Instagram caption matching client's style from examples",
-    "hashtags": "#relevant #hashtags matching client's typical hashtag style",
+    "hashtags": "max 5 hashtags matching client's typical hashtag style",
     "music_direction": "Music mood suggestion"
   }
 ]
@@ -4076,10 +4103,14 @@ No markdown, no explanation outside JSON. Return array only.`;
 
 Generate 3 CAROUSEL options, each with a different angle. Match this client's approved caption style.
 
+LANGUAGE PER OPTION (override the single LANGUAGE INSTRUCTION above with this per-option assignment):
+${langAssignment}
+
 Return ONLY a valid JSON array with exactly 3 objects:
 [
   {
     "tov_label": "Name of this angle",
+    "language": "one of: ${CONTENT_LANGUAGES.map(l=>l.key).join(", ")} — matching the assignment above",
     "cover": "Cover slide headline (max 8 words, matches client's style)",
     "slides": [
       {"title": "Slide title (short)", "body": "1-2 sentences matching client's writing style"},
@@ -4089,7 +4120,7 @@ Return ONLY a valid JSON array with exactly 3 objects:
     ],
     "cta_slide": "Final CTA slide text matching client's CTA style",
     "caption": "Caption matching client's style",
-    "hashtags": "#hashtags matching client's typical pattern"
+    "hashtags": "max 5 hashtags matching client's typical pattern"
   }
 ]
 Exactly 4 slides per option. No markdown. Return array only.`;
@@ -4097,14 +4128,18 @@ Exactly 4 slides per option. No markdown. Return array only.`;
     // Default: Image / Story / Static
     return `${sharedHeader}
 
+LANGUAGE PER OPTION (override the single LANGUAGE INSTRUCTION above with this per-option assignment):
+${langAssignment}
+
 Generate 3 CAPTION options, each with a completely different tone angle. The captions must feel like they were written by someone who knows this client deeply — not generic social media copy.
 
 Return ONLY a valid JSON array with exactly 3 objects:
 [
   {
     "tov_label": "Name of this tone/angle",
+    "language": "one of: ${CONTENT_LANGUAGES.map(l=>l.key).join(", ")} — matching the assignment above",
     "caption": "The full caption. Match the length, style, emoji usage, and energy of the approved examples above. This should feel like an authentic continuation of this client's feed.",
-    "hashtags": "#hashtags #matching #client #style (5-8 tags, matching the client's typical hashtag format)"
+    "hashtags": "max 5 hashtags matching the client's typical hashtag format"
   }
 ]
 No markdown, no explanation. Return the JSON array only.`;
@@ -4124,7 +4159,9 @@ No markdown, no explanation. Return the JSON array only.`;
         setResult([{tov_label:"Parse Error",caption:`AI returned invalid JSON. Raw: ${(raw||"").slice(0,200)}`,hashtags:"",hook:"",script:"",cta:"",cover:"",slides:[],cta_slide:"",music_direction:""}]);
         setGenerating(false); return;
       }
-      setResult(Array.isArray(parsed)?parsed:[]);
+      const arr = Array.isArray(parsed) ? parsed : [];
+      const optionLangs = [0,1,2].map(i=>langs[i%langs.length]);
+      setResult(arr.map((o,i)=>capOptHashtags({...o, language: (CONTENT_LANGUAGES.some(l=>l.key===o.language)?o.language:optionLangs[i]||langs[0])})));
     } catch(e) {
       console.error("[ContentGen] Generation error:", e.message);
       setResult([{tov_label:"Error",caption:`Generation failed: ${e.message}`,hashtags:"",hook:"",script:"",cta:"",cover:"",slides:[],cta_slide:"",music_direction:""}]);
@@ -4152,12 +4189,14 @@ No markdown, no explanation. Return the JSON array only.`;
       : isCarousel
       ? `{"tov_label":"...","cover":"...","slides":[{"title":"...","body":"..."},{"title":"...","body":"..."},{"title":"...","body":"..."},{"title":"...","body":"..."}],"cta_slide":"...","caption":"...","hashtags":"..."}`
       : `{"tov_label":"...","caption":"...","hashtags":"..."}`;
-    const prompt = `${buildSharedHeader()}
+    const optLang = opt.language || langs[0];
+    const prompt = `${buildSharedHeader(optLang)}
 
 You previously wrote this option (angle: "${opt.tov_label||""}"):
 ${JSON.stringify(opt)}
 
 ${note ? `FEEDBACK FROM THE TEAM — apply this: ${note}` : "The team asked for a fresh alternative on this same angle — don't just repeat the same wording."}
+Keep writing in ${langOf(optLang).label.trim()} unless the feedback explicitly asks to change the language.
 
 Return ONLY one valid JSON object in this exact shape, no markdown, no explanation:
 ${shapeInstr}`;
@@ -4165,7 +4204,7 @@ ${shapeInstr}`;
       const raw = await agentAI("content_creator", `Regenerate option: ${post?.title||"post"}`, prompt, 3000);
       const objMatch = (raw||"").match(/\{[\s\S]*\}/);
       const parsed = JSON.parse(objMatch ? objMatch[0] : raw);
-      setResult(prev=>prev.map((o,i)=>i===idx?{...o,...parsed}:o));
+      setResult(prev=>prev.map((o,i)=>i===idx?capOptHashtags({...o,...parsed,language:optLang}):o));
       setOptionNotes(prev=>({...prev,[idx]:""}));
     } catch(e) { alert("Sara couldn't regenerate that option — please try again."); }
     setRegenIdx(null);
@@ -4182,7 +4221,8 @@ ${shapeInstr}`;
       ? `{"tov_label":"...","cover":"...","slides":[{"title":"...","body":"..."},{"title":"...","body":"..."},{"title":"...","body":"..."},{"title":"...","body":"..."}],"cta_slide":"...","caption":"...","hashtags":"..."}`
       : `{"tov_label":"...","caption":"...","hashtags":"..."}`;
     const existing = (result||[]).map(o=>`- "${o.tov_label||""}": ${(o.caption||o.hook||"").slice(0,150)}`).join("\n") || "(none yet)";
-    const prompt = `${buildSharedHeader()}
+    const newLang = langs[(result||[]).length % langs.length];
+    const prompt = `${buildSharedHeader(newLang)}
 
 These options already exist for this post — the new one must feel different from ALL of them, a fresh angle, not a rewording:
 ${existing}
@@ -4195,7 +4235,7 @@ ${shapeInstr}`;
       const raw = await agentAI("content_creator", `Add option: ${post?.title||"post"}`, prompt, 3000);
       const objMatch = (raw||"").match(/\{[\s\S]*\}/);
       const parsed = JSON.parse(objMatch ? objMatch[0] : raw);
-      setResult(prev=>[...(prev||[]), parsed]);
+      setResult(prev=>[...(prev||[]), capOptHashtags({...parsed, language:newLang})]);
       setAddOptionNote("");
     } catch(e) { alert("Sara couldn't create another option — please try again."); }
     setAddingOption(false);
@@ -4247,12 +4287,14 @@ ${shapeInstr}`;
       </div>
 
       <div style={{padding:"14px 18px",display:"flex",flexDirection:"column",gap:16}}>
-        {/* Language selector */}
+        {/* Language selector — multi-select; picking more than one spreads
+            them across the generated options instead of forcing one language
+            on everything */}
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Language</p>
+          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Language <span style={{fontWeight:400,fontSize:10}}>(select one or more)</span></p>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             {CONTENT_LANGUAGES.map(l=>(
-              <button key={l.key} style={chipSt(lang===l.key)} onClick={()=>setLang(l.key)}>{l.label}</button>
+              <button key={l.key} style={chipSt(langs.includes(l.key))} onClick={()=>toggleLang(l.key)}>{langs.includes(l.key)&&"✓ "}{l.label}</button>
             ))}
           </div>
         </div>
@@ -4293,6 +4335,17 @@ ${shapeInstr}`;
                   {editingIdx===idx?"Done":"Edit"}
                 </button>
               </div>
+            </div>
+
+            {/* Per-option language — independent of the other options, used
+                the next time this specific option is regenerated */}
+            <div style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderBottom:"1px solid var(--border)",flexWrap:"wrap"}}>
+              <span style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Language:</span>
+              {CONTENT_LANGUAGES.map(l=>(
+                <button key={l.key} onClick={()=>updateField(idx,"language",l.key)} style={{padding:"2px 9px",borderRadius:12,fontSize:10.5,fontWeight:600,border:"none",cursor:"pointer",background:(opt.language||langs[0])===l.key?"var(--accent)":"var(--surface)",color:(opt.language||langs[0])===l.key?"#fff":"var(--text2)",outline:(opt.language||langs[0])===l.key?"none":"1px solid var(--border2)"}}>
+                  {l.label.trim()}
+                </button>
+              ))}
             </div>
 
             {/* REEL content */}
