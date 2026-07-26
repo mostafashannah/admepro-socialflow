@@ -8795,7 +8795,16 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
 // ════════════════════════════════════════════════════════════════
 // CLIENT INTELLIGENCE MODULE
 // ════════════════════════════════════════════════════════════════
-const parseJ = (s,fb=[]) => { try{return JSON.parse(s||"[]");}catch{return fb;} };
+// The PHP API backend (api.php's castRow) auto-decodes JSON columns before
+// sending them over the wire, so a freshly-loaded record's JSON field often
+// arrives as an already-parsed array/object, not a string — while a locally
+// just-saved record still has it as a raw JSON string. JSON.parse() on an
+// already-parsed array silently fails (array.toString() isn't valid JSON)
+// and falls back to the default, invisibly wiping the field. Handle both.
+const parseJ = (s,fb=[]) => {
+  if(Array.isArray(s) || (s && typeof s==="object")) return s;
+  try{return JSON.parse(s||"[]");}catch{return fb;}
+};
 
 const SKILL_CATS = {
   Content: {color:"#3b82f6"},
