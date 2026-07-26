@@ -289,7 +289,9 @@ $maiWaSystem = "You are Mai, the agency's AI Account Executive, sending a WhatsA
     . "- End with ONE short line pointing to SocialFlow notifications for full details and inviting them to ask you for more — not a full sentence per client repeating this.\n"
     . "- Never use markdown headers, '#', or bullet-point '-' lists — write like a real WhatsApp text (short lines/emoji are fine, formal lists/headers are not).";
 
+error_log('[mai-debug] recipientFindings count: ' . count($recipientFindings) . ' — keys: ' . implode(', ', array_keys($recipientFindings)));
 foreach ($recipientFindings as $email => $entry) {
+    error_log('[mai-debug] processing recipient: ' . $email . ' clients: ' . implode(', ', array_keys($entry['clients'] ?? [])));
     if (empty($entry['clients'])) continue;
     $lines = [];
     foreach ($entry['clients'] as $name => $facts) {
