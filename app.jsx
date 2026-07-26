@@ -6976,7 +6976,7 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
     });
 
     setAiIdeas(Object.values(ideasByKind).flat());
-    setGenerated(tasks.map(t=>({...t,approved:false})));
+    setGenerated(tasks.map(t=>({...t,approved:true})));
     setStep("preview");
   };
 
@@ -7365,7 +7365,7 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                       </Field>
                       <div style={{display:"flex",gap:8}}>
                         <button onClick={()=>toggleApprove(i)} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"9px",borderRadius:8,border:`1px solid ${task.approved?"#10b981":"var(--border2)"}`,background:task.approved?"#10b98122":"var(--surface)",color:task.approved?"#10b981":"var(--text2)",fontSize:12.5,fontWeight:700,cursor:"pointer"}}>
-                          <Ico d={Icons.check} size={13} stroke={task.approved?"#10b981":"var(--text2)"}/> {task.approved?"Approved":"Approve"}
+                          <Ico d={Icons.check} size={13} stroke={task.approved?"#10b981":"var(--text2)"}/> {task.approved?"✓ Include":"Skip"}
                         </button>
                         <button onClick={()=>regenerateItem(i)} disabled={isRegen} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"9px",borderRadius:8,border:"1px solid #10b98166",background:"#10b98111",color:"#10b981",fontSize:12.5,fontWeight:700,cursor:isRegen?"wait":"pointer"}}>
                           {isRegen?<><Spinner size={13}/> Sara is regenerating…</>:<><Ico d={Icons.sparkle} size={13} stroke="#10b981"/> Regenerate</>}
@@ -7379,8 +7379,8 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
           </div>
           <div style={{display:"flex",gap:10}}>
             <Btn variant="secondary" onClick={()=>setStep("form")} style={{flex:1}}>← Back</Btn>
-            <Btn onClick={handleConfirm} style={{flex:2}}>
-              <Ico d={Icons.check} size={15}/> Create {generated.length} Tasks
+            <Btn onClick={handleConfirm} disabled={approvedCount===0} style={{flex:2}}>
+              <Ico d={Icons.check} size={15}/> Create {approvedCount} Task{approvedCount!==1?"s":""}
             </Btn>
           </div>
         </div>
@@ -39478,7 +39478,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     const localPosts = tasks.map(t=>({...t,project_id:projectId,id:uid()}));
     setData(d=>({...d,posts:[...localPosts,...d.posts]}));
     const calClient = data.clients.find(c=>c.id===planForm.client_id);
-    const postPayloads = localPosts.map(t=>({title:t.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:t.platform,post_type:t.post_type,stage:"planning",priority:t.priority,caption:t.caption,hashtags:t.hashtags,text_on_visual:t.text_on_visual||"",reel_hook:t.reel_hook||"",notes:t.notes||"",estimated_minutes:t.estimated_minutes,scheduled_date:t.scheduled_date,scheduled_time:t.scheduled_time,due_date:t.due_date||"",due_time:t.due_time||"",assigned_to:t.assigned_to||""}));
+    const postPayloads = localPosts.map(t=>({title:t.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:t.platform,post_type:t.post_type,task_type:t.task_type||"",stage:"planning",priority:t.priority,caption:t.caption,hashtags:t.hashtags,text_on_visual:t.text_on_visual||"",reel_hook:t.reel_hook||"",notes:t.notes||"",estimated_minutes:t.estimated_minutes,scheduled_date:t.scheduled_date,scheduled_time:t.scheduled_time,due_date:t.due_date||"",due_time:t.due_time||"",assigned_to:t.assigned_to||""}));
     ce("Post",postPayloads).then(res=>{
       const reals = res.entities||[];
       setData(d=>{
