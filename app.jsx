@@ -7291,9 +7291,8 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
           <div>
             <p style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:8}}>Posts start at phase</p>
             <div style={{display:"flex",gap:8}}>
-              {[["content_creation","Content","✍️"],["design","Design","🎨"],["planning","Brief","📋"]].map(([key,label,icon])=>(
+              {[["content_creation","Content"],["design","Design"],["planning","Brief"]].map(([key,label])=>(
                 <button key={key} onClick={()=>setStartStage(key)} style={{flex:1,padding:"10px 8px",borderRadius:9,border:`2px solid ${startStage===key?"var(--accent)":"var(--border)"}`,background:startStage===key?"var(--accentbg,var(--surface2))":"var(--surface2)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,transition:"all 0.15s"}}>
-                  <span style={{fontSize:18}}>{icon}</span>
                   <span style={{fontSize:12,fontWeight:700,color:startStage===key?"var(--accent)":"var(--text2)"}}>{label}</span>
                 </button>
               ))}
