@@ -3381,8 +3381,8 @@ function PostCard({post,project,team,onClick}) {
       {thumbUrl&&(
         <div style={{position:"relative",margin:"-14px -16px 0",height:100,background:"var(--surface2)",overflow:"hidden"}}>
           {thumbIsVideo
-            ? <video src={thumbUrl+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-            : <img src={thumbUrl} alt={post.title} style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
+            ? <video src={thumbUrl+"#t=0.1"} muted playsInline preload="metadata" draggable={false} style={{width:"100%",height:"100%",objectFit:"cover",pointerEvents:"none"}}/>
+            : <img src={thumbUrl} alt={post.title} draggable={false} style={{width:"100%",height:"100%",objectFit:"cover",pointerEvents:"none"}}/>}
           {thumbIsVideo&&(
             <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.15)"}}>
               <div style={{width:30,height:30,borderRadius:"50%",background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center"}}>
