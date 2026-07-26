@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS pro_pending_voice_urls (
+  phone VARCHAR(32) PRIMARY KEY,
+  voice_recording_url TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;

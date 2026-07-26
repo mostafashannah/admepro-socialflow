@@ -1468,6 +1468,26 @@ function loadRecentProMessages(PDO $pdo, string $phone, int $limit = 40): array 
     }
 }
 
+function savePendingVoiceUrl(PDO $pdo, string $phone, string $url): void {
+    try {
+        $pdo->prepare("INSERT INTO pro_pending_voice_urls (phone, voice_recording_url, created_at) VALUES (:phone, :url, NOW()) ON DUPLICATE KEY UPDATE voice_recording_url = VALUES(voice_recording_url), created_at = NOW()")
+            ->execute([':phone' => $phone, ':url' => $url]);
+    } catch (Throwable $e) {
+        error_log('[pro-lib] savePendingVoiceUrl failed: ' . $e->getMessage());
+    }
+}
+function popPendingVoiceUrl(PDO $pdo, string $phone): ?string {
+    try {
+        $stmt = $pdo->prepare("SELECT voice_recording_url FROM pro_pending_voice_urls WHERE phone = :phone AND created_at >= NOW() - INTERVAL 2 HOUR LIMIT 1");
+        $stmt->execute([':phone' => $phone]);
+        $url = $stmt->fetchColumn() ?: null;
+        if ($url) $pdo->prepare("DELETE FROM pro_pending_voice_urls WHERE phone = :phone")->execute([':phone' => $phone]);
+        return $url;
+    } catch (Throwable $e) {
+        return null;
+    }
+}
+
 function saveProMessage(PDO $pdo, string $phone, string $role, string $content) {
     try {
         $stmt = $pdo->prepare("INSERT INTO pro_messages (id, phone, role, content) VALUES (:id, :phone, :role, :content)");
@@ -1478,6 +1498,10 @@ function saveProMessage(PDO $pdo, string $phone, string $role, string $content) 
 }
 
 function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $senderId = null, $voiceTranscript = null, $fromPhone = null, $imageBase64 = null, $imageMime = null, $voiceRecordingUrl = null) {
+    // Persist the voice recording URL across turns so it can be attached to
+    // the contact report even if Pro asks a follow-up question first.
+    if ($voiceRecordingUrl && $fromPhone) savePendingVoiceUrl($pdo, $fromPhone, $voiceRecordingUrl);
+
     $isTeam       = $senderName && str_starts_with((string)$senderRole, 'team:');
     $isAdmin      = $senderRole === 'team:admin';
     $isAM         = $senderRole === 'team:account_manager';
@@ -1781,9 +1805,15 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
         foreach ($content as $block) {
             if (($block['type'] ?? '') !== 'tool_use') continue;
             $toolInput = (array)($block['input'] ?? []);
-            if ($block['name'] === 'save_contact_report' && $voiceTranscript) {
-                $toolInput['_raw_transcript'] = $voiceTranscript;
-                if ($voiceRecordingUrl) $toolInput['_voice_recording_url'] = $voiceRecordingUrl;
+            if ($block['name'] === 'save_contact_report') {
+                if ($voiceTranscript) $toolInput['_raw_transcript'] = $voiceTranscript;
+                // Use the URL from this turn if available; otherwise look up
+                // the most recent pending URL for this phone (covers the case
+                // where Pro asked a follow-up question and the save happens on
+                // a later turn, after the original voice-note turn is gone).
+                $resolvedVoiceUrl = $voiceRecordingUrl
+                    ?: ($fromPhone ? popPendingVoiceUrl($pdo, $fromPhone) : null);
+                if ($resolvedVoiceUrl) $toolInput['_voice_recording_url'] = $resolvedVoiceUrl;
             }
             $result = runProTool($pdo, $block['name'], $toolInput, (string)$senderRole, $senderId, $senderName, $fromPhone);
             // Feeds the same "Full History" view the app's own Pro agent
