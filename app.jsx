@@ -332,8 +332,8 @@ const PRI_COLOR = { low:"#6b7280", medium:"#3b82f6", high:"#f59e0b", urgent:"#ef
 const STAGE_MAP = Object.fromEntries(STAGES.map(s=>[s.key,s]));
 
 const POST_TYPE_DURATIONS = {
-  image: 60, video: 180, carousel: 120, story: 45, reel: 150,
-  social_post: 60, story_reel: 120, caption_copy: 45, graphic_design: 180,
+  image: 30, video: 180, carousel: 120, story: 30, reel: 150,
+  social_post: 30, story_reel: 120, caption_copy: 30, graphic_design: 180,
   campaign: 240, ad_creative: 120, blog: 240,
 };
 const WORKING_START = 10; // 10am
@@ -376,27 +376,55 @@ function priorityScore(post) {
   return score + deadline;
 }
 
-function generateDailySchedule(posts, userEmail, date) {
-  const myPosts = posts.filter(p =>
-    p.assigned_to === userEmail &&
-    !["published","scheduled","rejected"].includes(p.stage)
-  ).sort((a,b) => priorityScore(b) - priorityScore(a));
+function minsToAmPm(mins) {
+  const h24 = Math.floor(mins / 60);
+  const m = mins % 60;
+  const ampm = h24 < 12 ? "AM" : "PM";
+  const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+  return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
+}
 
-  let cursor = WORKING_START * 60;
+function generateDailySchedule(posts, userEmail, date) {
+  // Show tasks whose due_date matches the selected day; fall back to
+  // tasks with no due_date only for "today" so the schedule makes sense
+  // when navigating forward/backward.
+  const today = new Date().toISOString().split("T")[0];
+  const myPosts = posts.filter(p => {
+    if (p.assigned_to !== userEmail) return false;
+    if (["published","scheduled","rejected"].includes(p.stage)) return false;
+    if (p.due_date) return p.due_date === date;
+    // Tasks without a due_date only appear on today's view
+    return date === today;
+  }).sort((a,b) => priorityScore(b) - priorityScore(a));
+
+  // Use due_time as the anchor when available, otherwise pack sequentially
   const slots = [];
+  const usedSlots = new Set();
   for(const post of myPosts) {
     const dur = estimateDuration(post);
-    if(cursor + dur > WORKING_END * 60) break;
+    let cursor;
+    if(post.due_time) {
+      const [hh, mm] = post.due_time.split(":").map(Number);
+      const startMins = hh * 60 + (mm || 0);
+      // Clamp within working hours
+      cursor = Math.max(WORKING_START * 60, Math.min(startMins, WORKING_END * 60 - dur));
+    } else {
+      // Find next free slot after the last used one
+      cursor = WORKING_START * 60;
+      const sortedSlots = slots.map(s => s.end_mins).sort((a,b) => a-b);
+      for(const end of sortedSlots) { if(end >= cursor) cursor = end + 10; }
+      if(cursor + dur > WORKING_END * 60) cursor = WORKING_START * 60; // fallback
+    }
     slots.push({
       post_id: post.id,
       start_mins: cursor,
       end_mins: cursor + dur,
-      start_time: `${String(Math.floor(cursor/60)).padStart(2,'0')}:${String(cursor%60).padStart(2,'0')}`,
-      end_time: `${String(Math.floor((cursor+dur)/60)).padStart(2,'0')}:${String((cursor+dur)%60).padStart(2,'0')}`,
+      start_time: minsToAmPm(cursor),
+      end_time: minsToAmPm(cursor + dur),
       duration_mins: dur,
     });
-    cursor += dur + 10;
   }
+  slots.sort((a,b) => a.start_mins - b.start_mins);
   return slots;
 }
 
@@ -3390,9 +3418,12 @@ function PostCard({post,project,team,onClick}) {
 // ════════════════════════════════════════════════════════════════
 // KANBAN
 // ════════════════════════════════════════════════════════════════
-function KanbanView({posts,project,team,onPostClick}) {
+function KanbanView({posts,project,team,onPostClick,onStageChange}) {
   const {isMobile} = useResponsive();
   const [showEmpty,setShowEmpty] = useState(false);
+  // Drag state — track which post is being dragged and which column it's over
+  const dragPost = React.useRef(null);
+  const dragOverStage = React.useRef(null);
   // "Post" = post_type is an actual social-media content shape meant to be
   // published to a platform. Everything else stored in post_type
   // (graphic_design, video_production, content_calendar, monthly_report,
@@ -3449,7 +3480,15 @@ function KanbanView({posts,project,team,onPostClick}) {
           {visibleStages.map(stage=>{
             const sp = typedPosts.filter(p=>p.stage===stage.key);
             return (
-              <div key={stage.key} style={{width:230,minWidth:230,maxWidth:230,flexShrink:0,display:"flex",flexDirection:"column",gap:8}}>
+              <div key={stage.key} style={{width:230,minWidth:230,maxWidth:230,flexShrink:0,display:"flex",flexDirection:"column",gap:8}}
+                onDragOver={e=>{e.preventDefault();dragOverStage.current=stage.key;}}
+                onDrop={e=>{
+                  e.preventDefault();
+                  const p = dragPost.current;
+                  if(p && p.stage!==stage.key && onStageChange) onStageChange(p, stage.key);
+                  dragPost.current=null;
+                }}
+              >
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 2px"}}>
                   <div style={{display:"flex",alignItems:"center",gap:7}}>
                     <div style={{width:8,height:8,borderRadius:"50%",background:stage.color}}/>
@@ -3458,7 +3497,11 @@ function KanbanView({posts,project,team,onPostClick}) {
                   <span style={{fontSize:11,color:"var(--text3)",background:"var(--surface2)",padding:"2px 8px",borderRadius:99,border:"1px solid var(--border)"}}>{sp.length}</span>
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:8,minHeight:60}}>
-                  {sp.map(p=><PostCard key={p.id} post={p} project={project} team={team} onClick={onPostClick}/>)}
+                  {sp.map(p=>(
+                    <div key={p.id} draggable onDragStart={e=>{dragPost.current=p;e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",p.id);}} onDragEnd={()=>{dragPost.current=null;}} style={{cursor:"grab"}}>
+                      <PostCard post={p} project={project} team={team} onClick={onPostClick}/>
+                    </div>
+                  ))}
                   {sp.length===0&&showEmpty&&(
                     <div style={{border:"1px dashed var(--border)",borderRadius:"var(--r)",padding:"20px 16px",textAlign:"center",color:"var(--text3)",fontSize:12,opacity:0.6}}>
                       No posts
@@ -3474,7 +3517,15 @@ function KanbanView({posts,project,team,onPostClick}) {
           {visibleStages.map(stage=>{
             const sp = typedPosts.filter(p=>p.stage===stage.key);
             return (
-              <div key={stage.key} style={{flex:"1 0 260px",minWidth:260,maxWidth:300,display:"flex",flexDirection:"column",gap:8}}>
+              <div key={stage.key} style={{flex:"1 0 260px",minWidth:260,maxWidth:300,display:"flex",flexDirection:"column",gap:8}}
+                onDragOver={e=>{e.preventDefault();dragOverStage.current=stage.key;}}
+                onDrop={e=>{
+                  e.preventDefault();
+                  const p = dragPost.current;
+                  if(p && p.stage!==stage.key && onStageChange) onStageChange(p, stage.key);
+                  dragPost.current=null;
+                }}
+              >
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 2px"}}>
                   <div style={{display:"flex",alignItems:"center",gap:7}}>
                     <div style={{width:8,height:8,borderRadius:"50%",background:stage.color}}/>
@@ -3483,7 +3534,11 @@ function KanbanView({posts,project,team,onPostClick}) {
                   <span style={{fontSize:10,color:"var(--text3)",background:"var(--surface2)",padding:"1px 7px",borderRadius:99,border:"1px solid var(--border)"}}>{sp.length}</span>
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:8,minHeight:60}}>
-                  {sp.map(p=><PostCard key={p.id} post={p} project={project} team={team} onClick={onPostClick}/>)}
+                  {sp.map(p=>(
+                    <div key={p.id} draggable onDragStart={e=>{dragPost.current=p;e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",p.id);}} onDragEnd={()=>{dragPost.current=null;}} style={{cursor:"grab"}}>
+                      <PostCard post={p} project={project} team={team} onClick={onPostClick}/>
+                    </div>
+                  ))}
                   {sp.length===0&&showEmpty&&(
                     <div style={{border:"1px dashed var(--border)",borderRadius:"var(--r)",padding:"20px 16px",textAlign:"center",color:"var(--text3)",fontSize:12,opacity:0.6}}>
                       No posts
@@ -4425,6 +4480,10 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [saraFeedback, setSaraFeedback] = useState("");
+  const [saraRegen, setSaraRegen] = useState(false);
+  const [captionInlineEdit, setCaptionInlineEdit] = useState(false);
+  const [captionDraft, setCaptionDraft] = useState({caption:"",hashtags:"",text_on_visual:"",reel_hook:""});
   const [publishing, setPublishing] = useState(false);
   const [publishResult, setPublishResult] = useState(null);
   // TikTok Content Sharing Guidelines require the posting UI to be built
@@ -4465,6 +4524,10 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
       due_date: post.due_date||"",
       due_time: post.due_time||"",
       estimated_minutes: post.estimated_minutes||"",
+      caption: post.caption||"",
+      hashtags: post.hashtags||"",
+      text_on_visual: post.text_on_visual||"",
+      reel_hook: post.reel_hook||"",
     });
     setEditing(true);
   };
@@ -4481,7 +4544,9 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
     // Keep the singular `platform` field (used everywhere else — Kanban
     // columns, calendar icons, filters) as the first picked platform, while
     // `platforms` carries the full set for showing every badge here.
-    onEdit&&onEdit({...post, ...editForm, platform: editForm.platforms[0]});
+    onEdit&&onEdit({...post, ...editForm, platform: editForm.platforms[0],
+      caption: editForm.caption, hashtags: editForm.hashtags,
+      text_on_visual: editForm.text_on_visual, reel_hook: editForm.reel_hook});
     setEditing(false);
   };
   const handleDelete = () => {
@@ -4870,7 +4935,55 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 <input type="number" min={5} step={5} value={editForm.estimated_minutes||""} onChange={e=>setEditForm(f=>({...f,estimated_minutes:e.target.value?Number(e.target.value):""}))} placeholder={`Auto (${estimateDuration({post_type:editForm.post_type,priority:editForm.priority})} min)`} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
               </div>
             </div>
-            <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+            {/* Content fields */}
+            <div style={{borderTop:"1px solid var(--border2)",paddingTop:10,gridColumn:"1/-1"}}>
+              <p style={{fontSize:11,fontWeight:700,color:"var(--accent)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Content</p>
+            </div>
+            {editForm.post_type==="reel"&&(
+              <div style={{gridColumn:"1/-1"}}>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Hook (first 3 seconds)</label>
+                <input value={editForm.reel_hook||""} onChange={e=>setEditForm(f=>({...f,reel_hook:e.target.value}))} placeholder="Scroll-stopping opener..." style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
+              </div>
+            )}
+            {editForm.post_type!=="article"&&(
+              <div style={{gridColumn:"1/-1"}}>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Text on Visual</label>
+                <input value={editForm.text_on_visual||""} onChange={e=>setEditForm(f=>({...f,text_on_visual:e.target.value}))} placeholder="Short catchy headline on the design..." style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
+              </div>
+            )}
+            <div style={{gridColumn:"1/-1"}}>
+              <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>{editForm.post_type==="article"?"Article Body":"Caption"}</label>
+              <textarea value={editForm.caption||""} onChange={e=>setEditForm(f=>({...f,caption:e.target.value}))} rows={editForm.post_type==="article"?8:4} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)",resize:"vertical",fontFamily:"inherit"}}/>
+            </div>
+            {editForm.post_type!=="story"&&(
+              <div style={{gridColumn:"1/-1"}}>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Hashtags</label>
+                <input value={editForm.hashtags||""} onChange={e=>setEditForm(f=>({...f,hashtags:e.target.value}))} placeholder="#hashtag1 #hashtag2" style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
+              </div>
+            )}
+            <div style={{gridColumn:"1/-1",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:8,padding:10,display:"flex",gap:8,alignItems:"flex-end"}}>
+              <div style={{flex:1}}>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Feedback for Sara (optional)</label>
+                <input value={saraFeedback} onChange={e=>setSaraFeedback(e.target.value)} placeholder="e.g. more playful tone, mention the summer sale..." style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:12,color:"var(--text)"}}/>
+              </div>
+              <button onClick={async()=>{
+                if(!post.client_id&&!post.client_name){alert("No client — Sara needs brand context.");return;}
+                setSaraRegen(true);
+                try{
+                  const kind=editForm.post_type==="reel"?"reel":editForm.post_type==="carousel"?"carousel":editForm.post_type==="article"?"article":editForm.post_type==="story"?"story":"static";
+                  const aiRes=await agentAI("content_creator",`Rewrite: ${editForm.title}`,`You are Sara, a senior content creator. Review the client brain below.\n${clientBrainBlock(post.client_id,post.client_name)}\n\nPost: ${editForm.title}\nCaption: ${editForm.caption}\nText on Visual: ${editForm.text_on_visual}\nHashtags: ${editForm.hashtags}\n${kind==="reel"?`Hook: ${editForm.reel_hook}\n`:""}\nFeedback: ${saraFeedback||"Fresh rewrite, different angle."}\n\nReturn ONLY valid JSON: {"caption":"...","hashtags":"...","text_on_visual":"..."${kind==="reel"?`,"reel_hook":"..."`:""}}`
+                  ,kind==="article"?2500:700);
+                  const m=aiRes.match(/\{[\s\S]*\}/);
+                  const idea=JSON.parse(m?m[0]:aiRes);
+                  setEditForm(f=>({...f,caption:idea.caption||f.caption,hashtags:idea.hashtags??f.hashtags,text_on_visual:idea.text_on_visual??f.text_on_visual,reel_hook:kind==="reel"?(idea.reel_hook||f.reel_hook):f.reel_hook}));
+                  setSaraFeedback("");
+                }catch(e){alert("Sara couldn't rewrite this — please try again.");}
+                setSaraRegen(false);
+              }} disabled={saraRegen} style={{display:"flex",alignItems:"center",gap:5,padding:"8px 14px",borderRadius:7,border:"1px solid #10b98166",background:"#10b98111",color:"#10b981",fontSize:12,fontWeight:700,cursor:saraRegen?"wait":"pointer",whiteSpace:"nowrap",flexShrink:0}}>
+                {saraRegen?<><Spinner size={13}/> Writing…</>:<><Ico d={Icons.sparkle} size={13} stroke="#10b981"/> Regenerate with Sara</>}
+              </button>
+            </div>
+            <div style={{display:"flex",gap:8,justifyContent:"flex-end",gridColumn:"1/-1"}}>
               <button onClick={()=>setEditing(false)} style={{padding:"7px 16px",borderRadius:7,fontSize:12,fontWeight:600,background:"var(--surface)",border:"1px solid var(--border2)",color:"var(--text2)"}}>Cancel</button>
               <Btn onClick={saveEdit} disabled={(editForm.scheduled_date&&!editForm.scheduled_time)||(editForm.due_date&&!editForm.due_time)}><Ico d={Icons.check} size={13}/> Save Changes</Btn>
             </div>
@@ -4897,11 +5010,59 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(320px,1fr))",gap:16,alignItems:"start"}}>
           {post.caption&&<div style={{display:"flex",flexDirection:"column",gap:6}}>
             <label style={{fontSize:11,fontWeight:700,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Caption</label>
-            <div style={{padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
-              {post.reel_hook&&<p style={{fontSize:13,fontWeight:700,marginBottom:8,paddingBottom:8,borderBottom:"1px dashed var(--border2)",color:"var(--accent)"}}>{"\u{1F3AC}"} Hook (0-3s): {post.reel_hook}</p>}
-              {post.text_on_visual&&<p style={{fontSize:13,fontWeight:700,marginBottom:8,paddingBottom:8,borderBottom:"1px dashed var(--border2)"}}>{"\u{1F5BC}️"} Text on Visual: {post.text_on_visual}</p>}
-              <p style={{fontSize:13,lineHeight:1.7}}>{post.caption}</p>
-              {post.hashtags&&<p style={{fontSize:12,color:"var(--accent)",marginTop:8,fontWeight:500}}>{post.hashtags}</p>}
+            <div style={{border:"2px solid var(--accent)",borderRadius:"var(--rs)",overflow:"hidden"}}>
+              {/* Card header */}
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 14px",background:"var(--surface2)",borderBottom:"1px solid var(--border)"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{width:22,height:22,borderRadius:"50%",background:"var(--accent)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,flexShrink:0}}>✓</div>
+                  <span style={{fontSize:12,fontWeight:700}}>Selected Caption</span>
+                </div>
+                <div style={{display:"flex",gap:6}}>
+                  <button onClick={()=>{ setCaptionDraft({caption:post.caption||"",hashtags:post.hashtags||"",text_on_visual:post.text_on_visual||"",reel_hook:post.reel_hook||""}); setCaptionInlineEdit(v=>!v); }} style={{padding:"3px 10px",borderRadius:6,fontSize:11,fontWeight:600,background:captionInlineEdit?"var(--accent)":"var(--surface)",color:captionInlineEdit?"#fff":"var(--text2)",border:"1px solid var(--border2)",cursor:"pointer"}}>
+                    {captionInlineEdit?"Done":"Edit"}
+                  </button>
+                </div>
+              </div>
+              {/* Content */}
+              <div style={{padding:14,background:"var(--accentbg,var(--surface))",display:"flex",flexDirection:"column",gap:10}}>
+                {captionInlineEdit ? (
+                  <>
+                    {post.post_type==="reel"&&(
+                      <div>
+                        <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:5}}>🎬 Hook (0-3s)</p>
+                        <input value={captionDraft.reel_hook} onChange={e=>setCaptionDraft(d=>({...d,reel_hook:e.target.value}))} style={{width:"100%",fontSize:13,padding:"8px 10px",borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontFamily:"inherit"}}/>
+                      </div>
+                    )}
+                    {post.post_type!=="article"&&(
+                      <div>
+                        <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:5}}>🖼️ Text on Visual</p>
+                        <input value={captionDraft.text_on_visual} onChange={e=>setCaptionDraft(d=>({...d,text_on_visual:e.target.value}))} style={{width:"100%",fontSize:13,padding:"8px 10px",borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontFamily:"inherit"}}/>
+                      </div>
+                    )}
+                    <div>
+                      <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:5}}>{post.post_type==="article"?"Article Body":"Caption"}</p>
+                      <textarea value={captionDraft.caption} onChange={e=>setCaptionDraft(d=>({...d,caption:e.target.value}))} rows={4} style={{width:"100%",fontSize:13,lineHeight:1.7,color:"var(--text)",background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:6,padding:"8px 10px",resize:"vertical",fontFamily:"inherit"}}/>
+                    </div>
+                    {post.post_type!=="story"&&(
+                      <div>
+                        <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:5}}>Hashtags</p>
+                        <input value={captionDraft.hashtags} onChange={e=>setCaptionDraft(d=>({...d,hashtags:e.target.value}))} style={{width:"100%",fontSize:13,padding:"8px 10px",borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontFamily:"inherit"}}/>
+                      </div>
+                    )}
+                    <div style={{display:"flex",gap:8,justifyContent:"flex-end",paddingTop:4}}>
+                      <button onClick={()=>setCaptionInlineEdit(false)} style={{padding:"6px 14px",borderRadius:7,fontSize:12,fontWeight:600,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",cursor:"pointer"}}>Cancel</button>
+                      <button onClick={()=>{ onEdit&&onEdit({...post,...captionDraft}); setCaptionInlineEdit(false); }} style={{padding:"6px 14px",borderRadius:7,fontSize:12,fontWeight:700,border:"none",background:"var(--accent)",color:"#fff",cursor:"pointer"}}>Save</button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {post.reel_hook&&<p style={{fontSize:13,fontWeight:700,marginBottom:0,paddingBottom:8,borderBottom:"1px dashed var(--border2)",color:"var(--accent)"}}>{"\u{1F3AC}"} Hook (0-3s): {post.reel_hook}</p>}
+                    {post.text_on_visual&&<p style={{fontSize:13,fontWeight:700,marginBottom:0,paddingBottom:8,borderBottom:"1px dashed var(--border2)"}}>{"\u{1F5BC}️"} Text on Visual: {post.text_on_visual}</p>}
+                    <p style={{fontSize:13,lineHeight:1.7,margin:0}}>{post.caption}</p>
+                    {post.hashtags&&<p style={{fontSize:12,color:"var(--accent)",marginTop:4,fontWeight:500,margin:0}}>{post.hashtags}</p>}
+                  </>
+                )}
+              </div>
             </div>
           </div>}
 
@@ -6785,6 +6946,7 @@ function AddCalendarPlanModal({open,onClose,clients,team,posts,projects,preselec
   // Each content-type card collapses to a small summary row (same
   // expand/collapse pattern as the generated-items preview list below) —
   // starts open only for kinds that already have a count set.
+  const [startStage,setStartStage] = useState("content_creation");
   const [expandedKinds,setExpandedKinds] = useState({static:true});
   const toggleKindOpen = (kind) => setExpandedKinds(prev=>({...prev,[kind]:!prev[kind]}));
   // Brief textarea starts small but can be enlarged (more rows + a taller
@@ -6940,15 +7102,16 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
     // Each idea is still its own reviewable/regeneratable card in the
     // preview step below — grouping into one task per kind happens at
     // handleConfirm time, once the user has approved which ideas to keep.
-    const platformCursor = {};
     const tasks = activeKinds.flatMap(kind=>{
       const cfg = f.kinds[kind];
       const plats = cfg.platforms;
-      platformCursor[kind] = platformCursor[kind]||0;
+      // All selected platforms apply to every post in this kind — the user
+      // chose "Instagram + Facebook" to mean every post is cross-posted to
+      // both, not that posts are divided between them one by one.
+      const primaryPlatform = kind==="article"
+        ? (plats.includes("linkedin")?"linkedin":plats[0])
+        : plats[0];
       return (ideasByKind[kind]||[]).map((idea,i)=>{
-        const platform = kind==="article"
-          ? (plats.includes("linkedin")?"linkedin":plats[0])
-          : plats[platformCursor[kind]++ % plats.length];
         return {
           id: uid(),
           kind,
@@ -6957,7 +7120,8 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
           hashtags: idea?.hashtags||"",
           text_on_visual: idea?.text_on_visual||"",
           reel_hook: kind==="reel" ? (idea?.hook||"") : "",
-          platform,
+          platform: primaryPlatform,
+          platforms: plats,
           post_type: CALENDAR_KIND_POST_TYPE[kind],
           // Marks this as a design-only deliverable — never actually
           // published to a platform (see auto-publish.php's WHERE clause
@@ -6976,7 +7140,7 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
     });
 
     setAiIdeas(Object.values(ideasByKind).flat());
-    setGenerated(tasks.map(t=>({...t,approved:false})));
+    setGenerated(tasks.map(t=>({...t,approved:true})));
     setStep("preview");
   };
 
@@ -7053,7 +7217,7 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
       kindCursor[t.kind]++;
       return {...t, due_date: dueDate, due_time: cfg.due_mode==="manual" ? (cfg.manual_due_time||"") : ""};
     });
-    await onGenerate(f, finalTasks);
+    await onGenerate({...f, start_stage: startStage}, finalTasks);
     // Sara learns from the plan she just delivered — best-effort, in the
     // background, so the user isn't kept waiting on it.
     saraLearnFromWork({
@@ -7122,6 +7286,19 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
           {f.date_from && f.date_to && f.date_to<=f.date_from && (
             <p style={{fontSize:12,color:"#ef4444",fontWeight:600,marginTop:-8}}>Publishing End Date must be after the Start Date.</p>
           )}
+
+          {/* Start phase selector */}
+          <div>
+            <p style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:8}}>Posts start at phase</p>
+            <div style={{display:"flex",gap:8}}>
+              {[["content_creation","Content","✍️"],["design","Design","🎨"],["planning","Brief","📋"]].map(([key,label,icon])=>(
+                <button key={key} onClick={()=>setStartStage(key)} style={{flex:1,padding:"10px 8px",borderRadius:9,border:`2px solid ${startStage===key?"var(--accent)":"var(--border)"}`,background:startStage===key?"var(--accentbg,var(--surface2))":"var(--surface2)",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:4,transition:"all 0.15s"}}>
+                  <span style={{fontSize:18}}>{icon}</span>
+                  <span style={{fontSize:12,fontWeight:700,color:startStage===key?"var(--accent)":"var(--text2)"}}>{label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Per-content-type: count, platforms, assignee, brief — each independent */}
           {CALENDAR_KIND_DEFS.map(([kind,label,hint])=>{
@@ -7365,7 +7542,7 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                       </Field>
                       <div style={{display:"flex",gap:8}}>
                         <button onClick={()=>toggleApprove(i)} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"9px",borderRadius:8,border:`1px solid ${task.approved?"#10b981":"var(--border2)"}`,background:task.approved?"#10b98122":"var(--surface)",color:task.approved?"#10b981":"var(--text2)",fontSize:12.5,fontWeight:700,cursor:"pointer"}}>
-                          <Ico d={Icons.check} size={13} stroke={task.approved?"#10b981":"var(--text2)"}/> {task.approved?"Approved":"Approve"}
+                          <Ico d={Icons.check} size={13} stroke={task.approved?"#10b981":"var(--text2)"}/> {task.approved?"✓ Include":"Skip"}
                         </button>
                         <button onClick={()=>regenerateItem(i)} disabled={isRegen} style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"9px",borderRadius:8,border:"1px solid #10b98166",background:"#10b98111",color:"#10b981",fontSize:12.5,fontWeight:700,cursor:isRegen?"wait":"pointer"}}>
                           {isRegen?<><Spinner size={13}/> Sara is regenerating…</>:<><Ico d={Icons.sparkle} size={13} stroke="#10b981"/> Regenerate</>}
@@ -7379,8 +7556,8 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
           </div>
           <div style={{display:"flex",gap:10}}>
             <Btn variant="secondary" onClick={()=>setStep("form")} style={{flex:1}}>← Back</Btn>
-            <Btn onClick={handleConfirm} style={{flex:2}}>
-              <Ico d={Icons.check} size={15}/> Create {generated.length} Tasks
+            <Btn onClick={handleConfirm} disabled={approvedCount===0} style={{flex:2}}>
+              <Ico d={Icons.check} size={15}/> Create {approvedCount} Task{approvedCount!==1?"s":""}
             </Btn>
           </div>
         </div>
@@ -13974,6 +14151,8 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
   // Plain state, not persisted — opening any project should always start on
   // Overview, not silently reopen to whatever tab was last viewed for it.
   const [tab, setTab] = useState("overview");
+  const [taskOrder, setTaskOrder] = React.useState(null); // null = natural order
+  const dragTaskRef = React.useRef(null);
 
   const projectPosts = posts.filter(p=>p.project_id===project.id);
   const projType = PROJECT_TYPES.find(t=>t.id===project.project_type)||PROJECT_TYPES[0];
@@ -14129,14 +14308,51 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
 
       {/* Tasks Tab */}
       {tab==="tasks"&&(
-        <div>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {/* View toggle: list vs kanban */}
+          {projectPosts.length>0&&(
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+              <span style={{fontSize:12,color:"var(--text3)"}}>Drag rows to reorder publishing schedule</span>
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={()=>setTaskOrder(null)} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:taskOrder===null?"var(--accent)":"var(--surface2)",color:taskOrder===null?"#fff":"var(--text2)"}}>List</button>
+                <button onClick={()=>setTaskOrder("kanban")} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:taskOrder==="kanban"?"var(--accent)":"var(--surface2)",color:taskOrder==="kanban"?"#fff":"var(--text2)"}}>Kanban</button>
+              </div>
+            </div>
+          )}
           {projectPosts.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--text3)"}}>No tasks yet.</div>}
+          {taskOrder==="kanban" ? (
+            <KanbanView posts={projectPosts} project={project} team={team} onPostClick={onPostClick} onStageChange={onStageChange}/>
+          ) : (
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {projectPosts.map(post=>{
+            {(()=>{
+              const ordered = taskOrder && taskOrder!=="kanban" ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort((a,b)=>(a.scheduled_date||"").localeCompare(b.scheduled_date||""));
+              return ordered.map((post,idx)=>{
               const stageInfo = STAGE_MAP[post.stage]||{label:post.stage,color:"#888"};
               const assignee = team.find(m=>m.email===post.assigned_to);
               return (
-                <div key={post.id} onClick={()=>onPostClick&&onPostClick(post)} style={{background:"var(--surface1)",borderRadius:10,padding:"12px 16px",border:"1px solid var(--border)",cursor:"pointer",display:"flex",alignItems:"center",gap:12}}>
+                <div key={post.id}
+                  draggable
+                  onDragStart={e=>{dragTaskRef.current=post.id;e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",post.id);}}
+                  onDragOver={e=>{e.preventDefault();}}
+                  onDrop={e=>{
+                    e.preventDefault();
+                    const fromId = dragTaskRef.current;
+                    if(!fromId || fromId===post.id) return;
+                    const base = taskOrder && taskOrder!=="kanban" ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort((a,b)=>(a.scheduled_date||"").localeCompare(b.scheduled_date||""));
+                    const ids = base.map(p=>p.id);
+                    const fromIdx = ids.indexOf(fromId);
+                    const toIdx = ids.indexOf(post.id);
+                    if(fromIdx<0||toIdx<0) return;
+                    const newIds = [...ids];
+                    newIds.splice(fromIdx,1);
+                    newIds.splice(toIdx,0,fromId);
+                    setTaskOrder(newIds);
+                    dragTaskRef.current=null;
+                  }}
+                  onClick={()=>onPostClick&&onPostClick(post)}
+                  style={{background:"var(--surface1)",borderRadius:10,padding:"12px 16px",border:"1px solid var(--border)",cursor:"grab",display:"flex",alignItems:"center",gap:12}}
+                >
+                  <div style={{color:"var(--text3)",fontSize:16,cursor:"grab",flexShrink:0}}>⠿</div>
                   <div style={{flex:1}}>
                     <div style={{fontWeight:600,fontSize:13,color:"var(--text1)"}}>{post.title}</div>
                     <div style={{color:"var(--text3)",fontSize:12,marginTop:2}}>
@@ -14153,14 +14369,34 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                   <span style={{background:stageInfo.color+"22",color:stageInfo.color,borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600,flexShrink:0}}>{stageInfo.label}</span>
                 </div>
               );
-            })}
+            });})()}
           </div>
+          )}
         </div>
       )}
 
       {/* Calendar Tab */}
       {tab==="calendar"&&(
         <div>
+          {/* Posting date range bar */}
+          {(calStart||calEnd)&&(
+            <div style={{display:"flex",alignItems:"center",gap:16,padding:"10px 16px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",marginBottom:12,flexWrap:"wrap"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Start</span>
+                <span style={{fontSize:13,fontWeight:700,color:"var(--text1)"}}>{calStart||"—"}</span>
+              </div>
+              <div style={{width:40,height:2,background:"var(--accent)",borderRadius:2,flexShrink:0}}/>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>End</span>
+                <span style={{fontSize:13,fontWeight:700,color:"var(--text1)"}}>{calEnd||"—"}</span>
+              </div>
+              {calStart&&calEnd&&(
+                <span style={{marginLeft:"auto",fontSize:12,color:"var(--text3)"}}>
+                  {Math.round((new Date(calEnd)-new Date(calStart))/(86400000))} days
+                </span>
+              )}
+            </div>
+          )}
           {weeks.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--text3)"}}>No posting dates set. Add a posting start/end date to your project.</div>}
           {weeks.length>0&&(
             <div>
@@ -29030,7 +29266,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                 exactly with the percentage-positioned task bars underneath them. */}
             <div style={{position:"relative",flex:1,height:14}}>
               {hours.map(h=>(
-                <span key={h} style={{position:"absolute",left:`${(h-WORKING_START)*60/WORKING_MINS*100}%`,fontSize:10,color:"var(--text3)",whiteSpace:"nowrap"}}>{h}:00</span>
+                <span key={h} style={{position:"absolute",left:`${(h-WORKING_START)*60/WORKING_MINS*100}%`,fontSize:10,color:"var(--text3)",whiteSpace:"nowrap"}}>{h===0?12:h>12?h-12:h}{h<12?"am":"pm"}</span>
               ))}
             </div>
           </div>
@@ -29132,7 +29368,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
           </div>
           {hours.map(hour => {
             const hourSlots = getSlotForHour(hour);
-            const timeLabel = `${String(hour).padStart(2,'0')}:00`;
+            const timeLabel = `${hour===0?12:hour>12?hour-12:hour}:00 ${hour<12?"AM":"PM"}`;
             const isCurrentHour = new Date().getHours()===hour && viewDate.toDateString()===new Date().toDateString();
             // height: 64px base per hour, taller if a long task starts here
             const maxDurMins = hourSlots.reduce((mx, s) => Math.max(mx, s.end_mins - s.start_mins), 0);
@@ -29177,7 +29413,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                           <span style={{fontSize:10,color:"var(--text3)"}}>{durLabel}</span>
                           <Badge label={stage.label} color={stage.color} xs/>
                           {isActive && <span style={{fontSize:9,color:"#10b981",fontWeight:700,textTransform:"uppercase"}}>● Recording</span>}
-                          {isAM && <button onClick={e=>{e.stopPropagation();setOverrideTarget({slot,post});setOverrideTime(slot.start_time);}} style={{marginLeft:"auto",padding:"1px 7px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface2)",color:"var(--text3)",fontSize:9,fontWeight:700,cursor:"pointer"}}> Override</button>}
+                          {isAM && <button onClick={e=>{e.stopPropagation();setOverrideTarget({slot,post});setOverrideTime(`${String(Math.floor(slot.start_mins/60)).padStart(2,'0')}:${String(slot.start_mins%60).padStart(2,'0')}`);}} style={{marginLeft:"auto",padding:"1px 7px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface2)",color:"var(--text3)",fontSize:9,fontWeight:700,cursor:"pointer"}}> Override</button>}
                         </div>
                       </div>
                     );
@@ -39478,7 +39714,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     const localPosts = tasks.map(t=>({...t,project_id:projectId,id:uid()}));
     setData(d=>({...d,posts:[...localPosts,...d.posts]}));
     const calClient = data.clients.find(c=>c.id===planForm.client_id);
-    const postPayloads = localPosts.map(t=>({title:t.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:t.platform,post_type:t.post_type,stage:"planning",priority:t.priority,caption:t.caption,hashtags:t.hashtags,text_on_visual:t.text_on_visual||"",reel_hook:t.reel_hook||"",notes:t.notes||"",estimated_minutes:t.estimated_minutes,scheduled_date:t.scheduled_date,scheduled_time:t.scheduled_time,due_date:t.due_date||"",due_time:t.due_time||"",assigned_to:t.assigned_to||""}));
+    const postPayloads = localPosts.map(t=>({title:t.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:t.platform,platforms:t.platforms||[t.platform],post_type:t.post_type,task_type:t.task_type||"",stage:planForm.start_stage||"content_creation",priority:t.priority,caption:t.caption,hashtags:t.hashtags,text_on_visual:t.text_on_visual||"",reel_hook:t.reel_hook||"",notes:t.notes||"",estimated_minutes:t.estimated_minutes,scheduled_date:t.scheduled_date,scheduled_time:t.scheduled_time,due_date:t.due_date||"",due_time:t.due_time||"",assigned_to:t.assigned_to||""}));
     ce("Post",postPayloads).then(res=>{
       const reals = res.entities||[];
       setData(d=>{
@@ -39487,6 +39723,29 @@ Return ONLY valid JSON (no markdown, no explanation):
         return {...d,posts};
       });
     }).catch(()=>{});
+    // Notify each unique assignee once per batch (not once per task —
+    // creating 18 tasks would flood their inbox if we sent 18 individual
+    // emails). Group tasks by assignee email, one notification per person.
+    const assigneeGroups = {};
+    localPosts.forEach(t=>{ if(t.assigned_to) (assigneeGroups[t.assigned_to]=assigneeGroups[t.assigned_to]||[]).push(t); });
+    Object.entries(assigneeGroups).forEach(([email, assignedTasks])=>{
+      if(email===currentUser?.email) return;
+      const assignee = data.team.find(m=>m.email===email);
+      if(!assignee) return;
+      const prefs = getNotifPrefs(email);
+      const taskList = assignedTasks.slice(0,5).map(t=>t.title).join(", ")+(assignedTasks.length>5?` and ${assignedTasks.length-5} more`:"");
+      sendNotification("task_assigned", email,
+        `[SocialFlow] ${assignedTasks.length} task${assignedTasks.length>1?"s":""} assigned to you — ${planForm.campaign}`,
+        EMAIL_TEMPLATES.taskAssigned(assignee.name, `${assignedTasks.length} task${assignedTasks.length>1?"s":""}: ${taskList}`, planForm.campaign, calClient?.name||"", "", currentUser?.name),
+        prefs, assignee.whatsapp_number||null
+      ).catch(()=>{});
+      if(!prefs.all_disabled && prefs.task_assigned!==false) {
+        sendPushNotification(email, `${assignedTasks.length} new task${assignedTasks.length>1?"s":""} assigned`,
+          `${planForm.campaign}${calClient?.name?` — ${calClient.name}`:""}`,
+          window.location.origin+"/#tasks"
+        ).catch(()=>{});
+      }
+    });
     setToast(` ${tasks.length} posts created for ${planForm.campaign}`);
   };
 
@@ -39709,11 +39968,19 @@ Return ONLY valid JSON (no markdown, no explanation):
       title: updatedPost.title,
       description: updatedPost.description,
       platform: updatedPost.platform,
+      platforms: updatedPost.platforms,
       post_type: updatedPost.post_type,
       priority: updatedPost.priority,
       assigned_to: updatedPost.assigned_to,
       scheduled_date: updatedPost.scheduled_date||null,
       scheduled_time: updatedPost.scheduled_time||null,
+      due_date: updatedPost.due_date||null,
+      due_time: updatedPost.due_time||null,
+      estimated_minutes: updatedPost.estimated_minutes||null,
+      caption: updatedPost.caption||null,
+      hashtags: updatedPost.hashtags||null,
+      text_on_visual: updatedPost.text_on_visual||null,
+      reel_hook: updatedPost.reel_hook||null,
     }).catch(()=>{});
     logActivity("Task Edited","tasks",`"${updatedPost.title}" edited by ${currentUser?.name}`,"success","",currentUser?.email);
     setToast(" Task updated");
