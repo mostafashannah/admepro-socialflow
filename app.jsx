@@ -332,8 +332,8 @@ const PRI_COLOR = { low:"#6b7280", medium:"#3b82f6", high:"#f59e0b", urgent:"#ef
 const STAGE_MAP = Object.fromEntries(STAGES.map(s=>[s.key,s]));
 
 const POST_TYPE_DURATIONS = {
-  image: 60, video: 180, carousel: 120, story: 45, reel: 150,
-  social_post: 60, story_reel: 120, caption_copy: 45, graphic_design: 180,
+  image: 30, video: 180, carousel: 120, story: 30, reel: 150,
+  social_post: 30, story_reel: 120, caption_copy: 30, graphic_design: 180,
   campaign: 240, ad_creative: 120, blog: 240,
 };
 const WORKING_START = 10; // 10am
@@ -376,27 +376,55 @@ function priorityScore(post) {
   return score + deadline;
 }
 
-function generateDailySchedule(posts, userEmail, date) {
-  const myPosts = posts.filter(p =>
-    p.assigned_to === userEmail &&
-    !["published","scheduled","rejected"].includes(p.stage)
-  ).sort((a,b) => priorityScore(b) - priorityScore(a));
+function minsToAmPm(mins) {
+  const h24 = Math.floor(mins / 60);
+  const m = mins % 60;
+  const ampm = h24 < 12 ? "AM" : "PM";
+  const h12 = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24;
+  return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
+}
 
-  let cursor = WORKING_START * 60;
+function generateDailySchedule(posts, userEmail, date) {
+  // Show tasks whose due_date matches the selected day; fall back to
+  // tasks with no due_date only for "today" so the schedule makes sense
+  // when navigating forward/backward.
+  const today = new Date().toISOString().split("T")[0];
+  const myPosts = posts.filter(p => {
+    if (p.assigned_to !== userEmail) return false;
+    if (["published","scheduled","rejected"].includes(p.stage)) return false;
+    if (p.due_date) return p.due_date === date;
+    // Tasks without a due_date only appear on today's view
+    return date === today;
+  }).sort((a,b) => priorityScore(b) - priorityScore(a));
+
+  // Use due_time as the anchor when available, otherwise pack sequentially
   const slots = [];
+  const usedSlots = new Set();
   for(const post of myPosts) {
     const dur = estimateDuration(post);
-    if(cursor + dur > WORKING_END * 60) break;
+    let cursor;
+    if(post.due_time) {
+      const [hh, mm] = post.due_time.split(":").map(Number);
+      const startMins = hh * 60 + (mm || 0);
+      // Clamp within working hours
+      cursor = Math.max(WORKING_START * 60, Math.min(startMins, WORKING_END * 60 - dur));
+    } else {
+      // Find next free slot after the last used one
+      cursor = WORKING_START * 60;
+      const sortedSlots = slots.map(s => s.end_mins).sort((a,b) => a-b);
+      for(const end of sortedSlots) { if(end >= cursor) cursor = end + 10; }
+      if(cursor + dur > WORKING_END * 60) cursor = WORKING_START * 60; // fallback
+    }
     slots.push({
       post_id: post.id,
       start_mins: cursor,
       end_mins: cursor + dur,
-      start_time: `${String(Math.floor(cursor/60)).padStart(2,'0')}:${String(cursor%60).padStart(2,'0')}`,
-      end_time: `${String(Math.floor((cursor+dur)/60)).padStart(2,'0')}:${String((cursor+dur)%60).padStart(2,'0')}`,
+      start_time: minsToAmPm(cursor),
+      end_time: minsToAmPm(cursor + dur),
       duration_mins: dur,
     });
-    cursor += dur + 10;
   }
+  slots.sort((a,b) => a.start_mins - b.start_mins);
   return slots;
 }
 
@@ -4465,6 +4493,10 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
       due_date: post.due_date||"",
       due_time: post.due_time||"",
       estimated_minutes: post.estimated_minutes||"",
+      caption: post.caption||"",
+      hashtags: post.hashtags||"",
+      text_on_visual: post.text_on_visual||"",
+      reel_hook: post.reel_hook||"",
     });
     setEditing(true);
   };
@@ -4481,7 +4513,9 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
     // Keep the singular `platform` field (used everywhere else — Kanban
     // columns, calendar icons, filters) as the first picked platform, while
     // `platforms` carries the full set for showing every badge here.
-    onEdit&&onEdit({...post, ...editForm, platform: editForm.platforms[0]});
+    onEdit&&onEdit({...post, ...editForm, platform: editForm.platforms[0],
+      caption: editForm.caption, hashtags: editForm.hashtags,
+      text_on_visual: editForm.text_on_visual, reel_hook: editForm.reel_hook});
     setEditing(false);
   };
   const handleDelete = () => {
@@ -4870,7 +4904,70 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 <input type="number" min={5} step={5} value={editForm.estimated_minutes||""} onChange={e=>setEditForm(f=>({...f,estimated_minutes:e.target.value?Number(e.target.value):""}))} placeholder={`Auto (${estimateDuration({post_type:editForm.post_type,priority:editForm.priority})} min)`} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
               </div>
             </div>
-            <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+            {/* Content fields — same as the calendar plan preview */}
+            {(()=>{
+              const [saraFeedback,setSaraFeedback] = React.useState("");
+              const [saraRegen,setSaraRegen] = React.useState(false);
+              const regenWithSara = async () => {
+                if(!post.client_id && !post.client_name) { alert("No client associated with this post — Sara needs that context."); return; }
+                setSaraRegen(true);
+                try {
+                  const kind = post.post_type==="reel" ? "reel" : post.post_type==="carousel" ? "carousel" : post.post_type==="article" ? "article" : post.post_type==="story" ? "story" : "static";
+                  const aiRes = await agentAI("content_creator", `Rewrite: ${editForm.title}`,
+                    `You are Sara, a senior content creator. Review the client brain below before rewriting.\n${clientBrainBlock(post.client_id, post.client_name)}\n\nPost title: ${editForm.title}\nCurrent caption: ${editForm.caption}\nCurrent text on visual: ${editForm.text_on_visual}\nCurrent hashtags: ${editForm.hashtags}\n${kind==="reel"?`Current hook: ${editForm.reel_hook}\n`:""}\nFeedback to apply: ${saraFeedback||"Fresh rewrite — different angle than current."}\n\nReturn ONLY valid JSON (no markdown): {"caption":"...","hashtags":"...","text_on_visual":"..."${kind==="reel"?`,"reel_hook":"..."`:""}}\n(text_on_visual = short catchy headline overlaid on the design, not the same as caption; empty string for articles and stories.)`,
+                    kind==="article"?2500:700);
+                  const match = aiRes.match(/\{[\s\S]*\}/);
+                  const idea = JSON.parse(match ? match[0] : aiRes);
+                  setEditForm(f=>({...f,
+                    caption: idea.caption||f.caption,
+                    hashtags: idea.hashtags??f.hashtags,
+                    text_on_visual: idea.text_on_visual??f.text_on_visual,
+                    reel_hook: kind==="reel" ? (idea.reel_hook||f.reel_hook) : f.reel_hook,
+                  }));
+                  setSaraFeedback("");
+                } catch(e) { alert("Sara couldn't rewrite this — please try again."); }
+                setSaraRegen(false);
+              };
+              return (
+                <>
+                  <div style={{borderTop:"1px solid var(--border2)",paddingTop:10,gridColumn:"1/-1"}}>
+                    <p style={{fontSize:11,fontWeight:700,color:"var(--accent)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Content</p>
+                  </div>
+                  {post.post_type==="reel"&&(
+                    <div style={{gridColumn:"1/-1"}}>
+                      <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Hook (first 3 seconds)</label>
+                      <input value={editForm.reel_hook} onChange={e=>setEditForm(f=>({...f,reel_hook:e.target.value}))} placeholder="Scroll-stopping opener..." style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
+                    </div>
+                  )}
+                  {post.post_type!=="article"&&(
+                    <div style={{gridColumn:"1/-1"}}>
+                      <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Text on Visual</label>
+                      <input value={editForm.text_on_visual} onChange={e=>setEditForm(f=>({...f,text_on_visual:e.target.value}))} placeholder="Short catchy headline on the design..." style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
+                    </div>
+                  )}
+                  <div style={{gridColumn:"1/-1"}}>
+                    <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>{post.post_type==="article"?"Article Body":"Caption"}</label>
+                    <textarea value={editForm.caption} onChange={e=>setEditForm(f=>({...f,caption:e.target.value}))} rows={post.post_type==="article"?8:4} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)",resize:"vertical",fontFamily:"inherit"}}/>
+                  </div>
+                  {post.post_type!=="story"&&(
+                    <div style={{gridColumn:"1/-1"}}>
+                      <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Hashtags</label>
+                      <input value={editForm.hashtags} onChange={e=>setEditForm(f=>({...f,hashtags:e.target.value}))} placeholder="#hashtag1 #hashtag2" style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
+                    </div>
+                  )}
+                  <div style={{gridColumn:"1/-1",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:8,padding:10,display:"flex",gap:8,alignItems:"flex-end"}}>
+                    <div style={{flex:1}}>
+                      <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Feedback for Sara (optional)</label>
+                      <input value={saraFeedback} onChange={e=>setSaraFeedback(e.target.value)} placeholder="e.g. more playful tone, mention the summer sale..." style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:12,color:"var(--text)"}}/>
+                    </div>
+                    <button onClick={regenWithSara} disabled={saraRegen} style={{display:"flex",alignItems:"center",gap:5,padding:"8px 14px",borderRadius:7,border:"1px solid #10b98166",background:"#10b98111",color:"#10b981",fontSize:12,fontWeight:700,cursor:saraRegen?"wait":"pointer",whiteSpace:"nowrap",flexShrink:0}}>
+                      {saraRegen?<><Spinner size={13}/> Sara is writing…</>:<><Ico d={Icons.sparkle} size={13} stroke="#10b981"/> Regenerate with Sara</>}
+                    </button>
+                  </div>
+                </>
+              );
+            })()}
+            <div style={{display:"flex",gap:8,justifyContent:"flex-end",gridColumn:"1/-1"}}>
               <button onClick={()=>setEditing(false)} style={{padding:"7px 16px",borderRadius:7,fontSize:12,fontWeight:600,background:"var(--surface)",border:"1px solid var(--border2)",color:"var(--text2)"}}>Cancel</button>
               <Btn onClick={saveEdit} disabled={(editForm.scheduled_date&&!editForm.scheduled_time)||(editForm.due_date&&!editForm.due_time)}><Ico d={Icons.check} size={13}/> Save Changes</Btn>
             </div>
@@ -6940,15 +7037,16 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
     // Each idea is still its own reviewable/regeneratable card in the
     // preview step below — grouping into one task per kind happens at
     // handleConfirm time, once the user has approved which ideas to keep.
-    const platformCursor = {};
     const tasks = activeKinds.flatMap(kind=>{
       const cfg = f.kinds[kind];
       const plats = cfg.platforms;
-      platformCursor[kind] = platformCursor[kind]||0;
+      // All selected platforms apply to every post in this kind — the user
+      // chose "Instagram + Facebook" to mean every post is cross-posted to
+      // both, not that posts are divided between them one by one.
+      const primaryPlatform = kind==="article"
+        ? (plats.includes("linkedin")?"linkedin":plats[0])
+        : plats[0];
       return (ideasByKind[kind]||[]).map((idea,i)=>{
-        const platform = kind==="article"
-          ? (plats.includes("linkedin")?"linkedin":plats[0])
-          : plats[platformCursor[kind]++ % plats.length];
         return {
           id: uid(),
           kind,
@@ -6957,7 +7055,8 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
           hashtags: idea?.hashtags||"",
           text_on_visual: idea?.text_on_visual||"",
           reel_hook: kind==="reel" ? (idea?.hook||"") : "",
-          platform,
+          platform: primaryPlatform,
+          platforms: plats,
           post_type: CALENDAR_KIND_POST_TYPE[kind],
           // Marks this as a design-only deliverable — never actually
           // published to a platform (see auto-publish.php's WHERE clause
@@ -29030,7 +29129,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                 exactly with the percentage-positioned task bars underneath them. */}
             <div style={{position:"relative",flex:1,height:14}}>
               {hours.map(h=>(
-                <span key={h} style={{position:"absolute",left:`${(h-WORKING_START)*60/WORKING_MINS*100}%`,fontSize:10,color:"var(--text3)",whiteSpace:"nowrap"}}>{h}:00</span>
+                <span key={h} style={{position:"absolute",left:`${(h-WORKING_START)*60/WORKING_MINS*100}%`,fontSize:10,color:"var(--text3)",whiteSpace:"nowrap"}}>{h===0?12:h>12?h-12:h}{h<12?"am":"pm"}</span>
               ))}
             </div>
           </div>
@@ -29132,7 +29231,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
           </div>
           {hours.map(hour => {
             const hourSlots = getSlotForHour(hour);
-            const timeLabel = `${String(hour).padStart(2,'0')}:00`;
+            const timeLabel = `${hour===0?12:hour>12?hour-12:hour}:00 ${hour<12?"AM":"PM"}`;
             const isCurrentHour = new Date().getHours()===hour && viewDate.toDateString()===new Date().toDateString();
             // height: 64px base per hour, taller if a long task starts here
             const maxDurMins = hourSlots.reduce((mx, s) => Math.max(mx, s.end_mins - s.start_mins), 0);
@@ -29177,7 +29276,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                           <span style={{fontSize:10,color:"var(--text3)"}}>{durLabel}</span>
                           <Badge label={stage.label} color={stage.color} xs/>
                           {isActive && <span style={{fontSize:9,color:"#10b981",fontWeight:700,textTransform:"uppercase"}}>● Recording</span>}
-                          {isAM && <button onClick={e=>{e.stopPropagation();setOverrideTarget({slot,post});setOverrideTime(slot.start_time);}} style={{marginLeft:"auto",padding:"1px 7px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface2)",color:"var(--text3)",fontSize:9,fontWeight:700,cursor:"pointer"}}> Override</button>}
+                          {isAM && <button onClick={e=>{e.stopPropagation();setOverrideTarget({slot,post});setOverrideTime(`${String(Math.floor(slot.start_mins/60)).padStart(2,'0')}:${String(slot.start_mins%60).padStart(2,'0')}`);}} style={{marginLeft:"auto",padding:"1px 7px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface2)",color:"var(--text3)",fontSize:9,fontWeight:700,cursor:"pointer"}}> Override</button>}
                         </div>
                       </div>
                     );
@@ -39478,7 +39577,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     const localPosts = tasks.map(t=>({...t,project_id:projectId,id:uid()}));
     setData(d=>({...d,posts:[...localPosts,...d.posts]}));
     const calClient = data.clients.find(c=>c.id===planForm.client_id);
-    const postPayloads = localPosts.map(t=>({title:t.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:t.platform,post_type:t.post_type,task_type:t.task_type||"",stage:"planning",priority:t.priority,caption:t.caption,hashtags:t.hashtags,text_on_visual:t.text_on_visual||"",reel_hook:t.reel_hook||"",notes:t.notes||"",estimated_minutes:t.estimated_minutes,scheduled_date:t.scheduled_date,scheduled_time:t.scheduled_time,due_date:t.due_date||"",due_time:t.due_time||"",assigned_to:t.assigned_to||""}));
+    const postPayloads = localPosts.map(t=>({title:t.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:t.platform,platforms:t.platforms||[t.platform],post_type:t.post_type,task_type:t.task_type||"",stage:"planning",priority:t.priority,caption:t.caption,hashtags:t.hashtags,text_on_visual:t.text_on_visual||"",reel_hook:t.reel_hook||"",notes:t.notes||"",estimated_minutes:t.estimated_minutes,scheduled_date:t.scheduled_date,scheduled_time:t.scheduled_time,due_date:t.due_date||"",due_time:t.due_time||"",assigned_to:t.assigned_to||""}));
     ce("Post",postPayloads).then(res=>{
       const reals = res.entities||[];
       setData(d=>{
@@ -39487,6 +39586,29 @@ Return ONLY valid JSON (no markdown, no explanation):
         return {...d,posts};
       });
     }).catch(()=>{});
+    // Notify each unique assignee once per batch (not once per task —
+    // creating 18 tasks would flood their inbox if we sent 18 individual
+    // emails). Group tasks by assignee email, one notification per person.
+    const assigneeGroups = {};
+    localPosts.forEach(t=>{ if(t.assigned_to) (assigneeGroups[t.assigned_to]=assigneeGroups[t.assigned_to]||[]).push(t); });
+    Object.entries(assigneeGroups).forEach(([email, assignedTasks])=>{
+      if(email===currentUser?.email) return;
+      const assignee = data.team.find(m=>m.email===email);
+      if(!assignee) return;
+      const prefs = getNotifPrefs(email);
+      const taskList = assignedTasks.slice(0,5).map(t=>t.title).join(", ")+(assignedTasks.length>5?` and ${assignedTasks.length-5} more`:"");
+      sendNotification("task_assigned", email,
+        `[SocialFlow] ${assignedTasks.length} task${assignedTasks.length>1?"s":""} assigned to you — ${planForm.campaign}`,
+        EMAIL_TEMPLATES.taskAssigned(assignee.name, `${assignedTasks.length} task${assignedTasks.length>1?"s":""}: ${taskList}`, planForm.campaign, calClient?.name||"", "", currentUser?.name),
+        prefs, assignee.whatsapp_number||null
+      ).catch(()=>{});
+      if(!prefs.all_disabled && prefs.task_assigned!==false) {
+        sendPushNotification(email, `${assignedTasks.length} new task${assignedTasks.length>1?"s":""} assigned`,
+          `${planForm.campaign}${calClient?.name?` — ${calClient.name}`:""}`,
+          window.location.origin+"/#tasks"
+        ).catch(()=>{});
+      }
+    });
     setToast(` ${tasks.length} posts created for ${planForm.campaign}`);
   };
 
@@ -39709,11 +39831,19 @@ Return ONLY valid JSON (no markdown, no explanation):
       title: updatedPost.title,
       description: updatedPost.description,
       platform: updatedPost.platform,
+      platforms: updatedPost.platforms,
       post_type: updatedPost.post_type,
       priority: updatedPost.priority,
       assigned_to: updatedPost.assigned_to,
       scheduled_date: updatedPost.scheduled_date||null,
       scheduled_time: updatedPost.scheduled_time||null,
+      due_date: updatedPost.due_date||null,
+      due_time: updatedPost.due_time||null,
+      estimated_minutes: updatedPost.estimated_minutes||null,
+      caption: updatedPost.caption||null,
+      hashtags: updatedPost.hashtags||null,
+      text_on_visual: updatedPost.text_on_visual||null,
+      reel_hook: updatedPost.reel_hook||null,
     }).catch(()=>{});
     logActivity("Task Edited","tasks",`"${updatedPost.title}" edited by ${currentUser?.name}`,"success","",currentUser?.email);
     setToast(" Task updated");
