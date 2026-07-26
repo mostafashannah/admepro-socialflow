@@ -3941,11 +3941,27 @@ function ContentPhaseGenerator({post, project, clientKnowledge, clientIntelligen
   const lsKey = post ? `sf_content_${post.id}` : null;
   const loadSaved = () => { try { return lsKey ? JSON.parse(localStorage.getItem(lsKey)||"null") : null; } catch(e){ return null; } };
 
+  // If this post already has a chosen caption/reel/carousel (e.g. it was moved
+  // back to content_creation after already being chosen once), seed it as
+  // Option 1 instead of showing a separate "Selected Caption" card above an
+  // empty generator — keeps everything in one section, editable/regeneratable.
+  const seedFromExistingCaption = () => {
+    if(!post?.caption) return null;
+    return [{
+      tov_label: post.tov_used || "Selected",
+      caption: post.caption||"", hashtags: post.hashtags||"",
+      hook: post.reel_hook||"", script: post.reel_script||"", cta: post.reel_cta||"",
+      cover: post.carousel_cover||"", slides: parseJ(post.carousel_slides||"[]"),
+      cta_slide:"", music_direction: post.music_direction||"",
+    }];
+  };
+  const initialResult = loadSaved() || seedFromExistingCaption();
+
   const [lang, setLang] = usePersistentState(`sf_lang_${post?.id}`,"english");
   const [tov, setTov] = usePersistentState(`sf_tov_${post?.id}`, "professional");
   const [generating, setGenerating] = useState(false);
-  const [result, setResult] = useState(()=>loadSaved());
-  const [chosenIdx, setChosenIdx] = useState(null);
+  const [result, setResult] = useState(()=>initialResult);
+  const [chosenIdx, setChosenIdx] = useState(()=>initialResult&&post?.caption?0:null);
   const [editingIdx, setEditingIdx] = useState(null);
   const [optionNotes, setOptionNotes] = useState({}); // idx -> feedback text
   const [regenIdx, setRegenIdx] = useState(null);
@@ -5051,7 +5067,9 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
           return (da.length ? da : du).length > 0;
         })()) && (
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(320px,1fr))",gap:16,alignItems:"start"}}>
-          {post.caption&&<div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {/* Suppressed during content_creation — the generator below shows this
+              same caption as its first, already-chosen option instead of duplicating it. */}
+          {post.caption&&post.stage!=="content_creation"&&<div style={{display:"flex",flexDirection:"column",gap:6}}>
             <label style={{fontSize:11,fontWeight:700,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Caption</label>
             <div style={{border:"2px solid var(--accent)",borderRadius:"var(--rs)",overflow:"hidden"}}>
               {/* Card header */}
