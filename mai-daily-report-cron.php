@@ -95,7 +95,7 @@ function workingDaysBetween(DateTime $from, DateTime $to): int {
 }
 
 $clients = $pdo->query("SELECT id, name, account_manager_id FROM clients WHERE status = 'active'")->fetchAll(PDO::FETCH_ASSOC);
-$admins = $pdo->query("SELECT email, whatsapp_number FROM team_members WHERE role = 'admin'")->fetchAll(PDO::FETCH_ASSOC);
+$admins = $pdo->query("SELECT email, whatsapp_number FROM team_members WHERE role IN ('admin','account_manager') AND whatsapp_number IS NOT NULL AND whatsapp_number != ''")->fetchAll(PDO::FETCH_ASSOC);
 $summary = ['clients_checked' => count($clients), 'cadence_alerts' => 0, 'pipeline_alerts' => 0, 'reports_written' => 0, 'memory_curated' => 0, 'errors' => []];
 
 // Raw structured findings per recipient — no pre-written prose. One Claude
