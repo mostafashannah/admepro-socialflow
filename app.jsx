@@ -618,7 +618,7 @@ function sbTable(entityName) {
 // Known columns per table — used to strip unknown fields before POST/PATCH
 const SB_SCHEMA = {
   projects: ["title","description","client_id","client_name","status","start_date","end_date","platforms","team_members","project_type","posting_start","posting_end"],
-  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","text_on_visual","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","estimated_minutes","content_assigned_to","due_date","due_time","task_type","revision_count","was_rejected"],
+  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","text_on_visual","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","assigned_to_extra","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","estimated_minutes","content_assigned_to","due_date","due_time","task_type","revision_count","was_rejected"],
   // address/website/contact_person were never real columns on the clients
   // table (mysql-schema.sql only has name/email/phone/logo_url/industry/
   // status/account_manager_id/notes/platforms/portal_password/username) —
@@ -39433,10 +39433,12 @@ Return ONLY the JSON array, no markdown.`;
     const updated = {...appSettings,...settings,setting_key:"agency_settings"};
     setAppSettings(updated);
     if(settings.primary_color) setAccentColor(settings.primary_color);
+    let ok = true;
     try {
-      if(appSettings.id) await ue("AppSettings",appSettings.id,updated);
-      else { const res=await ce("AppSettings",[updated]); const real=res.entities?.[0]; if(real?.id) setAppSettings(s=>({...s,id:real.id})); }
-    } catch(e){}
+      if(appSettings.id) { const res = await ue("AppSettings",appSettings.id,updated); ok = res!=null; }
+      else { const res=await ce("AppSettings",[updated]); const real=res.entities?.[0]; if(real?.id) setAppSettings(s=>({...s,id:real.id})); ok = !!real?.id; }
+    } catch(e){ ok = false; }
+    if(!ok){ setToast(" Couldn't save — the server rejected it (check Activity Log for details)"); return; }
     logActivity("App Settings Updated","settings","Agency settings changed","success","",currentUser?.email||"admin");
     setToast("Settings saved successfully");
   };
