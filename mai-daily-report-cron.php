@@ -304,11 +304,13 @@ foreach ($recipientFindings as $email => $entry) {
     }
     $userMsg = "Today's findings across your accounts:\n" . implode("\n", $lines) . "\n\nWrite the one WhatsApp message now.";
     [$status, $data] = callClaude(['model' => 'claude-sonnet-4-6', 'max_tokens' => 400, 'system' => $maiWaSystem, 'messages' => [['role' => 'user', 'content' => $userMsg]]]);
+    error_log('[mai-debug] Claude call status: ' . $status . ' error: ' . ($data['error']['message'] ?? 'none'));
     $msg = '';
     if ($status >= 200 && $status < 300) {
         foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $msg .= $block['text']; }
     }
     $msg = trim($msg);
+    error_log('[mai-debug] msg length: ' . mb_strlen($msg) . ' wa_number: ' . $entry['whatsapp_number']);
     // Belt-and-suspenders: the system prompt asks for under 500 characters,
     // but never trust a model's length compliance completely — a message
     // nobody will actually read defeats the entire point of this rewrite.
