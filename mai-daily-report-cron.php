@@ -65,9 +65,13 @@ function logMaiActivity(PDO $pdo, string $action, string $details, string $statu
 function clientAlertRecipients(PDO $pdo, array $client, array $admins): array {
     $recipients = [];
     if (!empty($client['account_manager_id'])) {
-        $am = $pdo->prepare("SELECT email, whatsapp_number FROM team_members WHERE id = :id");
-        $am->execute([':id' => $client['account_manager_id']]);
-        if ($row = $am->fetch(PDO::FETCH_ASSOC)) $recipients[] = $row;
+        $amIds = json_decode($client['account_manager_id'], true);
+        if (!is_array($amIds)) $amIds = [$client['account_manager_id']];
+        foreach ($amIds as $amId) {
+            $am = $pdo->prepare("SELECT email, whatsapp_number FROM team_members WHERE id = :id");
+            $am->execute([':id' => $amId]);
+            if ($row = $am->fetch(PDO::FETCH_ASSOC)) $recipients[] = $row;
+        }
     }
     foreach ($admins as $a) $recipients[] = $a;
     $seen = []; $out = [];
