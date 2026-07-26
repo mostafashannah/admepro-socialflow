@@ -3949,6 +3949,8 @@ function ContentPhaseGenerator({post, project, clientKnowledge, clientIntelligen
   const [editingIdx, setEditingIdx] = useState(null);
   const [optionNotes, setOptionNotes] = useState({}); // idx -> feedback text
   const [regenIdx, setRegenIdx] = useState(null);
+  const [addingOption, setAddingOption] = useState(false);
+  const [addOptionNote, setAddOptionNote] = useState("");
 
   // Persist result
   useEffect(()=>{ if(!lsKey) return; try{ result ? localStorage.setItem(lsKey,JSON.stringify(result)) : localStorage.removeItem(lsKey); }catch(e){} },[result]);
@@ -4153,6 +4155,36 @@ ${shapeInstr}`;
     setRegenIdx(null);
   };
 
+  // Add exactly ONE extra option alongside whatever already exists, instead of
+  // wiping the set and regenerating all of them — steered by an optional note.
+  const addAnotherOption = async () => {
+    setAddingOption(true);
+    const note = addOptionNote.trim();
+    const shapeInstr = isReel
+      ? `{"tov_label":"...","hook":"...","script":"...","cta":"...","caption":"...","hashtags":"...","music_direction":"..."}`
+      : isCarousel
+      ? `{"tov_label":"...","cover":"...","slides":[{"title":"...","body":"..."},{"title":"...","body":"..."},{"title":"...","body":"..."},{"title":"...","body":"..."}],"cta_slide":"...","caption":"...","hashtags":"..."}`
+      : `{"tov_label":"...","caption":"...","hashtags":"..."}`;
+    const existing = (result||[]).map(o=>`- "${o.tov_label||""}": ${(o.caption||o.hook||"").slice(0,150)}`).join("\n") || "(none yet)";
+    const prompt = `${buildSharedHeader()}
+
+These options already exist for this post — the new one must feel different from ALL of them, a fresh angle, not a rewording:
+${existing}
+
+${note ? `FEEDBACK FROM THE TEAM — apply this to the new option: ${note}` : "Give a genuinely different angle/energy than the options above."}
+
+Return ONLY one valid JSON object in this exact shape, no markdown, no explanation:
+${shapeInstr}`;
+    try {
+      const raw = await agentAI("content_creator", `Add option: ${post?.title||"post"}`, prompt, 3000);
+      const objMatch = (raw||"").match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(objMatch ? objMatch[0] : raw);
+      setResult(prev=>[...(prev||[]), parsed]);
+      setAddOptionNote("");
+    } catch(e) { alert("Sara couldn't create another option — please try again."); }
+    setAddingOption(false);
+  };
+
   const handleChoose = (idx) => {
     const opt = result[idx];
     setChosenIdx(idx);
@@ -4190,7 +4222,7 @@ ${shapeInstr}`;
           <Ico d={Icons.sparkle} size={16} stroke="var(--accent)"/>
           <div>
             <p style={{fontSize:13,fontWeight:700}}>Sara — Content Generator — {typeLabel}</p>
-            <p style={{fontSize:11,color:"var(--text3)"}}>3 options · different tones · editable · push to Design</p>
+            <p style={{fontSize:11,color:"var(--text3)"}}>3 options to start · add more anytime · editable · push to Design</p>
           </div>
         </div>
         <Btn size="sm" onClick={handleGenerate} disabled={generating}>
@@ -4347,6 +4379,17 @@ ${shapeInstr}`;
             </div>
           </div>
         ))}
+
+        {/* Add one more option, without wiping the existing ones */}
+        {result&&result.length>0&&(
+          <div style={{display:"flex",gap:8,padding:"12px 14px",border:"1px dashed var(--border2)",borderRadius:"var(--rs)"}}>
+            <input value={addOptionNote} onChange={e=>setAddOptionNote(e.target.value)}
+              placeholder="Notes for the new option (optional)…" style={{flex:1,fontSize:12,padding:"7px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontFamily:"inherit"}}/>
+            <button onClick={addAnotherOption} disabled={addingOption} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:8,fontSize:12,fontWeight:700,background:"var(--accent)",color:"#fff",border:"none",cursor:addingOption?"wait":"pointer",whiteSpace:"nowrap",flexShrink:0}}>
+              {addingOption?<><Spinner size={12}/> Sara is writing…</>:<><Ico d={Icons.sparkle} size={12} stroke="#fff"/> Add Another Option</>}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -34419,13 +34462,15 @@ RULES:
       else if(act==="delete_project") {
         const proj=(data.projects||[]).find(p=>p.id===payload.project_id||(p.title||"").toLowerCase().includes((payload.project_name||"").toLowerCase()));
         if(!proj){addBotMsg(` Couldn't find project "${payload.project_name||payload.project_id}".`,"error");return;}
-        if(onDirectAction) await onDirectAction("delete_project",{projectId:proj.id});
+        const ok = onDirectAction ? await onDirectAction("delete_project",{projectId:proj.id}) : false;
+        if(ok===false){addBotMsg(` Couldn't delete **"${proj.title}"** — the delete was rejected by the server. Please try again.`,"error");return;}
         addBotMsg(` Project **"${proj.title}"** and its tasks deleted.`,"success");
       }
       else if(act==="delete_client") {
         const cl=(data.clients||[]).find(c=>c.id===payload.client_id||(c.name||"").toLowerCase().includes((payload.client_name||"").toLowerCase()));
         if(!cl){addBotMsg(` Couldn't find client "${payload.client_name||payload.client_id}".`,"error");return;}
-        if(onDirectAction) await onDirectAction("delete_client",{clientId:cl.id});
+        const ok = onDirectAction ? await onDirectAction("delete_client",{clientId:cl.id}) : false;
+        if(ok===false){addBotMsg(` Couldn't delete **"${cl.name}"** — the delete was rejected by the server. Please try again.`,"error");return;}
         addBotMsg(` Client **"${cl.name}"** removed.`,"success");
       }
       else if(act==="nav") {
@@ -36143,12 +36188,14 @@ RULES:
       } else if(act==="delete_project") {
         const proj=(data.projects||[]).find(p=>p.id===payload.project_id||(p.title||"").toLowerCase().includes((payload.project_name||"").toLowerCase()));
         if(!proj){addBotMsg(` Couldn't find project "${payload.project_name||payload.project_id}".`,"error");return;}
-        if(onDirectAction) await onDirectAction("delete_project",{projectId:proj.id});
+        const ok = onDirectAction ? await onDirectAction("delete_project",{projectId:proj.id}) : false;
+        if(ok===false){addBotMsg(` Couldn't delete **"${proj.title}"** — the delete was rejected by the server. Please try again.`,"error");return;}
         addBotMsg(` Project **"${proj.title}"** and its tasks deleted.`,"success");
       } else if(act==="delete_client") {
         const cl=(data.clients||[]).find(c=>c.id===payload.client_id||(c.name||"").toLowerCase().includes((payload.client_name||"").toLowerCase()));
         if(!cl){addBotMsg(` Couldn't find client "${payload.client_name||payload.client_id}".`,"error");return;}
-        if(onDirectAction) await onDirectAction("delete_client",{clientId:cl.id});
+        const ok = onDirectAction ? await onDirectAction("delete_client",{clientId:cl.id}) : false;
+        if(ok===false){addBotMsg(` Couldn't delete **"${cl.name}"** — the delete was rejected by the server. Please try again.`,"error");return;}
         addBotMsg(` Client **"${cl.name}"** removed (with all projects & tasks).`,"success");
       } else if(act==="delete_lead") {
         const lead=(data.leads||[]).find(l=>l.id===payload.lead_id||(l.name||"").toLowerCase().includes((payload.lead_name||"").toLowerCase()));
@@ -40736,25 +40783,32 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
                 else if(type==="delete_project") {
                   const {projectId}=payload;
                   const childPosts=(data.posts||[]).filter(p=>p.project_id===projectId);
+                  // Children must be deleted before the parent — posts.project_id has
+                  // a foreign-key reference, so deleting the project first fails silently
+                  // (de() swallows non-2xx) and leaves the project row behind.
+                  const postResults = await Promise.all(childPosts.map(cp=>de("Post",cp.id)));
+                  const projOk = await de("Project",projectId);
+                  if(!projOk || postResults.some(ok=>!ok)) return false;
                   setData(d=>({...d,
                     projects:d.projects.filter(p=>p.id!==projectId),
                     posts:d.posts.filter(p=>p.project_id!==projectId),
                   }));
-                  await de("Project",projectId).catch(()=>{});
-                  for(const cp of childPosts){ de("Post",cp.id).catch(()=>{}); }
+                  return true;
                 }
                 else if(type==="delete_client") {
                   const {clientId}=payload;
                   const childProjs=(data.projects||[]).filter(p=>p.client_id===clientId);
                   const childPosts=(data.posts||[]).filter(p=>p.client_id===clientId);
+                  const postResults = await Promise.all(childPosts.map(cp=>de("Post",cp.id)));
+                  const projResults = await Promise.all(childProjs.map(cp=>de("Project",cp.id)));
+                  const clientOk = await de("Client",clientId);
+                  if(!clientOk || postResults.some(ok=>!ok) || projResults.some(ok=>!ok)) return false;
                   setData(d=>({...d,
                     clients:d.clients.filter(c=>c.id!==clientId),
                     projects:d.projects.filter(p=>p.client_id!==clientId),
                     posts:d.posts.filter(p=>p.client_id!==clientId),
                   }));
-                  await de("Client",clientId).catch(()=>{});
-                  for(const cp of childProjs){ de("Project",cp.id).catch(()=>{}); }
-                  for(const cp of childPosts){ de("Post",cp.id).catch(()=>{}); }
+                  return true;
                 }
                 else if(type==="update_reply_bot_settings") await saveReplyBotSettings(payload.clientId, payload.clientName, payload.patch);
               }}
@@ -41293,25 +41347,32 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         if(actionType==="delete_project") {
           const {projectId} = payload;
           const childPosts = (data.posts||[]).filter(p=>p.project_id===projectId);
+          // Children must be deleted before the parent — posts.project_id has a
+          // foreign-key reference, so deleting the project first fails silently
+          // and leaves the project row behind even though its posts are gone.
+          const postResults = await Promise.all(childPosts.map(cp=>de("Post", cp.id)));
+          const projOk = await de("Project", projectId);
+          if(!projOk || postResults.some(ok=>!ok)) return false;
           setData(d=>({...d,
             projects: d.projects.filter(p=>p.id!==projectId),
             posts: d.posts.filter(p=>p.project_id!==projectId),
           }));
-          de("Project", projectId).catch(()=>{});
-          for(const cp of childPosts){ de("Post", cp.id).catch(()=>{}); }
+          return true;
         }
         if(actionType==="delete_client") {
           const {clientId} = payload;
           const childProjs = (data.projects||[]).filter(p=>p.client_id===clientId);
           const childPosts = (data.posts||[]).filter(p=>p.client_id===clientId);
+          const postResults = await Promise.all(childPosts.map(cp=>de("Post", cp.id)));
+          const projResults = await Promise.all(childProjs.map(cp=>de("Project", cp.id)));
+          const clientOk = await de("Client", clientId);
+          if(!clientOk || postResults.some(ok=>!ok) || projResults.some(ok=>!ok)) return false;
           setData(d=>({...d,
             clients: d.clients.filter(c=>c.id!==clientId),
             projects: d.projects.filter(p=>p.client_id!==clientId),
             posts: d.posts.filter(p=>p.client_id!==clientId),
           }));
-          de("Client", clientId).catch(()=>{});
-          for(const cp of childProjs){ de("Project", cp.id).catch(()=>{}); }
-          for(const cp of childPosts){ de("Post", cp.id).catch(()=>{}); }
+          return true;
         }
         if(actionType==="delete_lead") {
           const {leadId} = payload;
