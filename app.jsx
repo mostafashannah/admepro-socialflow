@@ -357,15 +357,20 @@ function estimateDuration(post) {
   const cfg = getDurationCfg();
   const method = cfg.method || "table"; // "table" (fixed lookup) | "manual" | "historical"
   if(method==="manual") return 60; // no guessing — flat neutral fallback until someone sets one
+  // "static" (single-image captions) is a distinct, commonly-used post_type
+  // value across the app but was never given its own row in the settings
+  // table — treat it as the same duration as "image" rather than silently
+  // falling through to the flat 60 min default.
+  const aliasType = (t) => t==="static" ? "image" : t;
   if(method==="historical"){
     let hist = {}; try{ hist = window.__SF_DURATION_HIST||{}; }catch(e){}
-    const type = post.post_type || post.task_type;
+    const type = aliasType(post.post_type || post.task_type);
     if(type && hist[type]) return hist[type];
     // No real tracked history for this type yet — fall through to the table guess.
   }
   const postTypes = cfg.postTypes || POST_TYPE_DURATIONS;
   const priorityMult = cfg.priorityMult || DEFAULT_PRIORITY_MULT;
-  const base = postTypes[post.post_type] || postTypes[post.task_type] || 60;
+  const base = postTypes[aliasType(post.post_type)] || postTypes[aliasType(post.task_type)] || 60;
   return Math.round(base * (priorityMult[post.priority] || 1.0));
 }
 
