@@ -47,8 +47,22 @@ $recipients = clientAlertRecipients($pdo, $client, $admins);
 echo "Recipients for '{$client['name']}':\n";
 print_r($recipients);
 
-// Test sendWhatsAppReply directly
-echo "\n=== TEST: sendWhatsAppReply to Monay ===\n";
-$result = sendWhatsAppReply('+201112311454', 'Mai test message — system check ✅');
-echo "Result: ";
-var_dump($result);
+// Test WhatsApp API directly with full response
+echo "\n=== TEST: WhatsApp API direct call ===\n";
+$to = '+201112311454';
+$body = 'Mai test — system check ✅';
+$endpoint = 'https://graph.facebook.com/v19.0/' . WA_PHONE_ID . '/messages';
+$payload = json_encode(['messaging_product'=>'whatsapp','to'=>$to,'type'=>'text','text'=>['body'=>$body]]);
+$ch = curl_init($endpoint);
+curl_setopt_array($ch, [
+    CURLOPT_POST => true, CURLOPT_POSTFIELDS => $payload,
+    CURLOPT_RETURNTRANSFER => true, CURLOPT_SSL_VERIFYPEER => true, CURLOPT_TIMEOUT => 15,
+    CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . WA_ACCESS_TOKEN],
+]);
+$res = curl_exec($ch);
+$status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+$err = curl_error($ch);
+curl_close($ch);
+echo "HTTP status: $status\n";
+echo "Curl error: " . ($err ?: '(none)') . "\n";
+echo "Response: $res\n";
