@@ -33984,7 +33984,14 @@ function ScrollingTitle({text, style}){
 // user with existing local-only history pushes it up to the server; after
 // that, merges in whichever copy of each session — local or server — was
 // updated more recently, so two open tabs/devices don't stomp each other.
-async function syncProSessionsWithServer(email, setSessions){
+// `syncedRef` (optional) is a Map the caller's persist-effect also reads —
+// every session object placed into state here gets recorded as "already
+// matches the server", so that effect doesn't immediately re-upload the
+// entire list it JUST pulled down (previously it did, firing one PATCH per
+// session — up to 50 at once, simultaneously from both the Pro page and the
+// floating widget on a single page load — plausibly enough concurrent
+// requests to overwhelm the server and produce transient connection errors).
+async function syncProSessionsWithServer(email, setSessions, syncedRef){
   if(!email) return;
   const server = await fetchProSessionsFromServer(email);
   if(server.length===0){
@@ -33995,6 +34002,7 @@ async function syncProSessionsWithServer(email, setSessions){
       prevLocal.filter(s=>String(s.id).startsWith("local_")).forEach(s=>{
         persistProSessionToServer(s, email).then(saved=>{
           if(saved.id!==s.id) setSessions(cur=>cur.map(x=>x.id===s.id?{...x,id:saved.id}:x));
+          if(syncedRef) syncedRef.current.set(saved.id, saved);
         });
       });
       return prevLocal.filter(s=>String(s.id).startsWith("local_"));
@@ -34015,7 +34023,9 @@ async function syncProSessionsWithServer(email, setSessions){
       const loc = byId.get(srv.id);
       if(!loc || new Date(srv.updated_at||0) > new Date(loc.updated_at||0)) byId.set(srv.id, srv);
     }
-    return [...byId.values()].sort((a,b)=>new Date(b.updated_at||0)-new Date(a.updated_at||0)).slice(0,50);
+    const result = [...byId.values()].sort((a,b)=>new Date(b.updated_at||0)-new Date(a.updated_at||0)).slice(0,50);
+    if(syncedRef) result.forEach(s=>syncedRef.current.set(s.id, s));
+    return result;
   });
 }
 
@@ -34224,14 +34234,21 @@ function Chatbot({currentUser, currentPage, data, selectedClientId, onAction, on
   useEffect(()=>{ saveProSessions(sessions, currentUser?.email); },[sessions]);
   // Pull the durable server copy in once per user (merges in anything saved
   // from another device/browser, or migrates pre-existing local-only history up).
-  useEffect(()=>{ syncProSessionsWithServer(currentUser?.email, setSessions); },[currentUser?.email]);
+  const lastSyncedSessionsRef = React.useRef(new Map());
+  useEffect(()=>{ syncProSessionsWithServer(currentUser?.email, setSessions, lastSyncedSessionsRef); },[currentUser?.email]);
   // Push changes up to the server, debounced so a fast burst of edits (typing,
-  // streaming replies) doesn't fire an upsert per keystroke.
+  // streaming replies) doesn't fire an upsert per keystroke — and skip any
+  // session whose object reference is unchanged since we last saw it (came
+  // straight from the server sync above, or was already persisted), instead
+  // of re-uploading the entire list every time this list's reference changes.
   useEffect(()=>{
     const t = setTimeout(()=>{
       sessions.forEach(s=>{
+        if(lastSyncedSessionsRef.current.get(s.id) === s) return;
+        lastSyncedSessionsRef.current.set(s.id, s);
         persistProSessionToServer(s, currentUser?.email).then(saved=>{
           if(saved.id!==s.id){
+            lastSyncedSessionsRef.current.set(saved.id, saved);
             setSessions(prev=>prev.map(x=>x.id===s.id?{...x,id:saved.id}:x));
             if(activeChatId===s.id){ setActiveChatId(saved.id); saveActiveChatId(saved.id, currentUser?.email); }
           }
@@ -35977,12 +35994,20 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
     });
   };
   useEffect(()=>{ saveProSessions(chatSessions, currentUser?.email); },[chatSessions]);
-  useEffect(()=>{ syncProSessionsWithServer(currentUser?.email, setChatSessions); },[currentUser?.email]);
+  // syncedRef tracks which session objects already match the server, so the
+  // persist effect below doesn't immediately re-upload the whole list it
+  // just pulled down — see syncProSessionsWithServer's comment for why that
+  // mattered (a burst of one PATCH per session, times two mounted widgets).
+  const lastSyncedChatSessionsRef = React.useRef(new Map());
+  useEffect(()=>{ syncProSessionsWithServer(currentUser?.email, setChatSessions, lastSyncedChatSessionsRef); },[currentUser?.email]);
   useEffect(()=>{
     const t = setTimeout(()=>{
       chatSessions.forEach(s=>{
+        if(lastSyncedChatSessionsRef.current.get(s.id) === s) return;
+        lastSyncedChatSessionsRef.current.set(s.id, s);
         persistProSessionToServer(s, currentUser?.email).then(saved=>{
           if(saved.id!==s.id){
+            lastSyncedChatSessionsRef.current.set(saved.id, saved);
             setChatSessions(prev=>prev.map(x=>x.id===s.id?{...x,id:saved.id}:x));
             if(activeChatId===s.id){ setActiveChatId(saved.id); saveActiveChatId(saved.id, currentUser?.email); }
           }
