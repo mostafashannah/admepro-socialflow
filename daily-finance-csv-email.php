@@ -63,15 +63,17 @@ $todayCollected = (float)$pdo->query("
     SELECT COALESCE(SUM(amount),0) FROM outstanding_payments WHERE date = CURDATE()
 ")->fetchColumn();
 
-// Current outstanding balance: total_payable minus payments made so far, for
-// liabilities not yet fully settled.
+// Current outstanding balance: outstanding_total_payable minus payments made
+// so far, for expense rows not yet fully settled. Outstanding tracking lives
+// directly on `expenses` (outstanding_kind/outstanding_status/outstanding_total_payable),
+// not a separate liabilities table.
 $outstandingBalance = (float)$pdo->query("
-    SELECT COALESCE(SUM(l.total_payable - COALESCE(p.paid, 0)), 0)
-    FROM outstanding_liabilities l
+    SELECT COALESCE(SUM(e.outstanding_total_payable - COALESCE(p.paid, 0)), 0)
+    FROM expenses e
     LEFT JOIN (
-        SELECT liability_id, SUM(amount) AS paid FROM outstanding_payments GROUP BY liability_id
-    ) p ON p.liability_id = l.id
-    WHERE l.status IN ('outstanding', 'partial')
+        SELECT expense_id, SUM(amount) AS paid FROM outstanding_payments GROUP BY expense_id
+    ) p ON p.expense_id = e.id
+    WHERE e.outstanding_status IN ('outstanding', 'partial')
 ")->fetchColumn();
 
 $fmt = fn($n) => number_format((float)$n, 2);
