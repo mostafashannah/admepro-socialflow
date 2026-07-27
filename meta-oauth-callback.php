@@ -58,8 +58,21 @@ function ig_get($url) {
     return [$data, null];
 }
 
+// redact_secrets() above only matches "key=value" query-string style text —
+// it never matched here since json_encode() produces "key":"value", not
+// "key=value", so every Page access token was still logged in plaintext
+// despite the call looking like a safeguard. Redact the array itself first.
+function redactTokenFields($value) {
+    if (is_array($value)) {
+        $out = [];
+        foreach ($value as $k => $v) { $out[$k] = ($k === 'access_token') ? '[REDACTED]' : redactTokenFields($v); }
+        return $out;
+    }
+    return $value;
+}
+
 function finish($ok, $payload) {
-    error_log('meta-oauth-callback finish: ok=' . ($ok ? '1' : '0') . ' payload=' . redact_secrets(json_encode($payload)));
+    error_log('meta-oauth-callback finish: ok=' . ($ok ? '1' : '0') . ' payload=' . json_encode(redactTokenFields($payload)));
     header('Content-Type: text/html; charset=UTF-8');
     $json = json_encode(array_merge(['type' => 'meta_oauth_result', 'ok' => $ok], $payload));
     echo "<!DOCTYPE html><html><body><script>
