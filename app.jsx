@@ -30277,9 +30277,21 @@ function InterviewSchedulingSection({application, onSendTimes, sending, onConfir
 
   const hasResponse = application.interview_selected_slot || application.interview_candidate_note;
 
+  const interviewQr = application.candidate_phone && waQrUrl(application.candidate_phone,
+    `Hi ${application.candidate_name||"there"}, this is a message from Admepro to confirm your interview time${application.job_title?` for the ${application.job_title} role`:""}. Please reply to this message to confirm you'll be attending, and let us know if you need to reschedule.`
+  );
+
   return (
     <div style={{marginBottom:14,padding:14,background:"var(--surface2)",borderRadius:10,border:"1px solid var(--border)"}}>
-      <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Interview Scheduling</p>
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,marginBottom:8}}>
+        <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Interview Scheduling</p>
+        {interviewQr&&(
+          <div style={{textAlign:"center",padding:8,background:"var(--surface)",borderRadius:10,border:"1px solid var(--border2)",flexShrink:0}}>
+            <img src={interviewQr} alt="Interview confirmation WhatsApp QR" width={90} height={90} style={{display:"block",borderRadius:6}}/>
+            <p style={{fontSize:9,fontWeight:700,color:"var(--text3)",marginTop:4,maxWidth:90}}>Scan to WhatsApp confirm</p>
+          </div>
+        )}
+      </div>
 
       {application.interview_confirmed_slot && (
         <div style={{marginBottom:10}}>
@@ -30378,11 +30390,23 @@ function OfferSection({application, opening, onSave, saving, onSend, sending, on
   });
   const sf = (k,v) => setForm(p=>({...p,[k]:v}));
 
+  const offerQr = application.candidate_phone && waQrUrl(application.candidate_phone,
+    `Hi ${application.candidate_name||"there"}, this is a message from Admepro to confirm that you've received our job offer. Please reply to this message to confirm receipt, and don't hesitate to reach out if you have any questions. We look forward to hearing from you.`
+  );
+
   return (
     <div style={{marginBottom:14,padding:14,background:"var(--surface2)",borderRadius:10,border:"1px solid var(--border)"}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-        <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Offer</p>
-        {application.offer_sent_at && <span style={{fontSize:11,fontWeight:700,color:"#10b981"}}>Sent {fmtDateTime(application.offer_sent_at)}</span>}
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,marginBottom:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Offer</p>
+          {application.offer_sent_at && <span style={{fontSize:11,fontWeight:700,color:"#10b981"}}>Sent {fmtDateTime(application.offer_sent_at)}</span>}
+        </div>
+        {offerQr&&(
+          <div style={{textAlign:"center",padding:8,background:"var(--surface)",borderRadius:10,border:"1px solid var(--border2)",flexShrink:0}}>
+            <img src={offerQr} alt="Job offer confirmation WhatsApp QR" width={90} height={90} style={{display:"block",borderRadius:6}}/>
+            <p style={{fontSize:9,fontWeight:700,color:"var(--text3)",marginTop:4,maxWidth:90}}>Scan to WhatsApp confirm</p>
+          </div>
+        )}
       </div>
 
       {application.offer_candidate_response && (
@@ -30767,30 +30791,6 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
           {application.candidate_phone&&<span style={{fontSize:12,color:"var(--text3)"}}>· {application.candidate_phone}</span>}
           {application.created_at&&<span style={{fontSize:12,color:"var(--text3)"}}>· Submitted {fmtDateTime(application.created_at)}</span>}
         </div>
-
-        {application.candidate_phone&&(()=>{
-          const name = application.candidate_name||"there";
-          const interviewText = `Hi ${name}, this is a message from Admepro to confirm your interview time${application.job_title?` for the ${application.job_title} role`:""}. Please reply to this message to confirm you'll be attending, and let us know if you need to reschedule.`;
-          const offerText = `Hi ${name}, this is a message from Admepro to confirm that you've received our job offer. Please reply to this message to confirm receipt, and don't hesitate to reach out if you have any questions. We look forward to hearing from you.`;
-          const interviewQr = waQrUrl(application.candidate_phone, interviewText);
-          const offerQr = waQrUrl(application.candidate_phone, offerText);
-          return (
-            <div style={{display:"flex",gap:16,flexWrap:"wrap",marginBottom:18}}>
-              {interviewQr&&(
-                <div style={{textAlign:"center",padding:12,background:"var(--surface2)",borderRadius:12,border:"1px solid var(--border)"}}>
-                  <img src={interviewQr} alt="Interview confirmation WhatsApp QR" width={110} height={110} style={{display:"block",borderRadius:6}}/>
-                  <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",marginTop:6,maxWidth:110}}>Scan to WhatsApp: Interview Confirmation</p>
-                </div>
-              )}
-              {offerQr&&(
-                <div style={{textAlign:"center",padding:12,background:"var(--surface2)",borderRadius:12,border:"1px solid var(--border)"}}>
-                  <img src={offerQr} alt="Job offer confirmation WhatsApp QR" width={110} height={110} style={{display:"block",borderRadius:6}}/>
-                  <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",marginTop:6,maxWidth:110}}>Scan to WhatsApp: Offer Received Confirmation</p>
-                </div>
-              )}
-            </div>
-          );
-        })()}
 
         <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:18}}>
           {application.cv_url&&(cvNeedsLocalCopy ? (
