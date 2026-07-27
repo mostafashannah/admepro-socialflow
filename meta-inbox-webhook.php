@@ -148,9 +148,20 @@ function fetchPostCaption(string $channel, ?string $accessToken, string $mediaOr
     return $data[$field] ?? null;
 }
 
-function storeMessage(PDO $pdo, $clientId, $clientName, $channel, $customerId, $customerName, $text, $externalId = null) {
-    $stmt = $pdo->prepare("INSERT INTO customer_messages (client_id, client_name, channel, customer_id, customer_name, direction, message_text, sent_by, thread_status, external_id) VALUES (:cid, :cname, :ch, :custid, :custname, 'in', :txt, 'customer', 'needs_human', :eid)");
-    $stmt->execute([':cid'=>$clientId, ':cname'=>$clientName, ':ch'=>$channel, ':custid'=>$customerId, ':custname'=>$customerName, ':txt'=>$text, ':eid'=>$externalId]);
+function storeMessage(PDO $pdo, $clientId, $clientName, $channel, $customerId, $customerName, $text, $externalId = null, $attachmentUrl = null) {
+    $stmt = $pdo->prepare("INSERT INTO customer_messages (client_id, client_name, channel, customer_id, customer_name, direction, message_text, sent_by, thread_status, external_id, attachment_url) VALUES (:cid, :cname, :ch, :custid, :custname, 'in', :txt, 'customer', 'needs_human', :eid, :att)");
+    $stmt->execute([':cid'=>$clientId, ':cname'=>$clientName, ':ch'=>$channel, ':custid'=>$customerId, ':custname'=>$customerName, ':txt'=>$text, ':eid'=>$externalId, ':att'=>$attachmentUrl]);
+}
+
+// Pulls the direct (temporary, Meta-hosted) URL of an image a customer sent
+// in a DM — the same message.attachments[] shape used by both Messenger and
+// Instagram DMs. Only the first image is used; multi-image "albums" are rare
+// in DMs and out of scope for now.
+function extractImageUrl(array $message) {
+    foreach (($message['attachments'] ?? []) as $att) {
+        if (($att['type'] ?? '') === 'image') return $att['payload']['url'] ?? null;
+    }
+    return null;
 }
 
 // Meta's Messenger PSID-name lookup (fetchSenderName) is unreliable and often fails
@@ -198,13 +209,18 @@ try {
             $text = $msgData['text'] ?? null;
             $senderId = $m['sender']['id'] ?? null;
             if ($tag = storyContextTag($msgData)) { $text = $text ? "{$tag} {$text}" : $tag; }
-            if ($text && $senderId) {
+            $imageUrl = extractImageUrl($msgData);
+            // An image-only DM (no caption text) used to be silently dropped
+            // entirely since this only checked $text — now stored (with a
+            // placeholder caption) so the image itself isn't lost.
+            if (($text || $imageUrl) && $senderId) {
+                $storedText = $text ?: '[Image]';
                 $senderName = fetchSenderName($channel, $client['access_token'], $senderId);
                 backfillCustomerName($pdo, $client['client_id'], $channel, $senderId, $senderName);
-                storeMessage($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName, $text);
+                storeMessage($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName, $storedText, null, $imageUrl);
                 try {
-                    if ($client['is_own']) { maybeCreateLeadFromMessage($pdo, $channel, $senderId, $senderName, $text, null, $client['client_id']); }
-                    else { maybeCaptureClientContact($pdo, $channel, $senderId, $senderName, $text, $client['client_id'], $client['client_name']); }
+                    if ($client['is_own']) { maybeCreateLeadFromMessage($pdo, $channel, $senderId, $senderName, $storedText, null, $client['client_id']); }
+                    else { maybeCaptureClientContact($pdo, $channel, $senderId, $senderName, $storedText, $client['client_id'], $client['client_name']); }
                     maybeAutoReply($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName);
                 } catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
             }
@@ -220,18 +236,20 @@ try {
                 $text = $msgData['text'] ?? null;
                 $senderId = $c['value']['sender']['id'] ?? null;
                 if ($tag = storyContextTag($msgData)) { $text = $text ? "{$tag} {$text}" : $tag; }
+                $imageUrl = extractImageUrl($msgData);
                 // $channel (computed above from $body['object']) is 'instagram' or 'messenger' —
                 // this "changes" delivery shape isn't Instagram-exclusive, so hardcoding
                 // 'instagram' here mis-tagged real Facebook Messenger events, storing them
                 // under the wrong channel and sending replies with the wrong integration's
                 // credentials (Instagram's token/page_id instead of Facebook's).
-                if ($text && $senderId) {
+                if (($text || $imageUrl) && $senderId) {
+                    $storedText = $text ?: '[Image]';
                     $senderName = fetchSenderName($channel, $client['access_token'], $senderId);
                     backfillCustomerName($pdo, $client['client_id'], $channel, $senderId, $senderName);
-                    storeMessage($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName, $text);
+                    storeMessage($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName, $storedText, null, $imageUrl);
                     try {
-                        if ($client['is_own']) { maybeCreateLeadFromMessage($pdo, $channel, $senderId, $senderName, $text, null, $client['client_id']); }
-                        else { maybeCaptureClientContact($pdo, $channel, $senderId, $senderName, $text, $client['client_id'], $client['client_name']); }
+                        if ($client['is_own']) { maybeCreateLeadFromMessage($pdo, $channel, $senderId, $senderName, $storedText, null, $client['client_id']); }
+                        else { maybeCaptureClientContact($pdo, $channel, $senderId, $senderName, $storedText, $client['client_id'], $client['client_name']); }
                         maybeAutoReply($pdo, $client['client_id'], $client['client_name'], $channel, $senderId, $senderName);
                     } catch (\Throwable $e) { error_log('meta-inbox-webhook reply-bot EXCEPTION: ' . $e->getMessage()); }
                 }
