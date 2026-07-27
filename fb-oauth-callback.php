@@ -45,8 +45,22 @@ function fb_post($url, $fields) {
     return [$data, null];
 }
 
+// Strips access_token values before writing to the log — the real payload
+// (with real tokens) still goes to the browser via postMessage below, only
+// the server-side log entry gets redacted. Previously every Page access
+// token for every connected account was written to the PHP error log in
+// plaintext, readable by anyone with server/log access.
+function redactTokens($value) {
+    if (is_array($value)) {
+        $out = [];
+        foreach ($value as $k => $v) { $out[$k] = ($k === 'access_token') ? '[REDACTED]' : redactTokens($v); }
+        return $out;
+    }
+    return $value;
+}
+
 function finish($ok, $payload) {
-    error_log('fb-oauth-callback finish: ok=' . ($ok ? '1' : '0') . ' payload=' . json_encode($payload));
+    error_log('fb-oauth-callback finish: ok=' . ($ok ? '1' : '0') . ' payload=' . json_encode(redactTokens($payload)));
     header('Content-Type: text/html; charset=UTF-8');
     $json = json_encode(array_merge(['type' => 'fb_oauth_result', 'ok' => $ok], $payload));
     echo "<!DOCTYPE html><html><body><script>
