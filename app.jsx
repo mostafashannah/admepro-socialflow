@@ -30678,8 +30678,14 @@ function RestrictedApplicationView({applicationId, currentUser, team, comments, 
 // with the given text. wa.me always opens whichever WhatsApp app is
 // installed (Business or regular), addressed to `phone`.
 function waQrUrl(phone, text) {
-  const digits = (phone||"").replace(/[^0-9]/g,"");
+  let digits = (phone||"").replace(/[^0-9]/g,"");
   if (!digits) return null;
+  // Numbers are often stored in local Egyptian format (leading 0, no
+  // country code) since that's what candidates type on the application
+  // form — wa.me requires the full international number, so swap the
+  // leading 0 for the country code (default Egypt, "20") when missing.
+  if (digits.startsWith("0")) digits = "20" + digits.slice(1);
+  else if (!digits.startsWith("20")) digits = "20" + digits;
   const link = `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
   return `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(link)}`;
 }
