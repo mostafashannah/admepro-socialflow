@@ -7072,7 +7072,12 @@ function AddCalendarPlanModal({open,onClose,clients,team,posts,projects,preselec
   // Full Grid Layout is Instagram-only, always — never follows whatever
   // platforms the client happens to have connected, unlike every other kind.
   const platformsForKind = (kind, clientPlatforms) => kind==="grid_layout" ? ["instagram"] : (clientPlatforms||[]);
-  const makeKindDefaults = (count, kind) => ({count, platforms:platformsForKind(kind, preselectedClient?.platforms), brief:"", assigned_to:"", due_mode:"auto", manual_due_date:"", manual_due_time:"13:00"});
+  // briefBatches lets one content type be split into separate groups, each
+  // with its own count + brief (e.g. 6 static posts as two groups of 3, each
+  // pushing a different message) instead of forcing one brief onto all of
+  // them. `count` is kept in sync as the sum of all batches' counts, since
+  // scheduling/due-date/token-budget logic elsewhere reads it directly.
+  const makeKindDefaults = (count, kind) => ({count, platforms:platformsForKind(kind, preselectedClient?.platforms), briefBatches:[{count, brief:""}], assigned_to:"", due_mode:"auto", manual_due_date:"", manual_due_time:"13:00"});
   const [f,setF] = useState({
     client_id: preselectedClient?.id||"",
     campaign: "",
@@ -7107,9 +7112,21 @@ function AddCalendarPlanModal({open,onClose,clients,team,posts,projects,preselec
   // Brief textarea starts small but can be enlarged (more rows + a taller
   // resize handle) when there's a lot to type/read, per kind.
   const [enlargedBrief,setEnlargedBrief] = useState({});
-  const toggleBriefSize = (kind) => setEnlargedBrief(prev=>({...prev,[kind]:!prev[kind]}));
+  const toggleBriefSize = (bKey) => setEnlargedBrief(prev=>({...prev,[bKey]:!prev[bKey]}));
   const s = (k,v) => setF(p=>({...p,[k]:v}));
   const sk = (kind,key,val) => setF(p=>({...p,kinds:{...p.kinds,[kind]:{...p.kinds[kind],[key]:val}}}));
+  const recount = (batches) => batches.reduce((sum,b)=>sum+(Number(b.count)||0),0);
+  const skBatch = (kind,idx,key,val) => setF(p=>{
+    const batches = p.kinds[kind].briefBatches.map((b,i)=>i===idx?{...b,[key]:val}:b);
+    return {...p,kinds:{...p.kinds,[kind]:{...p.kinds[kind],briefBatches:batches,count:recount(batches)}}};
+  });
+  const addBatch = (kind) => setF(p=>({...p,kinds:{...p.kinds,[kind]:{...p.kinds[kind],briefBatches:[...p.kinds[kind].briefBatches,{count:0,brief:""}]}}}));
+  const removeBatch = (kind,idx) => setF(p=>{
+    const cur = p.kinds[kind].briefBatches;
+    if(cur.length<=1) return p; // always keep at least one group
+    const batches = cur.filter((_,i)=>i!==idx);
+    return {...p,kinds:{...p.kinds,[kind]:{...p.kinds[kind],briefBatches:batches,count:recount(batches)}}};
+  });
   const togglePlt = (kind,p) => sk(kind,"platforms", f.kinds[kind].platforms.includes(p) ? f.kinds[kind].platforms.filter(x=>x!==p) : [...f.kinds[kind].platforms,p]);
   const activeKinds = CALENDAR_KIND_DEFS.map(([k])=>k).filter(k=>f.kinds[k].count>0);
   const totalCount = activeKinds.reduce((sum,k)=>sum+f.kinds[k].count,0);
@@ -7150,21 +7167,24 @@ function AddCalendarPlanModal({open,onClose,clients,team,posts,projects,preselec
   // everything Sara already knows about this client (brand voice, memory,
   // recently published posts), instead of the user having to type one.
   const [suggestingBrief,setSuggestingBrief] = useState({});
-  const suggestBrief = async (kind) => {
+  const suggestBrief = async (kind,batchIdx) => {
     if(!f.client_id) { alert("Pick a client first — Sara needs their brand context."); return; }
-    setSuggestingBrief(p=>({...p,[kind]:true}));
+    const bKey = `${kind}_${batchIdx}`;
+    setSuggestingBrief(p=>({...p,[bKey]:true}));
     try {
       const label = CALENDAR_KIND_DEFS.find(([k])=>k===kind)?.[1]||kind;
+      const otherBriefs = f.kinds[kind].briefBatches.filter((_,i)=>i!==batchIdx).map(b=>b.brief).filter(Boolean);
       const aiRes = await agentAI("content_creator", `Suggest brief: ${label}`, `You are Sara, a senior content creator working under Pro's supervision. Review everything you know about this client below (brand voice, memory, recently published posts).
 ${clientBrainBlock(f.client_id, selClient?.name)}
 Campaign: ${f.campaign||"(untitled campaign)"}
+${otherBriefs.length?`\nThis "${label}" content is split into multiple groups — the other group(s) already cover:\n${otherBriefs.map(b=>`- ${b}`).join("\n")}\nSuggest a DIFFERENT angle/message for this new group, not a repeat.`:""}
 
 Suggest a short, specific content brief (2-3 sentences: goal, tone, key messages) for this client's upcoming "${label}" batch — grounded in their real brand voice and what's worked before, not generic advice.
 
 Return ONLY the brief text — no markdown, no labels, no quotes.`, 300);
-      sk(kind,"brief",(aiRes||"").trim());
+      skBatch(kind,batchIdx,"brief",(aiRes||"").trim());
     } catch(e) { alert("Sara couldn't suggest a brief right now — please try again."); }
-    setSuggestingBrief(p=>({...p,[kind]:false}));
+    setSuggestingBrief(p=>({...p,[bKey]:false}));
   };
 
   // Each post in a kind block stays its own separate task with its own due
@@ -7211,24 +7231,31 @@ Return ONLY the brief text — no markdown, no labels, no quotes.`, 300);
         : kind==="story"
         ? `These are ephemeral, very short and casual (1 punchy line each, no hashtags needed).`
         : `These are normal short-form social posts (image/carousel/reel caption).`;
-      try {
-        // Scale the output budget to the batch size (and give articles much
-        // more room — "several paragraphs" each) — the previous flat 1000
-        // default routinely truncated the JSON array mid-response, which
-        // failed JSON.parse below and silently fell back to placeholder text
-        // even though the API call itself succeeded (hence a clean Agent Log).
-        const genMaxTokens = Math.min(8000, 400 + cfg.count * (kind==="article" ? 900 : kind==="story" ? 150 : 300));
-        const aiRes = await agentAI("content_creator", `Calendar plan (${kind}): ${f.campaign}`, `You are Sara, a senior content creator working under Pro's supervision. Before writing anything, review the ENTIRE client brain below — especially recently published posts — this is mandatory, not optional. Generate ${cfg.count} "${kind}" content ideas for:
+      // One AI call PER BATCH (not per kind) — a kind split into multiple
+      // brief groups (e.g. 6 static posts as two groups of 3) gets a
+      // separate call per group so each really uses its own brief, then the
+      // results are concatenated back into one flat list for this kind.
+      const kindIdeas = [];
+      for(const batch of cfg.briefBatches){
+        if(!batch.count) continue;
+        try {
+          // Scale the output budget to the batch size (and give articles much
+          // more room — "several paragraphs" each) — the previous flat 1000
+          // default routinely truncated the JSON array mid-response, which
+          // failed JSON.parse below and silently fell back to placeholder text
+          // even though the API call itself succeeded (hence a clean Agent Log).
+          const genMaxTokens = Math.min(8000, 400 + batch.count * (kind==="article" ? 900 : kind==="story" ? 150 : 300));
+          const aiRes = await agentAI("content_creator", `Calendar plan (${kind}): ${f.campaign}`, `You are Sara, a senior content creator working under Pro's supervision. Before writing anything, review the ENTIRE client brain below — especially recently published posts — this is mandatory, not optional. Generate ${batch.count} "${kind}" content ideas for:
 ${clientCtxBlock}
 Campaign: ${f.campaign}
-Brief for this content type: ${cfg.brief||f.campaign}
+Brief for this content type: ${batch.brief||f.campaign}
 Platforms: ${cfg.platforms.join(", ")}
 
 ${kindGuide}
 
 IMPORTANT: Make each idea match the client's brand voice and preferences above, and make sure none of them repeat an idea/angle already covered in the recently published list. Be specific to their industry and audience.
 
-Return ONLY a JSON array with ${cfg.count} objects, each having:
+Return ONLY a JSON array with ${batch.count} objects, each having:
 - "title": short title (max 8 words)
 - "caption": for posts/stories — an engaging caption (1-3 sentences). For articles — the full long-form body text (several paragraphs).
 - "hashtags": 3-5 relevant hashtags (empty string for stories)
@@ -7236,21 +7263,25 @@ Return ONLY a JSON array with ${cfg.count} objects, each having:
 - "hook": the exact line spoken/shown in the FIRST 3 SECONDS of the video. This is the single most important line — if it isn't catchy enough to stop someone scrolling in under 3 seconds, the whole reel fails before the rest of the content matters. Make it a real scroll-stopping opener (a bold claim, a question, a pattern interrupt) — never a generic intro like "Hey guys" or "Check this out".`:""}
 
 No markdown, no explanation, just the JSON array.`, genMaxTokens);
-        // Extract the array specifically rather than requiring the whole
-        // response to be pure JSON — the model sometimes adds a stray
-        // sentence before/after despite instructions, which would otherwise
-        // fail JSON.parse and silently fall back to placeholder text.
-        const match = aiRes.match(/\[[\s\S]*\]/);
-        ideasByKind[kind] = JSON.parse(match ? match[0] : aiRes);
-      } catch(e) {
-        ideasByKind[kind] = Array.from({length:cfg.count},(_,i)=>({
-          title:`${kind.charAt(0).toUpperCase()+kind.slice(1)} ${i+1} — ${f.campaign}`,
-          caption:`Exciting ${kind} content for ${f.campaign}. Stay tuned for more updates!`,
-          hashtags: kind==="story" ? "" : `#${f.campaign.toLowerCase().replace(/\s+/g,"")} #socialmedia`,
-          text_on_visual: kind==="article" ? "" : `${f.campaign}`,
-          hook: kind==="reel" ? `Wait — you need to see this.` : "",
-        }));
+          // Extract the array specifically rather than requiring the whole
+          // response to be pure JSON — the model sometimes adds a stray
+          // sentence before/after despite instructions, which would otherwise
+          // fail JSON.parse and silently fall back to placeholder text.
+          const match = aiRes.match(/\[[\s\S]*\]/);
+          const parsedBatch = JSON.parse(match ? match[0] : aiRes);
+          kindIdeas.push(...parsedBatch.map(idea=>({...idea, _sourceBrief:batch.brief})));
+        } catch(e) {
+          kindIdeas.push(...Array.from({length:batch.count},(_,i)=>({
+            title:`${kind.charAt(0).toUpperCase()+kind.slice(1)} ${i+1} — ${f.campaign}`,
+            caption:`Exciting ${kind} content for ${f.campaign}. Stay tuned for more updates!`,
+            hashtags: kind==="story" ? "" : `#${f.campaign.toLowerCase().replace(/\s+/g,"")} #socialmedia`,
+            text_on_visual: kind==="article" ? "" : `${f.campaign}`,
+            _sourceBrief: batch.brief,
+            hook: kind==="reel" ? `Wait — you need to see this.` : "",
+          })));
+        }
       }
+      ideasByKind[kind] = kindIdeas;
     }
 
     setGenPhase("dates");
@@ -7290,6 +7321,7 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
           assigned_to: cfg.assigned_to||"",
           project_name: f.campaign,
           status:"pending",
+          _sourceBrief: idea?._sourceBrief||"",
         };
       });
     });
@@ -7309,7 +7341,8 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
     if(!task) return;
     setRegenIdx(idx);
     const kind = task.kind || "static";
-    const cfg = f.kinds[kind]||{brief:"",platforms:[task.platform]};
+    const cfg = f.kinds[kind]||{platforms:[task.platform]};
+    const taskBrief = task._sourceBrief || cfg.briefBatches?.[0]?.brief || "";
     const kindGuide = kind==="article"
       ? `This is a long-form piece (e.g. a LinkedIn article) — give it a real headline and a longer, structured body (several paragraphs), not a short caption.`
       : kind==="story"
@@ -7320,7 +7353,7 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
       const aiRes = await agentAI("content_creator", `Regenerate: ${task.title}`, `You are Sara, a senior content creator working under Pro's supervision. Before rewriting, review the ENTIRE client brain below — especially recently published posts — this is mandatory, not optional. Rewrite ONE "${kind}" content idea for:
 ${clientBrainBlock(f.client_id, selectedClient?.name)}
 Campaign: ${f.campaign}
-Brief: ${cfg.brief||f.campaign}
+Brief: ${taskBrief||f.campaign}
 Platform: ${task.platform}
 Current title: ${task.title}
 Current content: ${task.caption}
@@ -7482,10 +7515,8 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                       <div style={{...inputSt,display:"flex",alignItems:"center",color:"var(--text3)"}}>1 — always included</div>
                     </Field>
                   ) : (
-                    <Field label={`Number of ${label}`}>
-                      <select value={cfg.count} onChange={e=>sk(kind,"count",parseInt(e.target.value))} style={inputSt}>
-                        {countOptions.map(n=><option key={n} value={n}>{n} {label.toLowerCase()}</option>)}
-                      </select>
+                    <Field label={`Total ${label}`} hint="Sum of the group(s) below">
+                      <div style={{...inputSt,display:"flex",alignItems:"center",fontWeight:700}}>{cfg.count} {label.toLowerCase()}</div>
                     </Field>
                   )}
                   <Field label="Assign To">
@@ -7561,19 +7592,46 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                 </Field>
                 )}
                 {kind!=="grid_layout" && (
-                <Field label={`${label} Brief`} hint="Goal, tone, key messages for this content type — AI will use this">
-                  <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
-                    <textarea value={cfg.brief} onChange={e=>sk(kind,"brief",e.target.value)} rows={enlargedBrief[kind]?8:2} placeholder="e.g. Ramadan campaign to promote our new product line. Warm, inspirational tone." style={{...inputSt,flex:1,resize:"vertical",minHeight:enlargedBrief[kind]?160:44}}/>
-                    <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
-                      <Btn variant="secondary" onClick={()=>suggestBrief(kind)} disabled={suggestingBrief[kind]} style={{whiteSpace:"nowrap"}}>
-                        {suggestingBrief[kind] ? <Spinner size={13}/> : <Ico d={Icons.sparkle} size={13}/>} Sara Suggests
-                      </Btn>
-                      <button type="button" onClick={()=>toggleBriefSize(kind)} style={{padding:"6px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:11,fontWeight:700,color:"var(--text2)",cursor:"pointer",whiteSpace:"nowrap"}}>
-                        {enlargedBrief[kind]?"Shrink":"Enlarge"}
-                      </button>
-                    </div>
-                  </div>
-                </Field>
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>
+                    {label} Groups <span style={{fontWeight:400,textTransform:"none"}}>— split into more than one if different posts need different briefs</span>
+                  </p>
+                  {cfg.briefBatches.map((batch,bi)=>{
+                    const bKey = `${kind}_${bi}`;
+                    return (
+                      <div key={bi} style={{border:"1px solid var(--border2)",borderRadius:"var(--rs)",padding:10,display:"flex",flexDirection:"column",gap:8,background:"var(--surface)"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                          <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",flexShrink:0}}>Group {bi+1} count</label>
+                          <input type="number" min={0} value={batch.count} onChange={e=>skBatch(kind,bi,"count",Math.max(0,parseInt(e.target.value)||0))} style={{...inputSt,width:80}}/>
+                          <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                            {countOptions.filter(n=>n>0).map(n=>(
+                              <button key={n} type="button" onClick={()=>skBatch(kind,bi,"count",n)} style={{padding:"4px 9px",borderRadius:7,border:"1px solid var(--border2)",background:Number(batch.count)===n?"var(--accent)18":"var(--surface2)",color:Number(batch.count)===n?"var(--accent)":"var(--text2)",fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>
+                                {n===3?"3 (Grid)":n===6?"6 (2 Grids)":n}
+                              </button>
+                            ))}
+                          </div>
+                          {cfg.briefBatches.length>1 && (
+                            <button type="button" onClick={()=>removeBatch(kind,bi)} style={{marginLeft:"auto",padding:"4px 9px",borderRadius:7,border:"1px solid #ef444444",background:"#ef444411",color:"#ef4444",fontSize:11,fontWeight:600,cursor:"pointer"}}>Remove group</button>
+                          )}
+                        </div>
+                        <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+                          <textarea value={batch.brief} onChange={e=>skBatch(kind,bi,"brief",e.target.value)} rows={enlargedBrief[bKey]?8:2} placeholder="e.g. Ramadan campaign to promote our new product line. Warm, inspirational tone." style={{...inputSt,flex:1,resize:"vertical",minHeight:enlargedBrief[bKey]?160:44}}/>
+                          <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
+                            <Btn variant="secondary" onClick={()=>suggestBrief(kind,bi)} disabled={suggestingBrief[bKey]} style={{whiteSpace:"nowrap"}}>
+                              {suggestingBrief[bKey] ? <Spinner size={13}/> : <Ico d={Icons.sparkle} size={13}/>} Sara Suggests
+                            </Btn>
+                            <button type="button" onClick={()=>toggleBriefSize(bKey)} style={{padding:"6px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:11,fontWeight:700,color:"var(--text2)",cursor:"pointer",whiteSpace:"nowrap"}}>
+                              {enlargedBrief[bKey]?"Shrink":"Enlarge"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <button type="button" onClick={()=>addBatch(kind)} style={{alignSelf:"flex-start",padding:"6px 14px",borderRadius:8,border:"1px dashed var(--border2)",background:"var(--surface)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>
+                    + Add another brief group
+                  </button>
+                </div>
                 )}
                 </>)}
               </div>
