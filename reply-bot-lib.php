@@ -33,7 +33,7 @@ function forwardToExternalBot(PDO $pdo, array $settings, string $clientId, strin
     $key = trim((string)($settings['external_api_key'] ?? ''));
     if (!$url || !$key) { error_log("forwardToExternalBot [{$clientName}/{$channel}]: no webhook URL or API key configured, skipping forward"); return; }
 
-    $stmt = $pdo->prepare("SELECT direction, message_text, created_at FROM customer_messages WHERE client_id = :cid AND channel = :ch AND customer_id = :custid ORDER BY created_at DESC LIMIT 12");
+    $stmt = $pdo->prepare("SELECT direction, message_text, attachment_url, created_at FROM customer_messages WHERE client_id = :cid AND channel = :ch AND customer_id = :custid ORDER BY created_at DESC LIMIT 12");
     $stmt->execute([':cid' => $clientId, ':ch' => $channel, ':custid' => $customerId]);
     $thread = array_reverse($stmt->fetchAll(PDO::FETCH_ASSOC));
 
