@@ -18298,6 +18298,68 @@ function applicationReceivedEmail(candidateName, jobTitle, message) {
 </body></html>`;
 }
 
+// Shared source of truth for the company policy text — used both in the
+// hired welcome email and inline on the onboarding docs page the candidate
+// fills in, so the two never drift apart.
+const HIRING_POLICY_SECTIONS = [
+  ["Working Hours", "Our core hours are 10:00 AM – 6:00 PM, Sunday to Thursday. We know mornings are hard, so you get a 1-hour flex window — check in anytime up to 11:00 AM, just make sure to check out at 7:00 PM to match. If you check in past 11:00 AM, 2 hours will be deducted from your day."],
+  ["", "Fair warning: we're an agency, so there'll be days you're still here past checkout chasing a deadline. It's not a bug, it's the agency life — we make it up to you (see the weekend policy below 😉)."],
+  ["Days Off", "Friday and Saturday are our weekend, and national holidays are off too — unless there's an exceptional event or deadline that needs us in. If you do end up working on a Friday, Saturday, or a national holiday, every hour is credited at 1.5x straight into your vacation balance, to use whenever you like during the year."],
+  ["Annual Vacation", "You get 15 vacation days per year. Requests must be submitted at least 2 working days before the vacation day, and will be approved or rejected based on workload and timeline. In normal cases, you can take a maximum of 2 vacation days per month, unless there's an emergency. For a longer summer vacation, it's capped at 1 week max, and must be approved at least 2 weeks in advance. Any sudden or unapproved vacation will cost you 2 days from your vacation credit the first time, and 3 days for any time after that."],
+  ["Personal Leave", "You get 4 hours of personal leave per month — take it all at once, or split it into two 2-hour blocks. Whatever fits your day. Heads up: for the first 2 times you're late in a month, that 2-hour deduction comes out of these personal leave hours instead of your day."],
+  ["Work From Home", "You get 2 work-from-home days per month. These need to be approved ahead of time, and on your WFH day you're expected to be fully available during working hours for tasks, calls, or meetings — same as being in the office, just from home."],
+  ["Probation Period", "During your first 3 months (probation), if you're not showing the experience or fit the role needs, we may end things immediately — you'll be paid for the days you actually worked in that final month's payroll."],
+];
+
+// Sent once, automatically, the moment an application's status flips to
+// "hired" — the candidate's welcome pack (working hours/attendance/leave/WFH/
+// probation policy, which laptop they'll be working with) plus a link to the
+// onboarding page where they upload their ID/photo and accept the policy.
+// Admepro-branded like applicationReceivedEmail.
+function hiredWelcomeEmail(candidateName, jobTitle, laptopProvided, onboardingUrl) {
+  const laptopLine = laptopProvided==="company"
+    ? "We'll be providing you with a company laptop to work on."
+    : laptopProvided==="personal"
+    ? "As agreed, you'll be working on your own personal laptop."
+    : "We'll confirm with you separately whether you'll be working on a company laptop or your own.";
+  const policyHtml = HIRING_POLICY_SECTIONS.map(([title,body])=>
+    title
+      ? `<h3 style="margin:20px 0 8px;font-size:14px;font-weight:800;color:#111827">${title}</h3><p style="margin:0 0 10px;font-size:14px;line-height:1.6;color:#4b5563">${body}</p>`
+      : `<p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563;font-style:italic">${body}</p>`
+  ).join("");
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"/></head>
+<body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
+<tr><td align="center">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb">
+  <tr><td style="padding:32px 36px 0">
+    <img src="${ADMEPRO_LOGO_BLACK}" alt="Admepro" style="height:28px;width:auto"/>
+  </td></tr>
+  <tr><td style="padding:24px 36px 36px">
+    <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Welcome to Admepro, ${candidateName||"there"}! 🎉</h2>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">We're thrilled to have you join us${jobTitle?` as our new <strong>${jobTitle}</strong>`:""}. Before your first day, here's everything you need to know about how we work.</p>
+
+    ${policyHtml}
+
+    <h3 style="margin:0 0 8px;font-size:14px;font-weight:800;color:#111827">Equipment</h3>
+    <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563">${laptopLine}</p>
+
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">One last step — please upload a few documents and confirm you've read the policy above:</p>
+    <p style="margin:0 0 20px"><a href="${onboardingUrl}" style="display:inline-block;padding:12px 24px;background:#d90b2c;color:#ffffff;border-radius:8px;font-weight:700;font-size:14px;text-decoration:none">Upload Documents &amp; Accept Policy</a></p>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;color:#4b5563">Welcome aboard — we can't wait to start working together!</p>
+    <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px">
+      <tr><td>
+        <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Recruitment Team</p>
+        <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
+        <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
+      </td></tr>
+    </table>
+  </td></tr>
+</table>
+</td></tr></table>
+</body></html>`;
+}
+
 // The following recruitment email builders are shared between the real send
 // sites (RecruitmentPage handlers, InterviewSchedulingPage) and the "All
 // System Emails" preview gallery (SYSTEM_EMAIL_SAMPLES) — one source of
@@ -19036,6 +19098,156 @@ function PolicyAcceptancePage({token, appSettings}) {
           <a href={appSettings.company_policy_url} target="_blank" rel="noreferrer" style={{display:"block",marginBottom:20,fontSize:13,color:"#d90b2c",fontWeight:600}}>📄 Read the Full Company Policy</a>
         )}
         <Btn onClick={handleAccept} disabled={submitting} style={{width:"100%"}}>{submitting?"Submitting…":"I Have Read & Accept This Policy"}</Btn>
+      </div>
+    </div></>
+  );
+}
+
+const MAX_ONBOARDING_DOC_MB = 15;
+
+// Public onboarding page for a freshly-hired candidate — reached via the
+// "Upload Documents & Accept Policy" link in hiredWelcomeEmail(). Collects
+// ID front/back + a personal photo (required before "Make Team Member" can
+// be used), plus Fish w Tashbeeh / certificates / social insurance number
+// (all optional — can be added on a later visit to the same link, since the
+// token is never invalidated). Shows the same policy text as the email so
+// there's something concrete to actually "accept".
+function OnboardingDocsPage({token}) {
+  const [isDark, setIsDark] = useState(()=>{
+    try { return window.matchMedia("(prefers-color-scheme: dark)").matches; } catch(e) { return false; }
+  });
+  const [loading, setLoading] = useState(true);
+  const [application, setApplication] = useState(null);
+  const [notFound, setNotFound] = useState(false);
+  const [done, setDone] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [accepted, setAccepted] = useState(false);
+  const [socialInsuranceNo, setSocialInsuranceNo] = useState("");
+  const [idFrontFile, setIdFrontFile] = useState(null);
+  const [idBackFile, setIdBackFile] = useState(null);
+  const [photoFile, setPhotoFile] = useState(null);
+  const [fishFile, setFishFile] = useState(null);
+  const [certificateFile, setCertificateFile] = useState(null);
+
+  useEffect(()=>{
+    (async () => {
+      const res = await qe("JobApplication", {onboarding_token: token});
+      const app = res.entities?.[0];
+      if(!app) { setNotFound(true); setLoading(false); return; }
+      setApplication(app);
+      setSocialInsuranceNo(app.onboarding_social_insurance_no||"");
+      setAccepted(!!app.onboarding_accepted_at);
+      setLoading(false);
+    })();
+  },[token]);
+
+  const pickFile = (setter, maxMb) => (e) => {
+    const file = e.target.files?.[0];
+    if(!file) return;
+    if(file.size > maxMb*1024*1024) { alert(`File is too large (max ${maxMb}MB).`); return; }
+    setter(file);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if(!accepted) { alert("Please confirm you've read and accept the policy above."); return; }
+    const needsIdFront = !application.onboarding_id_front_url && !idFrontFile;
+    const needsIdBack = !application.onboarding_id_back_url && !idBackFile;
+    const needsPhoto = !application.onboarding_photo_url && !photoFile;
+    if(needsIdFront || needsIdBack || needsPhoto) { alert("Please upload your ID (front & back) and a personal photo — these are required."); return; }
+    setSubmitting(true);
+    try {
+      const patch = {};
+      if(idFrontFile) patch.onboarding_id_front_url = await uploadToStorage(idFrontFile, "job-applications/onboarding");
+      if(idBackFile) patch.onboarding_id_back_url = await uploadToStorage(idBackFile, "job-applications/onboarding");
+      if(photoFile) patch.onboarding_photo_url = await uploadToStorage(photoFile, "job-applications/onboarding");
+      if(fishFile) patch.onboarding_fish_url = await uploadToStorage(fishFile, "job-applications/onboarding");
+      if(certificateFile) patch.onboarding_certificate_url = await uploadToStorage(certificateFile, "job-applications/onboarding");
+      if(socialInsuranceNo.trim()) patch.onboarding_social_insurance_no = socialInsuranceNo.trim();
+      if(!application.onboarding_accepted_at) patch.onboarding_accepted_at = new Date().toISOString();
+      if(!application.onboarding_completed_at) patch.onboarding_completed_at = new Date().toISOString();
+      await ue("JobApplication", application.id, patch);
+      logApplicationActivity(application.id, "Submitted onboarding documents & accepted policy", application.candidate_name||"Candidate");
+      setDone(true);
+    } catch(e) { alert("Something went wrong submitting your documents. Please try again."); }
+    setSubmitting(false);
+  };
+
+  const wrapSt = {minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:24,background:isDark?"#0b0e14":"#f7f7f8"};
+  const cardSt = {width:"100%",maxWidth:520,background:isDark?"#161a23":"#fff",borderRadius:20,padding:32,border:`1px solid ${isDark?"#252b38":"#eee"}`};
+  const labelSt = {fontSize:12,fontWeight:700,color:isDark?"#c5cad3":"#374151",marginBottom:4,display:"block"};
+  const fieldSt = {marginBottom:16};
+  const fileInputSt = {width:"100%",padding:"9px 10px",borderRadius:8,border:`1px solid ${isDark?"#252b38":"#e5e7eb"}`,background:isDark?"#1d222d":"#fff",color:isDark?"#e6e8ec":"#111",fontSize:13};
+  const textInputSt = {...fileInputSt};
+  const gstyle = <GStyle wallpaper={isDark?"dark":"light"} accentColor="#d90b2c" photoIsDark={isDark}/>;
+
+  if(loading) return <>{gstyle}<div style={wrapSt}><Spinner size={22}/></div></>;
+  if(notFound) return (
+    <>{gstyle}<div style={wrapSt}>
+      <div style={cardSt}>
+        <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
+        <p style={{fontSize:15,fontWeight:700,color:isDark?"#fff":"#111"}}>This link is invalid.</p>
+      </div>
+    </div></>
+  );
+  if(done) return (
+    <>{gstyle}<div style={wrapSt}>
+      <div style={cardSt}>
+        <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
+        <p style={{fontSize:17,fontWeight:800,color:isDark?"#fff":"#111",marginBottom:6}}>Thanks — you're all set!</p>
+        <p style={{fontSize:13,color:isDark?"#9099ab":"#666"}}>We've received your documents. If you still need to add your Fish w Tashbeeh or certificates later, just come back to this same link.</p>
+      </div>
+    </div></>
+  );
+
+  return (
+    <>{gstyle}<div style={wrapSt}>
+      <div style={cardSt}>
+        <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
+        <h2 style={{fontSize:19,fontWeight:800,color:isDark?"#fff":"#111",marginBottom:6}}>Welcome aboard, {application.candidate_name?.split(" ")?.[0]||"there"}!</h2>
+        <p style={{fontSize:13,color:isDark?"#9099ab":"#666",marginBottom:16}}>Please review our company policy, then upload the documents below to finish onboarding.</p>
+
+        <div style={{marginBottom:20,padding:14,background:isDark?"#1d222d":"#f9fafb",border:`1px solid ${isDark?"#252b38":"#e5e7eb"}`,borderRadius:10,maxHeight:280,overflowY:"auto"}}>
+          {HIRING_POLICY_SECTIONS.map(([title,body],i)=>(
+            <div key={i} style={{marginBottom:10}}>
+              {title&&<p style={{fontSize:12,fontWeight:800,color:isDark?"#fff":"#111",marginBottom:3}}>{title}</p>}
+              <p style={{fontSize:12,lineHeight:1.6,color:isDark?"#9099ab":"#4b5563",fontStyle:title?"normal":"italic"}}>{body}</p>
+            </div>
+          ))}
+        </div>
+
+        <label style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:20,cursor:"pointer"}}>
+          <input type="checkbox" checked={accepted} onChange={e=>setAccepted(e.target.checked)} style={{marginTop:2}}/>
+          <span style={{fontSize:13,color:isDark?"#e6e8ec":"#111"}}>I have read and accept the company policy above.</span>
+        </label>
+
+        <form onSubmit={handleSubmit}>
+          <div style={fieldSt}>
+            <label style={labelSt}>National ID — Front {application.onboarding_id_front_url?"✓ uploaded":"(required)"}</label>
+            <input type="file" accept="image/*,.pdf" onChange={pickFile(setIdFrontFile,MAX_ONBOARDING_DOC_MB)} style={fileInputSt}/>
+          </div>
+          <div style={fieldSt}>
+            <label style={labelSt}>National ID — Back {application.onboarding_id_back_url?"✓ uploaded":"(required)"}</label>
+            <input type="file" accept="image/*,.pdf" onChange={pickFile(setIdBackFile,MAX_ONBOARDING_DOC_MB)} style={fileInputSt}/>
+          </div>
+          <div style={fieldSt}>
+            <label style={labelSt}>Personal Photo {application.onboarding_photo_url?"✓ uploaded":"(required)"}</label>
+            <input type="file" accept="image/*" onChange={pickFile(setPhotoFile,MAX_ONBOARDING_DOC_MB)} style={fileInputSt}/>
+          </div>
+          <div style={fieldSt}>
+            <label style={labelSt}>Criminal Record Certificate ("Fish w Tashbeeh") {application.onboarding_fish_url?"✓ uploaded":"— optional, can add later"}</label>
+            <input type="file" accept="image/*,.pdf" onChange={pickFile(setFishFile,MAX_ONBOARDING_DOC_MB)} style={fileInputSt}/>
+          </div>
+          <div style={fieldSt}>
+            <label style={labelSt}>Educational Certificate {application.onboarding_certificate_url?"✓ uploaded":"— optional, can add later"}</label>
+            <input type="file" accept="image/*,.pdf" onChange={pickFile(setCertificateFile,MAX_ONBOARDING_DOC_MB)} style={fileInputSt}/>
+          </div>
+          <div style={fieldSt}>
+            <label style={labelSt}>Social Insurance Number — optional</label>
+            <input type="text" value={socialInsuranceNo} onChange={e=>setSocialInsuranceNo(e.target.value)} placeholder="Leave blank if you don't have one" style={textInputSt}/>
+          </div>
+          <Btn type="submit" disabled={submitting} style={{width:"100%"}}>{submitting?"Submitting…":"Submit"}</Btn>
+        </form>
       </div>
     </div></>
   );
@@ -22026,6 +22238,7 @@ const SYSTEM_EMAIL_SAMPLES = [
   { group:"Recruitment", key:"interviewConfirmed", label:"Interview Confirmed", build:()=>interviewConfirmedEmail("Nourhan Adel","Content Creator","Jul 27 at 1:00 PM") },
   { group:"Recruitment", key:"offerSent", label:"Job Offer", build:()=>offerSentEmail("Nourhan Adel",{title:"Content Creator",salary:"12,000 EGP",probation_months:"3",post_probation_salary:"15,000 EGP",start_date:"2026-08-15",vacation_days_annual:"21",wfh_days_monthly:"4",laptop_provided:"company",notes:""},"https://socialflow.admepro.com/careers/offer?token=sample") },
   { group:"Recruitment", key:"taskAssignment", label:"Task Assignment", build:()=>taskAssignmentEmail("Nourhan Adel","Content Creator","Write a 100-word Instagram caption for a fictional skincare brand launch, in a warm and inspirational tone.","Jul 30",[{url:"#",name:"brand-brief.pdf"}],"https://socialflow.admepro.com/careers/task?token=sample") },
+  { group:"Recruitment", key:"hiredWelcome", label:"Hired Welcome & Policy", build:()=>hiredWelcomeEmail("Nourhan Adel","Content Creator","company","https://socialflow.admepro.com/careers/onboarding?token=sample") },
 ];
 
 function SystemEmailsPreviewTab() {
@@ -30692,7 +30905,7 @@ function waQrUrl(phone, text) {
   return `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(link)}`;
 }
 
-function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader, onConvertCv, convertingCv, cvConvertFailed, onRateInterview, onSavePortfolioScore, activityLog, onSendCompletionEmail, sendingCompletion, onSendInterviewTimes, sendingInterviewTimes, onConfirmInterview, confirmingInterview, onSaveOffer, savingOffer, onSendOffer, sendingOffer, onSendTask, sendingTask, onMakeTeamMember, comments=[], onAddComment, team=[], currentUser, restrictedView=false}) {
+function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader, onConvertCv, convertingCv, cvConvertFailed, onRateInterview, onSavePortfolioScore, activityLog, onSendCompletionEmail, sendingCompletion, onSendInterviewTimes, sendingInterviewTimes, onConfirmInterview, confirmingInterview, onSaveOffer, savingOffer, onSendOffer, sendingOffer, onSendTask, sendingTask, onMakeTeamMember, onSendOnboarding, sendingOnboarding, comments=[], onAddComment, team=[], currentUser, restrictedView=false}) {
   const [notes, setNotes] = useState(application.notes||"");
   const [rerunning, setRerunning] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -30970,6 +31183,39 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
           <OfferSection application={application} opening={opening} onSave={onSaveOffer} saving={savingOffer} onSend={onSendOffer} sending={sendingOffer} onUpdateStatus={onUpdateStatus}/>
         )}
 
+        {onSendOnboarding&&application.status==="hired"&&(
+          <div style={{marginBottom:14,padding:14,background:"var(--surface2)",borderRadius:10,border:"1px solid var(--border)"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+              <div>
+                <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4}}>Onboarding Documents</p>
+                {application.onboarding_completed_at ? (
+                  <p style={{fontSize:13,color:"#10b981",fontWeight:700}}>✓ ID, photo & policy acceptance received</p>
+                ) : application.hired_welcome_email_sent_at ? (
+                  <p style={{fontSize:13,color:"var(--text2)"}}>Welcome email sent {fmtDateTime(application.hired_welcome_email_sent_at)} — awaiting candidate's documents</p>
+                ) : (
+                  <p style={{fontSize:13,color:"var(--text2)"}}>Send the welcome email with the policy + document-upload link.</p>
+                )}
+              </div>
+              <button onClick={()=>onSendOnboarding(application)} disabled={sendingOnboarding} style={{padding:"8px 16px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text2)",cursor:sendingOnboarding?"not-allowed":"pointer",flexShrink:0}}>
+                {sendingOnboarding?"Sending…":application.hired_welcome_email_sent_at?"Resend":"Send Onboarding Email"}
+              </button>
+            </div>
+            {!application.onboarding_completed_at&&(application.onboarding_id_front_url||application.onboarding_id_back_url||application.onboarding_photo_url)&&(
+              <p style={{fontSize:11,color:"var(--text3)",marginTop:8}}>Some documents uploaded, still missing: {[!application.onboarding_id_front_url&&"ID front",!application.onboarding_id_back_url&&"ID back",!application.onboarding_photo_url&&"photo"].filter(Boolean).join(", ")}.</p>
+            )}
+            {application.onboarding_completed_at&&(
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:10}}>
+                {application.onboarding_id_front_url&&<a href={application.onboarding_id_front_url} target="_blank" rel="noreferrer" style={{fontSize:11,fontWeight:700,color:"var(--accent)"}}>ID Front</a>}
+                {application.onboarding_id_back_url&&<a href={application.onboarding_id_back_url} target="_blank" rel="noreferrer" style={{fontSize:11,fontWeight:700,color:"var(--accent)"}}>ID Back</a>}
+                {application.onboarding_photo_url&&<a href={application.onboarding_photo_url} target="_blank" rel="noreferrer" style={{fontSize:11,fontWeight:700,color:"var(--accent)"}}>Photo</a>}
+                {application.onboarding_fish_url&&<a href={application.onboarding_fish_url} target="_blank" rel="noreferrer" style={{fontSize:11,fontWeight:700,color:"var(--accent)"}}>Fish w Tashbeeh</a>}
+                {application.onboarding_certificate_url&&<a href={application.onboarding_certificate_url} target="_blank" rel="noreferrer" style={{fontSize:11,fontWeight:700,color:"var(--accent)"}}>Certificate</a>}
+                {application.onboarding_social_insurance_no&&<span style={{fontSize:11,color:"var(--text3)"}}>Soc. Ins. No: {application.onboarding_social_insurance_no}</span>}
+              </div>
+            )}
+          </div>
+        )}
+
         {onMakeTeamMember&&application.status==="hired"&&(
           <div style={{marginBottom:14,padding:14,background:"var(--surface2)",borderRadius:10,border:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
             <div>
@@ -30978,11 +31224,13 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
                 <p style={{fontSize:13,color:"#10b981",fontWeight:700}}>✓ Linked to a team member profile</p>
               ) : application.team_member_invited_at ? (
                 <p style={{fontSize:13,color:"var(--text2)"}}>Invitation sent {fmtDateTime(application.team_member_invited_at)}</p>
+              ) : !application.onboarding_completed_at ? (
+                <p style={{fontSize:13,color:"#f59e0b"}}>Waiting on the candidate's ID, photo & policy acceptance before you can create their team member account.</p>
               ) : (
                 <p style={{fontSize:13,color:"var(--text2)"}}>Hired — turn this application into a team member account with their CV, portfolio, and hiring history carried over.</p>
               )}
             </div>
-            {!application.linked_team_member_id&&(
+            {!application.linked_team_member_id&&application.onboarding_completed_at&&(
               <button onClick={()=>{ try{ onMakeTeamMember(application); }catch(e){ console.error("Make Team Member failed:",e); alert("Something went wrong opening the invite form: "+(e?.message||e)); } }} style={{padding:"8px 16px",borderRadius:8,background:"var(--accent)",border:"none",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer",flexShrink:0}}>
                 {application.team_member_invited_at?"Resend Invitation":"Make Team Member"}
               </button>
@@ -31633,6 +31881,41 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
     setActivityLogs(prev=>[{id:`local-${Date.now()}`, application_id:applicationId, action, actor_name:actorName, created_at:new Date().toISOString()}, ...prev]);
     logApplicationActivity(applicationId, action, actorName);
   };
+  const [sendingOnboardingId, setSendingOnboardingId] = useState(null);
+  // Sends (or resends) the welcome/policy email with the onboarding upload
+  // link — used both automatically the moment an application is marked
+  // hired, and manually via the "Resend" button in ApplicationDetail. The
+  // onboarding_token is generated once and reused on every resend so the
+  // candidate's original link (and anything they already uploaded) still
+  // works.
+  const handleSendOnboarding = async (app) => {
+    if(!app.candidate_email) return;
+    setSendingOnboardingId(app.id);
+    try {
+      const token = app.onboarding_token || (uid().replace("local_","") + uid().replace("local_",""));
+      if(!app.onboarding_token) {
+        await ue("JobApplication", app.id, {onboarding_token: token}).catch(()=>{});
+        app = {...app, onboarding_token: token};
+        setApplications(prev=>prev.map(a=>a.id===app.id?{...a,onboarding_token:token}:a));
+        setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,onboarding_token:token}:prev);
+      }
+      const onboardingUrl = window.location.origin + "/careers/onboarding?token=" + token;
+      const jobTitle = openings.find(o=>o.id===app.job_opening_id)?.title || app.offer_title || app.job_title || "";
+      const html = hiredWelcomeEmail(app.candidate_name, jobTitle, app.offer_laptop_provided, onboardingUrl);
+      const ok = await sendCareersEmail(app.candidate_email, `Welcome to Admepro${jobTitle?` — ${jobTitle}`:""}!`, html).catch(()=>false);
+      if(ok) {
+        const sentAt = new Date().toISOString();
+        setApplications(prev=>prev.map(a=>a.id===app.id?{...a,hired_welcome_email_sent_at:sentAt}:a));
+        setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,hired_welcome_email_sent_at:sentAt}:prev);
+        await ue("JobApplication", app.id, {hired_welcome_email_sent_at: sentAt}).catch(()=>{});
+        logActivity(app.id, "Welcome/onboarding email sent");
+      } else {
+        alert("Failed to send the welcome/onboarding email. Please try again.");
+      }
+    } finally {
+      setSendingOnboardingId(null);
+    }
+  };
   const handleUpdateStatus = async (app, status) => {
     const status_updated_at = new Date().toISOString();
     setApplications(prev=>prev.map(a=>a.id===app.id?{...a,status,status_updated_at}:a));
@@ -31641,6 +31924,11 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
     const fromLabel = APPLICATION_STATUSES.find(s=>s.key===app.status)?.label||app.status;
     const toLabel = APPLICATION_STATUSES.find(s=>s.key===status)?.label||status;
     logActivity(app.id, `Moved from ${fromLabel} to ${toLabel}`);
+    // Fire the welcome/onboarding email exactly once, the moment they're
+    // marked hired — not on every re-save of an already-hired application.
+    if(status==="hired" && app.status!=="hired" && app.candidate_email && !app.hired_welcome_email_sent_at) {
+      await handleSendOnboarding({...app, status});
+    }
   };
   const handleSaveNotes = async (app, notes) => {
     setApplications(prev=>prev.map(a=>a.id===app.id?{...a,notes}:a));
@@ -32192,7 +32480,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
 
   if(selectedApp) return (
     <>
-      <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===selectedApp.id} cvConvertFailed={cvConvertFailedId===selectedApp.id} onRateInterview={handleRateInterview} onSavePortfolioScore={handleSavePortfolioScore} activityLog={activityLogs.filter(l=>l.application_id===selectedApp.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===selectedApp.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===selectedApp.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===selectedApp.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===selectedApp.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===selectedApp.id} onSendTask={handleSendTask} sendingTask={sendingTaskId===selectedApp.id} onMakeTeamMember={setMakeTeamMemberApp} comments={comments} onAddComment={onAddComment} team={team} currentUser={currentUser}/>
+      <ApplicationDetail application={selectedApp} opening={openings.find(o=>o.id===selectedApp.job_opening_id)} openings={openings} onClose={closeApp} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===selectedApp.id} cvConvertFailed={cvConvertFailedId===selectedApp.id} onRateInterview={handleRateInterview} onSavePortfolioScore={handleSavePortfolioScore} activityLog={activityLogs.filter(l=>l.application_id===selectedApp.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===selectedApp.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===selectedApp.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===selectedApp.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===selectedApp.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===selectedApp.id} onSendTask={handleSendTask} sendingTask={sendingTaskId===selectedApp.id} onMakeTeamMember={setMakeTeamMemberApp} onSendOnboarding={handleSendOnboarding} sendingOnboarding={sendingOnboardingId===selectedApp.id} comments={comments} onAddComment={onAddComment} team={team} currentUser={currentUser}/>
       {makeTeamMemberModal}
     </>
   );
@@ -32208,7 +32496,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:22,margin:0}}>{sortedGroup[0].candidate_name} · {sortedGroup.length} applications</h2>
         </div>
         {sortedGroup.map((app,i)=>(
-          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===app.id} cvConvertFailed={cvConvertFailedId===app.id} onRateInterview={handleRateInterview} onSavePortfolioScore={handleSavePortfolioScore} activityLog={activityLogs.filter(l=>l.application_id===app.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===app.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===app.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===app.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===app.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===app.id} onSendTask={handleSendTask} sendingTask={sendingTaskId===app.id} onMakeTeamMember={setMakeTeamMemberApp} comments={comments} onAddComment={onAddComment} team={team} currentUser={currentUser}/>
+          <ApplicationDetail key={app.id} application={applications.find(a=>a.id===app.id)||app} opening={openings.find(o=>o.id===app.job_opening_id)} openings={openings} onClose={closeGroup} onUpdateStatus={handleUpdateStatus} onSaveNotes={handleSaveNotes} onRerunReview={handleRerunReview} onReassign={handleReassign} onDelete={handleDeleteApplication} hideHeader onConvertCv={handleConvertCvToPdf} convertingCv={convertingCvId===app.id} cvConvertFailed={cvConvertFailedId===app.id} onRateInterview={handleRateInterview} onSavePortfolioScore={handleSavePortfolioScore} activityLog={activityLogs.filter(l=>l.application_id===app.id)} onSendCompletionEmail={handleSendCompletionEmail} sendingCompletion={sendingCompletionId===app.id} onSendInterviewTimes={handleSendInterviewTimes} sendingInterviewTimes={sendingInterviewTimesId===app.id} onConfirmInterview={handleConfirmInterview} confirmingInterview={confirmingInterviewId===app.id} onSaveOffer={handleSaveOffer} savingOffer={savingOfferId===app.id} onSendOffer={handleSendOffer} sendingOffer={sendingOfferId===app.id} onSendTask={handleSendTask} sendingTask={sendingTaskId===app.id} onMakeTeamMember={setMakeTeamMemberApp} onSendOnboarding={handleSendOnboarding} sendingOnboarding={sendingOnboardingId===app.id} comments={comments} onAddComment={onAddComment} team={team} currentUser={currentUser}/>
         ))}
         {makeTeamMemberModal}
       </div>
@@ -37949,6 +38237,11 @@ function App() {
   const [policyToken] = useState(()=>{
     try { return window.location.pathname==="/policy/accept" ? new URLSearchParams(window.location.search).get("token") : null; } catch(e) { return null; }
   });
+  // Public hiring-onboarding page (ID/photo upload + policy acceptance) —
+  // socialflow.admepro.com/careers/onboarding?token=...
+  const [onboardingToken] = useState(()=>{
+    try { return window.location.pathname==="/careers/onboarding" ? new URLSearchParams(window.location.search).get("token") : null; } catch(e) { return null; }
+  });
   // Handle OAuth callback (Supabase redirects back with #access_token=...)
   const [oauthEmail] = useState(()=>{
     try {
@@ -40809,6 +41102,9 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
   }
   if(policyToken) {
     return <PolicyAcceptancePage token={policyToken} appSettings={appSettings}/>;
+  }
+  if(onboardingToken) {
+    return <OnboardingDocsPage token={onboardingToken}/>;
   }
   if(completeToken) {
     return <CompleteApplicationPage token={completeToken}/>;
