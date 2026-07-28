@@ -846,7 +846,7 @@ Rules:
 // regex-extract + JSON.parse shape as proLearnFromExchange() above.
 // cvBase64 may include the "data:application/pdf;base64," prefix (from
 // FileReader.readAsDataURL) or be a bare base64 string — both are handled.
-const AI_REVIEW_JSON_SHAPE = '{"candidate_name":"","candidate_email":"","candidate_phone":"","years_experience":0,"skills":["..."],"education":"","languages":["..."],"highlights":["≤5 concrete, specific achievements or qualifications relevant to this role"],"red_flags":["≤3 concerns, gaps, or mismatches — empty array if none"],"links":["any LinkedIn/Behance/Canva/portfolio/personal-site URLs found in the document — empty array if none"],"score":0,"summary":"2-3 sentence overall assessment of fit for this specific role"}';
+const AI_REVIEW_JSON_SHAPE = '{"candidate_name":"","candidate_email":"","candidate_phone":"","years_experience":0,"skills":["..."],"education":"","languages":["..."],"highlights":["≤5 concrete, specific achievements or qualifications relevant to this role"],"red_flags":["≤3 concerns, gaps, or mismatches — empty array if none"],"links":["any LinkedIn/Behance/Canva/portfolio/personal-site URLs found in the document — empty array if none"],"score":0,"summary":"2-3 sentence overall assessment of fit for this specific role","interview_questions":["5-6 specific interview questions to ask THIS candidate for THIS role — probe the red flags/gaps, verify claimed skills and experience, and dig into anything vague or unverifiable in the CV"]}';
 
 async function finishReview(application, raw) {
   const m = raw.match(/\{[\s\S]*\}/);
@@ -1080,7 +1080,7 @@ async function reviewApplicationBestFit(application, cvContent, openOpenings) {
 ${openingsList}
 
 Return ONLY JSON in this exact shape:
-{"best_fit_title":"the exact title from the list above that fits best","candidate_name":"","candidate_email":"","candidate_phone":"","years_experience":0,"skills":["..."],"education":"","languages":["..."],"highlights":["≤5 concrete, specific achievements or qualifications relevant to the best-fit role"],"red_flags":["≤3 concerns, gaps, or mismatches — empty array if none"],"links":["any LinkedIn/Behance/Canva/portfolio/personal-site URLs found in the document — empty array if none"],"score":0,"summary":"2-3 sentence assessment of fit for the best-fit role, mentioning which role you picked and why"}
+{"best_fit_title":"the exact title from the list above that fits best","candidate_name":"","candidate_email":"","candidate_phone":"","years_experience":0,"skills":["..."],"education":"","languages":["..."],"highlights":["≤5 concrete, specific achievements or qualifications relevant to the best-fit role"],"red_flags":["≤3 concerns, gaps, or mismatches — empty array if none"],"links":["any LinkedIn/Behance/Canva/portfolio/personal-site URLs found in the document — empty array if none"],"score":0,"summary":"2-3 sentence assessment of fit for the best-fit role, mentioning which role you picked and why","interview_questions":["5-6 specific interview questions to ask THIS candidate for the best-fit role — probe the red flags/gaps, verify claimed skills and experience, and dig into anything vague or unverifiable in the CV"]}
 "best_fit_title" MUST be copied exactly from the numbered list above. "score" is 0-100, reflecting fit for that specific role (not a generic CV quality score).`;
   try {
     const r = await fetchWithTimeout(AI_ENDPOINT, {
@@ -30736,7 +30736,7 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
 
   return (
     <>
-    <div className="fade-in" style={{maxWidth:700}}>
+    <div className="fade-in" style={{maxWidth:1000}}>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
         {!hideHeader&&(
           <button onClick={onClose} style={{width:36,height:36,borderRadius:"50%",background:"var(--surface2)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text2)",cursor:"pointer",flexShrink:0}}>
@@ -30877,6 +30877,12 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
           <div style={{marginBottom:14}}>
             <p style={{fontSize:11,fontWeight:800,color:"#ef4444",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:6}}>Concerns</p>
             <ul style={{margin:0,paddingLeft:18,fontSize:13,color:"var(--text2)",lineHeight:1.7}}>{extracted.red_flags.map((h,i)=><li key={i}>{h}</li>)}</ul>
+          </div>
+        )}
+        {extracted.interview_questions?.length>0&&(
+          <div style={{background:"var(--surface2)",borderRadius:12,padding:16,marginBottom:14}}>
+            <p style={{fontSize:11,fontWeight:800,color:"#f59e0b",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:6}}>Interview Questions to Ask</p>
+            <ul style={{margin:0,paddingLeft:18,fontSize:13,color:"var(--text2)",lineHeight:1.7}}>{extracted.interview_questions.map((q,i)=><li key={i}>{q}</li>)}</ul>
           </div>
         )}
         {(extracted.skills?.length>0||extracted.years_experience||extracted.education)&&(
