@@ -31576,7 +31576,9 @@ function RecruitmentMailboxTab({appSettings}) {
                     <span style={{fontWeight:400,color:"var(--text3)",marginLeft:8}}>{fmtDateTime(m.date)}</span>
                     {m.is_system&&<span style={{fontWeight:700,color:"#f59e0b",marginLeft:8}}>· System</span>}
                   </p>
-                  <p style={{fontSize:13,color:"var(--text)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{m.body||m.snippet}</p>
+                  <p style={{fontSize:13,color:"var(--text)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>
+                    {m.body||m.snippet||(m.is_system?"(Sent as HTML-only — no plain-text copy was captured for this one. Newer system emails include a text copy so this will show going forward.)":"(No content)")}
+                  </p>
                   {m.has_attachments&&<p style={{fontSize:11,color:"var(--text3)",marginTop:8}}>📎 Has attachment(s) — open in webmail to download.</p>}
                 </div>
               ))}

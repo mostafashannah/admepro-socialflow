@@ -104,6 +104,12 @@ function send_recruitment_email(PDO $pdo, $to, $subject, $html, $fromName = 'Adm
         $mail->isHTML(true);
         $mail->Subject = $subject;
         $mail->Body    = $html;
+        // Without a plain-text AltBody, the message has no text/plain MIME
+        // part — when recruitment-mailbox.php later re-syncs this email back
+        // from the IMAP Sent folder, getTextBody() finds nothing and the
+        // thread view shows an empty message body (subject/to/date only,
+        // no content). Deriving one from the HTML fixes that.
+        $mail->AltBody = trim(html_entity_decode(strip_tags(preg_replace('/<(br|\/p|\/div|\/tr|\/h[1-6])\s*\/?>/i', "\n", $html)), ENT_QUOTES, 'UTF-8'));
         $mail->send();
         recruitment_save_to_sent($pdo, $mail->getSentMIMEMessage());
         return true;
