@@ -31183,9 +31183,14 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
           <OfferSection application={application} opening={opening} onSave={onSaveOffer} saving={savingOffer} onSend={onSendOffer} sending={sendingOffer} onUpdateStatus={onUpdateStatus}/>
         )}
 
-        {onSendOnboarding&&application.status==="hired"&&(
+        {onSendOnboarding&&application.status==="hired"&&(()=>{
+          const onboardingUrl = application.onboarding_token ? window.location.origin + "/careers/onboarding?token=" + application.onboarding_token : null;
+          const onboardingQr = !application.onboarding_completed_at && onboardingUrl && application.candidate_phone && waQrUrl(application.candidate_phone,
+            `Hi ${application.candidate_name||"there"}, welcome to Admepro! 🎉 Before your first day, please take a moment to check your email, review our company policy, and upload a couple of quick documents (ID + a photo) here: ${onboardingUrl} — it only takes a minute, and we can't wait to have you on board!`
+          );
+          return (
           <div style={{marginBottom:14,padding:14,background:"var(--surface2)",borderRadius:10,border:"1px solid var(--border)"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
               <div>
                 <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4}}>Onboarding Documents</p>
                 {application.onboarding_completed_at ? (
@@ -31196,9 +31201,17 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
                   <p style={{fontSize:13,color:"var(--text2)"}}>Send the welcome email with the policy + document-upload link.</p>
                 )}
               </div>
-              <button onClick={()=>onSendOnboarding(application)} disabled={sendingOnboarding} style={{padding:"8px 16px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text2)",cursor:sendingOnboarding?"not-allowed":"pointer",flexShrink:0}}>
-                {sendingOnboarding?"Sending…":application.hired_welcome_email_sent_at?"Resend":"Send Onboarding Email"}
-              </button>
+              <div style={{display:"flex",alignItems:"flex-start",gap:10,flexShrink:0}}>
+                {onboardingQr&&(
+                  <div style={{textAlign:"center",padding:8,background:"var(--surface)",borderRadius:10,border:"1px solid var(--border2)"}}>
+                    <img src={onboardingQr} alt="Onboarding reminder WhatsApp QR" width={90} height={90} style={{display:"block",borderRadius:6}}/>
+                    <p style={{fontSize:9,fontWeight:700,color:"var(--text3)",marginTop:4,maxWidth:90}}>Scan to WhatsApp reminder</p>
+                  </div>
+                )}
+                <button onClick={()=>onSendOnboarding(application)} disabled={sendingOnboarding} style={{padding:"8px 16px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text2)",cursor:sendingOnboarding?"not-allowed":"pointer"}}>
+                  {sendingOnboarding?"Sending…":application.hired_welcome_email_sent_at?"Resend":"Send Onboarding Email"}
+                </button>
+              </div>
             </div>
             {!application.onboarding_completed_at&&(application.onboarding_id_front_url||application.onboarding_id_back_url||application.onboarding_photo_url)&&(
               <p style={{fontSize:11,color:"var(--text3)",marginTop:8}}>Some documents uploaded, still missing: {[!application.onboarding_id_front_url&&"ID front",!application.onboarding_id_back_url&&"ID back",!application.onboarding_photo_url&&"photo"].filter(Boolean).join(", ")}.</p>
@@ -31214,7 +31227,8 @@ function ApplicationDetail({application, opening, openings, onClose, onUpdateSta
               </div>
             )}
           </div>
-        )}
+          );
+        })()}
 
         {onMakeTeamMember&&application.status==="hired"&&(
           <div style={{marginBottom:14,padding:14,background:"var(--surface2)",borderRadius:10,border:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
