@@ -31910,7 +31910,8 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
     try {
       const token = app.onboarding_token || (uid().replace("local_","") + uid().replace("local_",""));
       if(!app.onboarding_token) {
-        await ue("JobApplication", app.id, {onboarding_token: token}).catch(()=>{});
+        try { await ue("JobApplication", app.id, {onboarding_token: token}); }
+        catch(e) { alert("Couldn't save the onboarding link — the database is probably missing the onboarding columns (run vps-migration/migration-hired-welcome-email.sql). Nothing was sent.\n\n"+(e?.message||e)); return; }
         app = {...app, onboarding_token: token};
         setApplications(prev=>prev.map(a=>a.id===app.id?{...a,onboarding_token:token}:a));
         setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,onboarding_token:token}:prev);
@@ -31921,10 +31922,14 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
       const ok = await sendCareersEmail(app.candidate_email, `Welcome to Admepro${jobTitle?` — ${jobTitle}`:""}!`, html).catch(()=>false);
       if(ok) {
         const sentAt = new Date().toISOString();
-        setApplications(prev=>prev.map(a=>a.id===app.id?{...a,hired_welcome_email_sent_at:sentAt}:a));
-        setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,hired_welcome_email_sent_at:sentAt}:prev);
-        await ue("JobApplication", app.id, {hired_welcome_email_sent_at: sentAt}).catch(()=>{});
-        logActivity(app.id, "Welcome/onboarding email sent");
+        try {
+          await ue("JobApplication", app.id, {hired_welcome_email_sent_at: sentAt});
+          setApplications(prev=>prev.map(a=>a.id===app.id?{...a,hired_welcome_email_sent_at:sentAt}:a));
+          setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,hired_welcome_email_sent_at:sentAt}:prev);
+          logActivity(app.id, "Welcome/onboarding email sent");
+        } catch(e) {
+          alert("The email was sent, but saving the 'sent' status failed — it'll show as not-sent again after a refresh. Run vps-migration/migration-hired-welcome-email.sql on the server to fix this.\n\n"+(e?.message||e));
+        }
       } else {
         alert("Failed to send the welcome/onboarding email. Please try again.");
       }
