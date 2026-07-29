@@ -27,8 +27,21 @@ function li_get($url, $access_token) {
     return [$data, null];
 }
 
+// Strips access_token values before writing to the log — the real payload
+// still reaches the browser via postMessage below, only the log entry is
+// redacted. Previously the LinkedIn access token was written to the PHP
+// error log in plaintext.
+function redactTokenFields($value) {
+    if (is_array($value)) {
+        $out = [];
+        foreach ($value as $k => $v) { $out[$k] = ($k === 'access_token') ? '[REDACTED]' : redactTokenFields($v); }
+        return $out;
+    }
+    return $value;
+}
+
 function finish($ok, $payload) {
-    error_log('linkedin-oauth-callback finish: ok=' . ($ok ? '1' : '0') . ' payload=' . json_encode($payload));
+    error_log('linkedin-oauth-callback finish: ok=' . ($ok ? '1' : '0') . ' payload=' . json_encode(redactTokenFields($payload)));
     header('Content-Type: text/html; charset=UTF-8');
     $json = json_encode(array_merge(['type' => 'linkedin_oauth_result', 'ok' => $ok], $payload));
     echo "<!DOCTYPE html><html><body><script>
