@@ -277,6 +277,20 @@ $checkDup = $pdo->prepare("SELECT 1 FROM job_applications WHERE email_message_id
 // from re-capturing the same email next run, since the UNIQUE constraint
 // above only protects rows that still exist.
 $checkDeleted = $pdo->prepare("SELECT 1 FROM deleted_email_applications WHERE email_message_id = :mid");
+// General-purpose "have we already handled this exact email" guard —
+// unlike $checkDup above (which only covers messages that became a
+// job_applications row), this covers EVERY message this script looks at,
+// including replies that just trigger a notification/WhatsApp alert (e.g.
+// "candidate wants to reschedule") and never create an application row.
+// Without this, such a reply got reprocessed — and re-alerted to every
+// admin — on every single cron run for as long as it stayed inside the
+// $sinceDays fetch window, since nothing ever recorded that it was already
+// handled. requires migration-processed-email-messages.sql.
+$checkProcessed = $pdo->prepare("SELECT 1 FROM processed_email_messages WHERE message_id_hash = :h");
+$markProcessed = $pdo->prepare("INSERT IGNORE INTO processed_email_messages (message_id_hash, message_id) VALUES (:h, :mid)");
+function markMessageProcessed(PDO $pdo, $stmt, $messageId) {
+    $stmt->execute([':h' => hash('sha256', $messageId), ':mid' => substr($messageId, 0, 65000)]);
+}
 $insert = $pdo->prepare(
     "INSERT INTO job_applications (id, job_opening_id, job_title, candidate_name, candidate_email, candidate_phone, cover_letter, cv_url, portfolio_url, portfolio_attachment_url, linkedin_url, status, ai_review_status, source, email_message_id)
      VALUES (UUID(), :job_opening_id, :job_title, :candidate_name, :candidate_email, :candidate_phone, :cover_letter, :cv_url, :portfolio_url, :portfolio_attachment_url, :linkedin_url, 'new', :ai_review_status, 'email', :email_message_id)"
@@ -308,11 +322,14 @@ foreach ($messages as $message) {
         $messageId = (string) $message->getMessageId();
         if ($messageId === '') { $messageId = 'uid-' . $message->getUid() . '@no-message-id'; }
 
+        $checkProcessed->execute([':h' => hash('sha256', $messageId)]);
+        if ($checkProcessed->fetchColumn()) { $message->setFlag('Seen'); continue; }
+
         $checkDup->execute([':mid' => $messageId]);
-        if ($checkDup->fetchColumn()) { $message->setFlag('Seen'); continue; }
+        if ($checkDup->fetchColumn()) { $message->setFlag('Seen'); markMessageProcessed($pdo, $markProcessed, $messageId); continue; }
 
         $checkDeleted->execute([':mid' => $messageId]);
-        if ($checkDeleted->fetchColumn()) { $message->setFlag('Seen'); continue; }
+        if ($checkDeleted->fetchColumn()) { $message->setFlag('Seen'); markMessageProcessed($pdo, $markProcessed, $messageId); continue; }
 
         $fromList = $message->getFrom();
         $from = $fromList && $fromList->count() ? $fromList[0] : null;
@@ -320,7 +337,7 @@ foreach ($messages as $message) {
         $candidateName = $from && !empty($from->personal) ? trim((string) $from->personal) : $candidateEmail;
         $subject = (string) $message->getSubject();
 
-        if ($candidateEmail === '') { $message->setFlag('Seen'); continue; }
+        if ($candidateEmail === '') { $message->setFlag('Seen'); markMessageProcessed($pdo, $markProcessed, $messageId); continue; }
         // Skip our own mail — a message "from" the mailbox itself, from
         // noreply@admepro.com (the confirmation email's own sender), or
         // whose subject IS the confirmation email's subject line, is our
@@ -330,7 +347,7 @@ foreach ($messages as $message) {
         $selfSenders = [strtolower($imapEmail), 'noreply@admepro.com'];
         $isOwnConfirmation = in_array(strtolower($candidateEmail), $selfSenders, true)
             || strcasecmp(trim($subject), trim($confirmationSubject)) === 0;
-        if ($isOwnConfirmation) { $message->setFlag('Seen'); continue; }
+        if ($isOwnConfirmation) { $message->setFlag('Seen'); markMessageProcessed($pdo, $markProcessed, $messageId); continue; }
 
         // Match subject against open job titles (case-insensitive substring)
         $matchedOpening = null;
@@ -351,7 +368,7 @@ foreach ($messages as $message) {
         if ($matchedOpening) {
             $dupCheck = $pdo->prepare("SELECT 1 FROM job_applications WHERE candidate_email = :e AND job_opening_id = :o LIMIT 1");
             $dupCheck->execute([':e' => $candidateEmail, ':o' => $matchedOpening['id']]);
-            if ($dupCheck->fetchColumn()) { $message->setFlag('Seen'); continue; }
+            if ($dupCheck->fetchColumn()) { $message->setFlag('Seen'); markMessageProcessed($pdo, $markProcessed, $messageId); continue; }
         }
 
         // Grab the first PDF attachment as the CV, and (if present) a second
@@ -532,6 +549,7 @@ foreach ($messages as $message) {
                 }
             }
             $message->setFlag('Seen');
+            markMessageProcessed($pdo, $markProcessed, $messageId);
             continue;
         }
 
@@ -542,6 +560,7 @@ foreach ($messages as $message) {
         // instead of inserting it as an "Unassigned" application.
         if ($strictFiltering && !$matchedOpening && !$cvUrl) {
             $message->setFlag('Seen');
+            markMessageProcessed($pdo, $markProcessed, $messageId);
             continue;
         }
 
@@ -642,6 +661,7 @@ foreach ($messages as $message) {
         }
 
         $message->setFlag('Seen');
+        markMessageProcessed($pdo, $markProcessed, $messageId);
         $processed++;
     } catch (Throwable $e) {
         // Don't let one malformed email kill the whole run — log and move on.
