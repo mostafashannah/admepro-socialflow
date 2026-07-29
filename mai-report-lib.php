@@ -69,6 +69,60 @@ function maiBuildClientContext(PDO $pdo, $accountManagerId) {
     return ['names' => $names, 'context' => implode("\n\n", $blocks)];
 }
 
+// Builds the AM's assigned-leads context — every lead not yet closed,
+// whether it has a logged activity/status update, and how long since it
+// was assigned/last touched. Lets Mai ask about leads BY NAME ("did you
+// call Ahmed Kamal?") instead of vaguely, and tell the difference between
+// "no data on this lead at all" (nothing ever logged) vs "there's a real
+// gap since the last update" (had activity once, gone quiet since).
+function maiBuildLeadContext(PDO $pdo, $accountManagerId, $accountManagerEmail) {
+    $stmt = $pdo->prepare(
+        "SELECT id, name, company, phone, status, assigned_at, created_at FROM leads
+         WHERE assigned_to = :email AND status NOT IN ('closed_won','closed_lost')
+         AND (client_name IS NULL OR LOWER(client_name) = 'admepro')
+         ORDER BY assigned_at DESC LIMIT 15"
+    );
+    $stmt->execute([':email' => $accountManagerEmail]);
+    $leads = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    if (!$leads) return "This account manager has no open leads assigned right now.";
+
+    $lastActStmt = $pdo->prepare("SELECT content, created_at FROM lead_activities WHERE lead_id = :lid ORDER BY created_at DESC LIMIT 1");
+    $lines = [];
+    foreach ($leads as $l) {
+        $lastActStmt->execute([':lid' => $l['id']]);
+        $lastAct = $lastActStmt->fetch(PDO::FETCH_ASSOC);
+        if ($lastAct) {
+            $lines[] = "- \"{$l['name']}\" ({$l['status']}) — last logged update {$lastAct['created_at']}: \"{$lastAct['content']}\"";
+        } else {
+            $lines[] = "- \"{$l['name']}\" ({$l['status']}, assigned {$l['assigned_at']}) — NO activity logged at all yet, nothing on file about any contact with them.";
+        }
+    }
+    return implode("\n", $lines);
+}
+
+// Applies lead-related updates Mai decided to make mid-conversation: a
+// logged follow-up (she offered to log it based on what the AM told her)
+// and/or a status change. Matches loosely by name against this AM's own
+// open leads only — never touches someone else's leads.
+function maiApplyLeadUpdates(PDO $pdo, $accountManagerEmail, array $leadUpdates) {
+    if (!$leadUpdates) return;
+    $find = $pdo->prepare("SELECT id, status FROM leads WHERE assigned_to = :email AND name LIKE :name AND status NOT IN ('closed_won','closed_lost') LIMIT 1");
+    foreach ($leadUpdates as $u) {
+        $leadName = trim($u['lead_name'] ?? '');
+        $note = trim($u['note'] ?? '');
+        if ($leadName === '' || $note === '') continue;
+        $find->execute([':email' => $accountManagerEmail, ':name' => '%' . $leadName . '%']);
+        $lead = $find->fetch(PDO::FETCH_ASSOC);
+        if (!$lead) continue;
+        $pdo->prepare("INSERT INTO lead_activities (id, lead_id, content, author_name, type) VALUES (UUID(), :lid, :content, 'Mai (via AM check-in)', 'note')")
+            ->execute([':lid' => $lead['id'], ':content' => $note]);
+        $newStatus = trim($u['status'] ?? '');
+        if ($newStatus && in_array($newStatus, ['new', 'contacted', 'follow_up', 'negotiation', 'closed_won', 'closed_lost'], true) && $newStatus !== $lead['status']) {
+            $pdo->prepare("UPDATE leads SET status = :s WHERE id = :id")->execute([':s' => $newStatus, ':id' => $lead['id']]);
+        }
+    }
+}
+
 function maiPersonaSystem() {
     return "You are Mai, the agency's AI Account Executive — warm, sharp, genuinely on top of every client's numbers, and a little proud of it. "
         . "You're checking in with an account manager over WhatsApp. Your voice: friendly and encouraging, never robotic or like a compliance checklist read "
@@ -95,10 +149,15 @@ function maiStartReportSession(PDO $pdo, array $am, $reportType) {
     foreach ($checklist as $key => $label) { $checklistState[$key] = ['label' => $label, 'done' => false, 'note' => null]; }
 
     $ctx = maiBuildClientContext($pdo, $am['id']);
+    $leadCtx = maiBuildLeadContext($pdo, $am['id'], $am['email']);
     $firstName = explode(' ', trim($am['name']))[0];
 
     if ($reportType === 'morning') {
         $userMsg = "It's midday — time for {$firstName}'s morning check-in. Her clients and what you know about them:\n\n{$ctx['context']}\n\n"
+            . "Her open leads (ask about these BY NAME, e.g. \"did you call Ahmed Kamal?\" — not vaguely):\n{$leadCtx}\n\n"
+            . "IMPORTANT on leads: if she says she followed up/called a lead that shows \"NO activity logged at all\" above, that's a real gap — "
+            . "point it out naturally (not accusingly) and either offer to log what she just told you as the update, or ask her to add it herself "
+            . "in the Leads page so it's on record. Never just accept \"yeah I called them\" for a lead with nothing on file without addressing that gap.\n\n"
             . "Checklist to work through over the conversation (don't list it to her, just naturally get answers to all of it):\n"
             . implode("\n", array_map(fn($l) => "- {$l}", $checklist)) . "\n\n"
             . "Start the conversation now — greet her, lead with one real, specific, interesting thing you noticed about one of her clients "
@@ -116,6 +175,8 @@ function maiStartReportSession(PDO $pdo, array $am, $reportType) {
                 : 'Everything from this morning was confirmed done.';
         }
         $userMsg = "It's end of day — time for {$firstName}'s wrap-up check-in. Her clients:\n\n{$ctx['context']}\n\n{$morningSummary}\n\n"
+            . "Her open leads:\n{$leadCtx}\n\nSame rule as always: if she claims she followed up on a lead with no activity logged, address that gap "
+            . "(offer to log it, or ask her to add it herself).\n\n"
             . "Checklist to work through (don't list it to her):\n" . implode("\n", array_map(fn($l) => "- {$l}", $checklist)) . "\n\n"
             . "Start the conversation now — friendly end-of-day tone, follow up on anything still open from this morning first if relevant. "
             . "Write ONLY the WhatsApp message, nothing else.";
@@ -172,16 +233,21 @@ function maiContinueReportSession(PDO $pdo, array $session, $incomingText) {
         : '(all checklist items already confirmed — wrap up naturally)';
 
     $historyBlock = implode("\n", array_map(fn($m) => ($m['role'] === 'assistant' ? 'Mai' : 'AM') . ': ' . $m['content'], $transcript));
+    $leadCtx = maiBuildLeadContext($pdo, $session['account_manager_id'], $session['account_manager_email']);
 
     $sys = maiPersonaSystem() . "\n\nThis is turn N of an ongoing check-in conversation. Still-open checklist items to get through naturally "
         . "(never read them out as a list — weave them into normal conversation):\n{$checklistBlock}\n\n"
+        . "Her open leads (for reference if the lead-follow-up checklist item is still open, or if she brings one up):\n{$leadCtx}\n\n"
+        . "If she says she followed up on / called a lead that shows NO activity logged above, that's a real gap — point it out naturally and "
+        . "either offer to log what she just told you (put it in lead_updates below) or ask her to add it herself in the Leads page.\n\n"
         . "Conversation so far:\n{$historyBlock}\n\n"
         . "Decide: does her last message resolve any open checklist item(s)? Does it contain a fact worth remembering about a client "
-        . "(a real update, a plan, a number, a promise)? Should the conversation continue (more open items, or something worth digging into — "
-        . "e.g. she mentioned a client's numbers are down, ask why and whether she has a plan) or wrap up now (all items covered)?\n\n"
+        . "(a real update, a plan, a number, a promise)? Did she just tell you what happened on a specific lead that you should log for her? "
+        . "Should the conversation continue (more open items, or something worth digging into — e.g. she mentioned a client's numbers are down, "
+        . "ask why and whether she has a plan) or wrap up now (all items covered)?\n\n"
         . "If wrapping up, your reply MUST end with a short motivational line about the business/team and a thank-you — genuine, not generic corporate filler.\n\n"
         . "Return ONLY this JSON (no markdown, no other text):\n"
-        . '{"reply":"the next WhatsApp message to send her","checklist_done":["item_key",...],"client_memory":[{"client_name":"...","key":"...","value":"..."}],"complete":true|false}';
+        . '{"reply":"the next WhatsApp message to send her","checklist_done":["item_key",...],"client_memory":[{"client_name":"...","key":"...","value":"..."}],"lead_updates":[{"lead_name":"...","note":"what she told you happened with this lead","status":"new|contacted|follow_up|negotiation|closed_won|closed_lost or omit if unchanged"}],"complete":true|false}';
 
     [$status, $data] = callClaude(['model' => 'claude-sonnet-4-6', 'max_tokens' => 500, 'system' => $sys, 'messages' => [['role' => 'user', 'content' => 'Continue the conversation now, following the instructions exactly.']]]);
     $raw = '';
@@ -209,6 +275,7 @@ function maiContinueReportSession(PDO $pdo, array $session, $incomingText) {
         $pdo->prepare("INSERT INTO client_memory (id, client_id, client_name, `key`, value, type) VALUES (:id, :cid, :cname, :k, :v, 'am_daily_report')")
             ->execute([':id' => generateProUuid(), ':cid' => $clientId, ':cname' => $cname, ':k' => $key, ':v' => $value]);
     }
+    maiApplyLeadUpdates($pdo, $session['account_manager_email'], $parsed['lead_updates'] ?? []);
 
     $transcript[] = ['role' => 'assistant', 'content' => $reply, 'at' => date('c')];
 
