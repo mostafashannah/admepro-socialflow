@@ -9204,7 +9204,7 @@ Return ONLY valid JSON (no markdown):
   );
 }
 
-function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onSaveKnowledge,allPosts,clientMemory=[]}) {
+function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onSaveKnowledge,allPosts,clientMemory=[],contactReports=[]}) {
   const [sub,setSub] = useState("profile");
   const [docName,setDocName] = useState("");
   const [docType,setDocType] = useState("notes");
@@ -9264,25 +9264,39 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
   const handleGenerateFromData = async () => {
     setGenerating(true);
     const memFacts = (clientMemory||[]).filter(m=>m.client_id===client.id).map(m=>`- ${m.key}: ${m.value}`).join("\n");
-    const pubPosts = (clientPosts||[]).filter(p=>p.stage==="published" && p.caption).slice(0,15).map(p=>`[${p.platform||""}] ${p.caption}`).join("\n\n");
-    const prompt = `You are a brand strategist. Analyze the following data for the client "${client.name}" and produce a structured brand knowledge profile.
+    const pubPosts = (clientPosts||[]).filter(p=>p.stage==="published" && p.caption).slice(0,20).map(p=>`[${p.platform||""}] ${(p.caption||"").slice(0,300)}`).join("\n\n");
+    const reportFacts = (contactReports||[]).slice(0,10).map(r=>{
+      const parts = [`Meeting/Call with ${r.created_by_name||"team"} on ${(r.meeting_date||r.created_at||"").slice(0,10)}`];
+      if(r.summary) parts.push(`Summary: ${r.summary}`);
+      if(r.key_points) parts.push(`Key points: ${r.key_points}`);
+      if(r.action_items) parts.push(`Action items: ${r.action_items}`);
+      return parts.join("\n");
+    }).join("\n\n---\n\n");
+    const docFacts = (documents||[]).map(d=>d.content||"").filter(Boolean).slice(0,3).join("\n\n").slice(0,2000);
+    const prompt = `You are a senior brand strategist. Analyze ALL available data for the client "${client.name}" and produce a comprehensive, accurate brand knowledge profile.
 
-MEMORY / BRAND FACTS:
+=== MEMORY / SAVED BRAND FACTS ===
 ${memFacts || "None saved yet"}
 
-PUBLISHED CAPTIONS (sample):
+=== CONTACT REPORTS (recent client meetings & calls) ===
+${reportFacts || "None yet"}
+
+=== PUBLISHED CAPTIONS (sample of real content) ===
 ${pubPosts || "None available"}
 
-Return ONLY valid JSON with these exact keys:
+=== UPLOADED DOCUMENTS ===
+${docFacts || "None uploaded"}
+
+Based on ALL of the above, return ONLY valid JSON with these exact keys:
 {
-  "summary": "2-3 sentence brand overview",
-  "tone": "comma-separated tone descriptors (e.g. fun, energetic, playful)",
-  "content_preferences": "what content works well for them",
-  "keywords": ["keyword1","keyword2","keyword3","keyword4","keyword5"],
-  "priorities": ["priority1","priority2","priority3"]
+  "summary": "3-4 sentence brand overview covering who they are, what they sell/offer, and their positioning",
+  "tone": "comma-separated tone descriptors that define their content voice (e.g. fun, energetic, warm, professional)",
+  "content_preferences": "describe what content formats/themes work for them — what the client likes, what gets good engagement",
+  "keywords": ["5-10 brand keywords and hashtag topics"],
+  "priorities": ["3-5 strategic content priorities for this client"]
 }`;
     try {
-      const raw = await ai(prompt, 600);
+      const raw = await ai(prompt, 800);
       const m = raw.match(/\{[\s\S]*\}/);
       if(!m) throw new Error("No JSON returned");
       const parsed = JSON.parse(m[0]);
@@ -9294,13 +9308,23 @@ Return ONLY valid JSON with these exact keys:
         keywords: JSON.stringify(Array.isArray(parsed.keywords)?parsed.keywords:[]),
         priorities: JSON.stringify(Array.isArray(parsed.priorities)?parsed.priorities:[]),
         last_analyzed: new Date().toISOString(),
-        analyzed_by: currentUser?.email||"",
+        analyzed_by: currentUser?.email||"auto",
         version: (knowledge?.version||0)+1,
-        sources_count: (clientMemory||[]).filter(m=>m.client_id===client.id).length,
+        sources_count: (clientMemory||[]).filter(m=>m.client_id===client.id).length + (contactReports||[]).length,
       });
     } catch(e) { alert("Generation failed: "+(e?.message||e)); }
     setGenerating(false);
   };
+
+  // Auto-generate when profile exists but is completely empty
+  const profileIsEmpty = knowledge && !knowledge.summary && !knowledge.tone && !knowledge.keywords;
+  const hasAnyData = (clientMemory||[]).filter(m=>m.client_id===client.id).length>0 || (clientPosts||[]).filter(p=>p.stage==="published").length>0 || (contactReports||[]).length>0;
+  useEffect(()=>{
+    if(profileIsEmpty && hasAnyData && !generating) {
+      handleGenerateFromData();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
 
 
   return (
@@ -10640,6 +10664,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
               projects={projects}
               comments={comments}
               integrations={integrations}
+              contactReports={contactReports}
             />
           )}
           {brainSubTab==="scheduling"&&(
@@ -14397,7 +14422,7 @@ function ClientFeaturesSubTab({client, onUpdateClient}) {
 // CLIENT BRAIN TAB — consolidates Intelligence/Smart Intel/Memory/
 // Brand Training/Context File into one tab with sub-nav.
 // ════════════════════════════════════════════════════════════════
-function ClientBrainTab({client, knowledge, clientKnowledge, documents, currentUser, onUploadDoc, onSaveKnowledge, clientIntelligence, onSaveIntelligence, clientMemory, onUpsertMemory, onDeleteMemory, cPosts, posts, projects, comments, integrations=[]}) {
+function ClientBrainTab({client, knowledge, clientKnowledge, documents, currentUser, onUploadDoc, onSaveKnowledge, clientIntelligence, onSaveIntelligence, clientMemory, onUpsertMemory, onDeleteMemory, cPosts, posts, projects, comments, integrations=[], contactReports=[]}) {
   const isAdmin = currentUser?.role==="admin";
   const [sub,setSub] = usePersistentState(`sf_brain_sub_${client?.id}`,"profile");
   const SUBS = [
@@ -14414,7 +14439,7 @@ function ClientBrainTab({client, knowledge, clientKnowledge, documents, currentU
         ))}
       </div>
       {sub==="profile"&&(
-        <IntelligenceTab client={client} knowledge={knowledge} documents={documents} currentUser={currentUser} onUploadDoc={onUploadDoc} onSaveKnowledge={onSaveKnowledge} allPosts={cPosts} clientMemory={clientMemory||[]}/>
+        <IntelligenceTab client={client} knowledge={knowledge} documents={documents} currentUser={currentUser} onUploadDoc={onUploadDoc} onSaveKnowledge={onSaveKnowledge} allPosts={cPosts} clientMemory={clientMemory||[]} contactReports={contactReports.filter(r=>r.client_id===client.id)}/>
       )}
       {sub==="memory"&&(
         <ClientMemoryTab client={client} clientMemory={clientMemory||[]} onUpsert={onUpsertMemory} onDelete={onDeleteMemory} currentUser={currentUser}/>
