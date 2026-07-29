@@ -198,7 +198,11 @@ try {
     // their reply continues THAT conversation, not the general Pro assistant —
     // otherwise "how's client X doing" mid-checklist would get answered by
     // generic Pro instead of Mai actually tracking the conversation/checklist.
-    if ($senderId) {
+    // Only plain text replies continue a Mai session — a voice note or photo
+    // is always something meant for Pro directly (e.g. a contact report to
+    // save), never an answer to Mai's checklist, so it must go through the
+    // normal Pro/tool-use path below instead of being swallowed here.
+    if ($senderId && $msgType === 'text') {
         $activeSession = maiFindActiveReportSession($pdo, $senderId);
         if ($activeSession) {
             maiContinueReportSession($pdo, $activeSession, $text);
