@@ -20806,7 +20806,7 @@ function LeadAiInsights({lead, activities, onUpdateLead}) {
       const accounts = parseMaybeJson(lead.social_accounts, []);
       const stageLabel = LEAD_BUSINESS_STAGES.find(s=>s.key===lead.business_stage)?.label;
       const prompt = `You're helping an account manager get up to speed on a sales lead before they reach out. Here's what's on file:\n\n`
-        + `Name: ${lead.name}\nBusiness: ${lead.business_name||lead.company||"unknown"}\nSource: ${lead.source||"unknown"}\nStatus: ${lead.status}\n`
+        + `Name: ${lead.name}\nBusiness: ${lead.business_name||lead.company||"unknown"}\nWebsite: ${lead.website||"none on file"}\nSource: ${lead.source||"unknown"}\nStatus: ${lead.status}\n`
         + (stageLabel?`Business stage: ${stageLabel}\n`:"")
         + (services.length?`Interested in: ${services.join(", ")}\n`:"")
         + (accounts.length?`Social accounts: ${accounts.map(a=>`${a.platform}: ${a.handle}`).join(", ")}\n`:"")
@@ -20854,6 +20854,7 @@ function LeadAiInsights({lead, activities, onUpdateLead}) {
 function LeadProfileSection({lead, onUpdateLead}) {
   const [form, setForm] = useState({
     business_name: lead.business_name||"",
+    website: lead.website||"",
     social_accounts: parseMaybeJson(lead.social_accounts, []),
     interested_services: parseMaybeJson(lead.interested_services, []),
     business_stage: lead.business_stage||"",
@@ -20878,6 +20879,7 @@ function LeadProfileSection({lead, onUpdateLead}) {
       <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>Business Profile <span style={{color:"var(--text3)",fontWeight:600,textTransform:"none",letterSpacing:0}}>— fill in after the first call</span></p>
 
       <Field label="Business Name"><input value={form.business_name} onChange={e=>sf("business_name",e.target.value)} placeholder="e.g. Bino Bakery" style={inputSt}/></Field>
+      <Field label="Website"><input value={form.website} onChange={e=>sf("website",e.target.value)} placeholder="e.g. https://binobakery.com" style={inputSt}/></Field>
 
       <Field label="Business Stage">
         <select value={form.business_stage} onChange={e=>sf("business_stage",e.target.value)} style={inputSt}>
@@ -20945,14 +20947,17 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
   };
 
   return (
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:1000,display:"flex",alignItems:"flex-start",justifyContent:"flex-end",backdropFilter:"blur(4px)"}} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} className="slide-right" style={{
-        width:"min(520px,100vw)",height:"100vh",overflowY:"auto",
-        background:"var(--surface)",borderLeft:"1px solid var(--border2)",
-        display:"flex",flexDirection:"column",
-      }}>
+    <div className="fade-in" style={{maxWidth:760,display:"flex",flexDirection:"column",gap:0,width:"100%"}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+        <button onClick={onClose} style={{width:36,height:36,borderRadius:"50%",background:"var(--surface2)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text2)",cursor:"pointer",flexShrink:0}}>
+          <Ico d={Icons.chevL} size={16}/>
+        </button>
+        <p style={{fontSize:13,fontWeight:700,color:"var(--text2)"}}>Back to Leads</p>
+      </div>
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
         {/* Header */}
-        <div style={{padding:"20px 24px 16px",borderBottom:"1px solid var(--border)",position:"sticky",top:0,background:"var(--surface)",zIndex:10}}>
+        <div style={{padding:"20px 24px 16px",borderBottom:"1px solid var(--border)"}}>
           <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
             <div style={{flex:1}}>
               <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
@@ -20968,15 +20973,12 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
                 {lead.value&&<Badge label={`$${lead.value.toLocaleString()}`} color="#10b981" xs/>}
               </div>
             </div>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              {onDeleteLead&&(
-                <button onClick={()=>{ if(window.confirm(`Delete lead "${lead.name||"Unknown"}"?`)) onDeleteLead(lead.id); }}
-                  style={{padding:"6px 12px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"#ef4444",fontSize:12,fontWeight:600,cursor:"pointer"}}>
-                  Delete
-                </button>
-              )}
-              <button onClick={onClose} style={{color:"var(--text3)",display:"flex",padding:4}}><Ico d={Icons.x} size={20}/></button>
-            </div>
+            {onDeleteLead&&(
+              <button onClick={()=>{ if(window.confirm(`Delete lead "${lead.name||"Unknown"}"?`)) onDeleteLead(lead.id); }}
+                style={{padding:"6px 12px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"#ef4444",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}}>
+                Delete
+              </button>
+            )}
           </div>
         </div>
 
@@ -21334,6 +21336,37 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   const pipelineValue = leads.filter(l=>!["closed_won","closed_lost"].includes(l.status)).reduce((a,l)=>a+(l.value||0),0);
   const overdueCount = leads.filter(l=>isOverdue(l.followup_date)&&!["closed_won","closed_lost"].includes(l.status)).length;
 
+  // Opening a lead swaps the whole page content for its own full detail
+  // page (not an overlay/popup) — same master-detail pattern used
+  // elsewhere in the app (e.g. Recruitment applications).
+  if(selectedLead) {
+    return (
+      <LeadDetail
+        key={selectedLead.id}
+        lead={leads.find(l=>l.id===selectedLead.id)||selectedLead}
+        activities={leadActivities}
+        team={team}
+        currentUser={currentUser}
+        onClose={()=>{
+          // Close directly rather than window.history.back() — this page
+          // pushes a history entry so the PHYSICAL browser back button can
+          // close it (see setSelectedLead above), but back() also unwinds
+          // to whatever else is behind THAT entry, which can be an
+          // unrelated earlier page (e.g. Notifications) if the user
+          // navigated here without a matching push of their own. The Back
+          // button is an explicit in-app close, not "go back" — it should
+          // never navigate anywhere else.
+          setSelectedLead_(null);
+          try{ if(window.history.state&&"sfLeadDetail" in window.history.state) window.history.replaceState({sfPage:"leads"},"","#leads"); }catch(e){}
+        }}
+        onUpdateLead={async l=>{await onUpdateLead(l);setSelectedLead_(l);}}
+        onAddActivity={onAddActivity}
+        onConvert={async l=>{await onConvertLead(l);setSelectedLead_(null);}}
+        onDeleteLead={currentUser?.role==="admin"?async id=>{await onDeleteLead(id);setSelectedLead_(null);}:null}
+      />
+    );
+  }
+
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
       {/* Header */}
@@ -21459,33 +21492,6 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
 
       {/* Add Lead Modal */}
       {showForm&&<AddLeadModal open onClose={()=>setShowForm(false)} team={team} onAdd={async d=>{await onAddLead(d);setShowForm(false);}}/>}
-
-      {/* Lead Detail Panel */}
-      {selectedLead&&(
-        <LeadDetail
-          key={selectedLead.id}
-          lead={leads.find(l=>l.id===selectedLead.id)||selectedLead}
-          activities={leadActivities}
-          team={team}
-          currentUser={currentUser}
-          onClose={()=>{
-            // Close directly rather than window.history.back() — this panel
-            // pushes a history entry so the PHYSICAL browser back button can
-            // close it (see setSelectedLead above), but back() also unwinds
-            // to whatever else is behind THAT entry, which can be an
-            // unrelated earlier page (e.g. Notifications) if the user
-            // navigated here without a matching push of their own. The X
-            // button is an explicit in-app close, not "go back" — it should
-            // never navigate anywhere else.
-            setSelectedLead_(null);
-            try{ if(window.history.state&&"sfLeadDetail" in window.history.state) window.history.replaceState({sfPage:"leads"},"","#leads"); }catch(e){}
-          }}
-          onUpdateLead={async l=>{await onUpdateLead(l);setSelectedLead_(l);}}
-          onAddActivity={onAddActivity}
-          onConvert={async l=>{await onConvertLead(l);setSelectedLead_(null);}}
-          onDeleteLead={currentUser?.role==="admin"?async id=>{await onDeleteLead(id);setSelectedLead_(null);}:null}
-        />
-      )}
     </div>
   );
 }
