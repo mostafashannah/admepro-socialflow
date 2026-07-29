@@ -28904,13 +28904,13 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
         );
       })}
       {showModal&&(
-        <ContactReportModal open onClose={()=>setShowModal(false)} onSave={onSaveContactReport} clientId={client.id} clientName={client.name} report={editing} team={team} client={client}/>
+        <ContactReportModal open onClose={()=>setShowModal(false)} onSave={onSaveContactReport} clientId={client.id} clientName={client.name} report={editing} team={team} client={client} currentUser={currentUser}/>
       )}
     </div>
   );
 }
 
-function ContactReportModal({open, onClose, onSave, clientId, clientName, report, team=[], client}) {
+function ContactReportModal({open, onClose, onSave, clientId, clientName, report, team=[], client, currentUser}) {
   const [f,setF] = useState(()=>({
     meeting_type: report?.meeting_type||"meeting",
     meeting_date: report?.meeting_date || (report?.created_at ? report.created_at.slice(0,10) : new Date().toISOString().slice(0,10)),
@@ -28927,7 +28927,11 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
   const [saving, setSaving] = useState(false);
   const formatRole = (role) => (role||"").replace(/_/g," ").replace(/\b\w/g, c=>c.toUpperCase());
   const attendeeSuggestions = [
-    ...(team||[]).filter(t=>t.status==="active").map(t=>({name:t.name, title:t.title?.trim()||formatRole(t.role), email:t.email||"", kind:"team"})),
+    ...(team||[]).filter(t=>t.status==="active").map(t=>{
+      const isMe = currentUser && (t.id===currentUser.id || t.email===currentUser.email);
+      const title = (isMe ? currentUser.title?.trim() : t.title?.trim()) || t.title?.trim() || formatRole(t.role);
+      return {name:t.name, title, email:t.email||"", kind:"team"};
+    }),
     ...(client?.name ? [{name:client.username||client.name, title:client.contact_title||"Client Contact", email:client.email||"", kind:"client"}] : []),
   ];
   const filteredAttendeeSuggestions = attendeeSuggestions.filter(s=>
