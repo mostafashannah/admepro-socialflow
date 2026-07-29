@@ -32455,6 +32455,18 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
     return d.getFullYear()===now.getFullYear() && d.getMonth()===now.getMonth() && d.getDate()===now.getDate();
   };
 
+  // Latest activity_logs timestamp per application, falling back to the
+  // application's own created_at when it has no logged activity yet.
+  const lastActionAt = (()=>{
+    const map = {};
+    for(const l of activityLogs) {
+      const t = new Date(l.created_at).getTime();
+      if(!isNaN(t) && (!map[l.application_id] || t>map[l.application_id])) map[l.application_id] = t;
+    }
+    return map;
+  })();
+  const getLastActionAt = (a) => lastActionAt[a.id] ?? new Date(a.created_at).getTime();
+
   const filteredApps = applications
     .filter(a=>openingFilter==="all"||(openingFilter==="unassigned"?!a.job_opening_id:a.job_opening_id===openingFilter))
     .filter(a=>statusFilter==="all"||a.status===statusFilter)
@@ -32467,6 +32479,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
     })
     .sort((a,b)=>{
       if(sortBy==="today_interviews") return new Date(a.interview_confirmed_slot)-new Date(b.interview_confirmed_slot);
+      if(sortBy==="last_action") return getLastActionAt(b)-getLastActionAt(a);
       if(sortBy==="recent") return new Date(b.created_at)-new Date(a.created_at);
       if(sortBy==="oldest") return new Date(a.created_at)-new Date(b.created_at);
       return applicationRank(b)-applicationRank(a);
@@ -32589,6 +32602,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
             <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={{...inputSt,width:"auto",minHeight:"auto",borderRadius:99,padding:"5px 10px",fontSize:11,fontWeight:600,border:"1px solid var(--border2)"}}>
               <option value="score">Top Score</option>
               <option value="recent">Most Recent</option>
+              <option value="last_action">Most Recent Action</option>
               <option value="oldest">Oldest First</option>
               <option value="today_interviews">Today's Interviews</option>
             </select>
