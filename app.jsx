@@ -20863,6 +20863,9 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
                   const am = (team||[]).find(t=>t.email===email);
                   onUpdateLead({...lead, assigned_to:email||null, assigned_at:email?new Date().toISOString():null, rotation_missed:0});
                   onAddActivity({lead_id:lead.id, type:"note", content:email?`Manually assigned to ${am?.name||email}`:"Unassigned", author_name:currentUser?.name||"User"});
+                  if(am?.whatsapp_number) {
+                    sendWhatsApp(am.whatsapp_number, `New lead assigned to you: "${lead.name}"${lead.company?` (${lead.company})`:""} — ${lead.phone||"no phone on file"}. Source: ${lead.source||"unknown"}.`).catch(()=>{});
+                  }
                 }} style={{...inputSt,flex:1,minHeight:"auto",padding:"5px 8px",fontSize:13}}>
                   <option value="">Unassigned</option>
                   {(team||[]).filter(t=>t.role==="account_manager"&&t.status==="active").map(t=>(
@@ -21031,7 +21034,7 @@ function LeadCard({lead, onClick, team}) {
       </div>
       <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
         {lead.platforms?.slice(0,3).map(p=><PChip key={p} platform={p} xs/>)}
-        {lead.source&&<Badge label={lead.source} color="#6b7280" xs/>}
+        {lead.source&&!lead.platforms?.some(p=>p.toLowerCase()===lead.source.toLowerCase())&&<Badge label={lead.source} color="#6b7280" xs/>}
         {assignee&&<Badge label={assignee.name} color="#8b5cf6" xs/>}
       </div>
       {lead.followup_date&&(
@@ -21336,7 +21339,12 @@ function AddLeadModal({open,onClose,team,onAdd}) {
   const handleSubmit=async()=>{
     if(!f.name.trim()||!f.phone.trim())return;
     setSaving(true);
-    await onAdd({...f,value:parseFloat(f.value)||0});
+    const assigned_at = f.assigned_to ? new Date().toISOString() : null;
+    await onAdd({...f,value:parseFloat(f.value)||0,assigned_at});
+    if(f.assigned_to) {
+      const am = (team||[]).find(t=>t.email===f.assigned_to);
+      if(am?.whatsapp_number) sendWhatsApp(am.whatsapp_number, `New lead assigned to you: "${f.name}"${f.company?` (${f.company})`:""} — ${f.phone}. Source: ${f.source||"unknown"}.`).catch(()=>{});
+    }
     setSaving(false);
   };
   if(!open)return null;

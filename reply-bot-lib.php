@@ -445,6 +445,13 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
         ]);
 
         if ($clientId) notifyLeadCategorySubscriber($pdo, $clientId, $category, $leadName, $phone, $channel, $brief, $clientName);
+
+        if ($rotationAM && !empty($rotationAM['id'])) {
+            $amPhone = $pdo->prepare("SELECT whatsapp_number FROM team_members WHERE id = :id LIMIT 1");
+            $amPhone->execute([':id' => $rotationAM['id']]);
+            $waNum = $amPhone->fetchColumn();
+            if ($waNum) sendWhatsAppReply($waNum, "New lead assigned to you: \"{$leadName}\" — {$phone}. It's your turn in rotation — take a look when you can.");
+        }
     } catch (\Throwable $e) {
         error_log('maybeCreateLeadFromMessage EXCEPTION: ' . $e->getMessage());
     }
