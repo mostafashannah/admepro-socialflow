@@ -30277,9 +30277,11 @@ function InterviewSchedulingSection({application, onSendTimes, sending, onConfir
 
   const hasResponse = application.interview_selected_slot || application.interview_candidate_note;
 
-  const interviewQr = application.candidate_phone && waQrUrl(application.candidate_phone,
-    `Hi ${application.candidate_name||"there"}, this is a message from Admepro to confirm your interview time${application.job_title?` for the ${application.job_title} role`:""}. Please reply to this message to confirm you'll be attending, and let us know if you need to reschedule.`
-  );
+  const pickedSlot = application.interview_confirmed_slot || application.interview_selected_slot;
+  const interviewMessage = pickedSlot
+    ? `Hi ${application.candidate_name||"there"}, this is a message from Admepro to confirm your interview${application.job_title?` for the ${application.job_title} role`:""} on ${fmtDateOrText(pickedSlot)}. Please reply to this message to confirm you'll be attending, and let us know if you need to reschedule.`
+    : `Hi ${application.candidate_name||"there"}, this is a message from Admepro regarding your interview${application.job_title?` for the ${application.job_title} role`:""}. Please check your email to pick a time that works for you.`;
+  const interviewQr = application.candidate_phone && waQrUrl(application.candidate_phone, interviewMessage);
 
   return (
     <div style={{marginBottom:14,padding:14,background:"var(--surface2)",borderRadius:10,border:"1px solid var(--border)"}}>
