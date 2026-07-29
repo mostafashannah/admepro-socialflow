@@ -29001,7 +29001,13 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
           ) : (
             <label style={{display:"inline-block",cursor:uploadingVoice?"default":"pointer",fontSize:12,fontWeight:700,color:"var(--accent)",padding:"9px 14px",borderRadius:8,border:"1px solid var(--accent)44",background:"var(--surface2)"}}>
               {uploadingVoice?"Uploading…":"+ Attach Audio Recording"}
-              <input type="file" accept="audio/*,.m4a,.mp3,.wav,.ogg,.oga,.flac,.mp4,.mpeg,.mpga,.webm,.amr,.3gp,.aac" style={{display:"none"}} disabled={uploadingVoice} onChange={e=>{handleVoiceUpload(e.target.files?.[0]); e.target.value="";}}/>
+              {/* No accept filter at all — iOS Safari's file picker can grey
+                  out (make unselectable) files whose internal type
+                  classification doesn't cleanly match an accept list, even
+                  a broad one, which is exactly what was blocking a synced
+                  Voice Memos .m4a from being attachable. Any mismatched
+                  file just fails cleanly at upload/transcription instead. */}
+              <input type="file" style={{display:"none"}} disabled={uploadingVoice} onChange={e=>{handleVoiceUpload(e.target.files?.[0]); e.target.value="";}}/>
             </label>
           )}
         </Field>
