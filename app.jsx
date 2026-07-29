@@ -21008,10 +21008,11 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
 }
 
 // Lead Card (Kanban)
-function LeadCard({lead, onClick}) {
+function LeadCard({lead, onClick, team}) {
   const status = LEAD_STATUS_MAP[lead.status]||LEAD_STATUSES[0];
   const overdue = isOverdue(lead.followup_date);
   const dueToday = isDueToday(lead.followup_date);
+  const assignee = lead.assigned_to && (team||[]).find(t=>t.email===lead.assigned_to);
   return (
     <div onClick={()=>onClick(lead)} style={{
       background:"var(--surface)",border:`1px solid ${overdue?"#ef444444":dueToday?"#f59e0b44":"var(--border)"}`,
@@ -21031,6 +21032,7 @@ function LeadCard({lead, onClick}) {
       <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
         {lead.platforms?.slice(0,3).map(p=><PChip key={p} platform={p} xs/>)}
         {lead.source&&<Badge label={lead.source} color="#6b7280" xs/>}
+        {assignee&&<Badge label={assignee.name} color="#8b5cf6" xs/>}
       </div>
       {lead.followup_date&&(
         <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10,color:overdue?"#ef4444":dueToday?"#f59e0b":"var(--text3)"}}>
@@ -21247,7 +21249,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
                   </div>
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:8,minHeight:60}}>
-                  {statusLeads.map(l=><LeadCard key={l.id} lead={l} onClick={setSelectedLead}/>)}
+                  {statusLeads.map(l=><LeadCard key={l.id} lead={l} onClick={setSelectedLead} team={team}/>)}
                   {statusLeads.length===0&&<div style={{border:"1px dashed var(--border)",borderRadius:"var(--r)",padding:"20px",textAlign:"center",color:"var(--text3)",fontSize:11}}>No leads</div>}
                 </div>
               </div>
