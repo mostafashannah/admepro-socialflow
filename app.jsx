@@ -28881,13 +28881,13 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
         );
       })}
       {showModal&&(
-        <ContactReportModal open onClose={()=>setShowModal(false)} onSave={onSaveContactReport} clientId={client.id} clientName={client.name} report={editing}/>
+        <ContactReportModal open onClose={()=>setShowModal(false)} onSave={onSaveContactReport} clientId={client.id} clientName={client.name} report={editing} team={team} client={client}/>
       )}
     </div>
   );
 }
 
-function ContactReportModal({open, onClose, onSave, clientId, clientName, report}) {
+function ContactReportModal({open, onClose, onSave, clientId, clientName, report, team=[], client}) {
   const [f,setF] = useState(()=>({
     meeting_type: report?.meeting_type||"meeting",
     location_type: report?.location_type||"physical",
@@ -28899,7 +28899,16 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
     voice_recording_url: report?.voice_recording_url||"",
   }));
   const [newAttendee, setNewAttendee] = useState({name:"", title:"", email:""});
+  const [showAttendeeSuggestions, setShowAttendeeSuggestions] = useState(false);
   const [saving, setSaving] = useState(false);
+  const formatRole = (role) => (role||"").replace(/_/g," ").replace(/\b\w/g, c=>c.toUpperCase());
+  const attendeeSuggestions = [
+    ...(team||[]).filter(t=>t.status==="active").map(t=>({name:t.name, title:formatRole(t.role), email:t.email||""})),
+    ...(client?.name ? [{name:client.name, title:"Client Contact", email:client.email||""}] : []),
+  ];
+  const filteredAttendeeSuggestions = attendeeSuggestions.filter(s=>
+    !newAttendee.name.trim() || s.name.toLowerCase().includes(newAttendee.name.trim().toLowerCase())
+  );
   const [uploadingVoice, setUploadingVoice] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   if(!open) return null;
@@ -28982,7 +28991,32 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
             </div>
           )}
           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-            <input value={newAttendee.name} onChange={e=>setNewAttendee(p=>({...p,name:e.target.value}))} placeholder="Name" style={{...inputSt,flex:"1 1 140px"}}/>
+            <div style={{position:"relative",flex:"1 1 140px"}}>
+              <input
+                value={newAttendee.name}
+                onChange={e=>{setNewAttendee(p=>({...p,name:e.target.value})); setShowAttendeeSuggestions(true);}}
+                onFocus={()=>setShowAttendeeSuggestions(true)}
+                onBlur={()=>setTimeout(()=>setShowAttendeeSuggestions(false),150)}
+                placeholder="Name"
+                style={{...inputSt,width:"100%"}}
+              />
+              {showAttendeeSuggestions && filteredAttendeeSuggestions.length>0 && (
+                <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:20,background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:8,maxHeight:220,overflowY:"auto",boxShadow:"0 4px 16px rgba(0,0,0,0.25)"}}>
+                  {filteredAttendeeSuggestions.map((s,i)=>(
+                    <div
+                      key={i}
+                      onMouseDown={e=>{e.preventDefault(); setNewAttendee({name:s.name, title:s.title, email:s.email}); setShowAttendeeSuggestions(false);}}
+                      style={{padding:"8px 12px",fontSize:13,cursor:"pointer",borderBottom:i<filteredAttendeeSuggestions.length-1?"1px solid var(--border)":"none"}}
+                      onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
+                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+                    >
+                      <div style={{fontWeight:600}}>{s.name}</div>
+                      <div style={{fontSize:11,color:"var(--text3)"}}>{s.title}{s.email?` · ${s.email}`:""}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <input value={newAttendee.title} onChange={e=>setNewAttendee(p=>({...p,title:e.target.value}))} placeholder="Title (optional)" style={{...inputSt,flex:"1 1 140px"}}/>
             <input value={newAttendee.email} onChange={e=>setNewAttendee(p=>({...p,email:e.target.value}))} placeholder="Email (optional)" style={{...inputSt,flex:"1 1 160px"}} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addAttendee();}}}/>
             <Btn variant="secondary" onClick={addAttendee}>Add</Btn>
