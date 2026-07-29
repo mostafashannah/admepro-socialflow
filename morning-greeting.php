@@ -9,11 +9,13 @@ $pdo = new PDO(
 );
 
 $members = $pdo->query("
-    SELECT name, whatsapp_number FROM team_members
-    WHERE status = 'active' AND whatsapp_number IS NOT NULL AND whatsapp_number != ''
+    SELECT tm.name, tm.email, tm.whatsapp_number, np.all_disabled, np.wa_morning_greeting
+    FROM team_members tm LEFT JOIN notification_prefs np ON np.user_email = tm.email
+    WHERE tm.status = 'active' AND tm.whatsapp_number IS NOT NULL AND tm.whatsapp_number != ''
 ")->fetchAll(PDO::FETCH_ASSOC);
 
 foreach ($members as $m) {
+    if (!empty($m['all_disabled']) || $m['wa_morning_greeting'] === '0') continue;
     $tasks = $pdo->prepare("
         SELECT title, stage, scheduled_date FROM posts
         WHERE assigned_to = :n AND stage NOT IN ('published','cancelled')

@@ -1083,7 +1083,7 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
         $label = $type === 'vacation' ? 'vacation' : 'work-from-home';
         $reasonLine = "\nReason: " . (!empty($input['reason']) ? $input['reason'] : '(none given)');
 
-        if (!empty($mgr['manager_phone'])) {
+        if (!empty($mgr['manager_phone']) && waPrefAllows($pdo, $mgr['manager_email'], 'wa_leave_requests')) {
             sendWhatsAppReply($mgr['manager_phone'],
                 "🗓️ {$senderName} requested {$label} for {$range} ({$days} day(s)).{$reasonLine}\n\n" .
                 "Reply here to approve or reject it — just tell Pro, e.g. \"approve {$shortId}\" or \"reject {$shortId}\"."
@@ -1134,10 +1134,11 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
                 ->execute([':days' => $req['days'], ':id' => $req['team_member_id']]);
         }
 
-        $requester = $pdo->prepare("SELECT whatsapp_number FROM team_members WHERE id = :id");
+        $requester = $pdo->prepare("SELECT email, whatsapp_number FROM team_members WHERE id = :id");
         $requester->execute([':id' => $req['team_member_id']]);
-        $phone = $requester->fetchColumn();
-        if ($phone) {
+        $requesterRow = $requester->fetch(PDO::FETCH_ASSOC);
+        $phone = $requesterRow['whatsapp_number'] ?? null;
+        if ($phone && waPrefAllows($pdo, $requesterRow['email'] ?? null, 'wa_leave_requests')) {
             $verb = $newStatus === 'approved' ? 'approved ✅' : 'rejected ❌';
             $label = $req['type'] === 'vacation' ? 'vacation' : 'WFH';
             $noteLine = !empty($input['note']) ? "\nNote from {$senderName}: {$input['note']}" : '';
@@ -1156,7 +1157,7 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
         $senderStmt->execute([':id' => $senderId]);
         $senderIsAdmin = $senderStmt->fetchColumn() === 'admin';
 
-        $t = $pdo->prepare("SELECT id, name, whatsapp_number, manager_id FROM team_members WHERE name LIKE :n LIMIT 5");
+        $t = $pdo->prepare("SELECT id, name, email, whatsapp_number, manager_id FROM team_members WHERE name LIKE :n LIMIT 5");
         $t->execute([':n' => '%' . $query . '%']);
         $matches = $t->fetchAll(PDO::FETCH_ASSOC);
         if (!$matches) return ['error' => "No team member found matching \"{$query}\"."];
@@ -1170,6 +1171,9 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
         }
         if (empty($target['whatsapp_number'])) {
             return ['error' => "{$target['name']} doesn't have a WhatsApp number on file — can't relay a message to them."];
+        }
+        if (!waPrefAllows($pdo, $target['email'] ?? null, 'wa_mention_messages')) {
+            return ['error' => "{$target['name']} has WhatsApp message notifications turned off — they won't see this until they re-enable it in their profile."];
         }
 
         sendWhatsAppReply($target['whatsapp_number'], "💬 Message from {$senderName}:\n\n{$msg}");
@@ -1908,6 +1912,20 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
     }
 
     return $reply;
+}
+
+// Checks a user's notification_prefs before a WhatsApp-only alert (leave
+// requests, @mention/DM forwarding, etc) — no saved row yet means default-on,
+// matching DEFAULT_NOTIF_PREFS on the frontend. $col must be one of the
+// wa_* columns added by migration-whatsapp-notif-prefs.sql.
+function waPrefAllows(PDO $pdo, $email, $col) {
+    if (!$email) return true;
+    $stmt = $pdo->prepare("SELECT all_disabled, {$col} AS pref FROM notification_prefs WHERE user_email = :email LIMIT 1");
+    $stmt->execute([':email' => $email]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) return true;
+    if (!empty($row['all_disabled'])) return false;
+    return $row['pref'] !== '0';
 }
 
 function sendWhatsAppReply($to, $body) {
