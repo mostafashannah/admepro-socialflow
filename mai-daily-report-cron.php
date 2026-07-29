@@ -325,6 +325,11 @@ foreach ($recipientFindings as $email => $entry) {
             array_keys($entry['clients']), array_values($entry['clients'])
         )) . ". Full details in SocialFlow notifications — ask me for more on any account.";
     }
+    $prefStmt = $pdo->prepare("SELECT all_disabled, wa_daily_finance_report FROM notification_prefs WHERE user_email = :email LIMIT 1");
+    $prefStmt->execute([':email' => $email]);
+    $pref = $prefStmt->fetch(PDO::FETCH_ASSOC);
+    // No saved prefs row yet means default-on, matching DEFAULT_NOTIF_PREFS on the frontend.
+    if ($pref && (!empty($pref['all_disabled']) || $pref['wa_daily_finance_report'] === '0')) continue;
     sendWhatsAppReply($entry['whatsapp_number'], $msg);
 }
 

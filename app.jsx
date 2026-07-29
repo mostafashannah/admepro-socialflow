@@ -1658,6 +1658,14 @@ const DEFAULT_NOTIF_PREFS = {
   recruitment_new_application: true,
   recruitment_task_submitted: true,
   recruitment_reschedule_request: true,
+  // WhatsApp-only notification categories — independent of the email
+  // toggles above, these gate messages that only ever go out over WhatsApp
+  // (previously sent unconditionally with no opt-out).
+  wa_recruitment_candidate_response: true,
+  wa_daily_finance_report: true,
+  wa_morning_greeting: true,
+  wa_leave_requests: true,
+  wa_mention_messages: true,
   // Digest
   daily_digest: true,
   digest_time: "08:00",
@@ -24992,6 +25000,22 @@ function NotificationPrefsTab({notifPrefs, onSaveNotifPrefs, currentUser, rolePe
                 ].map(r=><Row key={r.k} {...r} disabled={prefs.all_disabled||prefs.mentions_only}/>)}
               </div>
             )}
+
+            {/* WhatsApp notifications — separate from the email toggles above;
+                these gate messages that only ever go out over WhatsApp, not
+                email, each independently switchable. */}
+            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:0}}>
+              <SectionHead title="WhatsApp Notifications" color="#25D366"/>
+              {[
+                {k:"wa_morning_greeting", label:"Morning greeting", desc:"Daily good-morning message with your schedule/reminders"},
+                {k:"wa_daily_finance_report", label:"Daily client finance digest", desc:"Daily WhatsApp summary of client pipeline/finance status (admin/account managers)"},
+                {k:"wa_leave_requests", label:"Leave & WFH requests", desc:"Alert your manager when you request time off, and alert you when it's decided"},
+                {k:"wa_mention_messages", label:"Messages from Pro", desc:"When a teammate sends you a message or @mention through Pro"},
+                ...((currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.manage_recruitment")) ? [
+                  {k:"wa_recruitment_candidate_response", label:"Candidate responses", desc:"WhatsApp ping when a candidate responds to an interview time or job offer"},
+                ] : []),
+              ].map(r=><Row key={r.k} {...r} disabled={prefs.all_disabled}/>)}
+            </div>
 
             <div style={{display:"flex",alignItems:"center",gap:12}}>
               <Btn onClick={handleSaveNotif} disabled={nsaving}>
