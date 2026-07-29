@@ -47,9 +47,45 @@ $csv = stream_get_contents($fh);
 fclose($fh);
 
 $today = date('Y-m-d');
+
+// Today's income/expense totals from the ledger.
+$todayTotals = $pdo->query("
+    SELECT type, COALESCE(SUM(amount),0) AS total
+    FROM expenses
+    WHERE date = CURDATE()
+    GROUP BY type
+")->fetchAll(PDO::FETCH_KEY_PAIR);
+$todayIn  = (float)($todayTotals['in'] ?? 0);
+$todayOut = (float)($todayTotals['out'] ?? 0);
+
+// Payments collected today against outstanding liabilities (team-member advances / installments).
+$todayCollected = (float)$pdo->query("
+    SELECT COALESCE(SUM(amount),0) FROM outstanding_payments WHERE date = CURDATE()
+")->fetchColumn();
+
+// Current outstanding balance: total_payable minus payments made so far, for
+// liabilities not yet fully settled.
+$outstandingBalance = (float)$pdo->query("
+    SELECT COALESCE(SUM(l.total_payable - COALESCE(p.paid, 0)), 0)
+    FROM outstanding_liabilities l
+    LEFT JOIN (
+        SELECT liability_id, SUM(amount) AS paid FROM outstanding_payments GROUP BY liability_id
+    ) p ON p.liability_id = l.id
+    WHERE l.status IN ('outstanding', 'partial')
+")->fetchColumn();
+
+$fmt = fn($n) => number_format((float)$n, 2);
+
 $filename = "finance_ledger_{$today}.csv";
 $subject = "{$appName} — Daily Finance Export ({$today})";
 $html = '<div style="font-family:Arial,sans-serif;font-size:14px;color:#333">'
+    . '<h3 style="margin:0 0 8px">Today\'s Summary (' . htmlspecialchars($today) . ')</h3>'
+    . '<table style="border-collapse:collapse;margin-bottom:16px">'
+    . '<tr><td style="padding:4px 12px 4px 0;color:#666">Income (in)</td><td style="padding:4px 0;font-weight:bold;color:#1a7f37">' . $fmt($todayIn) . '</td></tr>'
+    . '<tr><td style="padding:4px 12px 4px 0;color:#666">Expenses (out)</td><td style="padding:4px 0;font-weight:bold;color:#c0392b">' . $fmt($todayOut) . '</td></tr>'
+    . '<tr><td style="padding:4px 12px 4px 0;color:#666">Payments Collected</td><td style="padding:4px 0;font-weight:bold">' . $fmt($todayCollected) . '</td></tr>'
+    . '<tr><td style="padding:4px 12px 4px 0;color:#666">Outstanding Balance</td><td style="padding:4px 0;font-weight:bold">' . $fmt($outstandingBalance) . '</td></tr>'
+    . '</table>'
     . '<p>Attached is the full finance ledger as of ' . htmlspecialchars($today) . ' — '
     . count($rows) . ' record' . (count($rows) === 1 ? '' : 's') . ' in total.</p>'
     . '<p style="font-size:12px;color:#999">Automated daily export from ' . htmlspecialchars($appName) . '.</p>'
