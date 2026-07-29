@@ -3013,6 +3013,7 @@ const Icons = {
   phone: "M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.18 2 2 0 0 1 3.6 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 6 6l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.73 16z",
   shield: ["M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"],
   bell2: ["M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9","M13.73 21a2 2 0 0 1-3.46 0"],
+  mail: ["M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z","M22 6l-10 7L2 6"],
   globe: ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z","M2 12h20","M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"],
   chevR: "M9 18l6-6-6-6",
   leads: ["M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2","M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z","M22 21v-2a4 4 0 0 0-3-3.87","M19 3a4 4 0 0 1 0 7.75","M19 8v6","M22 11h-6"],
@@ -20849,12 +20850,26 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
             {/* Contact Info */}
             <div style={{background:"var(--surface2)",borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"column",gap:10,border:"1px solid var(--border)"}}>
               <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>Contact</p>
-              {[{ico:Icons.phone2,val:lead.phone},{ico:Icons.bell2,val:lead.email||"—"},{ico:Icons.globe,val:lead.source}].map((r,i)=>(
+              {[{ico:Icons.phone2,val:lead.phone},{ico:Icons.mail,val:lead.email||"—"},{ico:Icons.globe,val:lead.source}].map((r,i)=>(
                 <div key={i} style={{display:"flex",alignItems:"center",gap:10}}>
                   <Ico d={r.ico} size={14} stroke="var(--text3)"/>
                   <span style={{fontSize:13}}>{r.val}</span>
                 </div>
               ))}
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <Ico d={Icons.users} size={14} stroke="var(--text3)"/>
+                <select value={lead.assigned_to||""} onChange={e=>{
+                  const email = e.target.value;
+                  const am = (team||[]).find(t=>t.email===email);
+                  onUpdateLead({...lead, assigned_to:email||null, assigned_at:email?new Date().toISOString():null, rotation_missed:0});
+                  onAddActivity({lead_id:lead.id, type:"note", content:email?`Manually assigned to ${am?.name||email}`:"Unassigned", author_name:currentUser?.name||"User"});
+                }} style={{...inputSt,flex:1,minHeight:"auto",padding:"5px 8px",fontSize:13}}>
+                  <option value="">Unassigned</option>
+                  {(team||[]).filter(t=>t.role==="account_manager"&&t.status==="active").map(t=>(
+                    <option key={t.id} value={t.email}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {/* Platforms */}
