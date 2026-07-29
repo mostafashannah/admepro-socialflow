@@ -641,7 +641,7 @@ const SB_SCHEMA = {
   // an UPDATE/INSERT including it errored out at the SQL level, so every
   // single notification-prefs save was silently failing.
   notification_prefs: ["user_email","all_disabled","mentions_only","daily_digest","task_assigned","task_stage_changed","task_due_soon","task_overdue","task_mention","task_comment","project_created","project_task_added","project_deadline_updated","post_approved","post_rejected","client_approval_required","invoice_created","payment_received","subscription_renewal","user_invited","access_approved","access_rejected","permissions_updated","recruitment_new_application","recruitment_task_submitted","recruitment_reschedule_request"],
-  customer_messages: ["client_id","client_name","channel","customer_id","customer_name","direction","message_text","sent_by","thread_status","draft_status","external_id"],
+  customer_messages: ["client_id","client_name","channel","customer_id","customer_name","direction","message_text","attachment_url","sent_by","thread_status","draft_status","external_id"],
   reply_bot_settings: ["client_id","client_name","enabled","mode","channels","tone","brain","dont_do","fallback_message","updated_by","external_bot","external_webhook_url","external_api_key"],
   pro_chat_sessions: ["user_email","client_id","title","messages","shared_with","is_shared_copy"],
 };
@@ -11097,9 +11097,12 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
                     {isEditing?(
                       <textarea value={editingDraftText} onChange={e=>setEditingDraftText(e.target.value)}
                         style={{...inputSt,width:"100%",minHeight:60,fontSize:13,fontFamily:"inherit"}}/>
-                    ):(
-                      <p style={{fontSize:13,lineHeight:1.5}}>{m.message_text}</p>
-                    )}
+                    ):(<>
+                      {m.attachment_url&&<a href={m.attachment_url} target="_blank" rel="noreferrer" style={{display:"block",marginBottom:m.message_text&&m.message_text!=="[Image]"?6:0}}>
+                        <img src={m.attachment_url} alt="Attachment" style={{maxWidth:"100%",maxHeight:220,borderRadius:8,display:"block"}}/>
+                      </a>}
+                      {(!m.attachment_url||m.message_text!=="[Image]")&&<p style={{fontSize:13,lineHeight:1.5}}>{m.message_text}</p>}
+                    </>)}
                     <p style={{fontSize:9,marginTop:4,opacity:0.7}}>{m.sent_by==="bot"?"Pro · ":""}{new Date(m.created_at).toLocaleString()}</p>
                     {isPendingDraft&&(
                       <div style={{display:"flex",gap:6,marginTop:8}}>
