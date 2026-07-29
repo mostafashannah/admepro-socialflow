@@ -100,7 +100,14 @@ function saveVoiceRecording(string $bytes, string $mimeType): ?string {
 // $errorOut (optional, by-reference) is populated with a human-readable
 // reason on failure — existing callers that don't pass it are unaffected,
 // they just keep getting null with no detail (same as before).
-function transcribeAudio(string $bytes, string $mimeType, ?string &$errorOut = null) {
+// $originalFilename (optional) — when the caller has the real uploaded
+// filename (e.g. "Side Al Tesein... .m4a"), its extension is trusted over
+// guessing from the MIME type, which browsers report inconsistently
+// (an .m4a file might come through as "audio/x-m4a", "audio/m4a", or even
+// "audio/mp4" depending on browser/OS) — the filename is the one thing
+// that's actually reliable here, and OpenAI supports it directly:
+// flac/m4a/mp3/mp4/mpeg/mpga/oga/ogg/wav/webm.
+function transcribeAudio(string $bytes, string $mimeType, ?string &$errorOut = null, ?string $originalFilename = null) {
     if (!defined('OPENAI_API_KEY') || !OPENAI_API_KEY) { $errorOut = 'OPENAI_API_KEY is not configured.'; return null; }
 
     // Whisper's hard limit is 25MB — a long recording (e.g. a 50min call)
@@ -113,13 +120,18 @@ function transcribeAudio(string $bytes, string $mimeType, ?string &$errorOut = n
         return null;
     }
 
-    // Browsers report an .m4a file's MIME type as "audio/x-m4a" or
-    // "audio/m4a" — neither contains "mp4", so the old substring-only check
-    // against "mp4" never matched and every .m4a upload silently fell back
-    // to the WRONG "oga" extension, which OpenAI can reject outright.
-    $extMap = ['ogg' => 'ogg', 'x-m4a' => 'm4a', 'm4a' => 'm4a', 'mp4' => 'm4a', 'webm' => 'webm', 'mpeg' => 'mp3', 'mp3' => 'mp3', 'wav' => 'wav'];
-    $ext = 'oga';
-    foreach ($extMap as $needle => $mapped) { if (str_contains($mimeType, $needle)) { $ext = $mapped; break; } }
+    $whisperExts = ['flac', 'm4a', 'mp3', 'mp4', 'mpeg', 'mpga', 'oga', 'ogg', 'wav', 'webm'];
+    $ext = null;
+    if ($originalFilename) {
+        $fromName = strtolower(pathinfo($originalFilename, PATHINFO_EXTENSION));
+        if (in_array($fromName, $whisperExts, true)) $ext = $fromName;
+    }
+    if (!$ext) {
+        // Fallback: guess from MIME type only when there's no usable filename.
+        $extMap = ['ogg' => 'ogg', 'x-m4a' => 'm4a', 'm4a' => 'm4a', 'mp4' => 'm4a', 'webm' => 'webm', 'flac' => 'flac', 'mpeg' => 'mp3', 'mp3' => 'mp3', 'wav' => 'wav'];
+        $ext = 'oga';
+        foreach ($extMap as $needle => $mapped) { if (str_contains($mimeType, $needle)) { $ext = $mapped; break; } }
+    }
     $tmpFile = tempnam(sys_get_temp_dir(), 'wa_voice_') . '.' . $ext;
     file_put_contents($tmpFile, $bytes);
 
