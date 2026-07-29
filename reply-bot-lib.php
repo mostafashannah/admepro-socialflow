@@ -414,6 +414,10 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
         // hiring) instead of always defaulting to "lead" — the brief text alone often
         // makes clear this is a job applicant or an outbound pitch, not a real lead.
         $classification = classifyClientContact($clientName ?: 'admepro', $combinedText);
+        // Only skip capture on a CONFIRMED "other" classification — a null
+        // classification means the AI call itself failed, which shouldn't
+        // silently drop a real contact who did share a phone number.
+        if ($classification && $classification['category'] === 'other') return;
         $category = $classification['category'] ?? 'lead';
 
         $leadName = $customerName ?: 'Unknown (' . $channel . ')';
@@ -484,12 +488,18 @@ function classifyClientContact(string $clientName, string $combinedText) {
         'messages' => [['role' => 'user', 'content' => $combinedText]],
     ];
     [$status, $data] = callClaude($payload);
-    if ($status < 200 || $status >= 300) return null;
+    if ($status < 200 || $status >= 300) return null; // genuine API failure — caller can't tell this apart from "other" otherwise
     $text = '';
     foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $text .= $block['text']; }
     if (!preg_match('/CATEGORY:\s*(\w+)/i', $text, $m1)) return null;
     $category = strtolower(trim($m1[1]));
-    if (!in_array($category, ['lead', 'service_provider', 'hiring'], true)) return null;
+    // 'other' is a real, valid classification (spam, random chat, an
+    // existing customer's support issue, a TEAM MEMBER just messaging Pro on
+    // the same number) — it must be returned, not swallowed into null,
+    // otherwise callers that fall back to 'lead' on null can't distinguish
+    // "classification genuinely failed" from "this was correctly classified
+    // as NOT a lead", and end up capturing every non-lead as a lead anyway.
+    if (!in_array($category, ['lead', 'service_provider', 'hiring', 'other'], true)) return null;
     $brief = null;
     if (preg_match('/BRIEF:\s*(.+)/is', $text, $m2)) $brief = trim($m2[1]);
     return ['category' => $category, 'brief' => $brief];
@@ -531,8 +541,12 @@ function maybeCaptureClientContact(PDO $pdo, string $channel, string $customerId
         // A real phone number was shared — that alone is worth capturing even if
         // there isn't enough context to classify it (a bare number with no
         // message text, for instance). Default to "lead" in that case rather
-        // than silently dropping a real contact.
+        // than silently dropping a real contact. But a CONFIRMED "other"
+        // classification (spam, random chat, an existing customer's support
+        // issue) must actually skip capture — only a null (failed) classification
+        // falls back to "lead".
         $classification = classifyClientContact($clientName, $combinedText);
+        if ($classification && $classification['category'] === 'other') return;
         $category = $classification['category'] ?? 'lead';
         $brief = $classification['brief'] ?? $combinedText;
 
