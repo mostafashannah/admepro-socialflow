@@ -77,7 +77,7 @@ function maiBuildClientContext(PDO $pdo, $accountManagerId) {
 // gap since the last update" (had activity once, gone quiet since).
 function maiBuildLeadContext(PDO $pdo, $accountManagerId, $accountManagerEmail) {
     $stmt = $pdo->prepare(
-        "SELECT id, name, company, phone, status, assigned_at, created_at FROM leads
+        "SELECT id, name, company, business_name, phone, status, assigned_at, created_at, interested_services, business_stage FROM leads
          WHERE assigned_to = :email AND status NOT IN ('closed_won','closed_lost')
          AND (client_name IS NULL OR LOWER(client_name) = 'admepro')
          ORDER BY assigned_at DESC LIMIT 15"
@@ -89,12 +89,15 @@ function maiBuildLeadContext(PDO $pdo, $accountManagerId, $accountManagerEmail) 
     $lastActStmt = $pdo->prepare("SELECT content, created_at FROM lead_activities WHERE lead_id = :lid ORDER BY created_at DESC LIMIT 1");
     $lines = [];
     foreach ($leads as $l) {
+        $bizName = $l['business_name'] ?: $l['company'];
+        $services = json_decode($l['interested_services'] ?: '[]', true) ?: [];
+        $extra = trim(($bizName ? "business: {$bizName}" : '') . ($services ? ($bizName ? ', ' : '') . 'interested in: ' . implode('/', $services) : ''), ', ');
         $lastActStmt->execute([':lid' => $l['id']]);
         $lastAct = $lastActStmt->fetch(PDO::FETCH_ASSOC);
         if ($lastAct) {
-            $lines[] = "- \"{$l['name']}\" ({$l['status']}) — last logged update {$lastAct['created_at']}: \"{$lastAct['content']}\"";
+            $lines[] = "- \"{$l['name']}\"" . ($extra ? " ({$extra})" : '') . " ({$l['status']}) — last logged update {$lastAct['created_at']}: \"{$lastAct['content']}\"";
         } else {
-            $lines[] = "- \"{$l['name']}\" ({$l['status']}, assigned {$l['assigned_at']}) — NO activity logged at all yet, nothing on file about any contact with them.";
+            $lines[] = "- \"{$l['name']}\"" . ($extra ? " ({$extra})" : '') . " ({$l['status']}, assigned {$l['assigned_at']}) — NO activity logged at all yet, nothing on file about any contact with them.";
         }
     }
     return implode("\n", $lines);
