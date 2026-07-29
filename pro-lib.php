@@ -705,6 +705,7 @@ function hrTools() {
                 'type' => 'object',
                 'properties' => [
                     'client_name'   => ['type' => 'string', 'description' => 'The client this report is about — best-effort match, does not need to be exact'],
+                    'meeting_date'  => ['type' => 'string', 'description' => 'The date the call/meeting actually happened, as YYYY-MM-DD — this is often NOT today (e.g. they\'re debriefing a meeting from yesterday or earlier). Infer it from what they say ("we met yesterday", "on Monday") relative to today\'s date; if they give no indication at all, default to today.'],
                     'meeting_type'  => ['type' => 'string', 'enum' => ['call', 'meeting'], 'description' => 'Was this a phone/voice call, or an in-person or video meeting?'],
                     'location_type' => ['type' => 'string', 'enum' => ['online', 'physical'], 'description' => 'For a meeting: was it online (Zoom/Meet/Teams call) or physical (in-person, e.g. at the client\'s office)? Omit for a plain phone call.'],
                     'location'      => ['type' => 'string', 'description' => 'Where specifically — e.g. "Client\'s office, Cairo", "Google Meet", "Zoom call". Omit if not mentioned.'],
@@ -1260,21 +1261,51 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
     }
 
     if ($name === 'save_contact_report') {
-        $clientId = null; $clientName = $input['client_name'] ?? null; $clientEmail = null;
+        $clientId = null; $clientName = $input['client_name'] ?? null; $clientEmail = null; $clientUsername = null; $clientContactTitle = null;
         if ($clientName) {
-            $c = $pdo->prepare("SELECT id, name, email FROM clients WHERE name LIKE :n LIMIT 1");
+            $c = $pdo->prepare("SELECT id, name, email, username, contact_title FROM clients WHERE name LIKE :n LIMIT 1");
             $c->execute([':n' => '%' . $clientName . '%']);
-            if ($row = $c->fetch(PDO::FETCH_ASSOC)) { $clientId = $row['id']; $clientName = $row['name']; $clientEmail = $row['email'] ?? null; }
+            if ($row = $c->fetch(PDO::FETCH_ASSOC)) { $clientId = $row['id']; $clientName = $row['name']; $clientEmail = $row['email'] ?? null; $clientUsername = $row['username'] ?? null; $clientContactTitle = $row['contact_title'] ?? null; }
         }
-        $ins = $pdo->prepare("INSERT INTO contact_reports (id, client_id, client_name, created_by_id, created_by_name, transcript, summary, key_points, action_items, channel, meeting_type, location_type, location, attendees, voice_recording_url) VALUES (:id, :cid, :cname, :bid, :bname, :transcript, :summary, :points, :actions, 'whatsapp', :mtype, :ltype, :loc, :attendees, :voice_url)");
+        // Tag each attendee as 'team' (matched against real team members,
+        // using their actual job title if set — e.g. "CEO", not their
+        // permission role) or 'client' (matches the client's own contact
+        // name), so the UI can visually tell them apart — same distinction
+        // the app's own attendee picker makes when a human fills this in.
+        $attendees = json_decode($input['attendees'] ?? '[]', true) ?: [];
+        foreach ($attendees as &$att) {
+            $aName = trim($att['name'] ?? '');
+            if ($aName === '') continue;
+            if ($clientUsername && strcasecmp($aName, $clientUsername) === 0) {
+                $att['kind'] = 'client';
+                if (empty($att['title']) && $clientContactTitle) $att['title'] = $clientContactTitle;
+                continue;
+            }
+            $tm = $pdo->prepare("SELECT title, role FROM team_members WHERE name = :n LIMIT 1");
+            $tm->execute([':n' => $aName]);
+            if ($row = $tm->fetch(PDO::FETCH_ASSOC)) {
+                $att['kind'] = 'team';
+                if (empty($att['title'])) $att['title'] = $row['title'] ?: str_replace('_', ' ', ucwords($row['role'] ?? '', '_'));
+            } else {
+                $att['kind'] = 'client';
+                if (empty($att['title']) && $clientContactTitle) $att['title'] = $clientContactTitle;
+            }
+        }
+        unset($att);
+        $attendeesJson = json_encode($attendees);
+
+        $meetingDate = $input['meeting_date'] ?? null;
+        if ($meetingDate && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $meetingDate)) $meetingDate = null;
+
+        $ins = $pdo->prepare("INSERT INTO contact_reports (id, client_id, client_name, created_by_id, created_by_name, transcript, summary, key_points, action_items, channel, meeting_type, meeting_date, location_type, location, attendees, voice_recording_url) VALUES (:id, :cid, :cname, :bid, :bname, :transcript, :summary, :points, :actions, 'whatsapp', :mtype, :mdate, :ltype, :loc, :attendees, :voice_url)");
         $reportId = generateProUuid();
         $ins->execute([
             ':id' => $reportId, ':cid' => $clientId, ':cname' => $clientName,
             ':bid' => $senderId, ':bname' => $senderName,
             ':transcript' => $input['_raw_transcript'] ?? null,
             ':summary' => $input['summary'] ?? '', ':points' => $input['key_points'] ?? null, ':actions' => $input['action_items'] ?? null,
-            ':mtype' => $input['meeting_type'] ?? null, ':ltype' => $input['location_type'] ?? null,
-            ':loc' => $input['location'] ?? null, ':attendees' => $input['attendees'] ?? null,
+            ':mtype' => $input['meeting_type'] ?? null, ':mdate' => $meetingDate ?: date('Y-m-d'), ':ltype' => $input['location_type'] ?? null,
+            ':loc' => $input['location'] ?? null, ':attendees' => $attendeesJson,
             ':voice_url' => $input['_voice_recording_url'] ?? null,
         ]);
         // Feed straight into the client's memory too, so Sara/Yahia/Pro see
