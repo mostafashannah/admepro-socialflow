@@ -645,7 +645,7 @@ const SB_SCHEMA = {
   // and username both exist but were missing from this list, so they always
   // got stripped before the request went out (see
   // migration-client-username.sql for the added username column).
-  clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","account_manager_commissions","username","notes","logo_url","allowed_task_types","platform_credentials","portal_features","website","social_links"],
+  clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","account_manager_commissions","username","contact_title","notes","logo_url","allowed_task_types","platform_credentials","portal_features","website","social_links"],
   client_tasks: ["client_id","client_name","title","description","task_type","priority","stage","assigned_to","created_by","deliverable_note"],
   team_member_events: ["team_member_id","team_member_name","event_type","title","previous_value","new_value","amount","effective_date","notes","recorded_by"],
   // DEFAULT_NOTIF_PREFS (used to build every save payload) has a
@@ -6555,7 +6555,7 @@ function AddProjectModal({open,onClose,clients,onAdd}) {
 // ════════════════════════════════════════════════════════════════
 function AddClientModal({open,onClose,onAdd,team=[]}) {
   const blankSocial = {instagram:"",facebook:"",tiktok:"",linkedin:""};
-  const blankForm = {name:"",username:"",email:"",phone:"",website:"",social:blankSocial,industry:"",status:"active",platforms:[],notes:"",portal_password:"",logo_url:"",account_manager_ids:[]};
+  const blankForm = {name:"",username:"",contact_title:"",email:"",phone:"",website:"",social:blankSocial,industry:"",status:"active",platforms:[],notes:"",portal_password:"",logo_url:"",account_manager_ids:[]};
   const [f,setF] = useState(blankForm);
   const [saving,setSaving] = useState(false);
   const [uploadingLogo,setUploadingLogo] = useState(false);
@@ -6640,6 +6640,9 @@ function AddClientModal({open,onClose,onAdd,team=[]}) {
           </Field>
           <Field label="Contact Username" hint="Displayed in client portal instead of company name">
             <input value={f.username} onChange={e=>s("username",e.target.value)} placeholder="e.g. Ahmed" style={inputSt} autoComplete="off"/>
+          </Field>
+          <Field label="Contact Title" hint="e.g. CEO, Marketing Manager">
+            <input value={f.contact_title} onChange={e=>s("contact_title",e.target.value)} placeholder="e.g. CEO" style={inputSt} autoComplete="off"/>
           </Field>
           <Field label="Phone">
             <input value={f.phone} onChange={e=>s("phone",e.target.value)} placeholder="+20 XXX XXX XXXX" style={inputSt}/>
@@ -9630,6 +9633,9 @@ function EditClientPage({client,onBack,onSave,canDelete,onRequestDelete,team=[]}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <Field label="Company Name"><input value={f.name||""} onChange={e=>setF(x=>({...x,name:e.target.value}))} style={inputSt} placeholder="Company name"/></Field>
           <Field label="Contact Username" hint="Displayed in client portal instead of company name"><input value={f.username||""} onChange={e=>setF(x=>({...x,username:e.target.value}))} style={inputSt} placeholder="e.g. Ahmed"/></Field>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <Field label="Contact Title" hint="e.g. CEO, Marketing Manager"><input value={f.contact_title||""} onChange={e=>setF(x=>({...x,contact_title:e.target.value}))} style={inputSt} placeholder="e.g. CEO"/></Field>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <Field label="Email"><input value={f.email||""} onChange={e=>setF(x=>({...x,email:e.target.value}))} style={inputSt} type="email"/></Field>
@@ -28904,7 +28910,7 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
   const formatRole = (role) => (role||"").replace(/_/g," ").replace(/\b\w/g, c=>c.toUpperCase());
   const attendeeSuggestions = [
     ...(team||[]).filter(t=>t.status==="active").map(t=>({name:t.name, title:formatRole(t.role), email:t.email||""})),
-    ...(client?.name ? [{name:client.name, title:"Client Contact", email:client.email||""}] : []),
+    ...(client?.name ? [{name:client.username||client.name, title:client.contact_title||"Client Contact", email:client.email||""}] : []),
   ];
   const filteredAttendeeSuggestions = attendeeSuggestions.filter(s=>
     !newAttendee.name.trim() || s.name.toLowerCase().includes(newAttendee.name.trim().toLowerCase())
