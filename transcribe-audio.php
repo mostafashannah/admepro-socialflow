@@ -41,7 +41,7 @@ if (!defined('OPENAI_API_KEY') || !OPENAI_API_KEY) {
 $bytes = file_get_contents($_FILES['file']['tmp_name']);
 $mime = $_FILES['file']['type'] ?: 'audio/webm';
 $errorMsg = null;
-$text = transcribeAudio($bytes, $mime, $errorMsg);
+$text = transcribeAudio($bytes, $mime, $errorMsg, $_FILES['file']['name'] ?? null);
 
 if ($text === null) {
     http_response_code(502);

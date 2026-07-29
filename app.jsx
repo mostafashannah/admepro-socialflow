@@ -29001,7 +29001,7 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
           ) : (
             <label style={{display:"inline-block",cursor:uploadingVoice?"default":"pointer",fontSize:12,fontWeight:700,color:"var(--accent)",padding:"9px 14px",borderRadius:8,border:"1px solid var(--accent)44",background:"var(--surface2)"}}>
               {uploadingVoice?"Uploading…":"+ Attach Audio Recording"}
-              <input type="file" accept="audio/*" style={{display:"none"}} disabled={uploadingVoice} onChange={e=>{handleVoiceUpload(e.target.files?.[0]); e.target.value="";}}/>
+              <input type="file" accept="audio/*,.m4a,.mp3,.wav,.ogg,.oga,.flac,.mp4,.mpeg,.mpga,.webm,.amr,.3gp,.aac" style={{display:"none"}} disabled={uploadingVoice} onChange={e=>{handleVoiceUpload(e.target.files?.[0]); e.target.value="";}}/>
             </label>
           )}
         </Field>
