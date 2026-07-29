@@ -614,6 +614,7 @@ const SB_TABLE = {
   OutstandingLiability:"outstanding_liabilities",
   OutstandingPayment:"outstanding_payments",
   TeamMemberEvent:"team_member_events",
+  MaiReportSession:"mai_report_sessions",
 };
 
 function sbTable(entityName) {
@@ -1666,6 +1667,8 @@ const DEFAULT_NOTIF_PREFS = {
   wa_morning_greeting: true,
   wa_leave_requests: true,
   wa_mention_messages: true,
+  wa_am_reports: true,
+  wa_am_reports_digest: true,
   // Digest
   daily_digest: true,
   digest_time: "08:00",
@@ -15589,6 +15592,97 @@ function computeClientPaymentsInRange(clientName, {invoices=[],payments=[],subsc
   return total;
 }
 
+// Shows Mai's twice-daily WhatsApp check-in history for an account manager
+// — score per session, which checklist items were/weren't confirmed, and
+// the full transcript on demand. Fetches its own data (mai_report_sessions
+// isn't part of the app's normal preloaded data set).
+function AccountManagerMaiReportsTab({member}) {
+  const [sessions, setSessions] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
+
+  useEffect(()=>{
+    let cancelled = false;
+    qe("MaiReportSession", {account_manager_id: member.id}, "-started_at", 60)
+      .then(res=>{ if(!cancelled) setSessions(res.entities||[]); })
+      .catch(()=>{ if(!cancelled) setSessions([]); });
+    return ()=>{cancelled=true;};
+  },[member.id]);
+
+  if(sessions===null) return <div style={{padding:30,display:"flex",justifyContent:"center"}}><Spinner size={18}/></div>;
+  if(sessions.length===0) return (
+    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:30,textAlign:"center",color:"var(--text2)",fontSize:13}}>
+      No Mai check-ins yet — the morning (12pm) and end-of-day (7pm) WhatsApp check-ins run automatically on weekdays.
+    </div>
+  );
+
+  const avgScore = (()=>{
+    const scored = sessions.filter(s=>s.score!=null&&s.max_score);
+    if(!scored.length) return null;
+    return Math.round(scored.reduce((a,s)=>a+(s.score/s.max_score*100),0)/scored.length);
+  })();
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {avgScore!=null&&(
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20,display:"flex",alignItems:"center",gap:16}}>
+          <div style={{width:56,height:56,borderRadius:"50%",background:avgScore>=80?"#10b98122":avgScore>=50?"#f59e0b22":"#ef444422",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:16,color:avgScore>=80?"#10b981":avgScore>=50?"#f59e0b":"#ef4444",flexShrink:0}}>{avgScore}%</div>
+          <div>
+            <p style={{fontSize:13,fontWeight:700}}>Average Check-in Score</p>
+            <p style={{fontSize:11,color:"var(--text3)"}}>Across {sessions.filter(s=>s.score!=null).length} completed check-in(s) — only the checklist items are scored, the conversation itself isn't.</p>
+          </div>
+        </div>
+      )}
+      {sessions.map(s=>{
+        const checklist = parseMaybeJson(s.checklist, {});
+        const transcript = parseMaybeJson(s.transcript, []);
+        const pct = s.score!=null&&s.max_score ? Math.round(s.score/s.max_score*100) : null;
+        const expanded = expandedId===s.id;
+        return (
+          <div key={s.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:16}}>
+            <div onClick={()=>setExpandedId(expanded?null:s.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,cursor:"pointer"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <Badge label={s.report_type==="morning"?"Morning":"End of Day"} color={s.report_type==="morning"?"#f59e0b":"#6366f1"} xs/>
+                <span style={{fontSize:13,fontWeight:700}}>{fmtDate(s.report_date)}</span>
+                <Badge label={s.status==="completed"?"Completed":s.status==="in_progress"?"In Progress":"No Response"} color={s.status==="completed"?"#10b981":s.status==="in_progress"?"#f59e0b":"#6b7280"} xs/>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                {pct!=null&&<span style={{fontSize:13,fontWeight:800,color:pct>=80?"#10b981":pct>=50?"#f59e0b":"#ef4444"}}>{s.score}/{s.max_score}</span>}
+                <span style={{display:"inline-flex",transform:expanded?"rotate(180deg)":"none",transition:"transform 0.15s"}}><Ico d={Icons.chevD} size={14} stroke="var(--text3)"/></span>
+              </div>
+            </div>
+            {expanded&&(
+              <div style={{marginTop:14,paddingTop:14,borderTop:"1px solid var(--border)",display:"flex",flexDirection:"column",gap:14}}>
+                <div>
+                  <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:6}}>Checklist</p>
+                  <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                    {Object.entries(checklist).map(([k,v])=>(
+                      <div key={k} style={{display:"flex",alignItems:"center",gap:8,fontSize:12}}>
+                        <span style={{color:v.done?"#10b981":"#ef4444",fontWeight:700}}>{v.done?"✓":"✗"}</span>
+                        <span style={{color:"var(--text2)"}}>{v.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:6}}>Conversation</p>
+                  <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:300,overflowY:"auto"}}>
+                    {transcript.map((m,i)=>(
+                      <div key={i} style={{alignSelf:m.role==="assistant"?"flex-start":"flex-end",maxWidth:"85%",background:m.role==="assistant"?"var(--surface2)":"var(--accentbg)",borderRadius:10,padding:"7px 11px"}}>
+                        <p style={{fontSize:9,fontWeight:700,color:"var(--text3)",marginBottom:2}}>{m.role==="assistant"?"Mai":member.name}</p>
+                        <p style={{fontSize:12,color:"var(--text)",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{m.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, attendanceRecords, expenses, invoices, payments, subscriptionPayments, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense, appSettings}) {
   // Plain state, not persisted — opening any team member should always
   // start on Overview, not silently reopen to whatever tab was last viewed.
@@ -15793,7 +15887,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
       </div>
 
       <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)",alignSelf:"flex-start"}}>
-        {[["overview","Overview"],["tasks","Tasks & Scheduled"],["attendance","Attendance"],["payroll","Payroll"],["history","Career History"],...(member.source_application_id?[["hiring","Hiring"]]:[])].map(([k,l])=>(
+        {[["overview","Overview"],["tasks","Tasks & Scheduled"],["attendance","Attendance"],["payroll","Payroll"],["history","Career History"],...(member.role==="account_manager"?[["mai_reports","Mai Reports"]]:[]),...(member.source_application_id?[["hiring","Hiring"]]:[])].map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)} style={{padding:"7px 16px",borderRadius:"var(--rxs)",fontSize:12,fontWeight:700,background:tab===k?"var(--accent)":"none",color:tab===k?"#fff":"var(--text2)"}}>{l}</button>
         ))}
       </div>
@@ -15876,6 +15970,8 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
       {tab==="payroll"&&!canEditSalary&&(
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:30,textAlign:"center",color:"var(--text2)",fontSize:13}}>You don't have permission to view salary information.</div>
       )}
+
+      {tab==="mai_reports"&&<AccountManagerMaiReportsTab member={member}/>}
 
       {tab==="hiring"&&(
         loadingHiring ? (
@@ -25011,8 +25107,14 @@ function NotificationPrefsTab({notifPrefs, onSaveNotifPrefs, currentUser, rolePe
                 {k:"wa_daily_finance_report", label:"Daily client finance digest", desc:"Daily WhatsApp summary of client pipeline/finance status (admin/account managers)"},
                 {k:"wa_leave_requests", label:"Leave & WFH requests", desc:"Alert your manager when you request time off, and alert you when it's decided"},
                 {k:"wa_mention_messages", label:"Messages from Pro", desc:"When a teammate sends you a message or @mention through Pro"},
+                ...(currentUser?.role==="account_manager" ? [
+                  {k:"wa_am_reports", label:"Mai's daily check-ins", desc:"Mai's morning (12pm) and end-of-day (7pm) WhatsApp check-in conversations about your clients"},
+                ] : []),
                 ...((currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.manage_recruitment")) ? [
                   {k:"wa_recruitment_candidate_response", label:"Candidate responses", desc:"WhatsApp ping when a candidate responds to an interview time or job offer"},
+                ] : []),
+                ...(currentUser?.role==="admin" ? [
+                  {k:"wa_am_reports_digest", label:"AM check-in summary", desc:"One short WhatsApp summary after each round of account manager check-ins, highlighting what needs attention"},
                 ] : []),
               ].map(r=><Row key={r.k} {...r} disabled={prefs.all_disabled}/>)}
             </div>
