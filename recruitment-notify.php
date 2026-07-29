@@ -33,11 +33,16 @@ try {
         DB_USER, DB_PASS,
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]
     );
-    $stmt = $pdo->query("SELECT whatsapp_number FROM team_members WHERE role IN ('admin', 'hr') AND status = 'active' AND whatsapp_number IS NOT NULL AND whatsapp_number != ''");
-    $numbers = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    $stmt = $pdo->query(
+        "SELECT tm.whatsapp_number, np.all_disabled, np.wa_recruitment_candidate_response
+         FROM team_members tm LEFT JOIN notification_prefs np ON np.user_email = tm.email
+         WHERE tm.role IN ('admin', 'hr') AND tm.status = 'active' AND tm.whatsapp_number IS NOT NULL AND tm.whatsapp_number != ''"
+    );
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     $sent = 0;
-    foreach ($numbers as $num) {
-        $digits = preg_replace('/\D/', '', (string)$num);
+    foreach ($rows as $row) {
+        if (!empty($row['all_disabled']) || $row['wa_recruitment_candidate_response'] === '0') continue;
+        $digits = preg_replace('/\D/', '', (string)$row['whatsapp_number']);
         if (!$digits) continue;
         if (sendWhatsAppReply($digits, $message)) $sent++;
     }
