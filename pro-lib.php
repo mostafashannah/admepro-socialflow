@@ -107,6 +107,38 @@ function saveVoiceRecording(string $bytes, string $mimeType): ?string {
 // "audio/mp4" depending on browser/OS) — the filename is the one thing
 // that's actually reliable here, and OpenAI supports it directly:
 // flac/m4a/mp3/mp4/mpeg/mpga/oga/ogg/wav/webm.
+// Re-encodes an oversized recording down to mono 32kbps AAC (m4a) via ffmpeg
+// so long calls/meetings (e.g. 50+ min) still fit under Whisper's 25MB cap
+// instead of just failing outright. Returns compressed bytes, or null if
+// ffmpeg isn't available or the conversion fails.
+function compressAudioForWhisper(string $bytes, string $originalFilename) {
+    $ffmpegPath = trim((string)@shell_exec('command -v ffmpeg 2>/dev/null'));
+    if (!$ffmpegPath) return null;
+
+    $ext = strtolower(pathinfo($originalFilename, PATHINFO_EXTENSION)) ?: 'audio';
+    $inFile = tempnam(sys_get_temp_dir(), 'wa_voice_in_') . '.' . $ext;
+    $outFile = tempnam(sys_get_temp_dir(), 'wa_voice_out_') . '.m4a';
+    file_put_contents($inFile, $bytes);
+
+    $cmd = sprintf(
+        '%s -y -i %s -ac 1 -c:a aac -b:a 32k %s 2>&1',
+        escapeshellcmd($ffmpegPath),
+        escapeshellarg($inFile),
+        escapeshellarg($outFile)
+    );
+    exec($cmd, $out, $exitCode);
+    @unlink($inFile);
+
+    if ($exitCode !== 0 || !file_exists($outFile) || filesize($outFile) === 0) {
+        @unlink($outFile);
+        return null;
+    }
+
+    $compressed = file_get_contents($outFile);
+    @unlink($outFile);
+    return $compressed ?: null;
+}
+
 function transcribeAudio(string $bytes, string $mimeType, ?string &$errorOut = null, ?string $originalFilename = null) {
     if (!defined('OPENAI_API_KEY') || !OPENAI_API_KEY) { $errorOut = 'OPENAI_API_KEY is not configured.'; return null; }
 
@@ -116,8 +148,19 @@ function transcribeAudio(string $bytes, string $mimeType, ?string &$errorOut = n
     // for longer files.
     $sizeMb = strlen($bytes) / 1024 / 1024;
     if ($sizeMb > 24.5) {
-        $errorOut = sprintf('This audio file is %.1fMB — Whisper only accepts files up to 25MB. Trim it or export at a lower bitrate and try again.', $sizeMb);
-        return null;
+        $compressed = compressAudioForWhisper($bytes, $originalFilename ?: 'audio');
+        if ($compressed === null) {
+            $errorOut = sprintf('This audio file is %.1fMB — Whisper only accepts files up to 25MB, and automatic compression failed (is ffmpeg installed?). Trim it or export at a lower bitrate and try again.', $sizeMb);
+            return null;
+        }
+        $newSizeMb = strlen($compressed) / 1024 / 1024;
+        if ($newSizeMb > 24.5) {
+            $errorOut = sprintf('This audio file is %.1fMB and is still %.1fMB after compression — Whisper only accepts files up to 25MB. Trim it and try again.', $sizeMb, $newSizeMb);
+            return null;
+        }
+        $bytes = $compressed;
+        $mimeType = 'audio/mp4';
+        $originalFilename = 'compressed.m4a';
     }
 
     $whisperExts = ['flac', 'm4a', 'mp3', 'mp4', 'mpeg', 'mpga', 'oga', 'ogg', 'wav', 'webm'];
