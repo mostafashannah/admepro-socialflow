@@ -1959,7 +1959,20 @@ function sendWhatsAppReply($to, $body) {
     $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $err = curl_error($ch);
     curl_close($ch);
-    if ($status < 200 || $status >= 300) {
+    $ok = $status >= 200 && $status < 300;
+    if (!$ok) {
         error_log('[wa-webhook] sendWhatsAppReply failed: HTTP ' . $status . ' ' . ($err ?: $res));
     }
+    // Logged to the DB (not just error_log, which nobody checks day to day)
+    // so failures — most commonly Meta rejecting a free-form text message
+    // sent outside the 24h customer-service window — are actually visible.
+    // A fresh, dedicated connection here (not reusing a caller's $pdo) keeps
+    // this a drop-in change with no signature/call-site updates needed
+    // across the many places that already call this function; wrapped in
+    // try/catch so a logging failure can never break the actual send.
+    try {
+        $logPdo = new PDO('mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4', DB_USER, DB_PASS, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        $logPdo->prepare("INSERT INTO whatsapp_send_log (to_number, body_preview, status, http_status, error_message) VALUES (:to, :body, :status, :http, :err)")
+            ->execute([':to' => $to, ':body' => mb_substr($body, 0, 300), ':status' => $ok ? 'sent' : 'failed', ':http' => $status, ':err' => $ok ? null : mb_substr((string)($err ?: $res), 0, 500)]);
+    } catch (Throwable $e) { /* logging is best-effort only */ }
 }
