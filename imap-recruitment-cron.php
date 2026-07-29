@@ -470,13 +470,30 @@ foreach ($messages as $message) {
         // different time — that's actionable even though it's not a new
         // application, so alert the admin instead of silently dropping it.
         if (preg_match('/^\s*(re|fwd?)\s*:/i', $subject)) {
+            // Only the candidate's OWN new text should ever be matched against
+            // the reschedule keywords/snippet below — without this, a reply
+            // that just quotes our own previous email back (standard "On ...
+            // wrote: > ..." / "-----Original Message-----" quoting) can match
+            // on OUR words, not theirs. This is exactly what happened with an
+            // offer-acceptance reply that quoted the offer email — it got
+            // misfired as "wants to reschedule the interview".
+            $newContent = $bodyText;
+            $newContent = preg_split('/^\s*on .{0,80} wrote:\s*$/im', $newContent)[0];
+            $newContent = preg_split('/^-{2,}\s*original message\s*-{2,}$/im', $newContent)[0];
+            $newContent = preg_split('/^\s*from:\s*.+$/im', $newContent)[0];
+            // Strip any remaining quoted (">"-prefixed) lines line-by-line —
+            // covers quote styles the block-start patterns above don't catch.
+            $newContent = implode("\n", array_filter(explode("\n", $newContent), function($line) { return !preg_match('/^\s*>/', $line); }));
+            $newContent = trim($newContent);
+            if ($newContent === '') $newContent = $bodyText; // fallback — better a possible false positive than silently dropping a real one-liner reply
+
             $rescheduleWords = '/\b(resched|different time|another time|change (the )?(time|date)|can\'?t make it|conflict|postpone|push (it |the interview )?back|move (it |the interview )?to|earlier|later)\b/i';
-            if (preg_match($rescheduleWords, $bodyText)) {
+            if (preg_match($rescheduleWords, $newContent)) {
                 $confirmedStmt = $pdo->prepare("SELECT id, candidate_name, job_title, interview_confirmed_slot FROM job_applications WHERE candidate_email = :e AND interview_confirmed_slot IS NOT NULL AND interview_confirmed_slot <> '' ORDER BY created_at DESC LIMIT 1");
                 $confirmedStmt->execute([':e' => $candidateEmail]);
                 $confirmedApp = $confirmedStmt->fetch(PDO::FETCH_ASSOC);
                 if ($confirmedApp) {
-                    $snippet = trim(preg_replace('/\s+/', ' ', substr($bodyText, 0, 300)));
+                    $snippet = trim(preg_replace('/\s+/', ' ', substr($newContent, 0, 300)));
                     log_activity($pdo, $confirmedApp['id'], "Candidate emailed asking to change the interview time: \"{$snippet}\"");
 
                     // Actually extract the specific new time they're asking for
