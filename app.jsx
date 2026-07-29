@@ -20776,6 +20776,57 @@ const isDueToday = (date) => date && new Date(date).toDateString() === new Date(
 // the time portion when one was actually saved.
 const fmtFollowup = (d) => d ? (d.includes("T") ? fmtDateTime(d) : fmtDate(d)) : "";
 
+// AI-generated next-best-action suggestion + a research note on the lead's
+// business, from Claude's own general knowledge plus whatever's already on
+// the lead record (name/company/source/notes/activity history) — NOT a
+// live web browse (this model call has no internet access), so it reads
+// as "here's what I can infer" rather than fetched facts. Cached on the
+// lead itself (ai_insights/ai_insights_at) so it doesn't regenerate on
+// every open — a manual "Refresh" re-runs it.
+function LeadAiInsights({lead, activities, onUpdateLead}) {
+  const [loading, setLoading] = useState(false);
+  const leadActs = (activities||[]).filter(a=>a.lead_id===lead.id).sort((a,b)=>new Date(b.created_date||b.created_at)-new Date(a.created_date||a.created_at));
+
+  const generate = async () => {
+    setLoading(true);
+    try {
+      const actLines = leadActs.slice(0,8).map(a=>`- ${a.content}`).join("\n") || "(no activity logged yet)";
+      const prompt = `You're helping an account manager get up to speed on a sales lead before they reach out. Here's what's on file:\n\n`
+        + `Name: ${lead.name}\nCompany: ${lead.company||"unknown"}\nSource: ${lead.source||"unknown"}\nStatus: ${lead.status}\n`
+        + `Notes: ${lead.notes||"none"}\n\nActivity log:\n${actLines}\n\n`
+        + `Write two short sections, plain text, no markdown headers (just bold-ish labels with a colon):\n`
+        + `1. "Next best action:" one or two sentences on what they should actually do next with this lead, based on where things stand.\n`
+        + `2. "Research notes:" if the company name gives you enough to say something genuinely useful about their likely industry/audience/needs, `
+        + `write 2-3 sentences of real, specific inference (not generic filler) — clearly framed as your own reasoning/knowledge, not a live lookup `
+        + `(you have no internet access). If there's truly not enough to go on (just a first name, no company), say so plainly instead of inventing detail.\n\n`
+        + `Keep the whole thing under 500 characters total.`;
+      const result = await ai(prompt, 400);
+      const text = result.trim();
+      await onUpdateLead({...lead, ai_insights: text, ai_insights_at: new Date().toISOString()});
+    } catch(e) { alert("Couldn't generate insights: "+(e?.message||e)); }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{background:"var(--surface2)",borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"column",gap:10,border:"1px solid var(--border)"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>AI Insights</p>
+        <button onClick={generate} disabled={loading} style={{padding:"5px 12px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:11,fontWeight:700,color:"var(--text2)",cursor:loading?"not-allowed":"pointer"}}>
+          {loading?"Thinking…":lead.ai_insights?"Refresh":"Get AI Insights"}
+        </button>
+      </div>
+      {lead.ai_insights ? (
+        <>
+          <p style={{fontSize:12,color:"var(--text2)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{lead.ai_insights}</p>
+          {lead.ai_insights_at&&<p style={{fontSize:10,color:"var(--text3)"}}>Generated {fmtDateTime(lead.ai_insights_at)}</p>}
+        </>
+      ) : (
+        <p style={{fontSize:12,color:"var(--text3)"}}>{loading?"Working on it…":"Get a suggested next step and any useful research Mai can infer about this lead."}</p>
+      )}
+    </div>
+  );
+}
+
 // Lead Detail Panel
 function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivity, onConvert, currentUser, onDeleteLead}) {
   // Plain state, not persisted — opening any lead should always start on
@@ -20856,6 +20907,11 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
                   <span style={{fontSize:13}}>{r.val}</span>
                 </div>
               ))}
+            </div>
+
+            {/* Assignment — its own section, separate from static contact fields */}
+            <div style={{background:"var(--surface2)",borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"column",gap:10,border:"1px solid var(--border)"}}>
+              <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>Assigned To</p>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 <Ico d={Icons.users} size={14} stroke="var(--text3)"/>
                 <select value={lead.assigned_to||""} onChange={e=>{
@@ -20873,7 +20929,15 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
                   ))}
                 </select>
               </div>
+              {lead.assigned_at&&<p style={{fontSize:11,color:"var(--text3)"}}>Assigned {fmtDateTime(lead.assigned_at)}</p>}
             </div>
+
+            {/* AI Insights — Mai's take: next best action, and a research
+                note on the lead/company if there's a website or enough
+                context to say something useful. Text-only from what's
+                already on the lead record (notes/company/source/activity),
+                not a live web browse. */}
+            <LeadAiInsights lead={lead} activities={activities} onUpdateLead={onUpdateLead}/>
 
             {/* Platforms */}
             {lead.platforms?.length>0&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
