@@ -20,6 +20,7 @@
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/pro-lib.php';
+require_once __DIR__ . '/mai-report-lib.php';
 
 // ---- 1. Verification handshake (GET) ----
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
@@ -192,6 +193,19 @@ try {
 
     // ---- Pro assistant path (the dedicated Pro number) ----
     [$senderName, $senderRole, $contextBlock, $senderId] = identifySender($pdo, $from);
+
+    // If this account manager has an in-progress Mai check-in session today,
+    // their reply continues THAT conversation, not the general Pro assistant —
+    // otherwise "how's client X doing" mid-checklist would get answered by
+    // generic Pro instead of Mai actually tracking the conversation/checklist.
+    if ($senderId) {
+        $activeSession = maiFindActiveReportSession($pdo, $senderId);
+        if ($activeSession) {
+            maiContinueReportSession($pdo, $activeSession, $text);
+            exit; // maiContinueReportSession() sends the reply itself
+        }
+    }
+
     if (!$senderName) {
         // Not a known team member or client — this is an outside number messaging
         // admepro directly. Check if it's a prospect interested in our services
