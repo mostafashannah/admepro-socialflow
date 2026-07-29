@@ -28901,6 +28901,7 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
   const [newAttendee, setNewAttendee] = useState({name:"", title:"", email:""});
   const [saving, setSaving] = useState(false);
   const [uploadingVoice, setUploadingVoice] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   if(!open) return null;
   const handleVoiceUpload = async (file) => {
     if(!file) return;
@@ -28908,6 +28909,31 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
     try { const url = await uploadToStorage(file, "contact-reports/voice"); setF(p=>({...p,voice_recording_url:url})); }
     catch(e) { alert("Upload failed: "+e.message); }
     setUploadingVoice(false);
+
+    // Any recorded audio — not just a WhatsApp voice note sent to Pro —
+    // gets transcribed and summarized straight into the report fields, so
+    // the AM only has to review/tweak instead of typing it all up.
+    setTranscribing(true);
+    try {
+      const transcript = await transcribeAudioFile(file);
+      if(transcript?.trim()) {
+        const result = await ai(
+          `Here's a transcript of a client call/meeting:\n\n"""${transcript}"""\n\nReturn ONLY valid JSON (no markdown) in this exact shape: `
+          + `{"summary":"2-3 sentence overview of what was discussed","key_points":"one bullet-style line per key point, newline-separated, no leading dashes","action_items":"one bullet-style line per action item/follow-up, newline-separated, no leading dashes — empty string if none"}`,
+          800
+        );
+        const m = result.match(/\{[\s\S]*\}/);
+        const parsed = m ? JSON.parse(m[0]) : null;
+        if(parsed) {
+          setF(p=>({...p,
+            summary: p.summary || parsed.summary || "",
+            key_points: p.key_points || parsed.key_points || "",
+            action_items: p.action_items || parsed.action_items || "",
+          }));
+        }
+      }
+    } catch(e) { alert("Transcription/summary failed: "+(e?.message||e)+" — you can still fill the report in manually."); }
+    setTranscribing(false);
   };
   const sf = (k,v) => setF(p=>({...p,[k]:v}));
   const addAttendee = () => { if(!newAttendee.name.trim()) return; setF(p=>({...p,attendees:[...p.attendees,{...newAttendee, name:newAttendee.name.trim(), email:newAttendee.email.trim()}]})); setNewAttendee({name:"",title:"",email:""}); };
@@ -28965,15 +28991,16 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
         <Field label="Summary"><textarea value={f.summary} onChange={e=>sf("summary",e.target.value)} rows={3} style={{...inputSt,resize:"vertical"}}/></Field>
         <Field label="Key Points (one per line)"><textarea value={f.key_points} onChange={e=>sf("key_points",e.target.value)} rows={3} style={{...inputSt,resize:"vertical"}}/></Field>
         <Field label="Action Items (one per line)"><textarea value={f.action_items} onChange={e=>sf("action_items",e.target.value)} rows={3} style={{...inputSt,resize:"vertical"}}/></Field>
-        <Field label="Voice Recording (optional)">
+        <Field label="Voice Recording (optional)" hint="Attach any recorded call/meeting audio — it's transcribed and used to fill in the summary/key points/action items above automatically.">
           {f.voice_recording_url ? (
             <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
               <audio controls src={f.voice_recording_url} style={{height:32,maxWidth:280}}/>
               <button onClick={()=>sf("voice_recording_url","")} style={{padding:"5px 10px",borderRadius:"var(--rxs)",background:"#ef444411",border:"1px solid #ef444433",fontSize:12,fontWeight:600,color:"#ef4444",cursor:"pointer"}}>Remove</button>
+              {transcribing&&<span style={{fontSize:12,color:"var(--text3)",display:"flex",alignItems:"center",gap:6}}><Spinner size={12}/> Transcribing & summarizing…</span>}
             </div>
           ) : (
             <label style={{display:"inline-block",cursor:uploadingVoice?"default":"pointer",fontSize:12,fontWeight:700,color:"var(--accent)",padding:"9px 14px",borderRadius:8,border:"1px solid var(--accent)44",background:"var(--surface2)"}}>
-              {uploadingVoice?"Uploading…":"+ Attach Voice Recording"}
+              {uploadingVoice?"Uploading…":"+ Attach Audio Recording"}
               <input type="file" accept="audio/*" style={{display:"none"}} disabled={uploadingVoice} onChange={e=>{handleVoiceUpload(e.target.files?.[0]); e.target.value="";}}/>
             </label>
           )}
