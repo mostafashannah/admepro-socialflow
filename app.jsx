@@ -14212,6 +14212,7 @@ function ClientIntelligenceTab({client, intelligence, onSave, integrations=[], p
 const CLIENT_PORTAL_TOGGLEABLE_FEATURES = [
   ["posts","Tasks"], ["inbox","Inbox"], ["insights","Insights"],
   ["assets","Assets"], ["leads","Leads"], ["subscriptions","Subscriptions"],
+  ["contact_reports","Contact Reports"],
 ];
 
 // Client-scoped Integrations sub-tab (under a client's Settings tab) —
@@ -17157,7 +17158,60 @@ function TemplatesPage({templates}) {
 // ════════════════════════════════════════════════════════════════
 // CLIENT PORTAL
 // ════════════════════════════════════════════════════════════════
-function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tasks=[],onAddTask,onUpdateTask,onAddPost,contract,wallpaper,onWallpaperChange,monthlyBriefs=[],onSubmitBrief,onSelfCreateBrief,messages=[],integrations=[],onSendReply,onApproveDraft,onDismissDraft,assets=[],onAddAsset,onUpdateAsset,onDeleteAsset,leads=[],comments=[],onAddComment,team=[]}) {
+// Client-portal-facing Contact Reports view — read-only, only ever shows
+// reports staff explicitly made visible (client_visible_at set, either via
+// the per-client auto-email switch or a manual Send). Plays the voice
+// recording inline when one exists.
+function ClientContactReportsTab({reports=[]}) {
+  if(!reports.length) return (
+    <div style={{padding:"60px 20px",textAlign:"center",color:"var(--text3)"}}>
+      <Ico d={Icons.chat} size={32} stroke="var(--text3)"/>
+      <p style={{marginTop:10,fontSize:14,fontWeight:600}}>No contact reports yet</p>
+      <p style={{fontSize:13,marginTop:4}}>Reports from your calls/meetings with your account manager will show up here.</p>
+    </div>
+  );
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:14}}>
+      {reports.map(r=>(
+        <div key={r.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <Badge label={r.meeting_type==="call"?"Call":"Meeting"} color="#6366f1" xs/>
+              {r.location_type&&<Badge label={r.location_type==="online"?"Online":"In-Person"} color="#6b7280" xs/>}
+            </div>
+            <span style={{fontSize:12,color:"var(--text3)"}}>{fmtDateTime(r.client_visible_at||r.created_at)}</span>
+          </div>
+          {r.attendees&&(()=>{ const list = parseMaybeJson(r.attendees, []); return list.length>0 && (
+            <p style={{fontSize:12,color:"var(--text2)"}}>With: {list.map(a=>a.name).filter(Boolean).join(", ")}</p>
+          ); })()}
+          {r.voice_recording_url&&(
+            <audio controls src={r.voice_recording_url} style={{width:"100%",height:36}}/>
+          )}
+          {r.summary&&(
+            <div>
+              <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4}}>Summary</p>
+              <p style={{fontSize:13,color:"var(--text)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{r.summary}</p>
+            </div>
+          )}
+          {r.key_points&&(
+            <div>
+              <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4}}>Key Points</p>
+              <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{r.key_points}</p>
+            </div>
+          )}
+          {r.action_items&&(
+            <div>
+              <p style={{fontSize:11,fontWeight:800,color:"#f59e0b",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4}}>Action Items</p>
+              <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{r.action_items}</p>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tasks=[],onAddTask,onUpdateTask,onAddPost,contract,wallpaper,onWallpaperChange,monthlyBriefs=[],onSubmitBrief,onSelfCreateBrief,messages=[],integrations=[],onSendReply,onApproveDraft,onDismissDraft,assets=[],onAddAsset,onUpdateAsset,onDeleteAsset,leads=[],comments=[],onAddComment,team=[],contactReports=[]}) {
   const {isMobile} = useResponsive();
   const [view,setView] = useState("dashboard");
   const [sel,setSel] = useState(null);
@@ -17207,6 +17261,11 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
   const cMessages = (messages||[]).filter(m=>m.client_id===client.id);
   const unreadCount = cMessages.filter(m=>m.direction==="in"&&m.draft_status!=="dismissed").length;
   const clientLeads = (leads||[]).filter(l=>l.client_id===client.id);
+  // Only reports that were actually auto-emailed or manually sent —
+  // client_visible_at is set at that moment (see saveContactReport /
+  // sendReportEmail / pro-lib.php's save_contact_report), never for a
+  // report still sitting internal-only.
+  const clientContactReports = (contactReports||[]).filter(r=>r.client_id===client.id&&r.client_visible_at).sort((a,b)=>new Date(b.client_visible_at)-new Date(a.client_visible_at));
   // Staff can hide any of these per-client from the client's Settings >
   // Features sub-tab (client.portal_features, {key:false} = hidden).
   // Dashboard is never hidden — see CLIENT_PORTAL_TOGGLEABLE_FEATURES.
@@ -17219,6 +17278,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
     {key:"insights", label:"Insights", mLabel:"Insights"},
     {key:"assets", label:"Assets", mLabel:"Assets"},
     {key:"leads", label:`Leads${clientLeads.length?` (${clientLeads.length})`:""}`, mLabel:"Leads"},
+    {key:"contact_reports", label:"Contact Reports", mLabel:"Reports"},
     ...(clientSubs.length>0?[{key:"subscriptions",label:"Subscriptions",mLabel:"Billing"}]:[]),
   ].filter(item=>item.key==="dashboard"||featureEnabled(item.key));
   // If staff disabled the feature the client currently has open (or had it
@@ -17628,6 +17688,9 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
 
         {/* LEADS VIEW */}
         {view==="leads"&&<ClientLeadsTab clientLeads={clientLeads} clientName={client.name}/>}
+
+        {/* CONTACT REPORTS VIEW */}
+        {view==="contact_reports"&&<ClientContactReportsTab reports={clientContactReports}/>}
 
         {/* TASKS VIEW */}
         {/* TASKS VIEW — merges the old Requests/Content/Calendar tabs into one
@@ -28672,7 +28735,13 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
     const typeLabel = r.meeting_type==="call"?"Call":"Meeting";
     const ok = await sendEmail(to, `${typeLabel} Report — ${client.name}`, html, brandingAssets?.app_name||"Admepro");
     setSendingEmail(false);
-    if(ok) { setEmailSentId(r.id); setEmailingId(null); } else { alert("Failed to send — check mail settings."); }
+    if(ok) {
+      setEmailSentId(r.id); setEmailingId(null);
+      // Manually sending it is also what makes it appear on the client's
+      // portal (auto-email clients get this set immediately at creation
+      // instead — see save_contact_report in pro-lib.php).
+      if(!r.client_visible_at) onSaveContactReport({...r, client_visible_at:new Date().toISOString()});
+    } else { alert("Failed to send — check mail settings."); }
   };
 
   return (
@@ -40444,6 +40513,12 @@ Return ONLY the JSON array, no markdown.`;
               const typeLabel = real.meeting_type==="call"?"Call":"Meeting";
               sendEmail(to, `${typeLabel} Report — ${client.name}`, html, brandingAssets?.app_name||"Admepro");
             }
+            // Auto-email clients see the report on their portal immediately,
+            // same moment it's emailed — manual-send clients only get it
+            // when someone actually presses Send (see sendReportEmail above).
+            const visibleAt = new Date().toISOString();
+            setData(d=>({...d,contactReports:d.contactReports.map(r=>r.id===real.id?{...r,client_visible_at:visibleAt}:r)}));
+            ue("ContactReport", real.id, {client_visible_at: visibleAt}).catch(()=>{});
           }
         }
       }).catch(()=>{});
@@ -41535,7 +41610,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         </div>
       )}
       <div style={impersonatorUser?{marginTop:48}:{}}>
-        <ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} onAddPost={addPost} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]} comments={data.comments||[]} onAddComment={handleAddComment} team={data.team||[]}/>
+        <ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} onAddPost={addPost} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]} comments={data.comments||[]} onAddComment={handleAddComment} team={data.team||[]} contactReports={data.contactReports||[]}/>
       </div>
     </>);
   }
