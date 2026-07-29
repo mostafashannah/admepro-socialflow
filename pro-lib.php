@@ -1704,6 +1704,21 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                       . "these reports can be emailed to the client and to the account manager, so a wrong name "
                       . "looks unprofessional and undermines trust — it's much better to ask a quick follow-up "
                       . "question than to guess."
+                      . "\n\nSAME RULE for the client name: voice transcription commonly mishears it too (e.g. "
+                      . "\"Bino\" transcribed as \"Beno\"). Our real clients are:\n" . (function() use ($pdo, $isAdmin, $senderId) {
+                          if ($isAdmin) {
+                              $names = $pdo->query("SELECT name FROM clients ORDER BY name ASC")->fetchAll(PDO::FETCH_COLUMN);
+                          } else {
+                              $stmt = $pdo->prepare("SELECT name FROM clients WHERE account_manager_id = :aid ORDER BY name ASC");
+                              $stmt->execute([':aid' => $senderId]);
+                              $names = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                          }
+                          return $names ? implode(', ', $names) : '(none loaded)';
+                      })() . "\n\nBefore calling save_contact_report, match the client name in the transcript against "
+                      . "this list (allowing for an obvious mis-transcription) and pass the CORRECT name from this "
+                      . "list to save_contact_report's client_name — never the literal mis-heard version. If it "
+                      . "doesn't clearly match anyone on this list, ask the sender to confirm the client name before "
+                      . "saving, same as with attendee names."
                     : '')
                 . ($imageBase64
                     ? "\n\nThey just sent you a PHOTO (attached). Look at it and help with whatever it's for: if "
