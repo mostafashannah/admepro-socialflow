@@ -490,6 +490,17 @@ const getAssigneeForStage = (stage, teamMembers) => {
 // ════════════════════════════════════════════════════════════════
 // TASK TYPES & WORKFLOW
 // ════════════════════════════════════════════════════════════════
+// What a LEAD (prospect) is interested in — deliberately separate from
+// TASK_TYPES below (which is deliverable-level granularity for actual client
+// work); this is the higher-level "what services do they want" picked during/
+// after the first call with a prospect.
+const LEAD_SERVICE_OPTIONS = ["Social Media Management","Paid Advertising","Branding & Design","Content Creation","Video Production","Website Development","Influencer Marketing","Email Marketing","Consulting / Strategy"];
+const LEAD_BUSINESS_STAGES = [
+  {key:"startup", label:"Startup"},
+  {key:"established", label:"Established"},
+  {key:"well_known", label:"Well-Established & Known"},
+];
+
 const TASK_TYPES = [
   { id:"social_post", label:"Social Media Post", category:"Content", icon:"", description:"Single post for any platform" },
   { id:"story_reel", label:"Story / Reel", category:"Content", icon:"", description:"Short-form vertical video content" },
@@ -20791,8 +20802,14 @@ function LeadAiInsights({lead, activities, onUpdateLead}) {
     setLoading(true);
     try {
       const actLines = leadActs.slice(0,8).map(a=>`- ${a.content}`).join("\n") || "(no activity logged yet)";
+      const services = parseMaybeJson(lead.interested_services, []);
+      const accounts = parseMaybeJson(lead.social_accounts, []);
+      const stageLabel = LEAD_BUSINESS_STAGES.find(s=>s.key===lead.business_stage)?.label;
       const prompt = `You're helping an account manager get up to speed on a sales lead before they reach out. Here's what's on file:\n\n`
-        + `Name: ${lead.name}\nCompany: ${lead.company||"unknown"}\nSource: ${lead.source||"unknown"}\nStatus: ${lead.status}\n`
+        + `Name: ${lead.name}\nBusiness: ${lead.business_name||lead.company||"unknown"}\nSource: ${lead.source||"unknown"}\nStatus: ${lead.status}\n`
+        + (stageLabel?`Business stage: ${stageLabel}\n`:"")
+        + (services.length?`Interested in: ${services.join(", ")}\n`:"")
+        + (accounts.length?`Social accounts: ${accounts.map(a=>`${a.platform}: ${a.handle}`).join(", ")}\n`:"")
         + `Notes: ${lead.notes||"none"}\n\nActivity log:\n${actLines}\n\n`
         + `Write two short sections, plain text, no markdown headers (just bold-ish labels with a colon):\n`
         + `1. "Next best action:" one or two sentences on what they should actually do next with this lead, based on where things stand.\n`
@@ -20823,6 +20840,81 @@ function LeadAiInsights({lead, activities, onUpdateLead}) {
       ) : (
         <p style={{fontSize:12,color:"var(--text3)"}}>{loading?"Working on it…":"Get a suggested next step and any useful research Mai can infer about this lead."}</p>
       )}
+    </div>
+  );
+}
+
+// Business-profile fields the account manager fills in after the FIRST real
+// call with a lead — beyond just name/phone, this is the actual business
+// context (name, social accounts, which services they want, how established
+// they are) that lets Mai reference real specifics in check-ins instead of
+// just "did you call them" ("how's it looking with [business]'s Instagram
+// growth" etc). Kept as its own editable card, separate from the read-only
+// auto-captured Contact info above.
+function LeadProfileSection({lead, onUpdateLead}) {
+  const [form, setForm] = useState({
+    business_name: lead.business_name||"",
+    social_accounts: parseMaybeJson(lead.social_accounts, []),
+    interested_services: parseMaybeJson(lead.interested_services, []),
+    business_stage: lead.business_stage||"",
+  });
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const sf = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  const toggleService = (s) => sf("interested_services", form.interested_services.includes(s) ? form.interested_services.filter(x=>x!==s) : [...form.interested_services, s]);
+  const addAccount = () => sf("social_accounts", [...form.social_accounts, {platform:"instagram", handle:""}]);
+  const updateAccount = (i, patch) => sf("social_accounts", form.social_accounts.map((a,idx)=>idx===i?{...a,...patch}:a));
+  const removeAccount = (i) => sf("social_accounts", form.social_accounts.filter((_,idx)=>idx!==i));
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onUpdateLead({...lead, ...form, social_accounts:JSON.stringify(form.social_accounts), interested_services:JSON.stringify(form.interested_services)});
+    setSaving(false); setSaved(true); setTimeout(()=>setSaved(false),2000);
+  };
+
+  return (
+    <div style={{background:"var(--surface2)",borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"column",gap:12,border:"1px solid var(--border)"}}>
+      <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>Business Profile <span style={{color:"var(--text3)",fontWeight:600,textTransform:"none",letterSpacing:0}}>— fill in after the first call</span></p>
+
+      <Field label="Business Name"><input value={form.business_name} onChange={e=>sf("business_name",e.target.value)} placeholder="e.g. Bino Bakery" style={inputSt}/></Field>
+
+      <Field label="Business Stage">
+        <select value={form.business_stage} onChange={e=>sf("business_stage",e.target.value)} style={inputSt}>
+          <option value="">— Not set —</option>
+          {LEAD_BUSINESS_STAGES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
+        </select>
+      </Field>
+
+      <div>
+        <label style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:6,display:"block"}}>Interested Services</label>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+          {LEAD_SERVICE_OPTIONS.map(s=>(
+            <button key={s} type="button" onClick={()=>toggleService(s)} style={{padding:"5px 11px",borderRadius:99,fontSize:11,fontWeight:700,border:`1.5px solid ${form.interested_services.includes(s)?"var(--accent)":"var(--border2)"}`,background:form.interested_services.includes(s)?"var(--accentbg)":"var(--surface)",color:form.interested_services.includes(s)?"var(--accent)":"var(--text2)"}}>{s}</button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <label style={{fontSize:11,fontWeight:700,color:"var(--text2)",marginBottom:6,display:"block"}}>Social Media Accounts</label>
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {form.social_accounts.map((a,i)=>(
+            <div key={i} style={{display:"flex",gap:6,alignItems:"center"}}>
+              <select value={a.platform} onChange={e=>updateAccount(i,{platform:e.target.value})} style={{...inputSt,width:110,minHeight:"auto",padding:"5px 8px",fontSize:12}}>
+                {PLATFORMS.map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
+              </select>
+              <input value={a.handle} onChange={e=>updateAccount(i,{handle:e.target.value})} placeholder="@handle or URL" style={{...inputSt,flex:1,minHeight:"auto",padding:"5px 8px",fontSize:12}}/>
+              <button onClick={()=>removeAccount(i)} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:16,padding:4}}>×</button>
+            </div>
+          ))}
+          <button onClick={addAccount} style={{alignSelf:"flex-start",padding:"5px 12px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>+ Add Account</button>
+        </div>
+      </div>
+
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <Btn size="sm" onClick={handleSave} disabled={saving}>{saving?"Saving…":"Save Business Profile"}</Btn>
+        {saved&&<span style={{fontSize:11,fontWeight:700,color:"#10b981"}}>✓ Saved</span>}
+      </div>
     </div>
   );
 }
@@ -20931,6 +21023,9 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
               </div>
               {lead.assigned_at&&<p style={{fontSize:11,color:"var(--text3)"}}>Assigned {fmtDateTime(lead.assigned_at)}</p>}
             </div>
+
+            {/* Business Profile — filled in after the first real call */}
+            <LeadProfileSection lead={lead} onUpdateLead={onUpdateLead}/>
 
             {/* AI Insights — Mai's take: next best action, and a research
                 note on the lead/company if there's a website or enough
