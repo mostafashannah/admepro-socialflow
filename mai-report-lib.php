@@ -26,6 +26,7 @@ const MAI_MORNING_CHECKLIST = [
     'checked_platforms'   => 'Checked social platforms for all assigned clients',
     'checked_ad_accounts' => 'Checked ad accounts for all assigned clients',
     'answered_comms'      => 'Answered all client calls/messages',
+    'confirmed_posting'   => "Confirmed today's posts are actually published or scheduled for every account",
     'confirmed_meetings'  => "Confirmed today's meetings",
     'confirmed_submissions' => "Confirmed today's submissions/deliverables",
     'confirmed_lead_followups' => 'Confirmed lead calls/follow-ups for today',
@@ -64,7 +65,22 @@ function maiBuildClientContext(PDO $pdo, $accountManagerId) {
         $crRow = $cr->fetch(PDO::FETCH_ASSOC);
         $actionLine = $crRow ? "  Open action item from {$crRow['created_at']}: {$crRow['action_items']}" : '';
 
-        $blocks[] = "Client \"{$c['name']}\":\n{$memLines}" . ($actionLine ? "\n{$actionLine}" : '');
+        // Today's posting status — lets Mai say something concrete ("I see 2
+        // posts scheduled for Bino today but 1 still in design — is that
+        // going out on time?") instead of vaguely asking "did you post today".
+        $postsStmt = $pdo->prepare("SELECT title, stage FROM posts WHERE client_id = :cid AND scheduled_date = CURDATE()");
+        $postsStmt->execute([':cid' => $c['id']]);
+        $todaysPosts = $postsStmt->fetchAll(PDO::FETCH_ASSOC);
+        if ($todaysPosts) {
+            $liveCount = count(array_filter($todaysPosts, fn($p) => in_array($p['stage'], ['published', 'scheduled'], true)));
+            $notLive = array_filter($todaysPosts, fn($p) => !in_array($p['stage'], ['published', 'scheduled'], true));
+            $postingLine = "  Today's posts: {$liveCount}/" . count($todaysPosts) . " published/scheduled."
+                . ($notLive ? ' Still not live: ' . implode(', ', array_map(fn($p) => "\"{$p['title']}\" ({$p['stage']})", $notLive)) . '.' : '');
+        } else {
+            $postingLine = "  No posts scheduled for today on file for this client.";
+        }
+
+        $blocks[] = "Client \"{$c['name']}\":\n{$memLines}\n{$postingLine}" . ($actionLine ? "\n{$actionLine}" : '');
     }
     return ['names' => $names, 'context' => implode("\n\n", $blocks)];
 }
@@ -161,6 +177,9 @@ function maiStartReportSession(PDO $pdo, array $am, $reportType) {
             . "IMPORTANT on leads: if she says she followed up/called a lead that shows \"NO activity logged at all\" above, that's a real gap — "
             . "point it out naturally (not accusingly) and either offer to log what she just told you as the update, or ask her to add it herself "
             . "in the Leads page so it's on record. Never just accept \"yeah I called them\" for a lead with nothing on file without addressing that gap.\n\n"
+            . "IMPORTANT on posting: each client block above shows today's posting status (how many are published/scheduled vs. still not live, "
+            . "with titles/stages). Use the real numbers when you ask — e.g. \"I see Bino has 1 post still in design for today, is that going out?\" "
+            . "— not a generic \"did you post today?\". If a client shows 0/0 (nothing scheduled at all for today), that's worth a quick check too.\n\n"
             . "Checklist to work through over the conversation (don't list it to her, just naturally get answers to all of it):\n"
             . implode("\n", array_map(fn($l) => "- {$l}", $checklist)) . "\n\n"
             . "Start the conversation now — greet her, lead with one real, specific, interesting thing you noticed about one of her clients "
