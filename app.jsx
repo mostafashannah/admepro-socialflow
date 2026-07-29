@@ -15634,11 +15634,22 @@ function AccountManagerMaiReportsTab({member}) {
     </div>
   );
 
+  // A missed check-in (never responded, or abandoned mid-checklist) is
+  // recorded with score=0 and counts DOUBLE in the average — a no-show must
+  // hurt more than just being excluded, otherwise skipping check-ins is
+  // free. Completed ones count once, as normal.
   const avgScore = (()=>{
     const scored = sessions.filter(s=>s.score!=null&&s.max_score);
     if(!scored.length) return null;
-    return Math.round(scored.reduce((a,s)=>a+(s.score/s.max_score*100),0)/scored.length);
+    let sumPct=0, weight=0;
+    scored.forEach(s=>{
+      const w = s.status==="missed" ? 2 : 1;
+      sumPct += (s.score/s.max_score*100) * w;
+      weight += w;
+    });
+    return Math.round(sumPct/weight);
   })();
+  const missedCount = sessions.filter(s=>s.status==="missed").length;
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -15647,7 +15658,7 @@ function AccountManagerMaiReportsTab({member}) {
           <div style={{width:56,height:56,borderRadius:"50%",background:avgScore>=80?"#10b98122":avgScore>=50?"#f59e0b22":"#ef444422",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:16,color:avgScore>=80?"#10b981":avgScore>=50?"#f59e0b":"#ef4444",flexShrink:0}}>{avgScore}%</div>
           <div>
             <p style={{fontSize:13,fontWeight:700}}>Average Check-in Score</p>
-            <p style={{fontSize:11,color:"var(--text3)"}}>Across {sessions.filter(s=>s.score!=null).length} completed check-in(s) — only the checklist items are scored, the conversation itself isn't.</p>
+            <p style={{fontSize:11,color:"var(--text3)"}}>Across {sessions.filter(s=>s.score!=null&&s.status!=="missed").length} completed check-in(s){missedCount>0?` and ${missedCount} missed (counted double)`:""} — only the checklist items are scored, the conversation itself isn't.</p>
           </div>
         </div>
       )}
@@ -15662,7 +15673,7 @@ function AccountManagerMaiReportsTab({member}) {
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 <Badge label={s.report_type==="morning"?"Morning":"End of Day"} color={s.report_type==="morning"?"#f59e0b":"#6366f1"} xs/>
                 <span style={{fontSize:13,fontWeight:700}}>{fmtDate(s.report_date)}</span>
-                <Badge label={s.status==="completed"?"Completed":s.status==="in_progress"?"In Progress":"No Response"} color={s.status==="completed"?"#10b981":s.status==="in_progress"?"#f59e0b":"#6b7280"} xs/>
+                <Badge label={s.status==="completed"?"Completed":s.status==="in_progress"?"In Progress":s.status==="missed"?"Missed":"No Response"} color={s.status==="completed"?"#10b981":s.status==="in_progress"?"#f59e0b":s.status==="missed"?"#ef4444":"#6b7280"} xs/>
               </div>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 {pct!=null&&<span style={{fontSize:13,fontWeight:800,color:pct>=80?"#10b981":pct>=50?"#f59e0b":"#ef4444"}}>{s.score}/{s.max_score}</span>}

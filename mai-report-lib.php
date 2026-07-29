@@ -327,6 +327,34 @@ function maiContinueReportSession(PDO $pdo, array $session, $incomingText) {
     }
 }
 
+// Run a few hours after each report-starting cron (well past a reasonable
+// reply window) — any session an AM never engaged with, or started and
+// abandoned mid-checklist, gets explicitly recorded as "missed" instead of
+// just sitting there forever as 'in_progress' (which silently excluded it
+// from her average score — a no-show cost her nothing). A missed check-in
+// scores 0 on every checklist item AND counts DOUBLE in the average (see
+// the weighting in AccountManagerMaiReportsTab) — skipping check-ins
+// entirely must hurt more than a merely poor one, not be invisible.
+function maiMarkMissedSessions(PDO $pdo, $reportType, $cutoffHours = 3) {
+    $checklist = $reportType === 'morning' ? MAI_MORNING_CHECKLIST : MAI_EOD_CHECKLIST;
+    $maxScore = count($checklist) * 10;
+    $stmt = $pdo->prepare(
+        "SELECT id FROM mai_report_sessions WHERE report_type = :t AND status = 'in_progress' "
+        . "AND started_at <= NOW() - INTERVAL :h HOUR"
+    );
+    $stmt->bindValue(':t', $reportType);
+    $stmt->bindValue(':h', $cutoffHours, PDO::PARAM_INT);
+    $stmt->execute();
+    $ids = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    if (!$ids) return 0;
+
+    $upd = $pdo->prepare("UPDATE mai_report_sessions SET status = 'missed', score = 0, max_score = :max WHERE id = :id");
+    foreach ($ids as $id) {
+        $upd->execute([':max' => $maxScore, ':id' => $id]);
+    }
+    return count($ids);
+}
+
 // Run separately, ~1hr after the report-starting cron (giving AMs time to
 // actually reply) — one short WhatsApp summary to every admin per report
 // round, highlighting what actually needs their attention: low scores,
