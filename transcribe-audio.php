@@ -40,11 +40,12 @@ if (!defined('OPENAI_API_KEY') || !OPENAI_API_KEY) {
 
 $bytes = file_get_contents($_FILES['file']['tmp_name']);
 $mime = $_FILES['file']['type'] ?: 'audio/webm';
-$text = transcribeAudio($bytes, $mime);
+$errorMsg = null;
+$text = transcribeAudio($bytes, $mime, $errorMsg);
 
 if ($text === null) {
     http_response_code(502);
-    echo json_encode(["error" => "Transcription failed — try again"]);
+    echo json_encode(["error" => $errorMsg ?: "Transcription failed — try again"]);
     exit;
 }
 
