@@ -97,9 +97,27 @@ function saveVoiceRecording(string $bytes, string $mimeType): ?string {
 // OPENAI_API_KEY in config.php — returns null (not an error) if that's not
 // configured, so the caller can tell the user voice notes aren't set up yet
 // instead of throwing.
-function transcribeAudio(string $bytes, string $mimeType) {
-    if (!defined('OPENAI_API_KEY') || !OPENAI_API_KEY) return null;
-    $extMap = ['ogg' => 'ogg', 'mp4' => 'm4a', 'webm' => 'webm', 'mpeg' => 'mp3', 'mp3' => 'mp3', 'wav' => 'wav'];
+// $errorOut (optional, by-reference) is populated with a human-readable
+// reason on failure — existing callers that don't pass it are unaffected,
+// they just keep getting null with no detail (same as before).
+function transcribeAudio(string $bytes, string $mimeType, ?string &$errorOut = null) {
+    if (!defined('OPENAI_API_KEY') || !OPENAI_API_KEY) { $errorOut = 'OPENAI_API_KEY is not configured.'; return null; }
+
+    // Whisper's hard limit is 25MB — a long recording (e.g. a 50min call)
+    // routinely exceeds this, and OpenAI's rejection was previously silently
+    // swallowed as a generic null, giving no clue why "it just doesn't work"
+    // for longer files.
+    $sizeMb = strlen($bytes) / 1024 / 1024;
+    if ($sizeMb > 24.5) {
+        $errorOut = sprintf('This audio file is %.1fMB — Whisper only accepts files up to 25MB. Trim it or export at a lower bitrate and try again.', $sizeMb);
+        return null;
+    }
+
+    // Browsers report an .m4a file's MIME type as "audio/x-m4a" or
+    // "audio/m4a" — neither contains "mp4", so the old substring-only check
+    // against "mp4" never matched and every .m4a upload silently fell back
+    // to the WRONG "oga" extension, which OpenAI can reject outright.
+    $extMap = ['ogg' => 'ogg', 'x-m4a' => 'm4a', 'm4a' => 'm4a', 'mp4' => 'm4a', 'webm' => 'webm', 'mpeg' => 'mp3', 'mp3' => 'mp3', 'wav' => 'wav'];
     $ext = 'oga';
     foreach ($extMap as $needle => $mapped) { if (str_contains($mimeType, $needle)) { $ext = $mapped; break; } }
     $tmpFile = tempnam(sys_get_temp_dir(), 'wa_voice_') . '.' . $ext;
@@ -109,7 +127,7 @@ function transcribeAudio(string $bytes, string $mimeType) {
     curl_setopt_array($ch, [
         CURLOPT_POST => true,
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 60,
+        CURLOPT_TIMEOUT => 180, // a long recording takes real time to upload + transcribe — 60s was too tight
         CURLOPT_HTTPHEADER => ['Authorization: Bearer ' . OPENAI_API_KEY],
         CURLOPT_POSTFIELDS => [
             'file' => new CURLFile($tmpFile, $mimeType, 'voice.' . $ext),
@@ -118,10 +136,16 @@ function transcribeAudio(string $bytes, string $mimeType) {
     ]);
     $res = curl_exec($ch);
     $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlErr = curl_error($ch);
     curl_close($ch);
     @unlink($tmpFile);
 
-    if ($status < 200 || $status >= 300) return null;
+    if ($status < 200 || $status >= 300) {
+        $data = json_decode($res, true);
+        $errorOut = $data['error']['message'] ?? ($curlErr ?: "OpenAI returned HTTP {$status}");
+        error_log('[transcribeAudio] failed: ' . $errorOut);
+        return null;
+    }
     $data = json_decode($res, true);
     return trim($data['text'] ?? '') ?: null;
 }
