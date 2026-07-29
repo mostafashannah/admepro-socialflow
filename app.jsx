@@ -17158,11 +17158,77 @@ function TemplatesPage({templates}) {
 // ════════════════════════════════════════════════════════════════
 // CLIENT PORTAL
 // ════════════════════════════════════════════════════════════════
-// Client-portal-facing Contact Reports view — read-only, only ever shows
-// reports staff explicitly made visible (client_visible_at set, either via
-// the per-client auto-email switch or a manual Send). Plays the voice
-// recording inline when one exists.
-function ClientContactReportsTab({reports=[]}) {
+// One report row — its own component so the comment box has its own local
+// state (text/sending) without re-rendering every other report.
+function ClientContactReportCard({r, onAddComment}) {
+  const [commentText, setCommentText] = useState("");
+  const [sending, setSending] = useState(false);
+  const comments = parseMaybeJson(r.client_comments, []);
+
+  const submitComment = async () => {
+    if(!commentText.trim()) return;
+    setSending(true);
+    await onAddComment(r, commentText.trim());
+    setSending(false); setCommentText("");
+  };
+
+  return (
+    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <Badge label={r.meeting_type==="call"?"Call":"Meeting"} color="#6366f1" xs/>
+          {r.location_type&&<Badge label={r.location_type==="online"?"Online":"In-Person"} color="#6b7280" xs/>}
+        </div>
+        <span style={{fontSize:12,color:"var(--text3)"}}>{fmtDateTime(r.client_visible_at||r.created_at)}</span>
+      </div>
+      {r.attendees&&(()=>{ const list = parseMaybeJson(r.attendees, []); return list.length>0 && (
+        <p style={{fontSize:12,color:"var(--text2)"}}>With: {list.map(a=>a.name).filter(Boolean).join(", ")}</p>
+      ); })()}
+      {r.summary&&(
+        <div>
+          <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4}}>Summary</p>
+          <p style={{fontSize:13,color:"var(--text)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{r.summary}</p>
+        </div>
+      )}
+      {r.key_points&&(
+        <div>
+          <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4}}>Key Points</p>
+          <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{r.key_points}</p>
+        </div>
+      )}
+      {r.action_items&&(
+        <div>
+          <p style={{fontSize:11,fontWeight:800,color:"#f59e0b",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4}}>Action Items</p>
+          <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{r.action_items}</p>
+        </div>
+      )}
+
+      <div style={{borderTop:"1px solid var(--border)",paddingTop:12,display:"flex",flexDirection:"column",gap:10}}>
+        <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Comments</p>
+        {comments.length>0&&(
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {comments.map((c,i)=>(
+              <div key={i} style={{padding:"8px 12px",background:"var(--surface2)",borderRadius:"var(--rs)"}}>
+                <p style={{fontSize:13,color:"var(--text)",lineHeight:1.5}}>{c.text}</p>
+                <p style={{fontSize:10,color:"var(--text3)",marginTop:2}}>{fmtDateTime(c.at)}</p>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{display:"flex",gap:8}}>
+          <input value={commentText} onChange={e=>setCommentText(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")submitComment();}} placeholder="Add a comment…" style={{...inputSt,flex:1}}/>
+          <Btn size="sm" onClick={submitComment} disabled={sending||!commentText.trim()}>{sending?"Sending…":"Send"}</Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Client-portal-facing Contact Reports view — read-only aside from being
+// able to leave a comment, only ever shows reports staff explicitly made
+// visible (client_visible_at set, either via the per-client auto-email
+// switch or a manual Send). No voice recording here — that stays internal.
+function ClientContactReportsTab({reports=[], onAddComment}) {
   if(!reports.length) return (
     <div style={{padding:"60px 20px",textAlign:"center",color:"var(--text3)"}}>
       <Ico d={Icons.chat} size={32} stroke="var(--text3)"/>
@@ -17172,46 +17238,12 @@ function ClientContactReportsTab({reports=[]}) {
   );
   return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      {reports.map(r=>(
-        <div key={r.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:12}}>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <Badge label={r.meeting_type==="call"?"Call":"Meeting"} color="#6366f1" xs/>
-              {r.location_type&&<Badge label={r.location_type==="online"?"Online":"In-Person"} color="#6b7280" xs/>}
-            </div>
-            <span style={{fontSize:12,color:"var(--text3)"}}>{fmtDateTime(r.client_visible_at||r.created_at)}</span>
-          </div>
-          {r.attendees&&(()=>{ const list = parseMaybeJson(r.attendees, []); return list.length>0 && (
-            <p style={{fontSize:12,color:"var(--text2)"}}>With: {list.map(a=>a.name).filter(Boolean).join(", ")}</p>
-          ); })()}
-          {r.voice_recording_url&&(
-            <audio controls src={r.voice_recording_url} style={{width:"100%",height:36}}/>
-          )}
-          {r.summary&&(
-            <div>
-              <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4}}>Summary</p>
-              <p style={{fontSize:13,color:"var(--text)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{r.summary}</p>
-            </div>
-          )}
-          {r.key_points&&(
-            <div>
-              <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4}}>Key Points</p>
-              <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{r.key_points}</p>
-            </div>
-          )}
-          {r.action_items&&(
-            <div>
-              <p style={{fontSize:11,fontWeight:800,color:"#f59e0b",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:4}}>Action Items</p>
-              <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{r.action_items}</p>
-            </div>
-          )}
-        </div>
-      ))}
+      {reports.map(r=><ClientContactReportCard key={r.id} r={r} onAddComment={onAddComment}/>)}
     </div>
   );
 }
 
-function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tasks=[],onAddTask,onUpdateTask,onAddPost,contract,wallpaper,onWallpaperChange,monthlyBriefs=[],onSubmitBrief,onSelfCreateBrief,messages=[],integrations=[],onSendReply,onApproveDraft,onDismissDraft,assets=[],onAddAsset,onUpdateAsset,onDeleteAsset,leads=[],comments=[],onAddComment,team=[],contactReports=[]}) {
+function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tasks=[],onAddTask,onUpdateTask,onAddPost,contract,wallpaper,onWallpaperChange,monthlyBriefs=[],onSubmitBrief,onSelfCreateBrief,messages=[],integrations=[],onSendReply,onApproveDraft,onDismissDraft,assets=[],onAddAsset,onUpdateAsset,onDeleteAsset,leads=[],comments=[],onAddComment,team=[],contactReports=[],onAddContactReportComment}) {
   const {isMobile} = useResponsive();
   const [view,setView] = useState("dashboard");
   const [sel,setSel] = useState(null);
@@ -17690,7 +17722,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
         {view==="leads"&&<ClientLeadsTab clientLeads={clientLeads} clientName={client.name}/>}
 
         {/* CONTACT REPORTS VIEW */}
-        {view==="contact_reports"&&<ClientContactReportsTab reports={clientContactReports}/>}
+        {view==="contact_reports"&&<ClientContactReportsTab reports={clientContactReports} onAddComment={(r,text)=>onAddContactReportComment(r,text,client)}/>}
 
         {/* TASKS VIEW */}
         {/* TASKS VIEW — merges the old Requests/Content/Calendar tabs into one
@@ -28791,6 +28823,19 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
                 )}
               </div>
             </div>
+            {(()=>{ const clientComments = parseMaybeJson(r.client_comments, []); return clientComments.length>0 && (
+              <div style={{marginBottom:10,padding:"10px 14px",borderRadius:"var(--rs)",background:"#f59e0b1a",border:"1px solid #f59e0b44"}}>
+                <p style={{fontSize:11,fontWeight:800,color:"#f59e0b",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:6}}>Client Comments</p>
+                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  {clientComments.map((c,i)=>(
+                    <div key={i}>
+                      <p style={{fontSize:13,color:"var(--text)"}}>{c.text}</p>
+                      <p style={{fontSize:10,color:"var(--text3)"}}>{c.author||"Client"} · {fmtDateTime(c.at)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ); })()}
             {confirmDeleteId===r.id&&(
               <div style={{marginBottom:10,padding:"10px 14px",borderRadius:"var(--rs)",background:"#ef444411",border:"1px solid #ef444433",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                 <span style={{fontSize:13,color:"var(--text2)"}}>Delete this contact report? It will also be removed from {client.name}'s memory. This cannot be undone.</span>
@@ -40537,6 +40582,28 @@ Return ONLY the JSON array, no markdown.`;
     setToast("Contact report deleted");
   };
 
+  // A client leaving a comment on a contact report from their portal — a
+  // plain running thread (not an edit-request workflow). Notifies whoever
+  // manages that client (their account manager if set, admins otherwise) so
+  // it doesn't just sit there unnoticed until someone happens to check.
+  const addContactReportComment = async (report, text, client) => {
+    const comment = {text, at:new Date().toISOString(), author:client?.name||"Client"};
+    const existing = parseMaybeJson(report.client_comments, []);
+    const next = [...existing, comment];
+    setData(d=>({...d,contactReports:d.contactReports.map(r=>r.id===report.id?{...r,client_comments:next}:r)}));
+    await ue("ContactReport", report.id, {client_comments: JSON.stringify(next)}).catch(()=>{});
+    const am = (data.team||[]).find(t=>t.id===client?.account_manager_id);
+    const recipients = am ? [am] : (data.team||[]).filter(t=>t.role==="admin");
+    for(const r of recipients) {
+      if(!r.email) continue;
+      ce("Notification",[{recipient_email:r.email, title:"Client commented on a contact report", message:`${client?.name||"A client"}: "${text.slice(0,200)}"`, type:"info", is_read:false, link_type:"page", link_id:"client_"+client?.id}]).catch(()=>{});
+      sendEmail(r.email, `${client?.name||"A client"} commented on their contact report`,
+        `<div style="font-family:sans-serif;font-size:14px;color:#111827;line-height:1.6"><p><strong>${client?.name||"A client"}</strong> left a comment on a contact report:</p><p style="padding:12px;background:#f9fafb;border-radius:8px">${text.replace(/</g,"&lt;")}</p><p>Open SocialFlow → this client → Contact Reports to view it.</p></div>`
+      ).catch(()=>{});
+    }
+    setToast("Comment sent");
+  };
+
   const createInvoice = async (invData) => {
     const local = {...invData,id:uid(),created_date:new Date().toISOString()};
     setData(d=>({...d,invoices:[local,...d.invoices]}));
@@ -41610,7 +41677,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         </div>
       )}
       <div style={impersonatorUser?{marginTop:48}:{}}>
-        <ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} onAddPost={addPost} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]} comments={data.comments||[]} onAddComment={handleAddComment} team={data.team||[]} contactReports={data.contactReports||[]}/>
+        <ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} onAddPost={addPost} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]} comments={data.comments||[]} onAddComment={handleAddComment} team={data.team||[]} contactReports={data.contactReports||[]} onAddContactReportComment={addContactReportComment}/>
       </div>
     </>);
   }
