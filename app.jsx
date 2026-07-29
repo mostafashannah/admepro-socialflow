@@ -21304,7 +21304,18 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
           activities={leadActivities}
           team={team}
           currentUser={currentUser}
-          onClose={()=>{ try{ window.history.back(); }catch(e){ setSelectedLead_(null); } }}
+          onClose={()=>{
+            // Close directly rather than window.history.back() — this panel
+            // pushes a history entry so the PHYSICAL browser back button can
+            // close it (see setSelectedLead above), but back() also unwinds
+            // to whatever else is behind THAT entry, which can be an
+            // unrelated earlier page (e.g. Notifications) if the user
+            // navigated here without a matching push of their own. The X
+            // button is an explicit in-app close, not "go back" — it should
+            // never navigate anywhere else.
+            setSelectedLead_(null);
+            try{ if(window.history.state&&"sfLeadDetail" in window.history.state) window.history.replaceState({sfPage:"leads"},"","#leads"); }catch(e){}
+          }}
           onUpdateLead={async l=>{await onUpdateLead(l);setSelectedLead_(l);}}
           onAddActivity={onAddActivity}
           onConvert={async l=>{await onConvertLead(l);setSelectedLead_(null);}}
