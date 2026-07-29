@@ -393,6 +393,14 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
         }
         if (!$phone) return;
 
+        // A message from a number that's already an existing client's own
+        // contact number is never a new lead — without this, a client's rep
+        // texting Pro's own number directly (not their dedicated inbox
+        // number) could get captured as a fresh "lead" for their own agency.
+        $clientMatch = $pdo->prepare("SELECT id FROM clients WHERE REPLACE(REPLACE(REPLACE(phone,'+',''),' ',''),'-','') LIKE :p LIMIT 1");
+        $clientMatch->execute([':p' => '%' . substr(preg_replace('/\D/', '', $phone), -9) . '%']);
+        if ($clientMatch->fetchColumn()) return;
+
         $tag = "src_id:{$channel}:{$customerId}";
         $dupe = $pdo->prepare("SELECT id, phone FROM leads WHERE notes LIKE :tag LIMIT 1");
         $dupe->execute([':tag' => "%{$tag}%"]);
