@@ -28827,7 +28827,10 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
                   {typeLabel&&<Badge label={typeLabel} color={r.meeting_type==="call"?"#8b5cf6":"#3b82f6"} xs/>}
                 </div>
                 <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>
-                  {r.created_at?new Date(r.created_at).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):""} · via {r.channel}
+                  {r.meeting_date?`Met ${new Date(r.meeting_date+"T00:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short"})}`:""}
+                  {r.meeting_date&&r.created_at?" · ":""}
+                  {r.created_at?`Submitted ${new Date(r.created_at).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}`:""}
+                  {` · via ${r.channel}`}
                   {locLabel?` · ${locLabel}`:""}
                 </p>
               </div>
@@ -28863,7 +28866,10 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
             {attendees.length>0&&(
               <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
                 {attendees.map((a,i)=>(
-                  <span key={i} style={{fontSize:11,padding:"3px 9px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border)",color:"var(--text2)"}}>{a.name}{a.title?` · ${a.title}`:""}</span>
+                  <span key={i} style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11,padding:"3px 9px",borderRadius:99,border:`1px solid ${a.kind==="client"?"#6366f155":a.kind==="team"?"#10b98155":"var(--border)"}`,background:a.kind==="client"?"#6366f111":a.kind==="team"?"#10b98111":"var(--surface2)",color:"var(--text2)"}}>
+                    <span style={{width:5,height:5,borderRadius:"50%",background:a.kind==="client"?"#6366f1":a.kind==="team"?"#10b981":"var(--text3)",flexShrink:0}}/>
+                    {a.name}{a.title?` · ${a.title}`:""}
+                  </span>
                 ))}
               </div>
             )}
@@ -28907,6 +28913,7 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
 function ContactReportModal({open, onClose, onSave, clientId, clientName, report, team=[], client}) {
   const [f,setF] = useState(()=>({
     meeting_type: report?.meeting_type||"meeting",
+    meeting_date: report?.meeting_date || (report?.created_at ? report.created_at.slice(0,10) : new Date().toISOString().slice(0,10)),
     location_type: report?.location_type||"physical",
     location: report?.location||"",
     attendees: parseMaybeJson(report?.attendees, []),
@@ -28915,13 +28922,13 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
     action_items: report?.action_items||"",
     voice_recording_url: report?.voice_recording_url||"",
   }));
-  const [newAttendee, setNewAttendee] = useState({name:"", title:"", email:""});
+  const [newAttendee, setNewAttendee] = useState({name:"", title:"", email:"", kind:null});
   const [showAttendeeSuggestions, setShowAttendeeSuggestions] = useState(false);
   const [saving, setSaving] = useState(false);
   const formatRole = (role) => (role||"").replace(/_/g," ").replace(/\b\w/g, c=>c.toUpperCase());
   const attendeeSuggestions = [
-    ...(team||[]).filter(t=>t.status==="active").map(t=>({name:t.name, title:formatRole(t.role), email:t.email||""})),
-    ...(client?.name ? [{name:client.username||client.name, title:client.contact_title||"Client Contact", email:client.email||""}] : []),
+    ...(team||[]).filter(t=>t.status==="active").map(t=>({name:t.name, title:t.title?.trim()||formatRole(t.role), email:t.email||"", kind:"team"})),
+    ...(client?.name ? [{name:client.username||client.name, title:client.contact_title||"Client Contact", email:client.email||"", kind:"client"}] : []),
   ];
   const filteredAttendeeSuggestions = attendeeSuggestions.filter(s=>
     !newAttendee.name.trim() || s.name.toLowerCase().includes(newAttendee.name.trim().toLowerCase())
@@ -28962,7 +28969,7 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
     setTranscribing(false);
   };
   const sf = (k,v) => setF(p=>({...p,[k]:v}));
-  const addAttendee = () => { if(!newAttendee.name.trim()) return; setF(p=>({...p,attendees:[...p.attendees,{...newAttendee, name:newAttendee.name.trim(), email:newAttendee.email.trim()}]})); setNewAttendee({name:"",title:"",email:""}); };
+  const addAttendee = () => { if(!newAttendee.name.trim()) return; setF(p=>({...p,attendees:[...p.attendees,{...newAttendee, name:newAttendee.name.trim(), email:newAttendee.email.trim()}]})); setNewAttendee({name:"",title:"",email:"",kind:null}); };
   const removeAttendee = (i) => setF(p=>({...p,attendees:p.attendees.filter((_,idx)=>idx!==i)}));
   const handleSave = async () => {
     if(!f.summary.trim()) { alert("Please add a summary."); return; }
@@ -28971,6 +28978,7 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
       ...(report?{id:report.id}:{}),
       client_id: clientId, client_name: clientName,
       meeting_type: f.meeting_type,
+      meeting_date: f.meeting_date || null,
       location_type: f.meeting_type==="meeting" ? f.location_type : null,
       location: f.location.trim(),
       attendees: JSON.stringify(f.attendees),
@@ -28992,6 +29000,9 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
             <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,cursor:"pointer"}}><input type="radio" checked={f.location_type==="online"} onChange={()=>sf("location_type","online")}/> Online</label>
           </div>
         )}
+        <Field label="Meeting/Call Date" hint="When it actually happened — may not be today if you're logging it late">
+          <input type="date" value={f.meeting_date} onChange={e=>sf("meeting_date",e.target.value)} style={inputSt}/>
+        </Field>
         <Field label={f.meeting_type==="meeting"?"Location":"Number / Platform (optional)"}>
           <input value={f.location} onChange={e=>sf("location",e.target.value)} placeholder={f.meeting_type==="meeting"?(f.location_type==="online"?"e.g. Zoom, Google Meet":"e.g. Client's office, Cairo"):"e.g. WhatsApp call"} style={inputSt}/>
         </Field>
@@ -29000,7 +29011,8 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
           {f.attendees.length>0&&(
             <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:8}}>
               {f.attendees.map((a,i)=>(
-                <div key={i} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",borderRadius:99,border:"1px solid var(--border)",background:"var(--surface2)",fontSize:12}}>
+                <div key={i} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",borderRadius:99,border:`1px solid ${a.kind==="client"?"#6366f155":a.kind==="team"?"#10b98155":"var(--border)"}`,background:a.kind==="client"?"#6366f111":a.kind==="team"?"#10b98111":"var(--surface2)",fontSize:12}}>
+                  <span style={{width:6,height:6,borderRadius:"50%",background:a.kind==="client"?"#6366f1":a.kind==="team"?"#10b981":"var(--text3)",flexShrink:0}}/>
                   <span>{a.name}{a.title?` — ${a.title}`:""}{a.email?` (${a.email})`:""}</span>
                   <button onClick={()=>removeAttendee(i)} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontWeight:700,padding:0}}>×</button>
                 </div>
@@ -29022,12 +29034,15 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
                   {filteredAttendeeSuggestions.map((s,i)=>(
                     <div
                       key={i}
-                      onMouseDown={e=>{e.preventDefault(); setNewAttendee({name:s.name, title:s.title, email:s.email}); setShowAttendeeSuggestions(false);}}
+                      onMouseDown={e=>{e.preventDefault(); setNewAttendee({name:s.name, title:s.title, email:s.email, kind:s.kind}); setShowAttendeeSuggestions(false);}}
                       style={{padding:"8px 12px",fontSize:13,cursor:"pointer",borderBottom:i<filteredAttendeeSuggestions.length-1?"1px solid var(--border)":"none"}}
                       onMouseEnter={e=>e.currentTarget.style.background="var(--surface2)"}
                       onMouseLeave={e=>e.currentTarget.style.background="transparent"}
                     >
-                      <div style={{fontWeight:600}}>{s.name}</div>
+                      <div style={{display:"flex",alignItems:"center",gap:6,fontWeight:600}}>
+                        <span style={{width:6,height:6,borderRadius:"50%",background:s.kind==="client"?"#6366f1":"#10b981",flexShrink:0}}/>
+                        {s.name}
+                      </div>
                       <div style={{fontSize:11,color:"var(--text3)"}}>{s.title}{s.email?` · ${s.email}`:""}</div>
                     </div>
                   ))}
