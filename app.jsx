@@ -9204,7 +9204,7 @@ Return ONLY valid JSON (no markdown):
   );
 }
 
-function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onSaveKnowledge,allPosts}) {
+function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onSaveKnowledge,allPosts,clientMemory=[]}) {
   const [sub,setSub] = useState("profile");
   const [docName,setDocName] = useState("");
   const [docType,setDocType] = useState("notes");
@@ -9212,6 +9212,7 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
   const [uploading,setUploading] = useState(false);
   const [editing,setEditing] = useState(false);
   const [saving,setSaving] = useState(false);
+  const [generating,setGenerating] = useState(false);
   const [eSummary,setESummary] = useState("");
   const [eTone,setETone] = useState("");
   const [ePrefs,setEPrefs] = useState("");
@@ -9260,6 +9261,47 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
     setSaving(false); setEditing(false);
   };
 
+  const handleGenerateFromData = async () => {
+    setGenerating(true);
+    const memFacts = (clientMemory||[]).filter(m=>m.client_id===client.id).map(m=>`- ${m.key}: ${m.value}`).join("\n");
+    const pubPosts = (clientPosts||[]).filter(p=>p.stage==="published" && p.caption).slice(0,15).map(p=>`[${p.platform||""}] ${p.caption}`).join("\n\n");
+    const prompt = `You are a brand strategist. Analyze the following data for the client "${client.name}" and produce a structured brand knowledge profile.
+
+MEMORY / BRAND FACTS:
+${memFacts || "None saved yet"}
+
+PUBLISHED CAPTIONS (sample):
+${pubPosts || "None available"}
+
+Return ONLY valid JSON with these exact keys:
+{
+  "summary": "2-3 sentence brand overview",
+  "tone": "comma-separated tone descriptors (e.g. fun, energetic, playful)",
+  "content_preferences": "what content works well for them",
+  "keywords": ["keyword1","keyword2","keyword3","keyword4","keyword5"],
+  "priorities": ["priority1","priority2","priority3"]
+}`;
+    try {
+      const raw = await ai(prompt, 600);
+      const m = raw.match(/\{[\s\S]*\}/);
+      if(!m) throw new Error("No JSON returned");
+      const parsed = JSON.parse(m[0]);
+      await onSaveKnowledge({
+        ...(knowledge||{}), client_id:client.id, client_name:client.name,
+        summary: parsed.summary||"",
+        tone: parsed.tone||"",
+        content_preferences: parsed.content_preferences||"",
+        keywords: JSON.stringify(Array.isArray(parsed.keywords)?parsed.keywords:[]),
+        priorities: JSON.stringify(Array.isArray(parsed.priorities)?parsed.priorities:[]),
+        last_analyzed: new Date().toISOString(),
+        analyzed_by: currentUser?.email||"",
+        version: (knowledge?.version||0)+1,
+        sources_count: (clientMemory||[]).filter(m=>m.client_id===client.id).length,
+      });
+    } catch(e) { alert("Generation failed: "+(e?.message||e)); }
+    setGenerating(false);
+  };
+
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:18}}>
@@ -9277,8 +9319,13 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
             <div style={{padding:40,textAlign:"center",background:"var(--surface)",border:"2px dashed var(--border2)",borderRadius:"var(--r)"}}>
               <Ico d={Icons.brain} size={40} stroke="var(--text3)"/>
               <p style={{fontWeight:700,fontSize:15,marginTop:12}}>No knowledge profile yet</p>
-              <p style={{fontSize:13,color:"var(--text2)",marginTop:4}}>Upload documents to let Claude analyze this client</p>
-              <Btn onClick={()=>setSub("upload")} style={{margin:"16px auto 0",width:"fit-content"}}><Ico d={Icons.upload} size={14}/> Upload Documents</Btn>
+              <p style={{fontSize:13,color:"var(--text2)",marginTop:4,marginBottom:16}}>Generate from existing posts & memory, or upload documents</p>
+              {((clientMemory||[]).filter(m=>m.client_id===client.id).length>0 || (clientPosts||[]).filter(p=>p.stage==="published").length>0) && (
+                <Btn onClick={handleGenerateFromData} disabled={generating} style={{margin:"0 auto 10px",width:"fit-content"}}>
+                  {generating?<><Spinner size={13}/> Generating…</>:<><Ico d={Icons.brain} size={14}/> Generate from Posts & Memory</>}
+                </Btn>
+              )}
+              <Btn variant="secondary" onClick={()=>setSub("upload")} style={{margin:"0 auto 0",width:"fit-content"}}><Ico d={Icons.upload} size={14}/> Upload Documents</Btn>
             </div>
           ):(
             <>
@@ -9294,6 +9341,7 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
                   </div>
                 </div>
                 <div style={{display:"flex",gap:8}}>
+                  <Btn variant="secondary" size="sm" onClick={handleGenerateFromData} disabled={generating}>{generating?<><Spinner size={11}/> Regenerating…</>:<><Ico d={Icons.refresh} size={13}/> Regenerate</>}</Btn>
                   <Btn variant="secondary" size="sm" onClick={()=>setEditing(e=>!e)}><Ico d={Icons.edit} size={13}/>{editing?"Cancel":"Edit"}</Btn>
                 </div>
               </div>
@@ -14366,7 +14414,7 @@ function ClientBrainTab({client, knowledge, clientKnowledge, documents, currentU
         ))}
       </div>
       {sub==="profile"&&(
-        <IntelligenceTab client={client} knowledge={knowledge} documents={documents} currentUser={currentUser} onUploadDoc={onUploadDoc} onSaveKnowledge={onSaveKnowledge} allPosts={cPosts}/>
+        <IntelligenceTab client={client} knowledge={knowledge} documents={documents} currentUser={currentUser} onUploadDoc={onUploadDoc} onSaveKnowledge={onSaveKnowledge} allPosts={cPosts} clientMemory={clientMemory||[]}/>
       )}
       {sub==="memory"&&(
         <ClientMemoryTab client={client} clientMemory={clientMemory||[]} onUpsert={onUpsertMemory} onDelete={onDeleteMemory} currentUser={currentUser}/>
