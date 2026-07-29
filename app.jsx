@@ -21028,7 +21028,99 @@ function LeadCard({lead, onClick}) {
 }
 
 // Main Leads Page
-function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead, onUpdateLead, onAddActivity, onConvertLead, onDeleteLead}) {
+const LEAD_ROTATION_DEFAULTS = {enabled:false, timeout_hours:24, missed_threshold:3, rotation_order:[], rotation_pointer:0};
+
+// Admin-only config for round-robin lead assignment: which account
+// managers are in rotation (and in what order), how many hours a lead can
+// sit unactioned before it's reassigned, and how many misses in a row
+// bumps someone out of their normal turn in favor of whoever's actually
+// closing (see lead-rotation-sweep-cron.php for the reassignment logic —
+// this modal only edits the settings it reads).
+function LeadRotationSettingsModal({appSettings, onSave, team, onClose}) {
+  const [cfg, setCfg] = useState({...LEAD_ROTATION_DEFAULTS, ...(appSettings?.lead_rotation_settings||{})});
+  const [saving, setSaving] = useState(false);
+  const activeAMs = (team||[]).filter(t=>t.role==="account_manager"&&t.status==="active");
+  const orderedIds = cfg.rotation_order.filter(id=>activeAMs.some(a=>a.id===id));
+  const unorderedAMs = activeAMs.filter(a=>!orderedIds.includes(a.id));
+
+  const sf = (k,v) => setCfg(p=>({...p,[k]:v}));
+  const toggleInRotation = (id) => {
+    if(orderedIds.includes(id)) sf("rotation_order", orderedIds.filter(x=>x!==id));
+    else sf("rotation_order", [...orderedIds, id]);
+  };
+  const move = (id, dir) => {
+    const idx = orderedIds.indexOf(id);
+    const newIdx = idx+dir;
+    if(newIdx<0||newIdx>=orderedIds.length) return;
+    const next = [...orderedIds];
+    [next[idx], next[newIdx]] = [next[newIdx], next[idx]];
+    sf("rotation_order", next);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    await onSave({lead_rotation_settings: cfg});
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <Modal open onClose={onClose} title="Lead Rotation Settings" width={520}
+      footer={<>
+        <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+        <Btn onClick={handleSave} disabled={saving}>{saving?"Saving…":"Save"}</Btn>
+      </>}>
+      <div style={{display:"flex",flexDirection:"column",gap:16}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <p style={{fontWeight:700,fontSize:13}}>Enable Round-Robin Assignment</p>
+            <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>New leads auto-assign to whoever's next in rotation below</p>
+          </div>
+          <button onClick={()=>sf("enabled",!cfg.enabled)} style={{width:44,height:24,borderRadius:99,flexShrink:0,background:cfg.enabled?"var(--accent)":"var(--border2)",position:"relative",border:"none",cursor:"pointer"}}>
+            <div style={{position:"absolute",top:2,left:cfg.enabled?20:2,width:20,height:20,borderRadius:"50%",background:"#fff",transition:"left 0.2s"}}/>
+          </button>
+        </div>
+
+        <Field label="Timeout (hours)" hint="A lead reassigns if its assignee takes no action within this window">
+          <input type="number" min="1" value={cfg.timeout_hours} onChange={e=>sf("timeout_hours",Math.max(1,Number(e.target.value)||1))} style={inputSt}/>
+        </Field>
+        <Field label="Missed-in-a-row threshold" hint="After this many consecutive misses, that person is skipped in favor of whoever has the best close rate">
+          <input type="number" min="1" value={cfg.missed_threshold} onChange={e=>sf("missed_threshold",Math.max(1,Number(e.target.value)||1))} style={inputSt}/>
+        </Field>
+
+        <div>
+          <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase",marginBottom:8}}>Rotation Order</p>
+          {orderedIds.length===0&&<p style={{fontSize:12,color:"var(--text3)",marginBottom:8}}>No one in rotation yet — add account managers below.</p>}
+          <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
+            {orderedIds.map((id,i)=>{
+              const am = activeAMs.find(a=>a.id===id);
+              if(!am) return null;
+              return (
+                <div key={id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border2)"}}>
+                  <span style={{fontSize:11,fontWeight:800,color:"var(--text3)",width:18}}>{i+1}</span>
+                  <span style={{flex:1,fontSize:13,fontWeight:600}}>{am.name}</span>
+                  <button onClick={()=>move(id,-1)} disabled={i===0} style={{background:"none",border:"none",cursor:i===0?"default":"pointer",opacity:i===0?0.3:1,color:"var(--text2)"}}>▲</button>
+                  <button onClick={()=>move(id,1)} disabled={i===orderedIds.length-1} style={{background:"none",border:"none",cursor:i===orderedIds.length-1?"default":"pointer",opacity:i===orderedIds.length-1?0.3:1,color:"var(--text2)"}}>▼</button>
+                  <button onClick={()=>toggleInRotation(id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ef4444",fontSize:16,lineHeight:1}}>×</button>
+                </div>
+              );
+            })}
+          </div>
+          {unorderedAMs.length>0&&(
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {unorderedAMs.map(am=>(
+                <button key={am.id} onClick={()=>toggleInRotation(am.id)} style={{padding:"6px 12px",borderRadius:99,background:"var(--surface2)",border:"1px dashed var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>+ {am.name}</button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead, onUpdateLead, onAddActivity, onConvertLead, onDeleteLead, appSettings, onSaveSettings}) {
+  const [showRotationSettings, setShowRotationSettings] = useState(false);
   const [view, setView] = useState("kanban");
   const [selectedLead, setSelectedLead_] = useState(null);
   // Opening a lead pushes its own history entry so the physical browser
@@ -21079,9 +21171,14 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
               </button>
             ))}
           </div>
+          {currentUser?.role==="admin"&&(
+            <button onClick={()=>setShowRotationSettings(true)} title="Lead Rotation Settings" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}><Ico d={Icons.settings} size={15} stroke="var(--text2)"/></button>
+          )}
           <button onClick={()=>setShowForm(true)} aria-label="Add Lead" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}><Ico d={Icons.plus} size={15} stroke="#fff"/></button>
         </div>
       </div>
+
+      {showRotationSettings&&<LeadRotationSettingsModal appSettings={appSettings} onSave={onSaveSettings} team={team} onClose={()=>setShowRotationSettings(false)}/>}
 
       {/* Stats */}
       <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
@@ -41778,6 +41875,8 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             onAddActivity={addLeadActivity}
             onConvertLead={convertLeadToClient}
             onDeleteLead={deleteLead}
+            appSettings={appSettings}
+            onSaveSettings={saveAppSettings}
           />
         )}
         {page==="my_tasks"&&(

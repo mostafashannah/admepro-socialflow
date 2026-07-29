@@ -427,9 +427,10 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
         // silently drop a real contact who did share a phone number.
         if ($classification && $classification['category'] === 'other') return;
         $category = $classification['category'] ?? 'lead';
+        $rotationAM = $category === 'lead' ? assignLeadRotation($pdo) : null;
 
         $leadName = $customerName ?: 'Unknown (' . $channel . ')';
-        $stmt = $pdo->prepare("INSERT INTO leads (name, phone, source, status, platforms, notes, category, client_id, client_name) VALUES (:name, :phone, :source, 'new', :platforms, :notes, :category, :cid, :cname)");
+        $stmt = $pdo->prepare("INSERT INTO leads (name, phone, source, status, platforms, notes, category, client_id, client_name, assigned_to, assigned_at) VALUES (:name, :phone, :source, 'new', :platforms, :notes, :category, :cid, :cname, :assigned_to, :assigned_at)");
         $stmt->execute([
             ':name' => $leadName,
             ':phone' => $phone,
@@ -439,6 +440,8 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
             ':category' => $category,
             ':cid' => $clientId,
             ':cname' => $clientName,
+            ':assigned_to' => $rotationAM['email'] ?? null,
+            ':assigned_at' => $rotationAM ? date('Y-m-d H:i:s') : null,
         ]);
 
         if ($clientId) notifyLeadCategorySubscriber($pdo, $clientId, $category, $leadName, $phone, $channel, $brief, $clientName);
@@ -511,6 +514,46 @@ function classifyClientContact(string $clientName, string $combinedText) {
     $brief = null;
     if (preg_match('/BRIEF:\s*(.+)/is', $text, $m2)) $brief = trim($m2[1]);
     return ['category' => $category, 'brief' => $brief];
+}
+
+// Round-robin lead assignment (Settings → Leads → Lead Rotation Settings,
+// stored as app_settings.lead_rotation_settings). Called right before a new
+// lead is inserted so it lands pre-assigned instead of sitting unowned.
+// Skips anyone currently sitting on an already-overdue (rotation_missed)
+// lead, so a slow responder doesn't keep piling up new ones while behind —
+// falls back to the next-in-line if literally everyone is behind (still
+// need to assign it to SOMEONE). Returns null if rotation is off/unconfigured.
+function assignLeadRotation(PDO $pdo) {
+    $row = $pdo->query("SELECT id, lead_rotation_settings FROM app_settings LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+    if (!$row) return null;
+    $cfg = json_decode($row['lead_rotation_settings'] ?? '{}', true) ?: [];
+    if (empty($cfg['enabled']) || empty($cfg['rotation_order'])) return null;
+
+    $order = array_values($cfg['rotation_order']);
+    $n = count($order);
+    if ($n === 0) return null;
+    $pointer = ((int)($cfg['rotation_pointer'] ?? 0)) % $n;
+
+    $overdueStmt = $pdo->prepare("SELECT 1 FROM leads WHERE assigned_to = :email AND rotation_missed = 1 AND status NOT IN ('closed_won','closed_lost') LIMIT 1");
+    $amStmt = $pdo->prepare("SELECT id, name, email FROM team_members WHERE id = :id AND status = 'active' LIMIT 1");
+
+    $chosen = null;
+    for ($i = 0; $i < $n; $i++) {
+        $idx = ($pointer + $i) % $n;
+        $amStmt->execute([':id' => $order[$idx]]);
+        $am = $amStmt->fetch(PDO::FETCH_ASSOC);
+        if (!$am || !$am['email']) continue;
+        $overdueStmt->execute([':email' => $am['email']]);
+        $hasOverdue = (bool) $overdueStmt->fetchColumn();
+        if (!$hasOverdue) { $chosen = $am; $pointer = $idx; break; }
+        if (!$chosen) $chosen = $am; // fallback: everyone's behind, still have to assign it to someone
+    }
+    if (!$chosen) return null;
+
+    $pdo->prepare("UPDATE app_settings SET lead_rotation_settings = JSON_SET(lead_rotation_settings, '$.rotation_pointer', :p) WHERE id = :id")
+        ->execute([':p' => ($pointer + 1) % $n, ':id' => $row['id']]);
+
+    return $chosen;
 }
 
 // Captures a contact from a MANAGED CLIENT's own inbox — called for every
