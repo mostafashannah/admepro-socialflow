@@ -202,7 +202,22 @@ try {
     // is always something meant for Pro directly (e.g. a contact report to
     // save), never an answer to Mai's checklist, so it must go through the
     // normal Pro/tool-use path below instead of being swallowed here.
+    // Also skip Mai if Pro itself just replied to this phone very recently —
+    // e.g. Pro asked a follow-up question (attendee name check on a contact
+    // report) and the AM's next text is answering THAT, not Mai. Without this,
+    // a text reply mid-Pro-conversation gets hijacked into Mai's generic
+    // small talk and the in-progress Pro action (like saving a contact
+    // report) never completes.
+    $recentProReply = false;
     if ($senderId && $msgType === 'text') {
+        try {
+            $lastProStmt = $pdo->prepare("SELECT created_at FROM pro_messages WHERE phone = :p AND role = 'assistant' ORDER BY created_at DESC LIMIT 1");
+            $lastProStmt->execute([':p' => $from]);
+            $lastAt = $lastProStmt->fetchColumn();
+            if ($lastAt && strtotime($lastAt) >= time() - 600) $recentProReply = true;
+        } catch (Throwable $e) { /* best-effort — fall through to normal Mai check */ }
+    }
+    if ($senderId && $msgType === 'text' && !$recentProReply) {
         $activeSession = maiFindActiveReportSession($pdo, $senderId);
         if ($activeSession) {
             maiContinueReportSession($pdo, $activeSession, $text);
