@@ -1222,6 +1222,10 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
             $autoRow = $pdo->prepare("SELECT contact_report_auto_email FROM client_knowledge WHERE client_id = :cid LIMIT 1");
             $autoRow->execute([':cid' => $clientId]);
             if ((int) $autoRow->fetchColumn() === 1) {
+                // Auto-email is on for this client — the report goes live on
+                // their portal immediately, same moment it's emailed, not
+                // waiting for a human to press Send.
+                $pdo->prepare("UPDATE contact_reports SET client_visible_at = NOW() WHERE id = :id")->execute([':id' => $reportId]);
                 $attendees = json_decode($input['attendees'] ?? '[]', true) ?: [];
                 $recipients = $clientEmail ? [$clientEmail] : [];
                 foreach ($attendees as $a) {
