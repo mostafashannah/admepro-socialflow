@@ -41898,35 +41898,41 @@ Return ONLY valid JSON (no markdown, no explanation):
     // potentially weeks. Roles with no owned stage (e.g. account_manager,
     // whose responsibility spans the whole pipeline) still score off
     // reaching Scheduled/Published, same as before.
-    // A task bounced back FROM Client Approval is a real miss on the AM's
-    // side specifically (they sent the client something that needed
-    // changes) — logged immediately against whoever owned client_approval,
-    // separate from the content creator/designer's own eventual completion
-    // log once they redo the actual work. A bounce back from Review (to
-    // Content or Design) needs no separate entry here: the same person
-    // stays assigned and redoes it, so it's already reflected in their
-    // real completion log's revision_count once they finish — see below.
-    if(wentBackward && post.stage==="client_approval" && post.assigned_to) {
-      const amEmail = post.assigned_to;
-      const amRole = (data.team.find(m=>m.email===amEmail)?.role)||"";
-      const amReturnPayload = {
-        user_email: amEmail, user_name:(data.team.find(m=>m.email===amEmail)?.name)||"",
-        role: amRole||"account_manager",
-        post_id: post.id, post_title: post.title, project_id: updatedPost.project_id||"",
-        client_name: post.client_name||"",
-        // Synthetic, not a real STAGES key — deliberately distinguishes this
-        // "returned by the client" entry from a normal completion log for
-        // the same (post, person) pair, so the dedup check below doesn't
-        // treat this as "already logged" and block their real completion
-        // credit whenever they later actually finish their part.
-        stage_from: "client_approval_returned", stage_to: newStage,
-        on_time: true, quality_score: 0, revision_count: 1,
-        client_approved: false, rejected: true, completed_at: new Date().toISOString(),
-      };
-      ce("PerformanceLog",[amReturnPayload]).then(r=>{
-        const created = r.entities?.[0];
-        if(created && !created._saveError) setData(d=>({...d, perfLogs:[...(d.perfLogs||[]), created]}));
-      }).catch(()=>{});
+    // A "return" (any backward move — this includes rejection, see
+    // wentBackward above) is attributed to whoever now has to deal with it
+    // at the DESTINATION stage, not whoever it came from: landing back on
+    // Content counts against the content creator, landing back on Design
+    // counts against the designer, and landing back on a Review stage
+    // counts against whoever's doing that review (the AM) — e.g. Client
+    // Approval sending it all the way back to Review is the AM's problem to
+    // pick up again, not the content/design person's, until the AM
+    // forwards it on to them. Logged immediately, separate from whoever
+    // eventually gets the real completion credit once the work is redone.
+    if(wentBackward) {
+      const returnEmail = newStage==="content_creation" ? (assigneeEmail || post.content_assigned_to || post.assigned_to)
+        : ["design","internal_review","design_review"].includes(newStage) ? (assigneeEmail || post.assigned_to)
+        : null;
+      if(returnEmail) {
+        const returnRole = (data.team.find(m=>m.email===returnEmail)?.role)||"";
+        const returnPayload = {
+          user_email: returnEmail, user_name:(data.team.find(m=>m.email===returnEmail)?.name)||"",
+          role: returnRole,
+          post_id: post.id, post_title: post.title, project_id: updatedPost.project_id||"",
+          client_name: post.client_name||"",
+          // Synthetic, not a real STAGES key — deliberately distinguishes a
+          // "returned to them" entry from a normal completion log for the
+          // same (post, person) pair, so the dedup check below doesn't
+          // treat this as "already logged" and block their real completion
+          // credit once they actually finish their part.
+          stage_from: "returned_"+newStage, stage_to: newStage,
+          on_time: true, quality_score: 0, revision_count: 1,
+          client_approved: false, rejected: true, completed_at: new Date().toISOString(),
+        };
+        ce("PerformanceLog",[returnPayload]).then(r=>{
+          const created = r.entities?.[0];
+          if(created && !created._saveError) setData(d=>({...d, perfLogs:[...(d.perfLogs||[]), created]}));
+        }).catch(()=>{});
+      }
     }
 
     const priorAssigneeEmail = post.assigned_to;
@@ -41937,9 +41943,9 @@ Return ONLY valid JSON (no markdown, no explanation):
     // One real completion log per (post, person) — not per post — so a
     // content creator, then a designer, then an account manager can each
     // get their own credit for the same post as it moves through their
-    // respective stages. The synthetic "client_approval_returned" entries
-    // above don't count as a completion here, on purpose.
-    const alreadyLoggedForThem = (data.perfLogs||[]).some(l=>l.post_id===post.id && l.user_email===priorAssigneeEmail && l.stage_from!=="client_approval_returned");
+    // respective stages. The synthetic "returned_*" entries above don't
+    // count as a completion here, on purpose.
+    const alreadyLoggedForThem = (data.perfLogs||[]).some(l=>l.post_id===post.id && l.user_email===priorAssigneeEmail && !(l.stage_from||"").startsWith("returned_"));
     if((leftOwnedStageForward || (reachedFinalStage && !ownedStage)) && !alreadyLoggedForThem) {
       const deadline = post.due_date || post.scheduled_date;
       const onTime = !deadline || new Date() <= new Date(`${deadline}T23:59:59`);
