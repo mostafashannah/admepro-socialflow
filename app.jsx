@@ -20047,6 +20047,48 @@ function LoginScreen({onLogin,clients}) {
   const [err,setErr] = useState("");
   const [loading,setLoading] = useState(false);
   const [showRequestAccess, setShowRequestAccess] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSending, setForgotSending] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
+  const [forgotErr, setForgotErr] = useState("");
+
+  const handleForgot = async () => {
+    if(!forgotEmail.trim()) { setForgotErr("Enter your email address."); return; }
+    setForgotSending(true); setForgotErr("");
+    try {
+      // Look up in team members first, then client users
+      const [tmRes, cuRes] = await Promise.all([
+        qe("TeamMember",{email:forgotEmail.trim()}).catch(()=>({entities:[]})),
+        qe("ClientUser",{email:forgotEmail.trim()}).catch(()=>({entities:[]})),
+      ]);
+      const tm = tmRes.entities?.[0];
+      const cu = cuRes.entities?.[0];
+      if(!tm && !cu) { setForgotErr("No account found with that email."); setForgotSending(false); return; }
+
+      // Generate a random new temp password
+      const tempPass = Math.random().toString(36).slice(2,10).toUpperCase();
+      const name = (tm||cu)?.name || forgotEmail.trim().split("@")[0];
+
+      // Save it to the right table
+      if(tm) await ue("TeamMember", tm.id, {password: tempPass}).catch(()=>{});
+      if(cu) await ue("ClientUser", cu.id, {password: tempPass}).catch(()=>{});
+
+      // Send email
+      const html = `<div style="font-family:'Montserrat',sans-serif;max-width:500px;margin:0 auto;padding:32px;background:#fff;border-radius:12px">
+        <img src="/favicon.svg" width="44" height="44" style="border-radius:10px;display:block;margin:0 auto 20px"/>
+        <h2 style="text-align:center;font-size:20px;font-weight:800;color:#111827;margin-bottom:8px">Password Reset</h2>
+        <p style="color:#4b5563;font-size:14px;line-height:1.6;text-align:center">Hi ${name}, here is your temporary password:</p>
+        <div style="margin:24px auto;text-align:center;background:#f9fafb;border:2px dashed #d1d5db;border-radius:10px;padding:18px 24px">
+          <span style="font-size:26px;font-weight:800;letter-spacing:3px;color:#d90b2c;font-family:monospace">${tempPass}</span>
+        </div>
+        <p style="color:#6b7280;font-size:13px;text-align:center;line-height:1.6">Sign in with this temporary password, then update it in your account settings.</p>
+      </div>`;
+      await sendEmail(forgotEmail.trim(), "Your temporary SocialFlow password", html, "SocialFlow");
+      setForgotSent(true);
+    } catch(e) { setForgotErr("Failed to send — try again."); }
+    setForgotSending(false);
+  };
 
   const handleLogin = async () => {
     setErr(""); setLoading(true);
@@ -20097,6 +20139,39 @@ function LoginScreen({onLogin,clients}) {
 
   if(showRequestAccess) return <RequestAccessPage onBack={()=>setShowRequestAccess(false)}/>;
 
+  if(showForgot) return (
+    <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{width:"100%",maxWidth:420}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <img src="/favicon.svg" width={52} height={52} style={{borderRadius:14,display:"block",margin:"0 auto 16px"}} alt="logo"/>
+          <h2 style={{fontSize:22,fontWeight:800}}>Forgot Password</h2>
+          <p style={{fontSize:13,color:"var(--text2)",marginTop:6}}>We'll send a temporary password to your email</p>
+        </div>
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:28,display:"flex",flexDirection:"column",gap:14}}>
+          {forgotSent ? (
+            <>
+              <div style={{textAlign:"center",padding:"20px 0"}}>
+                <div style={{fontSize:40,marginBottom:12}}>✅</div>
+                <p style={{fontWeight:700,fontSize:15,marginBottom:8}}>Check your inbox</p>
+                <p style={{fontSize:13,color:"var(--text2)"}}>A temporary password has been sent to <strong>{forgotEmail}</strong>. Use it to sign in, then change your password in settings.</p>
+              </div>
+              <Btn onClick={()=>{setShowForgot(false);setForgotSent(false);}}>Back to Sign In</Btn>
+            </>
+          ) : (
+            <>
+              <Field label="Your email address">
+                <input type="email" value={forgotEmail} onChange={e=>setForgotEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleForgot()} placeholder="your@email.com" style={inputSt} autoFocus/>
+              </Field>
+              {forgotErr&&<div style={{padding:"10px 12px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:"var(--rxs)",fontSize:13,color:"#ef4444"}}>{forgotErr}</div>}
+              <Btn onClick={handleForgot} disabled={forgotSending}>{forgotSending?"Sending…":"Send Temporary Password"}</Btn>
+              <button onClick={()=>{setShowForgot(false);setForgotErr("");}} style={{background:"none",border:"none",color:"var(--text3)",fontSize:13,cursor:"pointer",textAlign:"center",padding:"4px 0"}}>← Back to Sign In</button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
       <div style={{width:"100%",maxWidth:420}}>
@@ -20117,9 +20192,13 @@ function LoginScreen({onLogin,clients}) {
           <Field label="Email">
             <input type="email" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={handleKey} placeholder={mode==="team"?"your@email.com":"client@company.com"} style={inputSt} autoFocus/>
           </Field>
-          <Field label="Password">
+          <div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+              <label style={{fontSize:12,fontWeight:600,color:"var(--text2)"}}>Password</label>
+              <button onClick={()=>{setForgotEmail(email);setShowForgot(true);}} style={{background:"none",border:"none",color:"var(--accent)",fontSize:12,fontWeight:600,cursor:"pointer",padding:0}}>Forgot password?</button>
+            </div>
             <input type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={handleKey} placeholder="Your password" style={inputSt}/>
-          </Field>
+          </div>
           {err&&<div style={{padding:"10px 12px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:"var(--rxs)",fontSize:13,color:"#ef4444",fontWeight:500}}>{err}</div>}
           <Btn onClick={handleLogin} style={{marginTop:4,opacity:loading?0.7:1}}>
             {loading?"Signing in…":"Sign In"}
