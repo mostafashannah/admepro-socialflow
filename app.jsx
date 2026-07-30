@@ -17294,7 +17294,7 @@ function TemplatesPage({templates}) {
 // ════════════════════════════════════════════════════════════════
 // One report row — its own component so the comment box has its own local
 // state (text/sending) without re-rendering every other report.
-function ClientContactReportCard({r, onAddComment, client, team=[], highlighted}) {
+function ClientContactReportCard({r, onAddComment, client, team=[], highlighted, brandingAssets}) {
   const [commentText, setCommentText] = useState("");
   const [sending, setSending] = useState(false);
   const comments = parseMaybeJson(r.client_comments, []);
@@ -17318,7 +17318,12 @@ function ClientContactReportCard({r, onAddComment, client, team=[], highlighted}
           <Badge label={r.meeting_type==="call"?"Call":"Meeting"} color="#6366f1" xs/>
           {r.location_type&&<Badge label={r.location_type==="online"?"Online":"In-Person"} color="#6b7280" xs/>}
         </div>
-        <span style={{fontSize:12,color:"var(--text3)"}}>{fmtDateTime(r.client_visible_at||r.created_at)}</span>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <span style={{fontSize:12,color:"var(--text3)"}}>{fmtDateTime(r.client_visible_at||r.created_at)}</span>
+          <button onClick={()=>downloadContactReportPDF(r, client?.name, brandingAssets, client, team)} title="Download PDF" style={{display:"flex",alignItems:"center",gap:5,padding:"5px 10px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:11,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>
+            <Ico d={Icons.download} size={12}/> PDF
+          </button>
+        </div>
       </div>
       {r.attendees&&(()=>{ const list = sortAttendeesForDisplay(resolveAttendeesLive(parseMaybeJson(r.attendees, []), client, team)); return list.length>0 && (
         <p style={{fontSize:12,color:"var(--text2)"}}>With: {list.map(a=>a.title?`${a.name} (${a.title})`:a.name).filter(Boolean).join(", ")}</p>
@@ -17367,7 +17372,7 @@ function ClientContactReportCard({r, onAddComment, client, team=[], highlighted}
 // able to leave a comment, only ever shows reports staff explicitly made
 // visible (client_visible_at set, either via the per-client auto-email
 // switch or a manual Send). No voice recording here — that stays internal.
-function ClientContactReportsTab({reports=[], onAddComment, client, team=[]}) {
+function ClientContactReportsTab({reports=[], onAddComment, client, team=[], brandingAssets}) {
   const highlightId = (()=>{ try { return new URLSearchParams(window.location.search).get("report"); } catch(e) { return null; } })();
   if(!reports.length) return (
     <div style={{padding:"60px 20px",textAlign:"center",color:"var(--text3)"}}>
@@ -17378,12 +17383,12 @@ function ClientContactReportsTab({reports=[], onAddComment, client, team=[]}) {
   );
   return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      {reports.map(r=><ClientContactReportCard key={r.id} r={r} onAddComment={onAddComment} client={client} team={team} highlighted={highlightId===r.id}/>)}
+      {reports.map(r=><ClientContactReportCard key={r.id} r={r} onAddComment={onAddComment} client={client} team={team} highlighted={highlightId===r.id} brandingAssets={brandingAssets}/>)}
     </div>
   );
 }
 
-function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tasks=[],onAddTask,onUpdateTask,onAddPost,contract,wallpaper,onWallpaperChange,monthlyBriefs=[],onSubmitBrief,onSelfCreateBrief,messages=[],integrations=[],onSendReply,onApproveDraft,onDismissDraft,assets=[],onAddAsset,onUpdateAsset,onDeleteAsset,leads=[],comments=[],onAddComment,team=[],contactReports=[],onAddContactReportComment}) {
+function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tasks=[],onAddTask,onUpdateTask,onAddPost,contract,wallpaper,onWallpaperChange,monthlyBriefs=[],onSubmitBrief,onSelfCreateBrief,messages=[],integrations=[],onSendReply,onApproveDraft,onDismissDraft,assets=[],onAddAsset,onUpdateAsset,onDeleteAsset,leads=[],comments=[],onAddComment,team=[],contactReports=[],onAddContactReportComment,brandingAssets}) {
   const {isMobile} = useResponsive();
   const [view,setView] = useState(()=>{
     try { return new URLSearchParams(window.location.search).get("view") || "dashboard"; } catch(e) { return "dashboard"; }
@@ -17864,7 +17869,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
         {view==="leads"&&<ClientLeadsTab clientLeads={clientLeads} clientName={client.name}/>}
 
         {/* CONTACT REPORTS VIEW */}
-        {view==="contact_reports"&&<ClientContactReportsTab reports={clientContactReports} onAddComment={(r,text)=>onAddContactReportComment(r,text,client)} client={client} team={team}/>}
+        {view==="contact_reports"&&<ClientContactReportsTab reports={clientContactReports} onAddComment={(r,text)=>onAddContactReportComment(r,text,client)} client={client} team={team} brandingAssets={brandingAssets}/>}
 
         {/* TASKS VIEW */}
         {/* TASKS VIEW — merges the old Requests/Content/Calendar tabs into one
@@ -42296,7 +42301,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         </div>
       )}
       <div style={impersonatorUser?{marginTop:48}:{}}>
-        <ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} onAddPost={addPost} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]} comments={data.comments||[]} onAddComment={handleAddComment} team={data.team||[]} contactReports={data.contactReports||[]} onAddContactReportComment={addContactReportComment}/>
+        <ClientPortal wallpaper={wallpaper} onWallpaperChange={setWallpaper} client={clientRecord} posts={data.posts} projects={data.projects} subscriptions={(data.subscriptions||[]).filter(s=>s.client_id===clientRecord.id||s.client_email===currentUser.email)} onAction={handleClientAction} onLogout={()=>{try{localStorage.removeItem("sf_user");}catch(e){}setCurrentUser(null);}} tasks={(data.tasks||[]).filter(t=>t.client_id===clientRecord?.id||t.client_name===clientRecord?.name)} onAddTask={addClientTask} onUpdateTask={updateClientTask} onAddPost={addPost} contract={(data.clientContracts||[]).find(c=>c.client_id===clientRecord?.id)} monthlyBriefs={(data.monthlyBriefs||[]).filter(b=>b.client_id===clientRecord?.id)} onSubmitBrief={async(briefId,updates)=>{ await ue("MonthlyBrief",briefId,updates).catch(()=>{}); setData(d=>({...d,monthlyBriefs:d.monthlyBriefs.map(b=>b.id===briefId?{...b,...updates}:b)})); try{await sendEmail("mostafashannah@gmail.com",` Brief Submitted: ${clientRecord?.name}`,`<p><strong>${clientRecord?.name}</strong> has submitted their monthly content brief.</p><br/>${BRIEF_QUESTIONS.map(q=>`<p><strong>${q.en}</strong><br/>${updates[q.key]||"—"}</p>`).join("")}`);}catch(e){} }} onSelfCreateBrief={createMonthlyBrief} messages={data.customerMessages||[]} integrations={(data.integrations||[]).filter(i=>i.client_id===clientRecord?.id)} onSendReply={sendInboxReply} onApproveDraft={approveDraftReply} onDismissDraft={dismissDraftReply} assets={data.assets||[]} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} leads={data.leads||[]} comments={data.comments||[]} onAddComment={handleAddComment} team={data.team||[]} contactReports={data.contactReports||[]} onAddContactReportComment={addContactReportComment} brandingAssets={brandingAssets}/>
       </div>
     </>);
   }
