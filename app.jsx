@@ -29091,7 +29091,20 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
                 <Btn variant="secondary" onClick={()=>setEmailingId(null)}>Cancel</Btn>
               </div>
             )}
-            {emailSentId===r.id&&<p style={{fontSize:12,color:"#10b981",fontWeight:600,marginTop:8}}>✓ Sent</p>}
+            <div style={{marginTop:12,paddingTop:10,borderTop:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+              <p style={{fontSize:11,color:"var(--text3)"}}>
+                Logged {r.created_at?fmtDateTime(r.created_at):""} by {r.created_by_name||"Unknown"}
+                {r.updated_at && r.updated_at!==r.created_at ? ` · Edited ${fmtDateTime(r.updated_at)}` : ""}
+              </p>
+              {r.client_visible_at ? (
+                <span style={{display:"flex",alignItems:"center",gap:5,fontSize:11,fontWeight:700,color:"#10b981"}}>
+                  <Ico d={Icons.check||"M20 6L9 17l-5-5"} size={12}/> Sent to client · {fmtDateTime(r.client_visible_at)}
+                </span>
+              ) : (
+                <span style={{fontSize:11,fontWeight:600,color:"var(--text3)"}}>Not yet sent to client</span>
+              )}
+            </div>
+            {emailSentId===r.id&&<p style={{fontSize:12,color:"#10b981",fontWeight:600,marginTop:8}}>✓ Just sent</p>}
           </div>
         );
       })}
