@@ -28781,7 +28781,7 @@ function generateContactReportHTML(report, clientName, branding) {
   const when = [metDate?`Met ${metDate}`:"", submittedAt?`Submitted ${submittedAt}`:""].filter(Boolean).join(" · ");
   const esc = s => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   const accent = branding?.primary_color || "#d90b2c";
-  const attendeeGroups = groupAttendeesForDisplay(attendees, clientName, branding?.app_name);
+  const attendeeGroups = groupAttendeesForDisplay(attendees, clientName, "Admepro");
   const attendeesBlock = attendeeGroups.map(g=>`
       <p style="margin:0 0 2px;font-size:12px;font-weight:700;color:#111827">${esc(g.label)}</p>
       <p style="margin:0 0 10px;font-size:14px;line-height:1.6;color:#374151">${g.items.map(a=>esc(a.name)+(a.title?` — ${esc(a.title)}`:"")).join(", ")}</p>`).join("");
@@ -28906,11 +28906,17 @@ async function downloadContactReportPDF(report, clientName, branding) {
       doc.addImage(logo.dataUrl, "PNG", marginX, y-16, logoW, logoH);
       y += 26;
     } else {
-      // Logo fetch can fail (CORS/hotlink protection) even though the same
-      // URL renders fine as a plain <img> in the emailed version — fall
-      // back to a text wordmark so the header never ends up blank.
-      doc.setFont("Helvetica","bold"); doc.setFontSize(14); doc.setTextColor(17,24,39);
-      doc.text(appName, marginX, y); y += 26;
+      // The hosted logo image can fail to fetch (hotlink protection blocks
+      // fetch()/XHR even though a plain <img> tag in the emailed version
+      // loads fine) — redraw the "p." mark itself as vector text/shape so
+      // the PDF always shows the actual Admepro logomark, never a text
+      // fallback naming whatever the client's app_name happens to be.
+      doc.setFont("Helvetica","bold"); doc.setFontSize(22); doc.setTextColor(17,24,39);
+      doc.text("p", marginX, y);
+      const pW = doc.getTextWidth("p");
+      doc.setFillColor(ar,ag,ab);
+      doc.circle(marginX+pW+3, y-1, 2.4, "F");
+      y += 26;
     }
     doc.setFont("Helvetica","bold"); doc.setFontSize(9); doc.setTextColor(ar,ag,ab);
     doc.text(`${typeLabel.toUpperCase()} REPORT`, marginX, y); y += 22;
@@ -28922,7 +28928,7 @@ async function downloadContactReportPDF(report, clientName, branding) {
 
     if (attendees.length) {
       heading("ATTENDEES");
-      groupAttendeesForDisplay(attendees, clientName, appName).forEach(g=>{
+      groupAttendeesForDisplay(attendees, clientName, "Admepro").forEach(g=>{
         doc.setFont("Helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(17,24,39);
         ensureRoom(14); doc.text(g.label, marginX, y); y += 14;
         body(g.items.map(a=>a.name+(a.title?` — ${a.title}`:"")).join(", "));
