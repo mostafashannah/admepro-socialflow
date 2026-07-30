@@ -109,7 +109,7 @@ function calc_am_score(PDO $pdo, string $managerId, string $managerEmail): array
         $avgQuality = round($qualitySum / $total);
         $avgRevisions = round($revSum / $total, 1);
         $revScore = max(0, 100 - $avgRevisions * 18);
-        $taskScore = min(100, round($completionRate * 0.30 + $onTimeRate * 0.25 + $avgQuality * 0.35 + $revScore * 0.10));
+        $taskScore = min(100, round($completionRate * 0.25 + $onTimeRate * 0.20 + $avgQuality * 0.30 + $revScore * 0.25));
     }
 
     $maiStmt = $pdo->prepare("SELECT score, max_score, status FROM mai_report_sessions WHERE account_manager_id = :id AND score IS NOT NULL AND max_score IS NOT NULL AND max_score > 0");
