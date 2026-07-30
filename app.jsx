@@ -7901,10 +7901,15 @@ function computePerformance(team, posts, timelogs, perfLogs) {
     const inProgress= assigned.filter(p=>!["published","scheduled","rejected"].includes(p.stage));
     const myLogs = perfLogs.filter(l=>l.user_email===member.email);
     const myTime = timelogs.filter(t=>t.logged_by===member.email);
-    const totalHrs = myTime.reduce((a,t)=>a+(t.duration_minutes||0)/60,0) +
-                      myLogs.reduce((a,l)=>a+(l.duration_hours||0),0);
-    const avgQuality= myLogs.length ? myLogs.reduce((a,l)=>a+(l.quality_score||0),0)/myLogs.length : 0;
-    const revisions = myLogs.reduce((a,l)=>a+(l.revision_count||0),0);
+    // Numeric DB columns can arrive as strings depending on the backend —
+    // Number(...) here (rather than trusting the `+` operator to coerce)
+    // stops a stray string value from silently turning a running sum into
+    // concatenated garbage (e.g. "088.0092.00") instead of a real total.
+    const num = v => Number(v)||0;
+    const totalHrs = myTime.reduce((a,t)=>a+num(t.duration_minutes)/60,0) +
+                      myLogs.reduce((a,l)=>a+num(l.duration_hours),0);
+    const avgQuality= myLogs.length ? myLogs.reduce((a,l)=>a+num(l.quality_score),0)/myLogs.length : 0;
+    const revisions = myLogs.reduce((a,l)=>a+num(l.revision_count),0);
     const onTime = myLogs.filter(l=>l.on_time).length;
     const compRate = assigned.length ? Math.round(completed.length/assigned.length*100) : 0;
     const approvals = myLogs.filter(l=>l.client_approved).length;
