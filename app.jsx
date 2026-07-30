@@ -28795,7 +28795,7 @@ function generateContactReportHTML(report, clientName, branding, client, team) {
       <p style="margin:0 0 2px;font-size:12px;font-weight:700;color:#111827">${esc(g.label)}</p>
       <p style="margin:0 0 10px;font-size:14px;line-height:1.6;color:#374151">${g.items.map(a=>esc(a.name)+(a.title?` — ${esc(a.title)}`:"")).join(", ")}</p>`).join("");
   const section = (label, value) => value ? `
-      <p style="margin:16px 0 4px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em">${label}</p>
+      <p style="margin:28px 0 4px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em">${label}</p>
       <p style="margin:0;font-size:14px;line-height:1.7;color:#374151;white-space:pre-wrap">${esc(value)}</p>` : "";
   // Key Points/Action Items read as one line per item — render each as its
   // own bulleted row instead of one run-on paragraph.
@@ -28803,9 +28803,9 @@ function generateContactReportHTML(report, clientName, branding, client, team) {
     if (!value) return "";
     const lines = value.split("\n").map(l=>l.trim()).filter(Boolean);
     return `
-      <p style="margin:16px 0 4px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em">${label}</p>
+      <p style="margin:28px 0 4px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em">${label}</p>
       <table cellpadding="0" cellspacing="0" style="width:100%">
-        ${lines.map(l=>`<tr><td style="width:14px;vertical-align:top;padding-bottom:8px;font-size:14px;line-height:1.7;color:#9ca3af">&bull;</td><td style="padding-bottom:8px;font-size:14px;line-height:1.7;color:#374151">${esc(l.replace(/^[-•]\s*/,""))}</td></tr>`).join("")}
+        ${lines.map(l=>`<tr><td style="width:14px;vertical-align:top;font-size:14px;line-height:1.7;color:#9ca3af">&bull;</td><td style="font-size:14px;line-height:1.7;color:#374151">${esc(l.replace(/^[-•]\s*/,""))}</td></tr>`).join("")}
       </table>`;
   };
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/></head>
@@ -28820,7 +28820,7 @@ function generateContactReportHTML(report, clientName, branding, client, team) {
     <p style="margin:0 0 8px;font-size:11px;font-weight:700;color:${accent};text-transform:uppercase;letter-spacing:0.08em">${typeLabel} Report</p>
     <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">${esc(clientName)}</h2>
     <p style="margin:0 0 16px;font-size:13px;color:#6b7280">${when}${locLabel?` &middot; ${esc(locLabel)}`:""}${report.created_by_name?` &middot; Logged by ${esc(report.created_by_name)}`:""}</p>
-    ${attendeeGroups.length?`<p style="margin:16px 0 8px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em">Attendees</p>${attendeesBlock}`:""}
+    ${attendeeGroups.length?`<p style="margin:20px 0 8px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em">Attendees</p>${attendeesBlock}`:""}
     ${section("Summary", report.summary)}
     ${bulletSection("Key Points", report.key_points)}
     ${bulletSection("Action Items", report.action_items)}
@@ -28849,7 +28849,15 @@ function hexToRgb(hex) {
 // header instead of breaking PDF generation entirely.
 async function loadImageForPdf(url) {
   try {
-    const res = await fetch(url, {mode:"cors"});
+    // The admepro.com host doesn't send CORS headers, so a direct
+    // cross-origin fetch()/canvas-read is blocked even though a plain <img>
+    // tag displays it fine (that doesn't need to read pixel data). Route it
+    // through the same proxy already used for other third-party asset
+    // fetches — it downloads server-side (no CORS involved) and streams the
+    // bytes back same-origin.
+    const isSameOrigin = url.startsWith(window.location.origin);
+    const target = isSameOrigin ? url : `${window.location.origin}/fetch-url-proxy.php?url=${encodeURIComponent(url)}`;
+    const res = await fetchWithTimeout(target, isSameOrigin?{}:{headers:{"apikey":SB_KEY}}, 20000);
     if (!res.ok) throw new Error("fetch failed");
     const blob = await res.blob();
     const dataUrl = await new Promise((resolve,reject)=>{
@@ -28924,7 +28932,7 @@ async function downloadContactReportPDF(report, clientName, branding, client, te
         doc.setTextColor(55,65,81);
         const wrapped = doc.splitTextToSize(line, maxW-14);
         wrapped.forEach((w,i)=>{ if(i>0){ ensureRoom(lh); } doc.text(w, marginX+14, y); if(i<wrapped.length-1) y+=lh; });
-        y += lh + 5;
+        y += lh;
       });
     };
 
@@ -28954,7 +28962,7 @@ async function downloadContactReportPDF(report, clientName, branding, client, te
     doc.text(clientName, marginX, y); y += 18;
     doc.setFont("Helvetica","normal"); doc.setFontSize(10); doc.setTextColor(107,114,128);
     body([when, locLabel, report.created_by_name?`Logged by ${report.created_by_name}`:""].filter(Boolean).join(" · "), 10, 14);
-    y += 8;
+    y += 14;
 
     if (attendees.length) {
       heading("ATTENDEES");
@@ -28964,10 +28972,10 @@ async function downloadContactReportPDF(report, clientName, branding, client, te
         body(g.items.map(a=>a.name+(a.title?` — ${a.title}`:"")).join(", "));
         y += 4;
       });
-      y += 2;
+      y += 16;
     }
-    if (report.summary) { heading("SUMMARY"); body(report.summary); y += 6; }
-    if (report.key_points) { heading("KEY POINTS"); bulletBody(report.key_points); y += 6; }
+    if (report.summary) { heading("SUMMARY"); body(report.summary); y += 20; }
+    if (report.key_points) { heading("KEY POINTS"); bulletBody(report.key_points); y += 20; }
     if (report.action_items) { heading("ACTION ITEMS"); bulletBody(report.action_items); y += 6; }
 
     // Company footer pinned to the bottom of every page, not just wherever
