@@ -632,7 +632,10 @@ function calcUserPerf(userEmail, perfLogs, maiSessions) {
   const completionRate = Math.round(((total-rejected)/total)*100);
   const onTimeRate = Math.round((onTime/total)*100);
   const revScore = Math.max(0, 100 - avgRevisions*18);
-  const taskScore = Math.min(100, Math.round(completionRate*0.30 + onTimeRate*0.25 + avgQuality*0.35 + revScore*0.10));
+  // Revision score weighted on par with quality (25%) rather than a token
+  // 10% — a task that keeps bouncing back for edits is a real signal
+  // (looping, not getting it right the first time), not a minor factor.
+  const taskScore = Math.min(100, Math.round(completionRate*0.25 + onTimeRate*0.20 + avgQuality*0.30 + revScore*0.25));
   // Fold in Mai check-in accountability where it exists (mainly account
   // managers) — a strong task-completion rate shouldn't be able to fully
   // paper over skipped check-ins.
@@ -15915,17 +15918,18 @@ function MemberScoringTab({member, perfLogs, maiReportSessions, posts=[]}) {
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
         <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>How this score is built</p>
         <p style={{fontSize:12,color:"var(--text2)",lineHeight:1.6,marginBottom:14}}>
-          Task performance is a weighted blend of four inputs from every completed task: how many were completed vs. rejected,
-          whether they were delivered on time, the quality score given at completion, and how many revision rounds it took.
+          Task performance is a weighted blend of four inputs from every completed task: how many were completed vs. rejected (25%),
+          whether they were delivered on time (20%), the quality score given at completion (30%), and how many revision rounds it took (25%)
+          — revision rounds carry real weight since a task that keeps bouncing back for edits is a real accountability signal, not a minor one.
           {hasMaiData?" For roles with WhatsApp check-ins (Mai), that reliability score is folded in afterward at 30% of the final total — a missed check-in is recorded as 0 and counted double in that sub-average, so skipping one has real weight, not just a lower average.":""}
           {" "}Overdue tasks (past due date, still sitting in their stage) are then subtracted directly — 8 points each, up to 40 — on top of that blended total.
         </p>
         {hasTaskData ? (
           <>
-            {row("Completion Rate", perf.completionRate, "30%", `${perf.total-taskRejectedCount}/${perf.total} not rejected`)}
-            {row("On-Time Rate", perf.onTimeRate, "25%", `${onTimeCount} on time, ${lateCount} late`)}
-            {row("Quality Score", perf.avgQuality, "35%", `avg across ${perf.total} task${perf.total===1?"":"s"}`)}
-            {row("Revision Score", Math.max(0,100-perf.avgRevisions*18), "10%", `avg ${perf.avgRevisions} revision${perf.avgRevisions===1?"":"s"}/task`)}
+            {row("Completion Rate", perf.completionRate, "25%", `${perf.total-taskRejectedCount}/${perf.total} not rejected`)}
+            {row("On-Time Rate", perf.onTimeRate, "20%", `${onTimeCount} on time, ${lateCount} late`)}
+            {row("Quality Score", perf.avgQuality, "30%", `avg across ${perf.total} task${perf.total===1?"":"s"}`)}
+            {row("Revision Score", Math.max(0,100-perf.avgRevisions*18), "25%", `avg ${perf.avgRevisions} revision${perf.avgRevisions===1?"":"s"}/task`)}
           </>
         ) : (
           <p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:"20px 0"}}>No completed (Scheduled/Published) tasks yet for {member.name?.split(" ")?.[0]||"this member"} — {inProgressCount} still in progress.</p>
