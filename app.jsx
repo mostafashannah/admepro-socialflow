@@ -623,6 +623,7 @@ const SB_TABLE = {
   LeaveRequest:"leave_requests",
   AttendanceRecord:"attendance_records",
   ContactReport:"contact_reports",
+  ContactReportActivity:"contact_report_activity",
   LeadNotifySetting:"lead_notify_settings",
   Expense:"expenses",
   FinanceClientNote:"finance_client_notes",
@@ -10419,7 +10420,7 @@ function ClientLoginsTab({client,onUpdateClient,canAdd=false,canEdit=false}) {
   );
 }
 
-function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,onAddCalendar,onAddTask,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],onSaveContactReport,onDeleteContactReport,leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient,integrationLogs=[],onAddIntegration,onUpdateIntegration,onDeleteIntegration,onRetryIntegration,brandingAssets,deepLinkContactReportId}) {
+function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,onAddCalendar,onAddTask,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],onSaveContactReport,onDeleteContactReport,leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient,integrationLogs=[],onAddIntegration,onUpdateIntegration,onDeleteIntegration,onRetryIntegration,brandingAssets,deepLinkContactReportId,contactReportActivity=[]}) {
   const {isMobile} = useResponsive();
   // Plain state, not persisted — opening any client should always start on
   // Overview, not silently reopen to whatever tab was last viewed for them —
@@ -10685,7 +10686,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
             <ClientBrandGuidelinesSubTab client={client} knowledge={knowledge} onSaveKnowledge={onSaveKnowledge}/>
           )}
           {brainSubTab==="contact_reports"&&(
-            <ContactReportsSubTab client={client} contactReports={contactReports} onSaveContactReport={onSaveContactReport} onDeleteContactReport={onDeleteContactReport} brandingAssets={brandingAssets} team={team} currentUser={currentUser} knowledge={knowledge} onSaveKnowledge={onSaveKnowledge} highlightReportId={deepLinkContactReportId}/>
+            <ContactReportsSubTab client={client} contactReports={contactReports} onSaveContactReport={onSaveContactReport} onDeleteContactReport={onDeleteContactReport} brandingAssets={brandingAssets} team={team} currentUser={currentUser} knowledge={knowledge} onSaveKnowledge={onSaveKnowledge} highlightReportId={deepLinkContactReportId} contactReportActivity={contactReportActivity}/>
           )}
           {brainSubTab==="integrations"&&(
             <ClientIntegrationsSubTab client={client} integrations={integrations} integrationLogs={integrationLogs} currentUser={currentUser}
@@ -29069,8 +29070,19 @@ function resolveContactReportRecipients(report, client, team=[]) {
   return [...new Set([...(client?.email?[client.email]:[]), ...resolvedEmails])];
 }
 
-function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, onDeleteContactReport, brandingAssets, team=[], currentUser, knowledge, onSaveKnowledge, highlightReportId}) {
+function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, onDeleteContactReport, brandingAssets, team=[], currentUser, knowledge, onSaveKnowledge, highlightReportId, contactReportActivity=[]}) {
   const isAdmin = currentUser?.role==="admin";
+  // Optimistic local additions on top of whatever was already loaded at app
+  // start — every send/edit/export appends here immediately so a detailed,
+  // per-action log (not just a single "sent" flag) shows without waiting on
+  // a full data refresh.
+  const [optimisticActivity, setOptimisticActivity] = useState([]);
+  const allActivity = useMemo(()=>[...(contactReportActivity||[]), ...optimisticActivity], [contactReportActivity, optimisticActivity]);
+  const logReportActivity = (reportId, action, detail) => {
+    const entry = {id:uid(), report_id:reportId, action, actor_name:currentUser?.name||"System", detail:detail||"", created_at:new Date().toISOString()};
+    setOptimisticActivity(p=>[...p, entry]);
+    ce("ContactReportActivity",[{report_id:reportId, action, actor_name:entry.actor_name, detail:entry.detail}]).catch(()=>{});
+  };
   const [autoEmail, setAutoEmail] = useState(!!knowledge?.contact_report_auto_email);
   const [savingAutoEmail, setSavingAutoEmail] = useState(false);
   const toggleAutoEmail = async () => {
@@ -29116,6 +29128,7 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
     setSendingEmail(false);
     if(ok) {
       setEmailSentId(r.id); setEmailingId(null);
+      logReportActivity(r.id, "emailed", `Sent to ${to.join(", ")}`);
       // Manually sending it is also what makes it appear on the client's
       // portal (auto-email clients get this set immediately at creation
       // instead — see save_contact_report in pro-lib.php).
@@ -29167,7 +29180,7 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
               </div>
               <div style={{display:"flex",gap:6}}>
                 <button onClick={()=>{setEditing(r);setShowModal(true);}} title="Edit" style={{padding:"5px 10px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>Edit</button>
-                <button onClick={()=>downloadContactReportPDF(r, client.name, brandingAssets, client, team)} title="Download PDF" style={{padding:"5px 10px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>PDF</button>
+                <button onClick={()=>{downloadContactReportPDF(r, client.name, brandingAssets, client, team); logReportActivity(r.id, "pdf_exported", "");}} title="Download PDF" style={{padding:"5px 10px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>PDF</button>
                 <button onClick={()=>startEmail(r)} title="Send by Email" style={{padding:"5px 10px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>Email</button>
                 {isAdmin&&onDeleteContactReport&&(
                   <button onClick={()=>setConfirmDeleteId(r.id)} title="Delete (admin only)" style={{padding:"5px 10px",borderRadius:"var(--rxs)",background:"#ef444411",border:"1px solid #ef444433",fontSize:12,fontWeight:600,color:"#ef4444",cursor:"pointer"}}>Delete</button>
@@ -29233,7 +29246,6 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
             <div style={{marginTop:12,paddingTop:10,borderTop:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
               <p style={{fontSize:11,color:"var(--text3)"}}>
                 Logged {r.created_at?fmtDateTime(r.created_at):""} by {r.created_by_name||"Unknown"}
-                {r.updated_at && r.updated_at!==r.created_at ? ` · Edited ${fmtDateTime(r.updated_at)}` : ""}
               </p>
               {r.client_visible_at ? (
                 <span style={{display:"flex",alignItems:"center",gap:5,fontSize:11,fontWeight:700,color:"#10b981"}}>
@@ -29244,11 +29256,32 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
               )}
             </div>
             {emailSentId===r.id&&<p style={{fontSize:12,color:"#10b981",fontWeight:600,marginTop:8}}>✓ Just sent</p>}
+            {(()=>{
+              const entries = allActivity.filter(a=>a.report_id===r.id).sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+              if(!entries.length) return null;
+              const describe = (a) => {
+                if(a.action==="emailed") return `Emailed by ${a.actor_name||"someone"}${a.detail?` — ${a.detail}`:""}`;
+                if(a.action==="edited") return `Edited by ${a.actor_name||"someone"}`;
+                if(a.action==="pdf_exported") return `PDF exported by ${a.actor_name||"someone"}`;
+                if(a.action==="client_comment") return `${a.actor_name||"Client"} commented${a.detail?`: "${a.detail}"`:""}`;
+                return `${a.action} by ${a.actor_name||"someone"}`;
+              };
+              return (
+                <div style={{marginTop:10,paddingTop:10,borderTop:"1px solid var(--border)"}}>
+                  <p style={{fontSize:10,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:6}}>Activity Log</p>
+                  <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                    {entries.map(a=>(
+                      <p key={a.id} style={{fontSize:11,color:"var(--text3)"}}>{describe(a)} · {fmtDateTime(a.created_at)}</p>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         );
       })}
       {showModal&&(
-        <ContactReportModal open onClose={()=>setShowModal(false)} onSave={onSaveContactReport} clientId={client.id} clientName={client.name} report={editing} team={team} client={client} currentUser={currentUser}/>
+        <ContactReportModal open onClose={()=>setShowModal(false)} onSave={async(rData)=>{ const wasEdit=!!rData.id; await onSaveContactReport(rData); if(wasEdit) logReportActivity(rData.id, "edited", ""); }} clientId={client.id} clientName={client.name} report={editing} team={team} client={client} currentUser={currentUser}/>
       )}
     </div>
   );
@@ -41169,6 +41202,8 @@ Return ONLY the JSON array, no markdown.`;
     const next = [...existing, comment];
     setData(d=>({...d,contactReports:d.contactReports.map(r=>r.id===report.id?{...r,client_comments:next}:r)}));
     await ue("ContactReport", report.id, {client_comments: JSON.stringify(next)}).catch(()=>{});
+    ce("ContactReportActivity",[{report_id:report.id, action:"client_comment", actor_name:client?.name||"Client", detail:text.slice(0,300)}]).catch(()=>{});
+    setData(d=>({...d,contactReportActivity:[...(d.contactReportActivity||[]),{id:uid(), report_id:report.id, action:"client_comment", actor_name:client?.name||"Client", detail:text.slice(0,300), created_at:new Date().toISOString()}]}));
     const am = (data.team||[]).find(t=>t.id===client?.account_manager_id);
     const recipients = am ? [am] : (data.team||[]).filter(t=>t.role==="admin");
     for(const r of recipients) {
@@ -42576,6 +42611,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
           return (
             <ClientDetailPage key={selectedClient.id} client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} onAddAsset={addAsset} currentUser={currentUser} onImpersonateClient={impersonateClient}
               deepLinkContactReportId={contactReportDeepLink?.clientId===selectedClient.id ? contactReportDeepLink.reportId : null}
+              contactReportActivity={data.contactReportActivity||[]}
               contactReports={data.contactReports||[]}
               onSaveContactReport={saveContactReport}
               onDeleteContactReport={deleteContactReport}
