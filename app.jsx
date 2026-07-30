@@ -29057,7 +29057,7 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
                 ))}
               </div>
             )}
-            {r.summary&&<p style={{fontSize:13,lineHeight:1.7,color:"var(--text)",marginBottom:10}}>{r.summary}</p>}
+            {r.summary&&<p style={{fontSize:13,lineHeight:1.7,color:"var(--text)",marginBottom:10,whiteSpace:"pre-wrap"}}>{r.summary}</p>}
             {r.key_points&&(
               <div style={{marginBottom:10}}>
                 <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",marginBottom:3}}>KEY POINTS</p>
