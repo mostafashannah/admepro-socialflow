@@ -150,11 +150,32 @@ function normalizeDbValue($v) {
 }
 
 // Encode JSON-typed values, decode booleans stored as TINYINT, etc.
-function castRow($row) {
+// PDO returns DECIMAL/numeric columns as PHP strings by default, and
+// json_encode faithfully ships them as JSON strings (e.g. "88.00" instead
+// of 88). app.jsx does `reduce((a,l)=>a+(l.field||0),0)` all over the
+// place for these — with a string operand, JS's `+` silently concatenates
+// instead of adding, corrupting every sum/average built from these columns
+// (this is what produced the "000000000000" revision count and NaN score
+// on the Team Performance table). Cast known numeric columns per table
+// back to real PHP int/float before encoding, so the wire format is a
+// real JSON number. Deliberately an explicit per-table allowlist, not a
+// blanket "looks numeric" heuristic — that would also mangle things like
+// phone numbers or national IDs that happen to be all-digits strings.
+$NUMERIC_COLUMNS = [
+    'performance_logs' => ['duration_hours','revision_count','client_approved','rejected','on_time','quality_score','hour_of_day','day_of_week'],
+    'time_logs' => ['duration_minutes'],
+];
+
+function castRow($row, $table = null) {
+    global $NUMERIC_COLUMNS;
+    $numericCols = $table && isset($NUMERIC_COLUMNS[$table]) ? $NUMERIC_COLUMNS[$table] : [];
     foreach ($row as $k => $v) {
         if (is_string($v) && strlen($v) > 0 && ($v[0] === '[' || $v[0] === '{')) {
             $decoded = json_decode($v, true);
-            if (json_last_error() === JSON_ERROR_NONE) $row[$k] = $decoded;
+            if (json_last_error() === JSON_ERROR_NONE) { $row[$k] = $decoded; continue; }
+        }
+        if (in_array($k, $numericCols, true) && $v !== null && is_numeric($v)) {
+            $row[$k] = (strpos($v, '.') !== false) ? (float)$v : (int)$v;
         }
     }
     return $row;
@@ -172,7 +193,7 @@ try {
         $sql = "SELECT * FROM " . ident($table) . " $where $order LIMIT $limit";
         $stmt = $pdo->prepare($sql);
         $stmt->execute($bindings);
-        $rows = array_map('castRow', $stmt->fetchAll(PDO::FETCH_ASSOC));
+        $rows = array_map(fn($r) => castRow($r, $table), $stmt->fetchAll(PDO::FETCH_ASSOC));
         echo json_encode($rows);
         exit;
     }
@@ -208,7 +229,7 @@ try {
             $sql = "SELECT * FROM " . ident($table) . " WHERE id IN (" . implode(',', $keys) . ")";
             $stmt = $pdo->prepare($sql);
             $stmt->execute($bindings);
-            echo json_encode(array_map('castRow', $stmt->fetchAll(PDO::FETCH_ASSOC)));
+            echo json_encode(array_map(fn($r) => castRow($r, $table), $stmt->fetchAll(PDO::FETCH_ASSOC)));
         } else {
             echo json_encode([]);
         }
@@ -241,7 +262,7 @@ try {
         if (wantsRepresentation()) {
             $stmt = $pdo->prepare("SELECT * FROM " . ident($table) . " WHERE id = :id");
             $stmt->execute([':id' => $id]);
-            echo json_encode(array_map('castRow', $stmt->fetchAll(PDO::FETCH_ASSOC)));
+            echo json_encode(array_map(fn($r) => castRow($r, $table), $stmt->fetchAll(PDO::FETCH_ASSOC)));
         } else {
             echo json_encode([]);
         }
