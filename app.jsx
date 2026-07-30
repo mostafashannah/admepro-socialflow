@@ -305,16 +305,19 @@ function smartSchedule(posts, startDate, endDate, intelligence) {
   });
 }
 
-// internal_review sits right after Content (not after Design) — it's the
-// AM's checkpoint on what the content creator wrote before it goes
-// anywhere else: back to Content with edits, on to Design if the post
-// needs visuals, or straight to Client Approval if it doesn't.
+// Two separate review checkpoints, one per handoff: internal_review sits
+// right after Content (the AM's check on what the content creator wrote —
+// back to Content with edits, on to Design if the post needs visuals, or
+// straight to Client Approval if it doesn't), and design_review sits right
+// after Design (same idea, on the designer's output — back to Design with
+// edits, or on to Client Approval).
 const STAGES = [
   { key: "client_request", label: "Client Request", color: "#a855f7", icon: "" },
   { key: "planning", label: "Brief", color: "#6366f1", icon: "◆" },
   { key: "content_creation", label: "Content", color: "#3b82f6", icon: "" },
   { key: "internal_review", label: "Review", color: "#f59e0b", icon: "" },
   { key: "design", label: "Design", color: "#8b5cf6", icon: "" },
+  { key: "design_review", label: "Design Review", color: "#f59e0b", icon: "" },
   { key: "client_approval", label: "Client Approval", color: "#ec4899", icon: "✓" },
   { key: "scheduled", label: "Scheduled", color: "#06b6d4", icon: "" },
   { key: "published", label: "Published", color: "#10b981", icon: "" },
@@ -4885,6 +4888,9 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   const giveEdits = () => {
     onStageChange(post, "content_creation", {assigned_to: post.content_assigned_to || post.assigned_to});
   };
+  const giveDesignEdits = () => {
+    onStageChange(post, "design", {assigned_to: post.assigned_to});
+  };
 
   // ── Client Request → Brief: project has to be picked here, since the
   // client submitted the request with no project attached yet. ──
@@ -5663,7 +5669,25 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
               }}>Give Edits</button>
             </div>
           )}
-          {(()=>{
+          {/* Design Review (right after Design): same idea, on the
+              designer's output — on to Client Approval, or back to Design
+              with edits. */}
+          {post.stage==="design_review"&&isManager&&(
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <button onClick={()=>onStageChange(post,"client_approval")} style={{
+                flex:"1 1 140px",padding:"10px 16px",borderRadius:"var(--rs)",
+                background:STAGE_MAP.client_approval.color+"22",border:`1px solid ${STAGE_MAP.client_approval.color}55`,
+                color:STAGE_MAP.client_approval.color,fontSize:13,fontWeight:700,
+                display:"flex",alignItems:"center",justifyContent:"center",gap:8,
+              }}>Move to Client Approval <Ico d={Icons.arrow} size={14} stroke={STAGE_MAP.client_approval.color}/></button>
+              <button onClick={giveDesignEdits} style={{
+                flex:"1 1 100px",padding:"10px 16px",borderRadius:"var(--rs)",
+                background:"#f59e0b22",border:"1px solid #f59e0b55",
+                color:"#f59e0b",fontSize:13,fontWeight:700,
+              }}>Give Edits</button>
+            </div>
+          )}
+          {!["internal_review","design_review"].includes(post.stage)&&(()=>{
             const needsIgCover = post.stage==="design" && post.post_type==="reel" && post.platform==="instagram" && !post.carousel_cover;
             return (
           <div style={{display:"flex",gap:8}}>
