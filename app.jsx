@@ -10419,16 +10419,18 @@ function ClientLoginsTab({client,onUpdateClient,canAdd=false,canEdit=false}) {
   );
 }
 
-function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,onAddCalendar,onAddTask,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],onSaveContactReport,onDeleteContactReport,leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient,integrationLogs=[],onAddIntegration,onUpdateIntegration,onDeleteIntegration,onRetryIntegration,brandingAssets}) {
+function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,onAddCalendar,onAddTask,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],onSaveContactReport,onDeleteContactReport,leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient,integrationLogs=[],onAddIntegration,onUpdateIntegration,onDeleteIntegration,onRetryIntegration,brandingAssets,deepLinkContactReportId}) {
   const {isMobile} = useResponsive();
   // Plain state, not persisted — opening any client should always start on
-  // Overview, not silently reopen to whatever tab was last viewed for them.
-  const [tab,setTab] = useState("overview");
+  // Overview, not silently reopen to whatever tab was last viewed for them —
+  // except a contact-report email's internal link, which should land
+  // straight on that exact report instead.
+  const [tab,setTab] = useState(deepLinkContactReportId!==undefined && deepLinkContactReportId!==null ? "brain" : "overview");
   const [showEdit,setShowEdit] = useState(false);
   const [confirmDelete,setConfirmDelete] = useState(false);
   const [showAddMenu,setShowAddMenu] = useState(false);
   const [showLogins,setShowLogins] = useState(false);
-  const [brainSubTab,setBrainSubTab] = useState("profile");
+  const [brainSubTab,setBrainSubTab] = useState(deepLinkContactReportId ? "contact_reports" : "profile");
   const cProjects = projects.filter(p=>p.client_id===client.id||p.client_name===client.name);
   // Client Requests have no project yet (assigned when moved to Brief) —
   // match those directly by client_id/client_name too, not just via project.
@@ -10683,7 +10685,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
             <ClientBrandGuidelinesSubTab client={client} knowledge={knowledge} onSaveKnowledge={onSaveKnowledge}/>
           )}
           {brainSubTab==="contact_reports"&&(
-            <ContactReportsSubTab client={client} contactReports={contactReports} onSaveContactReport={onSaveContactReport} onDeleteContactReport={onDeleteContactReport} brandingAssets={brandingAssets} team={team} currentUser={currentUser} knowledge={knowledge} onSaveKnowledge={onSaveKnowledge}/>
+            <ContactReportsSubTab client={client} contactReports={contactReports} onSaveContactReport={onSaveContactReport} onDeleteContactReport={onDeleteContactReport} brandingAssets={brandingAssets} team={team} currentUser={currentUser} knowledge={knowledge} onSaveKnowledge={onSaveKnowledge} highlightReportId={deepLinkContactReportId}/>
           )}
           {brainSubTab==="integrations"&&(
             <ClientIntegrationsSubTab client={client} integrations={integrations} integrationLogs={integrationLogs} currentUser={currentUser}
@@ -23360,12 +23362,16 @@ const LOGO_SLOTS = [
 ];
 
 function LogoUploader({logoKey, label, desc, size, value, onChange, required}) {
-  const fileRef = useRef(null);
+  const [error, setError] = useState("");
   const handleFile = (e) => {
+    setError("");
     const file = e.target.files?.[0];
-    if(!file || !checkInlineImageSize(file)) return;
+    e.target.value = ""; // let picking the exact same file again still fire onChange
+    if(!file) return;
+    if(!checkInlineImageSize(file)) return;
     const reader = new FileReader();
     reader.onload = (ev) => onChange(logoKey, ev.target.result);
+    reader.onerror = () => setError("Couldn't read that file — please try a different image.");
     reader.readAsDataURL(file);
   };
   return (
@@ -23377,23 +23383,28 @@ function LogoUploader({logoKey, label, desc, size, value, onChange, required}) {
       <p style={{fontSize:11,color:"var(--text3)"}}>{desc}</p>
       <p style={{fontSize:10,color:"var(--text3)",fontStyle:"italic"}}>{size}</p>
       <div style={{display:"flex",gap:8,alignItems:"center"}}>
-        {/* Preview */}
-        <div style={{width:120,height:56,borderRadius:"var(--rs)",background:"var(--surface2)",border:`2px dashed ${value?"var(--accent)33":"var(--border2)"}`,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",cursor:"pointer",flexShrink:0}} onClick={()=>fileRef.current?.click()}>
+        {/* Preview — also a label wrapping the real file input, same
+            bulletproof pattern used for the onboarding document uploads,
+            since triggering a hidden input via a ref's .click() from a
+            separate element can silently no-op on some mobile browsers. */}
+        <label style={{width:120,height:56,borderRadius:"var(--rs)",background:"var(--surface2)",border:`2px dashed ${value?"var(--accent)33":"var(--border2)"}`,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",cursor:"pointer",flexShrink:0}}>
           {value
             ? <img src={value} alt={label} style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/>
             : <div style={{textAlign:"center"}}><Ico d={Icons.upload} size={18} stroke="var(--text3)"/><p style={{fontSize:9,color:"var(--text3)",marginTop:3}}>Upload</p></div>
           }
-        </div>
+          <input type="file" accept="image/*,image/svg+xml" style={{display:"none"}} onChange={handleFile}/>
+        </label>
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
-          <button onClick={()=>fileRef.current?.click()} style={{padding:"5px 12px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)"}}>
+          <label style={{padding:"5px 12px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer",textAlign:"center"}}>
             {value?"Replace":"Upload"} Logo
-          </button>
-          {value&&<button onClick={()=>onChange(logoKey,null)} style={{padding:"5px 12px",borderRadius:"var(--rxs)",background:"#ef444411",border:"1px solid #ef444433",fontSize:12,fontWeight:600,color:"#ef4444"}}>
+            <input type="file" accept="image/*,image/svg+xml" style={{display:"none"}} onChange={handleFile}/>
+          </label>
+          {value&&<button type="button" onClick={()=>onChange(logoKey,null)} style={{padding:"5px 12px",borderRadius:"var(--rxs)",background:"#ef444411",border:"1px solid #ef444433",fontSize:12,fontWeight:600,color:"#ef4444"}}>
             Remove
           </button>}
         </div>
-        <input ref={fileRef} type="file" accept="image/*,image/svg+xml" style={{display:"none"}} onChange={handleFile}/>
       </div>
+      {error&&<p style={{fontSize:11,color:"#ef4444"}}>{error}</p>}
     </div>
   );
 }
@@ -28787,7 +28798,7 @@ async function downloadInvoicePDF(inv, payments, branding) {
 // ── Contact Report → HTML/PDF/Email — same rounded-card style as the
 // recruitment emails (applicationReceivedEmail etc.), so every system
 // email looks like one family instead of two different templates.
-function generateContactReportHTML(report, clientName, branding, client, team) {
+function generateContactReportHTML(report, clientName, branding, client, team, toEmails) {
   const attendees = sortAttendeesForDisplay(resolveAttendeesLive(parseMaybeJson(report.attendees, []), client, team));
   const typeLabel = report.meeting_type==="call" ? "Call" : report.meeting_type==="meeting" ? "Meeting" : "Contact";
   const locLabel = report.meeting_type==="meeting"
@@ -28799,11 +28810,15 @@ function generateContactReportHTML(report, clientName, branding, client, team) {
   const esc = s => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   const accent = branding?.primary_color || "#d90b2c";
   const attendeeGroups = groupAttendeesForDisplay(attendees, clientName, "Admepro");
-  // Deep-links into the client portal's Contact Reports tab and scrolls/
-  // highlights this exact report — the client still has to log in first,
-  // but lands straight on it (and can leave a comment) instead of hunting
-  // through the portal for it.
-  const portalUrl = `${window.location.origin}/?view=contact_reports&report=${encodeURIComponent(report.id||"")}`;
+  // Deep-links straight into this exact report — client portal when the
+  // client is actually a recipient, the agency's own client-detail page
+  // (internal login required) when this copy only went out internally to
+  // the team, e.g. a manual send to teammates instead of the client.
+  const sendingToClient = !toEmails || !client?.email || toEmails.includes(client.email);
+  const portalUrl = sendingToClient
+    ? `${window.location.origin}/?view=contact_reports&report=${encodeURIComponent(report.id||"")}`
+    : `${window.location.origin}/?agency_client=${encodeURIComponent(client?.id||"")}&agency_report=${encodeURIComponent(report.id||"")}`;
+  const portalButtonLabel = sendingToClient ? "View in Client Portal & Comment" : "View & Comment";
   const attendeesBlock = attendeeGroups.map(g=>`
       <p style="margin:0 0 2px;font-size:12px;font-weight:700;color:#111827">${esc(g.label)}</p>
       <p style="margin:0 0 10px;font-size:14px;line-height:1.6;color:#374151">${g.items.map(a=>esc(a.name)+(a.title?` — ${esc(a.title)}`:"")).join(", ")}</p>`).join("");
@@ -28838,7 +28853,7 @@ function generateContactReportHTML(report, clientName, branding, client, team) {
     ${bulletSection("Key Points", report.key_points)}
     ${bulletSection("Action Items", report.action_items)}
     <table width="100%" style="margin-top:28px"><tr><td align="center">
-      <a href="${esc(portalUrl)}" style="display:inline-block;background:${accent};color:#ffffff;text-decoration:none;font-size:13px;font-weight:700;padding:12px 22px;border-radius:99px">View in Client Portal &amp; Comment</a>
+      <a href="${esc(portalUrl)}" style="display:inline-block;background:${accent};color:#ffffff;text-decoration:none;font-size:13px;font-weight:700;padding:12px 22px;border-radius:99px">${esc(portalButtonLabel)}</a>
     </td></tr></table>
     <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
       <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Advertising Agency</p>
@@ -29054,7 +29069,7 @@ function resolveContactReportRecipients(report, client, team=[]) {
   return [...new Set([...(client?.email?[client.email]:[]), ...resolvedEmails])];
 }
 
-function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, onDeleteContactReport, brandingAssets, team=[], currentUser, knowledge, onSaveKnowledge}) {
+function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, onDeleteContactReport, brandingAssets, team=[], currentUser, knowledge, onSaveKnowledge, highlightReportId}) {
   const isAdmin = currentUser?.role==="admin";
   const [autoEmail, setAutoEmail] = useState(!!knowledge?.contact_report_auto_email);
   const [savingAutoEmail, setSavingAutoEmail] = useState(false);
@@ -29081,6 +29096,12 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
 
   const reports = (contactReports||[]).filter(r=>r.client_id===client.id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
 
+  useEffect(()=>{
+    if(!highlightReportId) return;
+    const el = document.getElementById(`agency-contact-report-${highlightReportId}`);
+    if(el) el.scrollIntoView({behavior:"smooth", block:"center"});
+  },[highlightReportId, reports.length]);
+
   const startEmail = (r) => {
     const defaults = resolveContactReportRecipients(r, client, team);
     setEmailingId(r.id); setEmailTo(defaults.join(", ")); setEmailSentId(null);
@@ -29089,7 +29110,7 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
     const to = emailTo.split(",").map(s=>s.trim()).filter(Boolean);
     if(!to.length) { alert("Enter at least one recipient email."); return; }
     setSendingEmail(true);
-    const html = generateContactReportHTML(r, client.name, brandingAssets, client, team);
+    const html = generateContactReportHTML(r, client.name, brandingAssets, client, team, to);
     const typeLabel = r.meeting_type==="call"?"Call":"Meeting";
     const ok = await sendEmail(to, `${typeLabel} Report — ${client.name}`, html, brandingAssets?.app_name||"Admepro");
     setSendingEmail(false);
@@ -29127,8 +29148,9 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
         const locLabel = r.meeting_type==="meeting"
           ? [r.location_type==="online"?"Online":r.location_type==="physical"?"In-person":null, r.location].filter(Boolean).join(" — ")
           : r.location;
+        const isHighlighted = highlightReportId===r.id;
         return (
-          <div key={r.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20}}>
+          <div key={r.id} id={`agency-contact-report-${r.id}`} style={{background:"var(--surface)",border:`1px solid ${isHighlighted?"var(--accent)":"var(--border)"}`,borderRadius:"var(--r)",padding:20,transition:"border-color 0.3s"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,flexWrap:"wrap",gap:8}}>
               <div>
                 <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
@@ -39079,6 +39101,9 @@ function App() {
   const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment"];
   const [page,setPage_] = useState(()=>{
     try{
+      // A contact-report email sent internally links straight to
+      // ?agency_client=<id> — jump directly to that client's detail page.
+      if(new URLSearchParams(window.location.search).get("agency_client")) return "clients";
       // URL hash takes priority (direct link) — but always reset to home on fresh load
       // to avoid getting stuck on a detail page that hasn't loaded data yet
       const hash = window.location.hash.replace("#","");
@@ -39298,6 +39323,17 @@ function App() {
   const [inviteToken] = useState(()=>{
     try { return new URLSearchParams(window.location.search).get("invite")||null; } catch(e) { return null; }
   });
+  // Contact-report emails sent internally (to team, not the client) link
+  // straight back into this client's Contact Reports tab on the agency
+  // side, instead of the client-portal link that goes out to clients.
+  const [contactReportDeepLink] = useState(()=>{
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const clientId = p.get("agency_client");
+      if(!clientId) return null;
+      return {clientId, reportId: p.get("agency_report")||null};
+    } catch(e) { return null; }
+  });
   // Public careers page — socialflow.admepro.com/careers, no login required
   const [isCareersPath] = useState(()=>{
     try { return window.location.pathname==="/careers"; } catch(e) { return false; }
@@ -39389,7 +39425,11 @@ function App() {
   const [restrictedApplicationId,setRestrictedApplicationId] = useState(null);
   // Restore selected client/project from localStorage so a refresh stays on the detail page being viewed
   const [selectedClientId,setSelectedClientId_] = useState(()=>{
-    try{ return page==="clients" ? (localStorage.getItem("sf_selected_client")||null) : null; }catch(e){return null;}
+    try{
+      const deepLinkClient = new URLSearchParams(window.location.search).get("agency_client");
+      if(deepLinkClient) return deepLinkClient;
+      return page==="clients" ? (localStorage.getItem("sf_selected_client")||null) : null;
+    }catch(e){return null;}
   });
   const setSelectedClientId = (id) => {
     setSelectedClientId_(id);
@@ -42535,6 +42575,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
           );
           return (
             <ClientDetailPage key={selectedClient.id} client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} onAddAsset={addAsset} currentUser={currentUser} onImpersonateClient={impersonateClient}
+              deepLinkContactReportId={contactReportDeepLink?.clientId===selectedClient.id ? contactReportDeepLink.reportId : null}
               contactReports={data.contactReports||[]}
               onSaveContactReport={saveContactReport}
               onDeleteContactReport={deleteContactReport}
