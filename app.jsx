@@ -317,6 +317,36 @@ const STAGES = [
   { key: "on_hold", label: "On Hold", color: "#f97316", icon: "" },
   { key: "rejected", label: "Rejected", color: "#ef4444", icon: "✕" },
 ];
+// Which pipeline stage a role is actually responsible for finishing — their
+// part of a task is done the moment it leaves that stage moving forward,
+// regardless of what happens to it afterward (a designer can't control
+// whether a client approves or when a post finally goes live). Roles not
+// listed here (e.g. account_manager) keep the old "counts once it reaches
+// Scheduled/Published" behavior, since their responsibility spans the
+// whole pipeline rather than one stage.
+const ROLE_OWNED_STAGE = { content_creator: "content_creation", graphic_designer: "design" };
+// A task still sitting in someone's own stage past its due date, with no
+// due-date extension and not yet handed off, is a real accountability gap
+// — they didn't finish their part on their own timeline. Counted separately
+// from "on-time rate" (which only judges tasks that DID get finished) so a
+// task that's just never moved forward can't hide from scoring by never
+// completing at all.
+function countOverdueTasks(member, posts) {
+  const ownedStage = ROLE_OWNED_STAGE[member?.role];
+  const today = new Date().toISOString().split("T")[0];
+  return (posts||[]).filter(p=>{
+    if (p.assigned_to !== member?.email) return false;
+    if (!p.due_date || p.due_date >= today) return false;
+    if (["published","scheduled","rejected","on_hold"].includes(p.stage)) return false;
+    if (ownedStage && p.stage !== ownedStage) return false;
+    return true;
+  }).length;
+}
+// 8 points per overdue task, capped at 40 — a real, visible hit without one
+// bad week being able to zero someone out entirely.
+function applyOverduePenalty(score, overdueCount) {
+  return overdueCount ? Math.max(0, score - Math.min(40, overdueCount*8)) : score;
+}
 
 const PLATFORMS = ["instagram","facebook","linkedin","tiktok","twitter"];
 const POST_TYPES = ["image","video","carousel","story","reel"];
@@ -593,10 +623,14 @@ function calcUserPerf(userEmail, perfLogs, maiSessions) {
   const score = maiScore!=null ? Math.round(taskScore*0.7 + maiScore*0.3) : taskScore;
   return { score, completionRate, onTimeRate, avgQuality, avgRevisions, total, logs, maiScore };
 }
-function calcAllPerf(team, perfLogs, includeAll, maiSessions) {
+function calcAllPerf(team, perfLogs, includeAll, maiSessions, posts) {
   return (team||[])
     .filter(m=>includeAll || !["admin","accountant"].includes(m.role))
-    .map(m=>({...m, perf:calcUserPerf(m.email, perfLogs, maiSessions)}))
+    .map(m=>{
+      const perf = calcUserPerf(m.email, perfLogs, maiSessions);
+      const overdueCount = countOverdueTasks(m, posts);
+      return {...m, perf:{...perf, overdueCount, rawScore:perf.score, score:applyOverduePenalty(perf.score, overdueCount)}};
+    })
     .sort((a,b)=>b.perf.score-a.perf.score);
 }
 const perfColor = s => s>=85?"#10b981":s>=65?"#f59e0b":"#ef4444";
@@ -15736,17 +15770,21 @@ function computeClientPaymentsInRange(clientName, {invoices=[],payments=[],subsc
 // is never just a number someone has to trust blindly (useful both for the
 // member themselves and for backing an appraisal conversation).
 function MemberScoringTab({member, perfLogs, maiReportSessions, posts=[]}) {
-  const perf = calcUserPerf(member.email, perfLogs, maiReportSessions);
+  const rawPerf = calcUserPerf(member.email, perfLogs, maiReportSessions);
+  const overdueCount = countOverdueTasks(member, posts);
+  const perf = {...rawPerf, score: applyOverduePenalty(rawPerf.score, overdueCount)};
   const hasTaskData = perf.total > 0;
   const hasMaiData = perf.maiScore != null;
+  const ownedStage = ROLE_OWNED_STAGE[member?.role];
 
-  // Every task currently assigned to this member, regardless of whether it's
-  // reached a scored stage yet — completed/scored vs. still in progress vs.
-  // rejected, so "why is my score X" always has a real count behind it.
+  // Currently assigned to this member and still in their pipeline stage —
+  // once a task is handed off forward (e.g. a designer's work moves to
+  // Review), assigned_to changes away from them, so "Completed" is counted
+  // from their real logged completions (perf.total), not a live stage scan.
   const assigned = (posts||[]).filter(p=>p.assigned_to===member.email);
-  const completedCount = assigned.filter(p=>["published","scheduled"].includes(p.stage)).length;
   const rejectedCount = assigned.filter(p=>p.stage==="rejected").length;
-  const inProgressCount = assigned.length - completedCount - rejectedCount;
+  const inProgressCount = assigned.filter(p=>!["published","scheduled","rejected"].includes(p.stage)).length;
+  const completedCount = perf.total;
   const onTimeCount = perf.logs.filter(l=>l.on_time).length;
   const lateCount = perf.total - onTimeCount;
   const taskRejectedCount = perf.logs.filter(l=>l.rejected).length;
@@ -15785,14 +15823,29 @@ function MemberScoringTab({member, perfLogs, maiReportSessions, posts=[]}) {
         </div>
       </div>
 
+      {overdueCount>0&&(
+        <div style={{background:"#ef444411",border:"1px solid #ef444455",borderRadius:12,padding:16,display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:22}}>⚠</span>
+          <div>
+            <p style={{fontSize:13,fontWeight:800,color:"#ef4444"}}>{overdueCount} task{overdueCount===1?"":"s"} overdue{ownedStage?` in ${STAGE_MAP[ownedStage]?.label||ownedStage}`:""} — past due date, not yet handed off</p>
+            <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>Costing {Math.min(40,overdueCount*8)} points off the score below (raw task+check-in score was {rawPerf.score}).</p>
+          </div>
+        </div>
+      )}
+
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
-        <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:14}}>All Assigned Tasks — {assigned.length} total</p>
+        <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:14}}>Assigned Tasks — {assigned.length} currently on their plate, {completedCount} completed all-time</p>
         <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
           {countCard("Completed",completedCount,"#10b981")}
           {countCard("In Progress",inProgressCount,"#3b82f6")}
+          {countCard("Overdue",overdueCount,"#ef4444")}
           {countCard("Rejected",rejectedCount,"#ef4444")}
         </div>
-        <p style={{fontSize:11,color:"var(--text3)",marginTop:12}}>Only <strong>Completed</strong> tasks (reached Scheduled or Published) count toward the score below — tasks still In Progress haven't been graded yet.</p>
+        <p style={{fontSize:11,color:"var(--text3)",marginTop:12}}>
+          {ownedStage
+            ? `A task counts as Completed for ${member.name?.split(" ")?.[0]||"them"} the moment it leaves ${STAGE_MAP[ownedStage]?.label||ownedStage} moving forward — not only once the post is finally Scheduled/Published, which is often out of their hands.`
+            : "Completed = reached Scheduled or Published."} Overdue tasks are a direct penalty on the score below, separate from the on-time rate (which only judges tasks that did get finished).
+        </p>
       </div>
 
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
@@ -15801,6 +15854,7 @@ function MemberScoringTab({member, perfLogs, maiReportSessions, posts=[]}) {
           Task performance is a weighted blend of four inputs from every completed task: how many were completed vs. rejected,
           whether they were delivered on time, the quality score given at completion, and how many revision rounds it took.
           {hasMaiData?" For roles with WhatsApp check-ins (Mai), that reliability score is folded in afterward at 30% of the final total — a missed check-in is recorded as 0 and counted double in that sub-average, so skipping one has real weight, not just a lower average.":""}
+          {" "}Overdue tasks (past due date, still sitting in their stage) are then subtracted directly — 8 points each, up to 40 — on top of that blended total.
         </p>
         {hasTaskData ? (
           <>
@@ -30240,8 +30294,8 @@ function QualitySparkline({logs}) {
 // ════════════════════════════════════════════════════════════════
 // TEAM PERFORMANCE PAGE (admin / director only)
 // ════════════════════════════════════════════════════════════════
-function TeamPerformancePage({currentUser, perfLogs, aiInsights, team, maiReportSessions}) {
-  const ranked = calcAllPerf(team, perfLogs, currentUser?.role==="admin", maiReportSessions);
+function TeamPerformancePage({currentUser, perfLogs, aiInsights, team, maiReportSessions, posts}) {
+  const ranked = calcAllPerf(team, perfLogs, currentUser?.role==="admin", maiReportSessions, posts);
   const teamAvg = ranked.length ? Math.round(ranked.reduce((a,m)=>a+m.perf.score,0)/ranked.length) : 0;
   const best = ranked[0];
   const worst = ranked[ranked.length-1];
@@ -41746,24 +41800,33 @@ Return ONLY valid JSON (no markdown, no explanation):
     };
     setData(d=>({...d,posts:d.posts.map(p=>p.id===post.id?updatedPost:p)}));
 
-    // Log a real performance record the first time a post reaches either
-    // "completed from the assignee's perspective" stage — Scheduled or
-    // Published. Scheduled posts often sit for days/weeks waiting on their
-    // publish date, which is an unrelated automated event, not something
-    // the assignee did — scoring only on the eventual "published" transition
-    // left real, finished work invisible to the scoring system in the
-    // meantime. Guarded against double-logging if a post later moves
-    // scheduled → published, since that's the same underlying work.
-    const alreadyLogged = (data.perfLogs||[]).some(l=>l.post_id===post.id);
-    if((newStage==="published"||newStage==="scheduled") && !alreadyLogged) {
-      const deadline = updatedPost.due_date || updatedPost.scheduled_date;
+    // Log a real performance record for whoever just finished THEIR part —
+    // not the post as a whole. A designer's job is done the moment a task
+    // leaves the Design stage moving forward; waiting for the eventual
+    // Scheduled/Published transition (which depends on a client's approval
+    // timing and an unrelated auto-publish date, neither in the designer's
+    // control) left real, finished work invisible to their score for
+    // potentially weeks. Roles with no owned stage (e.g. account_manager,
+    // whose responsibility spans the whole pipeline) still score off
+    // reaching Scheduled/Published, same as before.
+    const priorAssigneeEmail = post.assigned_to;
+    const priorAssigneeRole = (data.team.find(m=>m.email===priorAssigneeEmail)?.role)||"";
+    const ownedStage = ROLE_OWNED_STAGE[priorAssigneeRole];
+    const leftOwnedStageForward = ownedStage && post.stage===ownedStage && newIdx>oldIdx && newStage!=="rejected" && newStage!=="on_hold";
+    const reachedFinalStage = newStage==="published"||newStage==="scheduled";
+    // One log per (post, person) — not per post — so a content creator,
+    // then a designer, then an account manager can each get their own
+    // credit for the same post as it moves through their respective stages.
+    const alreadyLoggedForThem = (data.perfLogs||[]).some(l=>l.post_id===post.id && l.user_email===priorAssigneeEmail);
+    if((leftOwnedStageForward || (reachedFinalStage && !ownedStage)) && !alreadyLoggedForThem) {
+      const deadline = post.due_date || post.scheduled_date;
       const onTime = !deadline || new Date() <= new Date(`${deadline}T23:59:59`);
       const qualityScore = (onTime?50:0) + (!wasRejected?50:0);
-      const perfEmail = updatedPost.assigned_to;
+      const perfEmail = priorAssigneeEmail;
       if(perfEmail) {
         const perfLogPayload = {
           user_email: perfEmail, user_name: (data.team.find(m=>m.email===perfEmail)?.name)||"",
-          role: (data.team.find(m=>m.email===perfEmail)?.role)||"",
+          role: priorAssigneeRole,
           post_id: post.id, post_title: post.title, project_id: updatedPost.project_id||"",
           client_name: post.client_name||"", stage_from: post.stage, stage_to: newStage,
           on_time: onTime, quality_score: qualityScore, revision_count: revisionCount,
@@ -42938,6 +43001,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             aiInsights={data.aiInsights||[]}
             team={data.team}
             maiReportSessions={data.maiReportSessions||[]}
+            posts={data.posts||[]}
           />
         )}
         {page==="recruitment"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.manage_recruitment"))&&(
