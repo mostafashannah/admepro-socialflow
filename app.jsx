@@ -15791,6 +15791,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
   // start on Overview, not silently reopen to whatever tab was last viewed.
   const [tab, setTab] = useState("overview");
   const [showPhoto, setShowPhoto] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const manager = (team||[]).find(t=>t.id===member.manager_id);
   const directReports = (team||[]).filter(t=>t.manager_id===member.id);
 
@@ -15982,6 +15983,19 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
         )}
         {currentUser?.role==="admin"&&member.email!==currentUser?.email&&(
           <button onClick={()=>onImpersonate&&onImpersonate(member)} style={{fontSize:12,fontWeight:700,color:"var(--text2)",background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"7px 14px",cursor:"pointer"}}>Access Account</button>
+        )}
+        {canEdit&&member.password&&(
+          <div style={{position:"relative"}}>
+            <button onClick={()=>setShowPassword(p=>!p)} title="Show current password" style={{width:32,height:32,borderRadius:8,border:"1px solid var(--border2)",background:showPassword?"var(--accent)":"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+              <Ico d={Icons.key} size={14} stroke={showPassword?"#fff":"var(--text2)"}/>
+            </button>
+            {showPassword&&(
+              <div style={{position:"absolute",top:"110%",left:0,zIndex:20,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,padding:"10px 12px",boxShadow:"0 8px 24px rgba(0,0,0,0.2)",display:"flex",alignItems:"center",gap:10,whiteSpace:"nowrap"}}>
+                <span style={{fontFamily:"monospace",fontSize:13,fontWeight:700,color:"var(--text)"}}>{member.password}</span>
+                <button onClick={()=>{try{navigator.clipboard.writeText(member.password);}catch(e){}}} title="Copy" style={{padding:4}}><Ico d={Icons.copy2} size={13} stroke="var(--text3)"/></button>
+              </div>
+            )}
+          </div>
         )}
         {canEdit&&<Btn size="sm" onClick={onEdit}>Edit</Btn>}
         {onDelete&&currentUser?.role==="admin"&&member.email!==currentUser?.email&&(
@@ -16493,6 +16507,9 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
             <div style={{display:"flex",gap:8}}>
               <input type={showPass?"text":"password"} value={f.password} onChange={e=>s("password",e.target.value)} placeholder="Enter new password" style={{...inputSt,flex:1}}/>
               <button type="button" onClick={()=>setShowPass(p=>!p)} style={{padding:"0 12px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",cursor:"pointer",fontSize:12,flexShrink:0}}>{showPass?"Hide":"Show"}</button>
+              <button type="button" title="Generate random password" onClick={()=>{ const pw=Math.random().toString(36).slice(2,10)+Math.random().toString(36).slice(2,4).toUpperCase(); s("password",pw); setShowPass(true); }} style={{padding:"0 12px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",cursor:"pointer",fontSize:12,flexShrink:0,display:"flex",alignItems:"center",gap:5}}>
+                <Ico d={Icons.sparkle} size={13}/> Generate
+              </button>
             </div>
           </Field>
           <Field label="National ID" hint="Used to fill in the employee contract — birth date/age are derived from these digits automatically">
