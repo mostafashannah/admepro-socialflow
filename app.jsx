@@ -1940,8 +1940,6 @@ const AI_AGENT_DEFS = [
    description:"The supervisor agent. Chats with the team, oversees the other agents, and answers using live workspace data. Its model/speed and Pro Skills are configured below."},
   {id:"content_creator", name:"Sara — Senior Content Creator", color:"#10b981",
    description:"Works under Pro's supervision on Add Calendar Plan and post content creation — writes post ideas, captions, articles, and stories in the client's brand voice."},
-  {id:"lead_generation", name:"Lead Generation Agent", color:"#6366f1",
-   description:"Works under Pro's supervision searching for new B2B leads — finds and enriches prospects matching your targeting criteria."},
   {id:"graphic_designer", name:"Yahia — Senior Graphic Designer", color:"#0ea5e9",
    description:"Works under Pro's supervision generating designs with AI image models — learns each client's past designs and brand/design guidelines to keep every new piece on-style, then hands the real generation off to gpt-image-1."},
   {id:"account_executive", name:"Mai — Account Executive", color:"#a855f7",
@@ -36876,13 +36874,6 @@ RULES:
 
 // Default agent definitions — seeded if agent_configs table is empty
 const DEFAULT_AGENTS = [
-  {
-    agent_id:"lead-gen-agent", name:"Lead Generation Agent", type:"lead_generation",
-    status:"stopped", icon:"", color:"#6366f1",
-    description:"Automatically discovers and enriches B2B leads daily based on targeting criteria.",
-    schedule:"daily", settings:{job_titles:["Marketing Manager","CEO","Founder"],countries:["UAE","Egypt","Saudi Arabia"],leads_per_day:20,sources:["ai_generated"]},
-    tasks_total:0, tasks_today:0, success_rate:0, errors_today:0, last_run:null,
-  },
   {
     agent_id:"content-gen-agent", name:"Content Generation Agent", type:"content_generation",
     status:"stopped", icon:"", color:"#10b981",
