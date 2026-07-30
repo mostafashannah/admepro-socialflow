@@ -85,6 +85,76 @@ function client_payments_total(PDO $pdo, string $clientName, DateTime $start, Da
     return $total;
 }
 
+// Mirrors calcUserPerf/calcAllPerf's scoring formula in app.jsx (task
+// performance blended 70/30 with Mai check-in reliability where it
+// applies, minus the overdue-task penalty) so the multiplier below is
+// judging the same number an admin sees on that AM's Scoring tab — not a
+// separate, drifting definition of "performance".
+function calc_am_score(PDO $pdo, string $managerId, string $managerEmail): array {
+    $logsStmt = $pdo->prepare("SELECT on_time, rejected, quality_score, revision_count FROM performance_logs WHERE user_email = :email");
+    $logsStmt->execute([':email' => $managerEmail]);
+    $rows = $logsStmt->fetchAll(PDO::FETCH_ASSOC);
+    $total = count($rows);
+    $taskScore = 0;
+    if ($total > 0) {
+        $onTime = 0; $rejected = 0; $qualitySum = 0.0; $revSum = 0.0;
+        foreach ($rows as $r) {
+            if ((int)$r['on_time']) $onTime++;
+            if ((int)$r['rejected']) $rejected++;
+            $qualitySum += (float)$r['quality_score'];
+            $revSum += (float)$r['revision_count'];
+        }
+        $completionRate = round((($total - $rejected) / $total) * 100);
+        $onTimeRate = round(($onTime / $total) * 100);
+        $avgQuality = round($qualitySum / $total);
+        $avgRevisions = round($revSum / $total, 1);
+        $revScore = max(0, 100 - $avgRevisions * 18);
+        $taskScore = min(100, round($completionRate * 0.30 + $onTimeRate * 0.25 + $avgQuality * 0.35 + $revScore * 0.10));
+    }
+
+    $maiStmt = $pdo->prepare("SELECT score, max_score, status FROM mai_report_sessions WHERE account_manager_id = :id AND score IS NOT NULL AND max_score IS NOT NULL AND max_score > 0");
+    $maiStmt->execute([':id' => $managerId]);
+    $maiRows = $maiStmt->fetchAll(PDO::FETCH_ASSOC);
+    $maiScore = null;
+    if (count($maiRows) > 0) {
+        $sumPct = 0.0; $weight = 0;
+        foreach ($maiRows as $m) {
+            $w = ($m['status'] === 'missed') ? 2 : 1;
+            $sumPct += ((float)$m['score'] / (float)$m['max_score'] * 100) * $w;
+            $weight += $w;
+        }
+        $maiScore = round($sumPct / $weight);
+    }
+
+    $score = $total === 0
+        ? ($maiScore ?? 0)
+        : ($maiScore !== null ? round($taskScore * 0.7 + $maiScore * 0.3) : $taskScore);
+
+    // Account managers have no ROLE_OWNED_STAGE, so any of their assigned
+    // posts still not complete past its due date counts — same rule as
+    // countOverdueTasks()/applyOverduePenalty() in app.jsx.
+    $today = (new DateTime('today'))->format('Y-m-d');
+    $odStmt = $pdo->prepare(
+        "SELECT COUNT(*) FROM posts WHERE assigned_to = :email AND due_date IS NOT NULL AND due_date <> '' AND due_date < :today
+         AND stage NOT IN ('published','scheduled','rejected','on_hold')"
+    );
+    $odStmt->execute([':email' => $managerEmail, ':today' => $today]);
+    $overdueCount = (int)$odStmt->fetchColumn();
+    $score = max(0, $score - min(40, $overdueCount * 8));
+
+    return ['score' => (int)$score, 'overdue' => $overdueCount];
+}
+
+// Score-gated payout — a low score means the commission isn't earned at
+// all, not just docked a little:
+//   <=60 -> 0%, 60-80 -> 50%, 80-90 -> 75%, >90 -> 100%
+function commission_multiplier(int $score): float {
+    if ($score <= 60) return 0.0;
+    if ($score <= 80) return 0.5;
+    if ($score <= 90) return 0.75;
+    return 1.0;
+}
+
 $clients = $pdo->query(
     "SELECT id, name, account_manager_commissions FROM clients
      WHERE account_manager_commissions IS NOT NULL AND account_manager_commissions <> '' AND account_manager_commissions <> '{}'"
@@ -102,7 +172,7 @@ $insertExpense = $pdo->prepare(
      VALUES (UUID(), 'out', 'salaries', :desc, :amount, 'EGP', :date, :mid, 'app')"
 );
 
-$teamStmt = $pdo->prepare("SELECT id, name FROM team_members WHERE id = :id");
+$teamStmt = $pdo->prepare("SELECT id, name, email FROM team_members WHERE id = :id");
 
 $created = 0;
 foreach ($clients as $client) {
@@ -121,18 +191,25 @@ foreach ($clients as $client) {
             : $start->format('F Y');
 
         $total = client_payments_total($pdo, $client['name'], $start, $end);
-        $commission = round($total * $pct / 100, 2);
-        if ($commission <= 0) continue;
+        $rawCommission = round($total * $pct / 100, 2);
+        if ($rawCommission <= 0) continue;
 
         $teamStmt->execute([':id'=>$managerId]);
         $manager = $teamStmt->fetch(PDO::FETCH_ASSOC);
         if (!$manager) continue;
 
+        $scoreInfo = calc_am_score($pdo, $managerId, $manager['email'] ?? '');
+        $multiplier = commission_multiplier($scoreInfo['score']);
+        $commission = round($rawCommission * $multiplier, 2);
+        if ($commission <= 0) continue; // score at or below 60 — commission not earned this cycle
+
         $title = "Commission — {$client['name']} ({$cycleLabel})";
         $eventExists->execute([':mid'=>$managerId, ':title'=>$title]);
         if ((int)$eventExists->fetchColumn() > 0) continue; // already created — idempotent
 
-        $notes = "{$pct}% of EGP " . number_format($total, 2) . " in {$cycleLabel} client payments.";
+        $notes = "{$pct}% of EGP " . number_format($total, 2) . " in {$cycleLabel} client payments "
+            . "= EGP " . number_format($rawCommission, 2) . " raw, scaled to " . number_format($multiplier * 100, 0)
+            . "% (score {$scoreInfo['score']}" . ($scoreInfo['overdue'] > 0 ? ", {$scoreInfo['overdue']} overdue task(s)" : "") . ").";
         $insertEvent->execute([
             ':mid'=>$managerId, ':mname'=>$manager['name'], ':title'=>$title,
             ':amount'=>$commission, ':eff'=>$today->format('Y-m-d'), ':notes'=>$notes,
