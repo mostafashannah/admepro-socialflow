@@ -19565,23 +19565,23 @@ function OnboardingDocsPage({token}) {
 
         <form onSubmit={handleSubmit}>
           <div style={fieldSt}>
-            <label style={labelSt}>National ID — Front {application.onboarding_id_front_url?"✓ uploaded":"(required)"}</label>
+            <label style={labelSt}>National ID — Front {application.onboarding_id_front_url?"✓ uploaded":`(required, max ${MAX_ONBOARDING_DOC_MB}MB)`}</label>
             <input type="file" accept="image/*,.pdf" onChange={pickFile(setIdFrontFile,MAX_ONBOARDING_DOC_MB)} style={fileInputSt}/>
           </div>
           <div style={fieldSt}>
-            <label style={labelSt}>National ID — Back {application.onboarding_id_back_url?"✓ uploaded":"(required)"}</label>
+            <label style={labelSt}>National ID — Back {application.onboarding_id_back_url?"✓ uploaded":`(required, max ${MAX_ONBOARDING_DOC_MB}MB)`}</label>
             <input type="file" accept="image/*,.pdf" onChange={pickFile(setIdBackFile,MAX_ONBOARDING_DOC_MB)} style={fileInputSt}/>
           </div>
           <div style={fieldSt}>
-            <label style={labelSt}>Personal Photo {application.onboarding_photo_url?"✓ uploaded":"(required)"}</label>
+            <label style={labelSt}>Personal Photo {application.onboarding_photo_url?"✓ uploaded":`(required, max ${MAX_ONBOARDING_DOC_MB}MB)`}</label>
             <input type="file" accept="image/*" onChange={pickFile(setPhotoFile,MAX_ONBOARDING_DOC_MB)} style={fileInputSt}/>
           </div>
           <div style={fieldSt}>
-            <label style={labelSt}>Criminal Record Certificate ("Fish w Tashbeeh") {application.onboarding_fish_url?"✓ uploaded":"— optional, can add later"}</label>
+            <label style={labelSt}>Criminal Record Certificate ("Fish w Tashbeeh") {application.onboarding_fish_url?"✓ uploaded":`— optional, can add later, max ${MAX_ONBOARDING_DOC_MB}MB`}</label>
             <input type="file" accept="image/*,.pdf" onChange={pickFile(setFishFile,MAX_ONBOARDING_DOC_MB)} style={fileInputSt}/>
           </div>
           <div style={fieldSt}>
-            <label style={labelSt}>Educational Certificate {application.onboarding_certificate_url?"✓ uploaded":"— optional, can add later"}</label>
+            <label style={labelSt}>Educational Certificate {application.onboarding_certificate_url?"✓ uploaded":`— optional, can add later, max ${MAX_ONBOARDING_DOC_MB}MB`}</label>
             <input type="file" accept="image/*,.pdf" onChange={pickFile(setCertificateFile,MAX_ONBOARDING_DOC_MB)} style={fileInputSt}/>
           </div>
           <div style={fieldSt}>
