@@ -28978,13 +28978,13 @@ async function downloadContactReportPDF(report, clientName, branding, client, te
     const drawHeaderLogo = () => {
       if (logo) {
         const logoH = 33, logoW = logoH * (logo.w/logo.h);
-        doc.addImage(logo.dataUrl, "PNG", marginX-1.4, HEADER_TOP-16, logoW, logoH);
+        doc.addImage(logo.dataUrl, "PNG", marginX-4, HEADER_TOP-16, logoW, logoH);
       } else {
         doc.setFont("Helvetica","bold"); doc.setFontSize(33); doc.setTextColor(17,24,39);
-        doc.text("p", marginX-1.4, HEADER_TOP);
+        doc.text("p", marginX-4, HEADER_TOP);
         const pW = doc.getTextWidth("p");
         doc.setFillColor(ar,ag,ab);
-        doc.circle(marginX-1.4+pW+4.5, HEADER_TOP-1.5, 3.6, "F");
+        doc.circle(marginX-4+pW+4.5, HEADER_TOP-1.5, 3.6, "F");
       }
     };
     const heading = (text, size=11) => { doc.setFont("Helvetica","bold"); doc.setFontSize(size); doc.setTextColor(107,114,128); ensureRoom(size+8); doc.text(text, marginX, y); y += size+8; };
