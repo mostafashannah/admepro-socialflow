@@ -17303,7 +17303,7 @@ function ClientContactReportCard({r, onAddComment}) {
         </div>
         <span style={{fontSize:12,color:"var(--text3)"}}>{fmtDateTime(r.client_visible_at||r.created_at)}</span>
       </div>
-      {r.attendees&&(()=>{ const list = parseMaybeJson(r.attendees, []); return list.length>0 && (
+      {r.attendees&&(()=>{ const list = sortAttendeesForDisplay(parseMaybeJson(r.attendees, [])); return list.length>0 && (
         <p style={{fontSize:12,color:"var(--text2)"}}>With: {list.map(a=>a.title?`${a.name} (${a.title})`:a.name).filter(Boolean).join(", ")}</p>
       ); })()}
       {r.summary&&(
@@ -28771,7 +28771,7 @@ async function downloadInvoicePDF(inv, payments, branding) {
 // recruitment emails (applicationReceivedEmail etc.), so every system
 // email looks like one family instead of two different templates.
 function generateContactReportHTML(report, clientName, branding) {
-  const attendees = parseMaybeJson(report.attendees, []);
+  const attendees = sortAttendeesForDisplay(parseMaybeJson(report.attendees, []));
   const typeLabel = report.meeting_type==="call" ? "Call" : report.meeting_type==="meeting" ? "Meeting" : "Contact";
   const locLabel = report.meeting_type==="meeting"
     ? [report.location_type==="online"?"Online":report.location_type==="physical"?"In-person":null, report.location].filter(Boolean).join(" — ")
@@ -28847,7 +28847,7 @@ async function downloadContactReportPDF(report, clientName, branding) {
   const jsPDFCtor = window.jspdf?.jsPDF;
   if (!jsPDFCtor) { alert("PDF library failed to load — please refresh and try again."); return; }
   try {
-    const attendees = parseMaybeJson(report.attendees, []);
+    const attendees = sortAttendeesForDisplay(parseMaybeJson(report.attendees, []));
     const typeLabel = report.meeting_type==="call" ? "Call" : report.meeting_type==="meeting" ? "Meeting" : "Contact";
     const locLabel = report.meeting_type==="meeting"
       ? [report.location_type==="online"?"Online":report.location_type==="physical"?"In-person":null, report.location].filter(Boolean).join(" — ")
@@ -28997,7 +28997,7 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
         </div>
       )}
       {reports.map(r=>{
-        const attendees = parseMaybeJson(r.attendees, []);
+        const attendees = sortAttendeesForDisplay(parseMaybeJson(r.attendees, []));
         const typeLabel = r.meeting_type==="call" ? "Call" : r.meeting_type==="meeting" ? "Meeting" : null;
         const locLabel = r.meeting_type==="meeting"
           ? [r.location_type==="online"?"Online":r.location_type==="physical"?"In-person":null, r.location].filter(Boolean).join(" — ")
@@ -31142,6 +31142,25 @@ function parseMaybeJson(v, fallback) {
   if (v == null) return fallback;
   if (typeof v !== "string") return v;
   try { return JSON.parse(v); } catch(e) { return fallback; }
+}
+
+// Contact report attendees are always displayed client side first, then
+// agency side — and within each side, most senior title first — regardless
+// of the order they happened to be typed in when the report was logged.
+const TITLE_SENIORITY_RANK = ["ceo","founder","owner","coo","cto","cfo","cmo","president","vice president","vp ","director","head of","manager","team lead","lead","supervisor","senior","specialist","executive","coordinator","officer","associate","assistant","intern"];
+function attendeeSeniorityRank(title) {
+  const t = (title||"").toLowerCase();
+  for (let i=0;i<TITLE_SENIORITY_RANK.length;i++) { if (t.includes(TITLE_SENIORITY_RANK[i])) return i; }
+  return TITLE_SENIORITY_RANK.length;
+}
+function sortAttendeesForDisplay(list) {
+  return (list||[]).map((a,i)=>({a,i})).sort((x,y)=>{
+    const gx = x.a.kind==="client"?0:x.a.kind==="team"?1:2, gy = y.a.kind==="client"?0:y.a.kind==="team"?1:2;
+    if (gx!==gy) return gx-gy;
+    const rx = attendeeSeniorityRank(x.a.title), ry = attendeeSeniorityRank(y.a.title);
+    if (rx!==ry) return rx-ry;
+    return x.i-y.i;
+  }).map(w=>w.a);
 }
 
 function applicationMissingFields(application) {
