@@ -16420,7 +16420,9 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
     employment_type: member.employment_type||"full_time",
     work_days: parseMaybeJson(member.work_days, WORK_DAYS_DEFAULT),
     national_id: member.national_id||"",
+    password: "",
   });
+  const [showPass, setShowPass] = useState(false);
   const s = (k,v) => setF(p=>({...p,[k]:v}));
   const toggleWorkDay = (day) => setF(p=>({...p,work_days: p.work_days.includes(day) ? p.work_days.filter(d=>d!==day) : [...p.work_days,day].sort()}));
   const managers = (team||[]).filter(t=>t.id!==member.id && t.role!=="client");
@@ -16457,6 +16459,7 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
     // Full-time always means the standard Sun-Thu week (work_days only
     // matters/persists for part-timers with a custom schedule).
     updates.work_days = JSON.stringify(updates.employment_type==="part_time" ? updates.work_days : WORK_DAYS_DEFAULT);
+    if(!updates.password) delete updates.password;
     onSave(updates);
   };
 
@@ -16486,6 +16489,12 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
             )}
           </Field>
           <Field label="Mobile Number"><input value={f.whatsapp_number} onChange={e=>s("whatsapp_number",e.target.value)} placeholder="+20 100 000 0000" style={inputSt}/></Field>
+          <Field label="Password" hint="Leave blank to keep current password">
+            <div style={{display:"flex",gap:8}}>
+              <input type={showPass?"text":"password"} value={f.password} onChange={e=>s("password",e.target.value)} placeholder="Enter new password" style={{...inputSt,flex:1}}/>
+              <button type="button" onClick={()=>setShowPass(p=>!p)} style={{padding:"0 12px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",cursor:"pointer",fontSize:12,flexShrink:0}}>{showPass?"Hide":"Show"}</button>
+            </div>
+          </Field>
           <Field label="National ID" hint="Used to fill in the employee contract — birth date/age are derived from these digits automatically">
             <div style={{display:"flex",gap:8}}>
               <input value={f.national_id} onChange={e=>s("national_id",e.target.value)} placeholder="e.g. 29001011234567" style={{...inputSt,flex:1}}/>
