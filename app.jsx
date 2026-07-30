@@ -28818,7 +28818,7 @@ function generateContactReportHTML(report, clientName, branding, client, team, t
   const portalUrl = sendingToClient
     ? `${window.location.origin}/?view=contact_reports&report=${encodeURIComponent(report.id||"")}`
     : `${window.location.origin}/?agency_client=${encodeURIComponent(client?.id||"")}&agency_report=${encodeURIComponent(report.id||"")}`;
-  const portalButtonLabel = sendingToClient ? "View in Client Portal & Comment" : "View & Comment";
+  const portalButtonLabel = "View & Comment";
   const attendeesBlock = attendeeGroups.map(g=>`
       <p style="margin:0 0 2px;font-size:12px;font-weight:700;color:#111827">${esc(g.label)}</p>
       <p style="margin:0 0 10px;font-size:14px;line-height:1.6;color:#374151">${g.items.map(a=>esc(a.name)+(a.title?` — ${esc(a.title)}`:"")).join(", ")}</p>`).join("");
