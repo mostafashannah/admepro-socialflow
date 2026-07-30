@@ -41718,10 +41718,16 @@ Return ONLY valid JSON (no markdown, no explanation):
     };
     setData(d=>({...d,posts:d.posts.map(p=>p.id===post.id?updatedPost:p)}));
 
-    // Log a real performance record on completion — quality score is the
-    // on-time + not-rejected composite (100 both true, 50 only one, 0
-    // neither), revisions is the backward-stage-move count tracked above.
-    if(newStage==="published") {
+    // Log a real performance record the first time a post reaches either
+    // "completed from the assignee's perspective" stage — Scheduled or
+    // Published. Scheduled posts often sit for days/weeks waiting on their
+    // publish date, which is an unrelated automated event, not something
+    // the assignee did — scoring only on the eventual "published" transition
+    // left real, finished work invisible to the scoring system in the
+    // meantime. Guarded against double-logging if a post later moves
+    // scheduled → published, since that's the same underlying work.
+    const alreadyLogged = (data.perfLogs||[]).some(l=>l.post_id===post.id);
+    if((newStage==="published"||newStage==="scheduled") && !alreadyLogged) {
       const deadline = updatedPost.due_date || updatedPost.scheduled_date;
       const onTime = !deadline || new Date() <= new Date(`${deadline}T23:59:59`);
       const qualityScore = (onTime?50:0) + (!wasRejected?50:0);
