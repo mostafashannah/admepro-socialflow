@@ -305,12 +305,16 @@ function smartSchedule(posts, startDate, endDate, intelligence) {
   });
 }
 
+// internal_review sits right after Content (not after Design) — it's the
+// AM's checkpoint on what the content creator wrote before it goes
+// anywhere else: back to Content with edits, on to Design if the post
+// needs visuals, or straight to Client Approval if it doesn't.
 const STAGES = [
   { key: "client_request", label: "Client Request", color: "#a855f7", icon: "" },
   { key: "planning", label: "Brief", color: "#6366f1", icon: "◆" },
   { key: "content_creation", label: "Content", color: "#3b82f6", icon: "" },
-  { key: "design", label: "Design", color: "#8b5cf6", icon: "" },
   { key: "internal_review", label: "Review", color: "#f59e0b", icon: "" },
+  { key: "design", label: "Design", color: "#8b5cf6", icon: "" },
   { key: "client_approval", label: "Client Approval", color: "#ec4899", icon: "✓" },
   { key: "scheduled", label: "Scheduled", color: "#06b6d4", icon: "" },
   { key: "published", label: "Published", color: "#10b981", icon: "" },
@@ -5635,17 +5639,25 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
               <span style={{fontSize:12,color:"#f59e0b",fontWeight:600}}>Assign a team member first before moving to {next.label}</span>
             </div>
           )}
-          {/* Review stage: manager decides forward (Design, with a fresh assignee+slot) or back (Give Edits, same content member) */}
+          {/* Review stage (right after Content): manager decides — on to
+              Design if the post needs visuals, straight to Client Approval
+              if it doesn't, or back to Content with edits. */}
           {post.stage==="internal_review"&&isManager&&(
-            <div style={{display:"flex",gap:8}}>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
               <button onClick={()=>openAssignModal("design")} style={{
-                flex:1,padding:"10px 16px",borderRadius:"var(--rs)",
+                flex:"1 1 140px",padding:"10px 16px",borderRadius:"var(--rs)",
                 background:STAGE_MAP.design.color+"22",border:`1px solid ${STAGE_MAP.design.color}55`,
                 color:STAGE_MAP.design.color,fontSize:13,fontWeight:700,
                 display:"flex",alignItems:"center",justifyContent:"center",gap:8,
               }}>Move to Design <Ico d={Icons.arrow} size={14} stroke={STAGE_MAP.design.color}/></button>
+              <button onClick={()=>onStageChange(post,"client_approval")} style={{
+                flex:"1 1 140px",padding:"10px 16px",borderRadius:"var(--rs)",
+                background:STAGE_MAP.client_approval.color+"22",border:`1px solid ${STAGE_MAP.client_approval.color}55`,
+                color:STAGE_MAP.client_approval.color,fontSize:13,fontWeight:700,
+                display:"flex",alignItems:"center",justifyContent:"center",gap:8,
+              }}>Skip to Client Approval <Ico d={Icons.arrow} size={14} stroke={STAGE_MAP.client_approval.color}/></button>
               <button onClick={giveEdits} style={{
-                flex:1,padding:"10px 16px",borderRadius:"var(--rs)",
+                flex:"1 1 100px",padding:"10px 16px",borderRadius:"var(--rs)",
                 background:"#f59e0b22",border:"1px solid #f59e0b55",
                 color:"#f59e0b",fontSize:13,fontWeight:700,
               }}>Give Edits</button>
@@ -16155,51 +16167,61 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
         </button>
       )}
 
-      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20,display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
-        <div onClick={()=>member.avatar_url&&setShowPhoto(true)} style={{width:56,height:56,borderRadius:"50%",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:20,flexShrink:0,overflow:"hidden",cursor:member.avatar_url?"zoom-in":"default"}}>
-          {member.avatar_url?<img src={member.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:member.name?.[0]?.toUpperCase()||"?"}
-        </div>
-        {showPhoto&&<ImageLightbox url={member.avatar_url} alt={member.name} onClose={()=>setShowPhoto(false)}/>}
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-            <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:20,fontWeight:800}}>{member.name}</h2>
-            <span style={{fontSize:12,color:"var(--text3)",fontWeight:600}}>@{toUsername(member.name)}</span>
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:14}}>
+        <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+          <div onClick={()=>member.avatar_url&&setShowPhoto(true)} style={{width:56,height:56,borderRadius:"50%",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:20,flexShrink:0,overflow:"hidden",cursor:member.avatar_url?"zoom-in":"default"}}>
+            {member.avatar_url?<img src={member.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:member.name?.[0]?.toUpperCase()||"?"}
           </div>
-          <p style={{fontSize:13,color:"var(--text2)"}}>{member.title?`${member.title} · `:""}{member.email}</p>
-        </div>
-        <span style={{background:ROLES[member.role]?.color+"22",color:ROLES[member.role]?.color,borderRadius:6,padding:"4px 12px",fontSize:12,fontWeight:600}}>{ROLES[member.role]?.label||member.role}</span>
-        <span style={{background:member.status==="active"?"#10b98122":"#f59e0b22",color:member.status==="active"?"#10b981":"#f59e0b",borderRadius:6,padding:"4px 12px",fontSize:12,fontWeight:600}}>{member.status||"active"}</span>
-        {member.employment_type==="part_time"&&(
-          <span title={parseMaybeJson(member.work_days,WORK_DAYS_DEFAULT).map(d=>WEEKDAY_LABELS.find(w=>w.d===d)?.label).join(", ")} style={{background:"#8b5cf622",color:"#8b5cf6",borderRadius:6,padding:"4px 12px",fontSize:12,fontWeight:600}}>
-            Part-time · {parseMaybeJson(member.work_days,WORK_DAYS_DEFAULT).map(d=>WEEKDAY_LABELS.find(w=>w.d===d)?.label).join("/")}
-          </span>
-        )}
-        {currentUser?.role==="admin"&&member.email!==currentUser?.email&&(
-          <button onClick={()=>onImpersonate&&onImpersonate(member)} style={{fontSize:12,fontWeight:700,color:"var(--text2)",background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"7px 14px",cursor:"pointer"}}>Access Account</button>
-        )}
-        {canEdit&&(
-          <div style={{position:"relative"}}>
-            <button onClick={()=>setShowPassword(p=>!p)} title="Show current password" style={{width:32,height:32,borderRadius:8,border:"1px solid var(--border2)",background:showPassword?"var(--accent)":"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
-              <Ico d={Icons.key} size={14} stroke={showPassword?"#fff":"var(--text2)"}/>
-            </button>
-            {showPassword&&(
-              <div style={{position:"absolute",top:"110%",left:0,zIndex:20,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,padding:"10px 12px",boxShadow:"0 8px 24px rgba(0,0,0,0.2)",display:"flex",alignItems:"center",gap:10,whiteSpace:"nowrap"}}>
-                {member.password ? (
-                  <>
-                    <span style={{fontFamily:"monospace",fontSize:13,fontWeight:700,color:"var(--text)"}}>{member.password}</span>
-                    <button onClick={()=>{try{navigator.clipboard.writeText(member.password);}catch(e){}}} title="Copy" style={{padding:4}}><Ico d={Icons.copy2} size={13} stroke="var(--text3)"/></button>
-                  </>
-                ) : (
-                  <span style={{fontSize:12,color:"var(--text3)"}}>No password set yet — set one via Edit</span>
-                )}
-              </div>
-            )}
+          {showPhoto&&<ImageLightbox url={member.avatar_url} alt={member.name} onClose={()=>setShowPhoto(false)}/>}
+          <div style={{flex:1,minWidth:180}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:20,fontWeight:800}}>{member.name}</h2>
+              <span style={{fontSize:12,color:"var(--text3)",fontWeight:600}}>@{toUsername(member.name)}</span>
+            </div>
+            <p style={{fontSize:13,color:"var(--text2)"}}>{member.title?`${member.title} · `:""}{member.email}</p>
           </div>
-        )}
-        {canEdit&&<Btn size="sm" onClick={onEdit}>Edit</Btn>}
-        {onDelete&&currentUser?.role==="admin"&&member.email!==currentUser?.email&&(
-          <button onClick={()=>{ if(window.confirm(`Delete ${member.name||member.email}? This removes their team member account permanently.`)) onDelete(member.id); }} style={{fontSize:12,fontWeight:700,color:"#ef4444",background:"#ef444422",border:"1px solid #ef444455",borderRadius:8,padding:"7px 14px",cursor:"pointer"}}>Delete</button>
-        )}
+        </div>
+
+        {/* Badges — always their own line, wrapping independently of the buttons below */}
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <span style={{background:ROLES[member.role]?.color+"22",color:ROLES[member.role]?.color,borderRadius:6,padding:"4px 12px",fontSize:12,fontWeight:600}}>{ROLES[member.role]?.label||member.role}</span>
+          <span style={{background:member.status==="active"?"#10b98122":"#f59e0b22",color:member.status==="active"?"#10b981":"#f59e0b",borderRadius:6,padding:"4px 12px",fontSize:12,fontWeight:600}}>{member.status||"active"}</span>
+          {member.employment_type==="part_time"&&(
+            <span title={parseMaybeJson(member.work_days,WORK_DAYS_DEFAULT).map(d=>WEEKDAY_LABELS.find(w=>w.d===d)?.label).join(", ")} style={{background:"#8b5cf622",color:"#8b5cf6",borderRadius:6,padding:"4px 12px",fontSize:12,fontWeight:600}}>
+              Part-time · {parseMaybeJson(member.work_days,WORK_DAYS_DEFAULT).map(d=>WEEKDAY_LABELS.find(w=>w.d===d)?.label).join("/")}
+            </span>
+          )}
+        </div>
+
+        {/* Actions — their own line too, so they never interleave with badges on narrow screens */}
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          {currentUser?.role==="admin"&&member.email!==currentUser?.email&&(
+            <button onClick={()=>onImpersonate&&onImpersonate(member)} style={{fontSize:12,fontWeight:700,color:"var(--text2)",background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"7px 14px",cursor:"pointer"}}>Access Account</button>
+          )}
+          {canEdit&&(
+            <div style={{position:"relative"}}>
+              <button onClick={()=>setShowPassword(p=>!p)} title="Show current password" style={{width:32,height:32,borderRadius:8,border:"1px solid var(--border2)",background:showPassword?"var(--accent)":"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                <Ico d={Icons.key} size={14} stroke={showPassword?"#fff":"var(--text2)"}/>
+              </button>
+              {showPassword&&(
+                <div style={{position:"absolute",top:"110%",left:0,zIndex:20,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,padding:"10px 12px",boxShadow:"0 8px 24px rgba(0,0,0,0.2)",display:"flex",alignItems:"center",gap:10,whiteSpace:"nowrap"}}>
+                  {member.password ? (
+                    <>
+                      <span style={{fontFamily:"monospace",fontSize:13,fontWeight:700,color:"var(--text)"}}>{member.password}</span>
+                      <button onClick={()=>{try{navigator.clipboard.writeText(member.password);}catch(e){}}} title="Copy" style={{padding:4}}><Ico d={Icons.copy2} size={13} stroke="var(--text3)"/></button>
+                    </>
+                  ) : (
+                    <span style={{fontSize:12,color:"var(--text3)"}}>No password set yet — set one via Edit</span>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {canEdit&&<Btn size="sm" onClick={onEdit}>Edit</Btn>}
+          {onDelete&&currentUser?.role==="admin"&&member.email!==currentUser?.email&&(
+            <button onClick={()=>{ if(window.confirm(`Delete ${member.name||member.email}? This removes their team member account permanently.`)) onDelete(member.id); }} style={{fontSize:12,fontWeight:700,color:"#ef4444",background:"#ef444422",border:"1px solid #ef444455",borderRadius:8,padding:"7px 14px",cursor:"pointer"}}>Delete</button>
+          )}
+        </div>
       </div>
 
       <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)",alignSelf:"flex-start"}}>
@@ -16444,6 +16466,26 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
           </div>
         </div>
       )}
+
+      {(()=>{
+        const rawPerf = calcUserPerf(member.email, perfLogs, maiReportSessions);
+        const overdueCount = countOverdueTasks(member, posts);
+        const score = applyOverduePenalty(rawPerf.score, overdueCount);
+        return (
+          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20,display:"flex",alignItems:"center",justifyContent:"space-between",gap:16,flexWrap:"wrap"}}>
+            <div style={{display:"flex",alignItems:"center",gap:16}}>
+              <div style={{width:56,height:56,borderRadius:"50%",background:perfColor(score)+"22",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:18,color:perfColor(score),flexShrink:0}}>{score}</div>
+              <div>
+                <h3 style={{fontWeight:700,fontSize:14}}>Accumulated Score — {perfLabel(score)}</h3>
+                <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>
+                  {rawPerf.total} completed task{rawPerf.total===1?"":"s"}{overdueCount>0?` · ${overdueCount} overdue`:""}{rawPerf.maiScore!=null?` · Mai check-ins ${rawPerf.maiScore}%`:""}
+                </p>
+              </div>
+            </div>
+            <button onClick={()=>setTab("scoring")} style={{fontSize:12,fontWeight:700,color:"var(--accent)",background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"7px 14px",cursor:"pointer"}}>View Full Breakdown</button>
+          </div>
+        );
+      })()}
 
       {canEditSalary&&(()=>{
         const now = new Date();
