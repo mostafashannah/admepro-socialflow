@@ -7701,7 +7701,7 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                   <Field label="Assign To">
                     <select value={cfg.assigned_to} onChange={e=>sk(kind,"assigned_to",e.target.value)} style={inputSt}>
                       <option value="">— Unassigned —</option>
-                      {team.map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
+                      {eligibleAssignees(startStage,team).map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
                     </select>
                   </Field>
                   <Field label="Due Date">
