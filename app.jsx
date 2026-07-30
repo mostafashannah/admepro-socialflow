@@ -28814,9 +28814,9 @@ function generateContactReportHTML(report, clientName, branding, client, team) {
 <tr><td align="center">
 <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb">
   <tr><td style="padding:32px 36px 0">
-    <img src="${ADMEPRO_LOGO_BLACK}" alt="${esc(branding?.app_name||"Admepro")}" style="height:28px;width:auto"/>
+    <img src="${ADMEPRO_LOGO_BLACK}" alt="${esc(branding?.app_name||"Admepro")}" style="height:42px;width:auto"/>
   </td></tr>
-  <tr><td style="padding:24px 36px 36px">
+  <tr><td style="padding:44px 36px 36px">
     <p style="margin:0 0 8px;font-size:11px;font-weight:700;color:${accent};text-transform:uppercase;letter-spacing:0.08em">${typeLabel} Report</p>
     <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">${esc(clientName)}</h2>
     <p style="margin:0 0 16px;font-size:13px;color:#6b7280">${when}${locLabel?` &middot; ${esc(locLabel)}`:""}${report.created_by_name?` &middot; Logged by ${esc(report.created_by_name)}`:""}</p>
@@ -28825,7 +28825,7 @@ function generateContactReportHTML(report, clientName, branding, client, team) {
     ${bulletSection("Key Points", report.key_points)}
     ${bulletSection("Action Items", report.action_items)}
     <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:28px;padding-top:20px"><tr><td>
-      <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro</p>
+      <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Advertising Agency</p>
       <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
       <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
     </td></tr></table>
@@ -28940,21 +28940,21 @@ async function downloadContactReportPDF(report, clientName, branding, client, te
     // label, heading hierarchy, sections and footer — so the downloaded PDF
     // and the emailed report look like the same document.
     if (logo) {
-      const logoH = 22, logoW = logoH * (logo.w/logo.h);
+      const logoH = 33, logoW = logoH * (logo.w/logo.h);
       doc.addImage(logo.dataUrl, "PNG", marginX, y-16, logoW, logoH);
-      y += 26;
+      y += 48;
     } else {
       // The hosted logo image can fail to fetch (hotlink protection blocks
       // fetch()/XHR even though a plain <img> tag in the emailed version
       // loads fine) — redraw the "p." mark itself as vector text/shape so
       // the PDF always shows the actual Admepro logomark, never a text
       // fallback naming whatever the client's app_name happens to be.
-      doc.setFont("Helvetica","bold"); doc.setFontSize(22); doc.setTextColor(17,24,39);
+      doc.setFont("Helvetica","bold"); doc.setFontSize(33); doc.setTextColor(17,24,39);
       doc.text("p", marginX, y);
       const pW = doc.getTextWidth("p");
       doc.setFillColor(ar,ag,ab);
-      doc.circle(marginX+pW+3, y-1, 2.4, "F");
-      y += 26;
+      doc.circle(marginX+pW+4.5, y-1.5, 3.6, "F");
+      y += 48;
     }
     doc.setFont("Helvetica","bold"); doc.setFontSize(9); doc.setTextColor(ar,ag,ab);
     doc.text(`${typeLabel.toUpperCase()} REPORT`, marginX, y); y += 22;
@@ -28987,7 +28987,7 @@ async function downloadContactReportPDF(report, clientName, branding, client, te
       doc.setDrawColor(229,231,235); doc.setLineWidth(1);
       doc.line(marginX, fy, pageWidth-marginX, fy);
       doc.setFont("Helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(17,24,39);
-      doc.text("Admepro", marginX, fy+20);
+      doc.text("Admepro Advertising Agency", marginX, fy+20);
       doc.setFont("Helvetica","normal"); doc.setFontSize(9); doc.setTextColor(107,114,128);
       doc.text("145 El Banafsig 3, New Cairo, Cairo", marginX, fy+34);
       doc.text("hello@admepro.com · +20 100 037 0140", marginX, fy+46);
@@ -39660,6 +39660,7 @@ function App() {
         qe("LeadNotifySetting"), // 44
         qe("Expense",{},"-date",1000), // 45
         qe("FinanceClientNote"), // 46
+        qe("ContactReportActivity",{},"-created_at",2000), // 47
         // JobOpening/JobApplication removed here — RecruitmentPage already
         // fetches both itself on mount (see its own `load()`), so these were
         // an unread duplicate fetch on every single app load/refresh.
@@ -39713,6 +39714,7 @@ function App() {
         leadNotifySettings: pick(wave2[44], d.leadNotifySettings||[]),
         expenses: pick(wave2[45], d.expenses||[]),
         financeClientNotes: pick(wave2[46], d.financeClientNotes||[]),
+        contactReportActivity: pick(wave2[47], d.contactReportActivity||[]),
       }));
     }
     loadAllDataRef.current = load;
