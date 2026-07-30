@@ -28949,15 +28949,19 @@ async function downloadContactReportPDF(report, clientName, branding, client, te
     // the admepro.com hotlink/CORS issue entirely. Prefer that; only fall
     // back to fetching the hosted default logo if nothing's been uploaded.
     let logo = null;
-    if (branding?.primary_logo) {
+    // Secondary logo is meant for exactly this — an alternative/horizontal
+    // layout — so it fits a report header better than the primary mark;
+    // fall back to primary if no secondary has been uploaded.
+    const uploadedLogo = branding?.secondary_logo || branding?.primary_logo;
+    if (uploadedLogo) {
       try {
         const dims = await new Promise((resolve,reject)=>{
           const img = new Image();
           img.onload = () => resolve({w:img.naturalWidth, h:img.naturalHeight});
           img.onerror = reject;
-          img.src = branding.primary_logo;
+          img.src = uploadedLogo;
         });
-        logo = {dataUrl: branding.primary_logo, ...dims};
+        logo = {dataUrl: uploadedLogo, ...dims};
       } catch(e) { logo = null; }
     }
     if (!logo) logo = await loadImageForPdf(ADMEPRO_LOGO_BLACK) || await loadImageForPdfViaImg(ADMEPRO_LOGO_BLACK);
