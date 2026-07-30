@@ -15272,30 +15272,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
 
       {tab==="team"&&(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {/* AI Team — Sara & the agent crew. Read-only identity cards; actual
-              model/skills config lives in Settings → AI Agents so there's one
-              source of truth, not two places that can drift out of sync. */}
-          <div>
-            <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>AI Team</p>
-            {(()=>{ let agentsCfg=appSettings?.ai_agents; if(typeof agentsCfg==="string"){try{agentsCfg=JSON.parse(agentsCfg);}catch(e){agentsCfg={};}} agentsCfg=agentsCfg||{};
-            return AI_AGENT_DEFS.map(a=>{
-              const avatarUrl = agentsCfg[a.id]?.avatar_url;
-              return (
-              <div key={a.id} onClick={()=>setViewingAgent(a)} data-clickable style={{background:"var(--surface)",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:14,border:`1px solid ${a.color}55`,marginBottom:8,cursor:"pointer"}}>
-                <div style={{width:40,height:40,borderRadius:"50%",background:a.color,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:15,flexShrink:0,overflow:"hidden"}}>
-                  {avatarUrl?<img src={avatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:a.name[0]}
-                </div>
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:600,fontSize:14,color:"var(--text)"}}>{a.name}</div>
-                  <div style={{color:"var(--text2)",fontSize:12}}>{a.description}</div>
-                </div>
-                <span style={{background:a.color+"22",color:a.color,borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:700}}>AI</span>
-              </div>
-              );
-            }); })()}
-            <p style={{fontSize:11,color:"var(--text3)",marginBottom:4}}>Mention <strong>@Sara</strong> for content help, or <strong>@Pro</strong> to have him take an action (assign, change stage, set due date/priority) — both reply right in the thread. Configure them in Settings → AI Agents.</p>
-          </div>
-          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",margin:"6px 0 -2px"}}>Human Team</p>
+          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:-2}}>Human Team</p>
           {(team||[]).map(m=>(
             <div key={m.id} onClick={()=>setViewingMember(m)} data-clickable style={{background:"var(--surface)",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:14,border:"1px solid var(--border)",cursor:"pointer"}}>
               <div style={{width:40,height:40,borderRadius:"50%",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:15,flexShrink:0,overflow:"hidden"}}>
@@ -15322,6 +15299,31 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
             </div>
           ))}
           {(!team||team.length===0)&&<div style={{textAlign:"center",padding:40,color:"var(--text2)"}}>No team members yet. Invite your first user.</div>}
+
+          {/* AI Team — Sara & the agent crew, listed below the human team.
+              Read-only identity cards; actual model/skills config lives in
+              Settings → AI Agents so there's one source of truth, not two
+              places that can drift out of sync. */}
+          <div style={{marginTop:8}}>
+            <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>AI Team</p>
+            {(()=>{ let agentsCfg=appSettings?.ai_agents; if(typeof agentsCfg==="string"){try{agentsCfg=JSON.parse(agentsCfg);}catch(e){agentsCfg={};}} agentsCfg=agentsCfg||{};
+            return AI_AGENT_DEFS.map(a=>{
+              const avatarUrl = agentsCfg[a.id]?.avatar_url;
+              return (
+              <div key={a.id} onClick={()=>setViewingAgent(a)} data-clickable style={{background:"var(--surface)",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:14,border:`1px solid ${a.color}55`,marginBottom:8,cursor:"pointer"}}>
+                <div style={{width:40,height:40,borderRadius:"50%",background:a.color,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:15,flexShrink:0,overflow:"hidden"}}>
+                  {avatarUrl?<img src={avatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:a.name[0]}
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:600,fontSize:14,color:"var(--text)"}}>{a.name}</div>
+                  <div style={{color:"var(--text2)",fontSize:12}}>{a.description}</div>
+                </div>
+                <span style={{background:a.color+"22",color:a.color,borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:700}}>AI</span>
+              </div>
+              );
+            }); })()}
+            <p style={{fontSize:11,color:"var(--text3)",marginBottom:4}}>Mention <strong>@Sara</strong> for content help, or <strong>@Pro</strong> to have him take an action (assign, change stage, set due date/priority) — both reply right in the thread. Configure them in Settings → AI Agents.</p>
+          </div>
         </div>
       )}
 
