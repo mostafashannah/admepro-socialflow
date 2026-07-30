@@ -15984,15 +15984,21 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
         {currentUser?.role==="admin"&&member.email!==currentUser?.email&&(
           <button onClick={()=>onImpersonate&&onImpersonate(member)} style={{fontSize:12,fontWeight:700,color:"var(--text2)",background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"7px 14px",cursor:"pointer"}}>Access Account</button>
         )}
-        {canEdit&&member.password&&(
+        {canEdit&&(
           <div style={{position:"relative"}}>
             <button onClick={()=>setShowPassword(p=>!p)} title="Show current password" style={{width:32,height:32,borderRadius:8,border:"1px solid var(--border2)",background:showPassword?"var(--accent)":"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
               <Ico d={Icons.key} size={14} stroke={showPassword?"#fff":"var(--text2)"}/>
             </button>
             {showPassword&&(
               <div style={{position:"absolute",top:"110%",left:0,zIndex:20,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,padding:"10px 12px",boxShadow:"0 8px 24px rgba(0,0,0,0.2)",display:"flex",alignItems:"center",gap:10,whiteSpace:"nowrap"}}>
-                <span style={{fontFamily:"monospace",fontSize:13,fontWeight:700,color:"var(--text)"}}>{member.password}</span>
-                <button onClick={()=>{try{navigator.clipboard.writeText(member.password);}catch(e){}}} title="Copy" style={{padding:4}}><Ico d={Icons.copy2} size={13} stroke="var(--text3)"/></button>
+                {member.password ? (
+                  <>
+                    <span style={{fontFamily:"monospace",fontSize:13,fontWeight:700,color:"var(--text)"}}>{member.password}</span>
+                    <button onClick={()=>{try{navigator.clipboard.writeText(member.password);}catch(e){}}} title="Copy" style={{padding:4}}><Ico d={Icons.copy2} size={13} stroke="var(--text3)"/></button>
+                  </>
+                ) : (
+                  <span style={{fontSize:12,color:"var(--text3)"}}>No password set yet — set one via Edit</span>
+                )}
               </div>
             )}
           </div>
