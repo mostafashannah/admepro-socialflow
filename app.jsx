@@ -354,6 +354,15 @@ function countOverdueTasks(member, posts) {
 function applyOverduePenalty(score, overdueCount) {
   return overdueCount ? Math.max(0, score - Math.min(40, overdueCount*8)) : score;
 }
+// Mirrors commission_multiplier() in commission-cron.php — a low score
+// means the commission isn't earned at all, not just docked a little.
+// <=60 -> 0%, 60-80 -> 50%, 80-90 -> 75%, >90 -> 100%.
+function commissionMultiplierForScore(score) {
+  if (score<=60) return 0;
+  if (score<=80) return 0.5;
+  if (score<=90) return 0.75;
+  return 1;
+}
 
 const PLATFORMS = ["instagram","facebook","linkedin","tiktok","twitter"];
 const POST_TYPES = ["image","video","carousel","story","reel"];
@@ -16557,27 +16566,69 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
         );
       })()}
 
-      {myClients.length>0&&(
+      {myClients.length>0&&(()=>{
+        // Per client: real money earned so far this cycle, plus a
+        // straight-line projection ("if payments keep coming in at this
+        // same daily pace") of what the full cycle will total by its end —
+        // not just what's landed already.
+        const rows = myClients.map(c=>{
+          const commission = getAccountManagerCommissions(c)[member.id];
+          const cycleRange = commission?.percentage ? getCommissionCycleRange(commission.cycle) : null;
+          const cyclePayments = cycleRange ? computeClientPaymentsInRange(c.name, {invoices,payments,subscriptionPayments,expenses}, cycleRange.start, cycleRange.end) : 0;
+          const pct = Number(commission?.percentage)||0;
+          const earnedSoFar = cycleRange ? cyclePayments * pct / 100 : 0;
+          let expectedForCycle = earnedSoFar;
+          if (cycleRange) {
+            const elapsedMs = Math.max(1, Date.now() - cycleRange.start.getTime());
+            const totalMs = cycleRange.end.getTime() - cycleRange.start.getTime();
+            const elapsedFrac = Math.min(1, elapsedMs / totalMs);
+            expectedForCycle = elapsedFrac > 0 ? (cyclePayments / elapsedFrac) * pct / 100 : earnedSoFar;
+          }
+          return {c, commission, cycleRange, earnedSoFar, expectedForCycle};
+        });
+        const totalEarnedSoFar = rows.reduce((s,r)=>s+r.earnedSoFar,0);
+        const totalExpectedForCycle = rows.reduce((s,r)=>s+r.expectedForCycle,0);
+        const cycleLabel = rows.find(r=>r.cycleRange)?.cycleRange?.label || "this cycle";
+        const memberScoreRaw = calcUserPerf(member.email, perfLogs, maiReportSessions).score;
+        const memberOverdue = countOverdueTasks(member, posts);
+        const memberScore = applyOverduePenalty(memberScoreRaw, memberOverdue);
+        const rate = commissionMultiplierForScore(memberScore);
+        return (
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
           <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
             <h3 style={{fontWeight:700,fontSize:14}}>Assigned Clients</h3>
             <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Clients where {member.name} is the account manager</p>
           </div>
+          <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)",display:"flex",flexWrap:"wrap",gap:20}}>
+            <div>
+              <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Total So Far ({cycleLabel})</p>
+              <p style={{fontSize:18,fontWeight:800,color:"#10b981"}}>EGP {Math.round(totalEarnedSoFar).toLocaleString()}</p>
+            </div>
+            <div>
+              <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Expected by End of {cycleLabel}</p>
+              <p style={{fontSize:18,fontWeight:800,color:"var(--text)"}}>EGP {Math.round(totalExpectedForCycle).toLocaleString()}</p>
+            </div>
+            <div>
+              <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Score Rate</p>
+              <p style={{fontSize:18,fontWeight:800,color:perfColor(memberScore)}}>{Math.round(rate*100)}% <span style={{fontSize:11,color:"var(--text3)",fontWeight:600}}>(score {memberScore})</span></p>
+            </div>
+            <div>
+              <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Actual Expected Payout</p>
+              <p style={{fontSize:18,fontWeight:800,color:"#8b5cf6"}}>EGP {Math.round(totalExpectedForCycle*rate).toLocaleString()}</p>
+            </div>
+          </div>
           <div>
-            {myClients.map((c,i)=>{
-              const commission = getAccountManagerCommissions(c)[member.id];
-              const cycleRange = commission?.percentage ? getCommissionCycleRange(commission.cycle) : null;
-              const cyclePayments = cycleRange ? computeClientPaymentsInRange(c.name, {invoices,payments,subscriptionPayments,expenses}, cycleRange.start, cycleRange.end) : 0;
-              const commissionEarned = cycleRange ? cyclePayments * (Number(commission.percentage)||0) / 100 : 0;
+            {rows.map((r,i)=>{
+              const {c, commission, cycleRange, earnedSoFar, expectedForCycle} = r;
               return (
-              <div key={c.id} style={{padding:"12px 18px",borderBottom:i<myClients.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12}}>
+              <div key={c.id} style={{padding:"12px 18px",borderBottom:i<rows.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12}}>
                 <div style={{width:34,height:34,borderRadius:"50%",background:clr(c.name),display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:13,flexShrink:0,overflow:"hidden"}}>
                   {c.logo_url?<img src={c.logo_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:c.name?.[0]?.toUpperCase()||"?"}
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <p style={{fontWeight:700,fontSize:13}}>{c.name}</p>
                   <p style={{fontSize:11,color:"var(--text3)"}}>{c.industry||"—"}{commission?.percentage?` · ${commission.percentage}% commission (${commission.cycle==="quarterly"?"quarterly":"monthly"})`:""}</p>
-                  {cycleRange&&<p style={{fontSize:11,color:"#10b981",marginTop:2,fontWeight:600}}>EGP {Math.round(commissionEarned).toLocaleString()} earned so far — {cycleRange.label}</p>}
+                  {cycleRange&&<p style={{fontSize:11,color:"#10b981",marginTop:2,fontWeight:600}}>EGP {Math.round(earnedSoFar).toLocaleString()} so far · EGP {Math.round(expectedForCycle).toLocaleString()} expected — {cycleRange.label}</p>}
                 </div>
                 <span style={{background:c.status==="active"?"#10b98122":"#6b728022",color:c.status==="active"?"#10b981":"#6b7280",borderRadius:6,padding:"3px 10px",fontSize:11,fontWeight:600}}>{c.status||"active"}</span>
               </div>
@@ -16585,7 +16636,8 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
             })}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
         <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
