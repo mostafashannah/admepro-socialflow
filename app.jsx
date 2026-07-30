@@ -41005,15 +41005,29 @@ Return ONLY the JSON array, no markdown.`;
 
   const saveBrandingAssets = async (bData) => {
     const updated = {...brandingAssets,...bData,setting_key:"agency_branding",updated_by:currentUser?.email};
+    const previous = brandingAssets;
     setBrandingAssets(updated);
     if(bData.primary_color) setAccentColor(bData.primary_color);
     if(bData.app_name) setAppSettings(s=>({...s,app_name:bData.app_name,primary_color:bData.primary_color||s.primary_color}));
     try {
-      if(brandingAssets.id) await ue("BrandingAssets",brandingAssets.id,updated);
-      else { const res=await ce("BrandingAssets",[updated]); const real=res.entities?.[0]; if(real?.id) setBrandingAssets(s=>({...s,id:real.id})); }
-    } catch(e){}
-    logActivity("Branding Updated","settings","Agency branding assets changed","success","",currentUser?.email||"admin");
-    setToast("Branding saved — updated everywhere");
+      // Logos are stored inline as base64, which can easily push the request
+      // body past the server's upload/POST size limit — that failure was
+      // being swallowed here, so the UI claimed "saved" and reverted to the
+      // old value on the next refresh with no indication anything went wrong.
+      if(brandingAssets.id) {
+        const res = await ue("BrandingAssets",brandingAssets.id,updated);
+        if(!res) throw new Error("Save request failed — the image may be too large for the server.");
+      } else {
+        const res = await ce("BrandingAssets",[updated]);
+        if(!res.entities?.[0]) throw new Error("Save request failed — the image may be too large for the server.");
+        setBrandingAssets(s=>({...s,id:res.entities[0].id}));
+      }
+      logActivity("Branding Updated","settings","Agency branding assets changed","success","",currentUser?.email||"admin");
+      setToast("Branding saved — updated everywhere");
+    } catch(e) {
+      setBrandingAssets(previous);
+      alert("Saving branding failed: " + (e?.message||e) + " Try a smaller image file.");
+    }
   };
 
   // Silent background update to context_file — appends a compact learning note
