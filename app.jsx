@@ -28776,7 +28776,9 @@ function generateContactReportHTML(report, clientName, branding) {
   const locLabel = report.meeting_type==="meeting"
     ? [report.location_type==="online"?"Online":report.location_type==="physical"?"In-person":null, report.location].filter(Boolean).join(" — ")
     : (report.location||"");
-  const when = report.created_at ? new Date(report.created_at).toLocaleString("en-GB",{day:"numeric",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
+  const metDate = report.meeting_date ? new Date(report.meeting_date+"T00:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"}) : "";
+  const submittedAt = report.created_at ? new Date(report.created_at).toLocaleString("en-GB",{day:"numeric",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
+  const when = [metDate?`Met ${metDate}`:"", submittedAt?`Submitted ${submittedAt}`:""].filter(Boolean).join(" · ");
   const esc = s => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   const accent = branding?.primary_color || "#d90b2c";
   const attendeesLine = attendees.map(a=>esc(a.name)+(a.title?` (${esc(a.title)})`:"")).join(", ");
@@ -28852,7 +28854,9 @@ async function downloadContactReportPDF(report, clientName, branding) {
     const locLabel = report.meeting_type==="meeting"
       ? [report.location_type==="online"?"Online":report.location_type==="physical"?"In-person":null, report.location].filter(Boolean).join(" — ")
       : (report.location||"");
-    const when = report.created_at ? new Date(report.created_at).toLocaleString("en-GB",{day:"numeric",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
+    const metDate = report.meeting_date ? new Date(report.meeting_date+"T00:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"}) : "";
+    const submittedAt = report.created_at ? new Date(report.created_at).toLocaleString("en-GB",{day:"numeric",month:"long",year:"numeric",hour:"2-digit",minute:"2-digit"}) : "";
+    const when = [metDate?`Met ${metDate}`:"", submittedAt?`Submitted ${submittedAt}`:""].filter(Boolean).join(" · ");
     const [ar,ag,ab] = hexToRgb(branding?.primary_color||"#d90b2c");
     const appName = branding?.app_name || "Admepro";
     const logo = await loadImageForPdf(ADMEPRO_LOGO_BLACK);
@@ -28862,43 +28866,47 @@ async function downloadContactReportPDF(report, clientName, branding) {
     const maxW = pageWidth - marginX*2;
     let y = 56;
     const ensureRoom = (needed) => { if (y + needed > pageHeight - 48) { doc.addPage(); y = 56; } };
-    const heading = (text, size=11) => { doc.setFont("Helvetica","bold"); doc.setFontSize(size); doc.setTextColor(ar,ag,ab); ensureRoom(size+8); doc.text(text, marginX, y); y += size+8; };
-    const body = (text, size=10.5, lh=14) => {
-      doc.setFont("Helvetica","normal"); doc.setFontSize(size); doc.setTextColor(30,30,30);
+    const heading = (text, size=11) => { doc.setFont("Helvetica","bold"); doc.setFontSize(size); doc.setTextColor(107,114,128); ensureRoom(size+8); doc.text(text, marginX, y); y += size+8; };
+    const body = (text, size=10.5, lh=15) => {
+      doc.setFont("Helvetica","normal"); doc.setFontSize(size); doc.setTextColor(55,65,81);
       const lines = doc.splitTextToSize(text, maxW);
       for (const line of lines) { ensureRoom(lh); doc.text(line, marginX, y); y += lh; }
     };
 
-    // Header — same logo + label → title → meta hierarchy as the branded email
-    doc.setFillColor(ar,ag,ab);
-    doc.rect(0, 0, pageWidth, 6, "F");
+    // Mirrors generateContactReportHTML's layout 1:1 — same logo, accent
+    // label, heading hierarchy, sections and footer — so the downloaded PDF
+    // and the emailed report look like the same document.
     if (logo) {
       const logoH = 22, logoW = logoH * (logo.w/logo.h);
       doc.addImage(logo.dataUrl, "PNG", marginX, y-16, logoW, logoH);
-      y += 10;
+      y += 26;
     }
     doc.setFont("Helvetica","bold"); doc.setFontSize(9); doc.setTextColor(ar,ag,ab);
     doc.text(`${typeLabel.toUpperCase()} REPORT`, marginX, y); y += 22;
     doc.setFont("Helvetica","bold"); doc.setFontSize(20); doc.setTextColor(17,24,39);
-    doc.text(clientName, marginX, y); y += 20;
+    doc.text(clientName, marginX, y); y += 18;
     doc.setFont("Helvetica","normal"); doc.setFontSize(10); doc.setTextColor(107,114,128);
-    doc.text([when, locLabel, report.created_by_name?`Logged by ${report.created_by_name}`:""].filter(Boolean).join("  ·  "), marginX, y);
-    y += 16;
-    doc.setDrawColor(229,231,235); doc.setLineWidth(1);
-    doc.line(marginX, y, pageWidth-marginX, y);
-    y += 22;
+    body([when, locLabel, report.created_by_name?`Logged by ${report.created_by_name}`:""].filter(Boolean).join(" · "), 10, 14);
+    y += 8;
 
     if (attendees.length) {
       heading("ATTENDEES");
-      body(attendees.map(a=>a.name+(a.title?` (${a.title})`:"")).join("   •   "));
-      y += 10;
+      body(attendees.map(a=>a.name+(a.title?` (${a.title})`:"")).join(", "));
+      y += 6;
     }
-    if (report.summary) { heading("SUMMARY"); body(report.summary); y += 10; }
-    if (report.key_points) { heading("KEY POINTS"); report.key_points.split("\n").filter(Boolean).forEach(l=>body("• "+l.replace(/^[-•]\s*/,""))); y += 10; }
-    if (report.action_items) { heading("ACTION ITEMS"); report.action_items.split("\n").filter(Boolean).forEach(l=>body("• "+l.replace(/^[-•]\s*/,""))); y += 10; }
+    if (report.summary) { heading("SUMMARY"); body(report.summary); y += 6; }
+    if (report.key_points) { heading("KEY POINTS"); body(report.key_points); y += 6; }
+    if (report.action_items) { heading("ACTION ITEMS"); body(report.action_items); y += 6; }
 
-    doc.setFont("Helvetica","normal"); doc.setFontSize(8); doc.setTextColor(180,180,180);
-    doc.text(`${appName} · Generated ${new Date().toLocaleDateString("en-US",{year:"numeric",month:"long",day:"numeric"})}`, marginX, pageHeight-32);
+    ensureRoom(60);
+    doc.setDrawColor(229,231,235); doc.setLineWidth(1);
+    doc.line(marginX, y, pageWidth-marginX, y);
+    y += 20;
+    doc.setFont("Helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(17,24,39);
+    doc.text(appName, marginX, y); y += 14;
+    doc.setFont("Helvetica","normal"); doc.setFontSize(9); doc.setTextColor(107,114,128);
+    doc.text("145 El Banafsig 3, New Cairo, Cairo", marginX, y); y += 12;
+    doc.text("hello@admepro.com · +20 100 037 0140", marginX, y);
 
     const pdfBlob = doc.output("blob");
     if (pdfBlob.size < 300) throw new Error(`Rendered PDF looks empty (${pdfBlob.size} bytes)`);
