@@ -532,7 +532,8 @@ const WORKFLOW_ASSIGNMENTS = {
   planning: { role: "account_manager", label: "Account Manager", icon: "" },
   content_creation: { role: "content_creator", label: "Content Creator", icon: "" },
   design: { role: "graphic_designer", label: "Graphic Designer", icon: "" },
-  internal_review: { role: "admin", label: "Admin / Manager", icon: "" },
+  internal_review: { role: "account_manager", label: "Account Manager", icon: "" },
+  design_review: { role: "account_manager", label: "Account Manager", icon: "" },
   client_approval: { role: "account_manager", label: "Account Manager", icon: "✓" },
 };
 
@@ -540,6 +541,15 @@ const getAssigneeForStage = (stage, teamMembers) => {
   const roleNeeded = WORKFLOW_ASSIGNMENTS[stage]?.role;
   if (!roleNeeded) return null;
   return (teamMembers || []).find(m => m.role === roleNeeded);
+};
+
+// Restricts an assignee picker to only the team members eligible for a given
+// stage (e.g. Brief/planning -> Account Managers only). Falls back to the
+// full team for stages with no defined role (scheduled/published/etc).
+const eligibleAssignees = (stage, teamMembers) => {
+  const roleNeeded = WORKFLOW_ASSIGNMENTS[stage]?.role;
+  if (!roleNeeded) return teamMembers || [];
+  return (teamMembers || []).filter(m => m.role === roleNeeded);
 };
 
 // ════════════════════════════════════════════════════════════════
@@ -6056,7 +6066,7 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
             <select value={assignForm.assigned_to} onChange={e=>setAssignForm(f=>({...f,assigned_to:e.target.value}))}
               style={{width:"100%",padding:"9px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontSize:13}}>
               <option value="">Select team member…</option>
-              {(team||[]).map(m=><option key={m.email} value={m.email}>{m.name}</option>)}
+              {eligibleAssignees(assignStage,team).map(m=><option key={m.email} value={m.email}>{m.name}</option>)}
             </select>
           </div>
           <div style={{display:"flex",gap:8}}>
@@ -6106,12 +6116,16 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
 // table needed) — post_type carries the task category, platform stays empty
 // since it isn't going out to any social platform.
 const TASK_CATEGORIES = [["design","Design"],["video_editing","Video Editing"],["resizing","Resizing"],["report","Report"],["copywriting","Copywriting"],["other","Other"]];
-function AddGenericTaskModal({open,onClose,projects,team,onAdd,onCreateProject,presetClient,clients=[]}) {
+function AddGenericTaskModal({open,onClose,projects,team,onAdd,onCreateProject,presetClient,clients=[],currentUser}) {
   const [pickedClientId,setPickedClientId] = useState("");
   const activeClientId = presetClient?.id || pickedClientId;
   const activeClient = presetClient || clients.find(c=>c.id===pickedClientId) || null;
   const selectableProjects = activeClientId ? projects.filter(p=>p.client_id===activeClientId) : projects;
-  const blank = {title:"",project_id:selectableProjects[0]?.id||"",task_category:"design",other_category:"",description:"",assigned_to:"",due_date:"",priority:"medium"};
+  const eligibleTeam = eligibleAssignees("planning",team);
+  // Creator defaults to task owner — only when the creator themselves is
+  // eligible for the Brief/planning stage (Account Managers/admins).
+  const defaultAssignee = eligibleTeam.some(m=>m.email===currentUser?.email) ? currentUser.email : "";
+  const blank = {title:"",project_id:selectableProjects[0]?.id||"",task_category:"design",other_category:"",description:"",assigned_to:defaultAssignee,due_date:"",priority:"medium"};
   const [f,setF] = useState({...blank});
   const [saving,setSaving] = useState(false);
   const [newProjectName,setNewProjectName] = useState("");
@@ -6184,7 +6198,7 @@ function AddGenericTaskModal({open,onClose,projects,team,onAdd,onCreateProject,p
           <Field label="Assign To" required>
             <select value={f.assigned_to} onChange={e=>s("assigned_to",e.target.value)} style={inputSt}>
               <option value="">— Select —</option>
-              {team.map(m=><option key={m.id||m.email} value={m.email}>{m.name}</option>)}
+              {eligibleTeam.map(m=><option key={m.id||m.email} value={m.email}>{m.name}</option>)}
             </select>
           </Field>
           <Field label="Due Date" required>
@@ -6205,7 +6219,7 @@ function AddGenericTaskModal({open,onClose,projects,team,onAdd,onCreateProject,p
   );
 }
 
-function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,onUpdateAsset,presetClient,assets=[],allowClientRequest=false,clients=[],clientIntelligenceList=[]}) {
+function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,onUpdateAsset,presetClient,assets=[],allowClientRequest=false,clients=[],clientIntelligenceList=[],currentUser}) {
   const [step,setStep] = useState(1);
   // When opened from a client's profile, only that client's projects should be
   // selectable/defaulted — otherwise this silently defaults to projects[0],
@@ -6215,7 +6229,9 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
   const [pickedClientId,setPickedClientId] = useState("");
   const activeClientId = presetClient?.id || pickedClientId;
   const selectableProjects = activeClientId ? projects.filter(p=>p.client_id===activeClientId) : projects;
-  const blankForm = {project_id:selectableProjects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:"",scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",due_date:"",due_time:"",content_mode:"new",platforms:[],platform_types:{},media:[],cover:null,publish_mode:"schedule",postStory:false,storyImage:null,estimated_minutes:""};
+  const eligibleTeam = eligibleAssignees("planning",team);
+  const defaultAssignee = eligibleTeam.some(m=>m.email===currentUser?.email) ? currentUser.email : "";
+  const blankForm = {project_id:selectableProjects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:defaultAssignee,scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",due_date:"",due_time:"",content_mode:"new",platforms:[],platform_types:{},media:[],cover:null,publish_mode:"schedule",postStory:false,storyImage:null,estimated_minutes:""};
   const [f,setF] = useState({...blankForm});
   const [saving,setSaving] = useState(false);
   const [uploading,setUploading] = useState(false);
@@ -6553,7 +6569,7 @@ Return ONLY valid JSON (no markdown):
               <Field label="Assign To">
                 <select value={f.assigned_to} onChange={e=>s("assigned_to",e.target.value)} style={inputSt}>
                   <option value="">— Unassigned —</option>
-                  {team.map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
+                  {eligibleTeam.map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
                 </select>
               </Field>
               <Field label="Priority">
@@ -8446,14 +8462,25 @@ No markdown, no explanation.`;
               + expenses.filter(e=>(e.type||"out")!=="out"&&!isUnsettledOutstanding(e)).reduce((a,e)=>a+num(e.amount),0);
             const totalOut = expenses.filter(e=>(e.type||"out")==="out"&&!isUnsettledOutstanding(e)).reduce((a,e)=>a+num(e.amount),0);
             const balance = totalIn-totalOut;
-            const outstanding=invoices.filter(i=>i.status!=="paid").reduce((a,i)=>a+(i.balance_due||0),0);
+            const unpaidInvoices=invoices.filter(i=>i.status!=="paid");
+            const outstanding=unpaidInvoices.reduce((a,i)=>a+(i.balance_due||0),0);
             const overdueCount=invoices.filter(i=>isOverdueInvoice(i)&&i.status!=="paid").length;
-            const mrr=subscriptions.filter(s=>s.status==="active").reduce((a,s)=>{
+            const activeSubs=subscriptions.filter(s=>s.status==="active");
+            const mrr=activeSubs.reduce((a,s)=>{
               const months=BILLING_PERIODS[s.billing_period]?.months||1;
               return a+(s.amount||0)/months;
             },0);
             const overdueSubCount=subscriptions.filter(s=>s.status==="overdue").length;
             const hasAlerts=overdueCount>0||overdueSubCount>0;
+            // Current-month in/out — gives a live "how's this month going" read
+            // instead of the all-time Balance number staying static day to day.
+            const now=new Date();
+            const monthStart=new Date(now.getFullYear(),now.getMonth(),1);
+            const inMonth=d=>{ const dt=new Date(d); return dt>=monthStart&&dt<=now; };
+            const monthIn = payments.filter(p=>inMonth(p.payment_date)).reduce((a,p)=>a+num(p.amount),0)
+              + subscriptionPayments.filter(p=>inMonth(p.payment_date)).reduce((a,p)=>a+num(p.amount),0)
+              + expenses.filter(e=>(e.type||"out")!=="out"&&!isUnsettledOutstanding(e)&&inMonth(e.date)).reduce((a,e)=>a+num(e.amount),0);
+            const monthOut = expenses.filter(e=>(e.type||"out")==="out"&&!isUnsettledOutstanding(e)&&inMonth(e.date)).reduce((a,e)=>a+num(e.amount),0);
             return (
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -8465,9 +8492,11 @@ No markdown, no explanation.`;
                 <div className="grid-4" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12}}>
                   {[
                     {label:"Balance",value:`${balance>=0?"":"−"}EGP ${Math.round(Math.abs(balance)).toLocaleString()}`,color:balance>=0?"#10b981":"#ef4444",sub:"all-time in − out"},
-                    {label:"Outstanding",value:`EGP ${Math.round(outstanding).toLocaleString()}`,color:"#f59e0b",sub:"unpaid invoices"},
-                    {label:"MRR",value:`EGP ${Math.round(mrr).toLocaleString()}`,color:"var(--accent)",sub:"active subscriptions"},
-                    {label:"Overdue",value:overdueCount+overdueSubCount,color:hasAlerts?"#ef4444":"#10b981",sub:hasAlerts?"needs attention":"all clear"},
+                    {label:"This Month In",value:`EGP ${Math.round(monthIn).toLocaleString()}`,color:"#10b981",sub:`since ${monthStart.toLocaleDateString("en-US",{month:"short",day:"numeric"})}`},
+                    {label:"This Month Out",value:`EGP ${Math.round(monthOut).toLocaleString()}`,color:"#ef4444",sub:`since ${monthStart.toLocaleDateString("en-US",{month:"short",day:"numeric"})}`},
+                    {label:"Outstanding",value:`EGP ${Math.round(outstanding).toLocaleString()}`,color:"#f59e0b",sub:`${unpaidInvoices.length} unpaid invoice${unpaidInvoices.length===1?"":"s"}`},
+                    {label:"MRR",value:`EGP ${Math.round(mrr).toLocaleString()}`,color:"var(--accent)",sub:`${activeSubs.length} active subscription${activeSubs.length===1?"":"s"}`},
+                    {label:"Overdue",value:overdueCount+overdueSubCount,color:hasAlerts?"#ef4444":"#10b981",sub:hasAlerts?`${overdueCount} invoice(s), ${overdueSubCount} sub(s)`:"all clear"},
                   ].map(s=>(
                     <div key={s.label} style={{padding:"14px 18px",background:"var(--surface)",border:`1px solid ${s.label==="Overdue"&&hasAlerts?"#ef444444":"var(--border)"}`,borderRadius:"var(--r)"}}>
                       <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>{s.label}</p>
@@ -11625,7 +11654,7 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
       {view==="kanban"&&<KanbanView posts={filtered} project={null} team={team} onPostClick={onPostClick}/>}
       {view==="list"&&<ListView posts={filtered} projects={projects} team={team} onPostClick={onPostClick}/>}
       {view==="calendar"&&<CalendarView posts={filtered} onPostClick={onPostClick}/>}
-      {showAdd&&<AddPostModal open onClose={()=>setShowAdd(false)} projects={projects} team={team} onAdd={async d=>{onAdd(d);setShowAdd(false);}} onAddReady={onAddReady ? async (list,opts)=>{await onAddReady(list,opts);setShowAdd(false);} : undefined} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset} allowClientRequest={isAdminUser} clients={clients} clientIntelligenceList={clientIntelligenceList}/>}
+      {showAdd&&<AddPostModal open onClose={()=>setShowAdd(false)} projects={projects} team={team} onAdd={async d=>{onAdd(d);setShowAdd(false);}} onAddReady={onAddReady ? async (list,opts)=>{await onAddReady(list,opts);setShowAdd(false);} : undefined} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset} allowClientRequest={isAdminUser} clients={clients} clientIntelligenceList={clientIntelligenceList} currentUser={currentUser}/>}
     </div>
   );
 }
@@ -43402,7 +43431,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
     {/* Add Post */}
     {showAddPost&&<AddPostModal open onClose={()=>{setShowAddPost(false);setAddPostForClient(null);}} projects={data.projects} team={data.team} onAdd={addPost} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} presetClient={addPostForClient} assets={data.assets||[]}/>}
 
-    {showAddTask&&<AddGenericTaskModal open onClose={()=>{setShowAddTask(false);setAddTaskForClient(null);}} projects={data.projects} team={data.team} onAdd={addPost} onCreateProject={addProjectQuick} presetClient={addTaskForClient} clients={data.clients}/>}
+    {showAddTask&&<AddGenericTaskModal open onClose={()=>{setShowAddTask(false);setAddTaskForClient(null);}} projects={data.projects} team={data.team} onAdd={addPost} onCreateProject={addProjectQuick} presetClient={addTaskForClient} clients={data.clients} currentUser={currentUser}/>}
 
     {/* New Project Wizard — used by FAB, Dashboard, Projects page */}
     {(showFABProject||showAddProject)&&<ProjectWizard
@@ -43442,6 +43471,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
       team={data.team}
       onAdd={async d=>{ await addPost(d); setToast("Task created"); }}
       onCreateProject={addProjectQuick}
+      currentUser={currentUser}
     />}
 
     {/* Monthly Brief — Create Modal */}
