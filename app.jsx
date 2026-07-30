@@ -24,16 +24,25 @@ const uploadToStorage = async (file, folder="uploads") => {
   const ext = file.name.split(".").pop();
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
   const path = `${folder}/${Date.now()}_${safeName}`;
-  const res = await fetch(`${SB_STORAGE_URL}/object/${SB_BUCKET}/${path}`, {
-    method: "POST",
-    headers: {
-      "apikey": SB_KEY,
-      "Authorization": `Bearer ${SB_KEY}`,
-      "Content-Type": file.type || "application/octet-stream",
-      "x-upsert": "true",
-    },
-    body: file,
-  });
+  let res;
+  try {
+    // No timeout here would let a stalled mobile connection hang this
+    // fetch forever — the caller's "Submitting…" button would never
+    // recover since neither success nor the catch block ever fires.
+    res = await fetchWithTimeout(`${SB_STORAGE_URL}/object/${SB_BUCKET}/${path}`, {
+      method: "POST",
+      headers: {
+        "apikey": SB_KEY,
+        "Authorization": `Bearer ${SB_KEY}`,
+        "Content-Type": file.type || "application/octet-stream",
+        "x-upsert": "true",
+      },
+      body: file,
+    }, 90000);
+  } catch(e) {
+    if(e?.name==="AbortError") throw new Error("Upload timed out — your connection may be too slow or unstable. Please try again.");
+    throw new Error("Upload failed: " + (e?.message||e));
+  }
   if(!res.ok){
     // A 413 (or nginx's plain-text "Request Entity Too Large" body, which
     // isn't even valid JSON) means a size limit rejected the file server-side
