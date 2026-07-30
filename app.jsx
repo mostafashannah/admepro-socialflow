@@ -23484,6 +23484,7 @@ const BrandingSettingsTab = React.forwardRef(function BrandingSettingsTab({brand
             <LogoUploader
               key={slot.key}
               {...slot}
+              logoKey={slot.key}
               value={b[slot.key]||null}
               onChange={upd}
             />
