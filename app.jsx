@@ -28781,10 +28781,24 @@ function generateContactReportHTML(report, clientName, branding) {
   const when = [metDate?`Met ${metDate}`:"", submittedAt?`Submitted ${submittedAt}`:""].filter(Boolean).join(" · ");
   const esc = s => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   const accent = branding?.primary_color || "#d90b2c";
-  const attendeesLine = attendees.map(a=>esc(a.name)+(a.title?` (${esc(a.title)})`:"")).join(", ");
+  const attendeeGroups = groupAttendeesForDisplay(attendees, clientName, branding?.app_name);
+  const attendeesBlock = attendeeGroups.map(g=>`
+      <p style="margin:0 0 2px;font-size:12px;font-weight:700;color:#111827">${esc(g.label)}</p>
+      <p style="margin:0 0 10px;font-size:14px;line-height:1.6;color:#374151">${g.items.map(a=>esc(a.name)+(a.title?` — ${esc(a.title)}`:"")).join(", ")}</p>`).join("");
   const section = (label, value) => value ? `
       <p style="margin:16px 0 4px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em">${label}</p>
       <p style="margin:0;font-size:14px;line-height:1.7;color:#374151;white-space:pre-wrap">${esc(value)}</p>` : "";
+  // Key Points/Action Items read as one line per item — render each as its
+  // own bulleted row instead of one run-on paragraph.
+  const bulletSection = (label, value) => {
+    if (!value) return "";
+    const lines = value.split("\n").map(l=>l.trim()).filter(Boolean);
+    return `
+      <p style="margin:16px 0 4px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em">${label}</p>
+      <table cellpadding="0" cellspacing="0" style="width:100%">
+        ${lines.map(l=>`<tr><td style="width:14px;vertical-align:top;font-size:14px;line-height:1.7;color:#9ca3af">&bull;</td><td style="font-size:14px;line-height:1.7;color:#374151">${esc(l.replace(/^[-•]\s*/,""))}</td></tr>`).join("")}
+      </table>`;
+  };
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/></head>
 <body style="margin:0;padding:0;background:#f4f4f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;padding:40px 20px">
@@ -28797,10 +28811,10 @@ function generateContactReportHTML(report, clientName, branding) {
     <p style="margin:0 0 8px;font-size:11px;font-weight:700;color:${accent};text-transform:uppercase;letter-spacing:0.08em">${typeLabel} Report</p>
     <h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">${esc(clientName)}</h2>
     <p style="margin:0 0 16px;font-size:13px;color:#6b7280">${when}${locLabel?` &middot; ${esc(locLabel)}`:""}${report.created_by_name?` &middot; Logged by ${esc(report.created_by_name)}`:""}</p>
-    ${attendeesLine?`<p style="margin:0 0 4px;font-size:14px;line-height:1.6;color:#374151"><strong>Attendees:</strong> ${attendeesLine}</p>`:""}
+    ${attendeeGroups.length?`<p style="margin:16px 0 8px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em">Attendees</p>${attendeesBlock}`:""}
     ${section("Summary", report.summary)}
-    ${section("Key Points", report.key_points)}
-    ${section("Action Items", report.action_items)}
+    ${bulletSection("Key Points", report.key_points)}
+    ${bulletSection("Action Items", report.action_items)}
     <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:28px;padding-top:20px"><tr><td>
       <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">${esc(branding?.app_name||"Admepro")}</p>
       <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
@@ -28872,6 +28886,17 @@ async function downloadContactReportPDF(report, clientName, branding) {
       const lines = doc.splitTextToSize(text, maxW);
       for (const line of lines) { ensureRoom(lh); doc.text(line, marginX, y); y += lh; }
     };
+    const bulletBody = (value, size=10.5, lh=15) => {
+      doc.setFont("Helvetica","normal"); doc.setFontSize(size);
+      (value||"").split("\n").map(l=>l.trim()).filter(Boolean).forEach(raw=>{
+        const line = raw.replace(/^[-•]\s*/,"");
+        doc.setTextColor(156,163,175); ensureRoom(lh); doc.text("•", marginX, y);
+        doc.setTextColor(55,65,81);
+        const wrapped = doc.splitTextToSize(line, maxW-14);
+        wrapped.forEach((w,i)=>{ if(i>0){ ensureRoom(lh); } doc.text(w, marginX+14, y); if(i<wrapped.length-1) y+=lh; });
+        y += lh;
+      });
+    };
 
     // Mirrors generateContactReportHTML's layout 1:1 — same logo, accent
     // label, heading hierarchy, sections and footer — so the downloaded PDF
@@ -28880,6 +28905,12 @@ async function downloadContactReportPDF(report, clientName, branding) {
       const logoH = 22, logoW = logoH * (logo.w/logo.h);
       doc.addImage(logo.dataUrl, "PNG", marginX, y-16, logoW, logoH);
       y += 26;
+    } else {
+      // Logo fetch can fail (CORS/hotlink protection) even though the same
+      // URL renders fine as a plain <img> in the emailed version — fall
+      // back to a text wordmark so the header never ends up blank.
+      doc.setFont("Helvetica","bold"); doc.setFontSize(14); doc.setTextColor(17,24,39);
+      doc.text(appName, marginX, y); y += 26;
     }
     doc.setFont("Helvetica","bold"); doc.setFontSize(9); doc.setTextColor(ar,ag,ab);
     doc.text(`${typeLabel.toUpperCase()} REPORT`, marginX, y); y += 22;
@@ -28891,12 +28922,17 @@ async function downloadContactReportPDF(report, clientName, branding) {
 
     if (attendees.length) {
       heading("ATTENDEES");
-      body(attendees.map(a=>a.name+(a.title?` (${a.title})`:"")).join(", "));
-      y += 6;
+      groupAttendeesForDisplay(attendees, clientName, appName).forEach(g=>{
+        doc.setFont("Helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(17,24,39);
+        ensureRoom(14); doc.text(g.label, marginX, y); y += 14;
+        body(g.items.map(a=>a.name+(a.title?` — ${a.title}`:"")).join(", "));
+        y += 4;
+      });
+      y += 2;
     }
     if (report.summary) { heading("SUMMARY"); body(report.summary); y += 6; }
-    if (report.key_points) { heading("KEY POINTS"); body(report.key_points); y += 6; }
-    if (report.action_items) { heading("ACTION ITEMS"); body(report.action_items); y += 6; }
+    if (report.key_points) { heading("KEY POINTS"); bulletBody(report.key_points); y += 6; }
+    if (report.action_items) { heading("ACTION ITEMS"); bulletBody(report.action_items); y += 6; }
 
     ensureRoom(60);
     doc.setDrawColor(229,231,235); doc.setLineWidth(1);
@@ -31182,6 +31218,20 @@ function sortAttendeesForDisplay(list) {
     if (rx!==ry) return rx-ry;
     return x.i-y.i;
   }).map(w=>w.a);
+}
+
+// Splits a sorted attendee list into "{Client} Team" / "{Agency} Team"
+// groups for the emailed/PDF report header, each already seniority-sorted.
+function groupAttendeesForDisplay(list, clientName, appName) {
+  const sorted = sortAttendeesForDisplay(list);
+  const clientGroup = sorted.filter(a=>a.kind==="client");
+  const teamGroup = sorted.filter(a=>a.kind==="team");
+  const other = sorted.filter(a=>a.kind!=="client"&&a.kind!=="team");
+  const groups = [];
+  if (clientGroup.length) groups.push({label:`${clientName||"Client"} Team`, items:clientGroup});
+  if (teamGroup.length) groups.push({label:`${appName||"Admepro"} Team`, items:teamGroup});
+  if (other.length) groups.push({label:"Other Attendees", items:other});
+  return groups;
 }
 
 function applicationMissingFields(application) {
