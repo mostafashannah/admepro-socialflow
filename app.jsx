@@ -28969,8 +28969,24 @@ async function downloadContactReportPDF(report, clientName, branding, client, te
     const doc = new jsPDFCtor({unit:"pt", format:"a4"});
     const marginX = 48, pageWidth = doc.internal.pageSize.getWidth(), pageHeight = doc.internal.pageSize.getHeight();
     const maxW = pageWidth - marginX*2;
-    let y = 56;
-    const ensureRoom = (needed) => { if (y + needed > pageHeight - 100) { doc.addPage(); y = 56; } };
+    const HEADER_TOP = 56, CONTENT_START = 112; // extra room reserved so the header logo repeats on every page without crowding the title
+    let y = CONTENT_START;
+    const ensureRoom = (needed) => { if (y + needed > pageHeight - 100) { doc.addPage(); y = CONTENT_START; } };
+    // Logo sits ~0.5mm (1.4pt) left of marginX to optically align with the
+    // text below it — the source image has a hair of built-in padding
+    // before the "a"/"p" glyph starts.
+    const drawHeaderLogo = () => {
+      if (logo) {
+        const logoH = 33, logoW = logoH * (logo.w/logo.h);
+        doc.addImage(logo.dataUrl, "PNG", marginX-1.4, HEADER_TOP-16, logoW, logoH);
+      } else {
+        doc.setFont("Helvetica","bold"); doc.setFontSize(33); doc.setTextColor(17,24,39);
+        doc.text("p", marginX-1.4, HEADER_TOP);
+        const pW = doc.getTextWidth("p");
+        doc.setFillColor(ar,ag,ab);
+        doc.circle(marginX-1.4+pW+4.5, HEADER_TOP-1.5, 3.6, "F");
+      }
+    };
     const heading = (text, size=11) => { doc.setFont("Helvetica","bold"); doc.setFontSize(size); doc.setTextColor(107,114,128); ensureRoom(size+8); doc.text(text, marginX, y); y += size+8; };
     const body = (text, size=10.5, lh=15) => {
       doc.setFont("Helvetica","normal"); doc.setFontSize(size); doc.setTextColor(55,65,81);
@@ -28991,24 +29007,9 @@ async function downloadContactReportPDF(report, clientName, branding, client, te
 
     // Mirrors generateContactReportHTML's layout 1:1 — same logo, accent
     // label, heading hierarchy, sections and footer — so the downloaded PDF
-    // and the emailed report look like the same document.
-    if (logo) {
-      const logoH = 33, logoW = logoH * (logo.w/logo.h);
-      doc.addImage(logo.dataUrl, "PNG", marginX, y-16, logoW, logoH);
-      y += 48;
-    } else {
-      // The hosted logo image can fail to fetch (hotlink protection blocks
-      // fetch()/XHR even though a plain <img> tag in the emailed version
-      // loads fine) — redraw the "p." mark itself as vector text/shape so
-      // the PDF always shows the actual Admepro logomark, never a text
-      // fallback naming whatever the client's app_name happens to be.
-      doc.setFont("Helvetica","bold"); doc.setFontSize(33); doc.setTextColor(17,24,39);
-      doc.text("p", marginX, y);
-      const pW = doc.getTextWidth("p");
-      doc.setFillColor(ar,ag,ab);
-      doc.circle(marginX+pW+4.5, y-1.5, 3.6, "F");
-      y += 48;
-    }
+    // and the emailed report look like the same document. The logo itself
+    // is drawn as a repeating page header further below, once the total
+    // page count is known.
     doc.setFont("Helvetica","bold"); doc.setFontSize(9); doc.setTextColor(ar,ag,ab);
     doc.text(`${typeLabel.toUpperCase()} REPORT`, marginX, y); y += 22;
     doc.setFont("Helvetica","bold"); doc.setFontSize(20); doc.setTextColor(17,24,39);
@@ -29031,11 +29032,12 @@ async function downloadContactReportPDF(report, clientName, branding, client, te
     if (report.key_points) { heading("KEY POINTS"); bulletBody(report.key_points); y += 20; }
     if (report.action_items) { heading("ACTION ITEMS"); bulletBody(report.action_items); y += 6; }
 
-    // Company footer pinned to the bottom of every page, not just wherever
-    // content happened to end on the last one.
+    // Logo header + company footer pinned to every page, not just wherever
+    // content happened to land on the first/last one.
     const totalPages = doc.internal.getNumberOfPages();
     for (let p=1; p<=totalPages; p++) {
       doc.setPage(p);
+      drawHeaderLogo();
       const fy = pageHeight - 66;
       doc.setDrawColor(229,231,235); doc.setLineWidth(1);
       doc.line(marginX, fy, pageWidth-marginX, fy);
