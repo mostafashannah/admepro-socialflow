@@ -17304,7 +17304,7 @@ function ClientContactReportCard({r, onAddComment}) {
         <span style={{fontSize:12,color:"var(--text3)"}}>{fmtDateTime(r.client_visible_at||r.created_at)}</span>
       </div>
       {r.attendees&&(()=>{ const list = parseMaybeJson(r.attendees, []); return list.length>0 && (
-        <p style={{fontSize:12,color:"var(--text2)"}}>With: {list.map(a=>a.name).filter(Boolean).join(", ")}</p>
+        <p style={{fontSize:12,color:"var(--text2)"}}>With: {list.map(a=>a.title?`${a.name} (${a.title})`:a.name).filter(Boolean).join(", ")}</p>
       ); })()}
       {r.summary&&(
         <div>
