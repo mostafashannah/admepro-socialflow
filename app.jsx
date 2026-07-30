@@ -540,16 +540,17 @@ const WORKFLOW_ASSIGNMENTS = {
 const getAssigneeForStage = (stage, teamMembers) => {
   const roleNeeded = WORKFLOW_ASSIGNMENTS[stage]?.role;
   if (!roleNeeded) return null;
-  return (teamMembers || []).find(m => m.role === roleNeeded);
+  return (teamMembers || []).find(m => m.role === roleNeeded && m.status !== "inactive");
 };
 
 // Restricts an assignee picker to only the team members eligible for a given
 // stage (e.g. Brief/planning -> Account Managers only). Falls back to the
 // full team for stages with no defined role (scheduled/published/etc).
 const eligibleAssignees = (stage, teamMembers) => {
+  const active = (teamMembers || []).filter(m => m.status !== "inactive");
   const roleNeeded = WORKFLOW_ASSIGNMENTS[stage]?.role;
-  if (!roleNeeded) return teamMembers || [];
-  return (teamMembers || []).filter(m => m.role === roleNeeded);
+  if (!roleNeeded) return active;
+  return active.filter(m => m.role === roleNeeded);
 };
 
 // ════════════════════════════════════════════════════════════════
