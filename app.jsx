@@ -8463,7 +8463,14 @@ No markdown, no explanation.`;
             const totalOut = expenses.filter(e=>(e.type||"out")==="out"&&!isUnsettledOutstanding(e)).reduce((a,e)=>a+num(e.amount),0);
             const balance = totalIn-totalOut;
             const unpaidInvoices=invoices.filter(i=>i.status!=="paid");
-            const outstanding=unpaidInvoices.reduce((a,i)=>a+(i.balance_due||0),0);
+            const invoicesOutstanding=unpaidInvoices.reduce((a,i)=>a+(i.balance_due||0),0);
+            // "Outstanding" on the Finance page is money the company owes out
+            // (to team members, Fawry installments, etc.) — an expense with
+            // outstanding_kind set that isn't settled yet — not unpaid client
+            // invoices. Match that definition here so the two numbers agree.
+            const owedExpenses=expenses.filter(isUnsettledOutstanding);
+            const owedOutstanding=owedExpenses.reduce((a,e)=>a+num(e.outstanding_total_payable??e.amount),0);
+            const outstanding=invoicesOutstanding+owedOutstanding;
             const overdueCount=invoices.filter(i=>isOverdueInvoice(i)&&i.status!=="paid").length;
             const activeSubs=subscriptions.filter(s=>s.status==="active");
             const mrr=activeSubs.reduce((a,s)=>{
@@ -8494,9 +8501,7 @@ No markdown, no explanation.`;
                     {label:"Balance",value:`${balance>=0?"":"−"}EGP ${Math.round(Math.abs(balance)).toLocaleString()}`,color:balance>=0?"#10b981":"#ef4444",sub:"all-time in − out"},
                     {label:"This Month In",value:`EGP ${Math.round(monthIn).toLocaleString()}`,color:"#10b981",sub:`since ${monthStart.toLocaleDateString("en-US",{month:"short",day:"numeric"})}`},
                     {label:"This Month Out",value:`EGP ${Math.round(monthOut).toLocaleString()}`,color:"#ef4444",sub:`since ${monthStart.toLocaleDateString("en-US",{month:"short",day:"numeric"})}`},
-                    {label:"Outstanding",value:`EGP ${Math.round(outstanding).toLocaleString()}`,color:"#f59e0b",sub:`${unpaidInvoices.length} unpaid invoice${unpaidInvoices.length===1?"":"s"}`},
-                    {label:"MRR",value:`EGP ${Math.round(mrr).toLocaleString()}`,color:"var(--accent)",sub:`${activeSubs.length} active subscription${activeSubs.length===1?"":"s"}`},
-                    {label:"Overdue",value:overdueCount+overdueSubCount,color:hasAlerts?"#ef4444":"#10b981",sub:hasAlerts?`${overdueCount} invoice(s), ${overdueSubCount} sub(s)`:"all clear"},
+                    {label:"Outstanding",value:`EGP ${Math.round(outstanding).toLocaleString()}`,color:"#f59e0b",sub:`${unpaidInvoices.length} invoice(s), ${owedExpenses.length} owed`},
                   ].map(s=>(
                     <div key={s.label} style={{padding:"14px 18px",background:"var(--surface)",border:`1px solid ${s.label==="Overdue"&&hasAlerts?"#ef444444":"var(--border)"}`,borderRadius:"var(--r)"}}>
                       <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>{s.label}</p>
