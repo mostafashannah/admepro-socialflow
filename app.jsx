@@ -19445,7 +19445,7 @@ function PolicyAcceptancePage({token, appSettings}) {
   );
 }
 
-const MAX_ONBOARDING_DOC_MB = 15;
+const MAX_ONBOARDING_DOC_MB = 2;
 
 // Public onboarding page for a freshly-hired candidate — reached via the
 // "Upload Documents & Accept Policy" link in hiredWelcomeEmail(). Collects
