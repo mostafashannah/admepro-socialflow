@@ -5636,6 +5636,25 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
           </div>
         )}
 
+        {/* Full timeline jump — admin/AM only. The buttons above/below only
+            move one step at a time along the normal flow; this lets a
+            manager put a post back on any stage directly (e.g. client
+            approval sent it back further than one step, or a mistake needs
+            correcting) without walking it back one click at a time. Reuses
+            the same onStageChange path, so revision/return tracking above
+            still applies exactly the same as any other move. */}
+        {isManager && (
+          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",padding:"8px 12px",background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:"var(--rs)"}}>
+            <span style={{fontSize:11,fontWeight:700,color:"var(--text3)",whiteSpace:"nowrap"}}>Jump to stage:</span>
+            <select value="" onChange={e=>{ if(e.target.value) onStageChange(post, e.target.value); }} style={{...inputSt,flex:1,minWidth:140,padding:"6px 10px",fontSize:12}}>
+              <option value="">Choose a stage…</option>
+              {STAGES.filter(s=>s.key!==post.stage).map(s=>(
+                <option key={s.key} value={s.key}>{s.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Stage Actions */}
         {next&&post.stage!=="published"&&post.stage!=="rejected"&&(
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -41843,7 +41862,11 @@ Return ONLY valid JSON (no markdown, no explanation):
     // a real one.
     const oldIdx = STAGES.findIndex(s=>s.key===post.stage);
     const newIdx = STAGES.findIndex(s=>s.key===newStage);
-    const wentBackward = oldIdx>-1 && newIdx>-1 && newIdx<oldIdx && !["on_hold"].includes(post.stage) && !["on_hold"].includes(newStage);
+    // "Rejected" sits near the end of STAGES array-wise (so its own array
+    // index looks like a forward move), but it's always a returned task in
+    // practice — a real "sent back, redo this" event, same as any actual
+    // backward stage move.
+    const wentBackward = (oldIdx>-1 && newIdx>-1 && newIdx<oldIdx && !["on_hold"].includes(post.stage) && !["on_hold"].includes(newStage)) || newStage==="rejected";
     const revisionCount = (post.revision_count||0) + (wentBackward?1:0);
     const wasRejected = post.was_rejected || newStage==="rejected";
 
@@ -41875,15 +41898,48 @@ Return ONLY valid JSON (no markdown, no explanation):
     // potentially weeks. Roles with no owned stage (e.g. account_manager,
     // whose responsibility spans the whole pipeline) still score off
     // reaching Scheduled/Published, same as before.
+    // A task bounced back FROM Client Approval is a real miss on the AM's
+    // side specifically (they sent the client something that needed
+    // changes) — logged immediately against whoever owned client_approval,
+    // separate from the content creator/designer's own eventual completion
+    // log once they redo the actual work. A bounce back from Review (to
+    // Content or Design) needs no separate entry here: the same person
+    // stays assigned and redoes it, so it's already reflected in their
+    // real completion log's revision_count once they finish — see below.
+    if(wentBackward && post.stage==="client_approval" && post.assigned_to) {
+      const amEmail = post.assigned_to;
+      const amRole = (data.team.find(m=>m.email===amEmail)?.role)||"";
+      const amReturnPayload = {
+        user_email: amEmail, user_name:(data.team.find(m=>m.email===amEmail)?.name)||"",
+        role: amRole||"account_manager",
+        post_id: post.id, post_title: post.title, project_id: updatedPost.project_id||"",
+        client_name: post.client_name||"",
+        // Synthetic, not a real STAGES key — deliberately distinguishes this
+        // "returned by the client" entry from a normal completion log for
+        // the same (post, person) pair, so the dedup check below doesn't
+        // treat this as "already logged" and block their real completion
+        // credit whenever they later actually finish their part.
+        stage_from: "client_approval_returned", stage_to: newStage,
+        on_time: true, quality_score: 0, revision_count: 1,
+        client_approved: false, rejected: true, completed_at: new Date().toISOString(),
+      };
+      ce("PerformanceLog",[amReturnPayload]).then(r=>{
+        const created = r.entities?.[0];
+        if(created && !created._saveError) setData(d=>({...d, perfLogs:[...(d.perfLogs||[]), created]}));
+      }).catch(()=>{});
+    }
+
     const priorAssigneeEmail = post.assigned_to;
     const priorAssigneeRole = (data.team.find(m=>m.email===priorAssigneeEmail)?.role)||"";
     const ownedStage = ROLE_OWNED_STAGE[priorAssigneeRole];
     const leftOwnedStageForward = ownedStage && post.stage===ownedStage && newIdx>oldIdx && newStage!=="rejected" && newStage!=="on_hold";
     const reachedFinalStage = newStage==="published"||newStage==="scheduled";
-    // One log per (post, person) — not per post — so a content creator,
-    // then a designer, then an account manager can each get their own
-    // credit for the same post as it moves through their respective stages.
-    const alreadyLoggedForThem = (data.perfLogs||[]).some(l=>l.post_id===post.id && l.user_email===priorAssigneeEmail);
+    // One real completion log per (post, person) — not per post — so a
+    // content creator, then a designer, then an account manager can each
+    // get their own credit for the same post as it moves through their
+    // respective stages. The synthetic "client_approval_returned" entries
+    // above don't count as a completion here, on purpose.
+    const alreadyLoggedForThem = (data.perfLogs||[]).some(l=>l.post_id===post.id && l.user_email===priorAssigneeEmail && l.stage_from!=="client_approval_returned");
     if((leftOwnedStageForward || (reachedFinalStage && !ownedStage)) && !alreadyLoggedForThem) {
       const deadline = post.due_date || post.scheduled_date;
       const onTime = !deadline || new Date() <= new Date(`${deadline}T23:59:59`);
