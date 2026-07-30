@@ -29123,7 +29123,35 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
   );
   const [uploadingVoice, setUploadingVoice] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
+  const [rewriting, setRewriting] = useState(false);
   if(!open) return null;
+  // Lets the AM type a rough/quick note in Summary and have Mai turn it into
+  // a proper short overview + organized key points/action items — same shape
+  // as the voice-transcription path, just triggered from typed text instead.
+  const handleRewriteWithMai = async () => {
+    const raw = f.summary.trim();
+    if(!raw) { alert("Type a quick note in the Summary field first, then Mai can arrange it."); return; }
+    setRewriting(true);
+    try {
+      const result = await ai(
+        `Here are rough/quick notes from a client call/meeting debrief:\n\n"""${raw}"""\n\nReturn ONLY valid JSON (no markdown) in this exact shape: `
+        + `{"summary":"ONLY a short 2-3 sentence overview of what the interaction was about — never the detailed breakdown","key_points":"the detailed discussion content goes here — one point per line, newline-separated, no leading dashes/bullets/numbers; if it covers several topics/sections, give each its own line starting with the topic name, e.g. \\"SLVR Content Plan: ...\\" — break long sections into multiple short lines rather than one run-on line","action_items":"bullet-style follow-up actions/tasks, one per line, newline-separated, no leading dashes — empty string if none mentioned"}`,
+        800
+      );
+      const m = result.match(/\{[\s\S]*\}/);
+      const parsed = m ? JSON.parse(m[0]) : null;
+      if(parsed) {
+        setF(p=>({...p,
+          summary: parsed.summary || p.summary,
+          key_points: parsed.key_points || p.key_points,
+          action_items: parsed.action_items || p.action_items,
+        }));
+      } else {
+        alert("Mai couldn't parse a clean result — please try again or edit manually.");
+      }
+    } catch(e) { alert("Rewrite failed: "+(e?.message||e)); }
+    setRewriting(false);
+  };
   const handleVoiceUpload = async (file) => {
     if(!file) return;
     setUploadingVoice(true);
@@ -29242,7 +29270,16 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
             <Btn variant="secondary" onClick={addAttendee}>Add</Btn>
           </div>
         </Field>
-        <Field label="Summary"><textarea value={f.summary} onChange={e=>sf("summary",e.target.value)} rows={3} style={{...inputSt,resize:"vertical"}}/></Field>
+        <Field label={
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+            <span>Summary</span>
+            <button type="button" onClick={handleRewriteWithMai} disabled={rewriting} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,fontWeight:700,color:"#a855f7",background:"#a855f722",border:"1px solid #a855f755",borderRadius:99,padding:"4px 10px",cursor:rewriting?"default":"pointer"}}>
+              {rewriting ? <Spinner size={11}/> : <Ico d={Icons.sparkle} size={11}/>} {rewriting?"Arranging…":"Rewrite with Mai"}
+            </button>
+          </div>
+        } hint="Type a quick/rough note, then have Mai arrange it into a short overview + organized key points">
+          <textarea value={f.summary} onChange={e=>sf("summary",e.target.value)} rows={3} style={{...inputSt,resize:"vertical"}}/>
+        </Field>
         <Field label="Key Points (one per line)"><textarea value={f.key_points} onChange={e=>sf("key_points",e.target.value)} rows={3} style={{...inputSt,resize:"vertical"}}/></Field>
         <Field label="Action Items (one per line)"><textarea value={f.action_items} onChange={e=>sf("action_items",e.target.value)} rows={3} style={{...inputSt,resize:"vertical"}}/></Field>
         <Field label="Voice Recording (optional)" hint="Attach any recorded call/meeting audio — it's transcribed and used to fill in the summary/key points/action items above automatically.">
