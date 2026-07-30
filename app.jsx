@@ -34195,7 +34195,6 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     ]}] : []),
     ...(canViewCrm ? [{ group: "CRM", icon: Icons.leads, items: [
       {key:"leads", label:"Leads", ico:Icons.leads},
-      {key:"lead_gen", label:"Lead Generation", ico:Icons.zap2},
       // Account managers get a scoped entry into User Management just for
       // access requests from their own clients — not the full Team nav
       // (Team Members/Invitations/Roles), which stays behind canViewTeamNav.
@@ -39413,7 +39412,7 @@ function App() {
     setImpersonatorUser(null);
     setPage(returnPage);
   };
-  const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment"];
+  const VALID_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment"];
   const [page,setPage_] = useState(()=>{
     try{
       // A contact-report email sent internally links straight to
@@ -39423,7 +39422,7 @@ function App() {
       // to avoid getting stuck on a detail page that hasn't loaded data yet
       const hash = window.location.hash.replace("#","");
       // Only use hash/localStorage if it's a top-level list page (not a detail context)
-      const SAFE_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","lead_gen","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment"];
+      const SAFE_PAGES = ["home","dashboard","clients","tasks","calendar","projects","assets","templates","quotes","leads","agents","invoices","payments","subscriptions","finance","team","performance","integrations","settings","users","notifications","my_tasks","my_calendar","my_timeline","my_performance","reports","account","recruitment"];
       if(hash && SAFE_PAGES.includes(hash)) return hash;
       const stored = localStorage.getItem("sf_page");
       return (stored && SAFE_PAGES.includes(stored)) ? stored : "home";
@@ -42785,7 +42784,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
 
         {/* ── STICKY TOP BAR (all breakpoints) ── */}
         {(()=>{
-          const PAGE_NAMES = {home:"Pro — AI Workspace",dashboard:"Dashboard",clients:"Clients",projects:"Projects",tasks:"Posts & Tasks",calendar:"Calendar",assets:"Assets",templates:"Templates",quotes:"Quotes",invoices:"Invoices",subscriptions:"Subscriptions",users:"Team",reports:"My Report",performance:"Performance",leads:"Leads",lead_gen:"Lead Generation",agents:"Agents Control Center",settings:"Settings",account:"Account",my_tasks:"My Tasks",my_calendar:"My Calendar",my_timeline:"My Timeline",my_performance:"My Performance",team_members:"Team Members"};
+          const PAGE_NAMES = {home:"Pro — AI Workspace",dashboard:"Dashboard",clients:"Clients",projects:"Projects",tasks:"Posts & Tasks",calendar:"Calendar",assets:"Assets",templates:"Templates",quotes:"Quotes",invoices:"Invoices",subscriptions:"Subscriptions",users:"Team",reports:"My Report",performance:"Performance",leads:"Leads",agents:"Agents Control Center",settings:"Settings",account:"Account",my_tasks:"My Tasks",my_calendar:"My Calendar",my_timeline:"My Timeline",my_performance:"My Performance",team_members:"Team Members"};
           return (
             <div style={{
               position:"sticky",top:0,zIndex:100,
@@ -43150,20 +43149,6 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             onStop={stopAgent}
             onRunNow={runAgentNow}
             onSaveSettings={saveAgentSettings}
-          />
-        )}
-        {page==="lead_gen"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"crm.leads"))&&(
-          <LeadGenerationPage
-            generatedLeads={data.generatedLeads||[]}
-            leadAgentConfig={data.leadAgentConfig||[]}
-            existingLeads={data.leads||[]}
-            currentUser={currentUser}
-            onToast={setToast}
-            onApprove={approveGeneratedLead}
-            onReject={rejectGeneratedLead}
-            onSaveConfig={saveLeadAgentConfig}
-            onGenerate={runLeadGeneration}
-            onConvertToLead={convertGeneratedLeadToLead}
           />
         )}
         {page==="leads"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"crm.leads"))&&(
