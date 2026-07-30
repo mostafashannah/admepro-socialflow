@@ -17291,7 +17291,7 @@ function TemplatesPage({templates}) {
 // ════════════════════════════════════════════════════════════════
 // One report row — its own component so the comment box has its own local
 // state (text/sending) without re-rendering every other report.
-function ClientContactReportCard({r, onAddComment}) {
+function ClientContactReportCard({r, onAddComment, client, team=[]}) {
   const [commentText, setCommentText] = useState("");
   const [sending, setSending] = useState(false);
   const comments = parseMaybeJson(r.client_comments, []);
@@ -17312,7 +17312,7 @@ function ClientContactReportCard({r, onAddComment}) {
         </div>
         <span style={{fontSize:12,color:"var(--text3)"}}>{fmtDateTime(r.client_visible_at||r.created_at)}</span>
       </div>
-      {r.attendees&&(()=>{ const list = sortAttendeesForDisplay(parseMaybeJson(r.attendees, [])); return list.length>0 && (
+      {r.attendees&&(()=>{ const list = sortAttendeesForDisplay(resolveAttendeesLive(parseMaybeJson(r.attendees, []), client, team)); return list.length>0 && (
         <p style={{fontSize:12,color:"var(--text2)"}}>With: {list.map(a=>a.title?`${a.name} (${a.title})`:a.name).filter(Boolean).join(", ")}</p>
       ); })()}
       {r.summary&&(
@@ -17359,7 +17359,7 @@ function ClientContactReportCard({r, onAddComment}) {
 // able to leave a comment, only ever shows reports staff explicitly made
 // visible (client_visible_at set, either via the per-client auto-email
 // switch or a manual Send). No voice recording here — that stays internal.
-function ClientContactReportsTab({reports=[], onAddComment}) {
+function ClientContactReportsTab({reports=[], onAddComment, client, team=[]}) {
   if(!reports.length) return (
     <div style={{padding:"60px 20px",textAlign:"center",color:"var(--text3)"}}>
       <Ico d={Icons.chat} size={32} stroke="var(--text3)"/>
@@ -17369,7 +17369,7 @@ function ClientContactReportsTab({reports=[], onAddComment}) {
   );
   return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      {reports.map(r=><ClientContactReportCard key={r.id} r={r} onAddComment={onAddComment}/>)}
+      {reports.map(r=><ClientContactReportCard key={r.id} r={r} onAddComment={onAddComment} client={client} team={team}/>)}
     </div>
   );
 }
@@ -17853,7 +17853,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
         {view==="leads"&&<ClientLeadsTab clientLeads={clientLeads} clientName={client.name}/>}
 
         {/* CONTACT REPORTS VIEW */}
-        {view==="contact_reports"&&<ClientContactReportsTab reports={clientContactReports} onAddComment={(r,text)=>onAddContactReportComment(r,text,client)}/>}
+        {view==="contact_reports"&&<ClientContactReportsTab reports={clientContactReports} onAddComment={(r,text)=>onAddContactReportComment(r,text,client)} client={client} team={team}/>}
 
         {/* TASKS VIEW */}
         {/* TASKS VIEW — merges the old Requests/Content/Calendar tabs into one
@@ -28779,8 +28779,8 @@ async function downloadInvoicePDF(inv, payments, branding) {
 // ── Contact Report → HTML/PDF/Email — same rounded-card style as the
 // recruitment emails (applicationReceivedEmail etc.), so every system
 // email looks like one family instead of two different templates.
-function generateContactReportHTML(report, clientName, branding) {
-  const attendees = sortAttendeesForDisplay(parseMaybeJson(report.attendees, []));
+function generateContactReportHTML(report, clientName, branding, client, team) {
+  const attendees = sortAttendeesForDisplay(resolveAttendeesLive(parseMaybeJson(report.attendees, []), client, team));
   const typeLabel = report.meeting_type==="call" ? "Call" : report.meeting_type==="meeting" ? "Meeting" : "Contact";
   const locLabel = report.meeting_type==="meeting"
     ? [report.location_type==="online"?"Online":report.location_type==="physical"?"In-person":null, report.location].filter(Boolean).join(" — ")
@@ -28805,7 +28805,7 @@ function generateContactReportHTML(report, clientName, branding) {
     return `
       <p style="margin:16px 0 4px;font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.04em">${label}</p>
       <table cellpadding="0" cellspacing="0" style="width:100%">
-        ${lines.map(l=>`<tr><td style="width:14px;vertical-align:top;font-size:14px;line-height:1.7;color:#9ca3af">&bull;</td><td style="font-size:14px;line-height:1.7;color:#374151">${esc(l.replace(/^[-•]\s*/,""))}</td></tr>`).join("")}
+        ${lines.map(l=>`<tr><td style="width:14px;vertical-align:top;padding-bottom:8px;font-size:14px;line-height:1.7;color:#9ca3af">&bull;</td><td style="padding-bottom:8px;font-size:14px;line-height:1.7;color:#374151">${esc(l.replace(/^[-•]\s*/,""))}</td></tr>`).join("")}
       </table>`;
   };
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"/></head>
@@ -28825,7 +28825,7 @@ function generateContactReportHTML(report, clientName, branding) {
     ${bulletSection("Key Points", report.key_points)}
     ${bulletSection("Action Items", report.action_items)}
     <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:28px;padding-top:20px"><tr><td>
-      <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">${esc(branding?.app_name||"Admepro")}</p>
+      <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro</p>
       <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
       <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
     </td></tr></table>
@@ -28868,11 +28868,32 @@ async function loadImageForPdf(url) {
     return {dataUrl, ...dims};
   } catch(e) { return null; }
 }
-async function downloadContactReportPDF(report, clientName, branding) {
+// fetch() can be blocked by hotlink/bot protection that a plain <img> load
+// sails through (different request fingerprint) — before giving up, try
+// loading via a real <img> element and reading it back through a canvas,
+// which succeeds in some of those cases even though the fetch above failed.
+async function loadImageForPdfViaImg(url) {
+  try {
+    const dims = await new Promise((resolve,reject)=>{
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => resolve({img, w:img.naturalWidth, h:img.naturalHeight});
+      img.onerror = reject;
+      img.src = url;
+    });
+    if (!dims.w || !dims.h) return null;
+    const canvas = document.createElement("canvas");
+    canvas.width = dims.w; canvas.height = dims.h;
+    canvas.getContext("2d").drawImage(dims.img, 0, 0);
+    const dataUrl = canvas.toDataURL("image/png");
+    return {dataUrl, w:dims.w, h:dims.h};
+  } catch(e) { return null; }
+}
+async function downloadContactReportPDF(report, clientName, branding, client, team) {
   const jsPDFCtor = window.jspdf?.jsPDF;
   if (!jsPDFCtor) { alert("PDF library failed to load — please refresh and try again."); return; }
   try {
-    const attendees = sortAttendeesForDisplay(parseMaybeJson(report.attendees, []));
+    const attendees = sortAttendeesForDisplay(resolveAttendeesLive(parseMaybeJson(report.attendees, []), client, team));
     const typeLabel = report.meeting_type==="call" ? "Call" : report.meeting_type==="meeting" ? "Meeting" : "Contact";
     const locLabel = report.meeting_type==="meeting"
       ? [report.location_type==="online"?"Online":report.location_type==="physical"?"In-person":null, report.location].filter(Boolean).join(" — ")
@@ -28882,13 +28903,13 @@ async function downloadContactReportPDF(report, clientName, branding) {
     const when = [metDate?`Met ${metDate}`:"", submittedAt?`Submitted ${submittedAt}`:""].filter(Boolean).join(" · ");
     const [ar,ag,ab] = hexToRgb(branding?.primary_color||"#d90b2c");
     const appName = branding?.app_name || "Admepro";
-    const logo = await loadImageForPdf(ADMEPRO_LOGO_BLACK);
+    const logo = await loadImageForPdf(ADMEPRO_LOGO_BLACK) || await loadImageForPdfViaImg(ADMEPRO_LOGO_BLACK);
 
     const doc = new jsPDFCtor({unit:"pt", format:"a4"});
     const marginX = 48, pageWidth = doc.internal.pageSize.getWidth(), pageHeight = doc.internal.pageSize.getHeight();
     const maxW = pageWidth - marginX*2;
     let y = 56;
-    const ensureRoom = (needed) => { if (y + needed > pageHeight - 48) { doc.addPage(); y = 56; } };
+    const ensureRoom = (needed) => { if (y + needed > pageHeight - 100) { doc.addPage(); y = 56; } };
     const heading = (text, size=11) => { doc.setFont("Helvetica","bold"); doc.setFontSize(size); doc.setTextColor(107,114,128); ensureRoom(size+8); doc.text(text, marginX, y); y += size+8; };
     const body = (text, size=10.5, lh=15) => {
       doc.setFont("Helvetica","normal"); doc.setFontSize(size); doc.setTextColor(55,65,81);
@@ -28903,7 +28924,7 @@ async function downloadContactReportPDF(report, clientName, branding) {
         doc.setTextColor(55,65,81);
         const wrapped = doc.splitTextToSize(line, maxW-14);
         wrapped.forEach((w,i)=>{ if(i>0){ ensureRoom(lh); } doc.text(w, marginX+14, y); if(i<wrapped.length-1) y+=lh; });
-        y += lh;
+        y += lh + 5;
       });
     };
 
@@ -28949,15 +28970,20 @@ async function downloadContactReportPDF(report, clientName, branding) {
     if (report.key_points) { heading("KEY POINTS"); bulletBody(report.key_points); y += 6; }
     if (report.action_items) { heading("ACTION ITEMS"); bulletBody(report.action_items); y += 6; }
 
-    ensureRoom(60);
-    doc.setDrawColor(229,231,235); doc.setLineWidth(1);
-    doc.line(marginX, y, pageWidth-marginX, y);
-    y += 20;
-    doc.setFont("Helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(17,24,39);
-    doc.text(appName, marginX, y); y += 14;
-    doc.setFont("Helvetica","normal"); doc.setFontSize(9); doc.setTextColor(107,114,128);
-    doc.text("145 El Banafsig 3, New Cairo, Cairo", marginX, y); y += 12;
-    doc.text("hello@admepro.com · +20 100 037 0140", marginX, y);
+    // Company footer pinned to the bottom of every page, not just wherever
+    // content happened to end on the last one.
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let p=1; p<=totalPages; p++) {
+      doc.setPage(p);
+      const fy = pageHeight - 66;
+      doc.setDrawColor(229,231,235); doc.setLineWidth(1);
+      doc.line(marginX, fy, pageWidth-marginX, fy);
+      doc.setFont("Helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(17,24,39);
+      doc.text("Admepro", marginX, fy+20);
+      doc.setFont("Helvetica","normal"); doc.setFontSize(9); doc.setTextColor(107,114,128);
+      doc.text("145 El Banafsig 3, New Cairo, Cairo", marginX, fy+34);
+      doc.text("hello@admepro.com · +20 100 037 0140", marginX, fy+46);
+    }
 
     const pdfBlob = doc.output("blob");
     if (pdfBlob.size < 300) throw new Error(`Rendered PDF looks empty (${pdfBlob.size} bytes)`);
@@ -29023,7 +29049,7 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
     const to = emailTo.split(",").map(s=>s.trim()).filter(Boolean);
     if(!to.length) { alert("Enter at least one recipient email."); return; }
     setSendingEmail(true);
-    const html = generateContactReportHTML(r, client.name, brandingAssets);
+    const html = generateContactReportHTML(r, client.name, brandingAssets, client, team);
     const typeLabel = r.meeting_type==="call"?"Call":"Meeting";
     const ok = await sendEmail(to, `${typeLabel} Report — ${client.name}`, html, brandingAssets?.app_name||"Admepro");
     setSendingEmail(false);
@@ -29056,7 +29082,7 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
         </div>
       )}
       {reports.map(r=>{
-        const attendees = sortAttendeesForDisplay(parseMaybeJson(r.attendees, []));
+        const attendees = sortAttendeesForDisplay(resolveAttendeesLive(parseMaybeJson(r.attendees, []), client, team));
         const typeLabel = r.meeting_type==="call" ? "Call" : r.meeting_type==="meeting" ? "Meeting" : null;
         const locLabel = r.meeting_type==="meeting"
           ? [r.location_type==="online"?"Online":r.location_type==="physical"?"In-person":null, r.location].filter(Boolean).join(" — ")
@@ -29079,7 +29105,7 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
               </div>
               <div style={{display:"flex",gap:6}}>
                 <button onClick={()=>{setEditing(r);setShowModal(true);}} title="Edit" style={{padding:"5px 10px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>Edit</button>
-                <button onClick={()=>downloadContactReportPDF(r, client.name, brandingAssets)} title="Download PDF" style={{padding:"5px 10px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>PDF</button>
+                <button onClick={()=>downloadContactReportPDF(r, client.name, brandingAssets, client, team)} title="Download PDF" style={{padding:"5px 10px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>PDF</button>
                 <button onClick={()=>startEmail(r)} title="Send by Email" style={{padding:"5px 10px",borderRadius:"var(--rxs)",background:"var(--surface2)",border:"1px solid var(--border2)",fontSize:12,fontWeight:600,color:"var(--text2)",cursor:"pointer"}}>Email</button>
                 {isAdmin&&onDeleteContactReport&&(
                   <button onClick={()=>setConfirmDeleteId(r.id)} title="Delete (admin only)" style={{padding:"5px 10px",borderRadius:"var(--rxs)",background:"#ef444411",border:"1px solid #ef444433",fontSize:12,fontWeight:600,color:"#ef4444",cursor:"pointer"}}>Delete</button>
@@ -31233,6 +31259,32 @@ function sortAttendeesForDisplay(list) {
     if (rx!==ry) return rx-ry;
     return x.i-y.i;
   }).map(w=>w.a);
+}
+
+// An attendee's title is frozen onto the report at the moment they were
+// added — so fixing a team member's Title (or a client's Contact Title)
+// afterwards never updated reports already logged with the old value.
+// Re-resolving against the *current* team/client record at render time
+// means a single profile fix corrects every past and future report instead
+// of having to re-edit each one by hand.
+function formatRoleLabel(role) {
+  return (role||"").replace(/_/g," ").replace(/\b\w/g, c=>c.toUpperCase());
+}
+function resolveAttendeeTitleLive(a, client, team) {
+  const name = (a.name||"").trim().toLowerCase();
+  if (!name) return a.title||"";
+  if (a.kind==="team") {
+    const t = (team||[]).find(m=>(m.name||"").trim().toLowerCase()===name);
+    if (t) return t.title?.trim() || formatRoleLabel(t.role) || a.title || "";
+  }
+  if (a.kind==="client" && client) {
+    const contactName = (client.username||client.name||"").trim().toLowerCase();
+    if (contactName && contactName===name) return client.contact_title?.trim() || a.title || "";
+  }
+  return a.title || "";
+}
+function resolveAttendeesLive(list, client, team) {
+  return (list||[]).map(a=>({...a, title: resolveAttendeeTitleLive(a, client, team)}));
 }
 
 // Splits a sorted attendee list into "{Client} Team" / "{Agency} Team"
