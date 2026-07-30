@@ -9204,7 +9204,7 @@ Return ONLY valid JSON (no markdown):
   );
 }
 
-function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onSaveKnowledge,allPosts}) {
+function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onSaveKnowledge,allPosts,clientMemory=[],contactReports=[]}) {
   const [sub,setSub] = useState("profile");
   const [docName,setDocName] = useState("");
   const [docType,setDocType] = useState("notes");
@@ -9212,6 +9212,7 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
   const [uploading,setUploading] = useState(false);
   const [editing,setEditing] = useState(false);
   const [saving,setSaving] = useState(false);
+  const [generating,setGenerating] = useState(false);
   const [eSummary,setESummary] = useState("");
   const [eTone,setETone] = useState("");
   const [ePrefs,setEPrefs] = useState("");
@@ -9260,6 +9261,71 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
     setSaving(false); setEditing(false);
   };
 
+  const handleGenerateFromData = async () => {
+    setGenerating(true);
+    const memFacts = (clientMemory||[]).filter(m=>m.client_id===client.id).map(m=>`- ${m.key}: ${m.value}`).join("\n");
+    const pubPosts = (clientPosts||[]).filter(p=>p.stage==="published" && p.caption).slice(0,20).map(p=>`[${p.platform||""}] ${(p.caption||"").slice(0,300)}`).join("\n\n");
+    const reportFacts = (contactReports||[]).slice(0,10).map(r=>{
+      const parts = [`Meeting/Call with ${r.created_by_name||"team"} on ${(r.meeting_date||r.created_at||"").slice(0,10)}`];
+      if(r.summary) parts.push(`Summary: ${r.summary}`);
+      if(r.key_points) parts.push(`Key points: ${r.key_points}`);
+      if(r.action_items) parts.push(`Action items: ${r.action_items}`);
+      return parts.join("\n");
+    }).join("\n\n---\n\n");
+    const docFacts = (documents||[]).map(d=>d.content||"").filter(Boolean).slice(0,3).join("\n\n").slice(0,2000);
+    const prompt = `You are a senior brand strategist. Analyze ALL available data for the client "${client.name}" and produce a comprehensive, accurate brand knowledge profile.
+
+=== MEMORY / SAVED BRAND FACTS ===
+${memFacts || "None saved yet"}
+
+=== CONTACT REPORTS (recent client meetings & calls) ===
+${reportFacts || "None yet"}
+
+=== PUBLISHED CAPTIONS (sample of real content) ===
+${pubPosts || "None available"}
+
+=== UPLOADED DOCUMENTS ===
+${docFacts || "None uploaded"}
+
+Based on ALL of the above, return ONLY valid JSON with these exact keys:
+{
+  "summary": "3-4 sentence brand overview covering who they are, what they sell/offer, and their positioning",
+  "tone": "comma-separated tone descriptors that define their content voice (e.g. fun, energetic, warm, professional)",
+  "content_preferences": "describe what content formats/themes work for them — what the client likes, what gets good engagement",
+  "keywords": ["5-10 brand keywords and hashtag topics"],
+  "priorities": ["3-5 strategic content priorities for this client"]
+}`;
+    try {
+      const raw = await ai(prompt, 800);
+      const m = raw.match(/\{[\s\S]*\}/);
+      if(!m) throw new Error("No JSON returned");
+      const parsed = JSON.parse(m[0]);
+      await onSaveKnowledge({
+        ...(knowledge||{}), client_id:client.id, client_name:client.name,
+        summary: parsed.summary||"",
+        tone: parsed.tone||"",
+        content_preferences: parsed.content_preferences||"",
+        keywords: JSON.stringify(Array.isArray(parsed.keywords)?parsed.keywords:[]),
+        priorities: JSON.stringify(Array.isArray(parsed.priorities)?parsed.priorities:[]),
+        last_analyzed: new Date().toISOString(),
+        analyzed_by: currentUser?.email||"auto",
+        version: (knowledge?.version||0)+1,
+        sources_count: (clientMemory||[]).filter(m=>m.client_id===client.id).length + (contactReports||[]).length,
+      });
+    } catch(e) { alert("Generation failed: "+(e?.message||e)); }
+    setGenerating(false);
+  };
+
+  // Auto-generate when profile exists but is completely empty
+  const profileIsEmpty = knowledge && !knowledge.summary && !knowledge.tone && !knowledge.keywords;
+  const hasAnyData = (clientMemory||[]).filter(m=>m.client_id===client.id).length>0 || (clientPosts||[]).filter(p=>p.stage==="published").length>0 || (contactReports||[]).length>0;
+  useEffect(()=>{
+    if(profileIsEmpty && hasAnyData && !generating) {
+      handleGenerateFromData();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:18}}>
@@ -9277,8 +9343,13 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
             <div style={{padding:40,textAlign:"center",background:"var(--surface)",border:"2px dashed var(--border2)",borderRadius:"var(--r)"}}>
               <Ico d={Icons.brain} size={40} stroke="var(--text3)"/>
               <p style={{fontWeight:700,fontSize:15,marginTop:12}}>No knowledge profile yet</p>
-              <p style={{fontSize:13,color:"var(--text2)",marginTop:4}}>Upload documents to let Claude analyze this client</p>
-              <Btn onClick={()=>setSub("upload")} style={{margin:"16px auto 0",width:"fit-content"}}><Ico d={Icons.upload} size={14}/> Upload Documents</Btn>
+              <p style={{fontSize:13,color:"var(--text2)",marginTop:4,marginBottom:16}}>Generate from existing posts & memory, or upload documents</p>
+              {((clientMemory||[]).filter(m=>m.client_id===client.id).length>0 || (clientPosts||[]).filter(p=>p.stage==="published").length>0) && (
+                <Btn onClick={handleGenerateFromData} disabled={generating} style={{margin:"0 auto 10px",width:"fit-content"}}>
+                  {generating?<><Spinner size={13}/> Generating…</>:<><Ico d={Icons.brain} size={14}/> Generate from Posts & Memory</>}
+                </Btn>
+              )}
+              <Btn variant="secondary" onClick={()=>setSub("upload")} style={{margin:"0 auto 0",width:"fit-content"}}><Ico d={Icons.upload} size={14}/> Upload Documents</Btn>
             </div>
           ):(
             <>
@@ -9294,6 +9365,7 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
                   </div>
                 </div>
                 <div style={{display:"flex",gap:8}}>
+                  <Btn variant="secondary" size="sm" onClick={handleGenerateFromData} disabled={generating}>{generating?<><Spinner size={11}/> Regenerating…</>:<><Ico d={Icons.refresh} size={13}/> Regenerate</>}</Btn>
                   <Btn variant="secondary" size="sm" onClick={()=>setEditing(e=>!e)}><Ico d={Icons.edit} size={13}/>{editing?"Cancel":"Edit"}</Btn>
                 </div>
               </div>
@@ -10592,6 +10664,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
               projects={projects}
               comments={comments}
               integrations={integrations}
+              contactReports={contactReports}
             />
           )}
           {brainSubTab==="scheduling"&&(
@@ -14349,7 +14422,7 @@ function ClientFeaturesSubTab({client, onUpdateClient}) {
 // CLIENT BRAIN TAB — consolidates Intelligence/Smart Intel/Memory/
 // Brand Training/Context File into one tab with sub-nav.
 // ════════════════════════════════════════════════════════════════
-function ClientBrainTab({client, knowledge, clientKnowledge, documents, currentUser, onUploadDoc, onSaveKnowledge, clientIntelligence, onSaveIntelligence, clientMemory, onUpsertMemory, onDeleteMemory, cPosts, posts, projects, comments, integrations=[]}) {
+function ClientBrainTab({client, knowledge, clientKnowledge, documents, currentUser, onUploadDoc, onSaveKnowledge, clientIntelligence, onSaveIntelligence, clientMemory, onUpsertMemory, onDeleteMemory, cPosts, posts, projects, comments, integrations=[], contactReports=[]}) {
   const isAdmin = currentUser?.role==="admin";
   const [sub,setSub] = usePersistentState(`sf_brain_sub_${client?.id}`,"profile");
   const SUBS = [
@@ -14366,7 +14439,7 @@ function ClientBrainTab({client, knowledge, clientKnowledge, documents, currentU
         ))}
       </div>
       {sub==="profile"&&(
-        <IntelligenceTab client={client} knowledge={knowledge} documents={documents} currentUser={currentUser} onUploadDoc={onUploadDoc} onSaveKnowledge={onSaveKnowledge} allPosts={cPosts}/>
+        <IntelligenceTab client={client} knowledge={knowledge} documents={documents} currentUser={currentUser} onUploadDoc={onUploadDoc} onSaveKnowledge={onSaveKnowledge} allPosts={cPosts} clientMemory={clientMemory||[]} contactReports={contactReports.filter(r=>r.client_id===client.id)}/>
       )}
       {sub==="memory"&&(
         <ClientMemoryTab client={client} clientMemory={clientMemory||[]} onUpsert={onUpsertMemory} onDelete={onDeleteMemory} currentUser={currentUser}/>
@@ -16347,7 +16420,9 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
     employment_type: member.employment_type||"full_time",
     work_days: parseMaybeJson(member.work_days, WORK_DAYS_DEFAULT),
     national_id: member.national_id||"",
+    password: "",
   });
+  const [showPass, setShowPass] = useState(false);
   const s = (k,v) => setF(p=>({...p,[k]:v}));
   const toggleWorkDay = (day) => setF(p=>({...p,work_days: p.work_days.includes(day) ? p.work_days.filter(d=>d!==day) : [...p.work_days,day].sort()}));
   const managers = (team||[]).filter(t=>t.id!==member.id && t.role!=="client");
@@ -16384,6 +16459,7 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
     // Full-time always means the standard Sun-Thu week (work_days only
     // matters/persists for part-timers with a custom schedule).
     updates.work_days = JSON.stringify(updates.employment_type==="part_time" ? updates.work_days : WORK_DAYS_DEFAULT);
+    if(!updates.password) delete updates.password;
     onSave(updates);
   };
 
@@ -16413,6 +16489,12 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
             )}
           </Field>
           <Field label="Mobile Number"><input value={f.whatsapp_number} onChange={e=>s("whatsapp_number",e.target.value)} placeholder="+20 100 000 0000" style={inputSt}/></Field>
+          <Field label="Password" hint="Leave blank to keep current password">
+            <div style={{display:"flex",gap:8}}>
+              <input type={showPass?"text":"password"} value={f.password} onChange={e=>s("password",e.target.value)} placeholder="Enter new password" style={{...inputSt,flex:1}}/>
+              <button type="button" onClick={()=>setShowPass(p=>!p)} style={{padding:"0 12px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",cursor:"pointer",fontSize:12,flexShrink:0}}>{showPass?"Hide":"Show"}</button>
+            </div>
+          </Field>
           <Field label="National ID" hint="Used to fill in the employee contract — birth date/age are derived from these digits automatically">
             <div style={{display:"flex",gap:8}}>
               <input value={f.national_id} onChange={e=>s("national_id",e.target.value)} placeholder="e.g. 29001011234567" style={{...inputSt,flex:1}}/>
@@ -19974,6 +20056,48 @@ function LoginScreen({onLogin,clients}) {
   const [err,setErr] = useState("");
   const [loading,setLoading] = useState(false);
   const [showRequestAccess, setShowRequestAccess] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSending, setForgotSending] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
+  const [forgotErr, setForgotErr] = useState("");
+
+  const handleForgot = async () => {
+    if(!forgotEmail.trim()) { setForgotErr("Enter your email address."); return; }
+    setForgotSending(true); setForgotErr("");
+    try {
+      // Look up in team members first, then client users
+      const [tmRes, cuRes] = await Promise.all([
+        qe("TeamMember",{email:forgotEmail.trim()}).catch(()=>({entities:[]})),
+        qe("ClientUser",{email:forgotEmail.trim()}).catch(()=>({entities:[]})),
+      ]);
+      const tm = tmRes.entities?.[0];
+      const cu = cuRes.entities?.[0];
+      if(!tm && !cu) { setForgotErr("No account found with that email."); setForgotSending(false); return; }
+
+      // Generate a random new temp password
+      const tempPass = Math.random().toString(36).slice(2,10).toUpperCase();
+      const name = (tm||cu)?.name || forgotEmail.trim().split("@")[0];
+
+      // Save it to the right table
+      if(tm) await ue("TeamMember", tm.id, {password: tempPass}).catch(()=>{});
+      if(cu) await ue("ClientUser", cu.id, {password: tempPass}).catch(()=>{});
+
+      // Send email
+      const html = `<div style="font-family:'Montserrat',sans-serif;max-width:500px;margin:0 auto;padding:32px;background:#fff;border-radius:12px">
+        <img src="/favicon.svg" width="44" height="44" style="border-radius:10px;display:block;margin:0 auto 20px"/>
+        <h2 style="text-align:center;font-size:20px;font-weight:800;color:#111827;margin-bottom:8px">Password Reset</h2>
+        <p style="color:#4b5563;font-size:14px;line-height:1.6;text-align:center">Hi ${name}, here is your temporary password:</p>
+        <div style="margin:24px auto;text-align:center;background:#f9fafb;border:2px dashed #d1d5db;border-radius:10px;padding:18px 24px">
+          <span style="font-size:26px;font-weight:800;letter-spacing:3px;color:#d90b2c;font-family:monospace">${tempPass}</span>
+        </div>
+        <p style="color:#6b7280;font-size:13px;text-align:center;line-height:1.6">Sign in with this temporary password, then update it in your account settings.</p>
+      </div>`;
+      await sendEmail(forgotEmail.trim(), "Your temporary SocialFlow password", html, "SocialFlow");
+      setForgotSent(true);
+    } catch(e) { setForgotErr("Failed to send — try again."); }
+    setForgotSending(false);
+  };
 
   const handleLogin = async () => {
     setErr(""); setLoading(true);
@@ -20024,6 +20148,39 @@ function LoginScreen({onLogin,clients}) {
 
   if(showRequestAccess) return <RequestAccessPage onBack={()=>setShowRequestAccess(false)}/>;
 
+  if(showForgot) return (
+    <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{width:"100%",maxWidth:420}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <img src="/favicon.svg" width={52} height={52} style={{borderRadius:14,display:"block",margin:"0 auto 16px"}} alt="logo"/>
+          <h2 style={{fontSize:22,fontWeight:800}}>Forgot Password</h2>
+          <p style={{fontSize:13,color:"var(--text2)",marginTop:6}}>We'll send a temporary password to your email</p>
+        </div>
+        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:28,display:"flex",flexDirection:"column",gap:14}}>
+          {forgotSent ? (
+            <>
+              <div style={{textAlign:"center",padding:"20px 0"}}>
+                <div style={{fontSize:40,marginBottom:12}}>✅</div>
+                <p style={{fontWeight:700,fontSize:15,marginBottom:8}}>Check your inbox</p>
+                <p style={{fontSize:13,color:"var(--text2)"}}>A temporary password has been sent to <strong>{forgotEmail}</strong>. Use it to sign in, then change your password in settings.</p>
+              </div>
+              <Btn onClick={()=>{setShowForgot(false);setForgotSent(false);}}>Back to Sign In</Btn>
+            </>
+          ) : (
+            <>
+              <Field label="Your email address">
+                <input type="email" value={forgotEmail} onChange={e=>setForgotEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleForgot()} placeholder="your@email.com" style={inputSt} autoFocus/>
+              </Field>
+              {forgotErr&&<div style={{padding:"10px 12px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:"var(--rxs)",fontSize:13,color:"#ef4444"}}>{forgotErr}</div>}
+              <Btn onClick={handleForgot} disabled={forgotSending}>{forgotSending?"Sending…":"Send Temporary Password"}</Btn>
+              <button onClick={()=>{setShowForgot(false);setForgotErr("");}} style={{background:"none",border:"none",color:"var(--text3)",fontSize:13,cursor:"pointer",textAlign:"center",padding:"4px 0"}}>← Back to Sign In</button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
       <div style={{width:"100%",maxWidth:420}}>
@@ -20044,9 +20201,13 @@ function LoginScreen({onLogin,clients}) {
           <Field label="Email">
             <input type="email" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={handleKey} placeholder={mode==="team"?"your@email.com":"client@company.com"} style={inputSt} autoFocus/>
           </Field>
-          <Field label="Password">
+          <div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+              <label style={{fontSize:12,fontWeight:600,color:"var(--text2)"}}>Password</label>
+              <button onClick={()=>{setForgotEmail(email);setShowForgot(true);}} style={{background:"none",border:"none",color:"var(--accent)",fontSize:12,fontWeight:600,cursor:"pointer",padding:0}}>Forgot password?</button>
+            </div>
             <input type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={handleKey} placeholder="Your password" style={inputSt}/>
-          </Field>
+          </div>
           {err&&<div style={{padding:"10px 12px",background:"#ef444422",border:"1px solid #ef444466",borderRadius:"var(--rxs)",fontSize:13,color:"#ef4444",fontWeight:500}}>{err}</div>}
           <Btn onClick={handleLogin} style={{marginTop:4,opacity:loading?0.7:1}}>
             {loading?"Signing in…":"Sign In"}
@@ -28904,13 +29065,13 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
         );
       })}
       {showModal&&(
-        <ContactReportModal open onClose={()=>setShowModal(false)} onSave={onSaveContactReport} clientId={client.id} clientName={client.name} report={editing} team={team} client={client}/>
+        <ContactReportModal open onClose={()=>setShowModal(false)} onSave={onSaveContactReport} clientId={client.id} clientName={client.name} report={editing} team={team} client={client} currentUser={currentUser}/>
       )}
     </div>
   );
 }
 
-function ContactReportModal({open, onClose, onSave, clientId, clientName, report, team=[], client}) {
+function ContactReportModal({open, onClose, onSave, clientId, clientName, report, team=[], client, currentUser}) {
   const [f,setF] = useState(()=>({
     meeting_type: report?.meeting_type||"meeting",
     meeting_date: report?.meeting_date || (report?.created_at ? report.created_at.slice(0,10) : new Date().toISOString().slice(0,10)),
@@ -28927,7 +29088,11 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
   const [saving, setSaving] = useState(false);
   const formatRole = (role) => (role||"").replace(/_/g," ").replace(/\b\w/g, c=>c.toUpperCase());
   const attendeeSuggestions = [
-    ...(team||[]).filter(t=>t.status==="active").map(t=>({name:t.name, title:t.title?.trim()||formatRole(t.role), email:t.email||"", kind:"team"})),
+    ...(team||[]).filter(t=>t.status==="active").map(t=>{
+      const isMe = currentUser && (t.id===currentUser.id || t.email===currentUser.email);
+      const title = (isMe ? currentUser.title?.trim() : t.title?.trim()) || t.title?.trim() || formatRole(t.role);
+      return {name:t.name, title, email:t.email||"", kind:"team"};
+    }),
     ...(client?.name ? [{name:client.username||client.name, title:client.contact_title||"Client Contact", email:client.email||"", kind:"client"}] : []),
   ];
   const filteredAttendeeSuggestions = attendeeSuggestions.filter(s=>
