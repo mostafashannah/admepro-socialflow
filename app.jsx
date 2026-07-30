@@ -2013,9 +2013,15 @@ function getAgentCfg(agentId){
 // a genuine time-slot bar for her instead of a fake proportional count bar —
 // no new DB column: encoded as a parseable "|start:ISO|end:ISO" suffix on the
 // existing activity_logs.details TEXT field (see parseAgentRunTiming below).
+// A primary model returning 429 (rate limited) or 529/503 (overloaded) is
+// the "it's full" case the secondary/fallback model exists for — anything
+// else (bad request, auth, etc.) would fail identically on the fallback
+// too, so retrying there would just waste a call.
+const AI_OVERLOAD_STATUSES = new Set([429, 500, 502, 503, 529]);
 const agentAI = async (agentId, taskLabel, prompt, maxTokens=1000, imageUrl=null) => {
   const cfg = getAgentCfg(agentId);
   const model = cfg.model || "claude-sonnet-4-6";
+  const fallbackModel = (cfg.fallback_model||"").trim();
   const skills = (cfg.skills||"").trim();
   const def = AI_AGENT_DEFS.find(a=>a.id===agentId);
   const fullPrompt = skills
@@ -2030,8 +2036,9 @@ const agentAI = async (agentId, taskLabel, prompt, maxTokens=1000, imageUrl=null
     : fullPrompt;
   const startedAt = new Date();
   const timingSuffix = () => `|start:${startedAt.toISOString()}|end:${new Date().toISOString()}`;
-  const isOpenAI = model.startsWith("gpt-");
-  try {
+
+  const callModel = async (m) => {
+    const isOpenAI = m.startsWith("gpt-");
     // OpenAI's chat completions API has a different request/response shape
     // than Anthropic's Messages API (no top-level image content blocks —
     // image goes as an image_url part; usage field names differ; reply
@@ -2041,36 +2048,50 @@ const agentAI = async (agentId, taskLabel, prompt, maxTokens=1000, imageUrl=null
     const r = isOpenAI
       ? await fetch(OPENAI_ENDPOINT, {
           method:"POST", headers:AI_HEADERS,
-          body: JSON.stringify({ model, max_tokens:maxTokens, messages:[{role:"user",content: imageUrl
+          body: JSON.stringify({ model:m, max_tokens:maxTokens, messages:[{role:"user",content: imageUrl
             ? [{type:"image_url", image_url:{url:imageUrl}}, {type:"text", text:fullPrompt}]
             : fullPrompt}] })
         })
       : await fetch(AI_ENDPOINT, {
           method:"POST", headers:AI_HEADERS,
-          body: JSON.stringify({ model, max_tokens:maxTokens, messages:[{role:"user",content}] })
+          body: JSON.stringify({ model:m, max_tokens:maxTokens, messages:[{role:"user",content}] })
         });
     if(!r.ok) {
       const errText = await r.text();
-      logActivity(`${def?.name||agentId}: ${taskLabel}`,"agents",`[agent:${agentId}] ${taskLabel}${timingSuffix()}`,"error",`API ${r.status}: ${errText.slice(0,200)}`,"agent");
-      throw new Error(`AI API error ${r.status}: ${errText.slice(0,120)}`);
+      const err = new Error(`AI API error ${r.status}: ${errText.slice(0,120)}`);
+      err.status = r.status;
+      throw err;
     }
     const d = await r.json();
     if(isOpenAI) {
       // Normalize OpenAI's {prompt_tokens,completion_tokens} into the
       // {input_tokens,output_tokens} shape trackAIUsage/AI_MODEL_PRICES
       // already expect from Anthropic responses.
-      trackOpenAIUsage(d.usage ? {input_tokens:d.usage.prompt_tokens, output_tokens:d.usage.completion_tokens} : null, model);
-      logActivity(`${def?.name||agentId}: ${taskLabel}`,"agents",`[agent:${agentId}] ${taskLabel} (${model})${timingSuffix()}`,"success","","agent");
+      trackOpenAIUsage(d.usage ? {input_tokens:d.usage.prompt_tokens, output_tokens:d.usage.completion_tokens} : null, m);
       return d.choices?.[0]?.message?.content || "";
     }
-    trackAIUsage(d.usage, model);
-    logActivity(`${def?.name||agentId}: ${taskLabel}`,"agents",`[agent:${agentId}] ${taskLabel} (${model})${timingSuffix()}`,"success","","agent");
+    trackAIUsage(d.usage, m);
     return d.content?.map(b=>b.text||"").join("") || "";
-  } catch(e) {
-    if(!String(e.message).startsWith("AI API error")) {
-      logActivity(`${def?.name||agentId}: ${taskLabel}`,"agents",`[agent:${agentId}] ${taskLabel}${timingSuffix()}`,"error",String(e.message).slice(0,200),"agent");
+  };
+
+  try {
+    const result = await callModel(model);
+    logActivity(`${def?.name||agentId}: ${taskLabel}`,"agents",`[agent:${agentId}] ${taskLabel} (${model})${timingSuffix()}`,"success","","agent");
+    return result;
+  } catch(primaryErr) {
+    const isOverload = AI_OVERLOAD_STATUSES.has(primaryErr.status);
+    if(fallbackModel && fallbackModel!==model && isOverload) {
+      try {
+        const result = await callModel(fallbackModel);
+        logActivity(`${def?.name||agentId}: ${taskLabel}`,"agents",`[agent:${agentId}] ${taskLabel} (${fallbackModel}, primary ${model} was full)${timingSuffix()}`,"success",`Primary model overloaded (${primaryErr.status}), used fallback.`,"agent");
+        return result;
+      } catch(fallbackErr) {
+        logActivity(`${def?.name||agentId}: ${taskLabel}`,"agents",`[agent:${agentId}] ${taskLabel}${timingSuffix()}`,"error",`Primary+fallback both failed: ${String(fallbackErr.message).slice(0,180)}`,"agent");
+        throw fallbackErr;
+      }
     }
-    throw e;
+    logActivity(`${def?.name||agentId}: ${taskLabel}`,"agents",`[agent:${agentId}] ${taskLabel}${timingSuffix()}`,"error",String(primaryErr.message).slice(0,200),"agent");
+    throw primaryErr;
   }
 };
 // Pull the real start/end timestamps back out of a log's details string —
@@ -25261,14 +25282,15 @@ function StaticAgentLogSection({agentId, logs}) {
 }
 function AgentCard({def, cfg, models, onSave, logs, onBackfill, backfillRunning}) {
   const [model,setModel] = useState(cfg?.model||"claude-sonnet-4-6");
+  const [fallbackModel,setFallbackModel] = useState(cfg?.fallback_model||"");
   const [skills,setSkills] = useState(cfg?.skills||"");
   const [avatarUrl,setAvatarUrl] = useState(cfg?.avatar_url||"");
   const [uploadingAvatar,setUploadingAvatar] = useState(false);
   const [saved,setSaved] = useState(false);
   const [showLog,setShowLog] = useState(false);
-  useEffect(()=>{ setModel(cfg?.model||"claude-sonnet-4-6"); setSkills(cfg?.skills||""); setAvatarUrl(cfg?.avatar_url||""); },[cfg?.model,cfg?.skills,cfg?.avatar_url]);
+  useEffect(()=>{ setModel(cfg?.model||"claude-sonnet-4-6"); setFallbackModel(cfg?.fallback_model||""); setSkills(cfg?.skills||""); setAvatarUrl(cfg?.avatar_url||""); },[cfg?.model,cfg?.fallback_model,cfg?.skills,cfg?.avatar_url]);
   const save = async () => {
-    await onSave(def.id, {model, skills, avatar_url:avatarUrl});
+    await onSave(def.id, {model, fallback_model:fallbackModel, skills, avatar_url:avatarUrl});
     setSaved(true); setTimeout(()=>setSaved(false),2500);
   };
   const handleAvatarUpload = async (file) => {
@@ -25277,7 +25299,7 @@ function AgentCard({def, cfg, models, onSave, logs, onBackfill, backfillRunning}
     try {
       const url = await uploadToStorage(file, "ai-agents");
       setAvatarUrl(url);
-      await onSave(def.id, {model, skills, avatar_url:url});
+      await onSave(def.id, {model, fallback_model:fallbackModel, skills, avatar_url:url});
       setSaved(true); setTimeout(()=>setSaved(false),2500);
     } catch(e){ alert("Photo upload failed: "+e.message); }
     setUploadingAvatar(false);
@@ -25300,11 +25322,19 @@ function AgentCard({def, cfg, models, onSave, logs, onBackfill, backfillRunning}
         <span style={{marginLeft:"auto",fontSize:10,fontWeight:700,padding:"2px 8px",borderRadius:99,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text3)"}}>Reports to Pro</span>
       </div>
       <p style={{fontSize:12,color:"var(--text3)",marginBottom:14}}>{def.description}</p>
-      <Field label="AI Model">
+      <Field label="Primary Model">
         <select value={model} onChange={e=>setModel(e.target.value)} style={inputSt}>
           {models.map(m=><option key={m.id} value={m.id}>{m.name} — {m.tier}</option>)}
         </select>
       </Field>
+      <div style={{marginTop:10}}>
+        <Field label="Secondary Model" hint="Used automatically if the primary model is overloaded/rate-limited (429/503/529).">
+          <select value={fallbackModel} onChange={e=>setFallbackModel(e.target.value)} style={inputSt}>
+            <option value="">— None (retry primary only) —</option>
+            {models.filter(m=>m.id!==model).map(m=><option key={m.id} value={m.id}>{m.name} — {m.tier}</option>)}
+          </select>
+        </Field>
+      </div>
       <div style={{marginTop:10}}>
         <Field label="Skills & Guides" hint="Free-text instructions this agent always follows — tone rules, formats, targeting criteria, etc.">
           <textarea value={skills} onChange={e=>setSkills(e.target.value)} rows={4}
@@ -43454,7 +43484,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
     )}
 
     {/* Add Post */}
-    {showAddPost&&<AddPostModal open onClose={()=>{setShowAddPost(false);setAddPostForClient(null);}} projects={data.projects} team={data.team} onAdd={addPost} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} presetClient={addPostForClient} assets={data.assets||[]}/>}
+    {showAddPost&&<AddPostModal open onClose={()=>{setShowAddPost(false);setAddPostForClient(null);}} projects={data.projects} team={data.team} onAdd={addPost} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} presetClient={addPostForClient} assets={data.assets||[]} currentUser={currentUser}/>}
 
     {showAddTask&&<AddGenericTaskModal open onClose={()=>{setShowAddTask(false);setAddTaskForClient(null);}} projects={data.projects} team={data.team} onAdd={addPost} onCreateProject={addProjectQuick} presetClient={addTaskForClient} clients={data.clients} currentUser={currentUser}/>}
 
