@@ -106,7 +106,7 @@ function downloadCsv(filename, rows, columns) {
 
 // Photos/logos stored inline as base64 data URLs (not uploaded to storage) must
 // stay small enough to fit in a single API request body.
-const MAX_INLINE_IMAGE_MB = 2;
+const MAX_INLINE_IMAGE_MB = 8;
 const checkInlineImageSize = (file) => {
   if(file.size > MAX_INLINE_IMAGE_MB * 1024 * 1024) {
     alert(`Image is too large (max ${MAX_INLINE_IMAGE_MB}MB). Please choose a smaller file.`);
@@ -17291,10 +17291,15 @@ function TemplatesPage({templates}) {
 // ════════════════════════════════════════════════════════════════
 // One report row — its own component so the comment box has its own local
 // state (text/sending) without re-rendering every other report.
-function ClientContactReportCard({r, onAddComment, client, team=[]}) {
+function ClientContactReportCard({r, onAddComment, client, team=[], highlighted}) {
   const [commentText, setCommentText] = useState("");
   const [sending, setSending] = useState(false);
   const comments = parseMaybeJson(r.client_comments, []);
+  const cardRef = useRef(null);
+
+  useEffect(()=>{
+    if(highlighted && cardRef.current) cardRef.current.scrollIntoView({behavior:"smooth", block:"center"});
+  },[highlighted]);
 
   const submitComment = async () => {
     if(!commentText.trim()) return;
@@ -17304,7 +17309,7 @@ function ClientContactReportCard({r, onAddComment, client, team=[]}) {
   };
 
   return (
-    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:12}}>
+    <div ref={cardRef} id={`contact-report-${r.id}`} style={{background:"var(--surface)",border:`1px solid ${highlighted?"var(--accent)":"var(--border)"}`,borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:12,transition:"border-color 0.3s"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <Badge label={r.meeting_type==="call"?"Call":"Meeting"} color="#6366f1" xs/>
@@ -17360,6 +17365,7 @@ function ClientContactReportCard({r, onAddComment, client, team=[]}) {
 // visible (client_visible_at set, either via the per-client auto-email
 // switch or a manual Send). No voice recording here — that stays internal.
 function ClientContactReportsTab({reports=[], onAddComment, client, team=[]}) {
+  const highlightId = (()=>{ try { return new URLSearchParams(window.location.search).get("report"); } catch(e) { return null; } })();
   if(!reports.length) return (
     <div style={{padding:"60px 20px",textAlign:"center",color:"var(--text3)"}}>
       <Ico d={Icons.chat} size={32} stroke="var(--text3)"/>
@@ -17369,14 +17375,16 @@ function ClientContactReportsTab({reports=[], onAddComment, client, team=[]}) {
   );
   return (
     <div style={{display:"flex",flexDirection:"column",gap:14}}>
-      {reports.map(r=><ClientContactReportCard key={r.id} r={r} onAddComment={onAddComment} client={client} team={team}/>)}
+      {reports.map(r=><ClientContactReportCard key={r.id} r={r} onAddComment={onAddComment} client={client} team={team} highlighted={highlightId===r.id}/>)}
     </div>
   );
 }
 
 function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tasks=[],onAddTask,onUpdateTask,onAddPost,contract,wallpaper,onWallpaperChange,monthlyBriefs=[],onSubmitBrief,onSelfCreateBrief,messages=[],integrations=[],onSendReply,onApproveDraft,onDismissDraft,assets=[],onAddAsset,onUpdateAsset,onDeleteAsset,leads=[],comments=[],onAddComment,team=[],contactReports=[],onAddContactReportComment}) {
   const {isMobile} = useResponsive();
-  const [view,setView] = useState("dashboard");
+  const [view,setView] = useState(()=>{
+    try { return new URLSearchParams(window.location.search).get("view") || "dashboard"; } catch(e) { return "dashboard"; }
+  });
   const [sel,setSel] = useState(null);
   const [reason,setReason] = useState("");
   const [selComment,setSelComment] = useState("");
@@ -28791,6 +28799,11 @@ function generateContactReportHTML(report, clientName, branding, client, team) {
   const esc = s => String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
   const accent = branding?.primary_color || "#d90b2c";
   const attendeeGroups = groupAttendeesForDisplay(attendees, clientName, "Admepro");
+  // Deep-links into the client portal's Contact Reports tab and scrolls/
+  // highlights this exact report — the client still has to log in first,
+  // but lands straight on it (and can leave a comment) instead of hunting
+  // through the portal for it.
+  const portalUrl = `${window.location.origin}/?view=contact_reports&report=${encodeURIComponent(report.id||"")}`;
   const attendeesBlock = attendeeGroups.map(g=>`
       <p style="margin:0 0 2px;font-size:12px;font-weight:700;color:#111827">${esc(g.label)}</p>
       <p style="margin:0 0 10px;font-size:14px;line-height:1.6;color:#374151">${g.items.map(a=>esc(a.name)+(a.title?` — ${esc(a.title)}`:"")).join(", ")}</p>`).join("");
@@ -28824,7 +28837,10 @@ function generateContactReportHTML(report, clientName, branding, client, team) {
     ${section("Summary", report.summary)}
     ${bulletSection("Key Points", report.key_points)}
     ${bulletSection("Action Items", report.action_items)}
-    <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:28px;padding-top:20px"><tr><td>
+    <table width="100%" style="margin-top:28px"><tr><td align="center">
+      <a href="${esc(portalUrl)}" style="display:inline-block;background:${accent};color:#ffffff;text-decoration:none;font-size:13px;font-weight:700;padding:12px 22px;border-radius:99px">View in Client Portal &amp; Comment</a>
+    </td></tr></table>
+    <table width="100%" style="border-top:1px solid #e5e7eb;margin-top:24px;padding-top:20px"><tr><td>
       <p style="margin:0 0 4px;font-size:14px;font-weight:700;color:#111827">Admepro Advertising Agency</p>
       <p style="margin:0;font-size:13px;color:#6b7280">145 El Banafsig 3, New Cairo, Cairo</p>
       <p style="margin:0;font-size:13px;color:#6b7280">hello@admepro.com &middot; +20 100 037 0140</p>
@@ -28911,7 +28927,23 @@ async function downloadContactReportPDF(report, clientName, branding, client, te
     const when = [metDate?`Met ${metDate}`:"", submittedAt?`Submitted ${submittedAt}`:""].filter(Boolean).join(" · ");
     const [ar,ag,ab] = hexToRgb(branding?.primary_color||"#d90b2c");
     const appName = branding?.app_name || "Admepro";
-    const logo = await loadImageForPdf(ADMEPRO_LOGO_BLACK) || await loadImageForPdfViaImg(ADMEPRO_LOGO_BLACK);
+    // A logo uploaded in Settings → Branding is already a base64 data URI
+    // sitting in memory — no network fetch involved at all, so it sidesteps
+    // the admepro.com hotlink/CORS issue entirely. Prefer that; only fall
+    // back to fetching the hosted default logo if nothing's been uploaded.
+    let logo = null;
+    if (branding?.primary_logo) {
+      try {
+        const dims = await new Promise((resolve,reject)=>{
+          const img = new Image();
+          img.onload = () => resolve({w:img.naturalWidth, h:img.naturalHeight});
+          img.onerror = reject;
+          img.src = branding.primary_logo;
+        });
+        logo = {dataUrl: branding.primary_logo, ...dims};
+      } catch(e) { logo = null; }
+    }
+    if (!logo) logo = await loadImageForPdf(ADMEPRO_LOGO_BLACK) || await loadImageForPdfViaImg(ADMEPRO_LOGO_BLACK);
 
     const doc = new jsPDFCtor({unit:"pt", format:"a4"});
     const marginX = 48, pageWidth = doc.internal.pageSize.getWidth(), pageHeight = doc.internal.pageSize.getHeight();
