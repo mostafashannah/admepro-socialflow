@@ -6122,12 +6122,13 @@ function AddGenericTaskModal({open,onClose,projects,team,onAdd,onCreateProject,p
   const activeClientId = presetClient?.id || pickedClientId;
   const activeClient = presetClient || clients.find(c=>c.id===pickedClientId) || null;
   const selectableProjects = activeClientId ? projects.filter(p=>p.client_id===activeClientId) : projects;
-  const eligibleTeam = eligibleAssignees("planning",team);
   // Creator defaults to task owner — only when the creator themselves is
   // eligible for the Brief/planning stage (Account Managers/admins).
-  const defaultAssignee = eligibleTeam.some(m=>m.email===currentUser?.email) ? currentUser.email : "";
-  const blank = {title:"",project_id:selectableProjects[0]?.id||"",task_category:"design",other_category:"",description:"",assigned_to:defaultAssignee,due_date:"",priority:"medium"};
+  const defaultAssignee = eligibleAssignees("planning",team).some(m=>m.email===currentUser?.email) ? currentUser.email : "";
+  const blank = {title:"",project_id:selectableProjects[0]?.id||"",task_category:"design",other_category:"",description:"",assigned_to:defaultAssignee,due_date:"",priority:"medium",stage:"planning"};
   const [f,setF] = useState({...blank});
+  // Which pipeline phase this task starts at — controls who's eligible to be assigned.
+  const eligibleTeam = eligibleAssignees(f.stage,team);
   const [saving,setSaving] = useState(false);
   const [newProjectName,setNewProjectName] = useState("");
   const [creatingProject,setCreatingProject] = useState(false);
@@ -6151,7 +6152,7 @@ function AddGenericTaskModal({open,onClose,projects,team,onAdd,onCreateProject,p
     await onAdd({
       title:f.title, project_id:projectId, client_id:clientId, client_name:clientName,
       description:f.description, assigned_to:f.assigned_to, due_date:f.due_date, priority:f.priority,
-      stage:"planning", platform:"", post_type:f.task_category==="other"?(f.other_category.trim()||"other"):f.task_category,
+      stage:f.stage, platform:"", post_type:f.task_category==="other"?(f.other_category.trim()||"other"):f.task_category,
     });
     setSaving(false); onClose();
   };
@@ -6195,6 +6196,14 @@ function AddGenericTaskModal({open,onClose,projects,team,onAdd,onCreateProject,p
             <input value={f.other_category} onChange={e=>s("other_category",e.target.value)} placeholder="e.g. Voiceover recording" style={inputSt}/>
           </Field>
         )}
+        <div>
+          <p style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:8}}>Starts at Phase</p>
+          <div style={{display:"flex",gap:8}}>
+            {[["planning","Brief"],["content_creation","Content"],["design","Design"]].map(([key,label])=>(
+              <button key={key} type="button" onClick={()=>setF(prev=>({...prev,stage:key,assigned_to:eligibleAssignees(key,team).some(m=>m.email===prev.assigned_to)?prev.assigned_to:""}))} style={{flex:1,padding:"9px 8px",borderRadius:9,border:`2px solid ${f.stage===key?"var(--accent)":"var(--border)"}`,background:f.stage===key?"var(--accentbg,var(--surface2))":"var(--surface2)",cursor:"pointer",fontSize:12,fontWeight:700,color:f.stage===key?"var(--accent)":"var(--text2)"}}>{label}</button>
+            ))}
+          </div>
+        </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <Field label="Assign To" required>
             <select value={f.assigned_to} onChange={e=>s("assigned_to",e.target.value)} style={inputSt}>
@@ -6230,10 +6239,12 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
   const [pickedClientId,setPickedClientId] = useState("");
   const activeClientId = presetClient?.id || pickedClientId;
   const selectableProjects = activeClientId ? projects.filter(p=>p.client_id===activeClientId) : projects;
-  const eligibleTeam = eligibleAssignees("planning",team);
-  const defaultAssignee = eligibleTeam.some(m=>m.email===currentUser?.email) ? currentUser.email : "";
+  const defaultAssignee = eligibleAssignees("planning",team).some(m=>m.email===currentUser?.email) ? currentUser.email : "";
   const blankForm = {project_id:selectableProjects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:defaultAssignee,scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",due_date:"",due_time:"",content_mode:"new",platforms:[],platform_types:{},media:[],cover:null,publish_mode:"schedule",postStory:false,storyImage:null,estimated_minutes:""};
   const [f,setF] = useState({...blankForm});
+  // Which pipeline phase this post starts at — controls who's eligible to
+  // be assigned it (Brief -> AM, Content -> Content team, Design -> Design team).
+  const eligibleTeam = eligibleAssignees(f.stage,team);
   const [saving,setSaving] = useState(false);
   const [uploading,setUploading] = useState(false);
   const [uploadingCover,setUploadingCover] = useState(false);
@@ -6566,6 +6577,14 @@ Return ONLY valid JSON (no markdown):
         {/* STEP 2 */}
         {step===2&&(
           <>
+            <div>
+              <p style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:8}}>Starts at Phase</p>
+              <div style={{display:"flex",gap:8,marginBottom:14}}>
+                {[["planning","Brief"],["content_creation","Content"],["design","Design"]].map(([key,label])=>(
+                  <button key={key} type="button" onClick={()=>setF(prev=>({...prev,stage:key,assigned_to:eligibleAssignees(key,team).some(m=>m.email===prev.assigned_to)?prev.assigned_to:""}))} style={{flex:1,padding:"9px 8px",borderRadius:9,border:`2px solid ${f.stage===key?"var(--accent)":"var(--border)"}`,background:f.stage===key?"var(--accentbg,var(--surface2))":"var(--surface2)",cursor:"pointer",fontSize:12,fontWeight:700,color:f.stage===key?"var(--accent)":"var(--text2)"}}>{label}</button>
+                ))}
+              </div>
+            </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
               <Field label="Assign To">
                 <select value={f.assigned_to} onChange={e=>s("assigned_to",e.target.value)} style={inputSt}>
