@@ -15735,19 +15735,38 @@ function computeClientPaymentsInRange(clientName, {invoices=[],payments=[],subsc
 // weighted input shown separately, plus the accumulated total — so a score
 // is never just a number someone has to trust blindly (useful both for the
 // member themselves and for backing an appraisal conversation).
-function MemberScoringTab({member, perfLogs, maiReportSessions}) {
+function MemberScoringTab({member, perfLogs, maiReportSessions, posts=[]}) {
   const perf = calcUserPerf(member.email, perfLogs, maiReportSessions);
   const hasTaskData = perf.total > 0;
   const hasMaiData = perf.maiScore != null;
-  const row = (label, value, weight, color) => (
+
+  // Every task currently assigned to this member, regardless of whether it's
+  // reached a scored stage yet — completed/scored vs. still in progress vs.
+  // rejected, so "why is my score X" always has a real count behind it.
+  const assigned = (posts||[]).filter(p=>p.assigned_to===member.email);
+  const completedCount = assigned.filter(p=>["published","scheduled"].includes(p.stage)).length;
+  const rejectedCount = assigned.filter(p=>p.stage==="rejected").length;
+  const inProgressCount = assigned.length - completedCount - rejectedCount;
+  const onTimeCount = perf.logs.filter(l=>l.on_time).length;
+  const lateCount = perf.total - onTimeCount;
+  const taskRejectedCount = perf.logs.filter(l=>l.rejected).length;
+
+  const row = (label, value, weight, count, color) => (
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:"10px 0",borderBottom:"1px solid var(--border)"}}>
       <div>
         <p style={{fontSize:13,fontWeight:700}}>{label}</p>
-        <p style={{fontSize:11,color:"var(--text3)"}}>{weight} of the total score</p>
+        <p style={{fontSize:11,color:"var(--text3)"}}>{weight} of the total score{count?` · ${count}`:""}</p>
       </div>
       <span style={{fontSize:18,fontWeight:800,color:color||perfColor(value)}}>{value}%</span>
     </div>
   );
+  const countCard = (label, value, color) => (
+    <div style={{flex:"1 1 100px",background:"var(--surface2)",border:`1px solid ${color}33`,borderRadius:10,padding:"12px 14px",textAlign:"center"}}>
+      <p style={{fontSize:22,fontWeight:800,color}}>{value}</p>
+      <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{label}</p>
+    </div>
+  );
+
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}}>
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20,display:"flex",alignItems:"center",gap:18}}>
@@ -15767,22 +15786,31 @@ function MemberScoringTab({member, perfLogs, maiReportSessions}) {
       </div>
 
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
+        <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:14}}>All Assigned Tasks — {assigned.length} total</p>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+          {countCard("Completed",completedCount,"#10b981")}
+          {countCard("In Progress",inProgressCount,"#3b82f6")}
+          {countCard("Rejected",rejectedCount,"#ef4444")}
+        </div>
+        <p style={{fontSize:11,color:"var(--text3)",marginTop:12}}>Only <strong>Completed</strong> tasks (reached Scheduled or Published) count toward the score below — tasks still In Progress haven't been graded yet.</p>
+      </div>
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
         <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>How this score is built</p>
         <p style={{fontSize:12,color:"var(--text2)",lineHeight:1.6,marginBottom:14}}>
-          Task performance is a weighted blend of four inputs from every logged task: how many were completed vs. rejected,
+          Task performance is a weighted blend of four inputs from every completed task: how many were completed vs. rejected,
           whether they were delivered on time, the quality score given at completion, and how many revision rounds it took.
           {hasMaiData?" For roles with WhatsApp check-ins (Mai), that reliability score is folded in afterward at 30% of the final total — a missed check-in is recorded as 0 and counted double in that sub-average, so skipping one has real weight, not just a lower average.":""}
         </p>
         {hasTaskData ? (
           <>
-            {row("Completion Rate", perf.completionRate, "30%")}
-            {row("On-Time Rate", perf.onTimeRate, "25%")}
-            {row("Quality Score", perf.avgQuality, "35%")}
-            {row("Revision Score", Math.max(0,100-perf.avgRevisions*18), "10%", undefined)}
-            <p style={{fontSize:11,color:"var(--text3)",marginTop:10}}>Based on {perf.total} logged task{perf.total===1?"":"s"} · avg {perf.avgRevisions} revision{perf.avgRevisions===1?"":"s"} per task.</p>
+            {row("Completion Rate", perf.completionRate, "30%", `${perf.total-taskRejectedCount}/${perf.total} not rejected`)}
+            {row("On-Time Rate", perf.onTimeRate, "25%", `${onTimeCount} on time, ${lateCount} late`)}
+            {row("Quality Score", perf.avgQuality, "35%", `avg across ${perf.total} task${perf.total===1?"":"s"}`)}
+            {row("Revision Score", Math.max(0,100-perf.avgRevisions*18), "10%", `avg ${perf.avgRevisions} revision${perf.avgRevisions===1?"":"s"}/task`)}
           </>
         ) : (
-          <p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:"20px 0"}}>No task-based PerformanceLog entries yet for {member.name?.split(" ")?.[0]||"this member"}.</p>
+          <p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:"20px 0"}}>No completed (Scheduled/Published) tasks yet for {member.name?.split(" ")?.[0]||"this member"} — {inProgressCount} still in progress.</p>
         )}
         {hasMaiData && (
           <div style={{marginTop:hasTaskData?18:0,paddingTop:hasTaskData?14:0,borderTop:hasTaskData?"1px solid var(--border)":"none"}}>
@@ -16205,7 +16233,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:30,textAlign:"center",color:"var(--text2)",fontSize:13}}>You don't have permission to view salary information.</div>
       )}
 
-      {tab==="scoring"&&<MemberScoringTab member={member} perfLogs={perfLogs} maiReportSessions={maiReportSessions}/>}
+      {tab==="scoring"&&<MemberScoringTab member={member} perfLogs={perfLogs} maiReportSessions={maiReportSessions} posts={posts}/>}
 
       {tab==="mai_reports"&&<AccountManagerMaiReportsTab member={member}/>}
 
