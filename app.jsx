@@ -551,24 +551,52 @@ const getClientStageColor = (stage) => CLIENT_HIDDEN_STAGES.has(stage) ? "#3b82f
 // ════════════════════════════════════════════════════════════════
 // PERFORMANCE ENGINE
 // ════════════════════════════════════════════════════════════════
-function calcUserPerf(userEmail, perfLogs) {
+// A missed Mai check-in (never responded, or abandoned mid-checklist) is
+// recorded with score=0 and counts DOUBLE in the average — shared with the
+// per-member Mai Reports tab so both places agree on the same number.
+function calcMaiCheckinScore(sessions) {
+  const scored = (sessions||[]).filter(s=>s.score!=null&&s.max_score);
+  if (!scored.length) return null;
+  let sumPct=0, weight=0;
+  scored.forEach(s=>{
+    const w = s.status==="missed" ? 2 : 1;
+    sumPct += (s.score/s.max_score*100) * w;
+    weight += w;
+  });
+  return Math.round(sumPct/weight);
+}
+function calcUserPerf(userEmail, perfLogs, maiSessions) {
   const logs = (perfLogs||[]).filter(l => l.user_email === userEmail);
-  if (!logs.length) return { score:0, completionRate:0, onTimeRate:0, avgQuality:0, avgRevisions:0, total:0, logs:[] };
+  const maiScore = calcMaiCheckinScore((maiSessions||[]).filter(s=>s.account_manager_email===userEmail));
+  if (!logs.length) {
+    // No task-based logs (e.g. an account manager, who has no
+    // PerformanceLog rows at all) — score off Mai check-ins alone if there
+    // are any, rather than forcing a misleading 0.
+    return { score:maiScore??0, completionRate:0, onTimeRate:0, avgQuality:0, avgRevisions:0, total:0, logs:[], maiScore };
+  }
   const total = logs.length;
   const onTime = logs.filter(l => l.on_time).length;
   const rejected = logs.filter(l => l.rejected).length;
-  const avgQuality = Math.round(logs.reduce((a,l)=>a+(l.quality_score||0),0)/total);
-  const avgRevisions = +(logs.reduce((a,l)=>a+(l.revision_count||0),0)/total).toFixed(1);
+  // Numeric DB columns can arrive as strings — Number(...) instead of
+  // trusting `+` to coerce, so a stray string can't turn a running sum
+  // into concatenated garbage instead of a real total.
+  const num = v => Number(v)||0;
+  const avgQuality = Math.round(logs.reduce((a,l)=>a+num(l.quality_score),0)/total);
+  const avgRevisions = +(logs.reduce((a,l)=>a+num(l.revision_count),0)/total).toFixed(1);
   const completionRate = Math.round(((total-rejected)/total)*100);
   const onTimeRate = Math.round((onTime/total)*100);
   const revScore = Math.max(0, 100 - avgRevisions*18);
-  const score = Math.min(100, Math.round(completionRate*0.30 + onTimeRate*0.25 + avgQuality*0.35 + revScore*0.10));
-  return { score, completionRate, onTimeRate, avgQuality, avgRevisions, total, logs };
+  const taskScore = Math.min(100, Math.round(completionRate*0.30 + onTimeRate*0.25 + avgQuality*0.35 + revScore*0.10));
+  // Fold in Mai check-in accountability where it exists (mainly account
+  // managers) — a strong task-completion rate shouldn't be able to fully
+  // paper over skipped check-ins.
+  const score = maiScore!=null ? Math.round(taskScore*0.7 + maiScore*0.3) : taskScore;
+  return { score, completionRate, onTimeRate, avgQuality, avgRevisions, total, logs, maiScore };
 }
-function calcAllPerf(team, perfLogs, includeAll) {
+function calcAllPerf(team, perfLogs, includeAll, maiSessions) {
   return (team||[])
     .filter(m=>includeAll || !["admin","accountant"].includes(m.role))
-    .map(m=>({...m, perf:calcUserPerf(m.email, perfLogs)}))
+    .map(m=>({...m, perf:calcUserPerf(m.email, perfLogs, maiSessions)}))
     .sort((a,b)=>b.perf.score-a.perf.score);
 }
 const perfColor = s => s>=85?"#10b981":s>=65?"#f59e0b":"#ef4444";
@@ -15001,7 +15029,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   onInviteUser, onCancelInvitation, onApproveRequest, onRejectRequest,
   onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation,
   rolePerms, onUpdateTeamMember, onRemoveMember, onToggleRolePermission, onAddExpense, leaveRequests, onDecideLeaveRequest, attendanceRecords,
-  posts, onImpersonate, appSettings, onSaveSettings, expenses, onDeclareCompanyDayOff, invoices, payments, subscriptionPayments, activityLogs=[]}) {
+  posts, onImpersonate, appSettings, onSaveSettings, expenses, onDeclareCompanyDayOff, invoices, payments, subscriptionPayments, activityLogs=[], perfLogs=[], maiReportSessions=[]}) {
   const [tab, setTab] = usePersistentState("sf_tab_users","team");
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showClientUserModal, setShowClientUserModal] = useState(false);
@@ -15072,6 +15100,8 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
           invoices={invoices}
           payments={payments}
           subscriptionPayments={subscriptionPayments}
+          perfLogs={perfLogs}
+          maiReportSessions={maiReportSessions}
           onUpdateTeamMember={onUpdateTeamMember}
           onAddExpense={onAddExpense}
           canEdit={!isOfficeBoy && hasPerm(currentUser,rolePerms,"hr.edit_team")}
@@ -15701,6 +15731,70 @@ function computeClientPaymentsInRange(clientName, {invoices=[],payments=[],subsc
   return total;
 }
 
+// Full breakdown of exactly how this member's score is built — every
+// weighted input shown separately, plus the accumulated total — so a score
+// is never just a number someone has to trust blindly (useful both for the
+// member themselves and for backing an appraisal conversation).
+function MemberScoringTab({member, perfLogs, maiReportSessions}) {
+  const perf = calcUserPerf(member.email, perfLogs, maiReportSessions);
+  const hasTaskData = perf.total > 0;
+  const hasMaiData = perf.maiScore != null;
+  const row = (label, value, weight, color) => (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:"10px 0",borderBottom:"1px solid var(--border)"}}>
+      <div>
+        <p style={{fontSize:13,fontWeight:700}}>{label}</p>
+        <p style={{fontSize:11,color:"var(--text3)"}}>{weight} of the total score</p>
+      </div>
+      <span style={{fontSize:18,fontWeight:800,color:color||perfColor(value)}}>{value}%</span>
+    </div>
+  );
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:16}}>
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20,display:"flex",alignItems:"center",gap:18}}>
+        <div style={{width:72,height:72,borderRadius:"50%",background:perfColor(perf.score)+"22",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:22,color:perfColor(perf.score),flexShrink:0}}>{perf.score}</div>
+        <div>
+          <p style={{fontSize:15,fontWeight:800}}>Accumulated Score — {perfLabel(perf.score)}</p>
+          <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>
+            {!hasTaskData && !hasMaiData
+              ? "No scored activity on record yet — this fills in once tasks are logged or check-ins happen."
+              : hasTaskData && hasMaiData
+                ? "70% task performance (below) blended with 30% Mai check-in reliability."
+                : hasMaiData
+                  ? "Based entirely on Mai check-in reliability — no task-based performance logs yet."
+                  : "Based entirely on task performance — no Mai check-in data applies to this role."}
+          </p>
+        </div>
+      </div>
+
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
+        <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>How this score is built</p>
+        <p style={{fontSize:12,color:"var(--text2)",lineHeight:1.6,marginBottom:14}}>
+          Task performance is a weighted blend of four inputs from every logged task: how many were completed vs. rejected,
+          whether they were delivered on time, the quality score given at completion, and how many revision rounds it took.
+          {hasMaiData?" For roles with WhatsApp check-ins (Mai), that reliability score is folded in afterward at 30% of the final total — a missed check-in is recorded as 0 and counted double in that sub-average, so skipping one has real weight, not just a lower average.":""}
+        </p>
+        {hasTaskData ? (
+          <>
+            {row("Completion Rate", perf.completionRate, "30%")}
+            {row("On-Time Rate", perf.onTimeRate, "25%")}
+            {row("Quality Score", perf.avgQuality, "35%")}
+            {row("Revision Score", Math.max(0,100-perf.avgRevisions*18), "10%", undefined)}
+            <p style={{fontSize:11,color:"var(--text3)",marginTop:10}}>Based on {perf.total} logged task{perf.total===1?"":"s"} · avg {perf.avgRevisions} revision{perf.avgRevisions===1?"":"s"} per task.</p>
+          </>
+        ) : (
+          <p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:"20px 0"}}>No task-based PerformanceLog entries yet for {member.name?.split(" ")?.[0]||"this member"}.</p>
+        )}
+        {hasMaiData && (
+          <div style={{marginTop:hasTaskData?18:0,paddingTop:hasTaskData?14:0,borderTop:hasTaskData?"1px solid var(--border)":"none"}}>
+            {row("Mai Check-in Score", perf.maiScore, hasTaskData?"30% (blended in)":"100% (only input)")}
+            <p style={{fontSize:11,color:"var(--text3)",marginTop:6}}>See the "Mai Reports" tab for the full session-by-session breakdown, including which check-ins were missed.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Shows Mai's twice-daily WhatsApp check-in history for an account manager
 // — score per session, which checklist items were/weren't confirmed, and
 // the full transcript on demand. Fetches its own data (mai_report_sessions
@@ -15803,7 +15897,7 @@ function AccountManagerMaiReportsTab({member}) {
   );
 }
 
-function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, attendanceRecords, expenses, invoices, payments, subscriptionPayments, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense, appSettings}) {
+function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, attendanceRecords, expenses, invoices, payments, subscriptionPayments, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense, appSettings, perfLogs=[], maiReportSessions=[]}) {
   // Plain state, not persisted — opening any team member should always
   // start on Overview, not silently reopen to whatever tab was last viewed.
   const [tab, setTab] = useState("overview");
@@ -16027,7 +16121,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
       </div>
 
       <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)",alignSelf:"flex-start"}}>
-        {[["overview","Overview"],["tasks","Tasks & Scheduled"],["attendance","Attendance"],["payroll","Payroll"],["history","Career History"],...(member.role==="account_manager"?[["mai_reports","Mai Reports"]]:[]),...(member.source_application_id?[["hiring","Hiring"]]:[])].map(([k,l])=>(
+        {[["overview","Overview"],["tasks","Tasks & Scheduled"],["attendance","Attendance"],["payroll","Payroll"],["history","Career History"],["scoring","Scoring"],...(member.role==="account_manager"?[["mai_reports","Mai Reports"]]:[]),...(member.source_application_id?[["hiring","Hiring"]]:[])].map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)} style={{padding:"7px 16px",borderRadius:"var(--rxs)",fontSize:12,fontWeight:700,background:tab===k?"var(--accent)":"none",color:tab===k?"#fff":"var(--text2)"}}>{l}</button>
         ))}
       </div>
@@ -16110,6 +16204,8 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
       {tab==="payroll"&&!canEditSalary&&(
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:30,textAlign:"center",color:"var(--text2)",fontSize:13}}>You don't have permission to view salary information.</div>
       )}
+
+      {tab==="scoring"&&<MemberScoringTab member={member} perfLogs={perfLogs} maiReportSessions={maiReportSessions}/>}
 
       {tab==="mai_reports"&&<AccountManagerMaiReportsTab member={member}/>}
 
@@ -30116,8 +30212,8 @@ function QualitySparkline({logs}) {
 // ════════════════════════════════════════════════════════════════
 // TEAM PERFORMANCE PAGE (admin / director only)
 // ════════════════════════════════════════════════════════════════
-function TeamPerformancePage({currentUser, perfLogs, aiInsights, team}) {
-  const ranked = calcAllPerf(team, perfLogs, currentUser?.role==="admin");
+function TeamPerformancePage({currentUser, perfLogs, aiInsights, team, maiReportSessions}) {
+  const ranked = calcAllPerf(team, perfLogs, currentUser?.role==="admin", maiReportSessions);
   const teamAvg = ranked.length ? Math.round(ranked.reduce((a,m)=>a+m.perf.score,0)/ranked.length) : 0;
   const best = ranked[0];
   const worst = ranked[ranked.length-1];
@@ -39783,6 +39879,7 @@ function App() {
         qe("Expense",{},"-date",1000), // 45
         qe("FinanceClientNote"), // 46
         qe("ContactReportActivity",{},"-created_at",2000), // 47
+        qe("MaiReportSession",{},"-started_at",2000), // 48
         // JobOpening/JobApplication removed here — RecruitmentPage already
         // fetches both itself on mount (see its own `load()`), so these were
         // an unread duplicate fetch on every single app load/refresh.
@@ -39837,6 +39934,7 @@ function App() {
         expenses: pick(wave2[45], d.expenses||[]),
         financeClientNotes: pick(wave2[46], d.financeClientNotes||[]),
         contactReportActivity: pick(wave2[47], d.contactReportActivity||[]),
+        maiReportSessions: pick(wave2[48], d.maiReportSessions||[]),
       }));
     }
     loadAllDataRef.current = load;
@@ -42795,6 +42893,8 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             onSaveSettings={saveAppSettings}
             onDeclareCompanyDayOff={declareCompanyDayOff}
             activityLogs={data.activityLogs||[]}
+            perfLogs={data.perfLogs||[]}
+            maiReportSessions={data.maiReportSessions||[]}
           />
         )}
         {page==="performance"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.view_performance"))&&(
@@ -42803,6 +42903,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             perfLogs={data.perfLogs||[]}
             aiInsights={data.aiInsights||[]}
             team={data.team}
+            maiReportSessions={data.maiReportSessions||[]}
           />
         )}
         {page==="recruitment"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.manage_recruitment"))&&(
