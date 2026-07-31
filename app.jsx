@@ -21528,6 +21528,27 @@ function isInvalidLeadPhone(phone) {
   return BAD_PHONE_PREFIXES.some(p=>digits.startsWith(p));
 }
 
+// Unifies Egyptian numbers to "+2" + the 11-digit local number (e.g.
+// "+201012345678"). Only touches numbers that actually look Egyptian —
+// international numbers (Saudi 966, etc.) are left untouched rather than
+// forced into a format they were never in.
+function normalizeEgyptPhone(phone) {
+  let digits = (phone||"").replace(/\D/g,"");
+  if(!digits) return phone;
+  if(digits.length===12 && digits.startsWith("20")) {
+    // +20 1012345678 -> drop the "20", restore the domestic leading 0
+    digits = "0"+digits.slice(2);
+  } else if(digits.length===11 && digits.startsWith("0")) {
+    // already domestic format (0XXXXXXXXXX) — use as-is
+  } else if(digits.length===10 && !digits.startsWith("0")) {
+    // missing its leading 0 (e.g. "1012345678")
+    digits = "0"+digits;
+  } else {
+    return phone; // not a recognizable Egyptian shape — leave untouched
+  }
+  return "+2"+digits;
+}
+
 const LEAD_SOURCES = [
   {key:"instagram",label:"Instagram"}, {key:"facebook",label:"Facebook"},
   {key:"linkedin",label:"LinkedIn"}, {key:"tiktok",label:"TikTok"},
@@ -22292,6 +22313,16 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
             }} disabled={cleaningUp} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #f59e0b",background:"#f59e0b22",color:"#f59e0b",fontSize:12,fontWeight:700,cursor:cleaningUp?"wait":"pointer"}}>
               {cleaningUp?<Spinner size={13}/>:"Delete Invalid Numbers"}
             </button>
+            <button onClick={async()=>{
+              const toFix = bankLeads.filter(l=>{ const n=normalizeEgyptPhone(l.phone); return n!==l.phone; });
+              if(!toFix.length){ alert("All numbers already match +2 + 11 digits (or aren't recognizable as Egyptian)."); return; }
+              if(!confirm(`Reformat ${toFix.length} lead(s) to +2 + 11 digits?`)) return;
+              setCleaningUp(true);
+              for(const l of toFix) await onUpdateLead({...l, phone: normalizeEgyptPhone(l.phone)});
+              setCleaningUp(false);
+            }} disabled={cleaningUp} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #3b82f6",background:"#3b82f622",color:"#3b82f6",fontSize:12,fontWeight:700,cursor:cleaningUp?"wait":"pointer"}}>
+              {cleaningUp?<Spinner size={13}/>:"Normalize Numbers"}
+            </button>
             <button onClick={()=>setShowBankAnalysis(true)} disabled={bankLeads.length===0} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #8b5cf6",background:"#8b5cf622",color:"#8b5cf6",fontSize:12,fontWeight:700,cursor:bankLeads.length===0?"default":"pointer",opacity:bankLeads.length===0?0.5:1,display:"flex",alignItems:"center",gap:6}}>
               <Ico d={Icons.sparkle} size={13}/> AI Analysis
             </button>
@@ -22394,7 +22425,7 @@ function ImportLeadsModal({open,onClose,onAdd}) {
       // value must be a real number (0), not "" — the DB column rejects an
       // empty string, which silently failed every row's insert before this
       // fix (ce()'s create call swallows errors, so nothing ever surfaced).
-      await onAdd({name, company, phone, email, source: LEAD_SOURCES.some(s=>s.key===source)?source:"other", status:"new", value:0, platforms:[], assigned_to:"", assigned_at:null, followup_date:"", notes});
+      await onAdd({name, company, phone: normalizeEgyptPhone(phone), email, source: LEAD_SOURCES.some(s=>s.key===source)?source:"other", status:"new", value:0, platforms:[], assigned_to:"", assigned_at:null, followup_date:"", notes});
       created++;
     }
     setImporting(false);
