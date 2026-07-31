@@ -22254,13 +22254,13 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
       {/* BANK VIEW — admin-only holding area for unassigned leads (e.g. bulk-imported from a spreadsheet) */}
       {view==="bank"&&isAdmin&&(
         <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 120px 100px 140px 200px",padding:"9px 18px",background:"var(--surface2)",borderBottom:"1px solid var(--border)"}}>
-            {["Lead","Source","Value","Imported","Assign To"].map(h=>(
+          <div style={{display:"grid",gridTemplateColumns:"1fr 120px 100px 140px 200px 34px",padding:"9px 18px",background:"var(--surface2)",borderBottom:"1px solid var(--border)"}}>
+            {["Lead","Source","Value","Imported","Assign To",""].map(h=>(
               <span key={h} style={{fontSize:10,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",color:"var(--text3)"}}>{h}</span>
             ))}
           </div>
           {bankLeads.map((lead,i)=>(
-            <div key={lead.id} style={{display:"grid",gridTemplateColumns:"1fr 120px 100px 140px 200px",padding:"12px 18px",alignItems:"center",borderBottom:i<bankLeads.length-1?"1px solid var(--border)":"none"}}>
+            <div key={lead.id} style={{display:"grid",gridTemplateColumns:"1fr 120px 100px 140px 200px 34px",padding:"12px 18px",alignItems:"center",borderBottom:i<bankLeads.length-1?"1px solid var(--border)":"none"}}>
               <div style={{cursor:"pointer"}} onClick={()=>setSelectedLead(lead)}>
                 <p style={{fontWeight:600,fontSize:13}}>{lead.name}</p>
                 {lead.company&&<p style={{fontSize:11,color:"var(--text3)"}}>{lead.company}</p>}
@@ -22272,6 +22272,9 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
                 <option value="">— Assign to team member —</option>
                 {team.map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
               </select>
+              <button onClick={()=>{ if(confirm(`Delete "${lead.name}" from the Bank? This can't be undone.`)) onDeleteLead(lead.id); }} title="Delete" style={{width:28,height:28,borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",justifySelf:"end"}}>
+                <Ico d={Icons.trash} size={13} stroke="#ef4444"/>
+              </button>
             </div>
           ))}
           {bankLeads.length===0&&<div style={{padding:"50px",textAlign:"center",color:"var(--text3)"}}>
@@ -22294,13 +22297,18 @@ function ImportLeadsModal({open,onClose,onAdd}) {
   const [importing,setImporting] = useState(false);
   const [result,setResult] = useState(null);
   const doImport = async () => {
-    const lines = raw.split("\n").map(l=>l.trim()).filter(Boolean);
+    const lines = raw.split("\n").filter(l=>l.trim());
     if(!lines.length) return;
+    // Pasting straight out of Google Sheets/Excel copies cells tab-separated,
+    // not comma-separated — splitting those on "," would dump the whole row
+    // into a single field. Detect which delimiter is actually in use (tabs
+    // win if present anywhere) rather than forcing the user to reformat.
+    const delimiter = lines.some(l=>l.includes("\t")) ? "\t" : ",";
     setImporting(true);
     let created = 0, skipped = 0;
     for(const line of lines) {
       // name, company, phone, email, source, notes — trailing fields optional.
-      const parts = line.split(",").map(p=>p.trim());
+      const parts = line.split(delimiter).map(p=>p.trim());
       const [name, company="", phone="", email="", source="other", notes=""] = parts;
       if(!name) { skipped++; continue; }
       await onAdd({name, company, phone, email, source: LEAD_SOURCES.some(s=>s.key===source)?source:"other", status:"new", value:"", platforms:[], assigned_to:"", followup_date:"", notes});
@@ -22314,7 +22322,7 @@ function ImportLeadsModal({open,onClose,onAdd}) {
     <Modal open={open} onClose={onClose} title="Import Leads" subtitle="Paste rows from a spreadsheet — they land unassigned in the Bank." width={520}
       footer={<Btn onClick={doImport} disabled={importing||!raw.trim()}>{importing?<Spinner size={14}/>:"Import"}</Btn>}>
       <div style={{display:"flex",flexDirection:"column",gap:10,padding:"14px 0"}}>
-        <p style={{fontSize:12,color:"var(--text3)"}}>One lead per line, comma-separated: <code style={{background:"var(--surface2)",padding:"1px 6px",borderRadius:4}}>Name, Company, Phone, Email, Source, Notes</code> — only Name is required. Copy rows straight out of a Google Sheet/Excel export.</p>
+        <p style={{fontSize:12,color:"var(--text3)"}}>One lead per line: <code style={{background:"var(--surface2)",padding:"1px 6px",borderRadius:4}}>Name, Company, Phone, Email, Source, Notes</code> — only Name is required. Paste rows straight out of Google Sheets/Excel (tab-separated) or a comma-separated list — both are auto-detected.</p>
         <textarea value={raw} onChange={e=>setRaw(e.target.value)} rows={10} placeholder={"Ahmed Hassan, Nova Retail, +20 100 123 4567, ahmed@nova.com, linkedin, Interested in paid ads\nSara Aly, , +20 101 987 6543, , referral,"} style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:13,fontFamily:"monospace",resize:"vertical",lineHeight:1.5}}/>
         {result&&<p style={{fontSize:12,color:"#10b981",fontWeight:600}}>Imported {result.created} lead(s) into the Bank{result.skipped?`, skipped ${result.skipped} blank row(s)`:""}.</p>}
       </div>
