@@ -21890,6 +21890,19 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
                   }}>{s.emoji} {s.label}</button>
                 ))}
               </div>
+              {/* Full stage-move history, oldest to newest, so it reads like
+                  a timeline of how this lead actually progressed. */}
+              {leadActs.filter(a=>a.type==="status_change").length>0&&(
+                <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:6}}>
+                  {[...leadActs].filter(a=>a.type==="status_change").sort((a,b)=>new Date(a.created_date)-new Date(b.created_date)).map(a=>(
+                    <div key={a.id} style={{display:"flex",alignItems:"center",gap:8,fontSize:11,color:"var(--text3)"}}>
+                      <Ico d={Icons.clock} size={11} stroke="var(--text3)"/>
+                      <span style={{color:"var(--text2)"}}>{a.content}</span>
+                      <span style={{marginLeft:"auto",flexShrink:0}}>{a.author_name?`${a.author_name} · `:""}{fmtDateTime(a.created_date)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Convert to Client */}
@@ -22394,7 +22407,10 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
                 onDrop={e=>{
                   e.preventDefault();
                   const l = dragLead.current;
-                  if(l && l.status!==status.key) onUpdateLead({...l, status:status.key});
+                  if(l && l.status!==status.key) {
+                    onUpdateLead({...l, status:status.key});
+                    onAddActivity({lead_id:l.id, type:"status_change", content:`Status changed to ${status.label}`, author_name:currentUser?.name||"User"});
+                  }
                   dragLead.current=null;
                 }}
               >
