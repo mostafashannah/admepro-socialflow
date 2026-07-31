@@ -358,7 +358,7 @@ function financeTools() {
         [
             'name' => 'add_transaction',
             'description' => 'Record a new income or expense transaction. Before calling this, make sure you have all required fields from the user — if anything is missing or ambiguous (especially amount or whether it is money in or out), ASK the user instead of guessing. Once saved, confirm back to the user exactly what was recorded (type, amount, category, description, date). '
-                . 'Payment method is OPTIONAL — never ask for it as a separate follow-up question after you have already saved the transaction. If the user did not mention it, just save without one; do not hold the save hostage waiting for it. If, despite this, you already asked and the user\'s next message is just a bare method answer ("cash", "bank transfer", "card") with no new amount/description, that is updating the transaction you just saved, NOT a new transaction — call edit_transaction with the short_id this tool returned and the method, never call add_transaction again for it. '
+                . 'Payment method is OPTIONAL — never ask for it as a separate follow-up question after you have already saved the transaction. If the user did not mention it, just save; it defaults to "Bank transfer" automatically, so do not hold the save hostage waiting for it. If, despite this, you already asked and the user\'s next message is just a bare method answer ("cash", "bank transfer", "card") with no new amount/description, that is updating the transaction you just saved, NOT a new transaction — call edit_transaction with the short_id this tool returned and the method, never call add_transaction again for it. '
                 . 'For an "outstanding" expense (money owed but not yet paid — e.g. "X is outstanding", "put this on Fawry installments", "so-and-so paid this for us, we owe them back"): set method to "Outstanding" and fill outstanding_kind. For outstanding_kind="team_member", set outstanding_team_member (their name) — no interest applies, amount is simply what\'s owed. For outstanding_kind="installment" (Fawry), set outstanding_months and, if not given, use Fawry\'s known flat monthly rates: 1mo=3.33%, 3mo=3.21%, 6/9/12/18/24mo=3.04% — ALWAYS tell the user the calculated total (principal + interest) and monthly installment before saving so they can confirm, since interest changes the real amount owed. For installment, treat the "amount" you were given as the PRINCIPAL — the tool computes and stores the true total automatically. '
                 . 'If this call is rejected with an error saying it looks like a repeat of an already-logged transaction, ASK the user whether it\'s a genuine separate transaction or an actual duplicate — never claim it saved successfully when this tool returned an error, that would be lying to the user. If they confirm it\'s genuinely separate, call add_transaction again with the exact same details plus force=true to actually save it this time.',
             'input_schema' => [
@@ -563,7 +563,12 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
 
         $id = generateProUuid();
         $ref = 'TXN-' . strtoupper(substr($id, 0, 8));
-        $method = in_array($input['method'] ?? '', ['Cash', 'Bank transfer', 'Card', 'Outstanding', 'Other'], true) ? $input['method'] : null;
+        // "Bank transfer" is the default when the user never says how the money
+        // moved — most client payments/expenses here go through the bank, and
+        // Pro is now instructed not to ask about method as a separate follow-up
+        // (see the tool description/system prompt), so this needs a sane default
+        // rather than being left null.
+        $method = in_array($input['method'] ?? '', ['Cash', 'Bank transfer', 'Card', 'Outstanding', 'Other'], true) ? $input['method'] : 'Bank transfer';
 
         $outstandingKind = null; $outstandingStatus = null; $outstandingTeamMemberId = null;
         $outstandingMonths = null; $outstandingRate = null; $outstandingPrincipal = null; $outstandingTotalPayable = null;
@@ -1824,8 +1829,9 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                      . "(e.g. they just say \"add 500 for coffee\" without saying in/out — assume OUT for an "
                      . "expense-sounding request, but ask if genuinely unclear), ask a short follow-up question "
                      . "instead of guessing. If they mention how the money moved (cash, bank transfer, card), pass "
-                     . "it as method — but method is OPTIONAL, so save immediately once you have type/amount/"
-                     . "description even if method wasn't mentioned. NEVER ask 'how was it received?' or similar as "
+                     . "it as method — but method is OPTIONAL, defaulting to \"Bank transfer\" automatically, so "
+                     . "save immediately once you have type/amount/description even if method wasn't mentioned. "
+                     . "NEVER ask 'how was it received?' or similar as "
                      . "a separate follow-up after already saving — that risks a duplicate if you (or the user) "
                      . "treat their answer as a whole new transaction. If you do end up needing to update the "
                      . "method after the fact, use edit_transaction with the short_id the save returned — never "

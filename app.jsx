@@ -22053,7 +22053,14 @@ function LeadRotationSettingsModal({appSettings, onSave, team, onClose}) {
 
 function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead, onUpdateLead, onAddActivity, onConvertLead, onDeleteLead, appSettings, onSaveSettings}) {
   const [showRotationSettings, setShowRotationSettings] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [view, setView] = useState("kanban");
+  const isAdmin = currentUser?.role==="admin";
+  // Leads with nobody assigned yet sit in the "Bank" — imported in bulk
+  // (e.g. from a Drive sheet) and held there until an admin hands each one
+  // to a team member. No schema/status change needed: "in the bank" just
+  // means assigned_to is empty.
+  const bankLeads = leads.filter(l=>!l.assigned_to);
   const [selectedLead, setSelectedLead_] = useState(null);
   // Opening a lead pushes its own history entry so the physical browser
   // Back button closes it instead of navigating away from Leads entirely.
@@ -22128,12 +22135,15 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
         </div>
         <div style={{display:"flex",gap:8}}>
           <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)"}}>
-            {[["kanban",Icons.grid],["list",Icons.list]].map(([v,ico])=>(
+            {[["kanban",Icons.grid],["list",Icons.list],...(isAdmin?[["bank",Icons.leads]]:[])].map(([v,ico])=>(
               <button key={v} onClick={()=>setView(v)} style={{padding:"5px 12px",borderRadius:"var(--rxs)",fontSize:12,fontWeight:700,background:view===v?"var(--accent)":"none",color:view===v?"#fff":"var(--text2)",display:"flex",alignItems:"center",gap:5}}>
-                <Ico d={ico} size={13}/>{v.charAt(0).toUpperCase()+v.slice(1)}
+                <Ico d={ico} size={13}/>{v==="bank"?`Bank${bankLeads.length?` (${bankLeads.length})`:""}`:v.charAt(0).toUpperCase()+v.slice(1)}
               </button>
             ))}
           </div>
+          {isAdmin&&(
+            <button onClick={()=>setShowImport(true)} title="Import Leads (e.g. from a spreadsheet)" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}><Ico d={Icons.upload} size={15} stroke="var(--text2)"/></button>
+          )}
           {currentUser?.role==="admin"&&(
             <button onClick={()=>setShowRotationSettings(true)} title="Lead Rotation Settings" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}><Ico d={Icons.settings} size={15} stroke="var(--text2)"/></button>
           )}
@@ -22241,9 +22251,74 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
         </div>
       )}
 
+      {/* BANK VIEW — admin-only holding area for unassigned leads (e.g. bulk-imported from a spreadsheet) */}
+      {view==="bank"&&isAdmin&&(
+        <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 120px 100px 140px 200px",padding:"9px 18px",background:"var(--surface2)",borderBottom:"1px solid var(--border)"}}>
+            {["Lead","Source","Value","Imported","Assign To"].map(h=>(
+              <span key={h} style={{fontSize:10,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",color:"var(--text3)"}}>{h}</span>
+            ))}
+          </div>
+          {bankLeads.map((lead,i)=>(
+            <div key={lead.id} style={{display:"grid",gridTemplateColumns:"1fr 120px 100px 140px 200px",padding:"12px 18px",alignItems:"center",borderBottom:i<bankLeads.length-1?"1px solid var(--border)":"none"}}>
+              <div style={{cursor:"pointer"}} onClick={()=>setSelectedLead(lead)}>
+                <p style={{fontWeight:600,fontSize:13}}>{lead.name}</p>
+                {lead.company&&<p style={{fontSize:11,color:"var(--text3)"}}>{lead.company}</p>}
+              </div>
+              <span style={{fontSize:12,color:"var(--text2)",textTransform:"capitalize"}}>{lead.source||"—"}</span>
+              <span style={{fontWeight:700,fontSize:13,color:"#10b981"}}>{lead.value?`$${lead.value.toLocaleString()}`:"—"}</span>
+              <span style={{fontSize:12,color:"var(--text3)"}}>{lead.created_date?new Date(lead.created_date).toLocaleDateString():"—"}</span>
+              <select defaultValue="" onChange={e=>{ if(e.target.value) onUpdateLead({...lead, assigned_to:e.target.value}); }} style={{...inputSt,fontSize:12,padding:"7px 10px"}}>
+                <option value="">— Assign to team member —</option>
+                {team.map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
+              </select>
+            </div>
+          ))}
+          {bankLeads.length===0&&<div style={{padding:"50px",textAlign:"center",color:"var(--text3)"}}>
+            <Ico d={Icons.leads} size={36} stroke="var(--text3)"/>
+            <p style={{marginTop:10}}>The bank is empty — import leads or add one directly.</p>
+          </div>}
+        </div>
+      )}
+
       {/* Add Lead Modal */}
       {showForm&&<AddLeadModal open onClose={()=>setShowForm(false)} team={team} onAdd={async d=>{await onAddLead(d);setShowForm(false);}}/>}
+      {/* Import Leads Modal (admin only) — bulk-add leads with nobody assigned; they land in the Bank */}
+      {showImport&&isAdmin&&<ImportLeadsModal open onClose={()=>setShowImport(false)} onAdd={onAddLead}/>}
     </div>
+  );
+}
+
+function ImportLeadsModal({open,onClose,onAdd}) {
+  const [raw,setRaw] = useState("");
+  const [importing,setImporting] = useState(false);
+  const [result,setResult] = useState(null);
+  const doImport = async () => {
+    const lines = raw.split("\n").map(l=>l.trim()).filter(Boolean);
+    if(!lines.length) return;
+    setImporting(true);
+    let created = 0, skipped = 0;
+    for(const line of lines) {
+      // name, company, phone, email, source, notes — trailing fields optional.
+      const parts = line.split(",").map(p=>p.trim());
+      const [name, company="", phone="", email="", source="other", notes=""] = parts;
+      if(!name) { skipped++; continue; }
+      await onAdd({name, company, phone, email, source: LEAD_SOURCES.some(s=>s.key===source)?source:"other", status:"new", value:"", platforms:[], assigned_to:"", followup_date:"", notes});
+      created++;
+    }
+    setImporting(false);
+    setResult({created, skipped});
+    setRaw("");
+  };
+  return (
+    <Modal open={open} onClose={onClose} title="Import Leads" subtitle="Paste rows from a spreadsheet — they land unassigned in the Bank." width={520}
+      footer={<Btn onClick={doImport} disabled={importing||!raw.trim()}>{importing?<Spinner size={14}/>:"Import"}</Btn>}>
+      <div style={{display:"flex",flexDirection:"column",gap:10,padding:"14px 0"}}>
+        <p style={{fontSize:12,color:"var(--text3)"}}>One lead per line, comma-separated: <code style={{background:"var(--surface2)",padding:"1px 6px",borderRadius:4}}>Name, Company, Phone, Email, Source, Notes</code> — only Name is required. Copy rows straight out of a Google Sheet/Excel export.</p>
+        <textarea value={raw} onChange={e=>setRaw(e.target.value)} rows={10} placeholder={"Ahmed Hassan, Nova Retail, +20 100 123 4567, ahmed@nova.com, linkedin, Interested in paid ads\nSara Aly, , +20 101 987 6543, , referral,"} style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:13,fontFamily:"monospace",resize:"vertical",lineHeight:1.5}}/>
+        {result&&<p style={{fontSize:12,color:"#10b981",fontWeight:600}}>Imported {result.created} lead(s) into the Bank{result.skipped?`, skipped ${result.skipped} blank row(s)`:""}.</p>}
+      </div>
+    </Modal>
   );
 }
 
