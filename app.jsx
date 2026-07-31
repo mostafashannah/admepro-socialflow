@@ -22082,6 +22082,10 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   const [search, setSearch] = useState("");
   const [sourceF, setSourceF] = useState("all");
   const [assigneeF, setAssigneeF] = useState("all");
+  const [selectedBankIds, setSelectedBankIds] = useState([]);
+  const [bulkAssignTo, setBulkAssignTo] = useState("");
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const toggleBankSelect = (id) => setSelectedBankIds(ids=>ids.includes(id)?ids.filter(x=>x!==id):[...ids,id]);
 
   // Bank leads (nobody assigned yet) stay off the regular Kanban/List
   // entirely — they only ever show in the Bank tab until an admin hands
@@ -22261,14 +22265,42 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
 
       {/* BANK VIEW — admin-only holding area for unassigned leads (e.g. bulk-imported from a spreadsheet) */}
       {view==="bank"&&isAdmin&&(
-        <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 120px 100px 140px 200px 34px",padding:"9px 18px",background:"var(--surface2)",borderBottom:"1px solid var(--border)"}}>
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {selectedBankIds.length>0&&(
+            <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"var(--accentbg,var(--surface2))",border:"1px solid var(--accent)",borderRadius:"var(--r)",flexWrap:"wrap"}}>
+              <span style={{fontSize:12,fontWeight:700,color:"var(--accent)"}}>{selectedBankIds.length} selected</span>
+              <select value={bulkAssignTo} onChange={e=>{
+                const email = e.target.value;
+                setBulkAssignTo(email);
+                if(email){
+                  selectedBankIds.forEach(id=>{ const l=bankLeads.find(x=>x.id===id); if(l) onUpdateLead({...l, assigned_to:email}); });
+                  setSelectedBankIds([]); setBulkAssignTo("");
+                }
+              }} style={{...inputSt,width:"auto",fontSize:12,padding:"7px 10px"}}>
+                <option value="">Assign selected to…</option>
+                {team.map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
+              </select>
+              <button onClick={async()=>{
+                if(!confirm(`Delete ${selectedBankIds.length} selected lead(s) from the Bank? This can't be undone.`)) return;
+                setBulkDeleting(true);
+                for(const id of selectedBankIds) await onDeleteLead(id);
+                setBulkDeleting(false); setSelectedBankIds([]);
+              }} disabled={bulkDeleting} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #ef4444",background:"#ef444422",color:"#ef4444",fontSize:12,fontWeight:700,cursor:bulkDeleting?"wait":"pointer"}}>
+                {bulkDeleting?<Spinner size={13}/>:"Delete Selected"}
+              </button>
+              <button onClick={()=>setSelectedBankIds([])} style={{padding:"7px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Clear</button>
+            </div>
+          )}
+          <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
+          <div style={{display:"grid",gridTemplateColumns:"28px 1fr 120px 100px 140px 200px 34px",padding:"9px 18px",background:"var(--surface2)",borderBottom:"1px solid var(--border)",alignItems:"center"}}>
+            <input type="checkbox" checked={bankLeads.length>0&&selectedBankIds.length===bankLeads.length} onChange={e=>setSelectedBankIds(e.target.checked?bankLeads.map(l=>l.id):[])}/>
             {["Lead","Source","Value","Imported","Assign To",""].map(h=>(
               <span key={h} style={{fontSize:10,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",color:"var(--text3)"}}>{h}</span>
             ))}
           </div>
           {bankLeads.map((lead,i)=>(
-            <div key={lead.id} style={{display:"grid",gridTemplateColumns:"1fr 120px 100px 140px 200px 34px",padding:"12px 18px",alignItems:"center",borderBottom:i<bankLeads.length-1?"1px solid var(--border)":"none"}}>
+            <div key={lead.id} style={{display:"grid",gridTemplateColumns:"28px 1fr 120px 100px 140px 200px 34px",padding:"12px 18px",alignItems:"center",borderBottom:i<bankLeads.length-1?"1px solid var(--border)":"none"}}>
+              <input type="checkbox" checked={selectedBankIds.includes(lead.id)} onChange={()=>toggleBankSelect(lead.id)}/>
               <div style={{cursor:"pointer"}} onClick={()=>setSelectedLead(lead)}>
                 <p style={{fontWeight:600,fontSize:13}}>{lead.name}</p>
                 {lead.company&&<p style={{fontSize:11,color:"var(--text3)"}}>{lead.company}</p>}
@@ -22289,6 +22321,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
             <Ico d={Icons.leads} size={36} stroke="var(--text3)"/>
             <p style={{marginTop:10}}>The bank is empty — import leads or add one directly.</p>
           </div>}
+          </div>
         </div>
       )}
 
@@ -22329,12 +22362,25 @@ function ImportLeadsModal({open,onClose,onAdd}) {
     setResult({created, skipped});
     setRaw("");
   };
+  const fileRef = useRef(null);
+  const [fileName, setFileName] = useState("");
+  const handleFile = (file) => {
+    if(!file) return;
+    setFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (e) => setRaw(e.target.result || "");
+    reader.readAsText(file);
+  };
   return (
-    <Modal open={open} onClose={onClose} title="Import Leads" subtitle="Paste rows from a spreadsheet — they land unassigned in the Bank." width={520}
+    <Modal open={open} onClose={onClose} title="Import Leads" subtitle="Paste rows from a spreadsheet, or upload a file — they land unassigned in the Bank." width={520}
       footer={<Btn onClick={doImport} disabled={importing||!raw.trim()}>{importing?<Spinner size={14}/>:"Import"}</Btn>}>
       <div style={{display:"flex",flexDirection:"column",gap:10,padding:"14px 0"}}>
         <p style={{fontSize:12,color:"var(--text3)"}}>One lead per line: <code style={{background:"var(--surface2)",padding:"1px 6px",borderRadius:4}}>Name, Company, Phone, Email, Source, Notes</code> — only Name is required. Paste rows straight out of Google Sheets/Excel (tab-separated) or a comma-separated list — both are auto-detected.</p>
-        <textarea value={raw} onChange={e=>setRaw(e.target.value)} rows={10} placeholder={"Ahmed Hassan, Nova Retail, +20 100 123 4567, ahmed@nova.com, linkedin, Interested in paid ads\nSara Aly, , +20 101 987 6543, , referral,"} style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:13,fontFamily:"monospace",resize:"vertical",lineHeight:1.5}}/>
+        <input ref={fileRef} type="file" accept=".csv,.txt,text/csv,text/plain" style={{display:"none"}} onChange={e=>{handleFile(e.target.files?.[0]); e.target.value="";}}/>
+        <button type="button" onClick={()=>fileRef.current?.click()} style={{alignSelf:"flex-start",display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+          <Ico d={Icons.upload} size={13}/> {fileName||"Upload .csv / .txt file"}
+        </button>
+        <textarea value={raw} onChange={e=>{setRaw(e.target.value); setFileName("");}} rows={10} placeholder={"Ahmed Hassan, Nova Retail, +20 100 123 4567, ahmed@nova.com, linkedin, Interested in paid ads\nSara Aly, , +20 101 987 6543, , referral,"} style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:13,fontFamily:"monospace",resize:"vertical",lineHeight:1.5}}/>
         {result&&<p style={{fontSize:12,color:"#10b981",fontWeight:600}}>Imported {result.created} lead(s) into the Bank{result.skipped?`, skipped ${result.skipped} blank row(s)`:""}.</p>}
       </div>
     </Modal>
