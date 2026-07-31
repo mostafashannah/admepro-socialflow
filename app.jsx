@@ -22553,8 +22553,8 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
                   <option value="">— Assign to AM/BD —</option>
                   {assignableAMs.map((t,i)=><option key={t.id} value={t.email}>{t.name}{i===0?" — next turn":""}</option>)}
                 </select>
-                <button onClick={()=>assignToNextTurn([lead])} disabled={assigningNext} title={assignableAMs[0]?`Assign to ${assignableAMs[0].name} (next turn)`:"No AM available"} style={{padding:"0 10px",borderRadius:"var(--rs)",border:"1px solid var(--accent)",background:"var(--accent)22",color:"var(--accent)",fontSize:11,fontWeight:600,cursor:assigningNext?"wait":"pointer",whiteSpace:"nowrap"}}>
-                  Next Turn
+                <button onClick={()=>assignToNextTurn([lead])} disabled={assigningNext} title={assignableAMs[0]?`Assign to ${assignableAMs[0].name} (next turn)`:"No AM available"} style={{width:28,height:28,borderRadius:8,border:"1px solid var(--accent)",background:"var(--accent)22",display:"flex",alignItems:"center",justifyContent:"center",cursor:assigningNext?"wait":"pointer",flexShrink:0}}>
+                  <Ico d={Icons.repeat} size={13} stroke="var(--accent)"/>
                 </button>
               </div>
               {lead.phone ? (
