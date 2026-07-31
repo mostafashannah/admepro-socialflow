@@ -21801,7 +21801,7 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                 <Badge label={status.label} color={status.color}/>
                 {lead.source&&<Badge label={lead.source} color="#6b7280" xs/>}
-                {lead.value&&<Badge label={`$${lead.value.toLocaleString()}`} color="#10b981" xs/>}
+                {lead.value>0&&<Badge label={`$${lead.value.toLocaleString()}`} color="#10b981" xs/>}
               </div>
             </div>
             {onDeleteLead&&(
@@ -22070,7 +22070,7 @@ function LeadCard({lead, onClick, team}) {
           {lead.company&&<p style={{fontSize:11,color:"var(--text2)",marginTop:2}}>{lead.company}</p>}
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-          {lead.value&&<span style={{fontSize:12,fontWeight:800,color:"#10b981"}}>${lead.value.toLocaleString()}</span>}
+          {lead.value>0&&<span style={{fontSize:12,fontWeight:800,color:"#10b981"}}>${lead.value.toLocaleString()}</span>}
           {lead.phone&&(
             <button onClick={e=>{e.stopPropagation();setShowQr(true);}} title="WhatsApp QR code" style={{width:24,height:24,borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
               <Ico d={Icons.grid} size={12} stroke="#25D366"/>
