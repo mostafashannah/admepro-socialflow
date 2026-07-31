@@ -1980,6 +1980,24 @@ const ai = async (prompt, maxTokens=1000) => {
   return d.content?.map(b=>b.text||"").join("") || "";
 };
 
+// Same as ai() but with the hosted web_search tool enabled, for anything
+// that needs Claude to actually look something up (a company's real
+// website/socials) instead of only reasoning from the prompt text.
+const aiSearch = async (prompt, maxTokens=1000) => {
+  const r = await fetch(AI_ENDPOINT, {
+    method:"POST",
+    headers: AI_HEADERS,
+    body: JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:maxTokens, messages:[{role:"user",content:prompt}], tools:[{type:"web_search_20250305", name:"web_search", max_uses:3}] })
+  });
+  if(!r.ok) {
+    const errText = await r.text();
+    console.error("AI API error:", r.status, errText);
+    throw new Error(`AI API error ${r.status}: ${errText.slice(0,120)}`);
+  }
+  const d = await r.json();
+  return d.content?.map(b=>b.text||"").join("") || "";
+};
+
 // ── AI Agents (Settings → AI Agents) ─────────────────────────────
 // A small crew working under Pro's supervision. Each agent has a configurable
 // model + free-text skills/guides (stored team-wide in app_settings.ai_agents)
@@ -22194,6 +22212,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   const [bankSelectMode, setBankSelectMode] = useState(false);
   const [showBankAnalysis, setShowBankAnalysis] = useState(false);
   const [showPushTop, setShowPushTop] = useState(false);
+  const [showEnrich, setShowEnrich] = useState(false);
   const toggleBankSelect = (id) => setSelectedBankIds(ids=>ids.includes(id)?ids.filter(x=>x!==id):[...ids,id]);
   const [cleaningUp, setCleaningUp] = useState(false);
   const [qrLead, setQrLead] = useState(null);
@@ -22348,7 +22367,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
         </select>
         <select value={assigneeF} onChange={e=>setAssigneeF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12}}>
           <option value="all">All Assignees</option>
-          {team.map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
+          {(team||[]).filter(t=>["account_manager","business_development"].includes(t.role)).map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
         </select>
         <select value={countryF} onChange={e=>setCountryF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12}}>
           <option value="all">All Countries</option>
@@ -22475,15 +22494,8 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
             <button onClick={()=>setShowPushTop(true)} disabled={bankLeads.length===0} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #10b981",background:"#10b98122",color:"#10b981",fontSize:12,fontWeight:700,cursor:bankLeads.length===0?"default":"pointer",opacity:bankLeads.length===0?0.5:1,display:"flex",alignItems:"center",gap:6}}>
               <Ico d={Icons.sparkle} size={13}/> Push New Leads
             </button>
-            <button onClick={async()=>{
-              const toFix = bankLeads.filter(l=>l.source!=="old_data");
-              if(!toFix.length){ alert("Every lead in the Bank is already marked as Old Data."); return; }
-              if(!confirm(`Mark ${toFix.length} lead(s) as source "Old Data"?`)) return;
-              setCleaningUp(true);
-              for(const l of toFix) await onUpdateLead({...l, source:"old_data"});
-              setCleaningUp(false);
-            }} disabled={cleaningUp} style={{padding:"7px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",fontSize:12,fontWeight:700,cursor:cleaningUp?"wait":"pointer"}}>
-              {cleaningUp?<Spinner size={13}/>:"Mark as Old Data"}
+            <button onClick={()=>setShowEnrich(true)} disabled={bankLeads.length===0} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #f59e0b",background:"#f59e0b22",color:"#f59e0b",fontSize:12,fontWeight:700,cursor:bankLeads.length===0?"default":"pointer",opacity:bankLeads.length===0?0.5:1,display:"flex",alignItems:"center",gap:6}}>
+              <Ico d={Icons.sparkle} size={13}/> AI: Find Industry & Website
             </button>
           </div>
           {selectedBankIds.length>0&&(
@@ -22561,6 +22573,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
       {/* AI Analysis of the Bank — surfaces which unassigned leads are worth recalling first */}
       {showBankAnalysis&&<BankAnalysisModal open onClose={()=>setShowBankAnalysis(false)} bankLeads={bankLeads}/>}
       {showPushTop&&<PushTopLeadsModal open onClose={()=>setShowPushTop(false)} bankLeads={bankLeads} team={team} appSettings={appSettings} onUpdateLead={onUpdateLead} onSaveSettings={onSaveSettings}/>}
+      {showEnrich&&<EnrichLeadsModal open onClose={()=>setShowEnrich(false)} bankLeads={bankLeads} onUpdateLead={onUpdateLead}/>}
       {qrLead&&<LeadQrModal lead={qrLead} onClose={()=>setQrLead(null)}/>}
 
       {/* Add Lead Modal */}
@@ -22754,6 +22767,77 @@ Return ONLY valid JSON, no markdown, no commentary — an array of exactly 10 ob
                   <Badge label={assignedTo.name} color="#8b5cf6" xs/>
                 </div>
                 {reason&&<p style={{fontSize:12,color:"var(--text2)",marginTop:4}}>{reason}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// Researches each Bank lead missing an industry/website — one real web
+// search per lead via aiSearch() — and fills in whatever it can find.
+// Capped per run (web searches are slow and cost real tokens/time in
+// sequence) so a huge Bank doesn't hang the browser tab; re-running picks
+// up wherever it left off since it only ever targets leads still missing data.
+const ENRICH_BATCH_SIZE = 25;
+function EnrichLeadsModal({open,onClose,bankLeads,onUpdateLead}) {
+  const [phase,setPhase] = useState("running"); // running | done | error
+  const [error,setError] = useState("");
+  const [results,setResults] = useState([]); // [{lead, industry, website, social}]
+  const [doneCount,setDoneCount] = useState(0);
+  const targets = [...bankLeads].filter(l=>!l.industry || !l.website).slice(0,ENRICH_BATCH_SIZE);
+  useEffect(()=>{
+    let cancelled = false;
+    (async () => {
+      if(!targets.length){ setPhase("error"); setError("Every lead already has an industry and website — nothing left to enrich."); return; }
+      for(const lead of targets) {
+        if(cancelled) return;
+        const prompt = `Research this business lead and find real, verifiable information about them — do not guess or invent anything.
+
+Name: ${lead.name}
+Company: ${lead.company||"(unknown — infer from name/notes if this is actually a business, otherwise treat as a person)"}
+Phone: ${lead.phone||"—"}
+Existing notes: ${(lead.notes||"—").slice(0,400)}
+
+Search the web for this company/person. Return ONLY valid JSON, no markdown: {"industry":"<short industry label, e.g. 'Real Estate', 'F&B', 'Skincare Products' — or empty string if you truly can't determine it>","website":"<their real website URL, or empty string if none found>","social":"<their main Instagram/Facebook/LinkedIn handle or URL, or empty string if none found>"}`;
+        try {
+          const text = await aiSearch(prompt, 500);
+          const m = text.match(/\{[\s\S]*\}/);
+          const parsed = m ? JSON.parse(m[0]) : {};
+          const patch = {};
+          if(parsed.industry && !lead.industry) patch.industry = parsed.industry;
+          if(parsed.website && !lead.website) patch.website = parsed.website;
+          if(parsed.social) patch.notes = `${lead.notes?lead.notes+"; ":""}Social: ${parsed.social}`;
+          if(Object.keys(patch).length) await onUpdateLead({...lead, ...patch});
+          if(!cancelled) setResults(r=>[...r,{lead, ...parsed}]);
+        } catch(e) {
+          if(!cancelled) setResults(r=>[...r,{lead, industry:"", website:"", social:"", failed:true}]);
+        }
+        if(!cancelled) setDoneCount(c=>c+1);
+      }
+      if(!cancelled) setPhase("done");
+    })();
+    return () => { cancelled = true; };
+  },[]);
+  return (
+    <Modal open={open} onClose={onClose} title="AI: Find Industry & Website" subtitle={targets.length?`Researching ${targets.length} lead(s) missing this info (one web search each)`:undefined} width={560}>
+      <div style={{padding:"14px 0",minHeight:120}}>
+        {phase==="running"&&<div style={{display:"flex",alignItems:"center",gap:10,color:"var(--text2)",fontSize:13}}><Spinner size={16}/> Researching lead {doneCount+1} of {targets.length}…</div>}
+        {phase==="error"&&<p style={{color:"#f59e0b",fontSize:13}}>{error}</p>}
+        {phase==="done"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <p style={{fontSize:13,fontWeight:700,color:"#10b981"}}>Researched {results.length} lead(s){bankLeads.filter(l=>!l.industry||!l.website).length>targets.length?` — ${bankLeads.filter(l=>!l.industry||!l.website).length-targets.length} more still need it, run again to continue`:""}.</p>
+            {results.map(({lead,industry,website,social,failed},i)=>(
+              <div key={i} style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
+                <p style={{fontWeight:700,fontSize:13}}>{lead.name}{lead.company?` — ${lead.company}`:""}</p>
+                {failed ? <p style={{fontSize:12,color:"#ef4444",marginTop:4}}>Lookup failed — try again later.</p> : (
+                  <p style={{fontSize:12,color:"var(--text2)",marginTop:4}}>
+                    {industry?`Industry: ${industry}`:"No industry found"}{website?` · Website: ${website}`:""}{social?` · Social: ${social}`:""}
+                    {!industry&&!website&&!social&&" (couldn't find anything usable)"}
+                  </p>
+                )}
               </div>
             ))}
           </div>
