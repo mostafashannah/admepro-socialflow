@@ -22311,7 +22311,10 @@ function ImportLeadsModal({open,onClose,onAdd}) {
       const parts = line.split(delimiter).map(p=>p.trim());
       const [name, company="", phone="", email="", source="other", notes=""] = parts;
       if(!name) { skipped++; continue; }
-      await onAdd({name, company, phone, email, source: LEAD_SOURCES.some(s=>s.key===source)?source:"other", status:"new", value:"", platforms:[], assigned_to:"", followup_date:"", notes});
+      // value must be a real number (0), not "" — the DB column rejects an
+      // empty string, which silently failed every row's insert before this
+      // fix (ce()'s create call swallows errors, so nothing ever surfaced).
+      await onAdd({name, company, phone, email, source: LEAD_SOURCES.some(s=>s.key===source)?source:"other", status:"new", value:0, platforms:[], assigned_to:"", assigned_at:null, followup_date:"", notes});
       created++;
     }
     setImporting(false);
