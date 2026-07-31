@@ -358,6 +358,7 @@ function financeTools() {
         [
             'name' => 'add_transaction',
             'description' => 'Record a new income or expense transaction. Before calling this, make sure you have all required fields from the user — if anything is missing or ambiguous (especially amount or whether it is money in or out), ASK the user instead of guessing. Once saved, confirm back to the user exactly what was recorded (type, amount, category, description, date). '
+                . 'Payment method is OPTIONAL — never ask for it as a separate follow-up question after you have already saved the transaction. If the user did not mention it, just save without one; do not hold the save hostage waiting for it. If, despite this, you already asked and the user\'s next message is just a bare method answer ("cash", "bank transfer", "card") with no new amount/description, that is updating the transaction you just saved, NOT a new transaction — call edit_transaction with the short_id this tool returned and the method, never call add_transaction again for it. '
                 . 'For an "outstanding" expense (money owed but not yet paid — e.g. "X is outstanding", "put this on Fawry installments", "so-and-so paid this for us, we owe them back"): set method to "Outstanding" and fill outstanding_kind. For outstanding_kind="team_member", set outstanding_team_member (their name) — no interest applies, amount is simply what\'s owed. For outstanding_kind="installment" (Fawry), set outstanding_months and, if not given, use Fawry\'s known flat monthly rates: 1mo=3.33%, 3mo=3.21%, 6/9/12/18/24mo=3.04% — ALWAYS tell the user the calculated total (principal + interest) and monthly installment before saving so they can confirm, since interest changes the real amount owed. For installment, treat the "amount" you were given as the PRINCIPAL — the tool computes and stores the true total automatically. '
                 . 'If this call is rejected with an error saying it looks like a repeat of an already-logged transaction, ASK the user whether it\'s a genuine separate transaction or an actual duplicate — never claim it saved successfully when this tool returned an error, that would be lying to the user. If they confirm it\'s genuinely separate, call add_transaction again with the exact same details plus force=true to actually save it this time.',
             'input_schema' => [
@@ -639,6 +640,12 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
         return [
             'ok' => true, 'type' => $type, 'category' => $category, 'description' => $description,
             'amount' => $storedAmount, 'currency' => $currency, 'date' => $date, 'reference' => $ref, 'method' => $method,
+            // short_id lets a LATER turn (e.g. the user answering "cash" to a
+            // payment-method question) update THIS exact record via
+            // edit_transaction instead of calling add_transaction again,
+            // which would create a duplicate — see the add_transaction
+            // description and the finance system prompt for the full rule.
+            'short_id' => substr($id, -8),
             'message' => 'Saved to the Finance page.' . $extraMessage . ($photoUrl ? ' Receipt photo attached.' : ''),
         ];
     }
@@ -1817,9 +1824,14 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                      . "(e.g. they just say \"add 500 for coffee\" without saying in/out — assume OUT for an "
                      . "expense-sounding request, but ask if genuinely unclear), ask a short follow-up question "
                      . "instead of guessing. If they mention how the money moved (cash, bank transfer, card), pass "
-                     . "it as method — don't ask for it separately, just capture it when given. After successfully "
-                     . "saving, always confirm back to the user exactly what was recorded (amount, type, category, "
-                     . "description, date, method if given) in one short line.\n\n"
+                     . "it as method — but method is OPTIONAL, so save immediately once you have type/amount/"
+                     . "description even if method wasn't mentioned. NEVER ask 'how was it received?' or similar as "
+                     . "a separate follow-up after already saving — that risks a duplicate if you (or the user) "
+                     . "treat their answer as a whole new transaction. If you do end up needing to update the "
+                     . "method after the fact, use edit_transaction with the short_id the save returned — never "
+                     . "call add_transaction again for the same transaction. After successfully saving, always "
+                     . "confirm back to the user exactly what was recorded (amount, type, category, description, "
+                     . "date, method if given) in one short line.\n\n"
                      . "Whenever the category is client_payment (money IN from a client), ALWAYS call find_client "
                      . "with the client name mentioned BEFORE saving — do not skip this, and use it any time a "
                      . "client name comes up, not just when adding a transaction (e.g. \"how much did X pay\" — "
