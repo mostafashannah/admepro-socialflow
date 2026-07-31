@@ -21518,6 +21518,16 @@ const LEAD_STATUSES = [
 ];
 const LEAD_STATUS_MAP = Object.fromEntries(LEAD_STATUSES.map(s=>[s.key,s]));
 
+// A usable phone number has at least 8 real digits and isn't one of the
+// known garbled double-country-code artifacts a messy source sheet import
+// can produce (e.g. "20" prepended onto an already-prefixed number).
+const BAD_PHONE_PREFIXES = ["202","0202","02002","2002"];
+function isInvalidLeadPhone(phone) {
+  const digits = (phone||"").replace(/\D/g,"");
+  if(digits.length<8) return true;
+  return BAD_PHONE_PREFIXES.some(p=>digits.startsWith(p));
+}
+
 const LEAD_SOURCES = [
   {key:"instagram",label:"Instagram"}, {key:"facebook",label:"Facebook"},
   {key:"linkedin",label:"LinkedIn"}, {key:"tiktok",label:"TikTok"},
@@ -22089,10 +22099,6 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   const [showBankAnalysis, setShowBankAnalysis] = useState(false);
   const toggleBankSelect = (id) => setSelectedBankIds(ids=>ids.includes(id)?ids.filter(x=>x!==id):[...ids,id]);
   const [cleaningUp, setCleaningUp] = useState(false);
-  // A usable phone number has at least 8 real digits — catches truly blank
-  // numbers as well as junk like "leads", "whatsapp", or a stray "NA" that
-  // slipped through from a messy source sheet.
-  const hasInvalidPhone = (l) => (l.phone||"").replace(/\D/g,"").length < 8;
 
   // Bank leads (nobody assigned yet) stay off the regular Kanban/List
   // entirely — they only ever show in the Bank tab until an admin hands
@@ -22277,7 +22283,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
             {bankSelectMode&&<button onClick={()=>{setBankSelectMode(false);setSelectedBankIds([]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Cancel</button>}
             {!bankSelectMode&&<button onClick={()=>setBankSelectMode(true)} style={{padding:"7px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Select</button>}
             <button onClick={async()=>{
-              const bad = bankLeads.filter(hasInvalidPhone);
+              const bad = bankLeads.filter(l=>isInvalidLeadPhone(l.phone));
               if(!bad.length){ alert("No leads with a missing/invalid phone number found."); return; }
               if(!confirm(`Delete ${bad.length} lead(s) with no usable phone number? This can't be undone.`)) return;
               setCleaningUp(true);
@@ -22384,7 +22390,7 @@ function ImportLeadsModal({open,onClose,onAdd}) {
       // A usable phone number has at least 8 real digits — filters out
       // blank/junk numbers ("leads", "whatsapp", "NA") right at import time
       // instead of letting them pile up in the Bank for manual cleanup.
-      if(!name || phone.replace(/\D/g,"").length<8) { skipped++; continue; }
+      if(!name || isInvalidLeadPhone(phone)) { skipped++; continue; }
       // value must be a real number (0), not "" — the DB column rejects an
       // empty string, which silently failed every row's insert before this
       // fix (ce()'s create call swallows errors, so nothing ever surfaced).
