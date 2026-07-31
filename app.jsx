@@ -21518,35 +21518,52 @@ const LEAD_STATUSES = [
 ];
 const LEAD_STATUS_MAP = Object.fromEntries(LEAD_STATUSES.map(s=>[s.key,s]));
 
-// A usable phone number has at least 8 real digits and isn't one of the
-// known garbled double-country-code artifacts a messy source sheet import
-// can produce (e.g. "20" prepended onto an already-prefixed number).
+// A usable phone number is 9-13 real digits and isn't one of the known
+// garbled artifacts a messy source sheet import can produce: a
+// double-country-code prefix, or two numbers pasted into one cell that got
+// concatenated into a single 18+ digit blob when non-digit characters were
+// stripped (e.g. "01280667414 01220612671" -> "0128066741401220612671").
 const BAD_PHONE_PREFIXES = ["202","0202","02002","2002"];
 function isInvalidLeadPhone(phone) {
   const digits = (phone||"").replace(/\D/g,"");
-  if(digits.length<8) return true;
+  if(digits.length<9 || digits.length>13) return true;
   return BAD_PHONE_PREFIXES.some(p=>digits.startsWith(p));
 }
 
-// Unifies Egyptian numbers to "+2" + the 11-digit local number (e.g.
-// "+201012345678"). Only touches numbers that actually look Egyptian —
-// international numbers (Saudi 966, etc.) are left untouched rather than
-// forced into a format they were never in.
-function normalizeEgyptPhone(phone) {
+// Unifies a lead's phone to "+2" + 11 digits for Egypt, or "+966" + 9
+// digits for Saudi — whichever the number's actual shape matches. Anything
+// that doesn't fit a recognized Egyptian or Saudi pattern (a different
+// country, or genuinely malformed data) is left untouched rather than
+// forced into a format it was never in.
+function normalizeLeadPhone(phone) {
   let digits = (phone||"").replace(/\D/g,"");
   if(!digits) return phone;
   if(digits.length===12 && digits.startsWith("20")) {
     // +20 1012345678 -> drop the "20", restore the domestic leading 0
-    digits = "0"+digits.slice(2);
-  } else if(digits.length===11 && digits.startsWith("0")) {
-    // already domestic format (0XXXXXXXXXX) — use as-is
-  } else if(digits.length===10 && !digits.startsWith("0")) {
-    // missing its leading 0 (e.g. "1012345678")
-    digits = "0"+digits;
-  } else {
-    return phone; // not a recognizable Egyptian shape — leave untouched
+    return "+2"+"0"+digits.slice(2);
   }
-  return "+2"+digits;
+  if(digits.length===11 && digits.startsWith("0")) {
+    // already domestic Egyptian format (0XXXXXXXXXX)
+    return "+2"+digits;
+  }
+  if(digits.length===10 && digits[0]!=="0" && digits[1]!=="5") {
+    // missing its leading 0 (e.g. "1012345678") — Saudi's own 10-digit
+    // local form always starts "05", so this only matches Egypt's shape.
+    return "+2"+"0"+digits;
+  }
+  if(digits.length===12 && digits.startsWith("966")) {
+    // +966 5XXXXXXXX -> drop the "966", keep the 9-digit subscriber number
+    return "+966"+digits.slice(3).replace(/^0/,"");
+  }
+  if(digits.length===10 && digits.startsWith("05")) {
+    // Saudi domestic format (05XXXXXXXX)
+    return "+966"+digits.slice(1);
+  }
+  if(digits.length===9 && digits.startsWith("5")) {
+    // Saudi missing its leading 0 (e.g. "512345678")
+    return "+966"+digits;
+  }
+  return phone; // not a recognizable Egypt/Saudi shape — leave untouched
 }
 
 const LEAD_SOURCES = [
@@ -22357,11 +22374,14 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
               {cleaningUp?<Spinner size={13}/>:"Delete Invalid Numbers"}
             </button>
             <button onClick={async()=>{
-              const toFix = bankLeads.filter(l=>{ const n=normalizeEgyptPhone(l.phone); return n!==l.phone; });
-              if(!toFix.length){ alert("All numbers already match +2 + 11 digits (or aren't recognizable as Egyptian)."); return; }
-              if(!confirm(`Reformat ${toFix.length} lead(s) to +2 + 11 digits?`)) return;
+              // Runs on ALL leads (not just the Bank) — a lead already
+              // assigned to a team member can have the same messy phone
+              // format as one still sitting unassigned.
+              const toFix = leads.filter(l=>{ const n=normalizeLeadPhone(l.phone); return n!==l.phone; });
+              if(!toFix.length){ alert("All numbers already match +2/+966 format (or aren't recognizable Egypt/Saudi numbers)."); return; }
+              if(!confirm(`Reformat ${toFix.length} lead(s) to +2 (Egypt) or +966 (Saudi) format?`)) return;
               setCleaningUp(true);
-              for(const l of toFix) await onUpdateLead({...l, phone: normalizeEgyptPhone(l.phone)});
+              for(const l of toFix) await onUpdateLead({...l, phone: normalizeLeadPhone(l.phone)});
               setCleaningUp(false);
             }} disabled={cleaningUp} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #3b82f6",background:"#3b82f622",color:"#3b82f6",fontSize:12,fontWeight:700,cursor:cleaningUp?"wait":"pointer"}}>
               {cleaningUp?<Spinner size={13}/>:"Normalize Numbers"}
@@ -22474,7 +22494,7 @@ function ImportLeadsModal({open,onClose,onAdd}) {
       // value must be a real number (0), not "" — the DB column rejects an
       // empty string, which silently failed every row's insert before this
       // fix (ce()'s create call swallows errors, so nothing ever surfaced).
-      await onAdd({name, company, phone: normalizeEgyptPhone(phone), email, source: LEAD_SOURCES.some(s=>s.key===source)?source:"other", status:"new", value:0, platforms:[], assigned_to:"", assigned_at:null, followup_date:"", notes});
+      await onAdd({name, company, phone: normalizeLeadPhone(phone), email, source: LEAD_SOURCES.some(s=>s.key===source)?source:"other", status:"new", value:0, platforms:[], assigned_to:"", assigned_at:null, followup_date:"", notes});
       created++;
     }
     setImporting(false);
