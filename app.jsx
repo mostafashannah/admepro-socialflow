@@ -22462,20 +22462,26 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
       {/* BANK VIEW — admin-only holding area for unassigned leads (e.g. bulk-imported from a spreadsheet) */}
       {view==="bank"&&isAdmin&&(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
-            {bankSelectMode&&<button onClick={()=>{setBankSelectMode(false);setSelectedBankIds([]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Cancel</button>}
-            {!bankSelectMode&&<button onClick={()=>setBankSelectMode(true)} style={{padding:"7px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Select</button>}
-            <button onClick={async()=>{
+          {(()=>{
+            // Same footprint/rounding as Btn's size="sm", just with each
+            // action's own accent color — Btn's variant styles would
+            // otherwise stomp on a custom background/color via style prop.
+            const pillSt = (color) => ({display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6,padding:"6px 14px",minHeight:36,borderRadius:"var(--rs)",fontWeight:600,fontSize:12,border:`1px solid ${color}55`,background:`${color}1a`,color,cursor:"pointer",transition:"all 0.15s"});
+            const neutralSt = {display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6,padding:"6px 14px",minHeight:36,borderRadius:"var(--rs)",fontWeight:600,fontSize:12,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",cursor:"pointer",transition:"all 0.15s"};
+            return (
+          <div style={{display:"flex",gap:6,justifyContent:"flex-end",flexWrap:"wrap"}}>
+            {bankSelectMode
+              ? <button style={neutralSt} onClick={()=>{setBankSelectMode(false);setSelectedBankIds([]);}}>Cancel</button>
+              : <button style={neutralSt} onClick={()=>setBankSelectMode(true)}>Select</button>}
+            <button disabled={cleaningUp} style={{...pillSt("#f59e0b"),opacity:cleaningUp?0.6:1,cursor:cleaningUp?"wait":"pointer"}} onClick={async()=>{
               const bad = bankLeads.filter(l=>isInvalidLeadPhone(l.phone));
               if(!bad.length){ alert("No leads with a missing/invalid phone number found."); return; }
               if(!confirm(`Delete ${bad.length} lead(s) with no usable phone number? This can't be undone.`)) return;
               setCleaningUp(true);
               for(const l of bad) await onDeleteLead(l.id);
               setCleaningUp(false);
-            }} disabled={cleaningUp} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #f59e0b",background:"#f59e0b22",color:"#f59e0b",fontSize:12,fontWeight:700,cursor:cleaningUp?"wait":"pointer"}}>
-              {cleaningUp?<Spinner size={13}/>:"Delete Invalid Numbers"}
-            </button>
-            <button onClick={async()=>{
+            }}>{cleaningUp?<Spinner size={13}/>:"Delete Invalid Numbers"}</button>
+            <button disabled={cleaningUp} style={{...pillSt("#3b82f6"),opacity:cleaningUp?0.6:1,cursor:cleaningUp?"wait":"pointer"}} onClick={async()=>{
               // Runs on ALL leads (not just the Bank) — a lead already
               // assigned to a team member can have the same messy phone
               // format as one still sitting unassigned.
@@ -22485,19 +22491,19 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
               setCleaningUp(true);
               for(const l of toFix) await onUpdateLead({...l, phone: normalizeLeadPhone(l.phone)});
               setCleaningUp(false);
-            }} disabled={cleaningUp} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #3b82f6",background:"#3b82f622",color:"#3b82f6",fontSize:12,fontWeight:700,cursor:cleaningUp?"wait":"pointer"}}>
-              {cleaningUp?<Spinner size={13}/>:"Normalize Numbers"}
+            }}>{cleaningUp?<Spinner size={13}/>:"Normalize Numbers"}</button>
+            <button disabled={bankLeads.length===0} style={{...pillSt("#8b5cf6"),opacity:bankLeads.length===0?0.5:1,cursor:bankLeads.length===0?"default":"pointer"}} onClick={()=>setShowBankAnalysis(true)}>
+              <Ico d={Icons.sparkle} size={12}/> AI Analysis
             </button>
-            <button onClick={()=>setShowBankAnalysis(true)} disabled={bankLeads.length===0} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #8b5cf6",background:"#8b5cf622",color:"#8b5cf6",fontSize:12,fontWeight:700,cursor:bankLeads.length===0?"default":"pointer",opacity:bankLeads.length===0?0.5:1,display:"flex",alignItems:"center",gap:6}}>
-              <Ico d={Icons.sparkle} size={13}/> AI Analysis
+            <button disabled={bankLeads.length===0} style={{...pillSt("#10b981"),opacity:bankLeads.length===0?0.5:1,cursor:bankLeads.length===0?"default":"pointer"}} onClick={()=>setShowPushTop(true)}>
+              <Ico d={Icons.sparkle} size={12}/> Push New Leads
             </button>
-            <button onClick={()=>setShowPushTop(true)} disabled={bankLeads.length===0} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #10b981",background:"#10b98122",color:"#10b981",fontSize:12,fontWeight:700,cursor:bankLeads.length===0?"default":"pointer",opacity:bankLeads.length===0?0.5:1,display:"flex",alignItems:"center",gap:6}}>
-              <Ico d={Icons.sparkle} size={13}/> Push New Leads
-            </button>
-            <button onClick={()=>setShowEnrich(true)} disabled={bankLeads.length===0} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #f59e0b",background:"#f59e0b22",color:"#f59e0b",fontSize:12,fontWeight:700,cursor:bankLeads.length===0?"default":"pointer",opacity:bankLeads.length===0?0.5:1,display:"flex",alignItems:"center",gap:6}}>
-              <Ico d={Icons.sparkle} size={13}/> AI: Find Industry & Website
+            <button disabled={bankLeads.length===0} style={{...pillSt("#f59e0b"),opacity:bankLeads.length===0?0.5:1,cursor:bankLeads.length===0?"default":"pointer"}} onClick={()=>setShowEnrich(true)}>
+              <Ico d={Icons.sparkle} size={12}/> Find Industry & Website
             </button>
           </div>
+            );
+          })()}
           {selectedBankIds.length>0&&(
             <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"var(--accentbg,var(--surface2))",border:"1px solid var(--accent)",borderRadius:"var(--r)",flexWrap:"wrap"}}>
               <span style={{fontSize:12,fontWeight:700,color:"var(--accent)"}}>{selectedBankIds.length} selected</span>
@@ -22517,10 +22523,10 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
                 setBulkDeleting(true);
                 for(const id of selectedBankIds) await onDeleteLead(id);
                 setBulkDeleting(false); setSelectedBankIds([]);
-              }} disabled={bulkDeleting} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #ef4444",background:"#ef444422",color:"#ef4444",fontSize:12,fontWeight:700,cursor:bulkDeleting?"wait":"pointer"}}>
+              }} disabled={bulkDeleting} style={{padding:"6px 14px",borderRadius:"var(--rs)",border:"1px solid #ef4444",background:"#ef444422",color:"#ef4444",fontSize:12,fontWeight:600,cursor:bulkDeleting?"wait":"pointer"}}>
                 {bulkDeleting?<Spinner size={13}/>:"Delete Selected"}
               </button>
-              <button onClick={()=>setSelectedBankIds([])} style={{padding:"7px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Clear</button>
+              <button onClick={()=>setSelectedBankIds([])} style={{padding:"6px 14px",borderRadius:"var(--rs)",border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Clear</button>
             </div>
           )}
           {(()=>{ const cols = bankSelectMode ? "28px 1.3fr 110px 90px 90px 260px 30px 34px" : "1.3fr 110px 90px 90px 260px 30px 34px"; return (
@@ -22547,7 +22553,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
                   <option value="">— Assign to AM/BD —</option>
                   {assignableAMs.map((t,i)=><option key={t.id} value={t.email}>{t.name}{i===0?" — next turn":""}</option>)}
                 </select>
-                <button onClick={()=>assignToNextTurn([lead])} disabled={assigningNext} title={assignableAMs[0]?`Assign to ${assignableAMs[0].name} (next turn)`:"No AM available"} style={{padding:"0 10px",borderRadius:8,border:"1px solid var(--accent)",background:"var(--accent)22",color:"var(--accent)",fontSize:11,fontWeight:700,cursor:assigningNext?"wait":"pointer",whiteSpace:"nowrap"}}>
+                <button onClick={()=>assignToNextTurn([lead])} disabled={assigningNext} title={assignableAMs[0]?`Assign to ${assignableAMs[0].name} (next turn)`:"No AM available"} style={{padding:"0 10px",borderRadius:"var(--rs)",border:"1px solid var(--accent)",background:"var(--accent)22",color:"var(--accent)",fontSize:11,fontWeight:600,cursor:assigningNext?"wait":"pointer",whiteSpace:"nowrap"}}>
                   Next Turn
                 </button>
               </div>
