@@ -22372,21 +22372,21 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
       <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",overflowX:"auto"}}>
         <div style={{position:"relative",flex:1,maxWidth:260}}>
           <div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"var(--text3)"}}><Ico d={Icons.search} size={14}/></div>
-          <input value={search} onChange={e=>setSearch(e.target.value)} aria-label="Search leads" placeholder="Search leads…" style={{...inputSt,paddingLeft:32}}/>
+          <input value={search} onChange={e=>setSearch(e.target.value)} aria-label="Search leads" placeholder="Search leads…" style={{...inputSt,paddingLeft:32,borderRadius:99}}/>
         </div>
-        <select value={sourceF} onChange={e=>setSourceF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12}}>
+        <select value={sourceF} onChange={e=>setSourceF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12,borderRadius:99}}>
           <option value="all">All Sources</option>
           {LEAD_SOURCES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
-        <select value={assigneeF} onChange={e=>setAssigneeF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12}}>
+        <select value={assigneeF} onChange={e=>setAssigneeF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12,borderRadius:99}}>
           <option value="all">All Assignees</option>
           {(team||[]).filter(t=>["account_manager","business_development"].includes(t.role)).map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
         </select>
-        <select value={countryF} onChange={e=>setCountryF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12}}>
+        <select value={countryF} onChange={e=>setCountryF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12,borderRadius:99}}>
           <option value="all">All Countries</option>
           {LEAD_COUNTRIES.map(c=><option key={c} value={c}>{c}</option>)}
         </select>
-        <select value={industryF} onChange={e=>setIndustryF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12}}>
+        <select value={industryF} onChange={e=>setIndustryF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12,borderRadius:99}}>
           <option value="all">All Industries</option>
           {industryOptions.map(i=><option key={i} value={i}>{i}</option>)}
           {industryOptions.length===0&&<option value="" disabled>No industries tagged yet</option>}
@@ -22545,11 +22545,11 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
               <button onClick={()=>setSelectedBankIds([])} style={{padding:"6px 14px",borderRadius:"var(--rs)",border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Clear</button>
             </div>
           )}
-          {(()=>{ const cols = bankSelectMode ? "28px 1.3fr 110px 90px 90px 260px 30px 34px" : "1.3fr 110px 90px 90px 260px 30px 34px"; return (
+          {(()=>{ const cols = bankSelectMode ? "28px 1.3fr 110px 90px 90px 190px 104px" : "1.3fr 110px 90px 90px 190px 104px"; return (
           <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
           <div style={{display:"grid",gridTemplateColumns:cols,padding:"9px 18px",background:"var(--surface2)",borderBottom:"1px solid var(--border)",alignItems:"center"}}>
             {bankSelectMode&&<input type="checkbox" checked={bankFiltered.length>0&&selectedBankIds.length===bankFiltered.length} onChange={e=>setSelectedBankIds(e.target.checked?bankFiltered.map(l=>l.id):[])}/>}
-            {["Lead","Phone","Source","Created","Assign To","",""].map((h,hi)=>(
+            {["Lead","Phone","Source","Created","Assign To",""].map((h,hi)=>(
               <span key={hi} style={{fontSize:10,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",color:"var(--text3)"}}>{h}</span>
             ))}
           </div>
@@ -22564,23 +22564,23 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
               <span style={{fontSize:12,color:"var(--text2)"}}>{lead.phone||"—"}</span>
               <span style={{fontSize:12,color:"var(--text2)",textTransform:"capitalize"}}>{lead.source||"—"}</span>
               <span style={{fontSize:12,color:"var(--text3)"}}>{lead.created_date?new Date(lead.created_date).toLocaleDateString():"—"}</span>
-              <div style={{display:"flex",gap:6}}>
-                <select defaultValue="" onChange={e=>{ if(e.target.value) onUpdateLead({...lead, assigned_to:e.target.value}); }} style={{...inputSt,fontSize:12,padding:"7px 10px"}}>
-                  <option value="">— Assign to AM/BD —</option>
-                  {assignableAMs.map((t,i)=><option key={t.id} value={t.email}>{t.name}{i===0?" — next turn":""}</option>)}
-                </select>
-                <button onClick={()=>assignToNextTurn([lead])} disabled={assigningNext} title={assignableAMs[0]?`Assign to ${assignableAMs[0].name} (next turn)`:"No AM available"} style={{width:28,height:28,borderRadius:8,border:"1px solid var(--accent)",background:"var(--accent)22",display:"flex",alignItems:"center",justifyContent:"center",cursor:assigningNext?"wait":"pointer",flexShrink:0}}>
+              <select defaultValue="" onChange={e=>{ if(e.target.value) onUpdateLead({...lead, assigned_to:e.target.value}); }} style={{...inputSt,fontSize:12,padding:"7px 10px"}}>
+                <option value="">— Assign to AM/BD —</option>
+                {assignableAMs.map((t,i)=><option key={t.id} value={t.email}>{t.name}{i===0?" — next turn":""}</option>)}
+              </select>
+              <div style={{display:"flex",gap:6,justifySelf:"end"}}>
+                <button onClick={()=>assignToNextTurn([lead])} disabled={assigningNext} title={assignableAMs[0]?`Assign to ${assignableAMs[0].name} (next turn)`:"No AM available"} style={{width:28,height:28,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)22",display:"flex",alignItems:"center",justifyContent:"center",cursor:assigningNext?"wait":"pointer",flexShrink:0}}>
                   <Ico d={Icons.repeat} size={13} stroke="var(--accent)"/>
                 </button>
-              </div>
-              {lead.phone ? (
-                <button onClick={()=>setQrLead(lead)} title="WhatsApp QR code" style={{width:28,height:28,borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
-                  <Ico d={Icons.grid} size={13} stroke="#25D366"/>
+                {lead.phone && (
+                  <button onClick={()=>setQrLead(lead)} title="WhatsApp QR code" style={{width:28,height:28,borderRadius:"50%",border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
+                    <Ico d={Icons.grid} size={13} stroke="#25D366"/>
+                  </button>
+                )}
+                <button onClick={()=>{ if(confirm(`Delete "${lead.name}" from the Bank? This can't be undone.`)) onDeleteLead(lead.id); }} title="Delete" style={{width:28,height:28,borderRadius:"50%",border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
+                  <Ico d={Icons.trash} size={13} stroke="#ef4444"/>
                 </button>
-              ) : <span/>}
-              <button onClick={()=>{ if(confirm(`Delete "${lead.name}" from the Bank? This can't be undone.`)) onDeleteLead(lead.id); }} title="Delete" style={{width:28,height:28,borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",justifySelf:"end"}}>
-                <Ico d={Icons.trash} size={13} stroke="#ef4444"/>
-              </button>
+              </div>
             </div>
           ))}
           {bankFiltered.length===0&&<div style={{padding:"50px",textAlign:"center",color:"var(--text3)"}}>
