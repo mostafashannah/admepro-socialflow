@@ -22083,15 +22083,23 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   const [sourceF, setSourceF] = useState("all");
   const [assigneeF, setAssigneeF] = useState("all");
 
+  // Bank leads (nobody assigned yet) stay off the regular Kanban/List
+  // entirely — they only ever show in the Bank tab until an admin hands
+  // one to a team member, at which point it appears here like any other
+  // lead. PDO can hand back a DECIMAL "value" column as a string, so
+  // Number(...) here guards against silent string-concatenation totals
+  // (e.g. "0"+"0"+"0" -> "000") instead of real addition.
+  const num = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
   const filtered = leads.filter(l=>{
+    if(!l.assigned_to) return false;
     if(search&&!l.name.toLowerCase().includes(search.toLowerCase())&&!(l.company||"").toLowerCase().includes(search.toLowerCase())) return false;
     if(sourceF!=="all"&&l.source!==sourceF) return false;
     if(assigneeF!=="all"&&l.assigned_to!==assigneeF) return false;
     return true;
   });
 
-  const totalValue = leads.filter(l=>l.status==="closed_won").reduce((a,l)=>a+(l.value||0),0);
-  const pipelineValue = leads.filter(l=>!["closed_won","closed_lost"].includes(l.status)).reduce((a,l)=>a+(l.value||0),0);
+  const totalValue = leads.filter(l=>l.status==="closed_won").reduce((a,l)=>a+num(l.value),0);
+  const pipelineValue = leads.filter(l=>l.assigned_to&&!["closed_won","closed_lost"].includes(l.status)).reduce((a,l)=>a+num(l.value),0);
   const overdueCount = leads.filter(l=>isOverdue(l.followup_date)&&!["closed_won","closed_lost"].includes(l.status)).length;
 
   // Opening a lead swaps the whole page content for its own full detail
@@ -22191,7 +22199,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
             // Leads with a missing/unrecognized status (e.g. a NULL from a manual
             // insert) fall back into "New" instead of silently vanishing from every column.
             const statusLeads = filtered.filter(l=>(LEAD_STATUS_MAP[l.status]?l.status:"new")===status.key);
-            const val = statusLeads.reduce((a,l)=>a+(l.value||0),0);
+            const val = statusLeads.reduce((a,l)=>a+num(l.value),0);
             return (
               <div key={status.key} style={{minWidth:240,flexShrink:0,display:"flex",flexDirection:"column",gap:8}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 2px"}}>

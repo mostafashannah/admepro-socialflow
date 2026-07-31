@@ -164,6 +164,7 @@ function normalizeDbValue($v) {
 $NUMERIC_COLUMNS = [
     'performance_logs' => ['duration_hours','revision_count','client_approved','rejected','on_time','quality_score','hour_of_day','day_of_week'],
     'time_logs' => ['duration_minutes'],
+    'leads' => ['value'],
 ];
 
 function castRow($row, $table = null) {
