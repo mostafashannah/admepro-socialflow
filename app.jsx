@@ -21572,7 +21572,7 @@ const LEAD_SOURCES = [
   {key:"linkedin",label:"LinkedIn"}, {key:"tiktok",label:"TikTok"},
   {key:"referral",label:"Referral"}, {key:"website",label:"Website"},
   {key:"cold_call",label:"Cold Call"}, {key:"exhibition",label:"Exhibition"},
-  {key:"other",label:"Other"},
+  {key:"old_data",label:"Old Data"}, {key:"other",label:"Other"},
 ];
 
 const ACTIVITY_ICONS = {
@@ -22182,6 +22182,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   const toggleBankSelect = (id) => setSelectedBankIds(ids=>ids.includes(id)?ids.filter(x=>x!==id):[...ids,id]);
   const [cleaningUp, setCleaningUp] = useState(false);
   const [qrLead, setQrLead] = useState(null);
+  const [assigningNext, setAssigningNext] = useState(false);
 
   // Leads only ever get handed to Account Managers / Business Development —
   // never the creative/design team, who have nothing to do with the sales
@@ -22199,6 +22200,22 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
     const rest = eligible.filter(t=>!orderedIds.includes(t.id));
     return [...ordered, ...rest];
   })();
+  // One-click assign to whoever's turn it is, and advance the rotation
+  // pointer — same effect as picking them manually from the dropdown, just
+  // without needing to know their name first.
+  const assignToNextTurn = async (leadsToAssign) => {
+    if(!assignableAMs.length) { alert("No active Account Manager / Business Development found to assign to."); return; }
+    const am = assignableAMs[0];
+    setAssigningNext(true);
+    for(const lead of leadsToAssign) await onUpdateLead({...lead, assigned_to:am.email, assigned_at:new Date().toISOString()});
+    const rotCfg = {...LEAD_ROTATION_DEFAULTS, ...(appSettings?.lead_rotation_settings||{})};
+    const orderedIds = rotCfg.rotation_order.filter(id=>assignableAMs.some(t=>t.id===id));
+    if(orderedIds.length && onSaveSettings) {
+      const pointer = ((rotCfg.rotation_pointer||0) % orderedIds.length) + 1;
+      await onSaveSettings({lead_rotation_settings:{...rotCfg, rotation_pointer: pointer % orderedIds.length}});
+    }
+    setAssigningNext(false);
+  };
 
   // Bank leads (nobody assigned yet) stay off the regular Kanban/List
   // entirely — they only ever show in the Bank tab until an admin hands
@@ -22411,6 +22428,16 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
             <button onClick={()=>setShowPushTop(true)} disabled={bankLeads.length===0} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #10b981",background:"#10b98122",color:"#10b981",fontSize:12,fontWeight:700,cursor:bankLeads.length===0?"default":"pointer",opacity:bankLeads.length===0?0.5:1,display:"flex",alignItems:"center",gap:6}}>
               <Ico d={Icons.sparkle} size={13}/> Push New Leads
             </button>
+            <button onClick={async()=>{
+              const toFix = bankLeads.filter(l=>l.source!=="old_data");
+              if(!toFix.length){ alert("Every lead in the Bank is already marked as Old Data."); return; }
+              if(!confirm(`Mark ${toFix.length} lead(s) as source "Old Data"?`)) return;
+              setCleaningUp(true);
+              for(const l of toFix) await onUpdateLead({...l, source:"old_data"});
+              setCleaningUp(false);
+            }} disabled={cleaningUp} style={{padding:"7px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",fontSize:12,fontWeight:700,cursor:cleaningUp?"wait":"pointer"}}>
+              {cleaningUp?<Spinner size={13}/>:"Mark as Old Data"}
+            </button>
           </div>
           {selectedBankIds.length>0&&(
             <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"var(--accentbg,var(--surface2))",border:"1px solid var(--accent)",borderRadius:"var(--r)",flexWrap:"wrap"}}>
@@ -22437,7 +22464,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
               <button onClick={()=>setSelectedBankIds([])} style={{padding:"7px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Clear</button>
             </div>
           )}
-          {(()=>{ const cols = bankSelectMode ? "28px 1.3fr 110px 90px 90px 190px 30px 34px" : "1.3fr 110px 90px 90px 190px 30px 34px"; return (
+          {(()=>{ const cols = bankSelectMode ? "28px 1.3fr 110px 90px 90px 260px 30px 34px" : "1.3fr 110px 90px 90px 260px 30px 34px"; return (
           <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
           <div style={{display:"grid",gridTemplateColumns:cols,padding:"9px 18px",background:"var(--surface2)",borderBottom:"1px solid var(--border)",alignItems:"center"}}>
             {bankSelectMode&&<input type="checkbox" checked={bankLeads.length>0&&selectedBankIds.length===bankLeads.length} onChange={e=>setSelectedBankIds(e.target.checked?bankLeads.map(l=>l.id):[])}/>}
@@ -22456,10 +22483,15 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
               <span style={{fontSize:12,color:"var(--text2)"}}>{lead.phone||"—"}</span>
               <span style={{fontSize:12,color:"var(--text2)",textTransform:"capitalize"}}>{lead.source||"—"}</span>
               <span style={{fontSize:12,color:"var(--text3)"}}>{lead.created_date?new Date(lead.created_date).toLocaleDateString():"—"}</span>
-              <select defaultValue="" onChange={e=>{ if(e.target.value) onUpdateLead({...lead, assigned_to:e.target.value}); }} style={{...inputSt,fontSize:12,padding:"7px 10px"}}>
-                <option value="">— Assign to AM/BD —</option>
-                {assignableAMs.map((t,i)=><option key={t.id} value={t.email}>{t.name}{i===0?" — next turn":""}</option>)}
-              </select>
+              <div style={{display:"flex",gap:6}}>
+                <select defaultValue="" onChange={e=>{ if(e.target.value) onUpdateLead({...lead, assigned_to:e.target.value}); }} style={{...inputSt,fontSize:12,padding:"7px 10px"}}>
+                  <option value="">— Assign to AM/BD —</option>
+                  {assignableAMs.map((t,i)=><option key={t.id} value={t.email}>{t.name}{i===0?" — next turn":""}</option>)}
+                </select>
+                <button onClick={()=>assignToNextTurn([lead])} disabled={assigningNext} title={assignableAMs[0]?`Assign to ${assignableAMs[0].name} (next turn)`:"No AM available"} style={{padding:"0 10px",borderRadius:8,border:"1px solid var(--accent)",background:"var(--accent)22",color:"var(--accent)",fontSize:11,fontWeight:700,cursor:assigningNext?"wait":"pointer",whiteSpace:"nowrap"}}>
+                  Next Turn
+                </button>
+              </div>
               {lead.phone ? (
                 <button onClick={()=>setQrLead(lead)} title="WhatsApp QR code" style={{width:28,height:28,borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
                   <Ico d={Icons.grid} size={13} stroke="#25D366"/>
