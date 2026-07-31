@@ -22177,6 +22177,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bankSelectMode, setBankSelectMode] = useState(false);
   const [showBankAnalysis, setShowBankAnalysis] = useState(false);
+  const [showPushTop, setShowPushTop] = useState(false);
   const toggleBankSelect = (id) => setSelectedBankIds(ids=>ids.includes(id)?ids.filter(x=>x!==id):[...ids,id]);
   const [cleaningUp, setCleaningUp] = useState(false);
   const [qrLead, setQrLead] = useState(null);
@@ -22389,6 +22390,9 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
             <button onClick={()=>setShowBankAnalysis(true)} disabled={bankLeads.length===0} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #8b5cf6",background:"#8b5cf622",color:"#8b5cf6",fontSize:12,fontWeight:700,cursor:bankLeads.length===0?"default":"pointer",opacity:bankLeads.length===0?0.5:1,display:"flex",alignItems:"center",gap:6}}>
               <Ico d={Icons.sparkle} size={13}/> AI Analysis
             </button>
+            <button onClick={()=>setShowPushTop(true)} disabled={bankLeads.length===0} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #10b981",background:"#10b98122",color:"#10b981",fontSize:12,fontWeight:700,cursor:bankLeads.length===0?"default":"pointer",opacity:bankLeads.length===0?0.5:1,display:"flex",alignItems:"center",gap:6}}>
+              <Ico d={Icons.sparkle} size={13}/> Push New Leads
+            </button>
           </div>
           {selectedBankIds.length>0&&(
             <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"var(--accentbg,var(--surface2))",border:"1px solid var(--accent)",borderRadius:"var(--r)",flexWrap:"wrap"}}>
@@ -22459,6 +22463,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
 
       {/* AI Analysis of the Bank — surfaces which unassigned leads are worth recalling first */}
       {showBankAnalysis&&<BankAnalysisModal open onClose={()=>setShowBankAnalysis(false)} bankLeads={bankLeads}/>}
+      {showPushTop&&<PushTopLeadsModal open onClose={()=>setShowPushTop(false)} bankLeads={bankLeads} team={team} appSettings={appSettings} onUpdateLead={onUpdateLead} onSaveSettings={onSaveSettings}/>}
       {qrLead&&<LeadQrModal lead={qrLead} onClose={()=>setQrLead(null)}/>}
 
       {/* Add Lead Modal */}
@@ -22568,6 +22573,92 @@ Return a ranked list of the best ~15-25 leads to recall first. For each: the nam
         {error&&<p style={{color:"#ef4444",fontSize:13}}>{error}</p>}
         {!loading&&!error&&(
           <div style={{fontSize:13.5,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{result}</div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// Picks the 10 best Bank leads to recall (same reasoning as
+// BankAnalysisModal, but structured for automatic action), then round-robin
+// assigns them across the account managers in the lead-rotation order —
+// same rotation used for normal inbound leads — so they leave the Bank and
+// enter the regular CRM pipeline immediately, no manual per-lead assigning.
+function PushTopLeadsModal({open,onClose,bankLeads,team,appSettings,onUpdateLead,onSaveSettings}) {
+  const [phase,setPhase] = useState("analyzing"); // analyzing | assigning | done | error
+  const [error,setError] = useState("");
+  const [pushed,setPushed] = useState([]); // [{lead, reason, assignedTo}]
+  useEffect(()=>{
+    let cancelled = false;
+    (async () => {
+      setPhase("analyzing"); setError("");
+      const sample = [...bankLeads].sort((a,b)=>new Date(b.created_date||0)-new Date(a.created_date||0)).slice(0,300);
+      if(!sample.length){ setError("The Bank is empty — nothing to push."); setPhase("error"); return; }
+      const listing = sample.map((l,i)=>`${i+1}. ${l.name}${l.company?` (${l.company})`:""} — source: ${l.source||"unknown"}\n   Notes: ${(l.notes||"—").slice(0,300)}`).join("\n");
+      const prompt = `You are reviewing a "Leads Bank" of old/unassigned sales leads for a marketing agency (admepro). Each entry has whatever raw notes were kept from the original outreach.
+
+Pick the 10 BEST candidates to push back into active follow-up right now, prioritizing leads that showed real interest/asked for pricing, were mid-negotiation, went cold only due to timing/budget (not a hard no), or have a "will call back"/"follow up" status — skip clear dead ends (explicit "not interested", "lost to another agency", wrong/invalid numbers).
+
+${listing}
+
+Return ONLY valid JSON, no markdown, no commentary — an array of exactly 10 objects (fewer only if there truly aren't 10 viable candidates): [{"index":<the number from the list above>,"reason":"<one short sentence grounded in their notes>"}]`;
+      let picks;
+      try {
+        const text = await ai(prompt, 1200);
+        const m = text.match(/\[[\s\S]*\]/);
+        picks = JSON.parse(m ? m[0] : text);
+      } catch(e) {
+        if(!cancelled){ setError("AI couldn't produce a usable pick list — try again."); setPhase("error"); }
+        return;
+      }
+      if(cancelled) return;
+
+      // Round-robin across the configured lead-rotation AMs (falls back to
+      // every active account manager if rotation isn't set up).
+      const rotCfg = {...LEAD_ROTATION_DEFAULTS, ...(appSettings?.lead_rotation_settings||{})};
+      const rotationAMs = rotCfg.rotation_order.map(id=>(team||[]).find(t=>t.id===id)).filter(t=>t&&t.status!=="inactive");
+      const fallbackAMs = (team||[]).filter(t=>t.role==="account_manager"&&t.status!=="inactive");
+      const pool = rotationAMs.length ? rotationAMs : fallbackAMs;
+      if(!pool.length){ setError("No active Account Manager found to assign leads to — add one in Team Management or configure lead rotation first."); setPhase("error"); return; }
+
+      setPhase("assigning");
+      let pointer = rotCfg.rotation_pointer||0;
+      const results = [];
+      for(const pick of (picks||[]).slice(0,10)) {
+        const lead = sample[pick.index-1];
+        if(!lead) continue;
+        const am = pool[pointer % pool.length];
+        pointer++;
+        await onUpdateLead({...lead, assigned_to:am.email, assigned_at:new Date().toISOString(), status:"new"});
+        if(am.whatsapp_number) sendWhatsApp(am.whatsapp_number, `New lead pushed to you from the Bank: "${lead.name}"${lead.company?` (${lead.company})`:""} — ${lead.phone||"no phone"}. Why: ${pick.reason||"AI-recommended"}.`).catch(()=>{});
+        results.push({lead, reason:pick.reason, assignedTo:am});
+      }
+      if(rotationAMs.length && onSaveSettings) {
+        await onSaveSettings({lead_rotation_settings:{...rotCfg, rotation_pointer:pointer % pool.length}});
+      }
+      if(!cancelled){ setPushed(results); setPhase("done"); }
+    })();
+    return () => { cancelled = true; };
+  },[]);
+  return (
+    <Modal open={open} onClose={onClose} title="Push Top Leads to CRM" subtitle="AI picks the 10 best Bank leads and assigns them into the normal pipeline" width={560}>
+      <div style={{padding:"14px 0",minHeight:120}}>
+        {phase==="analyzing"&&<div style={{display:"flex",alignItems:"center",gap:10,color:"var(--text2)",fontSize:13}}><Spinner size={16}/> Analyzing the Bank for the best 10 leads to push…</div>}
+        {phase==="assigning"&&<div style={{display:"flex",alignItems:"center",gap:10,color:"var(--text2)",fontSize:13}}><Spinner size={16}/> Assigning picks and moving them into the CRM cycle…</div>}
+        {phase==="error"&&<p style={{color:"#ef4444",fontSize:13}}>{error}</p>}
+        {phase==="done"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <p style={{fontSize:13,fontWeight:700,color:"#10b981"}}>Pushed {pushed.length} lead(s) into the CRM cycle.</p>
+            {pushed.map(({lead,reason,assignedTo})=>(
+              <div key={lead.id} style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
+                  <p style={{fontWeight:700,fontSize:13}}>{lead.name}{lead.company?` — ${lead.company}`:""}</p>
+                  <Badge label={assignedTo.name} color="#8b5cf6" xs/>
+                </div>
+                {reason&&<p style={{fontSize:12,color:"var(--text2)",marginTop:4}}>{reason}</p>}
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </Modal>
