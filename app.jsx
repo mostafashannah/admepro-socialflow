@@ -119,6 +119,7 @@ const ROLES = {
   admin: { label: "Admin", color: "#d90b2c" },
   hr: { label: "HR", color: "#059669" },
   account_manager: { label: "Account Manager", color: "#3b82f6" },
+  business_development: { label: "Business Development", color: "#06b6d4" },
   content_creator: { label: "Content Creator", color: "#8b5cf6" },
   graphic_designer:{ label: "Graphic Designer",color: "#f59e0b" },
   accountant: { label: "Accountant", color: "#8b5cf6" },
@@ -190,7 +191,7 @@ function egyptIslamicHolidaysForYear(year) {
 }
 
 const CLIENT_ROLES = ["client_admin","client_member"];
-const INTERNAL_ROLES = ["admin","hr","account_manager","content_creator","graphic_designer","accountant","office_boy"];
+const INTERNAL_ROLES = ["admin","hr","account_manager","business_development","content_creator","graphic_designer","accountant","office_boy"];
 
 // Granular permissions the Roles & Permissions settings page can toggle per
 // role. "admin" always implicitly has every permission regardless of what's
@@ -22182,6 +22183,23 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   const [cleaningUp, setCleaningUp] = useState(false);
   const [qrLead, setQrLead] = useState(null);
 
+  // Leads only ever get handed to Account Managers / Business Development —
+  // never the creative/design team, who have nothing to do with the sales
+  // pipeline. Ordered by the configured lead-rotation turn (see
+  // LeadRotationSettingsModal) so whoever's turn it is shows first.
+  const assignableAMs = (()=>{
+    const eligible = (team||[]).filter(t=>["account_manager","business_development"].includes(t.role)&&t.status!=="inactive");
+    const rotCfg = {...LEAD_ROTATION_DEFAULTS, ...(appSettings?.lead_rotation_settings||{})};
+    const orderedIds = rotCfg.rotation_order.filter(id=>eligible.some(t=>t.id===id));
+    if(!orderedIds.length) return eligible;
+    const pointer = (rotCfg.rotation_pointer||0) % orderedIds.length;
+    const turnOrder = [...orderedIds.slice(pointer), ...orderedIds.slice(0,pointer)];
+    const byId = Object.fromEntries(eligible.map(t=>[t.id,t]));
+    const ordered = turnOrder.map(id=>byId[id]).filter(Boolean);
+    const rest = eligible.filter(t=>!orderedIds.includes(t.id));
+    return [...ordered, ...rest];
+  })();
+
   // Bank leads (nobody assigned yet) stay off the regular Kanban/List
   // entirely — they only ever show in the Bank tab until an admin hands
   // one to a team member, at which point it appears here like any other
@@ -22406,7 +22424,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
                 }
               }} style={{...inputSt,width:"auto",fontSize:12,padding:"7px 10px"}}>
                 <option value="">Assign selected to…</option>
-                {team.map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
+                {assignableAMs.map((t,i)=><option key={t.id} value={t.email}>{t.name}{i===0?" — next turn":""}</option>)}
               </select>
               <button onClick={async()=>{
                 if(!confirm(`Delete ${selectedBankIds.length} selected lead(s) from the Bank? This can't be undone.`)) return;
@@ -22439,8 +22457,8 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
               <span style={{fontSize:12,color:"var(--text2)",textTransform:"capitalize"}}>{lead.source||"—"}</span>
               <span style={{fontSize:12,color:"var(--text3)"}}>{lead.created_date?new Date(lead.created_date).toLocaleDateString():"—"}</span>
               <select defaultValue="" onChange={e=>{ if(e.target.value) onUpdateLead({...lead, assigned_to:e.target.value}); }} style={{...inputSt,fontSize:12,padding:"7px 10px"}}>
-                <option value="">— Assign to team member —</option>
-                {team.map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
+                <option value="">— Assign to AM/BD —</option>
+                {assignableAMs.map((t,i)=><option key={t.id} value={t.email}>{t.name}{i===0?" — next turn":""}</option>)}
               </select>
               {lead.phone ? (
                 <button onClick={()=>setQrLead(lead)} title="WhatsApp QR code" style={{width:28,height:28,borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
@@ -22617,7 +22635,7 @@ Return ONLY valid JSON, no markdown, no commentary — an array of exactly 10 ob
       // every active account manager if rotation isn't set up).
       const rotCfg = {...LEAD_ROTATION_DEFAULTS, ...(appSettings?.lead_rotation_settings||{})};
       const rotationAMs = rotCfg.rotation_order.map(id=>(team||[]).find(t=>t.id===id)).filter(t=>t&&t.status!=="inactive");
-      const fallbackAMs = (team||[]).filter(t=>t.role==="account_manager"&&t.status!=="inactive");
+      const fallbackAMs = (team||[]).filter(t=>["account_manager","business_development"].includes(t.role)&&t.status!=="inactive");
       const pool = rotationAMs.length ? rotationAMs : fallbackAMs;
       if(!pool.length){ setError("No active Account Manager found to assign leads to — add one in Team Management or configure lead rotation first."); setPhase("error"); return; }
 
