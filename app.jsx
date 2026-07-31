@@ -21953,12 +21953,46 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
   );
 }
 
+// A short, curiosity-driving opener for a lead's first WhatsApp touch —
+// greets them by name, teases what admepro does without over-explaining,
+// and points to the website rather than dumping a sales pitch into a QR
+// code someone just scanned out of curiosity themselves.
+function leadWelcomeMessage(lead) {
+  const first = (lead.name||"").split(" ")[0] || "there";
+  const co = lead.company ? ` for ${lead.company}` : "";
+  return `Hey ${first}! 👋 This is admepro — we help brands grow with content, branding, and campaigns that actually get noticed. We had a few ideas${co} we think you'd like. Curious? Take a look: www.admepro.com — happy to chat whenever's good for you!`;
+}
+
+// QR code that opens a wa.me chat pre-filled with a welcome message — lets
+// a teammate hand someone their phone (or print/share the code) to start a
+// WhatsApp conversation with one scan, no manual dialing/typing needed.
+function LeadQrModal({lead, onClose}) {
+  const [text, setText] = useState(leadWelcomeMessage(lead));
+  const qrUrl = waQrUrl(lead.phone, text);
+  return (
+    <Modal open onClose={onClose} title="WhatsApp QR Code" subtitle={`${lead.name}${lead.company?` · ${lead.company}`:""}`} width={420}>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:14,padding:"14px 0"}}>
+        {qrUrl ? (
+          <img src={qrUrl} alt="WhatsApp QR code" width={180} height={180} style={{borderRadius:12,background:"#fff",padding:8}}/>
+        ) : (
+          <p style={{fontSize:12,color:"#ef4444"}}>This lead has no usable phone number.</p>
+        )}
+        <Field label="Message (sent when scanned)">
+          <textarea value={text} onChange={e=>setText(e.target.value)} rows={4} style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:13,fontFamily:"inherit",resize:"vertical",lineHeight:1.5}}/>
+        </Field>
+        {qrUrl&&<a href={waLink(lead.phone,text)} target="_blank" rel="noreferrer" style={{fontSize:12,fontWeight:700,color:"var(--accent)"}}>Open this chat directly →</a>}
+      </div>
+    </Modal>
+  );
+}
+
 // Lead Card (Kanban)
 function LeadCard({lead, onClick, team}) {
   const status = LEAD_STATUS_MAP[lead.status]||LEAD_STATUSES[0];
   const overdue = isOverdue(lead.followup_date);
   const dueToday = isDueToday(lead.followup_date);
   const assignee = lead.assigned_to && (team||[]).find(t=>t.email===lead.assigned_to);
+  const [showQr, setShowQr] = useState(false);
   return (
     <div onClick={()=>onClick(lead)} style={{
       background:"var(--surface)",border:`1px solid ${overdue?"#ef444444":dueToday?"#f59e0b44":"var(--border)"}`,
@@ -21973,8 +22007,16 @@ function LeadCard({lead, onClick, team}) {
           <p style={{fontWeight:700,fontSize:13}}>{lead.name}</p>
           {lead.company&&<p style={{fontSize:11,color:"var(--text2)",marginTop:2}}>{lead.company}</p>}
         </div>
-        {lead.value&&<span style={{fontSize:12,fontWeight:800,color:"#10b981",flexShrink:0}}>${lead.value.toLocaleString()}</span>}
+        <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+          {lead.value&&<span style={{fontSize:12,fontWeight:800,color:"#10b981"}}>${lead.value.toLocaleString()}</span>}
+          {lead.phone&&(
+            <button onClick={e=>{e.stopPropagation();setShowQr(true);}} title="WhatsApp QR code" style={{width:24,height:24,borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+              <Ico d={Icons.grid} size={12} stroke="#25D366"/>
+            </button>
+          )}
+        </div>
       </div>
+      {showQr&&<div onClick={e=>e.stopPropagation()}><LeadQrModal lead={lead} onClose={()=>setShowQr(false)}/></div>}
       <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
         {lead.platforms?.slice(0,3).map(p=><PChip key={p} platform={p} xs/>)}
         {lead.source&&!lead.platforms?.some(p=>p.toLowerCase()===lead.source.toLowerCase())&&<Badge label={lead.source} color="#6b7280" xs/>}
@@ -22120,6 +22162,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   const [showBankAnalysis, setShowBankAnalysis] = useState(false);
   const toggleBankSelect = (id) => setSelectedBankIds(ids=>ids.includes(id)?ids.filter(x=>x!==id):[...ids,id]);
   const [cleaningUp, setCleaningUp] = useState(false);
+  const [qrLead, setQrLead] = useState(null);
 
   // Bank leads (nobody assigned yet) stay off the regular Kanban/List
   // entirely — they only ever show in the Bank tab until an admin hands
@@ -22352,12 +22395,12 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
               <button onClick={()=>setSelectedBankIds([])} style={{padding:"7px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Clear</button>
             </div>
           )}
-          {(()=>{ const cols = bankSelectMode ? "28px 1.3fr 110px 90px 90px 190px 34px" : "1.3fr 110px 90px 90px 190px 34px"; return (
+          {(()=>{ const cols = bankSelectMode ? "28px 1.3fr 110px 90px 90px 190px 30px 34px" : "1.3fr 110px 90px 90px 190px 30px 34px"; return (
           <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
           <div style={{display:"grid",gridTemplateColumns:cols,padding:"9px 18px",background:"var(--surface2)",borderBottom:"1px solid var(--border)",alignItems:"center"}}>
             {bankSelectMode&&<input type="checkbox" checked={bankLeads.length>0&&selectedBankIds.length===bankLeads.length} onChange={e=>setSelectedBankIds(e.target.checked?bankLeads.map(l=>l.id):[])}/>}
-            {["Lead","Phone","Source","Created","Assign To",""].map(h=>(
-              <span key={h} style={{fontSize:10,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",color:"var(--text3)"}}>{h}</span>
+            {["Lead","Phone","Source","Created","Assign To","",""].map((h,hi)=>(
+              <span key={hi} style={{fontSize:10,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",color:"var(--text3)"}}>{h}</span>
             ))}
           </div>
           {bankLeads.map((lead,i)=>(
@@ -22375,6 +22418,11 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
                 <option value="">— Assign to team member —</option>
                 {team.map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
               </select>
+              {lead.phone ? (
+                <button onClick={()=>setQrLead(lead)} title="WhatsApp QR code" style={{width:28,height:28,borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                  <Ico d={Icons.grid} size={13} stroke="#25D366"/>
+                </button>
+              ) : <span/>}
               <button onClick={()=>{ if(confirm(`Delete "${lead.name}" from the Bank? This can't be undone.`)) onDeleteLead(lead.id); }} title="Delete" style={{width:28,height:28,borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",justifySelf:"end"}}>
                 <Ico d={Icons.trash} size={13} stroke="#ef4444"/>
               </button>
@@ -22391,6 +22439,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
 
       {/* AI Analysis of the Bank — surfaces which unassigned leads are worth recalling first */}
       {showBankAnalysis&&<BankAnalysisModal open onClose={()=>setShowBankAnalysis(false)} bankLeads={bankLeads}/>}
+      {qrLead&&<LeadQrModal lead={qrLead} onClose={()=>setQrLead(null)}/>}
 
       {/* Add Lead Modal */}
       {showForm&&<AddLeadModal open onClose={()=>setShowForm(false)} team={team} onAdd={async d=>{await onAddLead(d);setShowForm(false);}}/>}
@@ -32718,21 +32767,28 @@ function RestrictedApplicationView({applicationId, currentUser, team, comments, 
   );
 }
 
+// Numbers are often stored in local Egyptian format (leading 0, no country
+// code) since that's what people type on forms — wa.me requires the full
+// international number, so swap the leading 0 for the country code
+// (default Egypt, "20") when missing.
+function waIntlDigits(phone) {
+  let digits = (phone||"").replace(/[^0-9]/g,"");
+  if (!digits) return "";
+  if (digits.startsWith("0")) digits = "20" + digits.slice(1);
+  else if (!digits.startsWith("20")) digits = "20" + digits;
+  return digits;
+}
+function waLink(phone, text) {
+  const digits = waIntlDigits(phone);
+  return digits ? `https://wa.me/${digits}?text=${encodeURIComponent(text)}` : null;
+}
 // Builds a QR code (via a stateless QR image API — no client-side QR
 // library is bundled) that, once scanned, opens a wa.me chat pre-filled
 // with the given text. wa.me always opens whichever WhatsApp app is
 // installed (Business or regular), addressed to `phone`.
 function waQrUrl(phone, text) {
-  let digits = (phone||"").replace(/[^0-9]/g,"");
-  if (!digits) return null;
-  // Numbers are often stored in local Egyptian format (leading 0, no
-  // country code) since that's what candidates type on the application
-  // form — wa.me requires the full international number, so swap the
-  // leading 0 for the country code (default Egypt, "20") when missing.
-  if (digits.startsWith("0")) digits = "20" + digits.slice(1);
-  else if (!digits.startsWith("20")) digits = "20" + digits;
-  const link = `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
-  return `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(link)}`;
+  const link = waLink(phone, text);
+  return link ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(link)}` : null;
 }
 
 function ApplicationDetail({application, opening, openings, onClose, onUpdateStatus, onSaveNotes, onRerunReview, onReassign, onDelete, hideHeader, onConvertCv, convertingCv, cvConvertFailed, onRateInterview, onSavePortfolioScore, activityLog, onSendCompletionEmail, sendingCompletion, onSendInterviewTimes, sendingInterviewTimes, onConfirmInterview, confirmingInterview, onSaveOffer, savingOffer, onSendOffer, sendingOffer, onSendTask, sendingTask, onMakeTeamMember, onSendOnboarding, sendingOnboarding, comments=[], onAddComment, team=[], currentUser, restrictedView=false}) {
