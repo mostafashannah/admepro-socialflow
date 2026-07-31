@@ -21534,6 +21534,7 @@ const LEAD_STATUSES = [
   {key:"negotiation", label:"Negotiation", color:"#8b5cf6", emoji:""},
   {key:"closed_won", label:"Closed Won", color:"#10b981", emoji:""},
   {key:"closed_lost", label:"Closed Lost", color:"#ef4444", emoji:""},
+  {key:"dead", label:"Dead Lead", color:"#374151", emoji:""},
 ];
 const LEAD_STATUS_MAP = Object.fromEntries(LEAD_STATUSES.map(s=>[s.key,s]));
 
@@ -21761,6 +21762,7 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
   const [noteType, setNoteType] = useState("note");
   const [followupDate, setFollowupDate] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showEditLead, setShowEditLead] = useState(false);
   const status = LEAD_STATUS_MAP[lead.status] || LEAD_STATUSES[0];
   const leadActs = activities.filter(a=>a.lead_id===lead.id).sort((a,b)=>new Date(b.created_date)-new Date(a.created_date));
 
@@ -21804,14 +21806,21 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
                 {lead.value>0&&<Badge label={`$${lead.value.toLocaleString()}`} color="#10b981" xs/>}
               </div>
             </div>
-            {onDeleteLead&&(
-              <button onClick={()=>{ if(window.confirm(`Delete lead "${lead.name||"Unknown"}"?`)) onDeleteLead(lead.id); }}
-                style={{padding:"6px 12px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"#ef4444",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}}>
-                Delete
+            <div style={{display:"flex",gap:8,flexShrink:0}}>
+              <button onClick={()=>setShowEditLead(true)}
+                style={{padding:"6px 12px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                Edit
               </button>
-            )}
+              {onDeleteLead&&(
+                <button onClick={()=>{ if(window.confirm(`Delete lead "${lead.name||"Unknown"}"?`)) onDeleteLead(lead.id); }}
+                  style={{padding:"6px 12px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"#ef4444",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+                  Delete
+                </button>
+              )}
+            </div>
           </div>
         </div>
+        {showEditLead&&<EditLeadModal open lead={lead} onClose={()=>setShowEditLead(false)} onSave={async patch=>{await onUpdateLead({...lead,...patch});setShowEditLead(false);}}/>}
 
         {/* Tabs */}
         <div style={{display:"flex",borderBottom:"1px solid var(--border)"}}>
@@ -22291,8 +22300,8 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   const bankFiltered = bankLeads.filter(matchesLeadFilters);
 
   const totalValue = leads.filter(l=>l.status==="closed_won").reduce((a,l)=>a+num(l.value),0);
-  const pipelineValue = leads.filter(l=>l.assigned_to&&!["closed_won","closed_lost"].includes(l.status)).reduce((a,l)=>a+num(l.value),0);
-  const overdueCount = leads.filter(l=>isOverdue(l.followup_date)&&!["closed_won","closed_lost"].includes(l.status)).length;
+  const pipelineValue = leads.filter(l=>l.assigned_to&&!["closed_won","closed_lost","dead"].includes(l.status)).reduce((a,l)=>a+num(l.value),0);
+  const overdueCount = leads.filter(l=>isOverdue(l.followup_date)&&!["closed_won","closed_lost","dead"].includes(l.status)).length;
 
   // Opening a lead swaps the whole page content for its own full detail
   // page (not an overlay/popup) — same master-detail pattern used
@@ -22865,6 +22874,43 @@ Search the web for this company/person. Return ONLY valid JSON, no markdown: {"i
             ))}
           </div>
         )}
+      </div>
+    </Modal>
+  );
+}
+
+function EditLeadModal({open,onClose,lead,onSave}) {
+  const [f,setF] = useState({
+    name:lead.name||"", company:lead.company||"", phone:lead.phone||"",
+    email:lead.email||"", source:lead.source||"other", industry:lead.industry||"",
+    website:lead.website||"", notes:lead.notes||"",
+  });
+  const [saving,setSaving] = useState(false);
+  const s=(k,v)=>setF(p=>({...p,[k]:v}));
+  const handleSubmit = async () => {
+    if(!f.name.trim()) return;
+    setSaving(true);
+    await onSave(f);
+    setSaving(false);
+  };
+  return (
+    <Modal open={open} onClose={onClose} title="Edit Lead" width={560}>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(260px,100%),1fr))",gap:12}}>
+          <Field label="Lead Name" required><input value={f.name} onChange={e=>s("name",e.target.value)} placeholder="Full name" style={inputSt} autoFocus/></Field>
+          <Field label="Company"><input value={f.company} onChange={e=>s("company",e.target.value)} placeholder="Company name" style={inputSt}/></Field>
+          <Field label="Phone"><input value={f.phone} onChange={e=>s("phone",e.target.value)} placeholder="+20 100 000 0000" style={inputSt}/></Field>
+          <Field label="Email"><input type="email" value={f.email} onChange={e=>s("email",e.target.value)} placeholder="email@example.com" style={inputSt}/></Field>
+          <Field label="Source">
+            <select value={f.source} onChange={e=>s("source",e.target.value)} style={inputSt}>
+              {LEAD_SOURCES.map(src=><option key={src.key} value={src.key}>{src.label}</option>)}
+            </select>
+          </Field>
+          <Field label="Industry"><input value={f.industry} onChange={e=>s("industry",e.target.value)} placeholder="e.g. Real Estate" style={inputSt}/></Field>
+          <Field label="Website"><input value={f.website} onChange={e=>s("website",e.target.value)} placeholder="https://…" style={inputSt}/></Field>
+        </div>
+        <Field label="Notes"><textarea value={f.notes} onChange={e=>s("notes",e.target.value)} rows={3} style={{...inputSt,resize:"vertical"}}/></Field>
+        <Btn onClick={handleSubmit} disabled={saving||!f.name.trim()}>{saving?<Spinner size={14}/>:"Save Changes"}</Btn>
       </div>
     </Modal>
   );
