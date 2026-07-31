@@ -21567,6 +21567,19 @@ function normalizeLeadPhone(phone) {
   return phone; // not a recognizable Egypt/Saudi shape — leave untouched
 }
 
+// Derives a country label straight from the phone number rather than
+// requiring a separate stored field — every lead already has a phone, and
+// it's normalized (+2/+966) by the functions above, so this stays accurate
+// without extra data entry.
+function leadCountry(phone) {
+  const digits = (phone||"").replace(/\D/g,"");
+  if(!digits) return "Unknown";
+  if(digits.startsWith("966")) return "Saudi Arabia";
+  if(digits.startsWith("20")) return "Egypt";
+  return "Other";
+}
+const LEAD_COUNTRIES = ["Egypt","Saudi Arabia","Other","Unknown"];
+
 const LEAD_SOURCES = [
   {key:"instagram",label:"Instagram"}, {key:"facebook",label:"Facebook"},
   {key:"linkedin",label:"LinkedIn"}, {key:"tiktok",label:"TikTok"},
@@ -22173,6 +22186,8 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   const [search, setSearch] = useState("");
   const [sourceF, setSourceF] = useState("all");
   const [assigneeF, setAssigneeF] = useState("all");
+  const [countryF, setCountryF] = useState("all");
+  const [industryF, setIndustryF] = useState("all");
   const [selectedBankIds, setSelectedBankIds] = useState([]);
   const [bulkAssignTo, setBulkAssignTo] = useState("");
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -22224,13 +22239,20 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   // Number(...) here guards against silent string-concatenation totals
   // (e.g. "0"+"0"+"0" -> "000") instead of real addition.
   const num = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
-  const filtered = leads.filter(l=>{
-    if(!l.assigned_to) return false;
+  const industryOptions = Array.from(new Set(leads.map(l=>l.industry).filter(Boolean))).sort();
+  const matchesLeadFilters = (l) => {
     if(search&&!l.name.toLowerCase().includes(search.toLowerCase())&&!(l.company||"").toLowerCase().includes(search.toLowerCase())) return false;
     if(sourceF!=="all"&&l.source!==sourceF) return false;
     if(assigneeF!=="all"&&l.assigned_to!==assigneeF) return false;
+    if(countryF!=="all"&&leadCountry(l.phone)!==countryF) return false;
+    if(industryF!=="all"&&(l.industry||"")!==industryF) return false;
     return true;
-  });
+  };
+  const filtered = leads.filter(l=>l.assigned_to&&matchesLeadFilters(l));
+  // Bulk actions (AI Analysis, Push New Leads, Normalize, etc.) still
+  // operate on the full, unfiltered Bank — country/industry filters only
+  // narrow what's shown, not what a bulk action touches.
+  const bankFiltered = bankLeads.filter(matchesLeadFilters);
 
   const totalValue = leads.filter(l=>l.status==="closed_won").reduce((a,l)=>a+num(l.value),0);
   const pipelineValue = leads.filter(l=>l.assigned_to&&!["closed_won","closed_lost"].includes(l.status)).reduce((a,l)=>a+num(l.value),0);
@@ -22323,6 +22345,15 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
         <select value={assigneeF} onChange={e=>setAssigneeF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12}}>
           <option value="all">All Assignees</option>
           {team.map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
+        </select>
+        <select value={countryF} onChange={e=>setCountryF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12}}>
+          <option value="all">All Countries</option>
+          {LEAD_COUNTRIES.map(c=><option key={c} value={c}>{c}</option>)}
+        </select>
+        <select value={industryF} onChange={e=>setIndustryF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12}}>
+          <option value="all">All Industries</option>
+          {industryOptions.map(i=><option key={i} value={i}>{i}</option>)}
+          {industryOptions.length===0&&<option value="" disabled>No industries tagged yet</option>}
         </select>
       </div>
 
@@ -22467,13 +22498,13 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
           {(()=>{ const cols = bankSelectMode ? "28px 1.3fr 110px 90px 90px 260px 30px 34px" : "1.3fr 110px 90px 90px 260px 30px 34px"; return (
           <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
           <div style={{display:"grid",gridTemplateColumns:cols,padding:"9px 18px",background:"var(--surface2)",borderBottom:"1px solid var(--border)",alignItems:"center"}}>
-            {bankSelectMode&&<input type="checkbox" checked={bankLeads.length>0&&selectedBankIds.length===bankLeads.length} onChange={e=>setSelectedBankIds(e.target.checked?bankLeads.map(l=>l.id):[])}/>}
+            {bankSelectMode&&<input type="checkbox" checked={bankFiltered.length>0&&selectedBankIds.length===bankFiltered.length} onChange={e=>setSelectedBankIds(e.target.checked?bankFiltered.map(l=>l.id):[])}/>}
             {["Lead","Phone","Source","Created","Assign To","",""].map((h,hi)=>(
               <span key={hi} style={{fontSize:10,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",color:"var(--text3)"}}>{h}</span>
             ))}
           </div>
-          {bankLeads.map((lead,i)=>(
-            <div key={lead.id} style={{display:"grid",gridTemplateColumns:cols,padding:"12px 18px",alignItems:"center",borderBottom:i<bankLeads.length-1?"1px solid var(--border)":"none"}}>
+          {bankFiltered.map((lead,i)=>(
+            <div key={lead.id} style={{display:"grid",gridTemplateColumns:cols,padding:"12px 18px",alignItems:"center",borderBottom:i<bankFiltered.length-1?"1px solid var(--border)":"none"}}>
               {bankSelectMode&&<input type="checkbox" checked={selectedBankIds.includes(lead.id)} onChange={()=>toggleBankSelect(lead.id)}/>}
               <div style={{cursor:"pointer",minWidth:0}} onClick={()=>setSelectedLead(lead)}>
                 <p style={{fontWeight:600,fontSize:13}}>{lead.name}</p>
@@ -22502,9 +22533,9 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
               </button>
             </div>
           ))}
-          {bankLeads.length===0&&<div style={{padding:"50px",textAlign:"center",color:"var(--text3)"}}>
+          {bankFiltered.length===0&&<div style={{padding:"50px",textAlign:"center",color:"var(--text3)"}}>
             <Ico d={Icons.leads} size={36} stroke="var(--text3)"/>
-            <p style={{marginTop:10}}>The bank is empty — import leads or add one directly.</p>
+            <p style={{marginTop:10}}>{bankLeads.length===0?"The bank is empty — import leads or add one directly.":"No leads match the current filters."}</p>
           </div>}
           </div>
           );})()}
@@ -22539,9 +22570,10 @@ function ImportLeadsModal({open,onClose,onAdd}) {
     setImporting(true);
     let created = 0, skipped = 0;
     for(const line of lines) {
-      // name, company, phone, email, source, notes — trailing fields optional.
+      // name, company, phone, email, source, notes, industry — industry and
+      // trailing fields are optional.
       const parts = line.split(delimiter).map(p=>p.trim());
-      const [name, company="", phone="", email="", source="other", notes=""] = parts;
+      const [name, company="", phone="", email="", source="other", notes="", industry=""] = parts;
       // A usable phone number has at least 8 real digits — filters out
       // blank/junk numbers ("leads", "whatsapp", "NA") right at import time
       // instead of letting them pile up in the Bank for manual cleanup.
@@ -22549,7 +22581,7 @@ function ImportLeadsModal({open,onClose,onAdd}) {
       // value must be a real number (0), not "" — the DB column rejects an
       // empty string, which silently failed every row's insert before this
       // fix (ce()'s create call swallows errors, so nothing ever surfaced).
-      await onAdd({name, company, phone: normalizeLeadPhone(phone), email, source: LEAD_SOURCES.some(s=>s.key===source)?source:"other", status:"new", value:0, platforms:[], assigned_to:"", assigned_at:null, followup_date:"", notes});
+      await onAdd({name, company, phone: normalizeLeadPhone(phone), email, source: LEAD_SOURCES.some(s=>s.key===source)?source:"other", industry, status:"new", value:0, platforms:[], assigned_to:"", assigned_at:null, followup_date:"", notes});
       created++;
     }
     setImporting(false);
@@ -22569,7 +22601,7 @@ function ImportLeadsModal({open,onClose,onAdd}) {
     <Modal open={open} onClose={onClose} title="Import Leads" subtitle="Paste rows from a spreadsheet, or upload a file — they land unassigned in the Bank." width={520}
       footer={<Btn onClick={doImport} disabled={importing||!raw.trim()}>{importing?<Spinner size={14}/>:"Import"}</Btn>}>
       <div style={{display:"flex",flexDirection:"column",gap:10,padding:"14px 0"}}>
-        <p style={{fontSize:12,color:"var(--text3)"}}>One lead per line: <code style={{background:"var(--surface2)",padding:"1px 6px",borderRadius:4}}>Name, Company, Phone, Email, Source, Notes</code> — only Name is required. Paste rows straight out of Google Sheets/Excel (tab-separated) or a comma-separated list — both are auto-detected.</p>
+        <p style={{fontSize:12,color:"var(--text3)"}}>One lead per line: <code style={{background:"var(--surface2)",padding:"1px 6px",borderRadius:4}}>Name, Company, Phone, Email, Source, Notes, Industry</code> — only Name is required. Paste rows straight out of Google Sheets/Excel (tab-separated) or a comma-separated list — both are auto-detected.</p>
         <input ref={fileRef} type="file" accept=".csv,.txt,text/csv,text/plain" style={{display:"none"}} onChange={e=>{handleFile(e.target.files?.[0]); e.target.value="";}}/>
         <button type="button" onClick={()=>fileRef.current?.click()} style={{alignSelf:"flex-start",display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>
           <Ico d={Icons.upload} size={13}/> {fileName||"Upload .csv / .txt file"}
@@ -22716,7 +22748,7 @@ Return ONLY valid JSON, no markdown, no commentary — an array of exactly 10 ob
 }
 
 function AddLeadModal({open,onClose,team,onAdd}) {
-  const [f,setF] = useState({name:"",company:"",phone:"",email:"",source:"website",status:"new",value:"",platforms:[],assigned_to:"",followup_date:"",notes:""});
+  const [f,setF] = useState({name:"",company:"",phone:"",email:"",source:"website",industry:"",status:"new",value:"",platforms:[],assigned_to:"",followup_date:"",notes:""});
   const [saving,setSaving] = useState(false);
   const s=(k,v)=>setF(p=>({...p,[k]:v}));
   const togglePlt=p=>s("platforms",f.platforms.includes(p)?f.platforms.filter(x=>x!==p):[...f.platforms,p]);
@@ -22745,6 +22777,7 @@ function AddLeadModal({open,onClose,team,onAdd}) {
               {LEAD_SOURCES.map(src=><option key={src.key} value={src.key}>{src.label}</option>)}
             </select>
           </Field>
+          <Field label="Industry"><input value={f.industry} onChange={e=>s("industry",e.target.value)} placeholder="e.g. Real Estate" style={inputSt}/></Field>
           <Field label="Est. Value ($)"><input type="number" value={f.value} onChange={e=>s("value",e.target.value)} placeholder="0" style={inputSt}/></Field>
           <Field label="Assign To">
             <select value={f.assigned_to} onChange={e=>s("assigned_to",e.target.value)} style={inputSt}>
