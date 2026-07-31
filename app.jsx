@@ -22482,22 +22482,23 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
             // Same footprint/rounding as Btn's size="sm", just with each
             // action's own accent color — Btn's variant styles would
             // otherwise stomp on a custom background/color via style prop.
-            const pillSt = (color) => ({display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6,padding:"6px 14px",minHeight:36,borderRadius:99,fontWeight:600,fontSize:12,border:`1px solid ${color}55`,background:`${color}1a`,color,cursor:"pointer",transition:"all 0.15s"});
-            const neutralSt = {display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6,padding:"6px 14px",minHeight:36,borderRadius:99,fontWeight:600,fontSize:12,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",cursor:"pointer",transition:"all 0.15s"};
+            // Circular icon-only buttons — title attribute carries the label as a tooltip.
+            const circleSt = (color) => ({width:36,height:36,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${color}55`,background:`${color}1a`,color,cursor:"pointer",transition:"all 0.15s",flexShrink:0});
+            const neutralCircleSt = {width:36,height:36,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",cursor:"pointer",transition:"all 0.15s",flexShrink:0};
             return (
           <div style={{display:"flex",gap:6,justifyContent:"flex-end",flexWrap:"wrap"}}>
             {bankSelectMode
-              ? <button style={neutralSt} onClick={()=>{setBankSelectMode(false);setSelectedBankIds([]);}}>Cancel</button>
-              : <button style={neutralSt} onClick={()=>setBankSelectMode(true)}>Select</button>}
-            <button disabled={cleaningUp} style={{...pillSt("#f59e0b"),opacity:cleaningUp?0.6:1,cursor:cleaningUp?"wait":"pointer"}} onClick={async()=>{
+              ? <button title="Cancel selecting" style={neutralCircleSt} onClick={()=>{setBankSelectMode(false);setSelectedBankIds([]);}}><Ico d={Icons.check} size={14}/></button>
+              : <button title="Select" style={neutralCircleSt} onClick={()=>setBankSelectMode(true)}><Ico d={Icons.list} size={14}/></button>}
+            <button title="Delete Invalid Numbers" disabled={cleaningUp} style={{...circleSt("#f59e0b"),opacity:cleaningUp?0.6:1,cursor:cleaningUp?"wait":"pointer"}} onClick={async()=>{
               const bad = bankLeads.filter(l=>isInvalidLeadPhone(l.phone));
               if(!bad.length){ alert("No leads with a missing/invalid phone number found."); return; }
               if(!confirm(`Delete ${bad.length} lead(s) with no usable phone number? This can't be undone.`)) return;
               setCleaningUp(true);
               for(const l of bad) await onDeleteLead(l.id);
               setCleaningUp(false);
-            }}>{cleaningUp?<Spinner size={13}/>:"Delete Invalid Numbers"}</button>
-            <button disabled={cleaningUp} style={{...pillSt("#3b82f6"),opacity:cleaningUp?0.6:1,cursor:cleaningUp?"wait":"pointer"}} onClick={async()=>{
+            }}>{cleaningUp?<Spinner size={13}/>:<Ico d={Icons.trash} size={14}/>}</button>
+            <button title="Normalize Numbers" disabled={cleaningUp} style={{...circleSt("#3b82f6"),opacity:cleaningUp?0.6:1,cursor:cleaningUp?"wait":"pointer"}} onClick={async()=>{
               // Runs on ALL leads (not just the Bank) — a lead already
               // assigned to a team member can have the same messy phone
               // format as one still sitting unassigned.
@@ -22507,15 +22508,15 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
               setCleaningUp(true);
               for(const l of toFix) await onUpdateLead({...l, phone: normalizeLeadPhone(l.phone)});
               setCleaningUp(false);
-            }}>{cleaningUp?<Spinner size={13}/>:"Normalize Numbers"}</button>
-            <button disabled={bankLeads.length===0} style={{...pillSt("#8b5cf6"),opacity:bankLeads.length===0?0.5:1,cursor:bankLeads.length===0?"default":"pointer"}} onClick={()=>setShowBankAnalysis(true)}>
-              <Ico d={Icons.sparkle} size={12}/> AI Analysis
+            }}>{cleaningUp?<Spinner size={13}/>:<Ico d={Icons.repeat} size={14}/>}</button>
+            <button title="AI Analysis — best leads to recall" disabled={bankLeads.length===0} style={{...circleSt("#8b5cf6"),opacity:bankLeads.length===0?0.5:1,cursor:bankLeads.length===0?"default":"pointer"}} onClick={()=>setShowBankAnalysis(true)}>
+              <Ico d={Icons.sparkle} size={14}/>
             </button>
-            <button disabled={bankLeads.length===0} style={{...pillSt("#10b981"),opacity:bankLeads.length===0?0.5:1,cursor:bankLeads.length===0?"default":"pointer"}} onClick={()=>setShowPushTop(true)}>
-              <Ico d={Icons.sparkle} size={12}/> Push New Leads
+            <button title="Push New Leads to CRM" disabled={bankLeads.length===0} style={{...circleSt("#10b981"),opacity:bankLeads.length===0?0.5:1,cursor:bankLeads.length===0?"default":"pointer"}} onClick={()=>setShowPushTop(true)}>
+              <Ico d={Icons.convert||Icons.sparkle} size={14}/>
             </button>
-            <button disabled={bankLeads.length===0} style={{...pillSt("#f59e0b"),opacity:bankLeads.length===0?0.5:1,cursor:bankLeads.length===0?"default":"pointer"}} onClick={()=>setShowEnrich(true)}>
-              <Ico d={Icons.sparkle} size={12}/> Find Industry & Website
+            <button title="Find Industry & Website" disabled={bankLeads.length===0} style={{...circleSt("#f59e0b"),opacity:bankLeads.length===0?0.5:1,cursor:bankLeads.length===0?"default":"pointer"}} onClick={()=>setShowEnrich(true)}>
+              <Ico d={Icons.globe} size={14}/>
             </button>
           </div>
             );
