@@ -22466,8 +22466,8 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
             // Same footprint/rounding as Btn's size="sm", just with each
             // action's own accent color — Btn's variant styles would
             // otherwise stomp on a custom background/color via style prop.
-            const pillSt = (color) => ({display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6,padding:"6px 14px",minHeight:36,borderRadius:"var(--rs)",fontWeight:600,fontSize:12,border:`1px solid ${color}55`,background:`${color}1a`,color,cursor:"pointer",transition:"all 0.15s"});
-            const neutralSt = {display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6,padding:"6px 14px",minHeight:36,borderRadius:"var(--rs)",fontWeight:600,fontSize:12,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",cursor:"pointer",transition:"all 0.15s"};
+            const pillSt = (color) => ({display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6,padding:"6px 14px",minHeight:36,borderRadius:99,fontWeight:600,fontSize:12,border:`1px solid ${color}55`,background:`${color}1a`,color,cursor:"pointer",transition:"all 0.15s"});
+            const neutralSt = {display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6,padding:"6px 14px",minHeight:36,borderRadius:99,fontWeight:600,fontSize:12,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",cursor:"pointer",transition:"all 0.15s"};
             return (
           <div style={{display:"flex",gap:6,justifyContent:"flex-end",flexWrap:"wrap"}}>
             {bankSelectMode
