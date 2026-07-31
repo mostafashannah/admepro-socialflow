@@ -22197,6 +22197,10 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   const toggleBankSelect = (id) => setSelectedBankIds(ids=>ids.includes(id)?ids.filter(x=>x!==id):[...ids,id]);
   const [cleaningUp, setCleaningUp] = useState(false);
   const [qrLead, setQrLead] = useState(null);
+  // Drag state for the Kanban board — dropping a card on another column
+  // updates that lead's status, same pattern as the Posts Kanban.
+  const dragLead = useRef(null);
+  const dragOverLeadStatus = useRef(null);
   const [assigningNext, setAssigningNext] = useState(false);
 
   // Leads only ever get handed to Account Managers / Business Development —
@@ -22366,7 +22370,15 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
             const statusLeads = filtered.filter(l=>(LEAD_STATUS_MAP[l.status]?l.status:"new")===status.key);
             const val = statusLeads.reduce((a,l)=>a+num(l.value),0);
             return (
-              <div key={status.key} style={{minWidth:240,flexShrink:0,display:"flex",flexDirection:"column",gap:8}}>
+              <div key={status.key} style={{minWidth:240,flexShrink:0,display:"flex",flexDirection:"column",gap:8}}
+                onDragOver={e=>{e.preventDefault();dragOverLeadStatus.current=status.key;}}
+                onDrop={e=>{
+                  e.preventDefault();
+                  const l = dragLead.current;
+                  if(l && l.status!==status.key) onUpdateLead({...l, status:status.key});
+                  dragLead.current=null;
+                }}
+              >
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 2px"}}>
                   <div style={{display:"flex",alignItems:"center",gap:7}}>
                     <div style={{width:8,height:8,borderRadius:"50%",background:status.color}}/>
@@ -22378,7 +22390,11 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
                   </div>
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:8,minHeight:60}}>
-                  {statusLeads.map(l=><LeadCard key={l.id} lead={l} onClick={setSelectedLead} team={team}/>)}
+                  {statusLeads.map(l=>(
+                    <div key={l.id} draggable onDragStart={e=>{dragLead.current=l;e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",l.id);}} onDragEnd={()=>{dragLead.current=null;}} style={{cursor:"grab"}}>
+                      <LeadCard lead={l} onClick={setSelectedLead} team={team}/>
+                    </div>
+                  ))}
                   {statusLeads.length===0&&<div style={{border:"1px dashed var(--border)",borderRadius:"var(--r)",padding:"20px",textAlign:"center",color:"var(--text3)",fontSize:11}}>No leads</div>}
                 </div>
               </div>
