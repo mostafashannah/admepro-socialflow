@@ -40368,7 +40368,7 @@ function App() {
         qe("TimeLog"), // 2
         qe("Template"), // 3
         qe("Quote",{},"-created_at"), // 4
-        qe("Lead",{},"-created_at"), // 5
+        qe("Lead",{},"-created_at",5000), // 5 — default limit(500) was cutting off the Leads Bank once it grew past 500 imported leads
         qe("LeadActivity",{},"created_at"), // 6
         qe("Invoice",{},"-created_at"), // 7
         qe("Payment",{},"payment_date"), // 8
