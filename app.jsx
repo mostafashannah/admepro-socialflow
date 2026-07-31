@@ -17837,14 +17837,18 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
     return ()=>document.removeEventListener("mousedown",fn);
   },[]);
   const cProjects = projects.filter(p=>p.client_id===client.id||p.client_name===client.name);
-  // Brief/Content/Design/Review are purely internal agency work — the client
-  // only ever sees their own request, then it reappears once it's ready for
-  // their approval or further along, exactly as if the internal steps never
-  // happened from their point of view.
+  // Brief/Content/Review/Design/Review are internal agency stage detail — the
+  // client sees all of them collapsed into a single "In Progress" status
+  // (via clientVisStage below) rather than the actual pipeline stage.
   // Client Requests have no project yet (that's picked when the account
   // manager moves it to Brief) — match those by client_id/client_name
   // directly instead of requiring a project_id that doesn't exist yet.
-  const cPosts = posts.filter(p=>(cProjects.some(pr=>pr.id===p.project_id)||p.client_id===client.id||p.client_name===client.name)&&["client_request","client_approval","scheduled","published","rejected","on_hold"].includes(p.stage));
+  const cPosts = posts.filter(p=>(cProjects.some(pr=>pr.id===p.project_id)||p.client_id===client.id||p.client_name===client.name)&&["client_request","planning","content_creation","internal_review","design","design_review","client_approval","scheduled","published","rejected","on_hold"].includes(p.stage));
+  // Brief/Content/Review/Design/Review are internal pipeline detail the
+  // client shouldn't see broken out stage-by-stage — collapse all of them
+  // into one "In Progress" bucket for anything client-facing.
+  const CLIENT_INTERNAL_STAGES = ["planning","content_creation","internal_review","design","design_review"];
+  const clientVisStage = (stage) => CLIENT_INTERNAL_STAGES.includes(stage) ? "in_progress" : stage;
   const cAssets = assets.filter(a=>cProjects.some(pr=>pr.id===a.project_id) || (a.tags||[]).includes(`client_${client.id}`));
   const [month,setMonth] = useState(()=>{const d=new Date();return{y:d.getFullYear(),m:d.getMonth()};});
   const clientSubs = subscriptions||[];
@@ -17860,8 +17864,8 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
     return Math.max(0, lim.limit - (lim.used||0));
   };
 
-  const stageColor = {client_request:"#a855f7",client_approval:"#ec4899",scheduled:"#06b6d4",published:"#10b981",rejected:"#ef4444",on_hold:"#f97316"};
-  const stageLabel = {client_request:"Request",client_approval:"Pending Approval",scheduled:"Scheduled",published:"Published",rejected:"Rejected",on_hold:"On Hold"};
+  const stageColor = {client_request:"#a855f7",in_progress:"#3b82f6",client_approval:"#ec4899",scheduled:"#06b6d4",published:"#10b981",rejected:"#ef4444",on_hold:"#f97316"};
+  const stageLabel = {client_request:"Request",in_progress:"In Progress",client_approval:"Pending Approval",scheduled:"Scheduled",published:"Published",rejected:"Rejected",on_hold:"On Hold"};
 
   const cMessages = (messages||[]).filter(m=>m.client_id===client.id);
   const unreadCount = cMessages.filter(m=>m.direction==="in"&&m.draft_status!=="dismissed").length;
@@ -17996,7 +18000,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                 {(Array.isArray(sel.platforms)?sel.platforms:parseJ(sel.platforms||"[]")).length
                   ? (Array.isArray(sel.platforms)?sel.platforms:parseJ(sel.platforms||"[]")).map(p=><PChip key={p} platform={p}/>)
                   : sel.platform&&<PChip platform={sel.platform}/>}
-                <Badge label={stageLabel[sel.stage]||sel.stage} color={stageColor[sel.stage]||"#888"}/>
+                <Badge label={stageLabel[clientVisStage(sel.stage)]||sel.stage} color={stageColor[clientVisStage(sel.stage)]||"#888"}/>
                 {sel.task_type&&<Badge label={TASK_TYPE_MAP[sel.task_type]?.label||sel.task_type} color="#8b5cf6"/>}
                 {sel.priority&&<Badge label={sel.priority} color={PRI_COLOR[sel.priority]||"#888"}/>}
               </div>
@@ -18241,7 +18245,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                       <p style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}</p>
                       <p style={{fontSize:11,color:"var(--text3)"}}>{new Date(p.scheduled_date).toLocaleDateString()}</p>
                     </div>
-                    <Badge label={stageLabel[p.stage]||p.stage} color={stageColor[p.stage]||"#888"} xs/>
+                    <Badge label={stageLabel[clientVisStage(p.stage)]||p.stage} color={stageColor[clientVisStage(p.stage)]||"#888"} xs/>
                   </div>
                 ))}
               </div>
@@ -18361,16 +18365,16 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                 </div>
               ) : (
                 <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                {(()=>{ const empty=["client_request","client_approval","scheduled","published","rejected","on_hold"].filter(k=>!cPosts.some(p=>p.stage===k)); return empty.length>0&&(
+                {(()=>{ const empty=["client_request","in_progress","client_approval","scheduled","published","rejected","on_hold"].filter(k=>!cPosts.some(p=>clientVisStage(p.stage)===k)); return empty.length>0&&(
                   <div style={{display:"flex",justifyContent:"flex-end"}}>
                     <button onClick={()=>setHideEmptyStages(v=>!v)} style={{fontSize:12,fontWeight:600,color:"var(--text3)",display:"flex",alignItems:"center",gap:5,padding:"4px 12px",borderRadius:99,border:"1px solid var(--border)",background:"var(--surface2)"}}>
-                      {hideEmptyStages?`Show all 6 stages`:`Hide ${empty.length} empty stages`}
+                      {hideEmptyStages?`Show all 7 stages`:`Hide ${empty.length} empty stages`}
                     </button>
                   </div>
                 ); })()}
                 <div style={{display:"flex",gap:12,overflowX:"auto",paddingBottom:12,alignItems:"flex-start"}}>
-                  {["client_request","client_approval","scheduled","published","rejected","on_hold"].filter(stKey=>!hideEmptyStages||cPosts.some(p=>p.stage===stKey)).map(stKey=>{
-                    const colPosts = cPosts.filter(p=>p.stage===stKey);
+                  {["client_request","in_progress","client_approval","scheduled","published","rejected","on_hold"].filter(stKey=>!hideEmptyStages||cPosts.some(p=>clientVisStage(p.stage)===stKey)).map(stKey=>{
+                    const colPosts = cPosts.filter(p=>clientVisStage(p.stage)===stKey);
                     return (
                       <div key={stKey} style={{flex:"1 0 240px",minWidth:240,maxWidth:300,display:"flex",flexDirection:"column",gap:8}}>
                         <div style={{display:"flex",alignItems:"center",gap:7,padding:"0 2px"}}>
@@ -18444,7 +18448,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                           <p style={{fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.title}</p>
                           {p.scheduled_date&&<p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{fmtDate(p.scheduled_date)}</p>}
                         </div>
-                        <Badge label={stageLabel[p.stage]||p.stage} color={stageColor[p.stage]||"#888"} xs/>
+                        <Badge label={stageLabel[clientVisStage(p.stage)]||p.stage} color={stageColor[clientVisStage(p.stage)]||"#888"} xs/>
                         <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="var(--text3)" strokeWidth={2.5} strokeLinecap="round"><path d="M9 18l6-6-6-6"/></svg>
                       </div>
                     );
