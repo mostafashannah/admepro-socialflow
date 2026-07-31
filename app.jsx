@@ -6474,6 +6474,16 @@ Return ONLY valid JSON (no markdown):
                 {selectableProjects.map(p=><option key={p.id} value={p.id}>{p.title} · {p.client_name}</option>)}
               </select>
             </Field>
+            {f.content_mode==="new"&&(
+              <div>
+                <p style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:8}}>Starts at Phase</p>
+                <div style={{display:"flex",gap:8}}>
+                  {[["planning","Brief"],["content_creation","Content"],["design","Design"]].map(([key,label])=>(
+                    <button key={key} type="button" onClick={()=>setF(prev=>({...prev,stage:key,assigned_to:eligibleAssignees(key,team).some(m=>m.email===prev.assigned_to)?prev.assigned_to:""}))} style={{flex:1,padding:"9px 8px",borderRadius:9,border:`2px solid ${f.stage===key?"var(--accent)":"var(--border)"}`,background:f.stage===key?"var(--accentbg,var(--surface2))":"var(--surface2)",cursor:"pointer",fontSize:12,fontWeight:700,color:f.stage===key?"var(--accent)":"var(--text2)"}}>{label}</button>
+                  ))}
+                </div>
+              </div>
+            )}
             <button onClick={saraGenerate} disabled={saraLoading} style={{
               display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"10px 14px",
               borderRadius:10,border:"1.5px dashed #10b981",background:"#10b98111",color:"#10b981",
@@ -6598,14 +6608,6 @@ Return ONLY valid JSON (no markdown):
         {/* STEP 2 */}
         {step===2&&(
           <>
-            <div>
-              <p style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:8}}>Starts at Phase</p>
-              <div style={{display:"flex",gap:8,marginBottom:14}}>
-                {[["planning","Brief"],["content_creation","Content"],["design","Design"]].map(([key,label])=>(
-                  <button key={key} type="button" onClick={()=>setF(prev=>({...prev,stage:key,assigned_to:eligibleAssignees(key,team).some(m=>m.email===prev.assigned_to)?prev.assigned_to:""}))} style={{flex:1,padding:"9px 8px",borderRadius:9,border:`2px solid ${f.stage===key?"var(--accent)":"var(--border)"}`,background:f.stage===key?"var(--accentbg,var(--surface2))":"var(--surface2)",cursor:"pointer",fontSize:12,fontWeight:700,color:f.stage===key?"var(--accent)":"var(--text2)"}}>{label}</button>
-                ))}
-              </div>
-            </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
               <Field label="Assign To">
                 <select value={f.assigned_to} onChange={e=>s("assigned_to",e.target.value)} style={inputSt}>
