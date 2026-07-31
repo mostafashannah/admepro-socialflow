@@ -22088,6 +22088,11 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   const [bankSelectMode, setBankSelectMode] = useState(false);
   const [showBankAnalysis, setShowBankAnalysis] = useState(false);
   const toggleBankSelect = (id) => setSelectedBankIds(ids=>ids.includes(id)?ids.filter(x=>x!==id):[...ids,id]);
+  const [cleaningUp, setCleaningUp] = useState(false);
+  // A usable phone number has at least 8 real digits — catches truly blank
+  // numbers as well as junk like "leads", "whatsapp", or a stray "NA" that
+  // slipped through from a messy source sheet.
+  const hasInvalidPhone = (l) => (l.phone||"").replace(/\D/g,"").length < 8;
 
   // Bank leads (nobody assigned yet) stay off the regular Kanban/List
   // entirely — they only ever show in the Bank tab until an admin hands
@@ -22271,6 +22276,16 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
           <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
             {bankSelectMode&&<button onClick={()=>{setBankSelectMode(false);setSelectedBankIds([]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Cancel</button>}
             {!bankSelectMode&&<button onClick={()=>setBankSelectMode(true)} style={{padding:"7px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Select</button>}
+            <button onClick={async()=>{
+              const bad = bankLeads.filter(hasInvalidPhone);
+              if(!bad.length){ alert("No leads with a missing/invalid phone number found."); return; }
+              if(!confirm(`Delete ${bad.length} lead(s) with no usable phone number? This can't be undone.`)) return;
+              setCleaningUp(true);
+              for(const l of bad) await onDeleteLead(l.id);
+              setCleaningUp(false);
+            }} disabled={cleaningUp} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #f59e0b",background:"#f59e0b22",color:"#f59e0b",fontSize:12,fontWeight:700,cursor:cleaningUp?"wait":"pointer"}}>
+              {cleaningUp?<Spinner size={13}/>:"Delete Invalid Numbers"}
+            </button>
             <button onClick={()=>setShowBankAnalysis(true)} disabled={bankLeads.length===0} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #8b5cf6",background:"#8b5cf622",color:"#8b5cf6",fontSize:12,fontWeight:700,cursor:bankLeads.length===0?"default":"pointer",opacity:bankLeads.length===0?0.5:1,display:"flex",alignItems:"center",gap:6}}>
               <Ico d={Icons.sparkle} size={13}/> AI Analysis
             </button>
@@ -22366,7 +22381,10 @@ function ImportLeadsModal({open,onClose,onAdd}) {
       // name, company, phone, email, source, notes — trailing fields optional.
       const parts = line.split(delimiter).map(p=>p.trim());
       const [name, company="", phone="", email="", source="other", notes=""] = parts;
-      if(!name) { skipped++; continue; }
+      // A usable phone number has at least 8 real digits — filters out
+      // blank/junk numbers ("leads", "whatsapp", "NA") right at import time
+      // instead of letting them pile up in the Bank for manual cleanup.
+      if(!name || phone.replace(/\D/g,"").length<8) { skipped++; continue; }
       // value must be a real number (0), not "" — the DB column rejects an
       // empty string, which silently failed every row's insert before this
       // fix (ce()'s create call swallows errors, so nothing ever surfaced).
