@@ -1282,12 +1282,37 @@ function getAIPrefs() {
   // Sonnet is the default brain for Pro — noticeably smarter than Haiku on
   // multi-step reasoning, document understanding, and long conversations,
   // still switchable from Settings → AI & Tokens.
-  let model = "claude-sonnet-4-6", speed = "medium";
+  let model = "claude-sonnet-4-6", speed = "medium", fallbackModel = "";
   try {
     model = localStorage.getItem("sf_ai_model") || model;
     speed = localStorage.getItem("sf_ai_speed") || speed;
+    fallbackModel = localStorage.getItem("sf_ai_fallback_model") || "";
   } catch(e) {}
-  return {model, speed};
+  return {model, speed, fallbackModel};
+}
+// Runs a Pro chat completion against the primary model, and — only on an
+// overload/rate-limit style failure (429/500/502/503/529) — retries once
+// against the configured secondary model, same behavior as agentAI()'s
+// fallback for the sub-agents.
+async function callProModel(makeBody, aiPrefs) {
+  const tryModel = async (m) => {
+    const res = await fetch(AI_ENDPOINT, {method:"POST", headers:AI_HEADERS, body: JSON.stringify(makeBody(m))});
+    const d = await res.json();
+    if(d.error || !res.ok) {
+      const err = new Error((d.error&&(d.error.message||d.error))||`API error ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
+    return {d, model:m};
+  };
+  try {
+    return await tryModel(aiPrefs.model);
+  } catch(e) {
+    if(aiPrefs.fallbackModel && aiPrefs.fallbackModel!==aiPrefs.model && AI_OVERLOAD_STATUSES.has(e.status)) {
+      return await tryModel(aiPrefs.fallbackModel);
+    }
+    throw e;
+  }
 }
 // Speed scales how much Pro is allowed to "think"/write — Low favors fast,
 // short replies; High favors slower, more thorough ones. Same model either way.
@@ -25383,6 +25408,7 @@ function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfill
   const [usageOpenAI, setUsageOpenAI] = useState(null);
   const [loading, setLoading] = useState(false);
   const [model, setModel] = useState(() => { try{ return localStorage.getItem("sf_ai_model")||"claude-sonnet-4-6"; }catch(e){return "claude-sonnet-4-6";} });
+  const [fallbackModel, setFallbackModel] = useState(() => { try{ return localStorage.getItem("sf_ai_fallback_model")||""; }catch(e){return "";} });
   const [speed, setSpeed] = useState(() => { try{ return localStorage.getItem("sf_ai_speed")||"medium"; }catch(e){return "medium";} });
   const [saved, setSaved] = useState(false);
   const [testResult, setTestResult] = useState(null);
@@ -25439,7 +25465,7 @@ function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfill
   const selectedModel = MODELS.find(m=>m.id===model) || MODELS[0];
 
   const saveModel = () => {
-    try { localStorage.setItem("sf_ai_model", model); localStorage.setItem("sf_ai_speed", speed); } catch(e) {}
+    try { localStorage.setItem("sf_ai_model", model); localStorage.setItem("sf_ai_speed", speed); localStorage.setItem("sf_ai_fallback_model", fallbackModel); } catch(e) {}
     setSaved(true);
     setTimeout(()=>setSaved(false), 2500);
   };
@@ -25609,6 +25635,12 @@ function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfill
             </div>
           ))}
         </div>
+        <Field label="Secondary Model" hint="Used automatically if the primary model returns an overloaded/rate-limited response (429/503/529).">
+          <select value={fallbackModel} onChange={e=>setFallbackModel(e.target.value)} style={{...inputSt,marginBottom:16}}>
+            <option value="">— None (retry primary only) —</option>
+            {MODELS.filter(m=>m.id!==model).map(m=><option key={m.id} value={m.id}>{m.name} — {m.tier}</option>)}
+          </select>
+        </Field>
         <div style={{display:"flex",gap:8}}>
           <button onClick={saveModel} style={{flex:1,padding:"9px",borderRadius:10,background:"var(--accent)",color:"#fff",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
             {saved?" Saved!":"Save Model Preference"}
@@ -36719,19 +36751,14 @@ RULES:
       catch(e){ sysPrompt = "You are Pro, the AI assistant inside SocialFlow. Answer everything directly in the chat."; }
 
       const aiPrefs = getAIPrefs();
-      const res = await fetch(AI_ENDPOINT, {
-        method:"POST", headers:AI_HEADERS,
-        body: JSON.stringify({
-          model: aiPrefs.model,
-          max_tokens: speedTokens(aiPrefs.speed, 6000),
-          system: sysPrompt,
-          messages: apiHistory,
-          tools: [{type:"web_search_20250305", name:"web_search", max_uses:3}],
-        }),
-      });
-      const d = await res.json();
-      if(d.error) throw new Error(d.error.message||(typeof d.error==="string"?d.error:"")||"API error");
-      trackAIUsage(d.usage, aiPrefs.model);
+      const {d, model:usedModel} = await callProModel(m => ({
+        model: m,
+        max_tokens: speedTokens(aiPrefs.speed, 6000),
+        system: sysPrompt,
+        messages: apiHistory,
+        tools: [{type:"web_search_20250305", name:"web_search", max_uses:3}],
+      }), aiPrefs);
+      trackAIUsage(d.usage, usedModel);
       const botText = (d.content?.map(b=>b.text||"").join("")||"Sorry, I couldn't process that.").trim();
 
       // Strip action block from display text
@@ -38643,13 +38670,10 @@ RULES:
       } catch(e){ sysPrompt="You are Pro, the AI assistant inside SocialFlow. Answer everything directly."; }
 
       const aiPrefs = getAIPrefs();
-      const res = await fetch(AI_ENDPOINT,{
-        method:"POST", headers:AI_HEADERS,
-        body: JSON.stringify({model:aiPrefs.model, max_tokens:speedTokens(aiPrefs.speed,16000), system:sysPrompt, messages:apiHistory, tools:[{type:"web_search_20250305", name:"web_search", max_uses:3}]}),
-      });
-      const d = await res.json();
-      if(d.error) throw new Error(d.error.message||(typeof d.error==="string"?d.error:"")||"API error");
-      trackAIUsage(d.usage, aiPrefs.model);
+      const {d, model:usedModel} = await callProModel(m => ({
+        model:m, max_tokens:speedTokens(aiPrefs.speed,16000), system:sysPrompt, messages:apiHistory, tools:[{type:"web_search_20250305", name:"web_search", max_uses:3}],
+      }), aiPrefs);
+      trackAIUsage(d.usage, usedModel);
       const botText = (d.content?.map(b=>b.text||"").join("")||"").trim() || "I'm not sure — could you rephrase?";
 
       // Strip action block from display
