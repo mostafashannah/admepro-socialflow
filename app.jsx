@@ -22085,6 +22085,8 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   const [selectedBankIds, setSelectedBankIds] = useState([]);
   const [bulkAssignTo, setBulkAssignTo] = useState("");
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bankSelectMode, setBankSelectMode] = useState(false);
+  const [showBankAnalysis, setShowBankAnalysis] = useState(false);
   const toggleBankSelect = (id) => setSelectedBankIds(ids=>ids.includes(id)?ids.filter(x=>x!==id):[...ids,id]);
 
   // Bank leads (nobody assigned yet) stay off the regular Kanban/List
@@ -22266,6 +22268,13 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
       {/* BANK VIEW — admin-only holding area for unassigned leads (e.g. bulk-imported from a spreadsheet) */}
       {view==="bank"&&isAdmin&&(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+            {bankSelectMode&&<button onClick={()=>{setBankSelectMode(false);setSelectedBankIds([]);}} style={{padding:"7px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Cancel</button>}
+            {!bankSelectMode&&<button onClick={()=>setBankSelectMode(true)} style={{padding:"7px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Select</button>}
+            <button onClick={()=>setShowBankAnalysis(true)} disabled={bankLeads.length===0} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #8b5cf6",background:"#8b5cf622",color:"#8b5cf6",fontSize:12,fontWeight:700,cursor:bankLeads.length===0?"default":"pointer",opacity:bankLeads.length===0?0.5:1,display:"flex",alignItems:"center",gap:6}}>
+              <Ico d={Icons.sparkle} size={13}/> AI Analysis
+            </button>
+          </div>
           {selectedBankIds.length>0&&(
             <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"var(--accentbg,var(--surface2))",border:"1px solid var(--accent)",borderRadius:"var(--r)",flexWrap:"wrap"}}>
               <span style={{fontSize:12,fontWeight:700,color:"var(--accent)"}}>{selectedBankIds.length} selected</span>
@@ -22291,22 +22300,24 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
               <button onClick={()=>setSelectedBankIds([])} style={{padding:"7px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Clear</button>
             </div>
           )}
+          {(()=>{ const cols = bankSelectMode ? "28px 1.3fr 110px 90px 90px 190px 34px" : "1.3fr 110px 90px 90px 190px 34px"; return (
           <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
-          <div style={{display:"grid",gridTemplateColumns:"28px 1fr 120px 100px 140px 200px 34px",padding:"9px 18px",background:"var(--surface2)",borderBottom:"1px solid var(--border)",alignItems:"center"}}>
-            <input type="checkbox" checked={bankLeads.length>0&&selectedBankIds.length===bankLeads.length} onChange={e=>setSelectedBankIds(e.target.checked?bankLeads.map(l=>l.id):[])}/>
-            {["Lead","Source","Value","Imported","Assign To",""].map(h=>(
+          <div style={{display:"grid",gridTemplateColumns:cols,padding:"9px 18px",background:"var(--surface2)",borderBottom:"1px solid var(--border)",alignItems:"center"}}>
+            {bankSelectMode&&<input type="checkbox" checked={bankLeads.length>0&&selectedBankIds.length===bankLeads.length} onChange={e=>setSelectedBankIds(e.target.checked?bankLeads.map(l=>l.id):[])}/>}
+            {["Lead","Phone","Source","Created","Assign To",""].map(h=>(
               <span key={h} style={{fontSize:10,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",color:"var(--text3)"}}>{h}</span>
             ))}
           </div>
           {bankLeads.map((lead,i)=>(
-            <div key={lead.id} style={{display:"grid",gridTemplateColumns:"28px 1fr 120px 100px 140px 200px 34px",padding:"12px 18px",alignItems:"center",borderBottom:i<bankLeads.length-1?"1px solid var(--border)":"none"}}>
-              <input type="checkbox" checked={selectedBankIds.includes(lead.id)} onChange={()=>toggleBankSelect(lead.id)}/>
-              <div style={{cursor:"pointer"}} onClick={()=>setSelectedLead(lead)}>
+            <div key={lead.id} style={{display:"grid",gridTemplateColumns:cols,padding:"12px 18px",alignItems:"center",borderBottom:i<bankLeads.length-1?"1px solid var(--border)":"none"}}>
+              {bankSelectMode&&<input type="checkbox" checked={selectedBankIds.includes(lead.id)} onChange={()=>toggleBankSelect(lead.id)}/>}
+              <div style={{cursor:"pointer",minWidth:0}} onClick={()=>setSelectedLead(lead)}>
                 <p style={{fontWeight:600,fontSize:13}}>{lead.name}</p>
                 {lead.company&&<p style={{fontSize:11,color:"var(--text3)"}}>{lead.company}</p>}
+                {lead.notes&&<p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={lead.notes}>{lead.notes}</p>}
               </div>
+              <span style={{fontSize:12,color:"var(--text2)"}}>{lead.phone||"—"}</span>
               <span style={{fontSize:12,color:"var(--text2)",textTransform:"capitalize"}}>{lead.source||"—"}</span>
-              <span style={{fontWeight:700,fontSize:13,color:"#10b981"}}>{lead.value?`$${lead.value.toLocaleString()}`:"—"}</span>
               <span style={{fontSize:12,color:"var(--text3)"}}>{lead.created_date?new Date(lead.created_date).toLocaleDateString():"—"}</span>
               <select defaultValue="" onChange={e=>{ if(e.target.value) onUpdateLead({...lead, assigned_to:e.target.value}); }} style={{...inputSt,fontSize:12,padding:"7px 10px"}}>
                 <option value="">— Assign to team member —</option>
@@ -22322,8 +22333,12 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
             <p style={{marginTop:10}}>The bank is empty — import leads or add one directly.</p>
           </div>}
           </div>
+          );})()}
         </div>
       )}
+
+      {/* AI Analysis of the Bank — surfaces which unassigned leads are worth recalling first */}
+      {showBankAnalysis&&<BankAnalysisModal open onClose={()=>setShowBankAnalysis(false)} bankLeads={bankLeads}/>}
 
       {/* Add Lead Modal */}
       {showForm&&<AddLeadModal open onClose={()=>setShowForm(false)} team={team} onAdd={async d=>{await onAddLead(d);setShowForm(false);}}/>}
@@ -22382,6 +22397,54 @@ function ImportLeadsModal({open,onClose,onAdd}) {
         </button>
         <textarea value={raw} onChange={e=>{setRaw(e.target.value); setFileName("");}} rows={10} placeholder={"Ahmed Hassan, Nova Retail, +20 100 123 4567, ahmed@nova.com, linkedin, Interested in paid ads\nSara Aly, , +20 101 987 6543, , referral,"} style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:13,fontFamily:"monospace",resize:"vertical",lineHeight:1.5}}/>
         {result&&<p style={{fontSize:12,color:"#10b981",fontWeight:600}}>Imported {result.created} lead(s) into the Bank{result.skipped?`, skipped ${result.skipped} blank row(s)`:""}.</p>}
+      </div>
+    </Modal>
+  );
+}
+
+// Reads through everything sitting in the Bank (name/company/source/notes —
+// the free-text history from the old sheets) and asks Claude to rank the
+// leads most worth calling back first, with the reasoning grounded in what
+// each lead's own notes actually say (interest shown, budget mentioned,
+// no-answer vs. genuinely lost, etc.) rather than a generic guess.
+function BankAnalysisModal({open,onClose,bankLeads}) {
+  const [loading,setLoading] = useState(true);
+  const [result,setResult] = useState("");
+  const [error,setError] = useState("");
+  useEffect(()=>{
+    let cancelled = false;
+    (async () => {
+      setLoading(true); setError("");
+      // Cap the batch sent to the model — a few thousand leads' worth of
+      // notes would blow past a reasonable prompt size, so this samples the
+      // most recently-imported leads first (most likely still relevant).
+      const sample = [...bankLeads].sort((a,b)=>new Date(b.created_date||0)-new Date(a.created_date||0)).slice(0,300);
+      const listing = sample.map((l,i)=>`${i+1}. ${l.name}${l.company?` (${l.company})`:""} — source: ${l.source||"unknown"}${l.phone?`, phone: ${l.phone}`:""}\n   Notes: ${(l.notes||"—").slice(0,300)}`).join("\n");
+      const prompt = `You are reviewing a "Leads Bank" of old/unassigned sales leads for a marketing agency (admepro) — a mix of past outreach that never closed, went cold, or was never followed up. Each entry below has whatever raw notes were kept from the original outreach (call/email logs, status, objections, etc.).
+
+Your job: identify which of these are the BEST candidates to recall/re-contact right now, and explain briefly why, grounded in what each lead's own notes actually say. Prioritize signals like: showed real interest/asked for pricing, was mid-negotiation or waiting on a quote, went cold only due to timing/budget (not a hard no), or a status like "will call back"/"follow up" rather than "not interested"/"lost"/"wrong number". Deprioritize or skip clear dead ends (explicit "not interested", "lost to another agency", wrong/invalid numbers).
+
+${sample.length<bankLeads.length?`(Showing the ${sample.length} most recently imported of ${bankLeads.length} total bank leads.)\n\n`:""}${listing}
+
+Return a ranked list of the best ~15-25 leads to recall first. For each: the name/company, and a one-line reason grounded in their actual notes. Group them under short headings if useful (e.g. "Hot — was mid-negotiation", "Warm — showed interest, went quiet", "Worth a retry — no answer but never said no"). Keep it scannable, not a wall of text.`;
+      try {
+        const text = await ai(prompt, 3000);
+        if(!cancelled) setResult(text);
+      } catch(e) {
+        if(!cancelled) setError("AI analysis failed: "+e.message);
+      }
+      if(!cancelled) setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  },[]);
+  return (
+    <Modal open={open} onClose={onClose} title="AI Analysis — Best Leads to Recall" subtitle={`Reviewing ${bankLeads.length} lead(s) in the Bank`} width={640}>
+      <div style={{padding:"14px 0",minHeight:120}}>
+        {loading&&<div style={{display:"flex",alignItems:"center",gap:10,color:"var(--text2)",fontSize:13}}><Spinner size={16}/> Analyzing notes for the leads worth calling back…</div>}
+        {error&&<p style={{color:"#ef4444",fontSize:13}}>{error}</p>}
+        {!loading&&!error&&(
+          <div style={{fontSize:13.5,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{result}</div>
+        )}
       </div>
     </Modal>
   );
