@@ -12248,105 +12248,176 @@ function ImageGeneratorPage({clients=[], projects=[], onAddAsset}) {
   const [clientId, setClientId] = useState("");
   const [prompt, setPrompt] = useState("");
   const [scale, setScale] = useState("1024x1024");
+  const [count, setCount] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [result, setResult] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [preview, setPreview] = useState(null); // full-screen preview {url}
+  // Session gallery — every image generated this visit, newest first. Not
+  // persisted server-side (no "creations" table); Save to Assets is what
+  // makes one permanent.
+  const [history, setHistory] = useState([]);
   const client = clients.find(c=>c.id===clientId) || null;
   const SCALES = [
     {id:"1024x1024", label:"Square", hint:"1:1"},
-    {id:"1024x1536", label:"Portrait", hint:"Story/Reel"},
-    {id:"1536x1024", label:"Landscape", hint:"Wide"},
+    {id:"1024x1536", label:"Portrait", hint:"9:16"},
+    {id:"1536x1024", label:"Landscape", hint:"16:9"},
   ];
 
-  const handleGenerate = async () => {
-    if(!prompt.trim()) return;
-    setLoading(true); setError(""); setResult(""); setSaved(false);
+  const buildPrompt = async () => {
+    if(!client) return prompt.trim();
     try {
-      let finalPrompt = prompt.trim();
-      if(client) {
-        try {
-          const brief = await agentAI("graphic_designer", `Standalone image: ${client.name}`, `You are Yahia, the team's AI Senior Graphic Designer. Write a single, detailed, ready-to-use image-generation prompt for an AI image model — grounded in this client's real brand/design history below, not a generic style.
+      const brief = await agentAI("graphic_designer", `Standalone image: ${client.name}`, `You are Yahia, the team's AI Senior Graphic Designer. Write a single, detailed, ready-to-use image-generation prompt for an AI image model — grounded in this client's real brand/design history below, not a generic style.
 ${clientBrainBlock(client.id, client.name)}
 
 Request: "${prompt.trim()}"
 
 Return ONLY the final image-generation prompt itself — no markdown, no preamble, no quotes around it. Be specific about composition, color palette, and style, matching this client's established visual identity.`, 400);
-          if((brief||"").trim()) finalPrompt = brief.trim();
-        } catch(e) { /* fall through to the raw prompt if Yahia's brief-writing call fails */ }
-      }
-      const r = await fetch(OPENAI_ENDPOINT+"?mode=image", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({model:"gpt-image-1", prompt:finalPrompt, size:scale, n:1}),
-      });
-      const d = await r.json();
-      const b64 = d.data?.[0]?.b64_json;
-      if(!r.ok || !b64) {
-        const raw = d.error?.message || (typeof d.error==="string" ? d.error : d.error ? JSON.stringify(d.error) : "") || d.message || JSON.stringify(d).slice(0,300);
-        throw new Error(`Image generation failed (HTTP ${r.status}): ${raw||"no details returned"}`);
-      }
-      trackOpenAIUsage(null, "gpt-image-1", 0.04);
-      setResult(`data:image/png;base64,${b64}`);
+      return (brief||"").trim() || prompt.trim();
+    } catch(e) { return prompt.trim(); }
+  };
+
+  const generateOne = async (finalPrompt) => {
+    const r = await fetch(OPENAI_ENDPOINT+"?mode=image", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({model:"gpt-image-1", prompt:finalPrompt, size:scale, n:1}),
+    });
+    const d = await r.json();
+    const b64 = d.data?.[0]?.b64_json;
+    if(!r.ok || !b64) {
+      const raw = d.error?.message || (typeof d.error==="string" ? d.error : d.error ? JSON.stringify(d.error) : "") || d.message || JSON.stringify(d).slice(0,300);
+      throw new Error(`Image generation failed (HTTP ${r.status}): ${raw||"no details returned"}`);
+    }
+    trackOpenAIUsage(null, "gpt-image-1", 0.04);
+    return `data:image/png;base64,${b64}`;
+  };
+
+  const handleGenerate = async () => {
+    if(!prompt.trim()) return;
+    setLoading(true); setError("");
+    try {
+      const finalPrompt = await buildPrompt();
+      const urls = await Promise.all(Array.from({length:count}, ()=>generateOne(finalPrompt)));
+      setHistory(h=>[...urls.map(url=>({id:uid(), url, prompt:prompt.trim(), scale, client:client?.name||"", saved:false})), ...h]);
     } catch(e) { setError(e.message||"Image generation failed — please try again."); }
     setLoading(false);
   };
 
-  const handleSaveToAssets = async () => {
-    if(!result || !onAddAsset) return;
-    setSaving(true);
+  const handleSaveToAssets = async (item) => {
+    if(!onAddAsset) return;
+    setHistory(h=>h.map(x=>x.id===item.id?{...x,saving:true}:x));
     try {
-      const res = await fetch(result);
+      const res = await fetch(item.url);
       const blob = await res.blob();
       const file = new File([blob], `ai-image-${Date.now()}.png`, {type:"image/png"});
-      const clientProject = client ? projects.find(p=>p.client_id===client.id) : null;
-      const url = await uploadToStorage(file, monthProjectFolder(clientProject?.title, client?.name));
-      await onAddAsset({name:file.name, file_url:url, file_type:"image", category:monthProjectFolder(clientProject?.title, client?.name), project_id:clientProject?.id||"", tags:["ai-generated"], file_size:file.size});
-      setSaved(true);
-    } catch(e) { setError("Couldn't save to Assets: "+e.message); }
-    setSaving(false);
+      const c = clients.find(cl=>cl.name===item.client) || null;
+      const clientProject = c ? projects.find(p=>p.client_id===c.id) : null;
+      const url = await uploadToStorage(file, monthProjectFolder(clientProject?.title, c?.name));
+      await onAddAsset({name:file.name, file_url:url, file_type:"image", category:monthProjectFolder(clientProject?.title, c?.name), project_id:clientProject?.id||"", tags:["ai-generated"], file_size:file.size});
+      setHistory(h=>h.map(x=>x.id===item.id?{...x,saving:false,saved:true}:x));
+    } catch(e) {
+      setError("Couldn't save to Assets: "+e.message);
+      setHistory(h=>h.map(x=>x.id===item.id?{...x,saving:false}:x));
+    }
+  };
+
+  const handleRecreate = (item) => {
+    setPrompt(item.prompt);
+    setScale(item.scale);
+    if(item.client) { const c = clients.find(cl=>cl.name===item.client); if(c) setClientId(c.id); }
   };
 
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
-      <div>
-        <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Image Generator</h2>
-        <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Describe an image and generate it with AI — optionally grounded in a client's real brand/design history.</p>
-      </div>
-      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:14,maxWidth:640}}>
+    <div style={{display:"flex",gap:20,height:"calc(100vh - 140px)",minHeight:500}} className="fade-in">
+      {/* ── LEFT: controls panel ── */}
+      <div style={{width:300,flexShrink:0,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:18,display:"flex",flexDirection:"column",gap:16,overflowY:"auto"}}>
+        <div>
+          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:18,fontWeight:800,display:"flex",alignItems:"center",gap:8}}><Ico d={Icons.sparkle} size={16} stroke="var(--accent)"/> Image Generator</h2>
+          <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Powered by gpt-image-1</p>
+        </div>
+
         <Field label="Client (optional — for on-brand generation)">
-          <select value={clientId} onChange={e=>setClientId(e.target.value)} style={inputSt}>
+          <select value={clientId} onChange={e=>setClientId(e.target.value)} style={{...inputSt,fontSize:13}}>
             <option value="">— Generic, no client brand —</option>
             {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </Field>
-        <Field label="What do you want to see?">
-          <textarea value={prompt} onChange={e=>setPrompt(e.target.value)} rows={4}
-            placeholder="e.g. A cozy flat-lay of coffee and pastries on a marble table, warm morning light…"
-            style={{...inputSt,lineHeight:1.7,fontSize:13,resize:"vertical"}}/>
-        </Field>
-        <div style={{display:"flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",width:"fit-content"}}>
-          {SCALES.map(s=>(
-            <button key={s.id} type="button" onClick={()=>setScale(s.id)} disabled={loading} style={{padding:"5px 12px",borderRadius:99,fontSize:11,fontWeight:700,border:"none",cursor:loading?"default":"pointer",background:scale===s.id?"var(--accent)":"none",color:scale===s.id?"#fff":"var(--text2)",whiteSpace:"nowrap"}}>
-              {s.label} <span style={{opacity:0.7,fontWeight:500}}>({s.hint})</span>
-            </button>
-          ))}
+
+        <div>
+          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Aspect Ratio</p>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {SCALES.map(s=>(
+              <button key={s.id} type="button" onClick={()=>setScale(s.id)} disabled={loading} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 12px",borderRadius:8,fontSize:12,fontWeight:700,border:`1.5px solid ${scale===s.id?"var(--accent)":"var(--border2)"}`,cursor:loading?"default":"pointer",background:scale===s.id?"var(--accentbg,var(--surface2))":"var(--surface2)",color:scale===s.id?"var(--accent)":"var(--text2)"}}>
+                {s.label} <span style={{opacity:0.7,fontWeight:500}}>{s.hint}</span>
+              </button>
+            ))}
+          </div>
         </div>
-        <Btn onClick={handleGenerate} disabled={loading||!prompt.trim()}>
-          {loading?<><Spinner size={14}/> Generating…</>:<><Ico d={Icons.sparkle} size={14}/> Generate Image</>}
+
+        <div>
+          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Number of Images</p>
+          <div style={{display:"flex",alignItems:"center",gap:10,background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"6px 10px",width:"fit-content"}}>
+            <button type="button" onClick={()=>setCount(c=>Math.max(1,c-1))} disabled={loading||count<=1} style={{width:22,height:22,borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",cursor:loading?"default":"pointer",fontWeight:700}}>−</button>
+            <span style={{fontSize:13,fontWeight:700,minWidth:16,textAlign:"center"}}>{count}</span>
+            <button type="button" onClick={()=>setCount(c=>Math.min(4,c+1))} disabled={loading||count>=4} style={{width:22,height:22,borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",cursor:loading?"default":"pointer",fontWeight:700}}>+</button>
+          </div>
+        </div>
+
+        <Field label="Prompt">
+          <textarea value={prompt} onChange={e=>setPrompt(e.target.value)} rows={6}
+            placeholder="Describe your image — e.g. a cozy flat-lay of coffee and pastries on a marble table, warm morning light…"
+            style={{...inputSt,lineHeight:1.6,fontSize:13,resize:"vertical"}}/>
+        </Field>
+
+        <Btn onClick={handleGenerate} disabled={loading||!prompt.trim()} style={{marginTop:"auto"}}>
+          {loading?<><Spinner size={14}/> Generating…</>:<><Ico d={Icons.sparkle} size={14}/> Generate</>}
         </Btn>
-        {error&&<p style={{fontSize:12,color:"#ef4444"}}>{error}</p>}
-        {result&&(
-          <div style={{background:"var(--surface2)",border:"1px solid var(--accent)44",borderRadius:"var(--r)",overflow:"hidden"}} className="fade-in">
-            <img src={result} alt="Generated" style={{width:"100%",display:"block"}}/>
-            <div style={{padding:12,display:"flex",gap:10,justifyContent:"flex-end",alignItems:"center"}}>
-              {saved&&<span style={{fontSize:12,color:"#10b981",fontWeight:700}}>Saved to Assets</span>}
-              {onAddAsset&&<Btn size="sm" variant="secondary" onClick={handleSaveToAssets} disabled={saving||saved}>{saving?<Spinner size={13}/>:"Save to Assets"}</Btn>}
-              <a href={result} download="ai-image.png" style={{fontSize:12,fontWeight:700,color:"var(--accent)",textDecoration:"none"}}>Download</a>
-            </div>
+        {error&&<p style={{fontSize:11,color:"#ef4444"}}>{error}</p>}
+      </div>
+
+      {/* ── RIGHT: gallery ── */}
+      <div style={{flex:1,overflowY:"auto",minWidth:0}}>
+        {history.length===0 ? (
+          <div style={{height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:"var(--text3)",gap:10}}>
+            <Ico d={Icons.sparkle} size={36} stroke="var(--text3)"/>
+            <p style={{fontSize:13}}>Your generated images will show up here</p>
+          </div>
+        ) : (
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:14}}>
+            {history.map(item=>(
+              <div key={item.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden",display:"flex",flexDirection:"column"}} className="fade-in">
+                <div style={{position:"relative",cursor:"pointer"}} onClick={()=>setPreview(item)}>
+                  <img src={item.url} alt={item.prompt} style={{width:"100%",aspectRatio:item.scale==="1024x1536"?"2/3":item.scale==="1536x1024"?"3/2":"1/1",objectFit:"cover",display:"block"}}/>
+                </div>
+                <div style={{padding:"8px 10px",display:"flex",flexDirection:"column",gap:6}}>
+                  <p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={item.prompt}>{item.prompt}</p>
+                  <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                    <button onClick={()=>handleRecreate(item)} title="Reuse this prompt" style={{width:26,height:26,borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                      <Ico d={Icons.repeat} size={12} stroke="var(--text2)"/>
+                    </button>
+                    <a href={item.url} download="ai-image.png" title="Download" style={{width:26,height:26,borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      <Ico d={Icons.download||Icons.upload} size={12} stroke="var(--text2)"/>
+                    </a>
+                    {onAddAsset&&(
+                      <button onClick={()=>handleSaveToAssets(item)} disabled={item.saving||item.saved} style={{flex:1,height:26,borderRadius:6,border:"1px solid var(--border2)",background:item.saved?"#10b98122":"var(--surface2)",color:item.saved?"#10b981":"var(--text2)",fontSize:10,fontWeight:700,cursor:item.saving||item.saved?"default":"pointer"}}>
+                        {item.saving?<Spinner size={11}/>:item.saved?"Saved":"Save to Assets"}
+                      </button>
+                    )}
+                    <button onClick={()=>setHistory(h=>h.filter(x=>x.id!==item.id))} title="Remove" style={{width:26,height:26,borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                      <Ico d={Icons.trash} size={12} stroke="#ef4444"/>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
+
+      {preview&&(
+        <div onClick={()=>setPreview(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:30,cursor:"zoom-out"}}>
+          <img src={preview.url} alt={preview.prompt} style={{maxWidth:"90vw",maxHeight:"90vh",borderRadius:8,objectFit:"contain"}}/>
+        </div>
+      )}
     </div>
   );
 }
