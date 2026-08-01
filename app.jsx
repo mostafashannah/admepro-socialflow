@@ -12265,10 +12265,11 @@ function ImageGeneratorPage({clients=[], projects=[], onAddAsset}) {
   // gpt-image-1's edits endpoint takes up to 16, but a handful is plenty here.
   const [refImages, setRefImages] = useState([]); // [{id, file, url}]
   const refInputRef = useRef(null);
-  // Session gallery — every image generated this visit, newest first. Not
-  // persisted server-side (no "creations" table); Save to Assets is what
-  // makes one permanent.
-  const [history, setHistory] = useState([]);
+  // Gallery of everything generated — persisted to localStorage (as real
+  // storage URLs, not base64) so it survives page navigation and refreshes,
+  // like Magnific's history. "Save to Assets" additionally files a copy
+  // into the Assets library proper.
+  const [history, setHistory] = usePersistentState("sf_image_gen_history", []);
   const client = clients.find(c=>c.id===clientId) || null;
   const SCALES = [
     {id:"1024x1024", label:"Square", hint:"1:1"},
@@ -12340,6 +12341,17 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
     return `data:image/png;base64,${b64}`;
   };
 
+  // Persisted history stores real storage URLs, not base64 data URLs —
+  // localStorage's ~5MB quota can't hold more than a couple of full-res
+  // generated images as base64, so every generation is immediately
+  // uploaded to storage the same way "Save to Assets" does.
+  const persistGenerated = async (dataUrl) => {
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    const file = new File([blob], `ai-image-${Date.now()}-${Math.random().toString(36).slice(2,7)}.png`, {type:"image/png"});
+    return uploadToStorage(file, "ai-generated");
+  };
+
   // For carousel/storyboard, ask Yahia for one scene description per slide
   // so the set tells a coherent sequence instead of N unrelated variations.
   const buildSequencePrompts = async (basePrompt) => {
@@ -12362,12 +12374,14 @@ Return ONLY a JSON array of ${count} strings, one prompt per slide, no markdown,
     setLoading(true); setError("");
     try {
       if(contentType==="image") {
-        const urls = await Promise.all(Array.from({length:count}, ()=>generateOne(prompt.trim())));
-        setHistory(h=>[...urls.map(url=>({id:uid(), url, prompt:prompt.trim(), scale, client:client?.name||"", contentType, saved:false})), ...h]);
+        const dataUrls = await Promise.all(Array.from({length:count}, ()=>generateOne(prompt.trim())));
+        const urls = await Promise.all(dataUrls.map(persistGenerated));
+        setHistory(h=>[...urls.map(url=>({id:uid(), url, prompt:prompt.trim(), scale, client:client?.name||"", contentType, saved:false})), ...h].slice(0,60));
       } else {
         const slidePrompts = await buildSequencePrompts(prompt.trim());
-        const urls = await Promise.all(slidePrompts.map(p=>generateOne(p)));
-        setHistory(h=>[...urls.map((url,i)=>({id:uid(), url, prompt:slidePrompts[i], scale, client:client?.name||"", contentType, slideIndex:i+1, slideCount:slidePrompts.length, saved:false})), ...h]);
+        const dataUrls = await Promise.all(slidePrompts.map(p=>generateOne(p)));
+        const urls = await Promise.all(dataUrls.map(persistGenerated));
+        setHistory(h=>[...urls.map((url,i)=>({id:uid(), url, prompt:slidePrompts[i], scale, client:client?.name||"", contentType, slideIndex:i+1, slideCount:slidePrompts.length, saved:false})), ...h].slice(0,60));
       }
     } catch(e) { setError(e.message||"Image generation failed — please try again."); }
     setLoading(false);
