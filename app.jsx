@@ -12244,14 +12244,27 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
 // history, same approach as the Design-phase generator) or leave it
 // generic. Result can be downloaded or saved straight into Assets.
 // ════════════════════════════════════════════════════════════════
+const IMAGE_CONTENT_TYPES = [
+  {id:"image", label:"Single Image", hint:"one standalone visual"},
+  {id:"carousel", label:"Carousel", hint:"a sequence of matching slides"},
+  {id:"storyboard", label:"Storyboard", hint:"frame-by-frame visual story"},
+];
+
 function ImageGeneratorPage({clients=[], projects=[], onAddAsset}) {
   const [clientId, setClientId] = useState("");
   const [prompt, setPrompt] = useState("");
   const [scale, setScale] = useState("1024x1024");
   const [count, setCount] = useState(1);
+  const [contentType, setContentType] = useState("image");
   const [loading, setLoading] = useState(false);
+  const [enhancing, setEnhancing] = useState(false);
   const [error, setError] = useState("");
   const [preview, setPreview] = useState(null); // full-screen preview {url}
+  // Reference images (Style/Character/etc.) — passed through to
+  // /v1/images/edits so the model riffs on / stays consistent with them.
+  // gpt-image-1's edits endpoint takes up to 16, but a handful is plenty here.
+  const [refImages, setRefImages] = useState([]); // [{id, file, url}]
+  const refInputRef = useRef(null);
   // Session gallery — every image generated this visit, newest first. Not
   // persisted server-side (no "creations" table); Save to Assets is what
   // makes one permanent.
@@ -12262,21 +12275,57 @@ function ImageGeneratorPage({clients=[], projects=[], onAddAsset}) {
     {id:"1024x1536", label:"Portrait", hint:"9:16"},
     {id:"1536x1024", label:"Landscape", hint:"16:9"},
   ];
+  const maxCount = contentType==="image" ? 4 : 8;
 
-  const buildPrompt = async () => {
-    if(!client) return prompt.trim();
+  const handleAddRefImages = (e) => {
+    const files = Array.from(e.target.files||[]).slice(0, 6-refImages.length);
+    files.forEach(file=>{
+      const url = URL.createObjectURL(file);
+      setRefImages(r=>[...r,{id:uid(), file, url}]);
+    });
+    e.target.value = "";
+  };
+  const removeRefImage = (id) => setRefImages(r=>r.filter(x=>x.id!==id));
+
+  // Explicit "Enhance with Yahia" — the team's AI Senior Graphic Designer
+  // rewrites whatever the user typed into a detailed, ready-to-use
+  // image-generation prompt, grounded in the client's brand if one is picked.
+  const enhancePrompt = async () => {
+    if(!prompt.trim()||enhancing) return;
+    setEnhancing(true); setError("");
     try {
-      const brief = await agentAI("graphic_designer", `Standalone image: ${client.name}`, `You are Yahia, the team's AI Senior Graphic Designer. Write a single, detailed, ready-to-use image-generation prompt for an AI image model — grounded in this client's real brand/design history below, not a generic style.
-${clientBrainBlock(client.id, client.name)}
+      const brandBlock = client ? clientBrainBlock(client.id, client.name) : "";
+      const brief = await agentAI("graphic_designer", `Prompt enhancement${client?`: ${client.name}`:""}`, `You are Yahia, the team's AI Senior Graphic Designer. Rewrite the user's rough idea below into a single, detailed, ready-to-use image-generation prompt for an AI image model.${client?" Ground it in this client's real brand/design history — not a generic style.":""}
+${brandBlock}
 
-Request: "${prompt.trim()}"
+User's idea: "${prompt.trim()}"
+${contentType==="carousel"?"This will become a multi-slide carousel — describe a cohesive visual style/scene that works consistently across slides.":contentType==="storyboard"?"This will become a multi-frame storyboard telling a visual story — describe the overall scene, characters, and style that should stay consistent frame to frame.":""}
+${refImages.length?"Reference image(s) are attached separately for style/character consistency — describe what to change or add, not what's already shown in the references.":""}
 
-Return ONLY the final image-generation prompt itself — no markdown, no preamble, no quotes around it. Be specific about composition, color palette, and style, matching this client's established visual identity.`, 400);
-      return (brief||"").trim() || prompt.trim();
-    } catch(e) { return prompt.trim(); }
+Return ONLY the final image-generation prompt itself — no markdown, no preamble, no quotes around it. Be specific about composition, color palette, and style.`, 400);
+      if((brief||"").trim()) setPrompt(brief.trim());
+    } catch(e) { setError("Prompt enhancement failed: "+e.message); }
+    setEnhancing(false);
   };
 
   const generateOne = async (finalPrompt) => {
+    if(refImages.length) {
+      const fd = new FormData();
+      fd.append("model", "gpt-image-1");
+      fd.append("prompt", finalPrompt);
+      fd.append("size", scale);
+      fd.append("n", "1");
+      refImages.forEach(r=>fd.append("image[]", r.file, r.file.name||"ref.png"));
+      const r = await fetch(OPENAI_ENDPOINT+"?mode=image_edit", { method:"POST", body: fd });
+      const d = await r.json();
+      const b64 = d.data?.[0]?.b64_json;
+      if(!r.ok || !b64) {
+        const raw = d.error?.message || (typeof d.error==="string" ? d.error : d.error ? JSON.stringify(d.error) : "") || d.message || JSON.stringify(d).slice(0,300);
+        throw new Error(`Image generation failed (HTTP ${r.status}): ${raw||"no details returned"}`);
+      }
+      trackOpenAIUsage(null, "gpt-image-1", 0.04);
+      return `data:image/png;base64,${b64}`;
+    }
     const r = await fetch(OPENAI_ENDPOINT+"?mode=image", {
       method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({model:"gpt-image-1", prompt:finalPrompt, size:scale, n:1}),
@@ -12291,13 +12340,35 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
     return `data:image/png;base64,${b64}`;
   };
 
+  // For carousel/storyboard, ask Yahia for one scene description per slide
+  // so the set tells a coherent sequence instead of N unrelated variations.
+  const buildSequencePrompts = async (basePrompt) => {
+    try {
+      const label = contentType==="storyboard" ? "storyboard frames" : "carousel slides";
+      const raw = await agentAI("graphic_designer", `${label}: ${basePrompt.slice(0,60)}`, `You are Yahia, the team's AI Senior Graphic Designer. Break this idea into exactly ${count} ${label}, each a short, specific image-generation prompt describing that slide/frame's scene — consistent style/characters/palette across all of them, but each slide showing a different moment or angle.
+
+Idea: "${basePrompt}"
+
+Return ONLY a JSON array of ${count} strings, one prompt per slide, no markdown, no commentary. Example: ["prompt for slide 1","prompt for slide 2"]`, 600);
+      const match = (raw||"").match(/\[[\s\S]*\]/);
+      const arr = match ? JSON.parse(match[0]) : null;
+      if(Array.isArray(arr) && arr.length) return arr.slice(0,count).map(String);
+    } catch(e) {}
+    return Array.from({length:count}, (_,i)=>`${basePrompt} (slide ${i+1} of ${count}, consistent style)`);
+  };
+
   const handleGenerate = async () => {
     if(!prompt.trim()) return;
     setLoading(true); setError("");
     try {
-      const finalPrompt = await buildPrompt();
-      const urls = await Promise.all(Array.from({length:count}, ()=>generateOne(finalPrompt)));
-      setHistory(h=>[...urls.map(url=>({id:uid(), url, prompt:prompt.trim(), scale, client:client?.name||"", saved:false})), ...h]);
+      if(contentType==="image") {
+        const urls = await Promise.all(Array.from({length:count}, ()=>generateOne(prompt.trim())));
+        setHistory(h=>[...urls.map(url=>({id:uid(), url, prompt:prompt.trim(), scale, client:client?.name||"", contentType, saved:false})), ...h]);
+      } else {
+        const slidePrompts = await buildSequencePrompts(prompt.trim());
+        const urls = await Promise.all(slidePrompts.map(p=>generateOne(p)));
+        setHistory(h=>[...urls.map((url,i)=>({id:uid(), url, prompt:slidePrompts[i], scale, client:client?.name||"", contentType, slideIndex:i+1, slideCount:slidePrompts.length, saved:false})), ...h]);
+      }
     } catch(e) { setError(e.message||"Image generation failed — please try again."); }
     setLoading(false);
   };
@@ -12323,6 +12394,7 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
   const handleRecreate = (item) => {
     setPrompt(item.prompt);
     setScale(item.scale);
+    setContentType("image");
     if(item.client) { const c = clients.find(cl=>cl.name===item.client); if(c) setClientId(c.id); }
   };
 
@@ -12343,6 +12415,39 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
         </Field>
 
         <div>
+          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Content Type</p>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {IMAGE_CONTENT_TYPES.map(t=>(
+              <button key={t.id} type="button" onClick={()=>{setContentType(t.id); if(t.id!=="image") setCount(c=>Math.max(c,3));}} disabled={loading} style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:1,padding:"8px 12px",borderRadius:8,border:`1.5px solid ${contentType===t.id?"var(--accent)":"var(--border2)"}`,cursor:loading?"default":"pointer",background:contentType===t.id?"var(--accentbg,var(--surface2))":"var(--surface2)",color:contentType===t.id?"var(--accent)":"var(--text2)"}}>
+                <span style={{fontSize:12,fontWeight:700}}>{t.label}</span>
+                <span style={{fontSize:10,opacity:0.7,fontWeight:500}}>{t.hint}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Reference Images (optional)</p>
+          <p style={{fontSize:10,color:"var(--text3)",marginBottom:8}}>Style, character, or product shots to keep consistent — up to 6.</p>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+            {refImages.map(r=>(
+              <div key={r.id} style={{position:"relative",width:52,height:52,borderRadius:8,overflow:"hidden",border:"1px solid var(--border2)"}}>
+                <img src={r.url} alt="reference" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                <button type="button" onClick={()=>removeRefImage(r.id)} style={{position:"absolute",top:1,right:1,width:16,height:16,borderRadius:"50%",background:"rgba(0,0,0,0.65)",border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                  <Ico d={Icons.x} size={9} stroke="#fff"/>
+                </button>
+              </div>
+            ))}
+            {refImages.length<6&&(
+              <button type="button" onClick={()=>refInputRef.current?.click()} disabled={loading} style={{width:52,height:52,borderRadius:8,border:"1.5px dashed var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:loading?"default":"pointer",color:"var(--text3)"}}>
+                <Ico d={Icons.upload} size={16} stroke="var(--text3)"/>
+              </button>
+            )}
+            <input ref={refInputRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={handleAddRefImages}/>
+          </div>
+        </div>
+
+        <div>
           <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Aspect Ratio</p>
           <div style={{display:"flex",flexDirection:"column",gap:6}}>
             {SCALES.map(s=>(
@@ -12354,15 +12459,18 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
         </div>
 
         <div>
-          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Number of Images</p>
+          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>{contentType==="image"?"Number of Images":contentType==="carousel"?"Number of Slides":"Number of Frames"}</p>
           <div style={{display:"flex",alignItems:"center",gap:10,background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"6px 10px",width:"fit-content"}}>
             <button type="button" onClick={()=>setCount(c=>Math.max(1,c-1))} disabled={loading||count<=1} style={{width:22,height:22,borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",cursor:loading?"default":"pointer",fontWeight:700}}>−</button>
             <span style={{fontSize:13,fontWeight:700,minWidth:16,textAlign:"center"}}>{count}</span>
-            <button type="button" onClick={()=>setCount(c=>Math.min(4,c+1))} disabled={loading||count>=4} style={{width:22,height:22,borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",cursor:loading?"default":"pointer",fontWeight:700}}>+</button>
+            <button type="button" onClick={()=>setCount(c=>Math.min(maxCount,c+1))} disabled={loading||count>=maxCount} style={{width:22,height:22,borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",cursor:loading?"default":"pointer",fontWeight:700}}>+</button>
           </div>
         </div>
 
-        <Field label="Prompt">
+        <Field label={<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%"}}><span>Prompt</span>
+          <button type="button" onClick={enhancePrompt} disabled={enhancing||loading||!prompt.trim()} title="Rewrite this into a detailed prompt with Yahia (AI Senior Graphic Designer)" style={{display:"flex",alignItems:"center",gap:4,padding:"2px 8px",borderRadius:99,border:"1px solid var(--accent)44",background:"var(--accent)11",color:"var(--accent)",fontSize:10,fontWeight:700,cursor:enhancing||loading||!prompt.trim()?"default":"pointer"}}>
+            {enhancing?<Spinner size={10}/>:<Ico d={Icons.sparkle} size={10} stroke="var(--accent)"/>} Enhance with Yahia
+          </button></div>}>
           <textarea value={prompt} onChange={e=>setPrompt(e.target.value)} rows={6}
             placeholder="Describe your image — e.g. a cozy flat-lay of coffee and pastries on a marble table, warm morning light…"
             style={{...inputSt,lineHeight:1.6,fontSize:13,resize:"vertical"}}/>
@@ -12387,6 +12495,11 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
               <div key={item.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden",display:"flex",flexDirection:"column"}} className="fade-in">
                 <div style={{position:"relative",cursor:"pointer"}} onClick={()=>setPreview(item)}>
                   <img src={item.url} alt={item.prompt} style={{width:"100%",aspectRatio:item.scale==="1024x1536"?"2/3":item.scale==="1536x1024"?"3/2":"1/1",objectFit:"cover",display:"block"}}/>
+                  {item.slideCount>1&&(
+                    <span style={{position:"absolute",top:6,left:6,padding:"2px 8px",borderRadius:99,background:"rgba(0,0,0,0.65)",color:"#fff",fontSize:10,fontWeight:700}}>
+                      {item.contentType==="storyboard"?"Frame":"Slide"} {item.slideIndex}/{item.slideCount}
+                    </span>
+                  )}
                 </div>
                 <div style={{padding:"8px 10px",display:"flex",flexDirection:"column",gap:6}}>
                   <p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={item.prompt}>{item.prompt}</p>

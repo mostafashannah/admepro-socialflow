@@ -68,6 +68,36 @@ if($mode === 'image') {
   exit;
 }
 
+if($mode === 'image_edit') {
+  // Reference-image-guided generation — POST /v1/images/edits. Frontend
+  // sends multipart/form-data: prompt, size, n, model, and one or more
+  // "image[]" file fields (the reference images to riff on/keep consistent).
+  if(empty($_FILES['image'])) { http_response_code(400); echo json_encode(["error"=>"Missing reference image(s)"]); exit; }
+  $files = $_FILES['image'];
+  $body = [
+    'model'  => $_POST['model']  ?? 'gpt-image-1',
+    'prompt' => $_POST['prompt'] ?? '',
+    'size'   => $_POST['size']   ?? '1024x1024',
+    'n'      => $_POST['n']      ?? '1',
+  ];
+  if(is_array($files['tmp_name'])) {
+    foreach($files['tmp_name'] as $i => $tmp) {
+      $body["image[$i]"] = new CURLFile($tmp, $files['type'][$i] ?: 'image/png', $files['name'][$i] ?: "ref$i.png");
+    }
+  } else {
+    $body['image'] = new CURLFile($files['tmp_name'], $files['type'] ?: 'image/png', $files['name'] ?: 'ref.png');
+  }
+  [$status, $res] = openai_curl(
+    "https://api.openai.com/v1/images/edits",
+    ["Authorization: Bearer $OPENAI_KEY"],
+    $body,
+    true
+  );
+  http_response_code($status);
+  echo $res;
+  exit;
+}
+
 // Default: chat completions passthrough.
 $body = file_get_contents("php://input");
 if(!json_decode($body, true)){ http_response_code(400); echo json_encode(["error"=>"Invalid JSON body"]); exit; }
