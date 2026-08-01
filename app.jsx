@@ -8977,7 +8977,7 @@ No markdown, no explanation.`;
                 <div style={{padding:12,display:"flex",flexDirection:"column",gap:8}}>
                   {[
                     {label:"Design queue", sub:`${myPosts.filter(p=>p.stage==="design").length} in Design`, page:"my_tasks", icon:Icons.tasks},
-                    {label:"Clients & Brand Guidelines", sub:"On-brand references per client", page:"clients", icon:Icons.clients},
+                    {label:"Brand Guidelines", sub:"On-brand references per client", page:"brand_guidelines_tool", icon:Icons.palette||Icons.clients},
                     {label:"Image Generator", sub:"gpt-image-1 / Freepik / Magnific", page:"image_generator", icon:Icons.sparkle},
                     {label:"Video Generator", sub:"Kling / MiniMax", page:"video_generator", icon:Icons.sparkle},
                     {label:"Assets Library", sub:"Browse & upload brand files", page:"assets", icon:Icons.assets},
@@ -15028,6 +15028,42 @@ function ClientAdsTab({client, integrations}) {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// BRAND GUIDELINES TOOL PAGE — standalone client-picker + guidelines view,
+// for roles (graphic_designer) that need brand references without full
+// access to the Clients section itself.
+// ════════════════════════════════════════════════════════════════
+function BrandGuidelinesToolPage({clients=[], clientKnowledge=[], onSaveKnowledge}) {
+  const [clientId, setClientId] = usePersistentState("sf_bg_tool_client", "");
+  const client = clients.find(c=>c.id===clientId) || null;
+  const knowledge = client ? clientKnowledge.find(k=>k.client_id===client.id || k.client_name===client.name) : null;
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
+      <div>
+        <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800,display:"flex",alignItems:"center",gap:8}}>
+          <Ico d={Icons.palette||Icons.sparkle} size={20} stroke="var(--accent)"/> Brand Guidelines
+        </h2>
+        <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Pick a client to see their brand colors, fonts, tone, and do's/don'ts.</p>
+      </div>
+      <Field label="Client">
+        <select value={clientId} onChange={e=>setClientId(e.target.value)} style={{...inputSt,maxWidth:360}}>
+          <option value="">— Select a client —</option>
+          {clients.filter(c=>c.status!=="hidden").map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+      </Field>
+      {client ? (
+        <ClientBrandGuidelinesSubTab client={client} knowledge={knowledge} onSaveKnowledge={onSaveKnowledge}/>
+      ) : (
+        <div style={{padding:"60px 20px",textAlign:"center",color:"var(--text3)",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)"}}>
+          <Ico d={Icons.palette||Icons.sparkle} size={36} stroke="var(--text3)"/>
+          <p style={{marginTop:10,fontSize:14}}>Select a client above to view their brand guidelines.</p>
         </div>
       )}
     </div>
@@ -35977,7 +36013,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
   // (no nav entry ever links there for their role). ClientDetail itself
   // still only exposes them Overview/Tasks/Calendar/Assets/Brand Guidelines,
   // not the full admin/AM client-management surface.
-  const canViewClientsNav = isAdmin || hasPerm(currentUser, rolePerms, "clients.manage") || currentUser?.role==="graphic_designer";
+  const canViewClientsNav = isAdmin || hasPerm(currentUser, rolePerms, "clients.manage");
   const canViewCrm = isAdmin || hasPerm(currentUser, rolePerms, "crm.leads");
   const isClientRole = currentUser?.role === "client";
   const isHR = currentUser?.role === "hr";
@@ -36016,13 +36052,8 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     ]}]),
     ...(canViewClientsNav ? [{ group: "CLIENTS", icon: Icons.clients, items: [
       {key:"clients", label:"Clients", ico:Icons.clients},
-      // Full Projects / All Posts & Tasks views stay admin/AM-only —
-      // graphic designers only get in far enough to reach a client's own
-      // page (for Brand Guidelines), not the cross-client project/task lists.
-      ...(isAdmin || hasPerm(currentUser, rolePerms, "clients.manage") ? [
-        {key:"projects", label:"Projects", ico:Icons.projects},
-        {key:"tasks", label:"All Posts & Tasks", ico:Icons.tasks},
-      ] : []),
+      {key:"projects", label:"Projects", ico:Icons.projects},
+      {key:"tasks", label:"All Posts & Tasks", ico:Icons.tasks},
     ]}] : []),
     ...(canViewCrm ? [{ group: "CRM", icon: Icons.leads, items: [
       {key:"leads", label:"Leads", ico:Icons.leads},
@@ -36055,6 +36086,11 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
         {key:"assets", label:"Assets", ico:Icons.assets},
         {key:"image_generator", label:"Image Generator", ico:Icons.sparkle},
         {key:"video_generator", label:"Video Generator", ico:Icons.sparkle},
+      ]:[]),
+      // Standalone client-picker Brand Guidelines view — graphic designers
+      // need brand references without needing full Clients section access.
+      ...(currentUser?.role==="graphic_designer"?[
+        {key:"brand_guidelines_tool", label:"Brand Guidelines", ico:Icons.palette||Icons.sparkle},
       ]:[]),
       ...(isAdmin?[
         // "Agents" page hidden for now — the agent crew is managed from
@@ -44763,7 +44799,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
                 }).catch(()=>{});
               }}
             />}
-        {page==="clients"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"clients.manage")||currentUser?.role==="graphic_designer")&&(()=>{
+        {page==="clients"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"clients.manage"))&&(()=>{
           const selectedClient = data.clients.find(c=>c.id===selectedClientId)||null;
           if(!selectedClient) return (
             <ClientsPage clients={data.clients} projects={data.projects} posts={data.posts} team={data.team}
@@ -44840,6 +44876,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         {page==="assets"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"assets.manage"))&&<AssetsPage assets={data.assets} projects={data.projects} clients={data.clients} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} currentUser={currentUser}/>}
         {page==="image_generator"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"assets.manage"))&&<ImageGeneratorPage clients={data.clients} projects={data.projects} onAddAsset={addAsset}/>}
         {page==="video_generator"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"assets.manage"))&&<VideoGeneratorPage clients={data.clients} projects={data.projects} onAddAsset={addAsset}/>}
+        {page==="brand_guidelines_tool"&&(currentUser?.role==="admin"||currentUser?.role==="graphic_designer")&&<BrandGuidelinesToolPage clients={data.clients} clientKnowledge={data.clientKnowledge||[]} onSaveKnowledge={saveClientKnowledge}/>}
         {page==="templates"&&<TemplatesPage templates={data.templates}/>}
         {page==="quotes"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"finance.quotes")||hasPerm(currentUser,rolePermsMap,"finance.full"))&&(
           <QuotesPage
