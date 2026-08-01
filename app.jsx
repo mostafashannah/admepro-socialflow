@@ -4991,6 +4991,7 @@ function DesignAIGenerator({post, project, onAddAsset, onStageChange}) {
   // Image or Video generation — Video routes through Freepik's
   // image/text-to-video models instead of gpt-image-1.
   const [genType, setGenType] = useState("image"); // "image" | "video"
+  const [imageModel, setImageModel] = useState("gpt-image-1");
   const [videoModel, setVideoModel] = useState(VIDEO_MODELS[0].id);
   // Reference images (style/character/product shots) — passed to OpenAI's
   // /v1/images/edits so Image generation riffs on / stays consistent with
@@ -5053,6 +5054,21 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
       if(!finalPrompt) {
         // Fallback if Yahia's own call failed — still usable, just less refined.
         finalPrompt = `${post.title}. ${post.caption||""} ${post.text_on_visual?`Text on design: "${post.text_on_visual}"`:""} ${genPrompt.trim()}`.trim();
+      }
+      const imageModelDef = IMAGE_MODELS.find(m=>m.id===imageModel) || IMAGE_MODELS[0];
+      if(imageModelDef.provider==="freepik") {
+        const FREEPIK_ASPECT = {"1024x1024":"square_1_1", "instagram_post":"traditional_3_4", "1024x1536":"social_story_9_16", "1536x1024":"widescreen_16_9"};
+        const genUrl = await freepikGenerate(imageModelDef.endpoint, {prompt: finalPrompt, aspect_ratio: FREEPIK_ASPECT[scale]||"square_1_1"});
+        if(!genUrl) throw new Error("Image generation failed — no image returned");
+        const file = new File([await (await fetch(genUrl)).blob()], `${renameForTask(post.title,"ai-generated.png","")}`, {type:"image/png"});
+        const url = await uploadToStorage(file, monthProjectFolder(project?.title, project?.client_name));
+        if(onAddAsset) onAddAsset({name:file.name, file_url:url, file_type:"image", category:monthProjectFolder(project?.title, project?.client_name), project_id:post.project_id, tags:["ai-generated"]}).catch(()=>{});
+        const newAssets = [...(post.design_assets||[]), {name:file.name, type:"image", url, uploaded_at:new Date().toISOString()}];
+        ue("Post", post.id, {design_assets: newAssets}).catch(()=>{});
+        onStageChange({...post, design_assets:newAssets}, post.stage);
+        setHasGenerated(true);
+        setGenerating(false);
+        return;
       }
       const apiSize = scale==="instagram_post" ? "1024x1536" : scale;
       let r, d;
@@ -5177,6 +5193,10 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
 
       {genType==="image" ? (
         <>
+          <select value={imageModel} onChange={e=>setImageModel(e.target.value)} disabled={generating} style={{...inputSt,fontSize:12}}>
+            {IMAGE_MODELS.map(m=><option key={m.id} value={m.id}>{m.label}</option>)}
+          </select>
+
           <div style={{display:"flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",width:"fit-content",flexWrap:"wrap"}}>
             {SCALES.map(s=>(
               <button key={s.id} type="button" onClick={()=>setScale(s.id)} disabled={generating} style={{padding:"5px 12px",borderRadius:99,fontSize:11,fontWeight:700,border:"none",cursor:generating?"default":"pointer",background:scale===s.id?"var(--accent)":"none",color:scale===s.id?"#fff":"var(--text2)",whiteSpace:"nowrap"}}>
@@ -5185,7 +5205,7 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
             ))}
           </div>
 
-          <div>
+          {imageModel==="gpt-image-1"&&<div>
             <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",marginBottom:4}}>Reference Images (optional, up to 6)</p>
             <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
               {refImages.map(ref=>(
@@ -5203,7 +5223,7 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
               )}
               <input ref={refInputRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={handleAddRefImages}/>
             </div>
-          </div>
+          </div>}
 
           <div style={{display:"flex",gap:6}}>
             <input value={genPrompt} onChange={e=>setGenPrompt(e.target.value)} placeholder={hasGenerated?"Anything to add or change before regenerating? (optional)":"Anything specific to add? Yahia already has the brief, caption & brand style (optional)"} disabled={generating}
