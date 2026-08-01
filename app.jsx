@@ -12238,6 +12238,120 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
 }
 
 // ════════════════════════════════════════════════════════════════
+// IMAGE GENERATOR — standalone AI image tool (Sidebar → Tools)
+// Not tied to any one post/task — pick a client for on-brand generation
+// (Yahia expands the prompt using that client's real brand/design
+// history, same approach as the Design-phase generator) or leave it
+// generic. Result can be downloaded or saved straight into Assets.
+// ════════════════════════════════════════════════════════════════
+function ImageGeneratorPage({clients=[], projects=[], onAddAsset}) {
+  const [clientId, setClientId] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [scale, setScale] = useState("1024x1024");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const client = clients.find(c=>c.id===clientId) || null;
+  const SCALES = [
+    {id:"1024x1024", label:"Square", hint:"1:1"},
+    {id:"1024x1536", label:"Portrait", hint:"Story/Reel"},
+    {id:"1536x1024", label:"Landscape", hint:"Wide"},
+  ];
+
+  const handleGenerate = async () => {
+    if(!prompt.trim()) return;
+    setLoading(true); setError(""); setResult(""); setSaved(false);
+    try {
+      let finalPrompt = prompt.trim();
+      if(client) {
+        try {
+          const brief = await agentAI("graphic_designer", `Standalone image: ${client.name}`, `You are Yahia, the team's AI Senior Graphic Designer. Write a single, detailed, ready-to-use image-generation prompt for an AI image model — grounded in this client's real brand/design history below, not a generic style.
+${clientBrainBlock(client.id, client.name)}
+
+Request: "${prompt.trim()}"
+
+Return ONLY the final image-generation prompt itself — no markdown, no preamble, no quotes around it. Be specific about composition, color palette, and style, matching this client's established visual identity.`, 400);
+          if((brief||"").trim()) finalPrompt = brief.trim();
+        } catch(e) { /* fall through to the raw prompt if Yahia's brief-writing call fails */ }
+      }
+      const r = await fetch(OPENAI_ENDPOINT+"?mode=image", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({model:"gpt-image-1", prompt:finalPrompt, size:scale, n:1}),
+      });
+      const d = await r.json();
+      const b64 = d.data?.[0]?.b64_json;
+      if(!r.ok || !b64) {
+        const raw = d.error?.message || (typeof d.error==="string" ? d.error : d.error ? JSON.stringify(d.error) : "") || d.message || JSON.stringify(d).slice(0,300);
+        throw new Error(`Image generation failed (HTTP ${r.status}): ${raw||"no details returned"}`);
+      }
+      trackOpenAIUsage(null, "gpt-image-1", 0.04);
+      setResult(`data:image/png;base64,${b64}`);
+    } catch(e) { setError(e.message||"Image generation failed — please try again."); }
+    setLoading(false);
+  };
+
+  const handleSaveToAssets = async () => {
+    if(!result || !onAddAsset) return;
+    setSaving(true);
+    try {
+      const res = await fetch(result);
+      const blob = await res.blob();
+      const file = new File([blob], `ai-image-${Date.now()}.png`, {type:"image/png"});
+      const clientProject = client ? projects.find(p=>p.client_id===client.id) : null;
+      const url = await uploadToStorage(file, monthProjectFolder(clientProject?.title, client?.name));
+      await onAddAsset({name:file.name, file_url:url, file_type:"image", category:monthProjectFolder(clientProject?.title, client?.name), project_id:clientProject?.id||"", tags:["ai-generated"], file_size:file.size});
+      setSaved(true);
+    } catch(e) { setError("Couldn't save to Assets: "+e.message); }
+    setSaving(false);
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
+      <div>
+        <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800}}>Image Generator</h2>
+        <p style={{fontSize:13,color:"var(--text2)",marginTop:2}}>Describe an image and generate it with AI — optionally grounded in a client's real brand/design history.</p>
+      </div>
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:14,maxWidth:640}}>
+        <Field label="Client (optional — for on-brand generation)">
+          <select value={clientId} onChange={e=>setClientId(e.target.value)} style={inputSt}>
+            <option value="">— Generic, no client brand —</option>
+            {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </Field>
+        <Field label="What do you want to see?">
+          <textarea value={prompt} onChange={e=>setPrompt(e.target.value)} rows={4}
+            placeholder="e.g. A cozy flat-lay of coffee and pastries on a marble table, warm morning light…"
+            style={{...inputSt,lineHeight:1.7,fontSize:13,resize:"vertical"}}/>
+        </Field>
+        <div style={{display:"flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",width:"fit-content"}}>
+          {SCALES.map(s=>(
+            <button key={s.id} type="button" onClick={()=>setScale(s.id)} disabled={loading} style={{padding:"5px 12px",borderRadius:99,fontSize:11,fontWeight:700,border:"none",cursor:loading?"default":"pointer",background:scale===s.id?"var(--accent)":"none",color:scale===s.id?"#fff":"var(--text2)",whiteSpace:"nowrap"}}>
+              {s.label} <span style={{opacity:0.7,fontWeight:500}}>({s.hint})</span>
+            </button>
+          ))}
+        </div>
+        <Btn onClick={handleGenerate} disabled={loading||!prompt.trim()}>
+          {loading?<><Spinner size={14}/> Generating…</>:<><Ico d={Icons.sparkle} size={14}/> Generate Image</>}
+        </Btn>
+        {error&&<p style={{fontSize:12,color:"#ef4444"}}>{error}</p>}
+        {result&&(
+          <div style={{background:"var(--surface2)",border:"1px solid var(--accent)44",borderRadius:"var(--r)",overflow:"hidden"}} className="fade-in">
+            <img src={result} alt="Generated" style={{width:"100%",display:"block"}}/>
+            <div style={{padding:12,display:"flex",gap:10,justifyContent:"flex-end",alignItems:"center"}}>
+              {saved&&<span style={{fontSize:12,color:"#10b981",fontWeight:700}}>Saved to Assets</span>}
+              {onAddAsset&&<Btn size="sm" variant="secondary" onClick={handleSaveToAssets} disabled={saving||saved}>{saving?<Spinner size={13}/>:"Save to Assets"}</Btn>}
+              <a href={result} download="ai-image.png" style={{fontSize:12,fontWeight:700,color:"var(--accent)",textDecoration:"none"}}>Download</a>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
 // ASSETS PAGE
 // ════════════════════════════════════════════════════════════════
 function AssetsPage({assets,projects,clients=[],onAddAsset,onUpdateAsset,onDeleteAsset,currentUser}) {
@@ -35155,6 +35269,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     ...((canAgency||isAdmin) ? [{ group: "TOOLS", icon: Icons.wand, items: [
       ...(canAgency?[
         {key:"assets", label:"Assets", ico:Icons.assets},
+        {key:"image_generator", label:"Image Generator", ico:Icons.sparkle},
       ]:[]),
       ...(isAdmin?[
         // "Agents" page hidden for now — the agent crew is managed from
@@ -43935,6 +44050,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         {page==="tasks"&&<TasksPage posts={data.posts} projects={data.projects} team={data.team} onPostClick={setSelectedPost} onAdd={addPost} clientTasks={(data.tasks||[])} onUpdateTask={updateClientTask} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} currentUser={currentUser} clients={data.clients} clientIntelligenceList={data.clientIntelligence||[]}/>}
         {page==="calendar"&&<div className="fade-in"><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800,marginBottom:24}}>Content Calendar</h2><CalendarView posts={data.posts} onPostClick={setSelectedPost}/></div>}
         {page==="assets"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"assets.manage"))&&<AssetsPage assets={data.assets} projects={data.projects} clients={data.clients} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} currentUser={currentUser}/>}
+        {page==="image_generator"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"assets.manage"))&&<ImageGeneratorPage clients={data.clients} projects={data.projects} onAddAsset={addAsset}/>}
         {page==="templates"&&<TemplatesPage templates={data.templates}/>}
         {page==="quotes"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"finance.quotes")||hasPerm(currentUser,rolePermsMap,"finance.full"))&&(
           <QuotesPage
