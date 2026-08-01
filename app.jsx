@@ -9335,6 +9335,9 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
   const [showAdd,setShowAdd] = useState(false);
   const [showHidden,setShowHidden] = useState(false);
   const isAdmin = currentUser?.role==="admin";
+  // Graphic designers now reach this page too (to get to a client's Brand
+  // Guidelines), but creating/hiding clients stays admin/AM-only.
+  const canManageClients = isAdmin || currentUser?.role==="account_manager";
   const visible = clients.filter(c=>isAdmin ? (showHidden || c.status!=="hidden") : c.status!=="hidden");
   const filtered = visible.filter(c=>(c.name||"").toLowerCase().includes(search.toLowerCase())||(c.email||"").toLowerCase().includes(search.toLowerCase()));
   const hiddenCount = clients.filter(c=>c.status==="hidden").length;
@@ -9351,9 +9354,11 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
               {showHidden?"Hide archived":"Show archived ("+hiddenCount+")"}
             </button>
           )}
-          <button onClick={()=>setShowAdd(true)} aria-label="New Client" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
-            <Ico d={Icons.plus} size={15} stroke="#fff"/>
-          </button>
+          {canManageClients&&(
+            <button onClick={()=>setShowAdd(true)} aria-label="New Client" style={{width:38,height:38,borderRadius:"50%",border:"1px solid var(--accent)",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"pointer"}}>
+              <Ico d={Icons.plus} size={15} stroke="#fff"/>
+            </button>
+          )}
         </div>
       </div>
       <div style={{position:"relative",maxWidth:320}}>
@@ -35937,7 +35942,12 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
   // but shouldn't see the client roster/detail pages, project list, the
   // full cross-client task board, or the clients-wide calendar — they only
   // work from My Tasks (assigned to them, or where they're @mentioned).
-  const canViewClientsNav = isAdmin || hasPerm(currentUser, rolePerms, "clients.manage");
+  // Graphic designers need a way to actually reach a client's page at all —
+  // otherwise the Brand Guidelines tab added to ClientDetail is unreachable
+  // (no nav entry ever links there for their role). ClientDetail itself
+  // still only exposes them Overview/Tasks/Calendar/Assets/Brand Guidelines,
+  // not the full admin/AM client-management surface.
+  const canViewClientsNav = isAdmin || hasPerm(currentUser, rolePerms, "clients.manage") || currentUser?.role==="graphic_designer";
   const canViewCrm = isAdmin || hasPerm(currentUser, rolePerms, "crm.leads");
   const isClientRole = currentUser?.role === "client";
   const isHR = currentUser?.role === "hr";
@@ -35976,8 +35986,13 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
     ]}]),
     ...(canViewClientsNav ? [{ group: "CLIENTS", icon: Icons.clients, items: [
       {key:"clients", label:"Clients", ico:Icons.clients},
-      {key:"projects", label:"Projects", ico:Icons.projects},
-      {key:"tasks", label:"All Posts & Tasks", ico:Icons.tasks},
+      // Full Projects / All Posts & Tasks views stay admin/AM-only —
+      // graphic designers only get in far enough to reach a client's own
+      // page (for Brand Guidelines), not the cross-client project/task lists.
+      ...(isAdmin || hasPerm(currentUser, rolePerms, "clients.manage") ? [
+        {key:"projects", label:"Projects", ico:Icons.projects},
+        {key:"tasks", label:"All Posts & Tasks", ico:Icons.tasks},
+      ] : []),
     ]}] : []),
     ...(canViewCrm ? [{ group: "CRM", icon: Icons.leads, items: [
       {key:"leads", label:"Leads", ico:Icons.leads},
