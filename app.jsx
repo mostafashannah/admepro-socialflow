@@ -19745,7 +19745,15 @@ function AcceptInvitationPage({token, onAccepted}) {
     };
     try {
       if(invitation.user_type==="client") {
-        await ce("ClientUser",[{...memberPayload, mobile: form.mobile, client_id: invitation.client_id||"", client_name: invitation.client_name||""}]);
+        // This is a standalone public page (no app-wide client_users state
+        // loaded here) — if this same person already accepted a separate
+        // invitation to this client before (e.g. a resent invite got
+        // accepted twice), query for that directly rather than assuming
+        // this is the first time and creating a second row.
+        const existing = await qe("ClientUser", {email: invitation.email, client_id: invitation.client_id||""}).catch(()=>({entities:[]}));
+        if(!existing.entities?.length) {
+          await ce("ClientUser",[{...memberPayload, mobile: form.mobile, client_id: invitation.client_id||"", client_name: invitation.client_name||""}]);
+        }
       } else {
         // team_members has no "mobile" column — whatsapp_number/salary/leave credits/ID
         // photo were already set by the admin at invite time (see InviteUserModal), so
@@ -42452,10 +42460,20 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
   };
 
   const approveRequest = async (req, role) => {
+    // req.status flips to "approved" further below, but a slow network round
+    // trip left a window where clicking Approve twice (or a component
+    // re-render firing this again before state caught up) could sail
+    // through this check while it still read "pending" — same duplicate-
+    // Client-User class of bug as addClientUser's own guard.
+    if((data.accessRequests||[]).find(r=>r.id===req.id)?.status==="approved") return;
     if(req.user_type==="client") {
-      const local = {...req, id:uid(), role, status:"active", created_at:new Date().toISOString()};
-      setData(d=>({...d, clientUsers:[local,...(d.clientUsers||[])]}));
-      ce("ClientUser",[{name:req.name,email:req.email,role,status:"active",client_id:req.client_id||"",client_name:req.client_name||""}]).catch(()=>{});
+      const dupe = (data.clientUsers||[]).find(u=>u.email===req.email && (u.client_id||"")===(req.client_id||""));
+      if(dupe) { setToast(`${req.email} already has access to this client`); }
+      else {
+        const local = {...req, id:uid(), role, status:"active", created_at:new Date().toISOString()};
+        setData(d=>({...d, clientUsers:[local,...(d.clientUsers||[])]}));
+        ce("ClientUser",[{name:req.name,email:req.email,role,status:"active",client_id:req.client_id||"",client_name:req.client_name||""}]).catch(()=>{});
+      }
     } else {
       const memberPayload = {name:req.name,email:req.email,role,status:"active",password:req.password_hint||""};
       const local = {...memberPayload,id:uid(),created_at:new Date().toISOString()};
@@ -42478,6 +42496,16 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
   };
 
   const addClientUser = async (cuData) => {
+    // Guard against the same person ending up with multiple Client Users
+    // rows for the same client — several different flows can end up
+    // calling this for the same email/client (a resent invitation accepted
+    // twice, an access request approved twice, a client re-added), and
+    // without this check each one silently created its own duplicate row.
+    const dupe = (data.clientUsers||[]).find(u=>u.email===cuData.email && (u.client_id||"")===(cuData.client_id||""));
+    if(dupe) {
+      setToast(`${cuData.email} already has access to this client — no duplicate created`);
+      return dupe;
+    }
     const local = {...cuData, id:uid(), status:"invited", created_at:new Date().toISOString()};
     setData(d=>({...d, clientUsers:[local,...(d.clientUsers||[])]}));
     ce("ClientUser",[cuData]).then(res=>{
@@ -42485,6 +42513,7 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
     }).catch(()=>{});
     logActivity("Client User Added","clients",cuData.email||"","success","",currentUser?.email||"admin");
     setToast(`Client user ${cuData.email} added`);
+    return local;
   };
 
   const updateClientUser = async (cuId, patch) => {
