@@ -9289,6 +9289,51 @@ Return ONLY valid JSON (no markdown):
     setReviewLoading(false);
   };
 
+  // ── Tool 4: Image Generator ──
+  const [imagePrompt, setImagePrompt] = useState("");
+  const [imageScale, setImageScale] = useState("1024x1024");
+  const [imageResult, setImageResult] = useState("");
+  const [imageLoading, setImageLoading] = useState(false);
+  const [imageError, setImageError] = useState("");
+  const IMAGE_SCALES = [
+    {id:"1024x1024", label:"Square", hint:"1:1"},
+    {id:"1024x1536", label:"Portrait", hint:"Story/Reel"},
+    {id:"1536x1024", label:"Landscape", hint:"Wide"},
+  ];
+  const handleGenImage = async () => {
+    if(!imagePrompt.trim()) return;
+    setImageLoading(true); setImageError(""); setImageResult("");
+    try {
+      // Yahia expands the raw request into a detailed, on-brand prompt using
+      // this client's real brand/design history, same as the Design-phase
+      // generator — this tool isn't tied to a specific post/task, so there's
+      // no brief beyond what the user typed.
+      let finalPrompt = imagePrompt.trim();
+      try {
+        const brief = await agentAI("graphic_designer", `Standalone image: ${client.name}`, `You are Yahia, the team's AI Senior Graphic Designer. Write a single, detailed, ready-to-use image-generation prompt for an AI image model — grounded in this client's real brand/design history below, not a generic style.
+${clientBrainBlock(client.id, client.name)}
+
+Request: "${imagePrompt.trim()}"
+
+Return ONLY the final image-generation prompt itself — no markdown, no preamble, no quotes around it. Be specific about composition, color palette, and style, matching this client's established visual identity.`, 400);
+        if((brief||"").trim()) finalPrompt = brief.trim();
+      } catch(e) { /* fall through to the raw prompt if Yahia's brief-writing call fails */ }
+      const r = await fetch(OPENAI_ENDPOINT+"?mode=image", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({model:"gpt-image-1", prompt:finalPrompt, size:imageScale, n:1}),
+      });
+      const d = await r.json();
+      const b64 = d.data?.[0]?.b64_json;
+      if(!r.ok || !b64) {
+        const raw = d.error?.message || (typeof d.error==="string" ? d.error : d.error ? JSON.stringify(d.error) : "") || d.message || JSON.stringify(d).slice(0,300);
+        throw new Error(`Image generation failed (HTTP ${r.status}): ${raw||"no details returned"}`);
+      }
+      trackOpenAIUsage(null, "gpt-image-1", 0.04);
+      setImageResult(`data:image/png;base64,${b64}`);
+    } catch(e) { setImageError(e.message||"Image generation failed — please try again."); }
+    setImageLoading(false);
+  };
+
   const noKnowledgeBanner = !knowledge && (
     <div style={{padding:"10px 14px",background:"#f59e0b15",border:"1px solid #f59e0b44",borderRadius:"var(--rs)",fontSize:12,color:"#b45309",fontWeight:600,marginBottom:4}}>
        No client knowledge profile yet — upload documents first for best results. Tools will still work with basic client info.
@@ -9301,6 +9346,7 @@ Return ONLY valid JSON (no markdown):
     {key:"voice", label:" Brand Voice"},
     {key:"ideas", label:" Content Ideas"},
     {key:"review", label:" Caption Review"},
+    {key:"image", label:" Image Generator"},
   ];
 
   return (
@@ -9459,6 +9505,40 @@ Return ONLY valid JSON (no markdown):
                   </div>
                 </div>
               )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── TOOL 4: Image Generator ── */}
+      {tool==="image"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:4}}>
+            <p style={{fontSize:13,fontWeight:800}}> Image Generator</p>
+            <p style={{fontSize:12,color:"var(--text2)",lineHeight:1.6}}>Describe an image and Yahia expands it into an on-brand prompt for <strong>{client.name}</strong> before generating it — no task needed, download the result directly.</p>
+          </div>
+          <Field label="What do you want to see?">
+            <textarea value={imagePrompt} onChange={e=>setImagePrompt(e.target.value)} rows={4}
+              placeholder="e.g. A cozy flat-lay of coffee and pastries on a marble table, warm morning light…"
+              style={{...inputSt,lineHeight:1.7,fontSize:13,resize:"vertical"}}/>
+          </Field>
+          <div style={{display:"flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",width:"fit-content"}}>
+            {IMAGE_SCALES.map(s=>(
+              <button key={s.id} type="button" onClick={()=>setImageScale(s.id)} disabled={imageLoading} style={{padding:"5px 12px",borderRadius:99,fontSize:11,fontWeight:700,border:"none",cursor:imageLoading?"default":"pointer",background:imageScale===s.id?"var(--accent)":"none",color:imageScale===s.id?"#fff":"var(--text2)",whiteSpace:"nowrap"}}>
+                {s.label} <span style={{opacity:0.7,fontWeight:500}}>({s.hint})</span>
+              </button>
+            ))}
+          </div>
+          <Btn onClick={handleGenImage} disabled={imageLoading||!imagePrompt.trim()}>
+            {imageLoading?<><Spinner size={14}/> Yahia is generating…</>:<><Ico d={Icons.sparkle} size={14}/> Generate Image</>}
+          </Btn>
+          {imageError&&<p style={{fontSize:12,color:"#ef4444"}}>{imageError}</p>}
+          {imageResult&&(
+            <div style={{background:"var(--surface)",border:"1px solid var(--accent)44",borderRadius:"var(--r)",overflow:"hidden"}} className="fade-in">
+              <img src={imageResult} alt="Generated" style={{width:"100%",display:"block"}}/>
+              <div style={{padding:12,display:"flex",justifyContent:"flex-end"}}>
+                <a href={imageResult} download={`${client.name}-ai-image.png`} style={{fontSize:12,fontWeight:700,color:"var(--accent)",textDecoration:"none"}}>Download</a>
+              </div>
             </div>
           )}
         </div>
