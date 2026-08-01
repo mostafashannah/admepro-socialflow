@@ -11038,7 +11038,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
   const [confirmDelete,setConfirmDelete] = useState(false);
   const [showAddMenu,setShowAddMenu] = useState(false);
   const [showLogins,setShowLogins] = useState(false);
-  const [brainSubTab,setBrainSubTab] = useState(deepLinkContactReportId ? "contact_reports" : (currentUser?.role==="designer" ? "brand_guidelines" : "profile"));
+  const [brainSubTab,setBrainSubTab] = useState(deepLinkContactReportId ? "contact_reports" : (currentUser?.role==="graphic_designer" ? "brand_guidelines" : "profile"));
   const cProjects = projects.filter(p=>p.client_id===client.id||p.client_name===client.name);
   // Client Requests have no project yet (assigned when moved to Brief) —
   // match those directly by client_id/client_name too, not just via project.
@@ -11052,7 +11052,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
   const isAdmin = currentUser?.role==="admin";
   // Designers need the client's Brand Guidelines to actually design on-brand
   // — they otherwise have no access to the Settings/brain tab at all.
-  const canSeeBrandGuidelines = isPriv || currentUser?.role==="designer";
+  const canSeeBrandGuidelines = isPriv || currentUser?.role==="graphic_designer";
   const clientBriefs = (monthlyBriefs||[]).filter(b=>b.client_id===client.id);
   const pendingBriefCount = clientBriefs.filter(b=>b.status==="pending").length;
   const cMessages = (customerMessages||[]).filter(m=>m.client_id===client.id);
