@@ -4877,6 +4877,175 @@ function AssetPickerModal({open, assets=[], onPick, onClose, multiple=true}) {
   );
 }
 
+// Design-stage file picker — pulled out of PostDetail's JSX into its own
+// component because it used to be a bare IIFE with a useState() inside a
+// `{post.stage==="design"&&(...)}` conditional block. Since PostDetail is a
+// single fiber, a hook that only runs on some renders (stage==="design")
+// throws React error #310 the moment the stage flips and the hook count
+// changes between renders — mounting/unmounting a whole component instead
+// is what's actually legal here, not calling a hook conditionally inline.
+function DesignFilePicker({post, assets, onAddAsset, project, onStageChange}) {
+  const [showPicker, setShowPicker_] = useState(false);
+  return (
+    <>
+      <button onClick={()=>setShowPicker_(true)}
+        style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:14,background:"var(--surface)",borderRadius:"var(--rs)",border:"2px dashed #8b5cf644",cursor:"pointer",width:"100%"}}>
+        <Ico d={Icons.plus} size={14} stroke="#8b5cf6"/>
+        <span style={{fontSize:12,fontWeight:600,color:"#8b5cf6"}}>Add Photo / Video</span>
+      </button>
+      <AssetPickerModal open={showPicker} assets={assets} multiple onClose={()=>setShowPicker_(false)}
+        onPick={async(picked)=>{
+          const mapped = await Promise.all(picked.map(async(a,i)=>{
+            // a.url = freshly uploaded via the picker's own "Upload New" button (not yet
+            // in the assets table); a.file_url = picked from the existing asset library.
+            // Both cases need saving here — previously only the "picked from library" case
+            // called onAddAsset, so files uploaded straight from a post silently never
+            // showed up on the Assets page.
+            const isNewUpload = !!a.url;
+            const fileUrl = a.url || a.file_url;
+            const name = renameForTask(post.title, a.name, picked.length>1?String(i+1):"");
+            if(onAddAsset) onAddAsset({name, file_url:fileUrl, file_type:a.file_type||"image", category:monthProjectFolder(project?.title, project?.client_name), project_id:post.project_id, tags:[]}).catch(()=>{});
+            return isNewUpload ? {...a, name} : {name, type:a.file_type, url:a.file_url, uploaded_at:new Date().toISOString()};
+          }));
+          const newAssets = [...(post.design_assets||[]), ...mapped];
+          ue("Post", post.id, {design_assets: newAssets}).catch(()=>{});
+          onStageChange({...post, design_assets:newAssets}, post.stage);
+        }}/>
+    </>
+  );
+}
+
+// Design-stage AI image generator (Yahia) — same reasoning as
+// DesignFilePicker above: extracted out of a conditional-block IIFE so its
+// useState() calls always run at this component's own top level instead of
+// only when PostDetail happens to be rendering the "design" stage branch.
+function DesignAIGenerator({post, project, onAddAsset, onStageChange}) {
+  // The description is now optional — Yahia already has everything
+  // he needs to design without being asked twice: the post's own
+  // title/caption/hashtags/text-on-visual (the brief and TOV, in
+  // effect) plus this client's brand/design memory via
+  // clientBrainBlock (the same context Sara uses for captions).
+  // The input becomes a place for extra notes on first generation,
+  // and for edits/feedback before a Regenerate afterward — it's
+  // never cleared, so it's always right there to tweak and rerun.
+  const [genPrompt, setGenPrompt] = useState("");
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState("");
+  const [hasGenerated, setHasGenerated] = useState(!!(post.design_assets||[]).some(a=>a.name?.includes("ai-generated")));
+  // gpt-image-1's three supported sizes — default picked from the
+  // post's own shape (Stories/Reels are vertical, everything else
+  // square) but always overridable before generating.
+  const [scale, setScale] = useState(["story","reel"].includes(post.post_type) ? "1024x1536" : "1024x1024");
+  // Instagram feed posts are 4:5 — gpt-image-1 has no native 4:5
+  // size (only these 3 raw ones), so "instagram_post" generates
+  // at the closest available (tall portrait) and gets center-
+  // cropped down to a true 4:5 client-side before upload, instead
+  // of quietly reusing the Story/Reel 9:16 size under a
+  // different label.
+  const SCALES = [
+    {id:"1024x1024", label:"Square", hint:"1:1"},
+    {id:"instagram_post", label:"Instagram Post", hint:"4:5"},
+    {id:"1024x1536", label:"Portrait", hint:"Story/Reel"},
+    {id:"1536x1024", label:"Landscape", hint:"Wide"},
+  ];
+  const handleGenerate = async () => {
+    setGenerating(true); setGenError("");
+    try {
+      let finalPrompt = "";
+      try {
+        const brief = await agentAI("graphic_designer", `Design prompt: ${post.title}`, `You are Yahia, the team's AI Senior Graphic Designer. Write a single, detailed, ready-to-use image-generation prompt for an AI image model — grounded in this client's real brand/design history below, not a generic style. You already have everything you need from the task itself; don't wait for a separate brief.
+${clientBrainBlock(post.client_id, post.client_name)}
+
+Task: "${post.title}" — ${post.platform||"social"} ${post.post_type||"post"}
+${post.caption?`Caption: ${post.caption}`:""}
+${post.hashtags?`Hashtags: ${post.hashtags}`:""}
+${post.text_on_visual?`Text that must appear ON the design itself: "${post.text_on_visual}"`:""}
+${hasGenerated?"This is a REGENERATION — a previous version already exists; treat the note below as specific feedback/changes to make, not a fresh brief.":""}
+${genPrompt.trim()?`${hasGenerated?"Feedback / changes requested":"Additional notes from the teammate"}: "${genPrompt.trim()}"`:""}
+
+Return ONLY the final image-generation prompt itself — no markdown, no preamble, no quotes around it. Be specific about composition, color palette, and style, matching this client's established visual identity and tone of voice.`, 400);
+        finalPrompt = (brief||"").trim();
+      } catch(e) { /* fall through to the raw context below if Yahia's brief-writing call fails */ }
+      if(!finalPrompt) {
+        // Fallback if Yahia's own call failed — still usable, just less refined.
+        finalPrompt = `${post.title}. ${post.caption||""} ${post.text_on_visual?`Text on design: "${post.text_on_visual}"`:""} ${genPrompt.trim()}`.trim();
+      }
+      const apiSize = scale==="instagram_post" ? "1024x1536" : scale;
+      const r = await fetch(OPENAI_ENDPOINT+"?mode=image", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({model:"gpt-image-1", prompt:finalPrompt, size:apiSize, n:1}),
+      });
+      const d = await r.json();
+      const b64 = d.data?.[0]?.b64_json;
+      if(!r.ok || !b64) {
+        // Surface OpenAI's real error text (whatever shape it
+        // comes back in) instead of a flat generic message, so a
+        // failure is actually diagnosable instead of a dead end.
+        const raw = d.error?.message || (typeof d.error==="string" ? d.error : d.error ? JSON.stringify(d.error) : "") || d.message || JSON.stringify(d).slice(0,300);
+        throw new Error(`Image generation failed (HTTP ${r.status}): ${raw||"no details returned"}`);
+      }
+      // gpt-image-1 has no token usage to report — flat per-image
+      // estimate (1024x1024 standard quality) so it still shows up
+      // in the OpenAI Usage card instead of being invisible spend.
+      trackOpenAIUsage(null, "gpt-image-1", 0.04);
+      const byteChars = atob(b64);
+      const bytes = new Uint8Array(byteChars.length);
+      for(let i=0;i<byteChars.length;i++) bytes[i] = byteChars.charCodeAt(i);
+      // Instagram Post (4:5) has no matching raw size from the
+      // API — generated at the tallest available (2:3) then
+      // center-cropped down to a true 4:5 here, so the final
+      // asset actually matches Instagram's real feed-post ratio.
+      let finalBytes = bytes;
+      if(scale==="instagram_post") {
+        finalBytes = await new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => {
+            const targetRatio = 4/5;
+            const cropWidth = img.width;
+            const cropHeight = Math.round(cropWidth / targetRatio);
+            const cropTop = Math.max(0, Math.round((img.height - cropHeight) / 2));
+            const canvas = document.createElement("canvas");
+            canvas.width = cropWidth; canvas.height = Math.min(cropHeight, img.height);
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, cropTop, cropWidth, canvas.height, 0, 0, cropWidth, canvas.height);
+            canvas.toBlob(blob => { if(!blob) return reject(new Error("Crop failed")); blob.arrayBuffer().then(buf=>resolve(new Uint8Array(buf))); }, "image/png");
+          };
+          img.onerror = () => reject(new Error("Couldn't load generated image for cropping"));
+          img.src = `data:image/png;base64,${b64}`;
+        }).catch(()=>bytes); // fall back to the uncropped image rather than losing the generation entirely
+      }
+      const file = new File([finalBytes], `${renameForTask(post.title,"ai-generated.png","")}`, {type:"image/png"});
+      const url = await uploadToStorage(file, monthProjectFolder(project?.title, project?.client_name));
+      if(onAddAsset) onAddAsset({name:file.name, file_url:url, file_type:"image", category:monthProjectFolder(project?.title, project?.client_name), project_id:post.project_id, tags:["ai-generated"]}).catch(()=>{});
+      const newAssets = [...(post.design_assets||[]), {name:file.name, type:"image", url, uploaded_at:new Date().toISOString()}];
+      ue("Post", post.id, {design_assets: newAssets}).catch(()=>{});
+      onStageChange({...post, design_assets:newAssets}, post.stage);
+      setHasGenerated(true);
+    } catch(e) { setGenError(e.message||"Image generation failed"); }
+    setGenerating(false);
+  };
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:6,paddingTop:8,borderTop:"1px solid var(--border)"}}>
+      <p style={{fontSize:11,fontWeight:700,color:"var(--text2)"}}> Design with Yahia</p>
+      <div style={{display:"flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",width:"fit-content"}}>
+        {SCALES.map(s=>(
+          <button key={s.id} type="button" onClick={()=>setScale(s.id)} disabled={generating} style={{padding:"5px 12px",borderRadius:99,fontSize:11,fontWeight:700,border:"none",cursor:generating?"default":"pointer",background:scale===s.id?"var(--accent)":"none",color:scale===s.id?"#fff":"var(--text2)",whiteSpace:"nowrap"}}>
+            {s.label} <span style={{opacity:0.7,fontWeight:500}}>({s.hint})</span>
+          </button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:6}}>
+        <input value={genPrompt} onChange={e=>setGenPrompt(e.target.value)} placeholder={hasGenerated?"Anything to add or change before regenerating? (optional)":"Anything specific to add? Yahia already has the brief, caption & brand style (optional)"} disabled={generating}
+          style={{...inputSt,flex:1}} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();handleGenerate();}}}/>
+        <Btn onClick={handleGenerate} disabled={generating}>
+          {generating?<Spinner size={13}/>:<Ico d={Icons.sparkles||Icons.chart} size={14}/>} {generating?"Designing…":hasGenerated?"Regenerate":"Generate"}
+        </Btn>
+      </div>
+      {genError&&<p style={{fontSize:11,color:"#ef4444"}}>{genError}</p>}
+    </div>
+  );
+}
+
 // POST DETAIL MODAL
 // ════════════════════════════════════════════════════════════════
 function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onAddComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,onInsightsRefreshed,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[]}) {
@@ -5591,36 +5760,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
             )}
 
             {/* File picker — choose from assets or upload new */}
-            {(()=>{
-              const [showPicker, setShowPicker_] = useState(false);
-              return (
-                <>
-                  <button onClick={()=>setShowPicker_(true)}
-                    style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:14,background:"var(--surface)",borderRadius:"var(--rs)",border:"2px dashed #8b5cf644",cursor:"pointer",width:"100%"}}>
-                    <Ico d={Icons.plus} size={14} stroke="#8b5cf6"/>
-                    <span style={{fontSize:12,fontWeight:600,color:"#8b5cf6"}}>Add Photo / Video</span>
-                  </button>
-                  <AssetPickerModal open={showPicker} assets={assets} multiple onClose={()=>setShowPicker_(false)}
-                    onPick={async(picked)=>{
-                      const mapped = await Promise.all(picked.map(async(a,i)=>{
-                        // a.url = freshly uploaded via the picker's own "Upload New" button (not yet
-                        // in the assets table); a.file_url = picked from the existing asset library.
-                        // Both cases need saving here — previously only the "picked from library" case
-                        // called onAddAsset, so files uploaded straight from a post silently never
-                        // showed up on the Assets page.
-                        const isNewUpload = !!a.url;
-                        const fileUrl = a.url || a.file_url;
-                        const name = renameForTask(post.title, a.name, picked.length>1?String(i+1):"");
-                        if(onAddAsset) onAddAsset({name, file_url:fileUrl, file_type:a.file_type||"image", category:monthProjectFolder(project?.title, project?.client_name), project_id:post.project_id, tags:[]}).catch(()=>{});
-                        return isNewUpload ? {...a, name} : {name, type:a.file_type, url:a.file_url, uploaded_at:new Date().toISOString()};
-                      }));
-                      const newAssets = [...(post.design_assets||[]), ...mapped];
-                      ue("Post", post.id, {design_assets: newAssets}).catch(()=>{});
-                      onStageChange({...post, design_assets:newAssets}, post.stage);
-                    }}/>
-                </>
-              );
-            })()}
+            <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>
 
             <p style={{fontSize:11,color:"var(--text3)"}}> Choose from your existing assets or upload a new file.</p>
 
@@ -5633,132 +5773,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 openai-proxy.php (key stays server-side in config.php).
                 Generates straight into Design Assets, same shape as a
                 manually-uploaded/picked file. */}
-            {(()=>{
-              // The description is now optional — Yahia already has everything
-              // he needs to design without being asked twice: the post's own
-              // title/caption/hashtags/text-on-visual (the brief and TOV, in
-              // effect) plus this client's brand/design memory via
-              // clientBrainBlock (the same context Sara uses for captions).
-              // The input becomes a place for extra notes on first generation,
-              // and for edits/feedback before a Regenerate afterward — it's
-              // never cleared, so it's always right there to tweak and rerun.
-              const [genPrompt, setGenPrompt] = useState("");
-              const [generating, setGenerating] = useState(false);
-              const [genError, setGenError] = useState("");
-              const [hasGenerated, setHasGenerated] = useState(!!(post.design_assets||[]).some(a=>a.name?.includes("ai-generated")));
-              // gpt-image-1's three supported sizes — default picked from the
-              // post's own shape (Stories/Reels are vertical, everything else
-              // square) but always overridable before generating.
-              const [scale, setScale] = useState(["story","reel"].includes(post.post_type) ? "1024x1536" : "1024x1024");
-              // Instagram feed posts are 4:5 — gpt-image-1 has no native 4:5
-              // size (only these 3 raw ones), so "instagram_post" generates
-              // at the closest available (tall portrait) and gets center-
-              // cropped down to a true 4:5 client-side before upload, instead
-              // of quietly reusing the Story/Reel 9:16 size under a
-              // different label.
-              const SCALES = [
-                {id:"1024x1024", label:"Square", hint:"1:1"},
-                {id:"instagram_post", label:"Instagram Post", hint:"4:5"},
-                {id:"1024x1536", label:"Portrait", hint:"Story/Reel"},
-                {id:"1536x1024", label:"Landscape", hint:"Wide"},
-              ];
-              const handleGenerate = async () => {
-                setGenerating(true); setGenError("");
-                try {
-                  let finalPrompt = "";
-                  try {
-                    const brief = await agentAI("graphic_designer", `Design prompt: ${post.title}`, `You are Yahia, the team's AI Senior Graphic Designer. Write a single, detailed, ready-to-use image-generation prompt for an AI image model — grounded in this client's real brand/design history below, not a generic style. You already have everything you need from the task itself; don't wait for a separate brief.
-${clientBrainBlock(post.client_id, post.client_name)}
-
-Task: "${post.title}" — ${post.platform||"social"} ${post.post_type||"post"}
-${post.caption?`Caption: ${post.caption}`:""}
-${post.hashtags?`Hashtags: ${post.hashtags}`:""}
-${post.text_on_visual?`Text that must appear ON the design itself: "${post.text_on_visual}"`:""}
-${hasGenerated?"This is a REGENERATION — a previous version already exists; treat the note below as specific feedback/changes to make, not a fresh brief.":""}
-${genPrompt.trim()?`${hasGenerated?"Feedback / changes requested":"Additional notes from the teammate"}: "${genPrompt.trim()}"`:""}
-
-Return ONLY the final image-generation prompt itself — no markdown, no preamble, no quotes around it. Be specific about composition, color palette, and style, matching this client's established visual identity and tone of voice.`, 400);
-                    finalPrompt = (brief||"").trim();
-                  } catch(e) { /* fall through to the raw context below if Yahia's brief-writing call fails */ }
-                  if(!finalPrompt) {
-                    // Fallback if Yahia's own call failed — still usable, just less refined.
-                    finalPrompt = `${post.title}. ${post.caption||""} ${post.text_on_visual?`Text on design: "${post.text_on_visual}"`:""} ${genPrompt.trim()}`.trim();
-                  }
-                  const apiSize = scale==="instagram_post" ? "1024x1536" : scale;
-                  const r = await fetch(OPENAI_ENDPOINT+"?mode=image", {
-                    method:"POST", headers:{"Content-Type":"application/json"},
-                    body: JSON.stringify({model:"gpt-image-1", prompt:finalPrompt, size:apiSize, n:1}),
-                  });
-                  const d = await r.json();
-                  const b64 = d.data?.[0]?.b64_json;
-                  if(!r.ok || !b64) {
-                    // Surface OpenAI's real error text (whatever shape it
-                    // comes back in) instead of a flat generic message, so a
-                    // failure is actually diagnosable instead of a dead end.
-                    const raw = d.error?.message || (typeof d.error==="string" ? d.error : d.error ? JSON.stringify(d.error) : "") || d.message || JSON.stringify(d).slice(0,300);
-                    throw new Error(`Image generation failed (HTTP ${r.status}): ${raw||"no details returned"}`);
-                  }
-                  // gpt-image-1 has no token usage to report — flat per-image
-                  // estimate (1024x1024 standard quality) so it still shows up
-                  // in the OpenAI Usage card instead of being invisible spend.
-                  trackOpenAIUsage(null, "gpt-image-1", 0.04);
-                  const byteChars = atob(b64);
-                  const bytes = new Uint8Array(byteChars.length);
-                  for(let i=0;i<byteChars.length;i++) bytes[i] = byteChars.charCodeAt(i);
-                  // Instagram Post (4:5) has no matching raw size from the
-                  // API — generated at the tallest available (2:3) then
-                  // center-cropped down to a true 4:5 here, so the final
-                  // asset actually matches Instagram's real feed-post ratio.
-                  let finalBytes = bytes;
-                  if(scale==="instagram_post") {
-                    finalBytes = await new Promise((resolve, reject) => {
-                      const img = new Image();
-                      img.onload = () => {
-                        const targetRatio = 4/5;
-                        const cropWidth = img.width;
-                        const cropHeight = Math.round(cropWidth / targetRatio);
-                        const cropTop = Math.max(0, Math.round((img.height - cropHeight) / 2));
-                        const canvas = document.createElement("canvas");
-                        canvas.width = cropWidth; canvas.height = Math.min(cropHeight, img.height);
-                        const ctx = canvas.getContext("2d");
-                        ctx.drawImage(img, 0, cropTop, cropWidth, canvas.height, 0, 0, cropWidth, canvas.height);
-                        canvas.toBlob(blob => { if(!blob) return reject(new Error("Crop failed")); blob.arrayBuffer().then(buf=>resolve(new Uint8Array(buf))); }, "image/png");
-                      };
-                      img.onerror = () => reject(new Error("Couldn't load generated image for cropping"));
-                      img.src = `data:image/png;base64,${b64}`;
-                    }).catch(()=>bytes); // fall back to the uncropped image rather than losing the generation entirely
-                  }
-                  const file = new File([finalBytes], `${renameForTask(post.title,"ai-generated.png","")}`, {type:"image/png"});
-                  const url = await uploadToStorage(file, monthProjectFolder(project?.title, project?.client_name));
-                  if(onAddAsset) onAddAsset({name:file.name, file_url:url, file_type:"image", category:monthProjectFolder(project?.title, project?.client_name), project_id:post.project_id, tags:["ai-generated"]}).catch(()=>{});
-                  const newAssets = [...(post.design_assets||[]), {name:file.name, type:"image", url, uploaded_at:new Date().toISOString()}];
-                  ue("Post", post.id, {design_assets: newAssets}).catch(()=>{});
-                  onStageChange({...post, design_assets:newAssets}, post.stage);
-                  setHasGenerated(true);
-                } catch(e) { setGenError(e.message||"Image generation failed"); }
-                setGenerating(false);
-              };
-              return (
-                <div style={{display:"flex",flexDirection:"column",gap:6,paddingTop:8,borderTop:"1px solid var(--border)"}}>
-                  <p style={{fontSize:11,fontWeight:700,color:"var(--text2)"}}> Design with Yahia</p>
-                  <div style={{display:"flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",width:"fit-content"}}>
-                    {SCALES.map(s=>(
-                      <button key={s.id} type="button" onClick={()=>setScale(s.id)} disabled={generating} style={{padding:"5px 12px",borderRadius:99,fontSize:11,fontWeight:700,border:"none",cursor:generating?"default":"pointer",background:scale===s.id?"var(--accent)":"none",color:scale===s.id?"#fff":"var(--text2)",whiteSpace:"nowrap"}}>
-                        {s.label} <span style={{opacity:0.7,fontWeight:500}}>({s.hint})</span>
-                      </button>
-                    ))}
-                  </div>
-                  <div style={{display:"flex",gap:6}}>
-                    <input value={genPrompt} onChange={e=>setGenPrompt(e.target.value)} placeholder={hasGenerated?"Anything to add or change before regenerating? (optional)":"Anything specific to add? Yahia already has the brief, caption & brand style (optional)"} disabled={generating}
-                      style={{...inputSt,flex:1}} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();handleGenerate();}}}/>
-                    <Btn onClick={handleGenerate} disabled={generating}>
-                      {generating?<Spinner size={13}/>:<Ico d={Icons.sparkles||Icons.chart} size={14}/>} {generating?"Designing…":hasGenerated?"Regenerate":"Generate"}
-                    </Btn>
-                  </div>
-                  {genError&&<p style={{fontSize:11,color:"#ef4444"}}>{genError}</p>}
-                </div>
-              );
-            })()}
+            <DesignAIGenerator post={post} project={project} onAddAsset={onAddAsset} onStageChange={onStageChange}/>
           </div>
         )}
 
