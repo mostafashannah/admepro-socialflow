@@ -877,6 +877,31 @@ async function de(entityName, id) {
 const AI_ENDPOINT = window.location.origin + "/ai-proxy.php";
 const OPENAI_ENDPOINT = window.location.origin + "/openai-proxy.php";
 const FREEPIK_ENDPOINT = window.location.origin + "/freepik-proxy.php";
+
+// Freepik's AI endpoints (text-to-image models, image/text-to-video models,
+// the upscaler) all share one async shape: POST creates a task, then GET
+// polls it until status is COMPLETED and a "generated" array of URLs shows
+// up. One helper drives all of them via freepik-proxy.php's generic
+// ?mode=create/?mode=status passthrough.
+async function freepikGenerate(endpoint, payload, {pollMs=3000, maxPolls=60} = {}) {
+  const startRes = await fetch(FREEPIK_ENDPOINT+"?mode=create", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({endpoint, payload}),
+  });
+  const startData = await startRes.json();
+  const taskId = startData.data?.task_id || startData.task_id;
+  if(!startRes.ok || !taskId) throw new Error(startData.message || startData.error?.message || JSON.stringify(startData).slice(0,300));
+  for(let i=0;i<maxPolls;i++) {
+    await new Promise(r=>setTimeout(r,pollMs));
+    const pollRes = await fetch(FREEPIK_ENDPOINT+`?mode=status&endpoint=${encodeURIComponent(endpoint)}&task_id=${encodeURIComponent(taskId)}`);
+    const pollData = await pollRes.json();
+    const d = pollData.data || pollData;
+    const st = (d.status||"").toUpperCase();
+    if(st==="COMPLETED") return (d.generated||[])[0];
+    if(st==="FAILED") throw new Error("Generation task failed");
+  }
+  throw new Error("Generation timed out — please try again");
+}
 const MAIL_ENDPOINT = window.location.origin + "/mail.php";
 const CAREERS_MAIL_ENDPOINT = window.location.origin + "/careers-mail.php";
 const RECRUITMENT_MAILBOX_ENDPOINT = window.location.origin + "/recruitment-mailbox.php";
@@ -12251,11 +12276,22 @@ const IMAGE_CONTENT_TYPES = [
   {id:"storyboard", label:"Storyboard", hint:"frame-by-frame visual story"},
 ];
 
+// Image models available in the generator — OpenAI's gpt-image-1 (existing,
+// supports reference-image edits) plus a few of Freepik's models, all
+// driven through freepikGenerate()'s generic async task helper.
+const IMAGE_MODELS = [
+  {id:"gpt-image-1", label:"GPT Image 1", provider:"openai", hint:"OpenAI · supports reference images"},
+  {id:"mystic", label:"Mystic", provider:"freepik", endpoint:"mystic", hint:"Freepik · ultra-realistic, up to 4K"},
+  {id:"seedream-v4", label:"Seedream v4", provider:"freepik", endpoint:"text-to-image/seedream-v4", hint:"Freepik · strong typography/posters"},
+  {id:"flux-pro-v1-1", label:"Flux Pro", provider:"freepik", endpoint:"text-to-image/flux-pro-v1-1", hint:"Freepik · premium quality"},
+];
+
 function ImageGeneratorPage({clients=[], projects=[], onAddAsset}) {
   const [clientId, setClientId] = useState("");
   const [prompt, setPrompt] = useState("");
   const [scale, setScale] = useState("1024x1024");
   const [count, setCount] = useState(1);
+  const [model, setModel] = useState("gpt-image-1");
   const [contentType, setContentType] = useState("image");
   const [loading, setLoading] = useState(false);
   const [enhancing, setEnhancing] = useState(false);
@@ -12310,7 +12346,15 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
     setEnhancing(false);
   };
 
+  const FREEPIK_ASPECT = {"1024x1024":"square_1_1", "1024x1536":"social_story_9_16", "1536x1024":"widescreen_16_9"};
+
   const generateOne = async (finalPrompt) => {
+    const modelDef = IMAGE_MODELS.find(m=>m.id===model) || IMAGE_MODELS[0];
+    if(modelDef.provider==="freepik") {
+      const url = await freepikGenerate(modelDef.endpoint, {prompt: finalPrompt, aspect_ratio: FREEPIK_ASPECT[scale]||"square_1_1"});
+      if(!url) throw new Error("Image generation failed — no image returned");
+      return url;
+    }
     if(refImages.length) {
       const fd = new FormData();
       fd.append("model", "gpt-image-1");
@@ -12426,23 +12470,7 @@ Return ONLY a JSON array of ${count} strings, one prompt per slide, no markdown,
         reader.onerror = reject;
         reader.readAsDataURL(blob);
       });
-      const startRes = await fetch(FREEPIK_ENDPOINT+"?mode=upscale", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({image:b64, scale_factor:scaleFactor}),
-      });
-      const startData = await startRes.json();
-      const taskId = startData.data?.task_id || startData.task_id;
-      if(!startRes.ok || !taskId) throw new Error(startData.error?.message || startData.message || "Couldn't start upscale task");
-
-      let resultUrl = null;
-      for(let i=0;i<40;i++) {
-        await new Promise(r=>setTimeout(r,3000));
-        const pollRes = await fetch(FREEPIK_ENDPOINT+`?mode=upscale_status&task_id=${encodeURIComponent(taskId)}`);
-        const pollData = await pollRes.json();
-        const d = pollData.data || pollData;
-        if(d.status==="COMPLETED" || d.status==="completed") { resultUrl = (d.generated||[])[0]; break; }
-        if(d.status==="FAILED" || d.status==="failed") throw new Error("Upscale task failed");
-      }
+      const resultUrl = await freepikGenerate("image-upscaler", {image:b64, scale_factor:scaleFactor});
       if(!resultUrl) throw new Error("Upscale timed out — please try again");
       setHistory(h=>h.map(x=>x.id===item.id?{...x,url:resultUrl,upscaling:false,upscaledTo:scaleFactor}:x));
     } catch(e) {
@@ -12457,8 +12485,14 @@ Return ONLY a JSON array of ${count} strings, one prompt per slide, no markdown,
       <div style={{width:300,flexShrink:0,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:18,display:"flex",flexDirection:"column",gap:16,overflowY:"auto"}}>
         <div>
           <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:18,fontWeight:800,display:"flex",alignItems:"center",gap:8}}><Ico d={Icons.sparkle} size={16} stroke="var(--accent)"/> Image Generator</h2>
-          <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Powered by gpt-image-1</p>
+          <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>{IMAGE_MODELS.find(m=>m.id===model)?.hint}</p>
         </div>
+
+        <Field label="Model">
+          <select value={model} onChange={e=>setModel(e.target.value)} style={{...inputSt,fontSize:13}}>
+            {IMAGE_MODELS.map(m=><option key={m.id} value={m.id}>{m.label}</option>)}
+          </select>
+        </Field>
 
         <Field label="Client (optional — for on-brand generation)">
           <select value={clientId} onChange={e=>setClientId(e.target.value)} style={{...inputSt,fontSize:13}}>
@@ -12479,7 +12513,7 @@ Return ONLY a JSON array of ${count} strings, one prompt per slide, no markdown,
           </div>
         </div>
 
-        <div>
+        {model==="gpt-image-1"&&<div>
           <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Reference Images (optional)</p>
           <p style={{fontSize:10,color:"var(--text3)",marginBottom:8}}>Style, character, or product shots to keep consistent — up to 6.</p>
           <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
@@ -12498,7 +12532,7 @@ Return ONLY a JSON array of ${count} strings, one prompt per slide, no markdown,
             )}
             <input ref={refInputRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={handleAddRefImages}/>
           </div>
-        </div>
+        </div>}
 
         <div>
           <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Aspect Ratio</p>
@@ -12595,6 +12629,189 @@ Return ONLY a JSON array of ${count} strings, one prompt per slide, no markdown,
           <img src={preview.url} alt={preview.prompt} style={{maxWidth:"90vw",maxHeight:"90vh",borderRadius:8,objectFit:"contain"}}/>
         </div>
       )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// VIDEO GENERATOR — text/image-to-video via Freepik's API (Kling, MiniMax)
+// ════════════════════════════════════════════════════════════════
+const VIDEO_MODELS = [
+  {id:"kling-v2-1-std", label:"Kling 2.1 Standard", endpoint:"image-to-video/kling-v2-1-std", requiresImage:true, durations:[5,10], hint:"Image-to-video · smooth, cinematic motion"},
+  {id:"minimax-hailuo-02-768p", label:"MiniMax Hailuo 768p", endpoint:"image-to-video/minimax-hailuo-02-768p", requiresImage:false, durations:[6,10], hint:"Text or image-to-video · fast, 768p"},
+];
+
+function VideoGeneratorPage({clients=[], projects=[], onAddAsset}) {
+  const [clientId, setClientId] = useState("");
+  const [model, setModel] = useState(VIDEO_MODELS[0].id);
+  const [prompt, setPrompt] = useState("");
+  const [duration, setDuration] = useState(VIDEO_MODELS[0].durations[0]);
+  const [sourceImage, setSourceImage] = useState(null); // {file,url}
+  const [loading, setLoading] = useState(false);
+  const [enhancing, setEnhancing] = useState(false);
+  const [error, setError] = useState("");
+  const [history, setHistory] = usePersistentState("sf_video_gen_history", []);
+  const imgInputRef = useRef(null);
+  const client = clients.find(c=>c.id===clientId) || null;
+  const modelDef = VIDEO_MODELS.find(m=>m.id===model) || VIDEO_MODELS[0];
+
+  const handlePickImage = (e) => {
+    const file = e.target.files?.[0];
+    if(!file) return;
+    setSourceImage({file, url:URL.createObjectURL(file)});
+    e.target.value = "";
+  };
+
+  const enhancePrompt = async () => {
+    if(!prompt.trim()||enhancing) return;
+    setEnhancing(true); setError("");
+    try {
+      const brandBlock = client ? clientBrainBlock(client.id, client.name) : "";
+      const brief = await agentAI("graphic_designer", `Video prompt enhancement${client?`: ${client.name}`:""}`, `You are Yahia, the team's AI Senior Graphic Designer. Rewrite the user's rough idea below into a single, detailed, ready-to-use video-generation prompt (describe motion, camera movement, pacing, and mood — not just a static scene).${client?" Ground it in this client's real brand/visual history.":""}
+${brandBlock}
+
+User's idea: "${prompt.trim()}"
+
+Return ONLY the final video-generation prompt itself — no markdown, no preamble, no quotes.`, 300);
+      if((brief||"").trim()) setPrompt(brief.trim());
+    } catch(e) { setError("Prompt enhancement failed: "+e.message); }
+    setEnhancing(false);
+  };
+
+  const handleGenerate = async () => {
+    if(!prompt.trim() && !sourceImage) return;
+    if(modelDef.requiresImage && !sourceImage) { setError(`${modelDef.label} needs a source image.`); return; }
+    setLoading(true); setError("");
+    try {
+      const payload = {prompt: prompt.trim(), duration};
+      if(sourceImage) {
+        const b64 = await new Promise((resolve,reject)=>{
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result.split(",")[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(sourceImage.file);
+        });
+        payload.image = b64;
+      }
+      const url = await freepikGenerate(modelDef.endpoint, payload, {pollMs:5000, maxPolls:90});
+      if(!url) throw new Error("Video generation failed — no video returned");
+      setHistory(h=>[{id:uid(), url, prompt:prompt.trim(), model:modelDef.label, client:client?.name||"", saved:false}, ...h].slice(0,40));
+    } catch(e) { setError(e.message||"Video generation failed — please try again."); }
+    setLoading(false);
+  };
+
+  const handleSaveToAssets = async (item) => {
+    if(!onAddAsset) return;
+    setHistory(h=>h.map(x=>x.id===item.id?{...x,saving:true}:x));
+    try {
+      const res = await fetch(item.url);
+      const blob = await res.blob();
+      const file = new File([blob], `ai-video-${Date.now()}.mp4`, {type:"video/mp4"});
+      const c = clients.find(cl=>cl.name===item.client) || null;
+      const clientProject = c ? projects.find(p=>p.client_id===c.id) : null;
+      const url = await uploadToStorage(file, monthProjectFolder(clientProject?.title, c?.name));
+      await onAddAsset({name:file.name, file_url:url, file_type:"video", category:monthProjectFolder(clientProject?.title, c?.name), project_id:clientProject?.id||"", tags:["ai-generated"], file_size:file.size});
+      setHistory(h=>h.map(x=>x.id===item.id?{...x,saving:false,saved:true}:x));
+    } catch(e) {
+      setError("Couldn't save to Assets: "+e.message);
+      setHistory(h=>h.map(x=>x.id===item.id?{...x,saving:false}:x));
+    }
+  };
+
+  return (
+    <div style={{display:"flex",gap:20,height:"calc(100vh - 140px)",minHeight:500}} className="fade-in">
+      <div style={{width:300,flexShrink:0,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:18,display:"flex",flexDirection:"column",gap:16,overflowY:"auto"}}>
+        <div>
+          <h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:18,fontWeight:800,display:"flex",alignItems:"center",gap:8}}><Ico d={Icons.sparkle} size={16} stroke="var(--accent)"/> Video Generator</h2>
+          <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>{modelDef.hint}</p>
+        </div>
+
+        <Field label="Model">
+          <select value={model} onChange={e=>{setModel(e.target.value); const nd=VIDEO_MODELS.find(m=>m.id===e.target.value); setDuration(nd.durations[0]);}} style={{...inputSt,fontSize:13}}>
+            {VIDEO_MODELS.map(m=><option key={m.id} value={m.id}>{m.label}</option>)}
+          </select>
+        </Field>
+
+        <Field label="Client (optional — for on-brand generation)">
+          <select value={clientId} onChange={e=>setClientId(e.target.value)} style={{...inputSt,fontSize:13}}>
+            <option value="">— Generic, no client brand —</option>
+            {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </Field>
+
+        <div>
+          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Source Image {modelDef.requiresImage?"(required)":"(optional)"}</p>
+          {sourceImage ? (
+            <div style={{position:"relative",width:80,height:80,borderRadius:8,overflow:"hidden",border:"1px solid var(--border2)"}}>
+              <img src={sourceImage.url} alt="source" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+              <button type="button" onClick={()=>setSourceImage(null)} style={{position:"absolute",top:2,right:2,width:18,height:18,borderRadius:"50%",background:"rgba(0,0,0,0.65)",border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                <Ico d={Icons.x} size={10} stroke="#fff"/>
+              </button>
+            </div>
+          ) : (
+            <button type="button" onClick={()=>imgInputRef.current?.click()} disabled={loading} style={{width:80,height:80,borderRadius:8,border:"1.5px dashed var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:loading?"default":"pointer",color:"var(--text3)"}}>
+              <Ico d={Icons.upload} size={18} stroke="var(--text3)"/>
+            </button>
+          )}
+          <input ref={imgInputRef} type="file" accept="image/*" style={{display:"none"}} onChange={handlePickImage}/>
+        </div>
+
+        <div>
+          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:8}}>Duration</p>
+          <div style={{display:"flex",gap:6}}>
+            {modelDef.durations.map(d=>(
+              <button key={d} type="button" onClick={()=>setDuration(d)} disabled={loading} style={{flex:1,padding:"8px 0",borderRadius:8,fontSize:12,fontWeight:700,border:`1.5px solid ${duration===d?"var(--accent)":"var(--border2)"}`,cursor:loading?"default":"pointer",background:duration===d?"var(--accentbg,var(--surface2))":"var(--surface2)",color:duration===d?"var(--accent)":"var(--text2)"}}>{d}s</button>
+            ))}
+          </div>
+        </div>
+
+        <Field label={<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%"}}><span>Prompt</span>
+          <button type="button" onClick={enhancePrompt} disabled={enhancing||loading||!prompt.trim()} title="Rewrite this into a detailed video prompt with Yahia" style={{display:"flex",alignItems:"center",gap:4,padding:"2px 8px",borderRadius:99,border:"1px solid var(--accent)44",background:"var(--accent)11",color:"var(--accent)",fontSize:10,fontWeight:700,cursor:enhancing||loading||!prompt.trim()?"default":"pointer"}}>
+            {enhancing?<Spinner size={10}/>:<Ico d={Icons.sparkle} size={10} stroke="var(--accent)"/>} Enhance with Yahia
+          </button></div>}>
+          <textarea value={prompt} onChange={e=>setPrompt(e.target.value)} rows={5}
+            placeholder="Describe the motion — e.g. slow push-in on the product, soft studio lighting, subtle steam rising…"
+            style={{...inputSt,lineHeight:1.6,fontSize:13,resize:"vertical"}}/>
+        </Field>
+
+        <Btn onClick={handleGenerate} disabled={loading||(!prompt.trim()&&!sourceImage)} style={{marginTop:"auto"}}>
+          {loading?<><Spinner size={14}/> Generating… (can take a few minutes)</>:<><Ico d={Icons.sparkle} size={14}/> Generate</>}
+        </Btn>
+        {error&&<p style={{fontSize:11,color:"#ef4444"}}>{error}</p>}
+      </div>
+
+      <div style={{flex:1,overflowY:"auto",minWidth:0}}>
+        {history.length===0 ? (
+          <div style={{height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",color:"var(--text3)",gap:10}}>
+            <Ico d={Icons.sparkle} size={36} stroke="var(--text3)"/>
+            <p style={{fontSize:13}}>Your generated videos will show up here</p>
+          </div>
+        ) : (
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
+            {history.map(item=>(
+              <div key={item.id} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden",display:"flex",flexDirection:"column"}} className="fade-in">
+                <video src={item.url} controls style={{width:"100%",display:"block",background:"#000",aspectRatio:"16/9"}}/>
+                <div style={{padding:"8px 10px",display:"flex",flexDirection:"column",gap:6}}>
+                  <p style={{fontSize:11,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={item.prompt}>{item.prompt||item.model}</p>
+                  <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                    <a href={item.url} download="ai-video.mp4" title="Download" style={{width:26,height:26,borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      <Ico d={Icons.download||Icons.upload} size={12} stroke="var(--text2)"/>
+                    </a>
+                    {onAddAsset&&(
+                      <button onClick={()=>handleSaveToAssets(item)} disabled={item.saving||item.saved} style={{flex:1,height:26,borderRadius:6,border:"1px solid var(--border2)",background:item.saved?"#10b98122":"var(--surface2)",color:item.saved?"#10b981":"var(--text2)",fontSize:10,fontWeight:700,cursor:item.saving||item.saved?"default":"pointer"}}>
+                        {item.saving?<Spinner size={11}/>:item.saved?"Saved":"Save to Assets"}
+                      </button>
+                    )}
+                    <button onClick={()=>setHistory(h=>h.filter(x=>x.id!==item.id))} title="Remove" style={{width:26,height:26,borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                      <Ico d={Icons.trash} size={12} stroke="#ef4444"/>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -35518,6 +35735,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
       ...(canAgency?[
         {key:"assets", label:"Assets", ico:Icons.assets},
         {key:"image_generator", label:"Image Generator", ico:Icons.sparkle},
+        {key:"video_generator", label:"Video Generator", ico:Icons.sparkle},
       ]:[]),
       ...(isAdmin?[
         // "Agents" page hidden for now — the agent crew is managed from
@@ -44299,6 +44517,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         {page==="calendar"&&<div className="fade-in"><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800,marginBottom:24}}>Content Calendar</h2><CalendarView posts={data.posts} onPostClick={setSelectedPost}/></div>}
         {page==="assets"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"assets.manage"))&&<AssetsPage assets={data.assets} projects={data.projects} clients={data.clients} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} currentUser={currentUser}/>}
         {page==="image_generator"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"assets.manage"))&&<ImageGeneratorPage clients={data.clients} projects={data.projects} onAddAsset={addAsset}/>}
+        {page==="video_generator"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"assets.manage"))&&<VideoGeneratorPage clients={data.clients} projects={data.projects} onAddAsset={addAsset}/>}
         {page==="templates"&&<TemplatesPage templates={data.templates}/>}
         {page==="quotes"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"finance.quotes")||hasPerm(currentUser,rolePermsMap,"finance.full"))&&(
           <QuotesPage
