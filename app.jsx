@@ -8940,7 +8940,11 @@ No markdown, no explanation.`;
               )}
             </div>
 
-            {/* Quick pipeline — top 3 active stages only */}
+            {/* Quick pipeline — managers only. Individual contributors (designers,
+                content creators, etc.) get a role-relevant card instead — the
+                cross-team pipeline breakdown isn't actionable for them, and the
+                same is true of the AI insights strip further below. */}
+            {isManager ? (
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
               <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                 <h3 style={{fontWeight:700,fontSize:14}}>Pipeline</h3>
@@ -8949,23 +8953,47 @@ No markdown, no explanation.`;
                 </button>
               </div>
               <div style={{padding:"12px 16px",display:"flex",flexDirection:"column",gap:8}}>
-                {STAGES.filter(s=>(isManager?filteredPosts:myPosts).some(p=>p.stage===s.key)).slice(0,5).map(s=>{
-                  const pool=isManager?filteredPosts:myPosts;
-                  const cnt=pool.filter(p=>p.stage===s.key).length;
+                {STAGES.filter(s=>filteredPosts.some(p=>p.stage===s.key)).slice(0,5).map(s=>{
+                  const cnt=filteredPosts.filter(p=>p.stage===s.key).length;
                   return (
                     <div key={s.key} style={{display:"flex",alignItems:"center",gap:10}}>
                       <div style={{width:7,height:7,borderRadius:"50%",background:s.color,flexShrink:0}}/>
                       <span style={{fontSize:12,color:"var(--text2)",width:100,flexShrink:0}}>{s.label}</span>
-                      <div style={{flex:1}}><ProgressBar value={cnt} max={Math.max(pool.length,1)} color={s.color} height={5}/></div>
+                      <div style={{flex:1}}><ProgressBar value={cnt} max={Math.max(filteredPosts.length,1)} color={s.color} height={5}/></div>
                       <span style={{fontSize:11,fontWeight:700,color:s.color,width:18,textAlign:"right"}}>{cnt}</span>
                     </div>
                   );
                 })}
-                {STAGES.every(s=>!(isManager?filteredPosts:myPosts).some(p=>p.stage===s.key))&&(
+                {STAGES.every(s=>!filteredPosts.some(p=>p.stage===s.key))&&(
                   <p style={{fontSize:12,color:"var(--text3)",textAlign:"center",padding:"8px 0"}}>No active posts</p>
                 )}
               </div>
             </div>
+            ) : currentUser?.role==="graphic_designer" ? (
+              <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+                <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
+                  <h3 style={{fontWeight:700,fontSize:14}}>Design Shortcuts</h3>
+                </div>
+                <div style={{padding:12,display:"flex",flexDirection:"column",gap:8}}>
+                  {[
+                    {label:"Design queue", sub:`${myPosts.filter(p=>p.stage==="design").length} in Design`, page:"my_tasks", icon:Icons.tasks},
+                    {label:"Clients & Brand Guidelines", sub:"On-brand references per client", page:"clients", icon:Icons.clients},
+                    {label:"Image Generator", sub:"gpt-image-1 / Freepik / Magnific", page:"image_generator", icon:Icons.sparkle},
+                    {label:"Video Generator", sub:"Kling / MiniMax", page:"video_generator", icon:Icons.sparkle},
+                    {label:"Assets Library", sub:"Browse & upload brand files", page:"assets", icon:Icons.assets},
+                  ].map(item=>(
+                    <button key={item.page} onClick={()=>setPage(item.page)} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:"var(--rs)",border:"1px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",textAlign:"left"}}>
+                      <Ico d={item.icon} size={15} stroke="var(--accent)"/>
+                      <div style={{flex:1,minWidth:0}}>
+                        <p style={{fontSize:12,fontWeight:700}}>{item.label}</p>
+                        <p style={{fontSize:10,color:"var(--text3)"}}>{item.sub}</p>
+                      </div>
+                      <Ico d={Icons.chevR} size={12} stroke="var(--text3)"/>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             {/* Notifications */}
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
@@ -9002,8 +9030,10 @@ No markdown, no explanation.`;
             </div>
           </div>
 
-          {/* Quick insights strip */}
-          {insights.slice(0,3).length>0&&(
+          {/* Quick insights strip — team-wide bottleneck/performance AI
+              insights, only actionable for managers, not individual
+              contributors like designers or content creators. */}
+          {isManager&&insights.slice(0,3).length>0&&(
             <div className="grid-3" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10}}>
               {insights.slice(0,3).map((ins,i)=>{
                 const c=INSIGHT_COLORS[ins.category]||"#6b7280";
