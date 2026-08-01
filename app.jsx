@@ -876,6 +876,7 @@ async function de(entityName, id) {
 // ── AI endpoint — always use proxy on server ──
 const AI_ENDPOINT = window.location.origin + "/ai-proxy.php";
 const OPENAI_ENDPOINT = window.location.origin + "/openai-proxy.php";
+const FREEPIK_ENDPOINT = window.location.origin + "/freepik-proxy.php";
 const MAIL_ENDPOINT = window.location.origin + "/mail.php";
 const CAREERS_MAIL_ENDPOINT = window.location.origin + "/careers-mail.php";
 const RECRUITMENT_MAILBOX_ENDPOINT = window.location.origin + "/recruitment-mailbox.php";
@@ -12412,6 +12413,44 @@ Return ONLY a JSON array of ${count} strings, one prompt per slide, no markdown,
     if(item.client) { const c = clients.find(cl=>cl.name===item.client); if(c) setClientId(c.id); }
   };
 
+  // Upscale via Freepik/Magnific: fetch the image, base64-encode it, kick
+  // off an async task, then poll until it finishes and swap in the result.
+  const handleUpscale = async (item, scaleFactor) => {
+    setHistory(h=>h.map(x=>x.id===item.id?{...x,upscaling:true}:x));
+    try {
+      const res = await fetch(item.url);
+      const blob = await res.blob();
+      const b64 = await new Promise((resolve,reject)=>{
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      const startRes = await fetch(FREEPIK_ENDPOINT+"?mode=upscale", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({image:b64, scale_factor:scaleFactor}),
+      });
+      const startData = await startRes.json();
+      const taskId = startData.data?.task_id || startData.task_id;
+      if(!startRes.ok || !taskId) throw new Error(startData.error?.message || startData.message || "Couldn't start upscale task");
+
+      let resultUrl = null;
+      for(let i=0;i<40;i++) {
+        await new Promise(r=>setTimeout(r,3000));
+        const pollRes = await fetch(FREEPIK_ENDPOINT+`?mode=upscale_status&task_id=${encodeURIComponent(taskId)}`);
+        const pollData = await pollRes.json();
+        const d = pollData.data || pollData;
+        if(d.status==="COMPLETED" || d.status==="completed") { resultUrl = (d.generated||[])[0]; break; }
+        if(d.status==="FAILED" || d.status==="failed") throw new Error("Upscale task failed");
+      }
+      if(!resultUrl) throw new Error("Upscale timed out — please try again");
+      setHistory(h=>h.map(x=>x.id===item.id?{...x,url:resultUrl,upscaling:false,upscaledTo:scaleFactor}:x));
+    } catch(e) {
+      setError("Upscale failed: "+e.message);
+      setHistory(h=>h.map(x=>x.id===item.id?{...x,upscaling:false}:x));
+    }
+  };
+
   return (
     <div style={{display:"flex",gap:20,height:"calc(100vh - 140px)",minHeight:500}} className="fade-in">
       {/* ── LEFT: controls panel ── */}
@@ -12533,6 +12572,17 @@ Return ONLY a JSON array of ${count} strings, one prompt per slide, no markdown,
                       <Ico d={Icons.trash} size={12} stroke="#ef4444"/>
                     </button>
                   </div>
+                  {item.upscaledTo ? (
+                    <p style={{fontSize:10,color:"#10b981",fontWeight:700}}>Upscaled {item.upscaledTo}</p>
+                  ) : (
+                    <div style={{display:"flex",gap:6}}>
+                      {["2x","4x"].map(sf=>(
+                        <button key={sf} onClick={()=>handleUpscale(item,sf)} disabled={item.upscaling} style={{flex:1,height:24,borderRadius:6,border:"1px solid var(--accent)44",background:"var(--accent)11",color:"var(--accent)",fontSize:10,fontWeight:700,cursor:item.upscaling?"default":"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+                          {item.upscaling?<Spinner size={10}/>:<><Ico d={Icons.sparkle} size={10} stroke="var(--accent)"/> Upscale {sf}</>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
