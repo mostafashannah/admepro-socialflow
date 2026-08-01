@@ -405,6 +405,20 @@ const DEFAULT_PRIORITY_MULT = {urgent:1.5, high:1.2, medium:1.0, low:0.8};
 function getDurationCfg(){
   try { return window.__SF_DURATION_CFG||{}; } catch(e){ return {}; }
 }
+// Auto due-date suggestion by priority: low → 5 working days out, medium →
+// 3, high → tomorrow, urgent → today (even same-day). Skips weekends
+// (defaults to Fri/Sat, matching the company's default attendance rule)
+// since this is used from spots that don't have appSettings threaded in.
+const PRIORITY_DUE_WORKDAYS = {urgent:0, high:1, medium:3, low:5};
+function autoDueDateByPriority(priority) {
+  const days = PRIORITY_DUE_WORKDAYS[priority] ?? PRIORITY_DUE_WORKDAYS.medium;
+  const d = days===0 ? new Date() : addWorkingDays(new Date(), days);
+  const pad = n => String(n).padStart(2,"0");
+  return {
+    date: `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`,
+    time: "17:00",
+  };
+}
 function estimateDuration(post) {
   // An explicit estimate set on the task always wins — the guess below (by
   // whichever of the three methods is configured) is only a fallback for
@@ -6166,7 +6180,16 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
             <button onClick={()=>setAssignForm(f=>({...f,mode:"range"}))} style={{flex:1,padding:"8px",borderRadius:8,fontSize:12,fontWeight:700,border:`1px solid ${assignForm.mode==="range"?"var(--accent)":"var(--border2)"}`,background:assignForm.mode==="range"?"var(--accent)22":"var(--surface2)",color:assignForm.mode==="range"?"var(--accent)":"var(--text2)"}}>Start & end time</button>
           </div>
           <div>
-            <label style={{fontSize:12,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:6}}>Date</label>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+              <label style={{fontSize:12,fontWeight:600,color:"var(--text3)"}}>Date</label>
+              <button type="button" onClick={()=>{
+                const auto = autoDueDateByPriority(post.priority);
+                setAssignForm(f=>({...f, mode:"due", scheduled_date:auto.date, scheduled_time:auto.time}));
+              }} title={`Suggests a due date based on this task's "${post.priority||"medium"}" priority`}
+                style={{display:"flex",alignItems:"center",gap:4,padding:"2px 8px",borderRadius:99,border:"1px solid var(--accent)44",background:"var(--accent)11",color:"var(--accent)",fontSize:10,fontWeight:700,cursor:"pointer"}}>
+                <Ico d={Icons.sparkle} size={10} stroke="var(--accent)"/> Auto (by priority)
+              </button>
+            </div>
             <input type="date" value={assignForm.scheduled_date} onChange={e=>setAssignForm(f=>({...f,scheduled_date:e.target.value}))}
               style={{width:"100%",padding:"9px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontSize:13}}/>
           </div>
