@@ -9,7 +9,7 @@
 require_once __DIR__ . '/config.php';
 
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: POST, OPTIONS');
+header('Access-Control-Allow-Methods: POST, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, apikey, Authorization');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -27,7 +27,7 @@ if (!hash_equals(API_KEY, (string)$providedKey)) {
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+if ($_SERVER['REQUEST_METHOD'] !== 'POST' && $_SERVER['REQUEST_METHOD'] !== 'DELETE') {
     http_response_code(405);
     echo json_encode(['error' => 'Method not allowed']);
     exit;
@@ -41,10 +41,20 @@ if (!preg_match('/^[a-zA-Z0-9_-]+$/', $bucket) || $path === '' || strpos($path, 
     exit;
 }
 
+$dest = STORAGE_ROOT . '/' . $bucket . '/' . $path;
+
+if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
+    // Not finding the file is not an error from the caller's point of view —
+    // the end state (file gone) is already true, so treat it the same as a
+    // successful delete instead of surfacing a 404 the UI has to special-case.
+    if (is_file($dest)) unlink($dest);
+    echo json_encode(['deleted' => true]);
+    exit;
+}
+
 $dir = STORAGE_ROOT . '/' . $bucket . '/' . dirname($path);
 if (!is_dir($dir)) mkdir($dir, 0755, true);
 
-$dest = STORAGE_ROOT . '/' . $bucket . '/' . $path;
 $body = file_get_contents('php://input');
 if (file_put_contents($dest, $body) === false) {
     http_response_code(500);
