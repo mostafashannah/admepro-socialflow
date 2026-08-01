@@ -4915,11 +4915,88 @@ function DesignFilePicker({post, assets, onAddAsset, project, onStageChange}) {
   );
 }
 
+// Design assets grid — its own component (rather than inline JSX in
+// PostDetail) purely so it can hold its own per-asset "upscaling" state
+// without adding more hooks to PostDetail's own hook list.
+function DesignAssetGrid({post, onStageChange}) {
+  const [upscalingIdx, setUpscalingIdx] = useState(null);
+  const [err, setErr] = useState("");
+  if(!post.design_assets || post.design_assets.length===0) return null;
+
+  const handleUpscale = async (asset, i, scaleFactor) => {
+    setUpscalingIdx(i); setErr("");
+    try {
+      const res = await fetch(asset.url||asset.data);
+      const blob = await res.blob();
+      const b64 = await new Promise((resolve,reject)=>{
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      const resultUrl = await freepikGenerate("image-upscaler", {image:b64, scale_factor:scaleFactor});
+      if(!resultUrl) throw new Error("Upscale timed out — please try again");
+      const newAssets = post.design_assets.map((a,idx)=>idx===i?{...a, url:resultUrl, data:undefined, upscaledTo:scaleFactor}:a);
+      onStageChange({...post, design_assets:newAssets}, post.stage);
+    } catch(e) { setErr("Upscale failed: "+e.message); }
+    setUpscalingIdx(null);
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8}}>
+        {post.design_assets.map((asset,i)=>{
+          const isImage = (asset.url||asset.data||"").match(/\.(jpg|jpeg|png|gif|webp|svg)/i)||(asset.type||"").startsWith("image");
+          const isVideo = (asset.url||asset.data||"").match(/\.(mp4|mov|webm|m4v)/i)||(asset.type||"").startsWith("video");
+          return (
+          <div key={i} style={{display:"flex",flexDirection:"column",gap:4}}>
+            <div style={{position:"relative",aspectRatio:"1/1",background:"var(--surface)",borderRadius:"var(--rs)",border:"1px solid var(--border)",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              {isImage?
+                <img src={asset.url||asset.data} style={{width:"100%",height:"100%",objectFit:"cover"}} alt={asset.name}/>
+              :isVideo?
+                <video src={asset.url||asset.data} controls playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+              :<div style={{textAlign:"center",padding:8}}>
+                <div style={{fontSize:24,marginBottom:4}}></div>
+                <p style={{fontSize:9,color:"var(--text3)",wordBreak:"break-all"}}>{(asset.name||"").substring(0,14)}…</p>
+                {asset.url&&<a href={asset.url} target="_blank" rel="noreferrer" style={{fontSize:9,color:"var(--accent)"}}>View</a>}
+              </div>}
+              <button onClick={()=>{
+                const newAssets = post.design_assets.filter((_,idx)=>idx!==i);
+                onStageChange({...post,design_assets:newAssets},post.stage);
+              }} style={{position:"absolute",top:3,right:3,width:20,height:20,borderRadius:99,background:"#ef4444",border:"none",color:"#fff",cursor:"pointer",fontSize:12,fontWeight:700,padding:0,lineHeight:"20px"}}>×</button>
+              {asset.upscaledTo&&<span style={{position:"absolute",bottom:3,left:3,padding:"1px 6px",borderRadius:99,background:"rgba(16,185,129,0.9)",color:"#fff",fontSize:9,fontWeight:700}}>{asset.upscaledTo}</span>}
+            </div>
+            {isImage&&!asset.upscaledTo&&(
+              <div style={{display:"flex",gap:3}}>
+                {["2x","4x"].map(sf=>(
+                  <button key={sf} onClick={()=>handleUpscale(asset,i,sf)} disabled={upscalingIdx===i} style={{flex:1,height:20,borderRadius:5,border:"1px solid var(--accent)44",background:"var(--accent)11",color:"var(--accent)",fontSize:9,fontWeight:700,cursor:upscalingIdx===i?"default":"pointer"}}>
+                    {upscalingIdx===i?"…":`Upscale ${sf}`}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        );})}
+      </div>
+      {err&&<p style={{fontSize:11,color:"#ef4444"}}>{err}</p>}
+    </div>
+  );
+}
+
 // Design-stage AI image generator (Yahia) — same reasoning as
 // DesignFilePicker above: extracted out of a conditional-block IIFE so its
 // useState() calls always run at this component's own top level instead of
 // only when PostDetail happens to be rendering the "design" stage branch.
 function DesignAIGenerator({post, project, onAddAsset, onStageChange}) {
+  // Image or Video generation — Video routes through Freepik's
+  // image/text-to-video models instead of gpt-image-1.
+  const [genType, setGenType] = useState("image"); // "image" | "video"
+  const [videoModel, setVideoModel] = useState(VIDEO_MODELS[0].id);
+  // Reference images (style/character/product shots) — passed to OpenAI's
+  // /v1/images/edits so Image generation riffs on / stays consistent with
+  // them, same as the standalone Image Generator page.
+  const [refImages, setRefImages] = useState([]); // [{id,file,url}]
+  const refInputRef = useRef(null);
   // The description is now optional — Yahia already has everything
   // he needs to design without being asked twice: the post's own
   // title/caption/hashtags/text-on-visual (the brief and TOV, in
@@ -4936,6 +5013,13 @@ function DesignAIGenerator({post, project, onAddAsset, onStageChange}) {
   // post's own shape (Stories/Reels are vertical, everything else
   // square) but always overridable before generating.
   const [scale, setScale] = useState(["story","reel"].includes(post.post_type) ? "1024x1536" : "1024x1024");
+
+  const handleAddRefImages = (e) => {
+    const files = Array.from(e.target.files||[]).slice(0, 6-refImages.length);
+    files.forEach(file=>setRefImages(r=>[...r,{id:uid(), file, url:URL.createObjectURL(file)}]));
+    e.target.value = "";
+  };
+  const removeRefImage = (id) => setRefImages(r=>r.filter(x=>x.id!==id));
   // Instagram feed posts are 4:5 — gpt-image-1 has no native 4:5
   // size (only these 3 raw ones), so "instagram_post" generates
   // at the closest available (tall portrait) and gets center-
@@ -4971,11 +5055,23 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
         finalPrompt = `${post.title}. ${post.caption||""} ${post.text_on_visual?`Text on design: "${post.text_on_visual}"`:""} ${genPrompt.trim()}`.trim();
       }
       const apiSize = scale==="instagram_post" ? "1024x1536" : scale;
-      const r = await fetch(OPENAI_ENDPOINT+"?mode=image", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({model:"gpt-image-1", prompt:finalPrompt, size:apiSize, n:1}),
-      });
-      const d = await r.json();
+      let r, d;
+      if(refImages.length) {
+        const fd = new FormData();
+        fd.append("model", "gpt-image-1");
+        fd.append("prompt", finalPrompt);
+        fd.append("size", apiSize==="instagram_post"?"1024x1536":apiSize);
+        fd.append("n", "1");
+        refImages.forEach(ref=>fd.append("image[]", ref.file, ref.file.name||"ref.png"));
+        r = await fetch(OPENAI_ENDPOINT+"?mode=image_edit", { method:"POST", body: fd });
+        d = await r.json();
+      } else {
+        r = await fetch(OPENAI_ENDPOINT+"?mode=image", {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({model:"gpt-image-1", prompt:finalPrompt, size:apiSize, n:1}),
+        });
+        d = await r.json();
+      }
       const b64 = d.data?.[0]?.b64_json;
       if(!r.ok || !b64) {
         // Surface OpenAI's real error text (whatever shape it
@@ -5024,23 +5120,114 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
     } catch(e) { setGenError(e.message||"Image generation failed"); }
     setGenerating(false);
   };
+
+  const videoModelDef = VIDEO_MODELS.find(m=>m.id===videoModel) || VIDEO_MODELS[0];
+  const handleGenerateVideo = async () => {
+    // Kling needs a source image to animate — reuse the last design asset
+    // or a reference image if one was uploaded, otherwise ask for one.
+    const existingImage = (post.design_assets||[]).slice().reverse().find(a=>(a.type||"").startsWith("image")||(a.url||"").match(/\.(jpg|jpeg|png|webp)/i));
+    if(videoModelDef.requiresImage && !existingImage && !refImages.length) {
+      setGenError(`${videoModelDef.label} needs a source image — add a design asset or reference image first.`);
+      return;
+    }
+    setGenerating(true); setGenError("");
+    try {
+      const payload = {prompt: (genPrompt||post.title||"").trim(), duration: videoModelDef.durations[0]};
+      const imgFile = refImages[0]?.file;
+      if(imgFile) {
+        payload.image = await new Promise((resolve,reject)=>{
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result.split(",")[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(imgFile);
+        });
+      } else if(existingImage?.url) {
+        const res = await fetch(existingImage.url);
+        const blob = await res.blob();
+        payload.image = await new Promise((resolve,reject)=>{
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result.split(",")[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      }
+      const url = await freepikGenerate(videoModelDef.endpoint, payload, {pollMs:5000, maxPolls:90});
+      if(!url) throw new Error("Video generation failed — no video returned");
+      const file = new File([await (await fetch(url)).blob()], `${renameForTask(post.title,"ai-generated.mp4","")}`, {type:"video/mp4"});
+      const finalUrl = await uploadToStorage(file, monthProjectFolder(project?.title, project?.client_name));
+      if(onAddAsset) onAddAsset({name:file.name, file_url:finalUrl, file_type:"video", category:monthProjectFolder(project?.title, project?.client_name), project_id:post.project_id, tags:["ai-generated"]}).catch(()=>{});
+      const newAssets = [...(post.design_assets||[]), {name:file.name, type:"video", url:finalUrl, uploaded_at:new Date().toISOString()}];
+      ue("Post", post.id, {design_assets: newAssets}).catch(()=>{});
+      onStageChange({...post, design_assets:newAssets}, post.stage);
+      setHasGenerated(true);
+    } catch(e) { setGenError(e.message||"Video generation failed"); }
+    setGenerating(false);
+  };
+
   return (
-    <div style={{display:"flex",flexDirection:"column",gap:6,paddingTop:8,borderTop:"1px solid var(--border)"}}>
-      <p style={{fontSize:11,fontWeight:700,color:"var(--text2)"}}> Design with Yahia</p>
-      <div style={{display:"flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",width:"fit-content"}}>
-        {SCALES.map(s=>(
-          <button key={s.id} type="button" onClick={()=>setScale(s.id)} disabled={generating} style={{padding:"5px 12px",borderRadius:99,fontSize:11,fontWeight:700,border:"none",cursor:generating?"default":"pointer",background:scale===s.id?"var(--accent)":"none",color:scale===s.id?"#fff":"var(--text2)",whiteSpace:"nowrap"}}>
-            {s.label} <span style={{opacity:0.7,fontWeight:500}}>({s.hint})</span>
-          </button>
-        ))}
+    <div style={{display:"flex",flexDirection:"column",gap:8,paddingTop:8,borderTop:"1px solid var(--border)"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <p style={{fontSize:11,fontWeight:700,color:"var(--text2)"}}> Design with Yahia</p>
+        <div style={{display:"flex",gap:2,background:"var(--surface2)",padding:2,borderRadius:99,border:"1px solid var(--border2)"}}>
+          {["image","video"].map(t=>(
+            <button key={t} type="button" onClick={()=>setGenType(t)} disabled={generating} style={{padding:"4px 10px",borderRadius:99,fontSize:10,fontWeight:700,border:"none",cursor:generating?"default":"pointer",background:genType===t?"var(--accent)":"none",color:genType===t?"#fff":"var(--text2)",textTransform:"capitalize"}}>{t}</button>
+          ))}
+        </div>
       </div>
-      <div style={{display:"flex",gap:6}}>
-        <input value={genPrompt} onChange={e=>setGenPrompt(e.target.value)} placeholder={hasGenerated?"Anything to add or change before regenerating? (optional)":"Anything specific to add? Yahia already has the brief, caption & brand style (optional)"} disabled={generating}
-          style={{...inputSt,flex:1}} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();handleGenerate();}}}/>
-        <Btn onClick={handleGenerate} disabled={generating}>
-          {generating?<Spinner size={13}/>:<Ico d={Icons.sparkles||Icons.chart} size={14}/>} {generating?"Designing…":hasGenerated?"Regenerate":"Generate"}
-        </Btn>
-      </div>
+
+      {genType==="image" ? (
+        <>
+          <div style={{display:"flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",width:"fit-content",flexWrap:"wrap"}}>
+            {SCALES.map(s=>(
+              <button key={s.id} type="button" onClick={()=>setScale(s.id)} disabled={generating} style={{padding:"5px 12px",borderRadius:99,fontSize:11,fontWeight:700,border:"none",cursor:generating?"default":"pointer",background:scale===s.id?"var(--accent)":"none",color:scale===s.id?"#fff":"var(--text2)",whiteSpace:"nowrap"}}>
+                {s.label} <span style={{opacity:0.7,fontWeight:500}}>({s.hint})</span>
+              </button>
+            ))}
+          </div>
+
+          <div>
+            <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",marginBottom:4}}>Reference Images (optional, up to 6)</p>
+            <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+              {refImages.map(ref=>(
+                <div key={ref.id} style={{position:"relative",width:40,height:40,borderRadius:6,overflow:"hidden",border:"1px solid var(--border2)"}}>
+                  <img src={ref.url} alt="reference" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                  <button type="button" onClick={()=>removeRefImage(ref.id)} style={{position:"absolute",top:0,right:0,width:14,height:14,borderRadius:"50%",background:"rgba(0,0,0,0.65)",border:"none",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                    <Ico d={Icons.x} size={8} stroke="#fff"/>
+                  </button>
+                </div>
+              ))}
+              {refImages.length<6&&(
+                <button type="button" onClick={()=>refInputRef.current?.click()} disabled={generating} style={{width:40,height:40,borderRadius:6,border:"1.5px dashed var(--border2)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:generating?"default":"pointer",color:"var(--text3)"}}>
+                  <Ico d={Icons.upload} size={14} stroke="var(--text3)"/>
+                </button>
+              )}
+              <input ref={refInputRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={handleAddRefImages}/>
+            </div>
+          </div>
+
+          <div style={{display:"flex",gap:6}}>
+            <input value={genPrompt} onChange={e=>setGenPrompt(e.target.value)} placeholder={hasGenerated?"Anything to add or change before regenerating? (optional)":"Anything specific to add? Yahia already has the brief, caption & brand style (optional)"} disabled={generating}
+              style={{...inputSt,flex:1}} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();handleGenerate();}}}/>
+            <Btn onClick={handleGenerate} disabled={generating}>
+              {generating?<Spinner size={13}/>:<Ico d={Icons.sparkles||Icons.chart} size={14}/>} {generating?"Designing…":hasGenerated?"Regenerate":"Generate"}
+            </Btn>
+          </div>
+        </>
+      ) : (
+        <>
+          <select value={videoModel} onChange={e=>setVideoModel(e.target.value)} disabled={generating} style={{...inputSt,fontSize:12}}>
+            {VIDEO_MODELS.map(m=><option key={m.id} value={m.id}>{m.label}</option>)}
+          </select>
+          <p style={{fontSize:10,color:"var(--text3)"}}>{videoModelDef.requiresImage?"Animates an existing design asset (or an uploaded reference image above) — add one first if there isn't one yet.":"Can generate from text alone, or animate an existing design asset/reference image."}</p>
+          <div style={{display:"flex",gap:6}}>
+            <input value={genPrompt} onChange={e=>setGenPrompt(e.target.value)} placeholder="Describe the motion — camera movement, pacing, mood…" disabled={generating}
+              style={{...inputSt,flex:1}} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();handleGenerateVideo();}}}/>
+            <Btn onClick={handleGenerateVideo} disabled={generating}>
+              {generating?<Spinner size={13}/>:<Ico d={Icons.sparkles||Icons.chart} size={14}/>} {generating?"Generating… (can take minutes)":"Generate"}
+            </Btn>
+          </div>
+        </>
+      )}
       {genError&&<p style={{fontSize:11,color:"#ef4444"}}>{genError}</p>}
     </div>
   );
@@ -5737,27 +5924,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
             )}
 
             {/* Display existing assets */}
-            {post.design_assets&&post.design_assets.length>0&&(
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8}}>
-                {post.design_assets.map((asset,i)=>(
-                  <div key={i} style={{position:"relative",aspectRatio:"1/1",background:"var(--surface)",borderRadius:"var(--rs)",border:"1px solid var(--border)",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                    {(asset.url||asset.data||"").match(/\.(jpg|jpeg|png|gif|webp|svg)/i)||(asset.type||"").startsWith("image")?
-                      <img src={asset.url||asset.data} style={{width:"100%",height:"100%",objectFit:"cover"}} alt={asset.name}/>
-                    :(asset.url||asset.data||"").match(/\.(mp4|mov|webm|m4v)/i)||(asset.type||"").startsWith("video")?
-                      <video src={asset.url||asset.data} controls playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                    :<div style={{textAlign:"center",padding:8}}>
-                      <div style={{fontSize:24,marginBottom:4}}></div>
-                      <p style={{fontSize:9,color:"var(--text3)",wordBreak:"break-all"}}>{(asset.name||"").substring(0,14)}…</p>
-                      {asset.url&&<a href={asset.url} target="_blank" rel="noreferrer" style={{fontSize:9,color:"var(--accent)"}}>View</a>}
-                    </div>}
-                    <button onClick={()=>{
-                      const newAssets = post.design_assets.filter((_,idx)=>idx!==i);
-                      onStageChange({...post,design_assets:newAssets},post.stage);
-                    }} style={{position:"absolute",top:3,right:3,width:20,height:20,borderRadius:99,background:"#ef4444",border:"none",color:"#fff",cursor:"pointer",fontSize:12,fontWeight:700,padding:0,lineHeight:"20px"}}>×</button>
-                  </div>
-                ))}
-              </div>
-            )}
+            <DesignAssetGrid post={post} onStageChange={onStageChange}/>
 
             {/* File picker — choose from assets or upload new */}
             <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>
