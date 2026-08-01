@@ -4708,7 +4708,7 @@ ${shapeInstr}`;
               <button onClick={()=>handleChoose(idx)} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 18px",borderRadius:8,fontSize:12,fontWeight:700,background:"var(--accent)",color:"#fff",border:"none",cursor:"pointer",opacity:chosenIdx===idx?0.7:1}}
                 onMouseEnter={e=>e.currentTarget.style.opacity="0.88"} onMouseLeave={e=>e.currentTarget.style.opacity=chosenIdx===idx?"0.7":"1"}>
                 <Ico d={Icons.check} size={13} stroke="#fff"/>
-                {chosenIdx===idx?"✓ Chosen":"Choose & Push to Design"}
+                {chosenIdx===idx?"✓ Chosen":"Choose & Push to Review"}
               </button>
             </div>
           </div>
@@ -5471,7 +5471,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 tov_used:updatedPost.tov_used, content_language:updatedPost.content_language,
               }).catch(()=>{});
               try{ localStorage.removeItem(`sf_content_${post.id}`); }catch(e){}
-              onStageChange({...post,...updatedPost}, "design");
+              onStageChange({...post,...updatedPost}, "internal_review");
               onClose();
             }}
           />
