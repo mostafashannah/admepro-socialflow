@@ -142,6 +142,21 @@ try {
     // expense/income rows. WhatsApp's own message id is globally unique,
     // so use it as an idempotency key: if we've already recorded it,
     // this is a redelivery — stop here before doing any work.
+    // Hard guard against processing a STALE message as if it were new — WhatsApp
+    // can deliver a backlog of old messages in one burst (e.g. after the server
+    // was briefly down, the webhook subscription was toggled, or Meta simply
+    // queued delivery), each with a distinct wamid, so the message-id
+    // idempotency check below does NOT catch these — they look like brand-new
+    // messages to that check. Without this, Pro would "reply" to (and act on,
+    // e.g. re-run add_transaction for) something the user sent a day ago,
+    // producing what looks like a duplicate even though no message was
+    // actually redelivered. Anything older than 5 minutes is dropped outright.
+    $waTimestamp = (int)($message['timestamp'] ?? 0);
+    if ($waTimestamp > 0 && (time() - $waTimestamp) > 300) {
+        error_log('[wa-webhook] dropping stale message (timestamp=' . $waTimestamp . ', age=' . (time() - $waTimestamp) . 's) from=' . ($message['from'] ?? '?'));
+        exit;
+    }
+
     $waMessageId = (string)($message['id'] ?? '');
     if ($waMessageId !== '') {
         try {
