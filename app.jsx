@@ -27128,15 +27128,25 @@ function ProfilePhoto({photoUrl, name, role, size=56, onClick}) {
 // ════════════════════════════════════════════════════════════════
 // MY ACCOUNT PAGE
 // ════════════════════════════════════════════════════════════════
-function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange, wallpaper, notifPrefs, onSaveNotifPrefs, rolePermsMap}) {
+function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange, wallpaper, notifPrefs, onSaveNotifPrefs, rolePermsMap, teamMember}) {
   const [tab, setTab] = usePersistentState("sf_tab_account","profile");
+  // Bio/Title falls back to the title set on this person's Team Management
+  // record (member.title) when they haven't overridden it here themselves —
+  // so it shows up automatically instead of needing to be typed twice.
   const [form, setForm] = useState({
     display_name: userProfile?.display_name || currentUser?.name || "",
     mobile: userProfile?.mobile || "",
     whatsapp_number: userProfile?.whatsapp_number || "",
-    bio: userProfile?.bio || "",
+    bio: userProfile?.bio || teamMember?.title || "",
     language: userProfile?.language || "en",
   });
+  // team data can arrive after this component's first render — backfill
+  // bio from the team member's title once it shows up, but only if the
+  // user hasn't already set their own bio.
+  useEffect(()=>{
+    if(!userProfile?.bio && teamMember?.title) setForm(p=>p.bio ? p : {...p, bio: teamMember.title});
+  },[teamMember?.title]);
+
   const [photo, setPhoto] = useState(userProfile?.photo_url || null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -44699,6 +44709,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             notifPrefs={getNotifPrefs(currentUser?.email)}
             onSaveNotifPrefs={saveNotifPrefs}
             rolePermsMap={rolePermsMap}
+            teamMember={data.team?.find(m=>m.email===currentUser?.email)}
           />
         )}
         {page==="settings"&&currentUser?.role==="admin"&&(
