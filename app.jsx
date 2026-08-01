@@ -12486,9 +12486,12 @@ const IMAGE_CONTENT_TYPES = [
 // driven through freepikGenerate()'s generic async task helper.
 const IMAGE_MODELS = [
   {id:"gpt-image-1", label:"GPT Image 1", provider:"openai", hint:"OpenAI · supports reference images"},
-  {id:"mystic", label:"Mystic", provider:"freepik", endpoint:"mystic", hint:"Freepik · ultra-realistic, up to 4K"},
+  {id:"mystic", label:"Mystic", provider:"freepik", endpoint:"mystic", hint:"Freepik/Magnific · ultra-realistic, up to 4K"},
   {id:"seedream-v4", label:"Seedream v4", provider:"freepik", endpoint:"text-to-image/seedream-v4", hint:"Freepik · strong typography/posters"},
   {id:"flux-pro-v1-1", label:"Flux Pro", provider:"freepik", endpoint:"text-to-image/flux-pro-v1-1", hint:"Freepik · premium quality"},
+  {id:"imagen3", label:"Imagen 3", provider:"freepik", endpoint:"text-to-image/imagen3", hint:"Freepik · Google Imagen 3"},
+  {id:"ideogram-v3", label:"Ideogram v3", provider:"freepik", endpoint:"text-to-image/ideogram-v3", hint:"Freepik · best for text/typography on-image"},
+  {id:"classic-fast", label:"Classic Fast", provider:"freepik", endpoint:"text-to-image/classic-fast", hint:"Freepik · fast general-purpose"},
 ];
 
 function ImageGeneratorPage({clients=[], projects=[], onAddAsset}) {
