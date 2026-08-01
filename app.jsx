@@ -56,6 +56,29 @@ const uploadToStorage = async (file, folder="uploads") => {
   return `${SB_STORAGE_URL}/public/${SB_BUCKET}/${path}`;
 };
 
+// Deletes the underlying file from self-hosted storage for a URL previously
+// returned by uploadToStorage() — pairs with it so removing a record (asset,
+// contact report voice note, etc.) also frees the disk space instead of just
+// dropping the DB row and leaving the file behind forever. Silently no-ops
+// on anything that isn't one of our own storage URLs (external links,
+// already-missing files) since there's nothing to delete in that case.
+const deleteFromStorage = async (url) => {
+  if(!url || typeof url!=="string") return;
+  const marker = `${SB_STORAGE_URL}/public/`;
+  if(!url.startsWith(marker)) return;
+  const rest = url.slice(marker.length); // "{bucket}/{path...}"
+  const slash = rest.indexOf("/");
+  if(slash<0) return;
+  const bucket = rest.slice(0,slash);
+  const path = rest.slice(slash+1);
+  try {
+    await fetch(`${SB_STORAGE_URL}/object/${bucket}/${path}`, {
+      method: "DELETE",
+      headers: { "apikey": SB_KEY, "Authorization": `Bearer ${SB_KEY}` },
+    });
+  } catch(e) { /* best-effort — a failed cleanup shouldn't block the record delete */ }
+};
+
 // Fetch a file URL for the browser to read. Same-origin URLs (our own
 // storage) can be fetched directly; third-party hosts (Google Drive, etc.)
 // don't send CORS headers, so a direct fetch() fails with an opaque
@@ -11015,7 +11038,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
   const [confirmDelete,setConfirmDelete] = useState(false);
   const [showAddMenu,setShowAddMenu] = useState(false);
   const [showLogins,setShowLogins] = useState(false);
-  const [brainSubTab,setBrainSubTab] = useState(deepLinkContactReportId ? "contact_reports" : "profile");
+  const [brainSubTab,setBrainSubTab] = useState(deepLinkContactReportId ? "contact_reports" : (currentUser?.role==="designer" ? "brand_guidelines" : "profile"));
   const cProjects = projects.filter(p=>p.client_id===client.id||p.client_name===client.name);
   // Client Requests have no project yet (assigned when moved to Brief) —
   // match those directly by client_id/client_name too, not just via project.
@@ -11027,6 +11050,9 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
   const documents = (clientDocuments||[]).filter(d=>d.client_id===client.id);
   const isPriv = ["admin","account_manager"].includes(currentUser?.role);
   const isAdmin = currentUser?.role==="admin";
+  // Designers need the client's Brand Guidelines to actually design on-brand
+  // — they otherwise have no access to the Settings/brain tab at all.
+  const canSeeBrandGuidelines = isPriv || currentUser?.role==="designer";
   const clientBriefs = (monthlyBriefs||[]).filter(b=>b.client_id===client.id);
   const pendingBriefCount = clientBriefs.filter(b=>b.status==="pending").length;
   const cMessages = (customerMessages||[]).filter(m=>m.client_id===client.id);
@@ -11045,7 +11071,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
     ...(isPriv?[["ads","Ads"]]:[]),
     ...(isPriv?[["community",`Community${cMessagesNeedReplyCount?` (${cMessagesNeedReplyCount})`:""}`]]:[]),
     ["assets","Assets"],
-    ...(isPriv?[["brain","Settings"]]:[]),
+    ...(canSeeBrandGuidelines?[["brain", isPriv?"Settings":"Brand Guidelines"]]:[]),
   ];
 
   if(showEdit) {
@@ -11232,7 +11258,10 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
       {tab==="brain"&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           <div style={{display:"flex",gap:4,borderBottom:"1px solid var(--border)"}}>
-            {[["profile","Client Brain"],["scheduling","Scheduling"],["brand_guidelines","Brand Guidelines"],["contact_reports","Contact Reports"],...(isPriv?[["integrations","Integrations"],["features","Features"]]:[])].map(([k,l])=>(
+            {(isPriv
+              ? [["profile","Client Brain"],["scheduling","Scheduling"],["brand_guidelines","Brand Guidelines"],["contact_reports","Contact Reports"],["integrations","Integrations"],["features","Features"]]
+              : [["brand_guidelines","Brand Guidelines"]]
+            ).map(([k,l])=>(
               <button key={k} onClick={()=>setBrainSubTab(k)} style={{
                 padding:"8px 16px",fontSize:13,fontWeight:700,border:"none",background:"transparent",cursor:"pointer",
                 color:brainSubTab===k?"var(--accent)":"var(--text3)",
@@ -12506,6 +12535,7 @@ const IMAGE_CONTENT_TYPES = [
 // driven through freepikGenerate()'s generic async task helper.
 const IMAGE_MODELS = [
   {id:"gpt-image-1", label:"GPT Image 1", provider:"openai", hint:"OpenAI · supports reference images"},
+  {id:"nano-banana", label:"Nano Banana (Gemini 2.5 Flash)", provider:"freepik", endpoint:"text-to-image/gemini-2-5-flash-image", hint:"Freepik/Magnific · Google's Nano Banana"},
   {id:"mystic", label:"Mystic", provider:"freepik", endpoint:"mystic", hint:"Freepik/Magnific · ultra-realistic, up to 4K"},
   {id:"seedream-v4", label:"Seedream v4", provider:"freepik", endpoint:"text-to-image/seedream-v4", hint:"Freepik · strong typography/posters"},
   {id:"flux-pro-v1-1", label:"Flux Pro", provider:"freepik", endpoint:"text-to-image/flux-pro-v1-1", hint:"Freepik · premium quality"},
@@ -23274,6 +23304,12 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
           <option value="all">All Sources</option>
           {LEAD_SOURCES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
+        {/* Always-visible shortcut to the Old Data leads, instead of having
+            to dig for it inside the Source dropdown every time. */}
+        <button type="button" onClick={()=>setSourceF(f=>f==="old_data"?"all":"old_data")}
+          style={{padding:"9px 14px",borderRadius:99,fontSize:12,fontWeight:700,border:`1px solid ${sourceF==="old_data"?"var(--accent)":"var(--border2)"}`,background:sourceF==="old_data"?"var(--accent)":"var(--surface2)",color:sourceF==="old_data"?"#fff":"var(--text2)",cursor:"pointer",whiteSpace:"nowrap"}}>
+          Old Data
+        </button>
         <select value={assigneeF} onChange={e=>setAssigneeF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12,borderRadius:99}}>
           <option value="all">All Assignees</option>
           {(team||[]).filter(t=>["account_manager","business_development"].includes(t.role)).map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
@@ -42605,8 +42641,10 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
   };
 
   const deleteAsset = async (id) => {
+    const asset = data.assets.find(a=>a.id===id);
     setData(d=>({...d, assets:d.assets.filter(a=>a.id!==id)}));
     try { await de("Asset", id); } catch(e){}
+    if(asset?.file_url) deleteFromStorage(asset.file_url);
   };
 
   // Groups assets by name (case/whitespace-insensitive) + category, and within
@@ -43207,6 +43245,7 @@ Return ONLY the JSON array, no markdown.`;
   const deleteContactReport = async (report) => {
     setData(d=>({...d, contactReports:(d.contactReports||[]).filter(r=>r.id!==report.id)}));
     de("ContactReport", report.id).catch(()=>{});
+    if(report.voice_recording_url) deleteFromStorage(report.voice_recording_url);
     const mem = (data.clientMemory||[]).find(m=>m.client_id===report.client_id && m.key===`contact_report_${report.id}`);
     if(mem) deleteClientMemory(mem.id);
     setToast("Contact report deleted");
