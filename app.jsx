@@ -44763,7 +44763,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
                 }).catch(()=>{});
               }}
             />}
-        {page==="clients"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"clients.manage"))&&(()=>{
+        {page==="clients"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"clients.manage")||currentUser?.role==="graphic_designer")&&(()=>{
           const selectedClient = data.clients.find(c=>c.id===selectedClientId)||null;
           if(!selectedClient) return (
             <ClientsPage clients={data.clients} projects={data.projects} posts={data.posts} team={data.team}
