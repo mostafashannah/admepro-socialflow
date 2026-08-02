@@ -17391,7 +17391,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
           <p>Best,<br/>${appSettings?.app_name||"SocialFlow"} Team</p>
         </div>
       `, appSettings?.app_name||"SocialFlow");
-      if(ok) { setToast?.("Contract emailed to "+member.email); alert(`Contract sent to ${member.email}`); }
+      if(ok) { alert(`Contract sent to ${member.email}`); }
       else alert("Couldn't send the email — please check your email settings.");
     } catch(e) { alert("Couldn't send the email: " + (e?.message||e)); }
     setSendingContract(false);
