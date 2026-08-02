@@ -220,6 +220,20 @@ $isDayOff = function (string $ymd) use ($weekendDays, $holidays) {
     return in_array($dow, $weekendDays, true);
 };
 
+// check_in/check_out are SQL TIME columns — device exports (and some
+// manual sheets) write 12-hour clock times like "9:18:00 AM", which MySQL
+// rejects outright for a TIME column ("Incorrect time value"). Normalize
+// to 24-hour "HH:MM:SS" before it ever reaches the query; anything that
+// still doesn't parse as a time is dropped (stored NULL) rather than
+// crashing the whole import over one bad cell.
+function normalizeTimeForSql(?string $raw): ?string {
+    $raw = trim((string)$raw);
+    if ($raw === '') return null;
+    $ts = strtotime($raw);
+    if ($ts === false) return null;
+    return date('H:i:s', $ts);
+}
+
 $validStatuses = ['present','absent','late','half_day','leave','wfh'];
 $upsert = $pdo->prepare(
     "INSERT INTO attendance_records (id, team_member_id, member_name, work_date, status, check_in, check_out, note)
@@ -263,7 +277,7 @@ if ($isRawDeviceFormat) {
         foreach ($info['dates'] as $ymd => [$cin, $cout]) {
             $upsert->execute([
                 ':tid' => $teamMemberId, ':name' => $name, ':wdate' => $ymd,
-                ':status' => 'present', ':cin' => $cin ?: null, ':cout' => $cout ?: null, ':note' => null,
+                ':status' => 'present', ':cin' => normalizeTimeForSql($cin), ':cout' => normalizeTimeForSql($cout), ':note' => null,
             ]);
             $imported++;
         }
@@ -324,8 +338,8 @@ if ($isRawDeviceFormat) {
             ':name' => $name,
             ':wdate' => $workDate,
             ':status' => $status,
-            ':cin' => !empty($row[$colIdx['check_in'] ?? -1]) ? $row[$colIdx['check_in']] : null,
-            ':cout' => !empty($row[$colIdx['check_out'] ?? -1]) ? $row[$colIdx['check_out']] : null,
+            ':cin' => !empty($row[$colIdx['check_in'] ?? -1]) ? normalizeTimeForSql($row[$colIdx['check_in']]) : null,
+            ':cout' => !empty($row[$colIdx['check_out'] ?? -1]) ? normalizeTimeForSql($row[$colIdx['check_out']]) : null,
             ':note' => !empty($row[$colIdx['note'] ?? -1]) ? $row[$colIdx['note']] : null,
         ]);
         $imported++;
