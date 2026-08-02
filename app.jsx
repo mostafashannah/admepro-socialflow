@@ -26522,13 +26522,13 @@ Upon successful completion of the probation period, the Employee's monthly salar
 The Employee's standard working days are {{work_days}}, in line with the Employer's official working hours policy.
 
 6. LEAVE ENTITLEMENT
-The Employee is entitled to {{vacation_days}} annual vacation days and {{wfh_days}} work-from-home days per year, in accordance with the Employer's leave policy and the Egyptian Labor Law No. 12 of 2003 (as amended).
+The Employee is entitled to 15 annual vacation days during the first year of employment, increasing to {{vacation_days}} annual vacation days from the start of the second year onward, plus {{wfh_days}} work-from-home days per year, in accordance with the Employer's leave policy and the Egyptian Labor Law No. 12 of 2003 (as amended).
 
 7. CONFIDENTIALITY
 The Employee agrees to keep confidential all proprietary information, client data, and business information of the Employer, both during and after employment.
 
 8. TERMINATION
-This Contract may be terminated by either party in accordance with the notice periods and terms set out in the Egyptian Labor Law No. 12 of 2003 (as amended).
+During the probation period, either party may terminate this Contract without any notice period. After successful completion of the probation period, this Contract may be terminated by either party with one (1) month's written notice, in accordance with the Egyptian Labor Law No. 12 of 2003 (as amended).
 
 9. GOVERNING LAW
 This Contract is governed by the laws of the Arab Republic of Egypt, and any disputes shall be subject to the jurisdiction of the competent Egyptian courts.
@@ -26608,8 +26608,11 @@ function mergeContractTemplate(template, member, manager, appSettings) {
     salary: member.salary?`EGP ${Number(member.salary).toLocaleString()}`:"________________",
     probation_months: member.probation_months ?? "3",
     probation_salary: member.probation_salary?`EGP ${Number(member.probation_salary).toLocaleString()}`:(member.salary?`EGP ${Number(member.salary).toLocaleString()}`:"________________"),
-    vacation_days: member.vacation_days_total ?? 21,
-    wfh_days: member.wfh_days_total ?? 12,
+    // vacation_days_total/wfh_days_total are DECIMAL columns — MySQL's PDO
+    // driver returns those as strings like "21.00", which printed literally
+    // ("21.00 annual vacation days") instead of a clean whole number.
+    vacation_days: Number(member.vacation_days_total ?? 21),
+    wfh_days: Number(member.wfh_days_total ?? 12),
     work_days: member.employment_type==="part_time"
       ? parseMaybeJson(member.work_days,WORK_DAYS_DEFAULT).map(d=>WEEKDAY_LABELS.find(w=>w.d===d)?.label).join(", ")
       : "Sunday through Thursday",
