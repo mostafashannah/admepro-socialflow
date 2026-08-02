@@ -73,17 +73,61 @@ if ($ext === 'xls' || $ext === 'xlsx') {
         echo json_encode(["error" => "Reading .xls/.xlsx requires phpoffice/phpspreadsheet — run: composer require phpoffice/phpspreadsheet"]);
         exit;
     }
+    $originalErr = null;
     try {
         $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($_FILES['file']['tmp_name']);
         $sheet = $spreadsheet->getActiveSheet();
         foreach ($sheet->toArray(null, true, true, false) as $r) $rows[] = $r;
     } catch (Throwable $e) {
-        // Many biometric attendance devices export a file named "X.xls"
-        // that is actually a plain HTML table, not real Excel binary —
-        // PhpSpreadsheet's auto-detector throws "Unable to identify a
-        // reader for this file" on those. Retry explicitly as HTML before
-        // giving up; only surface the original error if that also fails.
-        $htmlErr = null;
+        $originalErr = $e->getMessage();
+    }
+
+    // Fallback 1: some biometric device software writes a RAW BIFF (old
+    // binary Excel format) record stream directly, with no OLE/CFB
+    // compound-file container wrapped around it — real Excel opens these
+    // fine (it's lenient), but PhpSpreadsheet's strict format sniffer
+    // rejects them outright with "Unable to identify a reader". Since this
+    // device's export uses plain BIFF LABEL (opcode 0x0004) records for
+    // every cell — including numbers and dates, stored as literal text —
+    // walk the record stream directly: each LABEL record is
+    // [opcode:2][reclen:2][row:2][col:2][xf:2][unused:1][strlen:1][string
+    // bytes]. Reading cell text this way is exact (framed by the file's
+    // own length fields), not a guess.
+    if (empty($rows)) {
+        $raw = file_get_contents($_FILES['file']['tmp_name']);
+        $n = strlen($raw);
+        $cells = []; $maxRow = -1; $maxCol = -1; $found = 0;
+        $i = 0;
+        while ($i + 4 <= $n) {
+            $opcode = ord($raw[$i]) | (ord($raw[$i+1]) << 8);
+            $reclen = ord($raw[$i+2]) | (ord($raw[$i+3]) << 8);
+            if ($opcode === 0x0004 && $i + 12 <= $n) {
+                $row = ord($raw[$i+4]) | (ord($raw[$i+5]) << 8);
+                $col = ord($raw[$i+6]) | (ord($raw[$i+7]) << 8);
+                $strlen = ord($raw[$i+11]);
+                $start = $i + 12;
+                if ($start + $strlen <= $n) {
+                    $cells[$row][$col] = substr($raw, $start, $strlen);
+                    if ($row > $maxRow) $maxRow = $row;
+                    if ($col > $maxCol) $maxCol = $col;
+                    $found++;
+                }
+            }
+            $i += 4 + ($reclen > 0 ? $reclen : 1);
+        }
+        if ($found >= 2 && $maxRow >= 1) {
+            for ($r = 0; $r <= $maxRow; $r++) {
+                $line = [];
+                for ($c = 0; $c <= $maxCol; $c++) $line[] = $cells[$r][$c] ?? '';
+                $rows[] = $line;
+            }
+        }
+    }
+
+    // Fallback 2: many biometric attendance devices export a file named
+    // "X.xls" that is actually a plain HTML table, not real Excel binary.
+    $htmlErr = null;
+    if (empty($rows)) {
         try {
             $htmlReader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Html');
             $spreadsheet = $htmlReader->load($_FILES['file']['tmp_name']);
@@ -92,36 +136,41 @@ if ($ext === 'xls' || $ext === 'xlsx') {
         } catch (Throwable $e2) {
             $htmlErr = $e2->getMessage();
         }
-        // Last resort: some device software exports a plain delimited text
-        // file (tab or comma-separated) still named "X.xls", often in
-        // UTF-16 (common on Windows) — neither the real Excel reader nor
-        // the HTML reader can make sense of that. Detect the encoding via
-        // BOM, normalize to UTF-8, and auto-detect the delimiter from the
-        // header line before giving up entirely.
-        if (empty($rows)) {
-            try {
-                $raw = file_get_contents($_FILES['file']['tmp_name']);
-                if (substr($raw, 0, 2) === "\xFF\xFE") { $raw = mb_convert_encoding(substr($raw, 2), 'UTF-8', 'UTF-16LE'); }
-                elseif (substr($raw, 0, 2) === "\xFE\xFF") { $raw = mb_convert_encoding(substr($raw, 2), 'UTF-8', 'UTF-16BE'); }
-                elseif (substr($raw, 0, 3) === "\xEF\xBB\xBF") { $raw = substr($raw, 3); }
-                $lines = preg_split('/\r\n|\r|\n/', trim($raw));
-                if (count($lines) < 2) throw new Exception('Not enough lines to be a delimited text file.');
-                $headerLine = $lines[0];
-                $delimiter = substr_count($headerLine, "\t") >= substr_count($headerLine, ',') ? "\t" : (substr_count($headerLine, ',') >= substr_count($headerLine, ';') ? ',' : ';');
-                foreach ($lines as $line) {
-                    if (trim($line) === '') continue;
-                    $rows[] = str_getcsv($line, $delimiter);
-                }
-                if (count($rows) < 2) throw new Exception('No data rows found after splitting.');
-            } catch (Throwable $e3) {
-                http_response_code(400);
-                echo json_encode(["error" => "Could not read spreadsheet: " . $e->getMessage()
-                    . ($htmlErr ? " | as HTML: " . $htmlErr : "")
-                    . " | as delimited text: " . $e3->getMessage()
-                    . ". This file format isn't recognized — please open it in Excel and re-save as a real .xlsx or .csv file, then re-upload."]);
-                exit;
+    }
+
+    // Fallback 3 (last resort): some device software exports a plain
+    // delimited text file (tab or comma-separated) still named "X.xls",
+    // often in UTF-16 (common on Windows). Detect the encoding via BOM,
+    // normalize to UTF-8, and auto-detect the delimiter from the header
+    // line before giving up entirely.
+    $delimErr = null;
+    if (empty($rows)) {
+        try {
+            $raw = file_get_contents($_FILES['file']['tmp_name']);
+            if (substr($raw, 0, 2) === "\xFF\xFE") { $raw = mb_convert_encoding(substr($raw, 2), 'UTF-8', 'UTF-16LE'); }
+            elseif (substr($raw, 0, 2) === "\xFE\xFF") { $raw = mb_convert_encoding(substr($raw, 2), 'UTF-8', 'UTF-16BE'); }
+            elseif (substr($raw, 0, 3) === "\xEF\xBB\xBF") { $raw = substr($raw, 3); }
+            $lines = preg_split('/\r\n|\r|\n/', trim($raw));
+            if (count($lines) < 2) throw new Exception('Not enough lines to be a delimited text file.');
+            $headerLine = $lines[0];
+            $delimiter = substr_count($headerLine, "\t") >= substr_count($headerLine, ',') ? "\t" : (substr_count($headerLine, ',') >= substr_count($headerLine, ';') ? ',' : ';');
+            foreach ($lines as $line) {
+                if (trim($line) === '') continue;
+                $rows[] = str_getcsv($line, $delimiter);
             }
+            if (count($rows) < 2) throw new Exception('No data rows found after splitting.');
+        } catch (Throwable $e3) {
+            $delimErr = $e3->getMessage();
         }
+    }
+
+    if (empty($rows)) {
+        http_response_code(400);
+        echo json_encode(["error" => "Could not read spreadsheet: " . ($originalErr ?: 'unrecognized format')
+            . ($htmlErr ? " | as HTML: " . $htmlErr : "")
+            . ($delimErr ? " | as delimited text: " . $delimErr : "")
+            . ". This file format isn't recognized — please open it in Excel and re-save as a real .xlsx or .csv file, then re-upload."]);
+        exit;
     }
 } else {
     $fh = fopen($_FILES['file']['tmp_name'], 'r');
