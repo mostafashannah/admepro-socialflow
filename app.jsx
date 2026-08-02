@@ -17247,14 +17247,6 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
       }
       if(!logo) logo = await loadImageForPdf(ADMEPRO_LOGO_BLACK) || await loadImageForPdfViaImg(ADMEPRO_LOGO_BLACK);
 
-      // Personal photo on the document itself — useful later for anyone
-      // pulling the signed contract to confirm identity without having to
-      // separately look up the profile. Best-effort: silently skipped if
-      // there's no photo, or if it's a format the browser can't decode
-      // (e.g. .heic) — the rest of the contract still generates fine.
-      let photo = null;
-      if(member.avatar_url) photo = await loadImageForPdf(member.avatar_url) || await loadImageForPdfViaImg(member.avatar_url);
-
       const doc = new jsPDFCtor({unit:"pt", format:"a4"});
       const marginX = 56, pageWidth = doc.internal.pageSize.getWidth(), pageHeight = doc.internal.pageSize.getHeight();
       const HEADER_TOP = 56, CONTENT_START = 112;
@@ -17329,16 +17321,6 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
       for(let p=1; p<=totalPages; p++) {
         doc.setPage(p);
         drawHeaderLogo();
-        if(p===1 && photo) {
-          const photoSize = 56;
-          const photoX = pageWidth - marginX - photoSize, photoY = HEADER_TOP - 30;
-          try {
-            const fmt = photo.dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG";
-            doc.addImage(photo.dataUrl, fmt, photoX, photoY, photoSize, photoSize, undefined, "FAST");
-          } catch(e) { /* unsupported format for jsPDF — rest of the header still renders */ }
-          doc.setDrawColor(229,231,235); doc.setLineWidth(1);
-          doc.rect(photoX, photoY, photoSize, photoSize);
-        }
         const fy = pageHeight - 66;
         doc.setDrawColor(229,231,235); doc.setLineWidth(1);
         doc.line(marginX, fy, pageWidth-marginX, fy);
