@@ -17997,6 +17997,14 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
           <h3 style={{fontWeight:700,fontSize:14,marginBottom:12}}>Documents</h3>
           <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
+            {member.avatar_url&&(
+              <div style={{width:140}}>
+                <a href={member.avatar_url} target="_blank" rel="noreferrer">
+                  <img src={member.avatar_url} alt="Personal Photo" style={{width:140,height:100,objectFit:"cover",borderRadius:8,border:"1px solid var(--border)"}}/>
+                </a>
+                <p style={{fontSize:11,color:"var(--text2)",marginTop:4,textAlign:"center"}}>Personal Photo</p>
+              </div>
+            )}
             {[["front","ID Photo — Front",member.id_photo_front_url,idFrontRef],["back","ID Photo — Back",member.id_photo_back_url,idBackRef]].map(([side,label,url,ref])=>(
               <div key={side} style={{width:140}}>
                 {url ? (
