@@ -19755,11 +19755,23 @@ function AcceptInvitationPage({token, onAccepted}) {
           await ce("ClientUser",[{...memberPayload, mobile: form.mobile, client_id: invitation.client_id||"", client_name: invitation.client_name||""}]);
         }
       } else {
+        // If this hire already went through onboarding (ID + personal photo
+        // upload) before accepting their invitation, that photo IS their
+        // real ID-verified profile picture — use it as avatar_url instead
+        // of whatever they self-uploaded on this separate invite-accept
+        // form, and carry the ID photos too rather than only whatever the
+        // admin happened to have on file at invite time.
+        let onboardingApp = null;
+        if(invitation.source_application_id) {
+          const appRes = await qe("JobApplication", {id: invitation.source_application_id}).catch(()=>({entities:[]}));
+          onboardingApp = appRes.entities?.[0] || null;
+        }
         // team_members has no "mobile" column — whatsapp_number/salary/leave credits/ID
         // photo were already set by the admin at invite time (see InviteUserModal), so
         // carry those through instead of the old (broken) self-entered mobile field.
         const tmRes = await ce("TeamMember",[{
           ...memberPayload,
+          avatar_url: onboardingApp?.onboarding_photo_url || form.photo_url,
           title: invitation.title || null,
           whatsapp_number: invitation.whatsapp_number || form.mobile || null,
           manager_id: invitation.manager_id || null,
@@ -19768,8 +19780,8 @@ function AcceptInvitationPage({token, onAccepted}) {
           probation_months: invitation.probation_months || null,
           vacation_days_total: invitation.vacation_days_total || 21,
           wfh_days_total: invitation.wfh_days_total || 12,
-          id_photo_front_url: invitation.id_photo_front_url || null,
-          id_photo_back_url: invitation.id_photo_back_url || null,
+          id_photo_front_url: onboardingApp?.onboarding_id_front_url || invitation.id_photo_front_url || null,
+          id_photo_back_url: onboardingApp?.onboarding_id_back_url || invitation.id_photo_back_url || null,
           source_application_id: invitation.source_application_id || null,
         }]);
         // Links back to the job application this hire came from, so
@@ -20970,6 +20982,18 @@ function OnboardingDocsPage({token}) {
       if(!application.onboarding_accepted_at) patch.onboarding_accepted_at = new Date().toISOString();
       if(!application.onboarding_completed_at) patch.onboarding_completed_at = new Date().toISOString();
       await ue("JobApplication", application.id, patch);
+      // If this candidate has already been hired and accepted their team
+      // invitation (linked_team_member_id set), carry the ID photos and —
+      // specifically — the personal photo straight onto that team member's
+      // record as their profile picture, instead of leaving it stranded on
+      // the job application where nothing else ever looks at it again.
+      if(application.linked_team_member_id) {
+        const tmPatch = {};
+        if(patch.onboarding_photo_url) tmPatch.avatar_url = patch.onboarding_photo_url;
+        if(patch.onboarding_id_front_url) tmPatch.id_photo_front_url = patch.onboarding_id_front_url;
+        if(patch.onboarding_id_back_url) tmPatch.id_photo_back_url = patch.onboarding_id_back_url;
+        if(Object.keys(tmPatch).length) await ue("TeamMember", application.linked_team_member_id, tmPatch).catch(()=>{});
+      }
       logApplicationActivity(application.id, "Submitted onboarding documents & accepted policy", application.candidate_name||"Candidate");
       setDone(true);
     } catch(e) { alert("Something went wrong submitting your documents. Please try again."); }
