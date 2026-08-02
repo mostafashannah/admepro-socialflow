@@ -17199,6 +17199,32 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
     setGeneratingContract(false);
   };
 
+  // One-off backfill for members hired before onboarding photos started
+  // auto-syncing to avatar_url — pulls it (and ID photos) from their linked
+  // job application now. Looks up by source_application_id first, falling
+  // back to a name match since older hires may predate that link column.
+  const [syncingPhoto, setSyncingPhoto] = useState(false);
+  const handleSyncOnboardingPhoto = async () => {
+    setSyncingPhoto(true);
+    try {
+      let app = null;
+      if(member.source_application_id) {
+        const res = await qe("JobApplication", {id: member.source_application_id}).catch(()=>({entities:[]}));
+        app = res.entities?.[0] || null;
+      }
+      if(!app) {
+        const res = await qe("JobApplication", {candidate_name: member.name}).catch(()=>({entities:[]}));
+        app = (res.entities||[]).find(a=>a.onboarding_photo_url) || res.entities?.[0] || null;
+      }
+      if(!app?.onboarding_photo_url) { alert(`No onboarding photo found for ${member.name} — they may not have submitted onboarding docs yet.`); setSyncingPhoto(false); return; }
+      const patch = {avatar_url: app.onboarding_photo_url};
+      if(app.onboarding_id_front_url) patch.id_photo_front_url = app.onboarding_id_front_url;
+      if(app.onboarding_id_back_url) patch.id_photo_back_url = app.onboarding_id_back_url;
+      await onUpdateTeamMember(member.id, patch);
+    } catch(e) { alert("Sync failed: " + (e?.message||e)); }
+    setSyncingPhoto(false);
+  };
+
   // Company policy acceptance — a one-time link the employee opens to
   // review the policy (link/summary set in Settings) and click Accept;
   // acceptance timestamp shows here once they do.
@@ -17362,6 +17388,11 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
         <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
           {currentUser?.role==="admin"&&member.email!==currentUser?.email&&(
             <button onClick={()=>onImpersonate&&onImpersonate(member)} style={{fontSize:12,fontWeight:700,color:"var(--text2)",background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"7px 14px",cursor:"pointer"}}>Access Account</button>
+          )}
+          {canEdit&&(
+            <button onClick={handleSyncOnboardingPhoto} disabled={syncingPhoto} title="Pull their onboarding personal photo (and ID photos) in as profile picture" style={{fontSize:12,fontWeight:700,color:"var(--text2)",background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"7px 14px",cursor:syncingPhoto?"default":"pointer",display:"flex",alignItems:"center",gap:6}}>
+              {syncingPhoto?<Spinner size={12}/>:<Ico d={Icons.repeat} size={12} stroke="var(--text2)"/>} Sync Photo from Onboarding
+            </button>
           )}
           {canEdit&&(
             <div style={{position:"relative"}}>
