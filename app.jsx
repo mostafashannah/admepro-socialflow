@@ -17173,11 +17173,23 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
   const handleGenerateContract = async () => {
     setGeneratingContract(true);
     try {
+      // National ID is a placeholder ({{national_id}}) in the template —
+      // if it's not on file yet but an ID photo is, read it off the photo
+      // right now instead of generating a contract with a blank ID number.
+      let contractMember = member;
+      if(!member.national_id && (member.id_photo_front_url||member.id_photo_back_url)) {
+        const result = await extractNationalIdFromPhoto(member.id_photo_front_url||member.id_photo_back_url);
+        if(result.digits) {
+          contractMember = {...member, national_id: result.digits};
+          await onUpdateTeamMember(member.id, {national_id: result.digits});
+          if(!result.confident) alert(`Read the National ID from the photo (${result.digits.length===14?"looks complete":"possibly incomplete, please double-check"}: ${result.digits}) and used it on the contract — verify it against the photo.${result.reason?`\n\nAI's note: ${result.reason}`:""}`);
+        }
+      }
       const jspdfLib = await waitForLib(()=>window.jspdf);
       const jsPDFCtor = jspdfLib?.jsPDF;
       if(!jsPDFCtor) throw new Error("PDF library failed to load");
       const template = appSettings?.employment_contract_template || DEFAULT_CONTRACT_TEMPLATE;
-      const text = mergeContractTemplate(template, member, manager, appSettings);
+      const text = mergeContractTemplate(template, contractMember, manager, appSettings);
       const doc = new jsPDFCtor({unit:"pt", format:"a4"});
       doc.setFont("Helvetica"); doc.setFontSize(11);
       const marginX = 56, marginY = 64, lineHeight = 15;
