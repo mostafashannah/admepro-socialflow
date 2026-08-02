@@ -16237,7 +16237,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   onInviteUser, onCancelInvitation, onApproveRequest, onRejectRequest,
   onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation,
   rolePerms, onUpdateTeamMember, onRemoveMember, onToggleRolePermission, onAddExpense, leaveRequests, onDecideLeaveRequest, attendanceRecords,
-  posts, onImpersonate, appSettings, onSaveSettings, expenses, onDeclareCompanyDayOff, invoices, payments, subscriptionPayments, activityLogs=[], perfLogs=[], maiReportSessions=[]}) {
+  posts, onImpersonate, appSettings, brandingAssets, onSaveSettings, expenses, onDeclareCompanyDayOff, invoices, payments, subscriptionPayments, activityLogs=[], perfLogs=[], maiReportSessions=[]}) {
   const [tab, setTab] = usePersistentState("sf_tab_users","team");
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showClientUserModal, setShowClientUserModal] = useState(false);
@@ -16321,6 +16321,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
           currentUser={currentUser}
           onImpersonate={onImpersonate}
           appSettings={appSettings}
+          brandingAssets={brandingAssets}
         />
         {editingMember&&(
           <EditMemberModal
@@ -17156,7 +17157,7 @@ function AccountManagerMaiReportsTab({member}) {
   );
 }
 
-function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, attendanceRecords, expenses, invoices, payments, subscriptionPayments, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense, appSettings, perfLogs=[], maiReportSessions=[]}) {
+function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, attendanceRecords, expenses, invoices, payments, subscriptionPayments, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense, appSettings, brandingAssets, perfLogs=[], maiReportSessions=[]}) {
   // Plain state, not persisted — opening any team member should always
   // start on Overview, not silently reopen to whatever tab was last viewed.
   const [tab, setTab] = useState("overview");
@@ -17190,15 +17191,49 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
       if(!jsPDFCtor) throw new Error("PDF library failed to load");
       const template = appSettings?.employment_contract_template || DEFAULT_CONTRACT_TEMPLATE;
       const text = mergeContractTemplate(template, contractMember, manager, appSettings);
+
+      // Same repeating logo-header + company-footer treatment as
+      // downloadContactReportPDF, so every generated PDF in the app looks
+      // like one family instead of the contract being a one-off.
+      const [ar,ag,ab] = hexToRgb(brandingAssets?.primary_color||"#d90b2c");
+      const appName = brandingAssets?.app_name || appSettings?.app_name || "Admepro";
+      let logo = null;
+      const uploadedLogo = brandingAssets?.secondary_logo || brandingAssets?.primary_logo;
+      if(uploadedLogo) {
+        try {
+          const dims = await new Promise((resolve,reject)=>{
+            const img = new Image();
+            img.onload = () => resolve({w:img.naturalWidth, h:img.naturalHeight});
+            img.onerror = reject;
+            img.src = uploadedLogo;
+          });
+          logo = {dataUrl: uploadedLogo, ...dims};
+        } catch(e) { logo = null; }
+      }
+      if(!logo) logo = await loadImageForPdf(ADMEPRO_LOGO_BLACK) || await loadImageForPdfViaImg(ADMEPRO_LOGO_BLACK);
+
       const doc = new jsPDFCtor({unit:"pt", format:"a4"});
-      doc.setFont("Helvetica"); doc.setFontSize(11);
-      const marginX = 56, marginY = 64, lineHeight = 15;
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
+      const marginX = 56, pageWidth = doc.internal.pageSize.getWidth(), pageHeight = doc.internal.pageSize.getHeight();
+      const HEADER_TOP = 56, CONTENT_START = 112;
+      const drawHeaderLogo = () => {
+        if(logo) {
+          const logoH = 33, logoW = logoH * (logo.w/logo.h);
+          doc.addImage(logo.dataUrl, "PNG", marginX-4, HEADER_TOP-16, logoW, logoH);
+        } else {
+          doc.setFont("Helvetica","bold"); doc.setFontSize(33); doc.setTextColor(17,24,39);
+          doc.text("p", marginX-4, HEADER_TOP);
+          const pW = doc.getTextWidth("p");
+          doc.setFillColor(ar,ag,ab);
+          doc.circle(marginX-4+pW+4.5, HEADER_TOP-1.5, 3.6, "F");
+        }
+      };
+      doc.setFont("Helvetica"); doc.setFontSize(11); doc.setTextColor(17,24,39);
+      const lineHeight = 15;
+      const footerReserve = 100;
+      let y = CONTENT_START;
       const lines = doc.splitTextToSize(text, pageWidth - marginX*2);
-      let y = marginY;
       for(const line of lines) {
-        if(y > pageHeight - marginY) { doc.addPage(); y = marginY; }
+        if(y > pageHeight - footerReserve) { doc.addPage(); y = CONTENT_START; }
         doc.text(line, marginX, y);
         y += lineHeight;
       }
@@ -17208,41 +17243,42 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
       // there's no wet-ink signature to capture in a generated PDF. The
       // employee side is left blank for them to sign in person/print.
       const sigBlockHeight = 130;
-      if(y + sigBlockHeight > pageHeight - marginY) { doc.addPage(); y = marginY; }
+      if(y + sigBlockHeight > pageHeight - footerReserve) { doc.addPage(); y = CONTENT_START; }
       y += 30;
       const colWidth = (pageWidth - marginX*2 - 30) / 2;
       const leftX = marginX, rightX = marginX + colWidth + 30;
-      doc.setFont("Helvetica","bold"); doc.setFontSize(11);
+      doc.setFont("Helvetica","bold"); doc.setFontSize(11); doc.setTextColor(17,24,39);
       doc.text("Employee Signature", leftX, y);
-      doc.text(`For ${appSettings?.app_name||"the Company"}`, rightX, y);
+      doc.text(`For ${appName}`, rightX, y);
       doc.setFont("Helvetica","normal"); doc.setFontSize(10);
-      let logoDataUrl = null;
-      if(appSettings?.app_logo_url) {
-        try {
-          const res = await fetch(appSettings.app_logo_url);
-          const blob = await res.blob();
-          logoDataUrl = await new Promise((resolve,reject)=>{
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-          });
-        } catch(e) { /* no logo available — signature line still renders without a stamp */ }
-      }
       const stampY = y + 14;
-      if(logoDataUrl) {
-        try {
-          const fmt = /png/i.test(appSettings.app_logo_url) ? "PNG" : "JPEG";
-          doc.addImage(logoDataUrl, fmt, rightX, stampY, 56, 56, undefined, "FAST");
-        } catch(e) { /* unsupported image format for jsPDF — signature text still stands on its own */ }
+      if(logo) {
+        try { doc.addImage(logo.dataUrl, "PNG", rightX, stampY, 56, 56*(logo.h/logo.w), undefined, "FAST"); }
+        catch(e) { /* unsupported image format for jsPDF — signature text still stands on its own */ }
       }
       doc.text("_______________________", leftX, stampY + 66);
       doc.text(member.name||"", leftX, stampY + 80);
-      doc.text("_______________________", rightX + (logoDataUrl?66:0), stampY + 66);
-      doc.text("Mostafa Shannah", rightX + (logoDataUrl?66:0), stampY + 80);
+      doc.text("_______________________", rightX + (logo?66:0), stampY + 66);
+      doc.text("Mostafa Shannah", rightX + (logo?66:0), stampY + 80);
       doc.setFontSize(9);
       doc.text(`Date: ${fmtDate(new Date().toISOString())}`, leftX, stampY + 96);
-      doc.text(`Date: ${fmtDate(new Date().toISOString())}`, rightX + (logoDataUrl?66:0), stampY + 96);
+      doc.text(`Date: ${fmtDate(new Date().toISOString())}`, rightX + (logo?66:0), stampY + 96);
+
+      // Logo header + company footer pinned to every page, matching
+      // downloadContactReportPDF's treatment exactly.
+      const totalPages = doc.internal.getNumberOfPages();
+      for(let p=1; p<=totalPages; p++) {
+        doc.setPage(p);
+        drawHeaderLogo();
+        const fy = pageHeight - 66;
+        doc.setDrawColor(229,231,235); doc.setLineWidth(1);
+        doc.line(marginX, fy, pageWidth-marginX, fy);
+        doc.setFont("Helvetica","bold"); doc.setFontSize(10.5); doc.setTextColor(17,24,39);
+        doc.text("Admepro Advertising Agency", marginX, fy+20);
+        doc.setFont("Helvetica","normal"); doc.setFontSize(9); doc.setTextColor(107,114,128);
+        doc.text("145 El Banafsig 3, New Cairo, Cairo", marginX, fy+34);
+        doc.text("hello@admepro.com · +20 100 037 0140", marginX, fy+46);
+      }
 
       const pdfBlob = doc.output("blob");
       const file = new File([pdfBlob], `${member.name.replace(/\s+/g,"_")}_Employment_Contract.pdf`, {type:"application/pdf"});
@@ -45136,6 +45172,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             payments={data.payments||[]}
             subscriptionPayments={data.subscriptionPayments||[]}
             posts={data.posts}
+            brandingAssets={brandingAssets}
             onImpersonate={impersonateAs}
             appSettings={appSettings}
             onSaveSettings={saveAppSettings}
