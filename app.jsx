@@ -18404,7 +18404,16 @@ function AttendanceImportTab({appSettings, onSaveSettings, isAdmin, onDeclareCom
       const fd = new FormData();
       fd.append("file", file);
       const r = await fetch(window.location.origin+"/attendance-import.php", {method:"POST", headers:{apikey:SB_KEY}, body:fd});
-      const d = await r.json();
+      // Read as text first, not r.json() directly — if the server ever
+      // outputs anything before/around the JSON (a PHP warning/notice
+      // printed inline, for instance), .json() throws a cryptic
+      // browser-internal parse error instead of showing what actually
+      // came back. Parsing manually lets a bad response show its real
+      // (truncated) content instead of that dead end.
+      const raw = await r.text();
+      let d;
+      try { d = JSON.parse(raw); }
+      catch(parseErr) { setResult({error: `Server returned something unexpected (not valid JSON) — first part of the response: ${raw.slice(0,400)}`}); setUploading(false); if(fileRef.current) fileRef.current.value = ""; return; }
       setResult(r.ok ? d : {error: d.error||"Upload failed"});
     } catch(err) {
       setResult({error: err.message});
