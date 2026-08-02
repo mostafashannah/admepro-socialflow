@@ -47,6 +47,41 @@ if (!hash_equals(API_KEY, (string)$providedKey)) {
     exit;
 }
 
+$pdo = new PDO(
+    'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4',
+    DB_USER, DB_PASS,
+    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]
+);
+
+// ── Name resolution — a device export's name (e.g. "SHADY", a device
+// nickname) rarely matches a real team member's full name exactly. Rather
+// than requiring an exact match, this mode lets an admin either point an
+// unmatched device name at the correct team member (all its already-
+// imported rows get backfilled with that team_member_id) or reject it
+// outright (delete those rows — "I don't need to sync this one").
+if (($_GET['mode'] ?? '') === 'remap') {
+    $body = json_decode(file_get_contents('php://input'), true) ?: [];
+    $memberName = trim((string)($body['member_name'] ?? ''));
+    if ($memberName === '') { http_response_code(400); echo json_encode(["error" => "Missing member_name"]); exit; }
+    try {
+        if (!empty($body['reject'])) {
+            $stmt = $pdo->prepare("DELETE FROM attendance_records WHERE member_name = ? AND team_member_id IS NULL");
+            $stmt->execute([$memberName]);
+            echo json_encode(["ok" => true, "deleted" => $stmt->rowCount()]);
+        } else {
+            $teamMemberId = trim((string)($body['team_member_id'] ?? ''));
+            if ($teamMemberId === '') { http_response_code(400); echo json_encode(["error" => "Missing team_member_id"]); exit; }
+            $stmt = $pdo->prepare("UPDATE attendance_records SET team_member_id = ? WHERE member_name = ? AND team_member_id IS NULL");
+            $stmt->execute([$teamMemberId, $memberName]);
+            echo json_encode(["ok" => true, "updated" => $stmt->rowCount()]);
+        }
+    } catch (Throwable $e) {
+        http_response_code(500);
+        echo json_encode(["error" => "Remap failed: " . $e->getMessage()]);
+    }
+    exit;
+}
+
 if (empty($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
     http_response_code(400);
     echo json_encode(["error" => "Missing or invalid file upload (field name must be 'file')"]);
@@ -55,12 +90,6 @@ if (empty($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
 
 $autoload = __DIR__ . '/vendor/autoload.php';
 if (file_exists($autoload)) require_once $autoload;
-
-$pdo = new PDO(
-    'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4',
-    DB_USER, DB_PASS,
-    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]
-);
 
 // ── Read the uploaded file into a plain array of rows (header + data) ──
 // regardless of whether it's .csv, .xls, or .xlsx.
@@ -196,6 +225,15 @@ $colIdx = array_flip($header);
 $members = $pdo->query("SELECT id, name FROM team_members")->fetchAll(PDO::FETCH_KEY_PAIR);
 $byLowerName = [];
 foreach ($members as $id => $name) { $byLowerName[mb_strtolower(trim($name))] = $id; }
+// Device "Emp No." matching — set once per person (Team Members → Edit →
+// Attendance Device ID) and every future import matches by that ID
+// instead of guessing from a device nickname against their full name.
+$byDeviceId = [];
+try {
+    foreach ($pdo->query("SELECT id, attendance_device_id FROM team_members WHERE attendance_device_id IS NOT NULL AND attendance_device_id != ''")->fetchAll(PDO::FETCH_KEY_PAIR) as $tid => $devId) {
+        $byDeviceId[trim((string)$devId)] = $tid;
+    }
+} catch (Throwable $e) { /* column may not exist yet on an older schema — name matching still works */ }
 
 // ── Weekend/holiday config (Team → Attendance Rules) ──
 $weekendDays = [5, 6]; // PHP date('N'): 1=Mon..7=Sun — default Fri+Sat (Egypt)
@@ -252,7 +290,8 @@ if ($isRawDeviceFormat) {
     $cinCol = $colIdx['clock in 1'] ?? $colIdx['clock in'] ?? null;
     $coutCol = $colIdx['clock out 1'] ?? $colIdx['clock out'] ?? null;
     // Group parsed rows by employee so we can fill in the gaps per person.
-    $byEmployee = []; // name => ['dates' => [ymd => [cin,cout]], 'min'=>, 'max'=>]
+    $empNoCol = $colIdx['emp no.'] ?? $colIdx['emp no'] ?? null;
+    $byEmployee = []; // name => ['dates' => [ymd => [cin,cout]], 'min'=>, 'max'=>, 'empNo'=>]
     foreach ($rows as $row) {
         $name = trim((string)($row[$colIdx['name']] ?? ''));
         $dateRaw = trim((string)($row[$colIdx['date']] ?? ''));
@@ -260,7 +299,7 @@ if ($isRawDeviceFormat) {
         $ts = is_numeric($dateRaw) ? \PhpOffice\PhpSpreadsheet\Shared\Date::excelToTimestamp((float)$dateRaw) : strtotime($dateRaw);
         if (!$ts) { $skipped++; continue; }
         $ymd = date('Y-m-d', $ts);
-        if (!isset($byEmployee[$name])) $byEmployee[$name] = ['dates' => [], 'min' => $ymd, 'max' => $ymd];
+        if (!isset($byEmployee[$name])) $byEmployee[$name] = ['dates' => [], 'min' => $ymd, 'max' => $ymd, 'empNo' => $empNoCol !== null ? trim((string)($row[$empNoCol] ?? '')) : ''];
         $byEmployee[$name]['dates'][$ymd] = [
             $cinCol !== null ? trim((string)($row[$cinCol] ?? '')) : null,
             $coutCol !== null ? trim((string)($row[$coutCol] ?? '')) : null,
@@ -270,7 +309,10 @@ if ($isRawDeviceFormat) {
     }
 
     foreach ($byEmployee as $name => $info) {
-        $teamMemberId = $byLowerName[mb_strtolower($name)] ?? null;
+        // Device "Emp No." match takes priority over the name — set once
+        // per person (Attendance Device ID field), it's exact and doesn't
+        // care that the device only knows them by a nickname.
+        $teamMemberId = ($info['empNo'] !== '' ? ($byDeviceId[$info['empNo']] ?? null) : null) ?? ($byLowerName[mb_strtolower($name)] ?? null);
         if (!$teamMemberId) $unmatched[$name] = true;
 
         // Present/late rows for every date actually in the file.
