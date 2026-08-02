@@ -17184,19 +17184,31 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
           contractMember = {...member, national_id: result.digits};
           await onUpdateTeamMember(member.id, {national_id: result.digits});
           if(!result.confident) alert(`Read the National ID from the photo (${result.digits.length===14?"looks complete":"possibly incomplete, please double-check"}: ${result.digits}) and used it on the contract — verify it against the photo.${result.reason?`\n\nAI's note: ${result.reason}`:""}`);
+        } else {
+          // Silently leaving the {{national_id}} placeholder blank here was
+          // confusing — a photo WAS attached, but the AI couldn't read
+          // anything off it (common with .heic files, which vision models
+          // can't open at all), so say so instead of just shipping a blank ID.
+          alert(`Couldn't read the National ID off the attached photo${result.reason?` (${result.reason})`:""} — the contract will have a blank ID field. This is common with .heic photos (iPhone default format); ask them to resend it as .jpg/.png, or enter the ID manually via Edit before regenerating.`);
         }
       }
       const jspdfLib = await waitForLib(()=>window.jspdf);
       const jsPDFCtor = jspdfLib?.jsPDF;
       if(!jsPDFCtor) throw new Error("PDF library failed to load");
       const template = appSettings?.employment_contract_template || DEFAULT_CONTRACT_TEMPLATE;
-      const text = mergeContractTemplate(template, contractMember, manager, appSettings);
+      // The template's own trailing "Signed:" section is superseded by the
+      // proper signature block drawn further below (with the real logo
+      // stamp) — strip it out of the rendered body instead of printing both
+      // one after another.
+      const rawText = mergeContractTemplate(template, contractMember, manager, appSettings);
+      const signedMarker = rawText.search(/\n\s*Signed:/i);
+      const text = signedMarker>=0 ? rawText.slice(0, signedMarker).trimEnd() : rawText;
 
       // Same repeating logo-header + company-footer treatment as
       // downloadContactReportPDF, so every generated PDF in the app looks
       // like one family instead of the contract being a one-off.
       const [ar,ag,ab] = hexToRgb(brandingAssets?.primary_color||"#d90b2c");
-      const appName = brandingAssets?.app_name || appSettings?.app_name || "Admepro";
+      const companyName = "Admepro Advertising Agency"; // legal entity, not the app's own product-branding name
       let logo = null;
       const uploadedLogo = brandingAssets?.secondary_logo || brandingAssets?.primary_logo;
       if(uploadedLogo) {
@@ -17249,7 +17261,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
       const leftX = marginX, rightX = marginX + colWidth + 30;
       doc.setFont("Helvetica","bold"); doc.setFontSize(11); doc.setTextColor(17,24,39);
       doc.text("Employee Signature", leftX, y);
-      doc.text(`For ${appName}`, rightX, y);
+      doc.text(`For ${companyName}`, rightX, y);
       doc.setFont("Helvetica","normal"); doc.setFontSize(10);
       const stampY = y + 14;
       if(logo) {
@@ -26562,7 +26574,11 @@ function mergeContractTemplate(template, member, manager, appSettings) {
     work_days: member.employment_type==="part_time"
       ? parseMaybeJson(member.work_days,WORK_DAYS_DEFAULT).map(d=>WEEKDAY_LABELS.find(w=>w.d===d)?.label).join(", ")
       : "Sunday through Thursday",
-    company_name: appSettings?.app_name||"Admepro",
+    // The contract's employer of record is the actual agency, not
+    // whatever the app's own product-branding name (app_name) happens to
+    // be set to — those are two different things (e.g. app_name="SocialFlow"
+    // is the software's name, not the legal entity signing the contract).
+    company_name: "Admepro Advertising Agency",
     today: fmtDate(new Date().toISOString()),
   };
   return Object.entries(tags).reduce((text,[key,val])=>text.replaceAll(`{{${key}}}`, String(val)), template||"");
