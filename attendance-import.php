@@ -180,6 +180,16 @@ if ($ext === 'xls' || $ext === 'xlsx') {
 }
 
 if (!$rows) { http_response_code(400); echo json_encode(["error" => "Empty file"]); exit; }
+
+// Everything below writes to the database and can hit a real SQL error
+// (e.g. a column this code expects isn't actually on the live schema yet)
+// — previously an uncaught PDOException here would crash with ZERO output
+// (Content-Type: application/json was already sent, but nothing was ever
+// echoed), which the frontend can only describe as "not valid JSON" with
+// no further detail. Wrapping it all means a real crash still reports
+// exactly what broke instead of dying silently.
+try {
+
 $header = array_map(fn($h) => mb_strtolower(trim((string)$h)), array_shift($rows));
 $colIdx = array_flip($header);
 
@@ -399,3 +409,9 @@ echo json_encode([
     'unmatched_names' => array_keys($unmatched),
     'rules_applied' => $rulesDeducted,
 ]);
+
+} catch (Throwable $fatal) {
+    http_response_code(500);
+    echo json_encode(["error" => "Import failed: " . $fatal->getMessage() . " (in " . basename($fatal->getFile()) . " line " . $fatal->getLine() . ")"]);
+    exit;
+}
