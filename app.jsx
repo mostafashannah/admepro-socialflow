@@ -17202,6 +17202,48 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
         doc.text(line, marginX, y);
         y += lineHeight;
       }
+
+      // Signature block — the agency side is pre-signed by name (Mostafa
+      // Shannah) with the agency logo standing in as the stamp/seal, since
+      // there's no wet-ink signature to capture in a generated PDF. The
+      // employee side is left blank for them to sign in person/print.
+      const sigBlockHeight = 130;
+      if(y + sigBlockHeight > pageHeight - marginY) { doc.addPage(); y = marginY; }
+      y += 30;
+      const colWidth = (pageWidth - marginX*2 - 30) / 2;
+      const leftX = marginX, rightX = marginX + colWidth + 30;
+      doc.setFont("Helvetica","bold"); doc.setFontSize(11);
+      doc.text("Employee Signature", leftX, y);
+      doc.text(`For ${appSettings?.app_name||"the Company"}`, rightX, y);
+      doc.setFont("Helvetica","normal"); doc.setFontSize(10);
+      let logoDataUrl = null;
+      if(appSettings?.app_logo_url) {
+        try {
+          const res = await fetch(appSettings.app_logo_url);
+          const blob = await res.blob();
+          logoDataUrl = await new Promise((resolve,reject)=>{
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+        } catch(e) { /* no logo available — signature line still renders without a stamp */ }
+      }
+      const stampY = y + 14;
+      if(logoDataUrl) {
+        try {
+          const fmt = /png/i.test(appSettings.app_logo_url) ? "PNG" : "JPEG";
+          doc.addImage(logoDataUrl, fmt, rightX, stampY, 56, 56, undefined, "FAST");
+        } catch(e) { /* unsupported image format for jsPDF — signature text still stands on its own */ }
+      }
+      doc.text("_______________________", leftX, stampY + 66);
+      doc.text(member.name||"", leftX, stampY + 80);
+      doc.text("_______________________", rightX + (logoDataUrl?66:0), stampY + 66);
+      doc.text("Mostafa Shannah", rightX + (logoDataUrl?66:0), stampY + 80);
+      doc.setFontSize(9);
+      doc.text(`Date: ${fmtDate(new Date().toISOString())}`, leftX, stampY + 96);
+      doc.text(`Date: ${fmtDate(new Date().toISOString())}`, rightX + (logoDataUrl?66:0), stampY + 96);
+
       const pdfBlob = doc.output("blob");
       const file = new File([pdfBlob], `${member.name.replace(/\s+/g,"_")}_Employment_Contract.pdf`, {type:"application/pdf"});
       const contract_url = await uploadToStorage(file, "team-members/contracts");
@@ -17209,6 +17251,25 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
       await onUpdateTeamMember(member.id, {contract_url, contract_generated_at});
     } catch(e) { alert("Couldn't generate the contract: " + (e?.message||e)); }
     setGeneratingContract(false);
+  };
+
+  const [sendingContract, setSendingContract] = useState(false);
+  const handleSendContract = async () => {
+    if(!member.contract_url || !member.email) return;
+    setSendingContract(true);
+    try {
+      const ok = await sendEmail(member.email, `Your Employment Contract — ${appSettings?.app_name||"SocialFlow"}`, `
+        <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
+          <p>Hi ${member.name||"there"},</p>
+          <p>Please find your employment contract attached/linked below. Review it and reach out if you have any questions.</p>
+          <p style="margin:20px 0"><a href="${member.contract_url}" style="display:inline-block;padding:12px 24px;background:#d90b2c;color:#ffffff;border-radius:8px;font-weight:700;text-decoration:none">View Your Contract</a></p>
+          <p>Best,<br/>${appSettings?.app_name||"SocialFlow"} Team</p>
+        </div>
+      `, appSettings?.app_name||"SocialFlow");
+      if(ok) { setToast?.("Contract emailed to "+member.email); alert(`Contract sent to ${member.email}`); }
+      else alert("Couldn't send the email — please check your email settings.");
+    } catch(e) { alert("Couldn't send the email: " + (e?.message||e)); }
+    setSendingContract(false);
   };
 
   // One-off backfill for members hired before onboarding photos started
@@ -17643,9 +17704,14 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 <p style={{fontSize:12,color:"#10b981",fontWeight:700}}>✓ Generated {fmtDateTime(member.contract_generated_at)}</p>
                 <a href={member.contract_url} target="_blank" rel="noreferrer" style={{fontSize:13,color:"var(--accent)",fontWeight:600}}>📄 View Contract PDF</a>
-                <Btn variant="secondary" onClick={handleGenerateContract} disabled={generatingContract} style={{alignSelf:"flex-start",marginTop:4}}>
-                  {generatingContract?<Spinner size={13}/>:"Regenerate"}
-                </Btn>
+                <div style={{display:"flex",gap:8,marginTop:4}}>
+                  <Btn variant="secondary" onClick={handleGenerateContract} disabled={generatingContract} style={{alignSelf:"flex-start"}}>
+                    {generatingContract?<Spinner size={13}/>:"Regenerate"}
+                  </Btn>
+                  <Btn onClick={handleSendContract} disabled={sendingContract||!member.email} style={{alignSelf:"flex-start"}}>
+                    {sendingContract?<Spinner size={13}/>:"Send by Email"}
+                  </Btn>
+                </div>
               </div>
             ) : (
               <>
