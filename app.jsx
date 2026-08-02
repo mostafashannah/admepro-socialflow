@@ -2135,10 +2135,33 @@ const agentAI = async (agentId, taskLabel, prompt, maxTokens=1000, imageUrl=null
     ? `${prompt}\n\n=== YOUR SKILLS & GUIDES (set by the admin — always follow these) ===\n${skills}`
     : prompt;
   // Lets an agent actually look at an attached photo (e.g. Sara writing a
-  // caption for a specific image) instead of only reasoning from its
-  // filename/metadata — Claude fetches the image itself from this URL,
-  // no base64 round-trip needed client-side.
-  const content = imageUrl
+  // caption for a specific image, or reading a national ID off a photo)
+  // instead of only reasoning from its filename/metadata. Originally had
+  // Claude fetch the image itself via a plain URL source — but Anthropic's
+  // fetcher respects the target host's robots.txt, and a disallow rule
+  // there (or on any third-party host) makes every image-based call fail
+  // with "This URL is disallowed by the website's robots.txt file" even
+  // for a perfectly normal JPEG. Fetching the bytes here (same-origin, or
+  // via fetch-url-proxy.php for third-party hosts — same as fetchFileUrl)
+  // and sending them as base64 sidesteps robots.txt entirely.
+  let imageBase64Block = null;
+  if(imageUrl) {
+    try {
+      const res = await fetchFileUrl(imageUrl);
+      const blob = await res.blob();
+      const dataUrl = await new Promise((resolve,reject)=>{
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      const match = dataUrl.match(/^data:([^;]+);base64,(.*)$/);
+      if(match) imageBase64Block = {media_type: match[1], data: match[2]};
+    } catch(e) { /* fall through to the url-source attempt below as a last resort */ }
+  }
+  const content = imageBase64Block
+    ? [{type:"image", source:{type:"base64", media_type:imageBase64Block.media_type, data:imageBase64Block.data}}, {type:"text", text:fullPrompt}]
+    : imageUrl
     ? [{type:"image", source:{type:"url", url:imageUrl}}, {type:"text", text:fullPrompt}]
     : fullPrompt;
   const startedAt = new Date();
@@ -17243,12 +17266,28 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
       const lineHeight = 15;
       const footerReserve = 100;
       let y = CONTENT_START;
-      const lines = doc.splitTextToSize(text, pageWidth - marginX*2);
-      for(const line of lines) {
-        if(y > pageHeight - footerReserve) { doc.addPage(); y = CONTENT_START; }
-        doc.text(line, marginX, y);
-        y += lineHeight;
+      // Title line ("EMPLOYMENT CONTRACT") and numbered section headers
+      // ("1. POSITION", "2. START DATE", etc.) rendered bold/larger instead
+      // of the same weight as the body text, so the document actually reads
+      // like a structured contract rather than one flat paragraph block.
+      const bodyLines = text.split("\n");
+      let isFirstLine = true;
+      for(const rawLine of bodyLines) {
+        const isTitle = isFirstLine && rawLine.trim().length>0;
+        const isSectionHeader = !isTitle && /^\d+\.\s+[A-Z]/.test(rawLine.trim());
+        if(rawLine.trim().length>0) isFirstLine = false;
+        if(isTitle) { doc.setFont("Helvetica","bold"); doc.setFontSize(16); }
+        else if(isSectionHeader) { doc.setFont("Helvetica","bold"); doc.setFontSize(11.5); }
+        else { doc.setFont("Helvetica","normal"); doc.setFontSize(11); }
+        const wrapped = doc.splitTextToSize(rawLine, pageWidth - marginX*2);
+        for(const line of wrapped) {
+          if(y > pageHeight - footerReserve) { doc.addPage(); y = CONTENT_START; }
+          doc.text(line, marginX, y);
+          y += (isTitle ? lineHeight+6 : isSectionHeader ? lineHeight+3 : lineHeight);
+        }
+        if(isTitle) y += 6;
       }
+      doc.setFont("Helvetica","normal"); doc.setFontSize(11); doc.setTextColor(17,24,39);
 
       // Signature block — the agency side is pre-signed by name (Mostafa
       // Shannah) with the agency logo standing in as the stamp/seal, since
