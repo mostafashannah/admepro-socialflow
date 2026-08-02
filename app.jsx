@@ -26516,7 +26516,7 @@ The Employee's employment begins on {{start_date}}.
 The Employee will serve a probation period of {{probation_months}} month(s), during which either party may terminate this Contract with short notice. During probation, the Employee's monthly salary is {{probation_salary}}.
 
 4. SALARY
-Upon successful completion of the probation period, the Employee's monthly salary will be {{salary}}, payable at the end of each calendar month, subject to applicable taxes and social insurance deductions under Egyptian law.
+Upon successful completion of the probation period, the Employee's monthly salary will be {{salary}}, payable between the 5th and 10th of the following month.
 
 5. WORKING HOURS
 The Employee's standard working days are {{work_days}}, in line with the Employer's official working hours policy.
