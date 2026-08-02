@@ -17248,6 +17248,27 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
       if(!logo) logo = await loadImageForPdf(ADMEPRO_LOGO_BLACK) || await loadImageForPdfViaImg(ADMEPRO_LOGO_BLACK);
 
       const doc = new jsPDFCtor({unit:"pt", format:"a4"});
+
+      // A real handwriting-style font for the agency signature — jsPDF only
+      // ships Helvetica/Times/Courier, none of which look like a signature,
+      // so a cursive font (Sacramento, an open-source Google Font) is
+      // fetched and embedded at generation time. Best-effort: falls back to
+      // italic Times if the fetch fails for any reason (offline, CDN down).
+      let signatureFontLoaded = false;
+      try {
+        const fontRes = await fetch("https://raw.githubusercontent.com/google/fonts/main/ofl/sacramento/Sacramento-Regular.ttf");
+        const fontBlob = await fontRes.blob();
+        const fontDataUrl = await new Promise((resolve,reject)=>{
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(fontBlob);
+        });
+        const fontBase64 = fontDataUrl.split(",")[1];
+        doc.addFileToVFS("Sacramento-Regular.ttf", fontBase64);
+        doc.addFont("Sacramento-Regular.ttf", "Sacramento", "normal");
+        signatureFontLoaded = true;
+      } catch(e) { signatureFontLoaded = false; }
       const marginX = 56, pageWidth = doc.internal.pageSize.getWidth(), pageHeight = doc.internal.pageSize.getHeight();
       const HEADER_TOP = 56, CONTENT_START = 112;
       const drawHeaderLogo = () => {
@@ -17307,13 +17328,22 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
         try { doc.addImage(logo.dataUrl, "PNG", rightX, stampY, 56, 56*(logo.h/logo.w), undefined, "FAST"); }
         catch(e) { /* unsupported image format for jsPDF — signature text still stands on its own */ }
       }
+      // Agency side is pre-signed — the name rendered in a cursive
+      // handwriting-style font sitting right on the signature line reads as
+      // an actual signature rather than just the typed name below it.
+      const employerSigX = rightX + (logo?66:0);
+      if(signatureFontLoaded) { doc.setFont("Sacramento","normal"); doc.setFontSize(26); }
+      else { doc.setFont("Times","italic"); doc.setFontSize(20); }
+      doc.setTextColor(17,24,39);
+      doc.text("Mostafa Shannah", employerSigX+4, stampY + 60);
+      doc.setFont("Helvetica","normal"); doc.setFontSize(10);
       doc.text("_______________________", leftX, stampY + 66);
       doc.text(member.name||"", leftX, stampY + 80);
-      doc.text("_______________________", rightX + (logo?66:0), stampY + 66);
-      doc.text("Mostafa Shannah", rightX + (logo?66:0), stampY + 80);
+      doc.text("_______________________", employerSigX, stampY + 66);
+      doc.text("Mostafa Shannah", employerSigX, stampY + 80);
       doc.setFontSize(9);
       doc.text(`Date: ${fmtDate(new Date().toISOString())}`, leftX, stampY + 96);
-      doc.text(`Date: ${fmtDate(new Date().toISOString())}`, rightX + (logo?66:0), stampY + 96);
+      doc.text(`Date: ${fmtDate(new Date().toISOString())}`, employerSigX, stampY + 96);
 
       // Logo header + company footer pinned to every page, matching
       // downloadContactReportPDF's treatment exactly.
@@ -17345,11 +17375,19 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
     if(!member.contract_url || !member.email) return;
     setSendingContract(true);
     try {
+      // A fresh token every send — same pattern as the policy-acceptance
+      // link (policy_token) — so the "Upload Signed Copy" link in the email
+      // works without the member needing to log in, but still points at
+      // exactly this person's record.
+      const contract_sign_token = uid().replace("local_","") + uid().replace("local_","");
+      await onUpdateTeamMember(member.id, {contract_sign_token, signed_contract_url:null, signed_contract_uploaded_at:null});
+      const uploadUrl = `${window.location.origin}/team/sign-contract?token=${contract_sign_token}`;
       const ok = await sendEmail(member.email, `Your Employment Contract — ${appSettings?.app_name||"SocialFlow"}`, `
         <div style="font-family:sans-serif;max-width:520px;margin:0 auto">
           <p>Hi ${member.name||"there"},</p>
-          <p>Please find your employment contract attached/linked below. Review it and reach out if you have any questions.</p>
-          <p style="margin:20px 0"><a href="${member.contract_url}" style="display:inline-block;padding:12px 24px;background:#d90b2c;color:#ffffff;border-radius:8px;font-weight:700;text-decoration:none">View Your Contract</a></p>
+          <p>Please find your employment contract attached/linked below. Review it, sign it, and upload the signed copy using the button below.</p>
+          <p style="margin:20px 0"><a href="${member.contract_url}" style="display:inline-block;padding:12px 24px;background:#111827;color:#ffffff;border-radius:8px;font-weight:700;text-decoration:none;margin-right:10px">View Your Contract</a></p>
+          <p style="margin:0 0 20px"><a href="${uploadUrl}" style="display:inline-block;padding:12px 24px;background:#d90b2c;color:#ffffff;border-radius:8px;font-weight:700;text-decoration:none">Upload Signed Copy</a></p>
           <p>Best,<br/>${appSettings?.app_name||"SocialFlow"} Team</p>
         </div>
       `, appSettings?.app_name||"SocialFlow");
@@ -17791,6 +17829,11 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 <p style={{fontSize:12,color:"#10b981",fontWeight:700}}>✓ Generated {fmtDateTime(member.contract_generated_at)}</p>
                 <a href={member.contract_url} target="_blank" rel="noreferrer" style={{fontSize:13,color:"var(--accent)",fontWeight:600}}>📄 View Contract PDF</a>
+                {member.signed_contract_url ? (
+                  <a href={member.signed_contract_url} target="_blank" rel="noreferrer" style={{fontSize:12,color:"#10b981",fontWeight:700}}>✓ Signed copy received {fmtDateTime(member.signed_contract_uploaded_at)} — View</a>
+                ) : member.contract_sign_token ? (
+                  <p style={{fontSize:12,color:"#f59e0b",fontWeight:700}}>Awaiting signed copy — upload link sent</p>
+                ) : null}
                 <div style={{display:"flex",gap:8,marginTop:4}}>
                   <Btn variant="secondary" onClick={handleGenerateContract} disabled={generatingContract} style={{alignSelf:"flex-start"}}>
                     {generatingContract?<Spinner size={13}/>:"Regenerate"}
@@ -18003,6 +18046,20 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                   <img src={member.avatar_url} alt="Personal Photo" style={{width:140,height:100,objectFit:"cover",borderRadius:8,border:"1px solid var(--border)"}}/>
                 </a>
                 <p style={{fontSize:11,color:"var(--text2)",marginTop:4,textAlign:"center"}}>Personal Photo</p>
+              </div>
+            )}
+            {member.signed_contract_url&&(
+              <div style={{width:140}}>
+                <a href={member.signed_contract_url} target="_blank" rel="noreferrer">
+                  {/\.pdf(?:[?#]|$)/i.test(member.signed_contract_url) ? (
+                    <div style={{width:140,height:100,borderRadius:8,border:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      <Ico d={Icons.upload} size={22} stroke="var(--text3)"/>
+                    </div>
+                  ) : (
+                    <img src={member.signed_contract_url} alt="Signed Contract" style={{width:140,height:100,objectFit:"cover",borderRadius:8,border:"1px solid var(--border)"}}/>
+                  )}
+                </a>
+                <p style={{fontSize:11,color:"var(--text2)",marginTop:4,textAlign:"center"}}>Signed Contract</p>
               </div>
             )}
             {[["front","ID Photo — Front",member.id_photo_front_url,idFrontRef],["back","ID Photo — Back",member.id_photo_back_url,idBackRef]].map(([side,label,url,ref])=>(
@@ -21117,6 +21174,93 @@ function PolicyAcceptancePage({token, appSettings}) {
           <a href={appSettings.company_policy_url} target="_blank" rel="noreferrer" style={{display:"block",marginBottom:20,fontSize:13,color:"#d90b2c",fontWeight:600}}>📄 Read the Full Company Policy</a>
         )}
         <Btn onClick={handleAccept} disabled={submitting} style={{width:"100%"}}>{submitting?"Submitting…":"I Have Read & Accept This Policy"}</Btn>
+      </div>
+    </div></>
+  );
+}
+
+// Public page for a team member to upload their signed contract back —
+// reached via the "Upload Signed Copy" link in the contract email (see
+// TeamMemberDetailPage's handleSendContract, which mints a fresh
+// contract_sign_token each send). No login required, same pattern as
+// PolicyAcceptancePage above.
+function SignedContractUploadPage({token}) {
+  const [isDark, setIsDark] = useState(()=>{
+    try { return window.matchMedia("(prefers-color-scheme: dark)").matches; } catch(e) { return false; }
+  });
+  const [loading, setLoading] = useState(true);
+  const [member, setMember] = useState(null);
+  const [notFound, setNotFound] = useState(false);
+  const [file, setFile] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+
+  useEffect(()=>{
+    (async () => {
+      const res = await qe("TeamMember", {contract_sign_token: token});
+      const m = res.entities?.[0];
+      if(!m) { setNotFound(true); setLoading(false); return; }
+      setMember(m);
+      if(m.signed_contract_url) setDone(true);
+      setLoading(false);
+    })();
+  },[token]);
+
+  const handlePick = (e) => {
+    const f = e.target.files?.[0];
+    if(!f) return;
+    if(f.size > MAX_ONBOARDING_DOC_MB*1024*1024) { alert(`File is too large (max ${MAX_ONBOARDING_DOC_MB}MB).`); return; }
+    setFile(f);
+  };
+
+  const handleSubmit = async () => {
+    if(!file) return;
+    setSubmitting(true);
+    try {
+      const url = await uploadToStorage(file, "team-members/signed-contracts");
+      await ue("TeamMember", member.id, {signed_contract_url: url, signed_contract_uploaded_at: new Date().toISOString()});
+      setDone(true);
+    } catch(e) { alert("Upload failed — please try again: " + (e?.message||e)); }
+    setSubmitting(false);
+  };
+
+  const wrapSt = {minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:24,background:isDark?"#0b0e14":"#f7f7f8"};
+  const cardSt = {width:"100%",maxWidth:480,background:isDark?"#161a23":"#fff",borderRadius:20,padding:32,border:`1px solid ${isDark?"#252b38":"#eee"}`};
+  const gstyle = <GStyle wallpaper={isDark?"dark":"light"} accentColor="#d90b2c" photoIsDark={isDark}/>;
+
+  if(loading) return <>{gstyle}<div style={wrapSt}><Spinner size={22}/></div></>;
+  if(notFound) return (
+    <>{gstyle}<div style={wrapSt}>
+      <div style={cardSt}>
+        <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
+        <p style={{fontSize:15,fontWeight:700,color:isDark?"#fff":"#111"}}>This link is invalid or has expired.</p>
+      </div>
+    </div></>
+  );
+  if(done) return (
+    <>{gstyle}<div style={wrapSt}>
+      <div style={cardSt}>
+        <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
+        <p style={{fontSize:15,fontWeight:700,color:isDark?"#fff":"#111"}}>✓ Thanks, {member?.name?.split(" ")?.[0]||"there"} — your signed contract has been received.</p>
+      </div>
+    </div></>
+  );
+
+  return (
+    <>{gstyle}<div style={wrapSt}>
+      <div style={cardSt}>
+        <img src={ADMEPRO_LOGO_BLACK} alt="Admepro" style={{height:26,marginBottom:20,filter:isDark?"invert(1)":"none"}}/>
+        <h2 style={{fontSize:19,fontWeight:800,color:isDark?"#fff":"#111",marginBottom:6}}>Upload Your Signed Contract</h2>
+        <p style={{fontSize:13,color:isDark?"#9099ab":"#666",marginBottom:16}}>Hi {member.name||"there"}, once you've printed, signed, and scanned (or photographed) your contract, upload it below.</p>
+        {member.contract_url && (
+          <a href={member.contract_url} target="_blank" rel="noreferrer" style={{display:"block",marginBottom:20,fontSize:13,color:"#d90b2c",fontWeight:600}}>📄 View Your Contract Again</a>
+        )}
+        <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8,padding:"28px 14px",borderRadius:12,border:`1.5px dashed ${isDark?"#3a4150":"#d1d5db"}`,cursor:"pointer",marginBottom:16,textAlign:"center"}}>
+          <Ico d={Icons.upload} size={20} stroke={isDark?"#9099ab":"#666"}/>
+          <span style={{fontSize:13,fontWeight:600,color:isDark?"#c5cad3":"#374151"}}>{file?file.name:"Choose a file (PDF or photo)"}</span>
+          <input type="file" accept="image/*,.pdf" style={{display:"none"}} onChange={handlePick}/>
+        </label>
+        <Btn onClick={handleSubmit} disabled={submitting||!file} style={{width:"100%"}}>{submitting?"Uploading…":"Submit Signed Contract"}</Btn>
       </div>
     </div></>
   );
@@ -41783,6 +41927,9 @@ function App() {
   const [onboardingToken] = useState(()=>{
     try { return window.location.pathname==="/careers/onboarding" ? new URLSearchParams(window.location.search).get("token") : null; } catch(e) { return null; }
   });
+  const [contractSignToken] = useState(()=>{
+    try { return window.location.pathname==="/team/sign-contract" ? new URLSearchParams(window.location.search).get("token") : null; } catch(e) { return null; }
+  });
   // Handle OAuth callback (Supabase redirects back with #access_token=...)
   const [oauthEmail] = useState(()=>{
     try {
@@ -44780,6 +44927,9 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
   }
   if(onboardingToken) {
     return <OnboardingDocsPage token={onboardingToken}/>;
+  }
+  if(contractSignToken) {
+    return <SignedContractUploadPage token={contractSignToken}/>;
   }
   if(completeToken) {
     return <CompleteApplicationPage token={completeToken}/>;
