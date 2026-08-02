@@ -16479,7 +16479,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
       )}
 
       {tab==="attendance"&&canUploadAttendance&&(
-        <AttendanceImportTab appSettings={appSettings} onSaveSettings={onSaveSettings} isAdmin={currentUser?.role==="admin"} onDeclareCompanyDayOff={onDeclareCompanyDayOff}/>
+        <AttendanceImportTab appSettings={appSettings} onSaveSettings={onSaveSettings} isAdmin={currentUser?.role==="admin"} onDeclareCompanyDayOff={onDeclareCompanyDayOff} team={team}/>
       )}
 
       {tab==="invites"&&(
@@ -18146,6 +18146,7 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
     employment_type: member.employment_type||"full_time",
     work_days: parseMaybeJson(member.work_days, WORK_DAYS_DEFAULT),
     national_id: member.national_id||"",
+    attendance_device_id: member.attendance_device_id||"",
     password: "",
   });
   const [showPass, setShowPass] = useState(false);
@@ -18233,6 +18234,9 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
                 </Btn>
               )}
             </div>
+          </Field>
+          <Field label="Attendance Device ID" hint={`Their "Emp No." on the biometric device — set this once and attendance imports match by ID instead of by name, so device nicknames (e.g. "SHADY") don't need to match their full name here`}>
+            <input value={f.attendance_device_id} onChange={e=>s("attendance_device_id",e.target.value)} placeholder="e.g. 14" style={inputSt}/>
           </Field>
           <Field label="Manager">
             <select value={f.manager_id} onChange={e=>s("manager_id",e.target.value)} style={inputSt}>
@@ -18391,10 +18395,48 @@ function RolesPermissionsTab({rolePerms, onToggle}) {
   );
 }
 
-function AttendanceImportTab({appSettings, onSaveSettings, isAdmin, onDeclareCompanyDayOff}) {
+function AttendanceImportTab({appSettings, onSaveSettings, isAdmin, onDeclareCompanyDayOff, team=[]}) {
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState(null);
+  const [remapPick, setRemapPick] = useState({}); // name -> selected team_member_id (pending, not yet applied)
+  const [remapBusy, setRemapBusy] = useState(null); // which name is mid-request
   const fileRef = useRef(null);
+
+  // A device name ("SHADY") rarely matches a real full name exactly —
+  // rather than requiring an exact match, let the admin point it at the
+  // right team member (backfills every already-imported row for that
+  // name) or reject it outright ("I don't need to sync this one").
+  const handleRemapAssign = async (name) => {
+    const teamMemberId = remapPick[name];
+    if(!teamMemberId) return;
+    setRemapBusy(name);
+    try {
+      const r = await fetch(window.location.origin+"/attendance-import.php?mode=remap", {
+        method:"POST", headers:{apikey:SB_KEY, "Content-Type":"application/json"},
+        body: JSON.stringify({member_name:name, team_member_id:teamMemberId}),
+      });
+      const d = await r.json().catch(()=>({}));
+      if(r.ok && d.ok) {
+        setResult(res=>({...res, unmatched_names:(res.unmatched_names||[]).filter(n=>n!==name)}));
+      } else alert(d.error||"Couldn't apply that match — please try again.");
+    } catch(e) { alert("Couldn't apply that match: "+e.message); }
+    setRemapBusy(null);
+  };
+  const handleRemapReject = async (name) => {
+    if(!confirm(`Delete all imported attendance rows for "${name}" — you won't be able to match them to a team member later. Continue?`)) return;
+    setRemapBusy(name);
+    try {
+      const r = await fetch(window.location.origin+"/attendance-import.php?mode=remap", {
+        method:"POST", headers:{apikey:SB_KEY, "Content-Type":"application/json"},
+        body: JSON.stringify({member_name:name, reject:true}),
+      });
+      const d = await r.json().catch(()=>({}));
+      if(r.ok && d.ok) {
+        setResult(res=>({...res, unmatched_names:(res.unmatched_names||[]).filter(n=>n!==name)}));
+      } else alert(d.error||"Couldn't reject that name — please try again.");
+    } catch(e) { alert("Couldn't reject that name: "+e.message); }
+    setRemapBusy(null);
+  };
 
   const handleUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -18438,7 +18480,25 @@ function AttendanceImportTab({appSettings, onSaveSettings, isAdmin, onDeclareCom
           <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:10,padding:16,fontSize:13,color:"var(--text)"}}>
             <p> Imported {result.imported} row(s){result.skipped?`, skipped ${result.skipped} invalid row(s)`:""}{result.days_off_skipped?`, ${result.days_off_skipped} weekend/holiday day(s) not counted`:""}.</p>
             {result.unmatched_names?.length>0&&(
-              <p style={{color:"#f59e0b",marginTop:8}}>Names not matched to a team member: {result.unmatched_names.join(", ")}</p>
+              <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:8}}>
+                <p style={{color:"#f59e0b",fontWeight:700}}>Names not matched to a team member — assign each one, or reject it if you don't need to sync it:</p>
+                {result.unmatched_names.map(name=>(
+                  <div key={name} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                    <span style={{fontWeight:700,minWidth:80}}>{name}</span>
+                    <select value={remapPick[name]||""} onChange={e=>setRemapPick(p=>({...p,[name]:e.target.value}))} disabled={remapBusy===name} style={{...inputSt,flex:1,minWidth:140,padding:"6px 10px",fontSize:12}}>
+                      <option value="">— Select team member —</option>
+                      {team.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
+                    <button onClick={()=>handleRemapAssign(name)} disabled={remapBusy===name||!remapPick[name]} style={{padding:"6px 12px",borderRadius:8,border:"1px solid var(--accent)44",background:"var(--accent)11",color:"var(--accent)",fontSize:12,fontWeight:700,cursor:remapBusy===name?"default":"pointer"}}>
+                      {remapBusy===name?"…":"Assign"}
+                    </button>
+                    <button onClick={()=>handleRemapReject(name)} disabled={remapBusy===name} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #ef444444",background:"#ef444411",color:"#ef4444",fontSize:12,fontWeight:700,cursor:remapBusy===name?"default":"pointer"}}>
+                      Reject
+                    </button>
+                  </div>
+                ))}
+                <p style={{fontSize:11,color:"var(--text3)"}}>Tip: set an "Attendance Device ID" (their Emp No.) on a team member's Edit profile so future imports match automatically without needing this step.</p>
+              </div>
             )}
             {(result.rules_applied?.late>0||result.rules_applied?.absent>0)&&(
               <p style={{color:"var(--text2)",marginTop:8}}>
