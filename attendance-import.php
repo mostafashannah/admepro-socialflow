@@ -78,9 +78,21 @@ if ($ext === 'xls' || $ext === 'xlsx') {
         $sheet = $spreadsheet->getActiveSheet();
         foreach ($sheet->toArray(null, true, true, false) as $r) $rows[] = $r;
     } catch (Throwable $e) {
-        http_response_code(400);
-        echo json_encode(["error" => "Could not read spreadsheet: " . $e->getMessage()]);
-        exit;
+        // Many biometric attendance devices export a file named "X.xls"
+        // that is actually a plain HTML table, not real Excel binary —
+        // PhpSpreadsheet's auto-detector throws "Unable to identify a
+        // reader for this file" on those. Retry explicitly as HTML before
+        // giving up; only surface the original error if that also fails.
+        try {
+            $htmlReader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Html');
+            $spreadsheet = $htmlReader->load($_FILES['file']['tmp_name']);
+            $sheet = $spreadsheet->getActiveSheet();
+            foreach ($sheet->toArray(null, true, true, false) as $r) $rows[] = $r;
+        } catch (Throwable $e2) {
+            http_response_code(400);
+            echo json_encode(["error" => "Could not read spreadsheet: " . $e->getMessage() . " (also tried reading it as an HTML table export, which also failed: " . $e2->getMessage() . ")"]);
+            exit;
+        }
     }
 } else {
     $fh = fopen($_FILES['file']['tmp_name'], 'r');
