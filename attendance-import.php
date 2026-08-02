@@ -83,15 +83,44 @@ if ($ext === 'xls' || $ext === 'xlsx') {
         // PhpSpreadsheet's auto-detector throws "Unable to identify a
         // reader for this file" on those. Retry explicitly as HTML before
         // giving up; only surface the original error if that also fails.
+        $htmlErr = null;
         try {
             $htmlReader = \PhpOffice\PhpSpreadsheet\IOFactory::createReader('Html');
             $spreadsheet = $htmlReader->load($_FILES['file']['tmp_name']);
             $sheet = $spreadsheet->getActiveSheet();
             foreach ($sheet->toArray(null, true, true, false) as $r) $rows[] = $r;
         } catch (Throwable $e2) {
-            http_response_code(400);
-            echo json_encode(["error" => "Could not read spreadsheet: " . $e->getMessage() . " (also tried reading it as an HTML table export, which also failed: " . $e2->getMessage() . ")"]);
-            exit;
+            $htmlErr = $e2->getMessage();
+        }
+        // Last resort: some device software exports a plain delimited text
+        // file (tab or comma-separated) still named "X.xls", often in
+        // UTF-16 (common on Windows) — neither the real Excel reader nor
+        // the HTML reader can make sense of that. Detect the encoding via
+        // BOM, normalize to UTF-8, and auto-detect the delimiter from the
+        // header line before giving up entirely.
+        if (empty($rows)) {
+            try {
+                $raw = file_get_contents($_FILES['file']['tmp_name']);
+                if (substr($raw, 0, 2) === "\xFF\xFE") { $raw = mb_convert_encoding(substr($raw, 2), 'UTF-8', 'UTF-16LE'); }
+                elseif (substr($raw, 0, 2) === "\xFE\xFF") { $raw = mb_convert_encoding(substr($raw, 2), 'UTF-8', 'UTF-16BE'); }
+                elseif (substr($raw, 0, 3) === "\xEF\xBB\xBF") { $raw = substr($raw, 3); }
+                $lines = preg_split('/\r\n|\r|\n/', trim($raw));
+                if (count($lines) < 2) throw new Exception('Not enough lines to be a delimited text file.');
+                $headerLine = $lines[0];
+                $delimiter = substr_count($headerLine, "\t") >= substr_count($headerLine, ',') ? "\t" : (substr_count($headerLine, ',') >= substr_count($headerLine, ';') ? ',' : ';');
+                foreach ($lines as $line) {
+                    if (trim($line) === '') continue;
+                    $rows[] = str_getcsv($line, $delimiter);
+                }
+                if (count($rows) < 2) throw new Exception('No data rows found after splitting.');
+            } catch (Throwable $e3) {
+                http_response_code(400);
+                echo json_encode(["error" => "Could not read spreadsheet: " . $e->getMessage()
+                    . ($htmlErr ? " | as HTML: " . $htmlErr : "")
+                    . " | as delimited text: " . $e3->getMessage()
+                    . ". This file format isn't recognized — please open it in Excel and re-save as a real .xlsx or .csv file, then re-upload."]);
+                exit;
+            }
         }
     }
 } else {
