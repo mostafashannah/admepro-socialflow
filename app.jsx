@@ -17582,7 +17582,18 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
       }
       cursor.setDate(cursor.getDate() + 1);
     }
-    return filled.sort((a, b) => new Date(b.work_date) - new Date(a.work_date));
+    // A REAL imported row can itself say "absent" for a day the member was
+    // actually on approved WFH/vacation — the import has no idea about
+    // leave requests, it only knows "no clock-in for this device that
+    // day" (see attendance-import.php's absent-fill loop), so an approved
+    // leave day and a genuine no-show both land as the same literal
+    // status in the database. Override the DISPLAYED status here so
+    // approved leave always wins over a bare "absent" row.
+    const overridden = filled.map(a => {
+      const approvedLeave = a.status === "absent" ? approvedLeaveDatesForFill[a.work_date] : null;
+      return approvedLeave ? {...a, status: approvedLeave === "wfh" ? "wfh" : "leave"} : a;
+    });
+    return overridden.sort((a, b) => new Date(b.work_date) - new Date(a.work_date));
   })();
   const mySalaryRecords = (expenses||[]).filter(e=>e.team_member_id===member.id && e.category==="salaries").sort((a,b)=>new Date(b.date)-new Date(a.date));
   const totalPaid = mySalaryRecords.reduce((sum,e)=>sum+Number(e.amount||0),0);
