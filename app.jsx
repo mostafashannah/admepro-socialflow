@@ -11999,7 +11999,7 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
 // ════════════════════════════════════════════════════════════════
 // PROJECTS PAGE
 // ════════════════════════════════════════════════════════════════
-function ProjectsPage({projects, posts, clients, team, assets, clientIntelligence, onPostClick, onAdd, onSaveIntelligence, initialProjectId, onClearInitialProject}) {
+function ProjectsPage({projects, posts, clients, team, assets, clientIntelligence, onPostClick, onAdd, onUpdateProject, onDeleteProject, currentUser, onSaveIntelligence, initialProjectId, onClearInitialProject}) {
   const [showWizard, setShowWizard] = useState(false);
   const [selectedProject, setSelectedProject_] = usePersistentState("sf_selected_project", initialProjectId||null);
   // Opening a project pushes its own history entry so the physical browser
@@ -12034,6 +12034,9 @@ function ProjectsPage({projects, posts, clients, team, assets, clientIntelligenc
         clientIntelligence={clientIntelligence}
         onBack={()=>{ try{ window.history.back(); }catch(e){ setSelectedProject_(null); } }}
         onPostClick={onPostClick}
+        onUpdateProject={onUpdateProject}
+        onDeleteProject={(id)=>{ onDeleteProject&&onDeleteProject(id); setSelectedProject_(null); }}
+        currentUser={currentUser}
       />
     );
   }
@@ -15827,10 +15830,75 @@ function ClientBrainTab({client, knowledge, clientKnowledge, documents, currentU
   );
 }
 
+// Edit an existing project — title/description/status/type/dates/platforms.
+// Client can't be changed here (that's a create-time decision elsewhere,
+// same as most of this app's other "edit" modals).
+function EditProjectModal({project, clients, onClose, onSave}) {
+  const [f, setF] = useState({
+    title: project.title||"", description: project.description||"", status: project.status||"active",
+    project_type: project.project_type||PROJECT_TYPES[0].id,
+    start_date: project.start_date||"", end_date: project.end_date||project.deadline||"",
+    platforms: project.platforms||[],
+  });
+  const [saving, setSaving] = useState(false);
+  const s = (k,v) => setF(p=>({...p,[k]:v}));
+  const togglePlt = (p) => s("platforms", f.platforms.includes(p) ? f.platforms.filter(x=>x!==p) : [...f.platforms,p]);
+  const submit = async () => {
+    setSaving(true);
+    await onSave({...f});
+    setSaving(false);
+  };
+  return (
+    <Modal open={true} onClose={onClose} title="Edit Project">
+      <div style={{display:"flex",flexDirection:"column",gap:14,padding:"14px 0"}}>
+        <Field label="Title"><input value={f.title} onChange={e=>s("title",e.target.value)} style={inputSt}/></Field>
+        <Field label="Description"><textarea value={f.description} onChange={e=>s("description",e.target.value)} rows={3} style={{...inputSt,resize:"vertical"}}/></Field>
+        <div style={{display:"flex",gap:10}}>
+          <Field label="Status">
+            <select value={f.status} onChange={e=>s("status",e.target.value)} style={inputSt}>
+              {["active","paused","completed"].map(v=><option key={v} value={v}>{v.charAt(0).toUpperCase()+v.slice(1)}</option>)}
+            </select>
+          </Field>
+          <Field label="Type">
+            <select value={f.project_type} onChange={e=>s("project_type",e.target.value)} style={inputSt}>
+              {PROJECT_TYPES.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}
+            </select>
+          </Field>
+        </div>
+        <div style={{display:"flex",gap:10}}>
+          <Field label="Start Date"><input type="date" value={f.start_date} onChange={e=>s("start_date",e.target.value)} style={inputSt}/></Field>
+          <Field label="Deadline"><input type="date" value={f.end_date} onChange={e=>s("end_date",e.target.value)} style={inputSt}/></Field>
+        </div>
+        <Field label="Platforms">
+          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+            {PLATFORMS.map(p=>(
+              <button key={p} type="button" onClick={()=>togglePlt(p)} style={{
+                padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:600,
+                border:`1.5px solid ${f.platforms.includes(p)?PLT_COLOR[p]:"var(--border2)"}`,
+                background:f.platforms.includes(p)?PLT_COLOR[p]+"22":"var(--surface2)",
+                color:f.platforms.includes(p)?PLT_COLOR[p]:"var(--text2)",
+                cursor:"pointer",transition:"all 0.15s",
+              }}>{p.charAt(0).toUpperCase()+p.slice(1)}</button>
+            ))}
+          </div>
+        </Field>
+        <div style={{display:"flex",gap:10,paddingTop:6}}>
+          <Btn variant="secondary" onClick={onClose} style={{flex:1}}>Cancel</Btn>
+          <Btn onClick={submit} disabled={saving||!f.title.trim()} style={{flex:1}}>{saving?"Saving…":"Save Changes"}</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════
 // PROJECT DETAIL PAGE — tabs: Overview, Tasks, Calendar, Assets, Reports
 // ════════════════════════════════════════════════════════════════
-function ProjectDetailPage({project, posts, comments, assets, team, clients, clientIntelligence, onBack, onPostClick, onStageChange}) {
+function ProjectDetailPage({project, posts, comments, assets, team, clients, clientIntelligence, onBack, onPostClick, onStageChange, onUpdateProject, onDeleteProject, currentUser}) {
+  const [editingProject, setEditingProject] = useState(false);
+  const [confirmDeleteProject, setConfirmDeleteProject] = useState(false);
+  const isAdmin = currentUser?.role==="admin";
+  const canEditProject = isAdmin || currentUser?.role==="account_manager";
   // Plain state, not persisted — opening any project should always start on
   // Overview, not silently reopen to whatever tab was last viewed for it.
   const [tab, setTab] = useState("overview");
@@ -15904,8 +15972,23 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
             {project.platforms?.length>0&&project.platforms.map(pl=>(
               <span key={pl} style={{fontSize:18}}>{PLATFORM_ICONS[pl]||pl}</span>
             ))}
+            {canEditProject&&(
+              <button onClick={()=>setEditingProject(true)} style={{fontSize:12,fontWeight:700,color:"var(--accent)",background:"none",border:"1px solid var(--accent)44",borderRadius:8,padding:"7px 12px",cursor:"pointer"}}>Edit</button>
+            )}
+            {isAdmin&&(confirmDeleteProject ? (
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={async()=>{ if(onDeleteProject) await onDeleteProject(project.id); }} style={{fontSize:12,fontWeight:700,color:"#fff",background:"#ef4444",border:"none",borderRadius:8,padding:"7px 12px",cursor:"pointer"}}>Confirm Delete</button>
+                <button onClick={()=>setConfirmDeleteProject(false)} style={{fontSize:12,fontWeight:600,color:"var(--text2)",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:8,padding:"7px 12px",cursor:"pointer"}}>Cancel</button>
+              </div>
+            ) : (
+              <button onClick={()=>setConfirmDeleteProject(true)} style={{fontSize:12,fontWeight:700,color:"#ef4444",background:"none",border:"1px solid #ef444444",borderRadius:8,padding:"7px 12px",cursor:"pointer"}}>Delete</button>
+            ))}
           </div>
         </div>
+        {editingProject&&(
+          <EditProjectModal project={project} clients={clients} onClose={()=>setEditingProject(false)}
+            onSave={async(patch)=>{ if(onUpdateProject) await onUpdateProject(project.id, patch); setEditingProject(false); }}/>
+        )}
         {/* Progress bar */}
         {projectPosts.length>0&&(
           <div style={{marginTop:14}}>
@@ -42919,6 +43002,31 @@ function App() {
     return true;
   };
 
+  const updateProject = async (projectId, patch) => {
+    setData(d=>({...d, projects:d.projects.map(p=>p.id===projectId?{...p,...patch}:p)}));
+    const result = await ue("Project", projectId, patch);
+    if(!result) { setToast(" Couldn't save project changes — check Activity Log for the error."); return false; }
+    setToast(" Project updated");
+    return true;
+  };
+
+  // Mirrors the AI-agent "delete_project" action (executeAction) — children
+  // must go first, since posts.project_id has a foreign-key reference and
+  // deleting the project first fails silently (de() swallows non-2xx),
+  // leaving an orphaned project row behind.
+  const deleteProject = async (projectId) => {
+    const childPosts = (data.posts||[]).filter(p=>p.project_id===projectId);
+    const postResults = await Promise.all(childPosts.map(cp=>de("Post",cp.id)));
+    const projOk = await de("Project",projectId);
+    if(!projOk || postResults.some(ok=>!ok)) { setToast(" Couldn't delete the project — check Activity Log for the error."); return false; }
+    setData(d=>({...d,
+      projects:d.projects.filter(p=>p.id!==projectId),
+      posts:d.posts.filter(p=>p.project_id!==projectId),
+    }));
+    setToast(" Project deleted");
+    return true;
+  };
+
   // Mai researches a brand-new client's own website (and whatever else is
   // publicly findable) so the memory/knowledge tabs aren't a blank page on
   // day one — a real starting point for the account team to verify and
@@ -45635,6 +45743,9 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
   clientIntelligence={data.clientIntelligence||[]}
   onPostClick={setSelectedPost}
   onAdd={addProject}
+  onUpdateProject={updateProject}
+  onDeleteProject={deleteProject}
+  currentUser={currentUser}
   onSaveIntelligence={saveClientIntelligence}
   initialProjectId={selectedProjectId}
   onClearInitialProject={()=>setSelectedProjectId(null)}
