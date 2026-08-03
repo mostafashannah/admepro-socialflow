@@ -9470,7 +9470,15 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
   // Graphic designers now reach this page too (to get to a client's Brand
   // Guidelines), but creating/hiding clients stays admin/AM-only.
   const canManageClients = isAdmin || currentUser?.role==="account_manager";
-  const visible = clients.filter(c=>isAdmin ? (showHidden || c.status!=="hidden") : c.status!=="hidden");
+  // An account manager only ever sees the clients she's actually assigned
+  // to as AM — not the whole agency roster. Everyone else (admin, and any
+  // other role that reaches this page, e.g. graphic_designer for Brand
+  // Guidelines) still sees everything.
+  const myTeamMemberId = team.find(t=>t.email===currentUser?.email)?.id;
+  const scopedClients = currentUser?.role==="account_manager" && myTeamMemberId
+    ? clients.filter(c=>getAccountManagerIds(c).includes(myTeamMemberId))
+    : clients;
+  const visible = scopedClients.filter(c=>isAdmin ? (showHidden || c.status!=="hidden") : c.status!=="hidden");
   const filtered = visible.filter(c=>(c.name||"").toLowerCase().includes(search.toLowerCase())||(c.email||"").toLowerCase().includes(search.toLowerCase()));
   const hiddenCount = clients.filter(c=>c.status==="hidden").length;
   return (
