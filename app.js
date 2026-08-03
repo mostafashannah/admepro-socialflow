@@ -1447,7 +1447,13 @@ return weekendDaysForFill.includes(jsDay===0?7:jsDay);};// Approved leave/WFH re
 // row (that table is only ever written by the import) — without this, an
 // approved WFH/vacation day fell into the same "no record → Absent"
 // bucket as a genuine no-show.
-var approvedLeaveDatesForFill=function(){var map={};myLeave.filter(function(r){return r.status==="approved";}).forEach(function(r){var cursor=new Date((r.start_date||"")+"T00:00:00");var end=new Date((r.end_date||r.start_date||"")+"T00:00:00");if(isNaN(cursor)||isNaN(end))return;while(cursor<=end){var ymd="".concat(cursor.getFullYear(),"-").concat(String(cursor.getMonth()+1).padStart(2,"0"),"-").concat(String(cursor.getDate()).padStart(2,"0"));map[ymd]=r.type;cursor.setDate(cursor.getDate()+1);}});return map;}();var allMyAttendanceWithGaps=function(){if(allMyAttendance.length===0)return[];var existingDates=new Set(allMyAttendance.map(function(a){return a.work_date;}));var filled=_toConsumableArray(allMyAttendance);// Use the COMPANY-WIDE imported date range, not just this member's own
+var approvedLeaveDatesForFill=function(){var map={};myLeave.filter(function(r){return r.status==="approved";}).forEach(function(r){// start_date/end_date can come back as a plain "YYYY-MM-DD" OR a full
+// "YYYY-MM-DDTHH:MM:SS..." datetime depending on the column type —
+// slicing to the first 10 chars before appending a time avoids
+// building an invalid double-time string like
+// "2026-07-22T00:00:00.000ZT00:00:00" (which silently produced an
+// Invalid Date and dropped the whole request).
+var startYmd=String(r.start_date||"").slice(0,10);var endYmd=String(r.end_date||r.start_date||"").slice(0,10);var cursor=new Date(startYmd+"T00:00:00");var end=new Date(endYmd+"T00:00:00");if(isNaN(cursor)||isNaN(end))return;while(cursor<=end){var ymd="".concat(cursor.getFullYear(),"-").concat(String(cursor.getMonth()+1).padStart(2,"0"),"-").concat(String(cursor.getDate()).padStart(2,"0"));map[ymd]=r.type;cursor.setDate(cursor.getDate()+1);}});return map;}();var allMyAttendanceWithGaps=function(){if(allMyAttendance.length===0)return[];var existingDates=new Set(allMyAttendance.map(function(a){return a.work_date;}));var filled=_toConsumableArray(allMyAttendance);// Use the COMPANY-WIDE imported date range, not just this member's own
 // earliest/latest row — someone who was only ever imported for a single
 // day (e.g. a device-ID mismatch got fixed partway through) would
 // otherwise show just that one day with everything else silently
