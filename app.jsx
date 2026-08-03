@@ -5358,9 +5358,14 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
       due_date: post.due_date||"",
       due_time: post.due_time||"",
       estimated_minutes: post.estimated_minutes||"",
+      project_id: post.project_id||"",
     });
     setEditing(true);
   };
+  // Same client only — moving a task to a totally different client's
+  // project would silently re-attribute it (billing, client-facing views,
+  // etc.), so the picker only ever offers projects under this same client.
+  const sameClientProjects = projects.filter(p=>p.client_id===project?.client_id);
   const togglePlatform = (p) => {
     setEditForm(f=>{
       const has = f.platforms.includes(p);
@@ -5384,8 +5389,15 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
     // Keep the singular `platform` field (used everywhere else — Kanban
     // columns, calendar icons, filters) as the first picked platform, while
     // `platforms` carries the full set for showing every badge here.
+    const newProject = projects.find(p=>p.id===editForm.project_id);
     onEdit&&onEdit({...post, ...editForm, platform: editForm.platforms[0],
-      assigned_to_extra: JSON.stringify((editForm.assigned_to_extra||[]).filter(e=>e&&e!==editForm.assigned_to))});
+      assigned_to_extra: JSON.stringify((editForm.assigned_to_extra||[]).filter(e=>e&&e!==editForm.assigned_to)),
+      // Keep client_id/client_name in sync with whichever project this got
+      // moved to (same client only — see sameClientProjects above — so
+      // these never actually change value, just stay consistent).
+      client_id: newProject?.client_id||post.client_id,
+      client_name: newProject?.client_name||post.client_name,
+    });
     setEditing(false);
   };
   const handleDelete = () => {
@@ -5722,6 +5734,15 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Title</label>
                 <input value={editForm.title} onChange={e=>setEditForm(f=>({...f,title:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
               </div>
+              {sameClientProjects.length>1&&(
+                <div style={{gridColumn:"1/-1"}}>
+                  <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Project</label>
+                  <select value={editForm.project_id} onChange={e=>setEditForm(f=>({...f,project_id:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}>
+                    {sameClientProjects.map(p=><option key={p.id} value={p.id}>{p.title}</option>)}
+                  </select>
+                  <p style={{fontSize:10,color:"var(--text3)",marginTop:3}}>Only projects under {project?.client_name||"this client"} are shown.</p>
+                </div>
+              )}
               <div style={{gridColumn:"1/-1"}}>
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Brief / Description</label>
                 <textarea value={editForm.description} onChange={e=>setEditForm(f=>({...f,description:e.target.value}))} rows={3} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)",resize:"vertical",fontFamily:"inherit"}}/>
