@@ -3594,6 +3594,9 @@ function ImageLightbox({url, alt, onClose}) {
   if(!url) return null;
   return ReactDOM.createPortal(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:1200,display:"flex",alignItems:"center",justifyContent:"center",padding:24,cursor:"zoom-out"}} className="fade-in">
+      <a href={url} download={alt||""} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} aria-label="Download" style={{position:"absolute",top:20,right:66,width:38,height:38,borderRadius:"50%",background:"rgba(255,255,255,0.12)",border:"none",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",textDecoration:"none"}}>
+        <Ico d={Icons.download||Icons.upload} size={17} stroke="#fff"/>
+      </a>
       <button onClick={onClose} aria-label="Close" style={{position:"absolute",top:20,right:20,width:38,height:38,borderRadius:"50%",background:"rgba(255,255,255,0.12)",border:"none",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
         <Ico d={Icons.x} size={17} stroke="#fff"/>
       </button>
@@ -3673,7 +3676,9 @@ function PostCard({post,project,team,onClick}) {
       )}
       <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
         <p style={{fontWeight:700,fontSize:13,flex:1,lineHeight:1.3,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{post.title}</p>
-        <PChip platform={post.platform} xs/>
+        <div style={{display:"flex",gap:4,flexShrink:0}}>
+          {(Array.isArray(post.platforms)&&post.platforms.length ? post.platforms : [post.platform]).map(pl=><PChip key={pl} platform={pl} xs/>)}
+        </div>
       </div>
       <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
         <Badge label={post.post_type||"post"} color="#6b7280" xs/>
@@ -5911,6 +5916,25 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
             );
           })()}
         </div>
+        )}
+
+        {/* Content Phase — reference attachments (files or plain links) the
+            content creator was given to work from. Reuses the same asset
+            grid/picker the Design phase already has — design_assets isn't
+            actually design-only in storage, just a generic attachment
+            list on the post. */}
+        {post.stage==="content_creation"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:12,padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
+            <h4 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:14}}>Attachments</h4>
+            <DesignAssetGrid post={post} onStageChange={onStageChange}/>
+            <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>
+            <button onClick={()=>{
+              const url = prompt("Paste a reference link (e.g. a Drive file, competitor post, brief doc):");
+              if(!url||!url.trim()) return;
+              const newAssets = [...(post.design_assets||[]), {url:url.trim(), name:url.trim(), type:"link"}];
+              onStageChange({...post, design_assets:newAssets}, post.stage);
+            }} style={{alignSelf:"flex-start",fontSize:12,fontWeight:700,color:"var(--accent)",background:"none",border:"1px solid var(--accent)44",borderRadius:8,padding:"7px 12px",cursor:"pointer"}}>+ Add Link</button>
+          </div>
         )}
 
         {/* Content Phase Generator */}
