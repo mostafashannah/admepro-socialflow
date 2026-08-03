@@ -12041,11 +12041,25 @@ function ProjectsPage({projects, posts, clients, team, assets, clientIntelligenc
   };
   const [filter, setFilter] = useState("all");
   React.useEffect(()=>{
-    if(initialProjectId){ setSelectedProject(initialProjectId); onClearInitialProject&&onClearInitialProject(); }
+    // State-only, no pushState here — a caller that sets initialProjectId
+    // (e.g. clicking a project from inside a client's own page) has
+    // already pushed its own history entry for this navigation. Also
+    // calling the pushing setSelectedProject() here stacked a SECOND,
+    // differently-keyed entry on top of it, so a single physical Back
+    // press landed on that first entry instead — which this component's
+    // own popstate listener below doesn't recognize (different state
+    // key) — silently doing nothing and looking like Back was broken.
+    if(initialProjectId){ setSelectedProject_(initialProjectId); onClearInitialProject&&onClearInitialProject(); }
   },[initialProjectId]);
   React.useEffect(()=>{
     const onPop = (e) => {
       if(e.state && "sfProjectDetail" in e.state) setSelectedProject_(e.state.sfProjectDetail || null);
+      // A project opened from outside this component (e.g. clicking it from
+      // a client's own Projects tab) arrives via initialProjectId, whose
+      // history entry is keyed sfDetail (pushed by root App), not
+      // sfProjectDetail — recognize that shape too, so browser Back stays
+      // in sync no matter which entry point was used to get here.
+      else if(e.state && e.state.sfPage==="projects" && "sfDetail" in e.state) setSelectedProject_(e.state.sfDetail || null);
     };
     window.addEventListener("popstate", onPop);
     return ()=>window.removeEventListener("popstate", onPop);
