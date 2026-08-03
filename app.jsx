@@ -6613,6 +6613,7 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
   const [uploadingStory,setUploadingStory] = useState(false);
   const [showMediaPicker,setShowMediaPicker] = useState(false);
   const [showCoverPicker,setShowCoverPicker] = useState(false);
+  const [enhancingBrief,setEnhancingBrief] = useState(false);
   const s = (k,v) => setF(p=>({...p,[k]:v}));
   const defaultTypeFor = (media) => (media||f.media).some(m=>(m.type||"").startsWith("video")) ? "reel" : "image";
   const togglePlt = p => setF(prev => {
@@ -6989,7 +6990,22 @@ Return ONLY valid JSON (no markdown):
                   </div>
                   {f.scheduled_date&&!f.scheduled_time&&<p style={{fontSize:11,color:"#ef4444",marginTop:4}}>A scheduled date needs a time too</p>}
                 </Field>
-                <Field label="Brief / Description">
+                <Field label={
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                    <span>Brief / Description</span>
+                    <button type="button" disabled={!f.description.trim()||enhancingBrief} onClick={async()=>{
+                      setEnhancingBrief(true);
+                      try {
+                        const rewritten = await ai(`Rewrite and expand the following content-task brief into a clearer, more detailed brief the assigned team member can act on. Keep the original intent, just add helpful specifics (goal, tone, key points to include, any constraints implied) where reasonable. Return ONLY the rewritten brief text, no preamble, no markdown headers.\n\nOriginal brief:\n"""${f.description}"""`, 500);
+                        if(rewritten.trim()) s("description",rewritten.trim());
+                      } catch(e) { /* silently keep original text if AI call fails */ }
+                      setEnhancingBrief(false);
+                    }} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,fontWeight:700,color:f.description.trim()?"var(--accent)":"var(--text3)",background:"none",border:"none",cursor:f.description.trim()?"pointer":"default",padding:0}}>
+                      {enhancingBrief?<Spinner size={12}/>:<Ico d={Icons.sparkle||Icons.zap} size={12} stroke={f.description.trim()?"var(--accent)":"var(--text3)"}/>}
+                      {enhancingBrief?"Enhancing…":"Enhance with AI"}
+                    </button>
+                  </div>
+                }>
                   <textarea value={f.description} onChange={e=>s("description",e.target.value)} rows={3} placeholder="What should be created? Any specific requirements…" style={{...inputSt,resize:"vertical"}}/>
                 </Field>
               </>
