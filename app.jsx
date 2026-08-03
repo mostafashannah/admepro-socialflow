@@ -30995,10 +30995,10 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   payrollTxns.forEach(l=>{
     const memberId = l.raw?.team_member_id||null;
     const member = memberId ? team.find(t=>t.id===memberId) : null;
-    // Anyone not linked to an actual team member — including old records
-    // saved before that field existed — collapses into one "Other" bucket
-    // instead of a separate row per description.
-    const key = memberId || "__other__";
+    // Anyone not linked to a CURRENT team member — no id at all, or an id
+    // pointing to someone since deleted — collapses into one "Other" bucket
+    // instead of a separate row per missing id.
+    const key = member ? memberId : "__other__";
     const name = member?.name || "Other";
     if(!payrollByMember[key]) payrollByMember[key] = {key, memberId, name, title:member?.title||"", total:0, count:0, lastDate:null, txns:[]};
     const p = payrollByMember[key];
