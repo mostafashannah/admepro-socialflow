@@ -55,7 +55,7 @@ foreach ($members as $m) {
 
     $baseSalary = floatval($m['salary']);
     $used = floatval($m['vacation_days_used'] ?? 0);
-    $total = floatval($m['vacation_days_total'] ?? 21);
+    $total = floatval($m['vacation_days_total'] ?? 30);
     $overage = max(0, $used - $total);
     $deduction = round($overage * ($baseSalary / $dayRate), 2);
     $net = max(0, $baseSalary - $deduction);
