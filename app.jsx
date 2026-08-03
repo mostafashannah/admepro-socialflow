@@ -17912,7 +17912,17 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
         )
       )}
 
-      {tab==="attendance"&&(
+      {tab==="attendance"&&(()=>{
+        // Counts drive the summary tiles below — computed from the SAME
+        // list (with weekend/holiday/leave gaps filled + absent-but-
+        // approved rows overridden) that the day-by-day list itself uses,
+        // so the numbers always match what's actually shown underneath.
+        const counts = allMyAttendanceWithGaps.reduce((acc,a)=>{
+          const k = a.status==="wfh"||a.status==="leave" ? "leave" : (a.status==="weekend"||a.status==="holiday" ? "dayoff" : a.status);
+          acc[k] = (acc[k]||0)+1;
+          return acc;
+        }, {});
+        return (
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"14px 18px"}}>
@@ -17922,6 +17932,24 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"14px 18px"}}>
               <div style={{fontSize:12,color:"var(--text3)",fontWeight:600}}>Total Deduction Hours</div>
               <div style={{fontSize:20,fontWeight:800,color:"#ef4444"}}>-{deductionHours.toFixed(1)}h</div>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
+            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 14px"}}>
+              <div style={{fontSize:11,color:"var(--text3)",fontWeight:600}}>Present</div>
+              <div style={{fontSize:18,fontWeight:800,color:"var(--text)"}}>{counts.present||0}</div>
+            </div>
+            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 14px"}}>
+              <div style={{fontSize:11,color:"var(--text3)",fontWeight:600}}>Absent (No Request)</div>
+              <div style={{fontSize:18,fontWeight:800,color:"#ef4444"}}>{counts.absent||0}</div>
+            </div>
+            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 14px"}}>
+              <div style={{fontSize:11,color:"var(--text3)",fontWeight:600}}>WFH / Leave (Approved)</div>
+              <div style={{fontSize:18,fontWeight:800,color:"var(--accent)"}}>{counts.leave||0}</div>
+            </div>
+            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 14px"}}>
+              <div style={{fontSize:11,color:"var(--text3)",fontWeight:600}}>Weekend / Holiday</div>
+              <div style={{fontSize:18,fontWeight:800,color:"var(--text2)"}}>{counts.dayoff||0}</div>
             </div>
           </div>
           <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
@@ -17954,7 +17982,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                         <span style={{fontSize:13,flex:1}}>{a.work_date?new Date(a.work_date).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}):""}</span>
                         {a.check_in&&<span style={{fontSize:12,color:"var(--text3)"}}>{a.check_in}{a.check_out?` – ${a.check_out}`:""}{worked!=null?` (${worked.toFixed(1)}h)`:""}</span>}
                         {extra>0&&<span style={{fontSize:11,fontWeight:700,color:"#f59e0b"}}>+{extra.toFixed(1)}h</span>}
-                        <span style={{textTransform:a.status==="wfh"?"uppercase":"capitalize",fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:6,background:isDayOff?"var(--accentbg)":"var(--surface2)",color:isDayOff?"var(--accent)":"var(--text2)"}}>{a.status}</span>
+                        <span style={{textTransform:a.status==="wfh"?"uppercase":"capitalize",fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:6,background:isDayOff?"var(--accentbg)":(a.status==="absent"?"#ef444422":"var(--surface2)"),color:isDayOff?"var(--accent)":(a.status==="absent"?"#ef4444":"var(--text2)")}}>{a.status==="absent"?"Absent (No Request)":a.status}</span>
                       </div>
                     );
                   })}
@@ -17963,7 +17991,8 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
             })()}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {tab==="overview"&&(<>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
