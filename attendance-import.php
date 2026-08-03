@@ -420,12 +420,16 @@ try {
     $rules = is_array($rules) ? $rules : [];
 
     // Late arrivals: every N late check-ins (after the configured threshold
-    // time) deducts a fixed number of hours (converted to a fraction of a
-    // vacation day) from that member's vacation_days_used.
-    if (!empty($rules['lateEnabled']) && floatval($rules['lateDeductHours'] ?? 0) > 0) {
+    // time) deducts a fixed number of hours from Personal Leave hours
+    // first, only spilling into vacation_days_used once that's exhausted
+    // (see below). On by default (2 hrs per late day, matching "the first
+    // 2 times you're late in a month" exactly draining the 4-hr/month
+    // Personal Leave pool) — lateEnabled only exists to let an admin turn
+    // this OFF entirely, not to opt into it.
+    if (($rules['lateEnabled'] ?? true)) {
         $threshold = $rules['lateThresholdTime'] ?? '09:15';
         $triggerCount = max(1, intval($rules['lateTriggerCount'] ?? 1));
-        $deductHours = floatval($rules['lateDeductHours']);
+        $deductHours = floatval($rules['lateDeductHours'] ?? 2);
 
         $lateStmt = $pdo->prepare(
             "SELECT id, team_member_id FROM attendance_records
