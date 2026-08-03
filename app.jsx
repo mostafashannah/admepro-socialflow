@@ -17952,6 +17952,23 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
               <div style={{fontSize:18,fontWeight:800,color:"var(--text2)"}}>{counts.dayoff||0}</div>
             </div>
           </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12}}>
+            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 14px"}}>
+              <div style={{fontSize:11,color:"var(--text3)",fontWeight:600}}>Vacation Days Credit</div>
+              <div style={{fontSize:18,fontWeight:800,color:"var(--text)"}}>{Number(member.vacation_days_used||0)} / {Number(member.vacation_days_total??21)}</div>
+              <div style={{fontSize:11,color:"var(--text3)"}}>used / total (year)</div>
+            </div>
+            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 14px"}}>
+              <div style={{fontSize:11,color:"var(--text3)",fontWeight:600}}>WFH Days Credit</div>
+              <div style={{fontSize:18,fontWeight:800,color:"var(--text)"}}>{Number(member.wfh_days_used||0)} / {Number(member.wfh_days_total??2)}</div>
+              <div style={{fontSize:11,color:"var(--text3)"}}>used / total (this month)</div>
+            </div>
+            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"12px 14px"}}>
+              <div style={{fontSize:11,color:"var(--text3)",fontWeight:600}}>Personal Leave Credit</div>
+              <div style={{fontSize:18,fontWeight:800,color:"var(--text)"}}>{Number(member.personal_leave_hours_used||0)}h / {Number(member.personal_leave_hours_total??4)}h</div>
+              <div style={{fontSize:11,color:"var(--text3)"}}>used / total (this month)</div>
+            </div>
+          </div>
           <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
             <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <h3 style={{fontWeight:700,fontSize:14}}>All Attendance</h3>
