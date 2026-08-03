@@ -165,7 +165,25 @@ $NUMERIC_COLUMNS = [
     'performance_logs' => ['duration_hours','revision_count','client_approved','rejected','on_time','quality_score','hour_of_day','day_of_week'],
     'time_logs' => ['duration_minutes'],
     'leads' => ['value'],
+    // estimated_minutes defaults to "" client-side (an unfilled number
+    // input) — MySQL's DECIMAL column rejects an empty string outright
+    // ("Incorrect decimal value: '' ") instead of treating it as NULL,
+    // which silently failed the whole INSERT with no _saveError surfaced
+    // client-side (fixed separately in app.jsx's b44Create too).
+    'posts' => ['estimated_minutes'],
 ];
+
+// Numeric columns get "" (an empty/unfilled number input from the client)
+// converted to NULL before binding — MySQL's DECIMAL/numeric column types
+// reject an empty string outright instead of treating it as absent.
+function normalizeNumericEmptyStrings(array $record, string $table) {
+    global $NUMERIC_COLUMNS;
+    $numericCols = $NUMERIC_COLUMNS[$table] ?? [];
+    foreach ($numericCols as $col) {
+        if (array_key_exists($col, $record) && $record[$col] === '') $record[$col] = null;
+    }
+    return $record;
+}
 
 function castRow($row, $table = null) {
     global $NUMERIC_COLUMNS;
@@ -205,6 +223,7 @@ try {
         $created = [];
         foreach ($records as $record) {
             if (!is_array($record) || !$record) continue;
+            $record = normalizeNumericEmptyStrings($record, $table);
             if (empty($record['id'])) $record['id'] = generateUuid();
             $cols = array_keys($record);
             $colSql = implode(',', array_map('ident', $cols));
@@ -250,6 +269,7 @@ try {
             echo json_encode([]);
             exit;
         }
+        $body = normalizeNumericEmptyStrings($body, $table);
         $sets = [];
         $bind = [':id' => $id];
         foreach ($body as $k => $v) {
