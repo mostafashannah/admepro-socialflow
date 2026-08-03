@@ -18038,19 +18038,32 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                     if(a.status==="present") deductH += Math.max(0, 9-worked);
                   }
                 });
-                if(g.key===currentMonthKey) deductH = Math.max(0, deductH-Number(member.personal_leave_hours_used||0));
-                if(g.key===currentMonthKey) extraH += Number(member.extra_hours_banked||0);
+                const isCurrentMonth = g.key===currentMonthKey;
+                const rawExtraH = extraH, rawDeductH = deductH;
+                const plUsedApplied = isCurrentMonth ? Math.min(rawDeductH, Number(member.personal_leave_hours_used||0)) : 0;
+                const extraBankedApplied = isCurrentMonth ? Number(member.extra_hours_banked||0) : 0;
+                deductH = Math.max(0, rawDeductH - plUsedApplied);
+                extraH = rawExtraH + extraBankedApplied;
                 const netH = extraH - deductH;
                 return (
                 <div key={g.key}>
-                  <div style={{padding:"8px 18px",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-                    <span style={{fontSize:12,fontWeight:700,color:"var(--text2)"}}>{g.label}</span>
-                    <div style={{display:"flex",alignItems:"center",gap:10,fontSize:11,color:"var(--text3)"}}>
-                      <span>Present {present}</span>
-                      <span>Absent {absentCt}</span>
-                      <span>WFH/Leave {wfhCt}</span>
-                      <span>Off {dayOffCt}</span>
-                      <span style={{fontWeight:800,color:netH>=0?"#10b981":"#ef4444"}}>{netH>=0?"+":""}{netH.toFixed(1)}h</span>
+                  <div style={{padding:"8px 18px",background:"var(--surface2)",display:"flex",flexDirection:"column",gap:4}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+                      <span style={{fontSize:12,fontWeight:700,color:"var(--text2)"}}>{g.label}</span>
+                      <div style={{display:"flex",alignItems:"center",gap:10,fontSize:11,color:"var(--text3)"}}>
+                        <span>Present {present}</span>
+                        <span>Absent {absentCt}</span>
+                        <span>WFH/Leave {wfhCt}</span>
+                        <span>Off {dayOffCt}</span>
+                        <span style={{fontWeight:800,color:netH>=0?"#10b981":"#ef4444"}}>{netH>=0?"+":""}{netH.toFixed(1)}h</span>
+                      </div>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:10,fontSize:11,color:"var(--text3)",flexWrap:"wrap"}}>
+                      <span>Extra worked: <b style={{color:"#f59e0b"}}>+{rawExtraH.toFixed(1)}h</b></span>
+                      {extraBankedApplied>0&&<span>Manual credit: <b style={{color:"#f59e0b"}}>+{extraBankedApplied.toFixed(1)}h</b></span>}
+                      <span>Shortfall: <b style={{color:"#ef4444"}}>-{rawDeductH.toFixed(1)}h</b></span>
+                      {plUsedApplied>0&&<span>Personal Leave used offset: <b style={{color:"#10b981"}}>-{plUsedApplied.toFixed(1)}h</b></span>}
+                      <span>Sum: <b style={{color:netH>=0?"#10b981":"#ef4444"}}>{netH>=0?"+":""}{netH.toFixed(1)}h</b></span>
                     </div>
                   </div>
                   {g.rows.map((a,i)=>{
