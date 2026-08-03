@@ -17478,8 +17478,15 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
   const allMyAttendanceWithGaps = (() => {
     if (allMyAttendance.length === 0) return [];
     const existingDates = new Set(allMyAttendance.map(a => a.work_date));
-    const sortedDates = [...existingDates].sort();
     const filled = [...allMyAttendance];
+    // Use the COMPANY-WIDE imported date range, not just this member's own
+    // earliest/latest row — someone who was only ever imported for a single
+    // day (e.g. a device-ID mismatch got fixed partway through) would
+    // otherwise show just that one day with everything else silently
+    // missing, instead of showing as absent for the rest of the period
+    // everyone else has data for.
+    const allDates = (attendanceRecords || []).map(a => a.work_date).filter(Boolean).sort();
+    const sortedDates = allDates.length ? allDates : [...existingDates].sort();
     const cursor = new Date(sortedDates[0] + "T00:00:00");
     const end = new Date(sortedDates[sortedDates.length - 1] + "T00:00:00");
     // Build the ymd from LOCAL date parts, not toISOString() — that method
