@@ -768,6 +768,7 @@ const SB_TABLE = {
   TeamMemberEvent:"team_member_events",
   MaiReportSession:"mai_report_sessions",
   LeaveCreditEvent:"leave_credit_events",
+  PayrollRun:"payroll_runs",
 };
 
 function sbTable(entityName) {
@@ -30774,7 +30775,7 @@ function OutstandingTab({expenses, team, currentUser, canManage, onRecordPayment
   );
 }
 
-function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,clients=[],financeClientNotes=[],team=[],currentUser,onAddExpense,onDeleteExpense,onEditExpense,onAddExpenseComment,onRefresh,onRenameClient,onSaveClientNote,onUpdateClient,activityLogs=[]}) {
+function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expenses,clients=[],financeClientNotes=[],team=[],currentUser,onAddExpense,onDeleteExpense,onEditExpense,onAddExpenseComment,onRefresh,onRenameClient,onSaveClientNote,onUpdateClient,activityLogs=[],payrollRuns=[],onDecidePayrollRun}) {
   const {isMobile} = useResponsive();
   const [showAdd,setShowAdd] = useState(false);
   const [range,setRange] = useState("all");
@@ -31321,6 +31322,29 @@ No markdown, no explanation.`;
             </div>
           );
         })() : (
+        <>
+        {(payrollRuns||[]).filter(r=>r.status==="pending").length>0 && (
+          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden",marginBottom:16}}>
+            <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
+              <h3 style={{fontWeight:700,fontSize:14}}>Pending Payroll Approvals</h3>
+              <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Generated automatically after each month's attendance is uploaded — review and approve to add to Outstanding.</p>
+            </div>
+            {payrollRuns.filter(r=>r.status==="pending").map((r,i,arr)=>(
+              <div key={r.id} style={{padding:"12px 18px",borderBottom:i<arr.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                <Avatar name={r.member_name} size={34}/>
+                <div style={{flex:1,minWidth:180}}>
+                  <p style={{fontSize:13,fontWeight:700}}>{r.member_name}</p>
+                  <p style={{fontSize:11,color:"var(--text3)"}}>{new Date(r.salary_month+"-01").toLocaleDateString("en-US",{month:"long",year:"numeric"})} · Base EGP {Math.round(r.base_salary).toLocaleString()}{Number(r.vacation_overage_days)>0&&<span style={{color:"#ef4444"}}> · −{r.vacation_overage_days}d over vacation credit (−EGP {Math.round(r.deduction_amount).toLocaleString()})</span>}</p>
+                </div>
+                <p style={{fontSize:15,fontWeight:800,flexShrink:0}}>EGP {Math.round(r.net_amount).toLocaleString()}</p>
+                <div style={{display:"flex",gap:8,flexShrink:0}}>
+                  <Btn variant="secondary" onClick={()=>onDecidePayrollRun(r,"reject")}>Reject</Btn>
+                  <Btn onClick={()=>onDecidePayrollRun(r,"approve")}>Approve</Btn>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",overflow:"hidden"}}>
           <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}>
             <h3 style={{fontWeight:700,fontSize:14}}>Payroll</h3>
@@ -31346,6 +31370,7 @@ No markdown, no explanation.`;
             </div>
           )}
         </div>
+        </>
         )
       ) : view==="outstanding" ? (
         <OutstandingTab expenses={expenses} currentUser={currentUser} team={team} canManage={canManage} onRecordPayment={(id,status)=>onEditExpense(id,{outstanding_status:status})} onPaymentRecorded={reloadOutstandingPayments}/>
@@ -42727,6 +42752,7 @@ function App() {
         qe("ContactReportActivity",{},"-created_at",2000), // 47
         qe("MaiReportSession",{},"-started_at",2000), // 48
         qe("LeaveCreditEvent",{},"-created_at",5000), // 49
+        qe("PayrollRun",{},"-created_at",500), // 50
         // JobOpening/JobApplication removed here — RecruitmentPage already
         // fetches both itself on mount (see its own `load()`), so these were
         // an unread duplicate fetch on every single app load/refresh.
@@ -42783,6 +42809,7 @@ function App() {
         contactReportActivity: pick(wave2[47], d.contactReportActivity||[]),
         maiReportSessions: pick(wave2[48], d.maiReportSessions||[]),
         leaveCreditEvents: pick(wave2[49], d.leaveCreditEvents||[]),
+        payrollRuns: pick(wave2[50], d.payrollRuns||[]),
       }));
     }
     loadAllDataRef.current = load;
@@ -44353,6 +44380,41 @@ Return ONLY the JSON array, no markdown.`;
     setToast("Transaction updated");
   };
 
+  // Approve/reject a pending monthly payroll run (see monthly-payroll-cron.php,
+  // which only ever generates these as PENDING — nothing gets added to
+  // Outstanding until an admin actually reviews the salary/deduction figures
+  // here and approves it).
+  const decidePayrollRun = async (run, decision) => {
+    const status = decision==="approve" ? "approved" : "rejected";
+    if(decision==="approve") {
+      const member = data.team.find(t=>t.id===run.team_member_id);
+      const monthLabel = new Date(run.salary_month+"-01").toLocaleDateString("en-US",{month:"long",year:"numeric"});
+      const desc = run.vacation_overage_days>0
+        ? `Salary — ${run.member_name} — ${monthLabel} (−${run.vacation_overage_days}d over vacation credit)`
+        : `Salary — ${run.member_name} — ${monthLabel}`;
+      const expPayload = {
+        type:"out", category:"salaries", description:desc, amount:Number(run.net_amount),
+        currency:"EGP", date:new Date().toISOString().slice(0,10), method:"Outstanding",
+        team_member_id: run.team_member_id, salary_month: run.salary_month,
+        outstanding_kind:"team_member", outstanding_status:"outstanding",
+        outstanding_total_payable:Number(run.net_amount), outstanding_principal_amount:Number(run.net_amount),
+      };
+      const res = await ce("Expense",[expPayload]).catch(()=>null);
+      const realExpense = res?.entities?.[0];
+      if(realExpense?.id) {
+        setData(d=>({...d,expenses:[realExpense,...d.expenses]}));
+      }
+      await ue("PayrollRun", run.id, {status, decided_by:currentUser?.email||"admin", decided_at:new Date().toISOString(), expense_id:realExpense?.id||null}).catch(()=>{});
+      setData(d=>({...d,payrollRuns:d.payrollRuns.map(r=>r.id===run.id?{...r,status,expense_id:realExpense?.id||null}:r)}));
+      logActivity("Payroll Approved","finance",`${run.member_name} — ${monthLabel} — EGP ${run.net_amount}`,"success","",currentUser?.email||"admin");
+      setToast("Payroll approved and added to Outstanding");
+    } else {
+      await ue("PayrollRun", run.id, {status, decided_by:currentUser?.email||"admin", decided_at:new Date().toISOString()}).catch(()=>{});
+      setData(d=>({...d,payrollRuns:d.payrollRuns.map(r=>r.id===run.id?{...r,status}:r)}));
+      setToast("Payroll run rejected");
+    }
+  };
+
   const addExpenseComment = async (id, comment) => {
     const target = data.expenses.find(e=>e.id===id);
     if(!target) return;
@@ -45866,6 +45928,8 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             onSaveClientNote={saveFinanceClientNote}
             onUpdateClient={updateClient}
             activityLogs={data.activityLogs||[]}
+            payrollRuns={data.payrollRuns||[]}
+            onDecidePayrollRun={decidePayrollRun}
           />
         )}
         {page==="users"&&(currentUser?.role==="admin"||currentUser?.role==="account_manager"||currentUser?.role==="office_boy"||hasPerm(currentUser,rolePermsMap,"hr.view_team"))&&(
