@@ -18235,7 +18235,7 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
               )}
             </div>
           </Field>
-          <Field label="Attendance Device ID" hint={`Their "Emp No." on the biometric device — set this once and attendance imports match by ID instead of by name, so device nicknames (e.g. "SHADY") don't need to match their full name here`}>
+          <Field label="Attendance Device ID" hint={`Their "AC-No." on the biometric device (NOT "Emp No." — that's a different, non-matching number on this device) — set this once and attendance imports match by ID instead of by name, so device nicknames (e.g. "SHADY") don't need to match their full name here`}>
             <input value={f.attendance_device_id} onChange={e=>s("attendance_device_id",e.target.value)} placeholder="e.g. 14" style={inputSt}/>
           </Field>
           <Field label="Manager">
@@ -18506,7 +18506,7 @@ function AttendanceImportTab({appSettings, onSaveSettings, isAdmin, onDeclareCom
                     </button>
                   </div>
                 ))}
-                <p style={{fontSize:11,color:"var(--text3)"}}>Tip: set an "Attendance Device ID" (their Emp No.) on a team member's Edit profile so future imports match automatically without needing this step.</p>
+                <p style={{fontSize:11,color:"var(--text3)"}}>Tip: set an "Attendance Device ID" (their AC-No., not Emp No.) on a team member's Edit profile so future imports match automatically without needing this step.</p>
               </div>
             )}
             {(result.rules_applied?.late>0||result.rules_applied?.absent>0)&&(

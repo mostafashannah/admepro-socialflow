@@ -290,7 +290,14 @@ if ($isRawDeviceFormat) {
     $cinCol = $colIdx['clock in 1'] ?? $colIdx['clock in'] ?? null;
     $coutCol = $colIdx['clock out 1'] ?? $colIdx['clock out'] ?? null;
     // Group parsed rows by employee so we can fill in the gaps per person.
-    $empNoCol = $colIdx['emp no.'] ?? $colIdx['emp no'] ?? null;
+    // "AC-No." is this device's actual stable per-person badge id — "Emp
+    // No." looked like the matching field at a glance, but verified against
+    // a real export it's a different, non-matching number (e.g. Shady was
+    // Emp No. 14 / AC-No. 13, and profiles were set up using AC-No.).
+    // AC-No. is preferred; Emp No. is only a fallback for exports that lack
+    // an AC-No. column at all.
+    $empNoCol = $colIdx['ac-no.'] ?? $colIdx['ac no.'] ?? $colIdx['ac-no'] ?? $colIdx['ac no']
+        ?? $colIdx['emp no.'] ?? $colIdx['emp no'] ?? null;
     $byEmployee = []; // name => ['dates' => [ymd => [cin,cout]], 'min'=>, 'max'=>, 'empNo'=>]
     foreach ($rows as $row) {
         $name = trim((string)($row[$colIdx['name']] ?? ''));
