@@ -1443,7 +1443,13 @@ var deductionHours=allMyAttendance.reduce(function(sum,a){if(a.status!=="present
 // off reads as "Weekend"/"Holiday" instead of just not being there.
 var attendanceRulesForFill=(appSettings===null||appSettings===void 0?void 0:appSettings.attendance_rules)||{};var weekendDaysForFill=(_attendanceRulesForFi=attendanceRulesForFill.weekendDays)!==null&&_attendanceRulesForFi!==void 0?_attendanceRulesForFi:[5,6];// PHP date('N'): 1=Mon..7=Sun
 var holidayDatesForFill=new Set((attendanceRulesForFill.holidays||[]).map(function(h){return typeof h==="string"?h:h===null||h===void 0?void 0:h.date;}).filter(Boolean));var isDayOffForFill=function isDayOffForFill(ymd){if(holidayDatesForFill.has(ymd))return true;var jsDay=new Date(ymd+"T00:00:00").getDay();// 0=Sun..6=Sat
-return weekendDaysForFill.includes(jsDay===0?7:jsDay);};var allMyAttendanceWithGaps=function(){if(allMyAttendance.length===0)return[];var existingDates=new Set(allMyAttendance.map(function(a){return a.work_date;}));var sortedDates=_toConsumableArray(existingDates).sort();var filled=_toConsumableArray(allMyAttendance);var cursor=new Date(sortedDates[0]+"T00:00:00");var end=new Date(sortedDates[sortedDates.length-1]+"T00:00:00");// Build the ymd from LOCAL date parts, not toISOString() — that method
+return weekendDaysForFill.includes(jsDay===0?7:jsDay);};var allMyAttendanceWithGaps=function(){if(allMyAttendance.length===0)return[];var existingDates=new Set(allMyAttendance.map(function(a){return a.work_date;}));var filled=_toConsumableArray(allMyAttendance);// Use the COMPANY-WIDE imported date range, not just this member's own
+// earliest/latest row — someone who was only ever imported for a single
+// day (e.g. a device-ID mismatch got fixed partway through) would
+// otherwise show just that one day with everything else silently
+// missing, instead of showing as absent for the rest of the period
+// everyone else has data for.
+var allDates=(attendanceRecords||[]).map(function(a){return a.work_date;}).filter(Boolean).sort();var sortedDates=allDates.length?allDates:_toConsumableArray(existingDates).sort();var cursor=new Date(sortedDates[0]+"T00:00:00");var end=new Date(sortedDates[sortedDates.length-1]+"T00:00:00");// Build the ymd from LOCAL date parts, not toISOString() — that method
 // converts to UTC first, which silently rolls the date back a day in
 // any timezone ahead of UTC (e.g. Cairo, UTC+3: local midnight becomes
 // 21:00 the previous day in UTC), producing a bogus extra/shifted date.
