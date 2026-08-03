@@ -711,6 +711,18 @@ function hrTools() {
             'input_schema' => ['type' => 'object', 'properties' => new stdClass(), 'required' => []],
         ],
         [
+            'name' => 'set_reminder',
+            'description' => 'Set a one-off WhatsApp reminder for the sender themself — e.g. after a "New lead assigned to you" notification, they reply "remind me to call her at 12pm". Resolve whatever time they give (today\'s date is given to you above) into an exact remind_at datetime, and write a short message that will be sent back to them over WhatsApp at that time. Only ever sets a reminder for the person you are talking to — never for someone else.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'remind_at' => ['type' => 'string', 'description' => 'The exact date+time to send the reminder, as "YYYY-MM-DD HH:MM:SS" in 24-hour time, resolved from what the user said relative to today\'s date and the current time of day given above. If they gave no date, assume today unless that time has already passed, in which case assume tomorrow.'],
+                    'message'   => ['type' => 'string', 'description' => 'The reminder text to send back to them at that time, e.g. "Reminder: call her" — written as the actual WhatsApp message, not a description.'],
+                ],
+                'required' => ['remind_at', 'message'],
+            ],
+        ],
+        [
             'name' => 'save_contact_report',
             'description' => 'Save a structured contact report from a client interaction — typically after the user sends a voice note debriefing a call or meeting. Extract the client name, whether it was a call or an in-person/online meeting, where it took place, who attended (with their titles/roles if mentioned), a short summary, key discussion points, and any action items, then save it here so it shows up on that client\'s profile in the app. Confirm to the user once saved.',
             'input_schema' => [
@@ -1399,6 +1411,25 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
         return ['ok' => true, 'message' => 'Contact report saved' . ($clientName ? " for {$clientName}" : '') . '.'];
     }
 
+    if ($name === 'set_reminder') {
+        $remindAt = trim($input['remind_at'] ?? '');
+        $msg = trim($input['message'] ?? '');
+        if (!$remindAt || !$msg) return ['error' => 'Missing remind_at/message.'];
+        $ts = strtotime($remindAt);
+        if ($ts === false) return ['error' => 'Could not parse remind_at — use YYYY-MM-DD HH:MM:SS.'];
+
+        $phoneStmt = $pdo->prepare("SELECT whatsapp_number FROM team_members WHERE id = :id");
+        $phoneStmt->execute([':id' => $senderId]);
+        $phone = $phoneStmt->fetchColumn();
+        if (!$phone) return ['error' => 'No WhatsApp number on file for you — cannot schedule a reminder.'];
+
+        $id = generateProUuid();
+        $ins = $pdo->prepare("INSERT INTO wa_reminders (id, team_member_id, phone, message, remind_at) VALUES (:id, :tid, :phone, :msg, :at)");
+        $ins->execute([':id' => $id, ':tid' => $senderId, ':phone' => $phone, ':msg' => $msg, ':at' => date('Y-m-d H:i:s', $ts)]);
+
+        return ['ok' => true, 'message' => "Reminder set for " . date('Y-m-d H:i', $ts) . "."];
+    }
+
     if ($name === 'list_contact_reports') {
         $when = $input['when'] ?? 'today';
         $sql = "SELECT client_name, created_by_name, created_at, meeting_type, location_type, location, attendees, summary, key_points, action_items FROM contact_reports WHERE 1=1";
@@ -1429,7 +1460,7 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
     // user. Confirmed in production: a WhatsApp voice-note contact report
     // got a confident "Saved ✅" reply while the tool call itself returned
     // "Unknown tool: save_contact_report" the whole time.
-    if (in_array($name, ['request_time_off', 'decide_pending_request', 'get_my_hr_info', 'message_team_member', 'save_contact_report', 'list_contact_reports'], true)) {
+    if (in_array($name, ['request_time_off', 'decide_pending_request', 'get_my_hr_info', 'message_team_member', 'set_reminder', 'save_contact_report', 'list_contact_reports'], true)) {
         return runHrTool($pdo, $name, $input, $senderId, $senderName);
     }
     if (in_array($name, ['find_client', 'get_finance_summary', 'search_transactions', 'add_transaction', 'edit_transaction', 'delete_transaction'], true)) {
@@ -1675,7 +1706,7 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                 . "there is no unambiguous immediately-preceding question to confirm, ask what they're confirming "
                 . "rather than guessing which earlier item it might refer to. "
                 . "Today's date is " . date('Y-m-d') . " ("
-                . date('l') . "). When the user gives you a date without a year (e.g. \"13/6\" or \"next Tuesday\"), "
+                . date('l') . "), and the current time is " . date('H:i') . ". When the user gives you a date without a year (e.g. \"13/6\" or \"next Tuesday\"), "
                 . "resolve it relative to today and assume the nearest occurrence on or after today — never assume "
                 . "a past year. If a date is genuinely ambiguous, confirm it with the user before acting on it, "
                 . "especially before submitting anything (like a time-off request) that another person will "
