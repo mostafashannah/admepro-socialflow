@@ -17475,6 +17475,24 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
     const jsDay = new Date(ymd + "T00:00:00").getDay(); // 0=Sun..6=Sat
     return weekendDaysForFill.includes(jsDay === 0 ? 7 : jsDay);
   };
+  // Approved leave/WFH requests never produce their own attendance_records
+  // row (that table is only ever written by the import) — without this, an
+  // approved WFH/vacation day fell into the same "no record → Absent"
+  // bucket as a genuine no-show.
+  const approvedLeaveDatesForFill = (() => {
+    const map = {};
+    myLeave.filter(r => r.status === "approved").forEach(r => {
+      const cursor = new Date((r.start_date || "") + "T00:00:00");
+      const end = new Date((r.end_date || r.start_date || "") + "T00:00:00");
+      if (isNaN(cursor) || isNaN(end)) return;
+      while (cursor <= end) {
+        const ymd = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`;
+        map[ymd] = r.type;
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    });
+    return map;
+  })();
   const allMyAttendanceWithGaps = (() => {
     if (allMyAttendance.length === 0) return [];
     const existingDates = new Set(allMyAttendance.map(a => a.work_date));
@@ -17497,13 +17515,15 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
     while (cursor <= end) {
       const ymd = toYmd(cursor);
       if (!existingDates.has(ymd)) {
-        // Any day that isn't a configured weekend/holiday and has no
-        // imported row for it is a genuine gap — the import's own row-per-
-        // clocked-in-day design means a day nobody clocked in for never got
-        // a row at all, which used to just render as nothing rather than
-        // an actual absence.
+        // Any day that isn't a configured weekend/holiday, isn't an
+        // approved leave/WFH day, and has no imported row for it is a
+        // genuine gap — the import's own row-per-clocked-in-day design
+        // means a day nobody clocked in for never got a row at all, which
+        // used to just render as nothing rather than an actual absence.
+        const approvedLeave = approvedLeaveDatesForFill[ymd];
         const dayOff = isDayOffForFill(ymd);
-        filled.push({id: "dayoff-" + ymd, work_date: ymd, status: dayOff ? (holidayDatesForFill.has(ymd) ? "holiday" : "weekend") : "absent", _synthetic: true});
+        const status = approvedLeave ? (approvedLeave === "wfh" ? "wfh" : "leave") : (dayOff ? (holidayDatesForFill.has(ymd) ? "holiday" : "weekend") : "absent");
+        filled.push({id: "dayoff-" + ymd, work_date: ymd, status, _synthetic: true});
       }
       cursor.setDate(cursor.getDate() + 1);
     }
@@ -17868,7 +17888,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                         <span style={{fontSize:13,flex:1}}>{a.work_date?new Date(a.work_date).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}):""}</span>
                         {a.check_in&&<span style={{fontSize:12,color:"var(--text3)"}}>{a.check_in}{a.check_out?` – ${a.check_out}`:""}{worked!=null?` (${worked.toFixed(1)}h)`:""}</span>}
                         {extra>0&&<span style={{fontSize:11,fontWeight:700,color:"#f59e0b"}}>+{extra.toFixed(1)}h</span>}
-                        <span style={{textTransform:"capitalize",fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:6,background:isDayOff?"var(--accentbg)":"var(--surface2)",color:isDayOff?"var(--accent)":"var(--text2)"}}>{a.status}</span>
+                        <span style={{textTransform:a.status==="wfh"?"uppercase":"capitalize",fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:6,background:isDayOff?"var(--accentbg)":"var(--surface2)",color:isDayOff?"var(--accent)":"var(--text2)"}}>{a.status}</span>
                       </div>
                     );
                   })}
