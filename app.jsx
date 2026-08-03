@@ -6602,7 +6602,7 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
   const activeClientId = presetClient?.id || pickedClientId;
   const selectableProjects = activeClientId ? projects.filter(p=>p.client_id===activeClientId) : projects;
   const defaultAssignee = eligibleAssignees("planning",team).some(m=>m.email===currentUser?.email) ? currentUser.email : "";
-  const blankForm = {project_id:selectableProjects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:defaultAssignee,scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",due_date:"",due_time:"",content_mode:"new",platforms:[],platform_types:{},media:[],cover:null,publish_mode:"schedule",postStory:false,storyImage:null,estimated_minutes:""};
+  const blankForm = {project_id:selectableProjects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:defaultAssignee,scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",due_date:"",due_time:"",content_mode:"new",platforms:["instagram"],platform_types:{},media:[],cover:null,publish_mode:"schedule",postStory:false,storyImage:null,estimated_minutes:""};
   const [f,setF] = useState({...blankForm});
   // Which pipeline phase this post starts at — controls who's eligible to
   // be assigned it (Brief -> AM, Content -> Content team, Design -> Design team).
@@ -6668,7 +6668,7 @@ Return ONLY valid JSON (no markdown):
   };
   const canNext = f.content_mode==="ready"
     ? f.title.trim() && f.project_id && f.caption.trim() && f.platforms.length
-    : f.title.trim() && f.project_id;
+    : f.title.trim() && f.project_id && f.platforms.length;
 
   const handleMediaUpload = async (files) => {
     const valid = Array.from(files||[]).filter(file=>{
@@ -6721,7 +6721,7 @@ Return ONLY valid JSON (no markdown):
 
   const canSubmit = f.content_mode==="ready"
     ? f.title.trim()&&f.project_id&&f.caption.trim()&&f.platforms.length&&(f.publish_mode!=="schedule"||(f.scheduled_date&&f.scheduled_time))&&!needsInstaCover
-    : f.title.trim()&&f.project_id&&(!f.scheduled_date||f.scheduled_time);
+    : f.title.trim()&&f.project_id&&f.platforms.length&&(!f.scheduled_date||f.scheduled_time);
 
   const submit = async () => {
     if(!canSubmit) return;
@@ -6772,7 +6772,16 @@ Return ONLY valid JSON (no markdown):
       // client's own Tasks tab, which filters by client_id) on the next
       // full reload even though it still existed in the posts table.
       const proj = projects.find(p=>p.id===f.project_id);
-      await onAdd({...f, client_id:proj?.client_id||"", client_name:proj?.client_name||""});
+      // One task per selected platform (mirrors the Ready Content branch
+      // above) — Platform used to be a single-select here, so a task
+      // needed for both Instagram and Facebook meant creating it twice by
+      // hand. platform_types falls back to f.post_type for any platform
+      // that was never given its own type.
+      const plts = f.platforms.length ? f.platforms : [f.platform];
+      await Promise.all(plts.map(pl=>onAdd({
+        ...f, platform:pl, post_type:f.platform_types[pl]||f.post_type,
+        client_id:proj?.client_id||"", client_name:proj?.client_name||"",
+      })));
     }
     setSaving(false); onClose();
   };
@@ -6841,18 +6850,33 @@ Return ONLY valid JSON (no markdown):
               {saraLoading?<><Spinner size={14}/> Sara is now generating your content…</>:<><Ico d={Icons.sparkle} size={14} stroke="#10b981"/> Let Sara write this post (caption, hashtags, brief)</>}
             </button>
             {f.content_mode==="new"?(
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                <Field label="Platform">
-                  <select value={f.platform} onChange={e=>s("platform",e.target.value)} style={inputSt}>
-                    {PLATFORMS.map(p=><option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
-                  </select>
-                </Field>
-                <Field label="Post Type">
-                  <select value={f.post_type} onChange={e=>s("post_type",e.target.value)} style={inputSt}>
-                    {POST_TYPES.map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
-                  </select>
-                </Field>
-              </div>
+              <Field label="Platform(s)" required>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {PLATFORMS.map(p=>(
+                      <button key={p} type="button" onClick={()=>togglePlt(p)} style={{
+                        padding:"6px 14px",borderRadius:99,fontSize:12,fontWeight:600,
+                        border:`1.5px solid ${f.platforms.includes(p)?PLT_COLOR[p]:"var(--border2)"}`,
+                        background:f.platforms.includes(p)?PLT_COLOR[p]+"22":"var(--surface2)",
+                        color:f.platforms.includes(p)?PLT_COLOR[p]:"var(--text2)",
+                        cursor:"pointer",transition:"all 0.15s",
+                      }}>{p.charAt(0).toUpperCase()+p.slice(1)}</button>
+                    ))}
+                  </div>
+                  {!!f.platforms.length&&(
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      {f.platforms.map(p=>(
+                        <div key={p} style={{display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{fontSize:11,fontWeight:700,color:PLT_COLOR[p],width:70}}>{p.charAt(0).toUpperCase()+p.slice(1)}</span>
+                          <select value={f.platform_types[p]||defaultTypeFor()} onChange={e=>setPlatformType(p,e.target.value)} style={{...inputSt,padding:"5px 10px",fontSize:12}}>
+                            {POST_TYPES.map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </Field>
             ):(
               <div style={{display:"flex",flexDirection:"column",gap:12}}>
                 <Field label="Caption" required>
