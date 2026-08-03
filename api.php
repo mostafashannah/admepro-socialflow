@@ -171,6 +171,7 @@ $NUMERIC_COLUMNS = [
     // which silently failed the whole INSERT with no _saveError surfaced
     // client-side (fixed separately in app.jsx's b44Create too).
     'posts' => ['estimated_minutes'],
+    'team_members' => ['vacation_days_total','vacation_days_used','wfh_days_total','wfh_days_used','personal_leave_hours_total','personal_leave_hours_used','extra_hours_banked'],
 ];
 
 // Numeric columns get "" (an empty/unfilled number input from the client)
