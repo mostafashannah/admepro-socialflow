@@ -422,6 +422,55 @@ function logLeaveCreditEvent($pdo, $teamMemberId, $creditType, $amount, $reason,
     $stmt->execute([$teamMemberId, $creditType, $amount, $monthKey, $workDate, $reason]);
 }
 
+// ── Company-wide reconciliation ──
+// The per-employee gap-fill above only covers [min,max] of dates that
+// EMPLOYEE actually has rows for IN THIS FILE — if their device simply
+// never recorded them at all near the end/start of the sheet (as
+// opposed to recording nothing on an in-range day), no row, and so no
+// deduction, ever gets created for that date. The UI's own gap display
+// independently fills these in for VIEWING, but that's client-side only
+// and was never persisted or deducted. This pass closes that: for every
+// active member, walk the full company-wide imported date range and
+// record a real 'absent' row for anything still missing — unless it's
+// not actually a working day for them, or an approved leave/WFH request
+// already covers it — so every upload keeps the whole team's record
+// complete, not just whoever's rows happened to be in this specific file.
+try {
+    $rangeRow = $pdo->query("SELECT MIN(work_date) AS mn, MAX(work_date) AS mx FROM attendance_records")->fetch(PDO::FETCH_ASSOC);
+    if ($rangeRow && $rangeRow['mn'] && $rangeRow['mx']) {
+        $members = $pdo->query("SELECT id, name, employment_type, work_days FROM team_members WHERE status != 'inactive'")->fetchAll(PDO::FETCH_ASSOC);
+        $existingStmt = $pdo->prepare("SELECT 1 FROM attendance_records WHERE team_member_id = ? AND work_date = ? LIMIT 1");
+        $leaveStmt = $pdo->prepare("SELECT 1 FROM leave_requests WHERE team_member_id = ? AND status = 'approved' AND start_date <= ? AND end_date >= ? LIMIT 1");
+        foreach ($members as $mem) {
+            // work_days is stored using JS Date.getDay() convention
+            // (0=Sun..6=Sat) — PHP's date('N') is 1=Mon..7=Sun, so 0 maps to 7.
+            $workDaysPhp = null;
+            if (($mem['employment_type'] ?? '') === 'part_time' && !empty($mem['work_days'])) {
+                $decoded = json_decode($mem['work_days'], true);
+                if (is_array($decoded)) {
+                    $workDaysPhp = array_map(function ($d) { $d = intval($d); return $d === 0 ? 7 : $d; }, $decoded);
+                }
+            }
+            $cursor = new DateTime($rangeRow['mn']);
+            $end = new DateTime($rangeRow['mx']);
+            while ($cursor <= $end) {
+                $ymd = $cursor->format('Y-m-d');
+                if ($isDayOff($ymd)) { $cursor->modify('+1 day'); continue; }
+                if ($workDaysPhp !== null && !in_array((int) date('N', strtotime($ymd)), $workDaysPhp, true)) {
+                    $cursor->modify('+1 day'); continue;
+                }
+                $existingStmt->execute([$mem['id'], $ymd]);
+                if ($existingStmt->fetchColumn()) { $cursor->modify('+1 day'); continue; }
+                $leaveStmt->execute([$mem['id'], $ymd, $ymd]);
+                if ($leaveStmt->fetchColumn()) { $cursor->modify('+1 day'); continue; }
+                upsertAttendanceRow($pdo, $upsert, $mem['id'], $mem['name'], $ymd, 'absent', null, null, null);
+                $imported++;
+                $cursor->modify('+1 day');
+            }
+        }
+    }
+} catch (Throwable $e) { /* reconciliation is best-effort — import itself already succeeded */ }
+
 // ── Attendance rules: late-arrival + unapproved-absence deductions ──
 // Configured from the app (Users > Attendance tab, admin only), stored as
 // JSON on app_settings.attendance_rules. Applied on every import so it
