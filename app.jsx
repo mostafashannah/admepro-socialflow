@@ -18056,12 +18056,14 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                   {g.rows.map((a,i)=>{
                     const worked = workedHoursFor(a.check_in, a.check_out);
                     const extra = worked!=null ? Math.max(0, worked-9) : 0;
+                    const shortfall = (a.status==="present" && worked!=null) ? Math.max(0, 9-worked) : 0;
                     const isDayOff = a.status==="weekend" || a.status==="holiday";
                     return (
                       <div key={a.id} style={{padding:"10px 18px",borderBottom:i<g.rows.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12,opacity:isDayOff?0.6:1}}>
                         <span style={{fontSize:13,flex:1}}>{a.work_date?new Date(a.work_date).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}):""}</span>
                         {a.check_in&&<span style={{fontSize:12,color:"var(--text3)"}}>{a.check_in}{a.check_out?` – ${a.check_out}`:""}{worked!=null?` (${worked.toFixed(1)}h)`:""}</span>}
                         {extra>0&&<span style={{fontSize:11,fontWeight:700,color:"#f59e0b"}}>+{extra.toFixed(1)}h</span>}
+                        {shortfall>0&&<span style={{fontSize:11,fontWeight:700,color:"#ef4444"}}>-{shortfall.toFixed(1)}h</span>}
                         <span style={{textTransform:a.status==="wfh"?"uppercase":"capitalize",fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:6,background:isDayOff?"var(--accentbg)":(a.status==="absent"?"#ef444422":"var(--surface2)"),color:isDayOff?"var(--accent)":(a.status==="absent"?"#ef4444":"var(--text2)")}}>{a.status==="absent"?"Absent (No Request)":a.status}</span>
                       </div>
                     );
