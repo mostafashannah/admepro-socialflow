@@ -23637,11 +23637,17 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   const [showImport, setShowImport] = useState(false);
   const [view, setView] = useState("kanban");
   const isAdmin = currentUser?.role==="admin";
+  // Account managers only ever see leads assigned to them — not the whole
+  // team's pipeline. Admins (and everyone else with page access, e.g.
+  // business_development who works the shared rotation) still see all of
+  // it, since only AMs individually own a book of leads this way.
+  const myLeadsOnly = currentUser?.role==="account_manager";
+  const leadsScope = myLeadsOnly ? leads.filter(l=>l.assigned_to===currentUser.email) : leads;
   // Leads with nobody assigned yet sit in the "Bank" — imported in bulk
   // (e.g. from a Drive sheet) and held there until an admin hands each one
   // to a team member. No schema/status change needed: "in the bank" just
   // means assigned_to is empty.
-  const bankLeads = leads.filter(l=>!l.assigned_to);
+  const bankLeads = leadsScope.filter(l=>!l.assigned_to);
   const [selectedLead, setSelectedLead_] = useState(null);
   // Opening a lead pushes its own history entry so the physical browser
   // Back button closes it instead of navigating away from Leads entirely.
@@ -23721,7 +23727,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   // Number(...) here guards against silent string-concatenation totals
   // (e.g. "0"+"0"+"0" -> "000") instead of real addition.
   const num = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
-  const industryOptions = Array.from(new Set(leads.map(l=>l.industry).filter(Boolean))).sort();
+  const industryOptions = Array.from(new Set(leadsScope.map(l=>l.industry).filter(Boolean))).sort();
   const matchesLeadFilters = (l) => {
     if(search&&!l.name.toLowerCase().includes(search.toLowerCase())&&!(l.company||"").toLowerCase().includes(search.toLowerCase())) return false;
     if(sourceF!=="all"&&l.source!==sourceF) return false;
@@ -23730,15 +23736,15 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
     if(industryF!=="all"&&(l.industry||"")!==industryF) return false;
     return true;
   };
-  const filtered = leads.filter(l=>l.assigned_to&&matchesLeadFilters(l));
+  const filtered = leadsScope.filter(l=>l.assigned_to&&matchesLeadFilters(l));
   // Bulk actions (AI Analysis, Push New Leads, Normalize, etc.) still
   // operate on the full, unfiltered Bank — country/industry filters only
   // narrow what's shown, not what a bulk action touches.
   const bankFiltered = bankLeads.filter(matchesLeadFilters);
 
-  const totalValue = leads.filter(l=>l.status==="closed_won").reduce((a,l)=>a+num(l.value),0);
-  const pipelineValue = leads.filter(l=>l.assigned_to&&!["closed_won","closed_lost","dead"].includes(l.status)).reduce((a,l)=>a+num(l.value),0);
-  const overdueCount = leads.filter(l=>isOverdue(l.followup_date)&&!["closed_won","closed_lost","dead"].includes(l.status)).length;
+  const totalValue = leadsScope.filter(l=>l.status==="closed_won").reduce((a,l)=>a+num(l.value),0);
+  const pipelineValue = leadsScope.filter(l=>l.assigned_to&&!["closed_won","closed_lost","dead"].includes(l.status)).reduce((a,l)=>a+num(l.value),0);
+  const overdueCount = leadsScope.filter(l=>isOverdue(l.followup_date)&&!["closed_won","closed_lost","dead"].includes(l.status)).length;
 
   // Opening a lead swaps the whole page content for its own full detail
   // page (not an overlay/popup) — same master-detail pattern used
@@ -23747,7 +23753,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
     return (
       <LeadDetail
         key={selectedLead.id}
-        lead={leads.find(l=>l.id===selectedLead.id)||selectedLead}
+        lead={leadsScope.find(l=>l.id===selectedLead.id)||selectedLead}
         activities={leadActivities}
         team={team}
         currentUser={currentUser}
