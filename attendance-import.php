@@ -280,6 +280,29 @@ $upsert = $pdo->prepare(
        check_in = VALUES(check_in), check_out = VALUES(check_out), note = VALUES(note)"
 );
 
+// The table's own UNIQUE KEY is (member_name, work_date) — that alone only
+// catches an EXACT repeat of the same device name text for the same day.
+// It does NOT catch "same real person, same day" when the device name text
+// differs between imports (e.g. matched via AC-No. this time but wasn't
+// last time, or the device relabels a nickname) — that produced a second
+// row for someone who was already matched, showing as a duplicated day on
+// their profile. Once a team_member_id is known, check for an existing row
+// on that (team_member_id, work_date) FIRST and update it in place instead
+// of letting a second, differently-named row slip in under the table's
+// name-based unique key.
+function upsertAttendanceRow(PDO $pdo, $upsert, ?string $teamMemberId, string $name, string $ymd, string $status, ?string $cin, ?string $cout, ?string $note) {
+    if ($teamMemberId) {
+        $existing = $pdo->prepare("SELECT id FROM attendance_records WHERE team_member_id = :tid AND work_date = :wdate LIMIT 1");
+        $existing->execute([':tid' => $teamMemberId, ':wdate' => $ymd]);
+        if ($existingId = $existing->fetchColumn()) {
+            $pdo->prepare("UPDATE attendance_records SET member_name = :name, status = :status, check_in = :cin, check_out = :cout, note = :note WHERE id = :id")
+                ->execute([':name' => $name, ':status' => $status, ':cin' => $cin, ':cout' => $cout, ':note' => $note, ':id' => $existingId]);
+            return;
+        }
+    }
+    $upsert->execute([':tid' => $teamMemberId, ':name' => $name, ':wdate' => $ymd, ':status' => $status, ':cin' => $cin, ':cout' => $cout, ':note' => $note]);
+}
+
 $imported = 0; $unmatched = []; $skipped = 0; $daysOffSkipped = 0;
 
 // ── Format detection ──
@@ -324,10 +347,7 @@ if ($isRawDeviceFormat) {
 
         // Present/late rows for every date actually in the file.
         foreach ($info['dates'] as $ymd => [$cin, $cout]) {
-            $upsert->execute([
-                ':tid' => $teamMemberId, ':name' => $name, ':wdate' => $ymd,
-                ':status' => 'present', ':cin' => normalizeTimeForSql($cin), ':cout' => normalizeTimeForSql($cout), ':note' => null,
-            ]);
+            upsertAttendanceRow($pdo, $upsert, $teamMemberId, $name, $ymd, 'present', normalizeTimeForSql($cin), normalizeTimeForSql($cout), null);
             $imported++;
         }
 
@@ -341,10 +361,7 @@ if ($isRawDeviceFormat) {
                 if ($isDayOff($ymd)) {
                     $daysOffSkipped++;
                 } else {
-                    $upsert->execute([
-                        ':tid' => $teamMemberId, ':name' => $name, ':wdate' => $ymd,
-                        ':status' => 'absent', ':cin' => null, ':cout' => null, ':note' => null,
-                    ]);
+                    upsertAttendanceRow($pdo, $upsert, $teamMemberId, $name, $ymd, 'absent', null, null, null);
                     $imported++;
                 }
             }
@@ -382,15 +399,12 @@ if ($isRawDeviceFormat) {
         $teamMemberId = $byLowerName[mb_strtolower($name)] ?? null;
         if (!$teamMemberId) $unmatched[$name] = true;
 
-        $upsert->execute([
-            ':tid' => $teamMemberId,
-            ':name' => $name,
-            ':wdate' => $workDate,
-            ':status' => $status,
-            ':cin' => !empty($row[$colIdx['check_in'] ?? -1]) ? normalizeTimeForSql($row[$colIdx['check_in']]) : null,
-            ':cout' => !empty($row[$colIdx['check_out'] ?? -1]) ? normalizeTimeForSql($row[$colIdx['check_out']]) : null,
-            ':note' => !empty($row[$colIdx['note'] ?? -1]) ? $row[$colIdx['note']] : null,
-        ]);
+        upsertAttendanceRow(
+            $pdo, $upsert, $teamMemberId, $name, $workDate, $status,
+            !empty($row[$colIdx['check_in'] ?? -1]) ? normalizeTimeForSql($row[$colIdx['check_in']]) : null,
+            !empty($row[$colIdx['check_out'] ?? -1]) ? normalizeTimeForSql($row[$colIdx['check_out']]) : null,
+            !empty($row[$colIdx['note'] ?? -1]) ? $row[$colIdx['note']] : null
+        );
         $imported++;
     }
 }
