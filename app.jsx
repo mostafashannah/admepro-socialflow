@@ -156,7 +156,7 @@ const ROLES = {
 // which controls system permissions and must stay one of the fixed
 // functional roles. Quick-pick suggestions; the field also accepts any
 // free-typed value.
-const TEAM_TITLES = ["Creative","Senior Creative","Creative Director","Content Creator","Senior Content Creator","Graphic Designer","Senior Graphic Designer","Art Director","Account Manager","Senior Account Manager","Account Director"];
+const TEAM_TITLES = ["Creative","Senior Creative","Creative Director","Content Creator","Senior Content Creator","Graphic Designer","Senior Graphic Designer","AI Visual Specialist","Art Director","Account Manager","Senior Account Manager","Account Director"];
 
 // Egypt's fixed-date national holidays — same month/day every year, so
 // these can be generated automatically. Islamic holidays (Eid al-Fitr,
