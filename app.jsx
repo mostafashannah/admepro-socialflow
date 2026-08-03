@@ -15882,7 +15882,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
   const weeks = buildCalendarWeeks();
 
   return (
-    <div style={{padding:"20px 24px",maxWidth:1500,margin:"0 auto"}}>
+    <div style={{padding:"20px 24px",maxWidth:1900,margin:"0 auto"}}>
       {/* Back + Header */}
       <div style={{marginBottom:20}}>
         <button onClick={onBack} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontSize:13,padding:0,marginBottom:12}}>← Back to Projects</button>
