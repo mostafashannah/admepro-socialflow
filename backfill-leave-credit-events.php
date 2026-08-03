@@ -23,6 +23,7 @@ $rules = $settingsRow && !empty($settingsRow['attendance_rules']) ? json_decode(
 $rules = is_array($rules) ? $rules : [];
 $lateDeductHours = floatval($rules['lateDeductHours'] ?? 2);
 $absentDeductDays = floatval($rules['absentDeductDays'] ?? 2);
+$lateTriggerCount = max(1, intval($rules['lateTriggerCount'] ?? 1));
 
 function logEvent($pdo, $teamMemberId, $memberName, $creditType, $amount, $monthKey, $workDate, $reason) {
     $exists = $pdo->prepare(
@@ -73,7 +74,8 @@ foreach ($byMemberMonth as $tid => $months) {
         if (!$m) continue;
         $plTotal = floatval($m['personal_leave_hours_total'] ?? 4);
         $plUsedSoFar = 0;
-        $totalHours = count($rows) * $lateDeductHours;
+        $groups = intdiv(count($rows), $lateTriggerCount);
+        $totalHours = $groups * $lateDeductHours;
         $fromPersonalLeave = min(max(0, $plTotal - $plUsedSoFar), $totalHours);
         $remainingHours = $totalHours - $fromPersonalLeave;
         $lastDate = $rows[count($rows) - 1]['work_date'];
