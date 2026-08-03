@@ -16336,7 +16336,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   onInviteUser, onCancelInvitation, onApproveRequest, onRejectRequest,
   onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation,
   rolePerms, onUpdateTeamMember, onRemoveMember, onToggleRolePermission, onAddExpense, leaveRequests, onDecideLeaveRequest, attendanceRecords,
-  posts, onImpersonate, appSettings, brandingAssets, onSaveSettings, expenses, onDeclareCompanyDayOff, invoices, payments, subscriptionPayments, activityLogs=[], perfLogs=[], maiReportSessions=[]}) {
+  posts, onImpersonate, appSettings, brandingAssets, onSaveSettings, expenses, onDeclareCompanyDayOff, invoices, payments, subscriptionPayments, activityLogs=[], perfLogs=[], maiReportSessions=[], leaveCreditEvents=[]}) {
   const [tab, setTab] = usePersistentState("sf_tab_users","team");
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showClientUserModal, setShowClientUserModal] = useState(false);
@@ -16409,6 +16409,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
           subscriptionPayments={subscriptionPayments}
           perfLogs={perfLogs}
           maiReportSessions={maiReportSessions}
+          leaveCreditEvents={leaveCreditEvents}
           onUpdateTeamMember={onUpdateTeamMember}
           onAddExpense={onAddExpense}
           canEdit={!isOfficeBoy && hasPerm(currentUser,rolePerms,"hr.edit_team")}
@@ -17256,7 +17257,7 @@ function AccountManagerMaiReportsTab({member}) {
   );
 }
 
-function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, attendanceRecords, expenses, invoices, payments, subscriptionPayments, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense, appSettings, brandingAssets, perfLogs=[], maiReportSessions=[]}) {
+function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, attendanceRecords, expenses, invoices, payments, subscriptionPayments, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense, appSettings, brandingAssets, perfLogs=[], maiReportSessions=[], leaveCreditEvents=[]}) {
   // Plain state, not persisted — opening any team member should always
   // start on Overview, not silently reopen to whatever tab was last viewed.
   const [tab, setTab] = useState("overview");
@@ -17527,6 +17528,17 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
   const myTasks = (posts||[]).filter(p=>p.assigned_to===member.email);
   const myScheduled = myTasks.filter(p=>p.scheduled_date).sort((a,b)=>new Date(a.scheduled_date)-new Date(b.scheduled_date));
   const myLeave = (leaveRequests||[]).filter(r=>r.team_member_id===member.id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+  // Per-month history of actual Personal Leave/WFH/Vacation usage — needed
+  // because team_members' own running totals reset every month (see
+  // monthly-leave-reset-cron.php), so they can only ever answer "how much
+  // THIS month" — a past month's row would otherwise show 0 for a month
+  // that's already over, even though hours/days really were used then.
+  const myCreditEventsByMonth = (leaveCreditEvents||[]).filter(e=>e.team_member_id===member.id).reduce((acc,e)=>{
+    const mk = e.month_key || (e.work_date||"").slice(0,7);
+    if(!acc[mk]) acc[mk] = {personal_leave_hours:0, wfh_days:0, vacation_days:0};
+    acc[mk][e.credit_type] = (acc[mk][e.credit_type]||0) + Number(e.amount||0);
+    return acc;
+  }, {});
   const allMyAttendance = (attendanceRecords||[]).filter(a=>a.team_member_id===member.id || a.member_name===member.name).sort((a,b)=>new Date(b.work_date)-new Date(a.work_date));
   const overtime = calcExtraHours(allMyAttendance);
   // Mirror of calcExtraHours above, but for the shortfall on a day someone
@@ -18040,7 +18052,15 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                 });
                 const isCurrentMonth = g.key===currentMonthKey;
                 const rawExtraH = extraH, rawDeductH = deductH;
-                const plUsedApplied = isCurrentMonth ? Math.min(rawDeductH, Number(member.personal_leave_hours_used||0)) : 0;
+                // Prefer the permanent per-month history log — it's the only
+                // place a PAST month's real Personal Leave usage still
+                // exists (the running total on the member record itself
+                // gets reset every month). Fall back to the live running
+                // total only for the current month if no history rows
+                // exist yet (e.g. before this log started recording).
+                const monthPlUsed = myCreditEventsByMonth[g.key]?.personal_leave_hours ?? (isCurrentMonth ? Number(member.personal_leave_hours_used||0) : 0);
+                const monthWfhUsed = myCreditEventsByMonth[g.key]?.wfh_days ?? (isCurrentMonth ? Number(member.wfh_days_used||0) : 0);
+                const plUsedApplied = Math.min(rawDeductH, monthPlUsed);
                 const extraBankedApplied = isCurrentMonth ? Number(member.extra_hours_banked||0) : 0;
                 deductH = Math.max(0, rawDeductH - plUsedApplied);
                 extraH = rawExtraH + extraBankedApplied;
@@ -18055,7 +18075,8 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                         <span>Absent {absentCt}</span>
                         <span>WFH/Leave {wfhCt}</span>
                         <span>Off {dayOffCt}</span>
-                        {isCurrentMonth&&<span>Personal Leave {Number(member.personal_leave_hours_used||0)}h/{Number(member.personal_leave_hours_total??4)}h</span>}
+                        <span>Personal Leave {monthPlUsed}h{isCurrentMonth?`/${Number(member.personal_leave_hours_total??4)}h`:"h"}</span>
+                        <span>WFH Used {monthWfhUsed}d</span>
                         <span style={{fontWeight:800,color:netH>=0?"#10b981":"#ef4444"}}>{netH>=0?"+":""}{netH.toFixed(1)}h</span>
                       </div>
                     </div>
@@ -42711,6 +42732,7 @@ function App() {
         qe("FinanceClientNote"), // 46
         qe("ContactReportActivity",{},"-created_at",2000), // 47
         qe("MaiReportSession",{},"-started_at",2000), // 48
+        qe("LeaveCreditEvent",{},"-created_at",5000), // 49
         // JobOpening/JobApplication removed here — RecruitmentPage already
         // fetches both itself on mount (see its own `load()`), so these were
         // an unread duplicate fetch on every single app load/refresh.
@@ -42766,6 +42788,7 @@ function App() {
         financeClientNotes: pick(wave2[46], d.financeClientNotes||[]),
         contactReportActivity: pick(wave2[47], d.contactReportActivity||[]),
         maiReportSessions: pick(wave2[48], d.maiReportSessions||[]),
+        leaveCreditEvents: pick(wave2[49], d.leaveCreditEvents||[]),
       }));
     }
     loadAllDataRef.current = load;
@@ -43225,9 +43248,15 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
         const refundDays = staleAbsences.length * 2;
         const newUsed = Math.max(0, (Number(member[col])||0) + Number(req.days||1) - refundDays);
         await updateTeamMember(member.id, {[col]: newUsed});
+        const creditType = req.type==="vacation" ? "vacation_days" : "wfh_days";
+        const monthKey = (req.start_date||"").slice(0,7);
+        ce("LeaveCreditEvent",[{team_member_id:member.id, member_name:member.name, credit_type:creditType, amount:Number(req.days||1), month_key:monthKey, work_date:req.start_date, reason:"leave_request_approved"}]).catch(()=>{});
         if(staleAbsences.length) {
           await Promise.all(staleAbsences.map(a=>ue("AttendanceRecord", a.id, {absence_deducted:0})));
           setData(d=>({...d, attendanceRecords:(d.attendanceRecords||[]).map(a=>staleAbsences.some(s=>s.id===a.id)?{...a,absence_deducted:0}:a)}));
+          staleAbsences.forEach(a=>{
+            ce("LeaveCreditEvent",[{team_member_id:member.id, member_name:member.name, credit_type:"vacation_days", amount:-2, month_key:(a.work_date||"").slice(0,7), work_date:a.work_date, reason:"stale_absence_refund"}]).catch(()=>{});
+          });
         }
       }
     }
@@ -45882,6 +45911,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             activityLogs={data.activityLogs||[]}
             perfLogs={data.perfLogs||[]}
             maiReportSessions={data.maiReportSessions||[]}
+            leaveCreditEvents={data.leaveCreditEvents||[]}
           />
         )}
         {page==="performance"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.view_performance"))&&(
