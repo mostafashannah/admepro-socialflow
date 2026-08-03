@@ -1,0 +1,10 @@
+CREATE TABLE IF NOT EXISTS wa_reminders (
+  id VARCHAR(36) PRIMARY KEY,
+  team_member_id VARCHAR(36) NOT NULL,
+  phone VARCHAR(32) NOT NULL,
+  message TEXT NOT NULL,
+  remind_at DATETIME NOT NULL,
+  sent TINYINT(1) NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_due (sent, remind_at)
+) ENGINE=InnoDB;
