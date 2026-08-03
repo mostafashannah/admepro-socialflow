@@ -5879,7 +5879,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(320px,1fr))",gap:16,alignItems:"start"}}>
           {/* Suppressed during content_creation — the generator below shows this
               same caption as its first, already-chosen option instead of duplicating it. */}
-          {post.caption&&post.stage!=="content_creation"&&<div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {post.caption&&post.stage!=="content_creation"&&post.stage!=="published"&&<div style={{display:"flex",flexDirection:"column",gap:6}}>
             <label style={{fontSize:11,fontWeight:700,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Caption</label>
             <div style={{border:"2px solid var(--accent)",borderRadius:"var(--rs)",overflow:"hidden"}}>
               {/* Card header */}
@@ -44494,12 +44494,6 @@ Return ONLY valid JSON (no markdown, no explanation):
       setToast(` Assign a team member before moving to ${stageLabel}. Open the post and set 'Assign To'.`);
       return;
     }
-    // A manually-picked assignee/schedule (from the Move-to modal) always wins over
-    // the role-based auto-assign guess below.
-    const assignee = overrides.assigned_to ? data.team.find(m=>m.email===overrides.assigned_to) : getAssigneeForStage(newStage, data.team);
-    const assigneeName = assignee?.name || "Unassigned";
-    const assigneeEmail = overrides.assigned_to || assignee?.email || "";
-
     // Track revisions (moved backward to an earlier stage in the pipeline)
     // and any rejection ever hit, so a real PerformanceLog can be written once
     // the task actually completes — Performance/My Performance's Review Score
@@ -44514,6 +44508,22 @@ Return ONLY valid JSON (no markdown, no explanation):
     const wentBackward = (oldIdx>-1 && newIdx>-1 && newIdx<oldIdx && !["on_hold"].includes(post.stage) && !["on_hold"].includes(newStage)) || newStage==="rejected";
     const revisionCount = (post.revision_count||0) + (wentBackward?1:0);
     const wasRejected = post.was_rejected || newStage==="rejected";
+
+    // A manually-picked assignee/schedule (from the Move-to modal) always wins.
+    // On a backward move (rejection/return), keep it with whoever actually
+    // already owned that stage on THIS post — falling through to
+    // getAssigneeForStage's generic "any active content_creator" pick here
+    // used to silently re-attribute (and re-assign!) the task to an
+    // unrelated team member who never touched it, just because they
+    // happened to be first by role.
+    const priorStageOwnerEmail = newStage==="content_creation" ? (post.content_assigned_to || post.assigned_to)
+      : ["design","internal_review","design_review"].includes(newStage) ? post.assigned_to
+      : null;
+    const assignee = overrides.assigned_to ? data.team.find(m=>m.email===overrides.assigned_to)
+      : (wentBackward && priorStageOwnerEmail) ? data.team.find(m=>m.email===priorStageOwnerEmail)
+      : getAssigneeForStage(newStage, data.team);
+    const assigneeName = assignee?.name || "Unassigned";
+    const assigneeEmail = overrides.assigned_to || assignee?.email || "";
 
     const updatedPost = {...post, stage:newStage, assigned_to:assigneeEmail||post.assigned_to,
       due_date: overrides.due_date || post.due_date,
