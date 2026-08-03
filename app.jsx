@@ -5491,8 +5491,18 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   // A client-specific integration must win over a global (no client_id) one for
   // the same app_key — otherwise .find() can match a different client's
   // dedicated FB/IG integration before ever considering the right one.
-  const socialIntegration = integrations.find(i=>i.status==="active" && i.app_key===post.platform && i.client_id===clientId)
-    || integrations.find(i=>i.status==="active" && i.app_key===post.platform && !i.client_id);
+  const findIntegrationForPlatform = (pl) => integrations.find(i=>i.status==="active" && i.app_key===pl && i.client_id===clientId)
+    || integrations.find(i=>i.status==="active" && i.app_key===pl && !i.client_id);
+  const socialIntegration = findIntegrationForPlatform(post.platform);
+  // A task now carries every platform it was created for (see AddPostModal's
+  // multi-select) — publishing should hit all of them at once instead of
+  // only post.platform (the first one picked). TikTok keeps its own
+  // dedicated flow below (privacy/duet/stitch options can't be skipped),
+  // so it's excluded from this simple multi-publish button.
+  const allPostPlatforms = (Array.isArray(post.platforms)&&post.platforms.length ? post.platforms : [post.platform]).filter(Boolean);
+  const multiPublishPlatforms = allPostPlatforms.filter(pl=>pl!=="tiktok");
+  const connectedMultiPlatforms = multiPublishPlatforms.filter(pl=>findIntegrationForPlatform(pl));
+  const disconnectedMultiPlatforms = multiPublishPlatforms.filter(pl=>!findIntegrationForPlatform(pl));
 
   // TikTok only — fetches creator_info fresh (see fetchTikTokCreatorInfo's
   // comment for why this can't be cached/hardcoded) and resets every
@@ -5515,25 +5525,50 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
 
   const tkCanPublish = tkInfo && tkPrivacy && (!tkDisclose || tkYourBrand || tkBrandedContent);
 
+  // Publishes to every connected platform this task carries (not just the
+  // first one) in one go — a task with both Instagram and Facebook selected
+  // now actually goes out to both instead of only post.platform.
   const handlePublish = async () => {
-    if(!socialIntegration) return;
-    const isTikTok = socialIntegration.app_key==="tiktok";
-    if(isTikTok && !tkCanPublish) return;
+    if(!connectedMultiPlatforms.length) return;
+    setPublishing(true); setPublishResult(null);
+    const results = [];
+    for(const pl of connectedMultiPlatforms) {
+      const integ = findIntegrationForPlatform(pl);
+      try {
+        const res = await publishPost(post, integ, null);
+        // TikTok's publish_id (res.id) isn't the id its insights API can look
+        // videos up by — video_id (only returned once TikTok finishes
+        // processing) is what post-insights-cron.php needs stored instead.
+        const postId = res.video_id || res.id || res.post_id || res.creation_id;
+        results.push({platform:pl, ok:true, postId});
+      } catch(e) {
+        results.push({platform:pl, ok:false, msg:e.message||"Publish failed"});
+      }
+    }
+    const platformLabel = (pl) => ({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn"})[pl]||pl;
+    const anyOk = results.some(r=>r.ok);
+    const firstOkId = results.find(r=>r.ok)?.postId;
+    setPublishResult({
+      ok: anyOk,
+      msg: results.map(r=>`${platformLabel(r.platform)}: ${r.ok?"✓ published":"✗ "+(r.msg||"failed")}`).join("  ·  "),
+    });
+    if(firstOkId) await ue("Post", post.id, {external_post_id: firstOkId}).catch(()=>{});
+    if(anyOk) onStageChange(post, "published");
+    setPublishing(false);
+  };
+
+  const handlePublishTikTok = async () => {
+    if(!socialIntegration || socialIntegration.app_key!=="tiktok" || !tkCanPublish) return;
     setPublishing(true); setPublishResult(null);
     try {
-      const tiktokOptions = isTikTok ? {
+      const tiktokOptions = {
         privacy_level: tkPrivacy,
         allow_comment: tkComment, allow_duet: tkDuet, allow_stitch: tkStitch,
         disclose_commercial: tkDisclose, your_brand: tkYourBrand, branded_content: tkBrandedContent,
-      } : null;
+      };
       const res = await publishPost(post, socialIntegration, tiktokOptions);
-      // TikTok's publish_id (res.id) isn't the id its insights API can look
-      // videos up by — video_id (only returned once TikTok finishes
-      // processing) is what post-insights-cron.php needs stored instead.
       const postId = res.video_id || res.id || res.post_id || res.creation_id;
-      setPublishResult({ok:true, msg: isTikTok
-        ? `Sent to TikTok! It may take a few minutes to finish processing before it appears on the account.`
-        : `Published! Post ID: ${postId||"success"}`});
+      setPublishResult({ok:true, msg:`Sent to TikTok! It may take a few minutes to finish processing before it appears on the account.`});
       if(postId) await ue("Post", post.id, {external_post_id: postId}).catch(()=>{});
       onStageChange(post, "published");
     } catch(e) {
@@ -6170,13 +6205,13 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
           {/* Publish Now — shown when post is scheduled and a matching social integration is active */}
           {FEATURE_FLAGS.social_publishing&&post.stage==="scheduled"&&post.task_type!=="grid_layout"&&(
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              {!socialIntegration&&(
+              {disconnectedMultiPlatforms.length>0&&(
                 <div style={{padding:"8px 12px",background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",fontSize:12,color:"var(--text3)",display:"flex",alignItems:"center",gap:6}}>
                   <span></span>
-                  <span>Connect a {({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",tiktok:"TikTok"})[post.platform]||post.platform} integration in <strong>Settings → Integrations</strong> to enable one-click publishing.</span>
+                  <span>Connect {disconnectedMultiPlatforms.map(pl=>({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn"}[pl]||pl)).join(" / ")} in <strong>Settings → Integrations</strong> to enable one-click publishing{connectedMultiPlatforms.length?" for those platforms too":""}.</span>
                 </div>
               )}
-              {socialIntegration&&socialIntegration.app_key!=="tiktok"&&(
+              {connectedMultiPlatforms.length>0&&(
                 <button onClick={handlePublish} disabled={publishing} style={{
                   padding:"10px 16px",borderRadius:"var(--rs)",
                   background:publishing?"var(--surface2)":"#1877F222",
@@ -6184,7 +6219,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                   color:publishing?"var(--text3)":"#1877F2",fontSize:13,fontWeight:700,
                   display:"flex",alignItems:"center",justifyContent:"center",gap:8,cursor:publishing?"not-allowed":"pointer",
                 }}>
-                  {publishing?<><Spinner size={14}/> Publishing…</>:<> Publish to {({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn"})[socialIntegration.app_key]||socialIntegration.app_key}{socialIntegration.client_name?` (${socialIntegration.client_name})`:""}</>}
+                  {publishing?<><Spinner size={14}/> Publishing…</>:<> Publish to {connectedMultiPlatforms.map(pl=>({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn"}[pl]||pl)).join(" + ")}{socialIntegration?.client_name?` (${socialIntegration.client_name})`:""}</>}
                 </button>
               )}
               {/* TikTok's Content Sharing Guidelines require this whole picker to be
@@ -6248,7 +6283,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                         ? <>{" "}<a href="https://www.tiktok.com/legal/page/global/bc-policy/en" target="_blank" rel="noreferrer">Branded Content Policy</a> and <a href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en" target="_blank" rel="noreferrer">Music Usage Confirmation</a></>
                         : <a href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en" target="_blank" rel="noreferrer">Music Usage Confirmation</a>}.
                     </p>
-                    <button onClick={handlePublish} disabled={publishing||!tkCanPublish} style={{
+                    <button onClick={handlePublishTikTok} disabled={publishing||!tkCanPublish} style={{
                       padding:"10px 16px",borderRadius:"var(--rs)",
                       background:(publishing||!tkCanPublish)?"var(--surface2)":"#00000011",
                       border:`1px solid ${(publishing||!tkCanPublish)?"var(--border)":"#000000"}`,
