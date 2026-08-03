@@ -15950,7 +15950,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
   const weeks = buildCalendarWeeks();
 
   return (
-    <div style={{padding:"20px 24px",maxWidth:1900,margin:"0 auto"}}>
+    <div style={{padding:"20px 24px",width:"100%"}}>
       {/* Back + Header */}
       <div style={{marginBottom:20}}>
         <button onClick={onBack} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontSize:13,padding:0,marginBottom:12}}>← Back to Projects</button>
@@ -16025,7 +16025,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
 
       {/* Overview Tab */}
       {tab==="overview"&&(
-        <div style={{display:"grid",gridTemplateColumns:"1fr 320px",gap:20}}>
+        <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:20}}>
           <div>
             <div style={{background:"var(--surface1)",borderRadius:14,padding:20,border:"1px solid var(--border)",marginBottom:16}}>
               <div style={{fontWeight:700,fontSize:14,color:"var(--text1)",marginBottom:10}}>Project Description</div>
