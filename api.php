@@ -53,7 +53,7 @@ $ALLOWED_TABLES = [
     'job_openings','job_applications','deleted_email_applications','job_application_activity',
     'outstanding_liabilities','outstanding_payments','team_member_events',
     'pro_chat_sessions','contact_report_activity','mai_report_sessions',
-    'leave_credit_events',
+    'leave_credit_events','payroll_runs',
 ];
 
 $table = $_GET['table'] ?? '';
@@ -174,6 +174,7 @@ $NUMERIC_COLUMNS = [
     'posts' => ['estimated_minutes'],
     'team_members' => ['vacation_days_total','vacation_days_used','wfh_days_total','wfh_days_used','personal_leave_hours_total','personal_leave_hours_used','extra_hours_banked'],
     'leave_credit_events' => ['amount'],
+    'payroll_runs' => ['base_salary','vacation_overage_days','deduction_amount','net_amount'],
 ];
 
 // Numeric columns get "" (an empty/unfilled number input from the client)
