@@ -18020,9 +18020,38 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                 if(!g) { g = {key:mKey, label: mKey ? new Date(mKey+"-01T00:00:00").toLocaleDateString("en-US",{month:"long",year:"numeric"}) : "Unknown", rows:[]}; groups.push(g); }
                 g.rows.push(a);
               });
-              return groups.map(g=>(
+              // Personal Leave hours only exist as a single running total on
+              // the member record, reset monthly — there's no historical
+              // per-month breakdown to net out for a PAST month, so that
+              // offset only applies to the current calendar month.
+              const currentMonthKey = new Date().toISOString().slice(0,7);
+              return groups.map(g=>{
+                let present=0, absentCt=0, wfhCt=0, dayOffCt=0, extraH=0, deductH=0;
+                g.rows.forEach(a=>{
+                  if(a.status==="present") present++;
+                  else if(a.status==="absent") absentCt++;
+                  else if(a.status==="wfh"||a.status==="leave") wfhCt++;
+                  else if(a.status==="weekend"||a.status==="holiday") dayOffCt++;
+                  const worked = workedHoursFor(a.check_in, a.check_out);
+                  if(worked!=null) {
+                    extraH += Math.max(0, worked-9);
+                    if(a.status==="present") deductH += Math.max(0, 9-worked);
+                  }
+                });
+                if(g.key===currentMonthKey) deductH = Math.max(0, deductH-Number(member.personal_leave_hours_used||0));
+                const netH = extraH - deductH;
+                return (
                 <div key={g.key}>
-                  <div style={{padding:"8px 18px",background:"var(--surface2)",fontSize:12,fontWeight:700,color:"var(--text2)"}}>{g.label}</div>
+                  <div style={{padding:"8px 18px",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+                    <span style={{fontSize:12,fontWeight:700,color:"var(--text2)"}}>{g.label}</span>
+                    <div style={{display:"flex",alignItems:"center",gap:10,fontSize:11,color:"var(--text3)"}}>
+                      <span>Present {present}</span>
+                      <span>Absent {absentCt}</span>
+                      <span>WFH/Leave {wfhCt}</span>
+                      <span>Off {dayOffCt}</span>
+                      <span style={{fontWeight:800,color:netH>=0?"#10b981":"#ef4444"}}>{netH>=0?"+":""}{netH.toFixed(1)}h</span>
+                    </div>
+                  </div>
                   {g.rows.map((a,i)=>{
                     const worked = workedHoursFor(a.check_in, a.check_out);
                     const extra = worked!=null ? Math.max(0, worked-9) : 0;
@@ -18037,7 +18066,8 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                     );
                   })}
                 </div>
-              ));
+                );
+              });
             })()}
           </div>
         </div>
