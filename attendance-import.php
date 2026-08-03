@@ -445,8 +445,28 @@ try {
             $toMark = array_slice($ids, 0, $groups * $triggerCount);
             $placeholders = implode(',', array_fill(0, count($toMark), '?'));
             $pdo->prepare("UPDATE attendance_records SET late_deducted = 1 WHERE id IN ($placeholders)")->execute($toMark);
-            $deductDays = ($groups * $deductHours) / 8;
-            $pdo->prepare("UPDATE team_members SET vacation_days_used = COALESCE(vacation_days_used,0) + ? WHERE id = ?")->execute([$deductDays, $tid]);
+
+            // Late-arrival deductions come out of this month's Personal
+            // Leave hours FIRST (4 hrs/month, non-shiftable — see
+            // monthly-leave-reset-cron.php) — only the remainder, once that
+            // pool is exhausted, spills over into an actual vacation day.
+            $totalHours = $groups * $deductHours;
+            $memberRow = $pdo->prepare("SELECT personal_leave_hours_total, personal_leave_hours_used FROM team_members WHERE id = ?");
+            $memberRow->execute([$tid]);
+            $m = $memberRow->fetch(PDO::FETCH_ASSOC) ?: [];
+            $plTotal = floatval($m['personal_leave_hours_total'] ?? 4);
+            $plUsed = floatval($m['personal_leave_hours_used'] ?? 0);
+            $plAvailable = max(0, $plTotal - $plUsed);
+            $fromPersonalLeave = min($plAvailable, $totalHours);
+            $remainingHours = $totalHours - $fromPersonalLeave;
+
+            if ($fromPersonalLeave > 0) {
+                $pdo->prepare("UPDATE team_members SET personal_leave_hours_used = COALESCE(personal_leave_hours_used,0) + ? WHERE id = ?")->execute([$fromPersonalLeave, $tid]);
+            }
+            if ($remainingHours > 0) {
+                $deductDays = $remainingHours / 8;
+                $pdo->prepare("UPDATE team_members SET vacation_days_used = COALESCE(vacation_days_used,0) + ? WHERE id = ?")->execute([$deductDays, $tid]);
+            }
             $rulesDeducted['late'] += $groups;
         }
     }

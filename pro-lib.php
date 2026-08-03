@@ -1167,6 +1167,20 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
         }
         $days = max(1, (strtotime($end) - strtotime($start)) / 86400 + 1);
 
+        // WFH is a monthly cap (2 days/month, non-shiftable — see
+        // monthly-leave-reset-cron.php), never an annual pool like vacation
+        // is — check remaining monthly balance before letting a request
+        // through, rather than only catching it at approval time.
+        if ($type === 'wfh') {
+            $wfhStmt = $pdo->prepare("SELECT wfh_days_total, wfh_days_used FROM team_members WHERE id = :id");
+            $wfhStmt->execute([':id' => $senderId]);
+            $wfhRow = $wfhStmt->fetch(PDO::FETCH_ASSOC);
+            $remaining = (float)($wfhRow['wfh_days_total'] ?? 2) - (float)($wfhRow['wfh_days_used'] ?? 0);
+            if ($days > $remaining) {
+                return ['error' => "That's {$days} WFH day(s), but you only have {$remaining} left this month (WFH resets to 0 used on the 1st of each month and doesn't carry over). Ask them to pick fewer days or wait for next month."];
+            }
+        }
+
         $mgrStmt = $pdo->prepare("SELECT tm.manager_id, mgr.name AS manager_name, mgr.whatsapp_number AS manager_phone, mgr.email AS manager_email FROM team_members tm LEFT JOIN team_members mgr ON mgr.id = tm.manager_id WHERE tm.id = :id");
         $mgrStmt->execute([':id' => $senderId]);
         $mgr = $mgrStmt->fetch(PDO::FETCH_ASSOC);

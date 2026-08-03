@@ -17931,7 +17931,8 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20}}>
           <h3 style={{fontWeight:700,fontSize:14,marginBottom:8}}>Leave & WFH Credits</h3>
           {row("Vacation Days", `${Number(member.vacation_days_used||0)} used / ${Number(member.vacation_days_total??21)} total`)}
-          {row("WFH Days", `${Number(member.wfh_days_used||0)} used / ${Number(member.wfh_days_total??12)} total`)}
+          {row("WFH Days (this month)", `${Number(member.wfh_days_used||0)} used / ${Number(member.wfh_days_total??2)} total`)}
+          {row("Personal Leave Hours (this month)", `${Number(member.personal_leave_hours_used||0)} used / ${Number(member.personal_leave_hours_total??4)} total`)}
         </div>
       </div>
 
@@ -18256,7 +18257,8 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
     name:member.name, email:member.email, role:member.role, department:member.department||"", title:member.title||"",
     status:member.status||"active", manager_id:member.manager_id||"", whatsapp_number:member.whatsapp_number||"",
     salary:member.salary??"", probation_salary:member.probation_salary??"", probation_months:member.probation_months??"",
-    vacation_days_total:member.vacation_days_total??21, wfh_days_total:member.wfh_days_total??12,
+    vacation_days_total:member.vacation_days_total??21, wfh_days_total:member.wfh_days_total??2,
+    personal_leave_hours_total:member.personal_leave_hours_total??4,
     employment_type: member.employment_type||"full_time",
     work_days: parseMaybeJson(member.work_days, WORK_DAYS_DEFAULT),
     national_id: member.national_id||"",
@@ -18395,8 +18397,11 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
           )}
           <div style={{display:"flex",gap:10}}>
             <Field label={`Vacation Days/Year (used: ${vacUsed})`}><input type="number" value={f.vacation_days_total} onChange={e=>s("vacation_days_total",e.target.value)} style={inputSt}/></Field>
-            <Field label={`WFH Days/Year (used: ${wfhUsed})`}><input type="number" value={f.wfh_days_total} onChange={e=>s("wfh_days_total",e.target.value)} style={inputSt}/></Field>
+            <Field label={`WFH Days/Month (used: ${wfhUsed})`} hint="Non-shiftable — resets to 0 used on the 1st of every month, unused days don't carry over"><input type="number" value={f.wfh_days_total} onChange={e=>s("wfh_days_total",e.target.value)} style={inputSt}/></Field>
           </div>
+          <Field label={`Personal Leave Hours/Month (used: ${Number(member.personal_leave_hours_used||0)})`} hint="Non-shiftable — resets to 0 used on the 1st of every month">
+            <input type="number" value={f.personal_leave_hours_total} onChange={e=>s("personal_leave_hours_total",e.target.value)} style={inputSt}/>
+          </Field>
         </div>
         <div style={{display:"flex",gap:10,paddingTop:20}}>
           <Btn variant="secondary" onClick={onClose} style={{flex:1}}>Cancel</Btn>
@@ -18808,7 +18813,7 @@ function AttendanceRulesPanel({appSettings, onSaveSettings, onDeclareCompanyDayO
 }
 
 function InviteUserModal({onClose, onSubmit, clients, team, initial}) {
-  const [form, setForm] = useState({name:"",email:"",role:"content_creator",title:"",user_type:"internal",client_id:"",permissions:"",whatsapp_number:"",manager_id:"",salary:"",probation_salary:"",probation_months:"",vacation_days_total:21,wfh_days_total:12,id_photo_front_url:"",id_photo_back_url:"",source_application_id:"",...initial});
+  const [form, setForm] = useState({name:"",email:"",role:"content_creator",title:"",user_type:"internal",client_id:"",permissions:"",whatsapp_number:"",manager_id:"",salary:"",probation_salary:"",probation_months:"",vacation_days_total:21,wfh_days_total:2,personal_leave_hours_total:4,id_photo_front_url:"",id_photo_back_url:"",source_application_id:"",...initial});
   const [loading, setLoading] = useState(false);
   const [uploadingIdFront, setUploadingIdFront] = useState(false);
   const [uploadingIdBack, setUploadingIdBack] = useState(false);
@@ -20232,7 +20237,8 @@ function AcceptInvitationPage({token, onAccepted}) {
           probation_salary: invitation.probation_salary || null,
           probation_months: invitation.probation_months || null,
           vacation_days_total: invitation.vacation_days_total || 21,
-          wfh_days_total: invitation.wfh_days_total || 12,
+          wfh_days_total: invitation.wfh_days_total || 2,
+          personal_leave_hours_total: invitation.personal_leave_hours_total || 4,
           id_photo_front_url: onboardingApp?.onboarding_id_front_url || invitation.id_photo_front_url || null,
           id_photo_back_url: onboardingApp?.onboarding_id_back_url || invitation.id_photo_back_url || null,
           source_application_id: invitation.source_application_id || null,
