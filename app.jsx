@@ -18039,6 +18039,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                   }
                 });
                 if(g.key===currentMonthKey) deductH = Math.max(0, deductH-Number(member.personal_leave_hours_used||0));
+                if(g.key===currentMonthKey) extraH += Number(member.extra_hours_banked||0);
                 const netH = extraH - deductH;
                 return (
                 <div key={g.key}>
@@ -18426,6 +18427,9 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
     salary:member.salary??"", probation_salary:member.probation_salary??"", probation_months:member.probation_months??"",
     vacation_days_total:member.vacation_days_total??21, wfh_days_total:member.wfh_days_total??2,
     personal_leave_hours_total:member.personal_leave_hours_total??4,
+    vacation_days_used:member.vacation_days_used??0, wfh_days_used:member.wfh_days_used??0,
+    personal_leave_hours_used:member.personal_leave_hours_used??0,
+    extra_hours_banked:member.extra_hours_banked??0,
     employment_type: member.employment_type||"full_time",
     work_days: parseMaybeJson(member.work_days, WORK_DAYS_DEFAULT),
     national_id: member.national_id||"",
@@ -18563,11 +18567,19 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
             <Field label="Probation Period (months)"><input type="number" min="0" value={f.probation_months} onChange={e=>s("probation_months",e.target.value)} placeholder="e.g. 3" style={inputSt}/></Field>
           )}
           <div style={{display:"flex",gap:10}}>
-            <Field label={`Vacation Days/Year (used: ${vacUsed})`}><input type="number" value={f.vacation_days_total} onChange={e=>s("vacation_days_total",e.target.value)} style={inputSt}/></Field>
-            <Field label={`WFH Days/Month (used: ${wfhUsed})`} hint="Non-shiftable — resets to 0 used on the 1st of every month, unused days don't carry over"><input type="number" value={f.wfh_days_total} onChange={e=>s("wfh_days_total",e.target.value)} style={inputSt}/></Field>
+            <Field label="Vacation Days/Year (total)"><input type="number" value={f.vacation_days_total} onChange={e=>s("vacation_days_total",e.target.value)} style={inputSt}/></Field>
+            <Field label="Vacation Days Used"><input type="number" value={f.vacation_days_used} onChange={e=>s("vacation_days_used",e.target.value)} style={inputSt}/></Field>
           </div>
-          <Field label={`Personal Leave Hours/Month (used: ${Number(member.personal_leave_hours_used||0)})`} hint="Non-shiftable — resets to 0 used on the 1st of every month">
-            <input type="number" value={f.personal_leave_hours_total} onChange={e=>s("personal_leave_hours_total",e.target.value)} style={inputSt}/>
+          <div style={{display:"flex",gap:10}}>
+            <Field label="WFH Days/Month (total)" hint="Non-shiftable — resets to 0 used on the 1st of every month, unused days don't carry over"><input type="number" value={f.wfh_days_total} onChange={e=>s("wfh_days_total",e.target.value)} style={inputSt}/></Field>
+            <Field label="WFH Days Used"><input type="number" value={f.wfh_days_used} onChange={e=>s("wfh_days_used",e.target.value)} style={inputSt}/></Field>
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <Field label="Personal Leave Hours/Month (total)" hint="Non-shiftable — resets to 0 used on the 1st of every month"><input type="number" value={f.personal_leave_hours_total} onChange={e=>s("personal_leave_hours_total",e.target.value)} style={inputSt}/></Field>
+            <Field label="Personal Leave Hours Used"><input type="number" value={f.personal_leave_hours_used} onChange={e=>s("personal_leave_hours_used",e.target.value)} style={inputSt}/></Field>
+          </div>
+          <Field label="Extra Hours (manual credit)" hint="Manually add banked/comp hours — added on top of this month's worked extra hours in the Attendance tab's net total">
+            <input type="number" value={f.extra_hours_banked} onChange={e=>s("extra_hours_banked",e.target.value)} style={inputSt}/>
           </Field>
         </div>
         <div style={{display:"flex",gap:10,paddingTop:20}}>
