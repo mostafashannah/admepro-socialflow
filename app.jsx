@@ -43151,7 +43151,27 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
     if(status==="approved") {
       const col = req.type==="vacation" ? "vacation_days_used" : "wfh_days_used";
       const member = data.team.find(t=>t.id===req.team_member_id);
-      if(member) await updateTeamMember(member.id, {[col]: (Number(member[col])||0) + Number(req.days||1)});
+      if(member) {
+        // A day already got hit with the unapproved-absence penalty (2 days,
+        // see attendance-import.php) before this request existed or before
+        // it got approved — approving it after the fact never used to
+        // refund that, so someone could be charged BOTH the absence penalty
+        // AND correctly have an approved day off for the exact same date.
+        // Any attendance row this request's range covers that was already
+        // absence-penalized gets refunded here, and unflagged so a future
+        // import doesn't treat it as still-outstanding.
+        const staleAbsences = (data.attendanceRecords||[]).filter(a=>
+          a.team_member_id===member.id && a.status==="absent" && a.absence_deducted &&
+          a.work_date>=req.start_date && a.work_date<=req.end_date
+        );
+        const refundDays = staleAbsences.length * 2;
+        const newUsed = Math.max(0, (Number(member[col])||0) + Number(req.days||1) - refundDays);
+        await updateTeamMember(member.id, {[col]: newUsed});
+        if(staleAbsences.length) {
+          await Promise.all(staleAbsences.map(a=>ue("AttendanceRecord", a.id, {absence_deducted:0})));
+          setData(d=>({...d, attendanceRecords:(d.attendanceRecords||[]).map(a=>staleAbsences.some(s=>s.id===a.id)?{...a,absence_deducted:0}:a)}));
+        }
+      }
     }
     const requester = data.team.find(t=>t.id===req.team_member_id);
     if(requester?.whatsapp_number) {
