@@ -33883,16 +33883,28 @@ function MyPerformancePage({currentUser, posts, timeEntries, perfLogs, aiInsight
   const [aiLoading, setAiLoading] = React.useState(false);
   const getAiRecommendations = async () => {
     setAiLoading(true);
-    const prompt = `You are a performance coach for a social media agency. Here is a team member's performance data:
+    // Always scoped to THIS person's own tasks/logs only (myLogs, already
+    // filtered to currentUser's email) — never generic agency-wide advice,
+    // and always framed around what specifically raises their own score,
+    // using their actual recent task-by-task record (late/rejected/
+    // revision-heavy tasks by name), not just the aggregate percentages.
+    const taskBreakdown = myLogs.slice(-10).reverse().map(l=>
+      `- "${l.post_title}": quality ${l.quality_score}/100, ${l.on_time?"on time":"late"}, ${l.revision_count||0} revision(s)${l.rejected?", rejected":""}`
+    ).join("\n") || "No completed tasks logged yet.";
+    const prompt = `You are a performance coach for a social media agency, coaching ONE specific team member one-on-one — never give generic team/agency-wide advice, only advice based on THEIR OWN work below.
+
 Name: ${currentUser?.name}, Role: ${currentUser?.role}
-Performance Score: ${reviewPerf.score}/100
+Current Performance Score: ${reviewPerf.score}/100
 Completion Rate: ${reviewPerf.completionRate}%
 On-Time Rate: ${reviewPerf.onTimeRate}%
 Avg Quality Score: ${reviewPerf.avgQuality}/100
 Avg Revisions per Task: ${reviewPerf.avgRevisions}
 Total Tasks: ${reviewPerf.total}
 
-Give 3 specific, actionable recommendations to improve their performance. Be concise and practical. Format as numbered list.`;
+Their most recent tasks:
+${taskBreakdown}
+
+Based ONLY on this person's own numbers and task history above, give 3 specific, actionable recommendations for exactly what THEY should do to raise their own score toward 100 — reference their actual tasks/patterns above where relevant (e.g. a specific late or rejected task), not generic advice. Be concise and practical. Format as a numbered list.`;
     const res = await ai(prompt);
     setAiRec(res);
     setAiLoading(false);
