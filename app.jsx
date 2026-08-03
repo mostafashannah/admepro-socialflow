@@ -18406,9 +18406,16 @@ function AttendanceImportTab({appSettings, onSaveSettings, isAdmin, onDeclareCom
   // rather than requiring an exact match, let the admin point it at the
   // right team member (backfills every already-imported row for that
   // name) or reject it outright ("I don't need to sync this one").
-  const handleRemapAssign = async (name) => {
-    const teamMemberId = remapPick[name];
-    if(!teamMemberId) return;
+  const handleRemapAssign = async (name, teamMemberIdArg) => {
+    // Take the value straight from the click, not just remapPick[name] —
+    // this used to only read from state and silently no-op (no request,
+    // no alert) if that lookup ever came back empty, which is exactly what
+    // happened in production: every real remap attempt reached the server
+    // with an empty team_member_id and got a "Missing team_member_id"
+    // error back, invisible to the admin. Guard now ALWAYS alerts instead
+    // of silently returning.
+    const teamMemberId = teamMemberIdArg ?? remapPick[name];
+    if(!teamMemberId) { alert("Pick a team member from the dropdown first."); return; }
     setRemapBusy(name);
     try {
       const r = await fetch(window.location.origin+"/attendance-import.php?mode=remap", {
@@ -18418,6 +18425,7 @@ function AttendanceImportTab({appSettings, onSaveSettings, isAdmin, onDeclareCom
       const d = await r.json().catch(()=>({}));
       if(r.ok && d.ok) {
         setResult(res=>({...res, unmatched_names:(res.unmatched_names||[]).filter(n=>n!==name)}));
+        alert(`Matched "${name}" — ${d.updated} attendance row(s) updated.`);
       } else alert(d.error||"Couldn't apply that match — please try again.");
     } catch(e) { alert("Couldn't apply that match: "+e.message); }
     setRemapBusy(null);
@@ -18433,6 +18441,7 @@ function AttendanceImportTab({appSettings, onSaveSettings, isAdmin, onDeclareCom
       const d = await r.json().catch(()=>({}));
       if(r.ok && d.ok) {
         setResult(res=>({...res, unmatched_names:(res.unmatched_names||[]).filter(n=>n!==name)}));
+        alert(`Rejected "${name}" — ${d.deleted} attendance row(s) deleted.`);
       } else alert(d.error||"Couldn't reject that name — please try again.");
     } catch(e) { alert("Couldn't reject that name: "+e.message); }
     setRemapBusy(null);
@@ -18489,8 +18498,8 @@ function AttendanceImportTab({appSettings, onSaveSettings, isAdmin, onDeclareCom
                       <option value="">— Select team member —</option>
                       {team.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}
                     </select>
-                    <button onClick={()=>handleRemapAssign(name)} disabled={remapBusy===name||!remapPick[name]} style={{padding:"6px 12px",borderRadius:8,border:"1px solid var(--accent)44",background:"var(--accent)11",color:"var(--accent)",fontSize:12,fontWeight:700,cursor:remapBusy===name?"default":"pointer"}}>
-                      {remapBusy===name?"…":"Assign"}
+                    <button onClick={()=>handleRemapAssign(name, remapPick[name])} disabled={remapBusy===name||!remapPick[name]} style={{padding:"6px 12px",borderRadius:8,border:"1px solid var(--accent)44",background:"var(--accent)11",color:"var(--accent)",fontSize:12,fontWeight:700,cursor:remapBusy===name?"default":"pointer"}}>
+                      {remapBusy===name?"…":"Proceed"}
                     </button>
                     <button onClick={()=>handleRemapReject(name)} disabled={remapBusy===name} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #ef444444",background:"#ef444411",color:"#ef4444",fontSize:12,fontWeight:700,cursor:remapBusy===name?"default":"pointer"}}>
                       Reject
