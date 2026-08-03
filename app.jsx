@@ -5318,6 +5318,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   const [captionDraft, setCaptionDraft] = useState({caption:"",hashtags:"",text_on_visual:"",reel_hook:""});
   const [publishing, setPublishing] = useState(false);
   const [publishResult, setPublishResult] = useState(null);
+  const [lightboxImage, setLightboxImage] = useState(null);
   // TikTok Content Sharing Guidelines require the posting UI to be built
   // fresh from the creator_info API response every time the creator picker
   // opens (their nickname, real privacy_level_options, which interactions
@@ -5896,8 +5897,15 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                   {media.map((asset,i)=>{
                     const url = asset.url||asset.file_url||asset.data||"";
                     const isVideo = (asset.type||"").startsWith("video")||url.match(/\.(mp4|mov|webm|m4v)/i);
+                    // Images open the in-app Lightbox (which has its own
+                    // Download button) instead of just a plain new-tab
+                    // link — that link alone gave no way to actually save
+                    // the file short of a manual right-click. Videos still
+                    // open in a new tab (Lightbox only renders <img>).
+                    const Wrapper = isVideo ? "a" : "div";
                     return (
-                      <a key={i} href={url} target="_blank" rel="noreferrer" style={{position:"relative",aspectRatio:aspect,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",overflow:"hidden",display:"block"}}>
+                      <Wrapper key={i} {...(isVideo ? {href:url, target:"_blank", rel:"noreferrer"} : {onClick:()=>setLightboxImage({url, name:asset.name||post.title}), role:"button", tabIndex:0})}
+                        style={{position:"relative",aspectRatio:aspect,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",overflow:"hidden",display:"block",cursor:"pointer"}}>
                         {isVideo
                           ? <video src={url+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
                           : <img src={url} style={{width:"100%",height:"100%",objectFit:"contain"}} alt={asset.name||post.title}/>}
@@ -5908,7 +5916,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                             </div>
                           </div>
                         )}
-                      </a>
+                      </Wrapper>
                     );
                   })}
                 </div>
@@ -6489,6 +6497,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
         </div>
       </Modal>
     )}
+    {lightboxImage&&<ImageLightbox url={lightboxImage.url} alt={lightboxImage.name} onClose={()=>setLightboxImage(null)}/>}
     </>
   );
 }
