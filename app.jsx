@@ -17783,7 +17783,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
             const extra = worked!=null ? Math.max(0, worked-9) : 0;
             return (
               <div key={a.id} style={{padding:"10px 18px",borderBottom:i<allMyAttendance.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12}}>
-                <span style={{fontSize:13,flex:1}}>{fmtDate(a.work_date)}</span>
+                <span style={{fontSize:13,flex:1}}>{a.work_date?new Date(a.work_date).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}):""}</span>
                 {a.check_in&&<span style={{fontSize:12,color:"var(--text3)"}}>{a.check_in}{a.check_out?` – ${a.check_out}`:""}{worked!=null?` (${worked.toFixed(1)}h)`:""}</span>}
                 {extra>0&&<span style={{fontSize:11,fontWeight:700,color:"#f59e0b"}}>+{extra.toFixed(1)}h</span>}
                 <span style={{textTransform:"capitalize",fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:6,background:"var(--surface2)",color:"var(--text2)"}}>{a.status}</span>
