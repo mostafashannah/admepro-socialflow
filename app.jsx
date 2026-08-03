@@ -284,6 +284,7 @@ const PROJECT_TYPES = [
   { id:"video_production",label:"Video Production", icon:"", color:"#ec4899", hasPlatforms:false, hasPostingDates:false },
   { id:"creative_concept",label:"Creative Concept", icon:"", color:"#14b8a6", hasPlatforms:false, hasPostingDates:false },
   { id:"campaign", label:"Campaign", icon:"", color:"#f97316", hasPlatforms:true, hasPostingDates:true },
+  { id:"btl_design", label:"BTL Design", icon:"", color:"#0ea5e9", hasPlatforms:false, hasPostingDates:false },
 ];
 
 const PLATFORM_ICONS = {instagram:"",facebook:"",tiktok:"",linkedin:"",twitter:""};
@@ -13424,28 +13425,22 @@ function AssetsPage({assets,projects,clients=[],onAddAsset,onUpdateAsset,onDelet
 // ════════════════════════════════════════════════════════════════
 // PROJECT WIZARD — multi-step project creation
 // ════════════════════════════════════════════════════════════════
-function ProjectWizard({onClose, onSubmit, clients, team, clientIntelligence}) {
-  const [step, setStep] = useState(1);
-  const totalSteps = 3;
+function ProjectWizard({onClose, onSubmit, clients, team, clientIntelligence, presetClient}) {
+  // Project has no content-pillar/scheduling step anymore — this is now
+  // just a bare container for tasks/posts/calendar, created in one shot.
+  // pillars stays as an empty array purely to keep onSubmit's existing
+  // (form, pillars, intel) signature intact for addProject().
   const [form, setForm] = useState({
-    name:"", client_id:"", client_name:"", project_type:"social_calendar",
+    name:"", client_id:presetClient?.id||"", client_name:presetClient?.name||"", project_type:"social_calendar",
     description:"", start_date:"", deadline:"",
     platforms:[], posting_start:"", posting_end:"",
   });
-  const [pillars, setPillars] = useState([
-    {id:uid(), pillar_name:"", post_count:1, post_type:"static", description:"", assigned_to:"", platform:""},
-  ]);
+  const pillars = [];
   const [submitting, setSubmitting] = useState(false);
 
   const sf = (k,v) => setForm(p=>({...p,[k]:v}));
   const projType = PROJECT_TYPES.find(t=>t.id===form.project_type)||PROJECT_TYPES[0];
 
-  const addPillar = () => setPillars(p=>[...p,{id:uid(),pillar_name:"",post_count:1,post_type:"static",description:"",assigned_to:"",platform:""}]);
-  const removePillar = id => setPillars(p=>p.filter(r=>r.id!==id));
-  const setPillar = (id,k,v) => setPillars(p=>p.map(r=>r.id===id?{...r,[k]:v}:r));
-  const togglePlatform = (pl) => sf("platforms", form.platforms.includes(pl)?form.platforms.filter(x=>x!==pl):[...form.platforms,pl]);
-
-  const totalPosts = pillars.reduce((a,p)=>a+(parseInt(p.post_count)||0),0);
   const intel = clientIntelligence?.find(i=>i.client_id===form.client_id);
 
   const handleSubmit = async () => {
@@ -13467,33 +13462,13 @@ function ProjectWizard({onClose, onSubmit, clients, team, clientIntelligence}) {
         <div className="modal-header">
           <div>
             <div className="modal-title">New Project</div>
-            <div className="modal-subtitle">Step {step} of {totalSteps} — {["Basic Info","Content Structure","Review & Create"][step-1]}</div>
+            <div className="modal-subtitle">Just a container for tasks/posts/calendar — basic info only</div>
           </div>
           <button onClick={onClose} className="modal-close"><Ico d={Icons.x} size={15}/></button>
-        </div>
-        {/* Step progress bar */}
-        <div style={{padding:"10px 24px 0",flexShrink:0}}>
-          <div style={{display:"flex",gap:6,marginBottom:2}}>
-            {["Basic Info","Content Structure","Review"].map((s,i)=>(
-              <div key={i} style={{flex:1}}>
-                <div style={{height:3,borderRadius:99,background:step>i+1?"var(--accent)":step===i+1?"var(--accent)":"var(--border2)",opacity:step>i+1?1:step===i+1?1:0.3,transition:"all 0.3s"}}/>
-              </div>
-            ))}
-          </div>
-          <div style={{display:"flex",gap:6,marginBottom:12}}>
-            {["Basic Info","Content Structure","Review"].map((s,i)=>(
-              <div key={i} style={{flex:1,textAlign:"center"}}>
-                <span style={{fontSize:10,fontWeight:step===i+1?700:400,color:step===i+1?"var(--accent)":step>i+1?"var(--text2)":"var(--text3)"}}>{step>i+1?"✓ ":""}{s}</span>
-              </div>
-            ))}
-          </div>
         </div>
 
         {/* Body */}
         <div className="modal-body">
-
-          {/* ── STEP 1: Basic Info ── */}
-          {step===1&&(
             <div style={{display:"flex",flexDirection:"column",gap:16}}>
               {/* Project type selector */}
               <div>
@@ -13517,13 +13492,20 @@ function ProjectWizard({onClose, onSubmit, clients, team, clientIntelligence}) {
                   <label style={lblSt}>Project Name *</label>
                   <input value={form.name} onChange={e=>sf("name",e.target.value)} placeholder="e.g. March Social Calendar" style={inSt}/>
                 </div>
-                <div style={{gridColumn:"1/-1"}}>
-                  <label style={lblSt}>Client *</label>
-                  <select value={form.client_id} onChange={e=>{const c=clients.find(x=>x.id===e.target.value);sf("client_id",e.target.value);sf("client_name",c?.name||"");}} style={inSt}>
-                    <option value="">Select client...</option>
-                    {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </div>
+                {presetClient ? (
+                  <div style={{gridColumn:"1/-1"}}>
+                    <label style={lblSt}>Client</label>
+                    <div style={{...inSt,display:"flex",alignItems:"center",background:"var(--surface2)",color:"var(--text2)",fontWeight:600}}>{presetClient.name}</div>
+                  </div>
+                ) : (
+                  <div style={{gridColumn:"1/-1"}}>
+                    <label style={lblSt}>Client *</label>
+                    <select value={form.client_id} onChange={e=>{const c=clients.find(x=>x.id===e.target.value);sf("client_id",e.target.value);sf("client_name",c?.name||"");}} style={inSt}>
+                      <option value="">Select client...</option>
+                      {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div style={{gridColumn:"1/-1"}}>
                   <label style={lblSt}>Project Description *</label>
                   <textarea value={form.description} onChange={e=>sf("description",e.target.value)} rows={3} placeholder="Describe the project goals and scope..." style={{...inSt,resize:"vertical"}}/>
@@ -13537,162 +13519,15 @@ function ProjectWizard({onClose, onSubmit, clients, team, clientIntelligence}) {
                   <input type="date" value={form.deadline} onChange={e=>sf("deadline",e.target.value)} style={inSt}/>
                 </div>
               </div>
-
-              {/* Social calendar / campaign extra fields */}
-              {projType.hasPlatforms&&(
-                <div style={{padding:16,background:"var(--surface2)",borderRadius:12,border:"1px solid var(--border)"}}>
-                  <div style={{fontWeight:700,fontSize:13,color:"var(--text1)",marginBottom:12}}> Posting Schedule</div>
-                  <div style={{marginBottom:12}}>
-                    <label style={lblSt}>Platforms</label>
-                    <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-                      {PLATFORMS.map(pl=>(
-                        <button key={pl} onClick={()=>togglePlatform(pl)} style={{
-                          padding:"6px 14px",borderRadius:99,border:`1px solid ${form.platforms.includes(pl)?"var(--accent)":"var(--border)"}`,
-                          background:form.platforms.includes(pl)?"var(--accent)":"var(--surface1)",
-                          color:form.platforms.includes(pl)?"#fff":"var(--text2)",
-                          cursor:"pointer",fontSize:12,fontWeight:600,
-                        }}>
-                          {PLATFORM_ICONS[pl]} {pl.charAt(0).toUpperCase()+pl.slice(1)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                    <div>
-                      <label style={lblSt}>Posting Start Date</label>
-                      <input type="date" value={form.posting_start} onChange={e=>sf("posting_start",e.target.value)} style={inSt}/>
-                    </div>
-                    <div>
-                      <label style={lblSt}>Posting End Date</label>
-                      <input type="date" value={form.posting_end} onChange={e=>sf("posting_end",e.target.value)} style={inSt}/>
-                    </div>
-                  </div>
-                  {intel&&<div style={{marginTop:10,padding:"8px 12px",background:"#6366f122",borderRadius:8,fontSize:12,color:"#818cf8"}}>
-                     Client intelligence found — will apply {intel.avoid_weekends?"(weekends avoided) ":""}{intel.posting_frequency} posts/week rule
-                  </div>}
-                </div>
-              )}
             </div>
-          )}
-
-          {/* ── STEP 2: Content Structure ── */}
-          {step===2&&(
-            <div>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-                <div>
-                  <div style={{fontWeight:700,fontSize:15,color:"var(--text1)"}}>Content Breakdown</div>
-                  <div style={{color:"var(--text3)",fontSize:12,marginTop:2}}>{totalPosts} posts total across {pillars.length} pillar{pillars.length!==1?"s":""}</div>
-                </div>
-                <button onClick={addPillar} style={{background:"var(--accent)",color:"#fff",border:"none",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontWeight:600,fontSize:13}}>+ Add Row</button>
-              </div>
-
-              {/* Header row */}
-              <div style={{display:"grid",gridTemplateColumns:"2fr 80px 110px 1fr 1fr 32px",gap:6,marginBottom:6,padding:"0 4px"}}>
-                {["Content Pillar","Posts","Post Type","Description","Assigned To",""].map((h,i)=>(
-                  <div key={i} style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>{h}</div>
-                ))}
-              </div>
-
-              {pillars.map((row,idx)=>(
-                <div key={row.id} style={{display:"grid",gridTemplateColumns:"2fr 80px 110px 1fr 1fr 32px",gap:6,marginBottom:8,padding:"10px",background:"var(--surface2)",borderRadius:10,border:"1px solid var(--border)"}}>
-                  <input value={row.pillar_name} onChange={e=>setPillar(row.id,"pillar_name",e.target.value)} placeholder="e.g. Educational" style={{...inSt,margin:0}}/>
-                  <input type="number" min={1} max={99} value={row.post_count} onChange={e=>setPillar(row.id,"post_count",parseInt(e.target.value)||1)} style={{...inSt,margin:0,textAlign:"center"}}/>
-                  <select value={row.post_type} onChange={e=>setPillar(row.id,"post_type",e.target.value)} style={{...inSt,margin:0}}>
-                    {POST_TYPES.map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
-                  </select>
-                  <input value={row.description} onChange={e=>setPillar(row.id,"description",e.target.value)} placeholder="Brief..." style={{...inSt,margin:0}}/>
-                  <select value={row.assigned_to} onChange={e=>setPillar(row.id,"assigned_to",e.target.value)} style={{...inSt,margin:0}}>
-                    <option value="">Unassigned</option>
-                    {team.map(m=><option key={m.id} value={m.email}>{m.name}</option>)}
-                  </select>
-                  <button onClick={()=>removePillar(row.id)} disabled={pillars.length===1} style={{background:"#ef444422",border:"none",borderRadius:6,cursor:"pointer",color:"#ef4444",fontWeight:700,fontSize:16,opacity:pillars.length===1?0.3:1}}>×</button>
-                </div>
-              ))}
-
-              <div style={{marginTop:16,padding:"14px 16px",background:"#6366f115",borderRadius:10,border:"1px dashed #6366f166",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div>
-                  <span style={{fontWeight:700,color:"var(--text1)"}}>Total Posts: </span>
-                  <span style={{fontSize:22,fontWeight:800,color:"#6366f1"}}>{totalPosts}</span>
-                </div>
-                {form.posting_start&&form.posting_end&&(
-                  <div style={{color:"var(--text3)",fontSize:13}}>
-                    Spread over {Math.ceil((new Date(form.posting_end)-new Date(form.posting_start))/(86400000))+1} days
-                    {" → ~"}{(totalPosts/Math.max(1,Math.ceil((new Date(form.posting_end)-new Date(form.posting_start))/(86400000))+1)).toFixed(1)} posts/day
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ── STEP 3: Review ── */}
-          {step===3&&(
-            <div style={{display:"flex",flexDirection:"column",gap:16}}>
-              <div style={{padding:20,background:"var(--surface2)",borderRadius:14,border:"1px solid var(--border)"}}>
-                <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
-                  <span style={{fontSize:32}}>{projType.icon}</span>
-                  <div>
-                    <div style={{fontWeight:800,fontSize:18,color:"var(--text1)"}}>{form.name||"Untitled Project"}</div>
-                    <div style={{color:"var(--text3)",fontSize:13}}>{form.client_name} · {projType.label}</div>
-                  </div>
-                </div>
-                {form.description&&<p style={{color:"var(--text2)",fontSize:13,marginBottom:12}}>{form.description}</p>}
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,fontSize:13}}>
-                  {form.start_date&&<div><span style={{color:"var(--text3)"}}>Start: </span><strong>{form.start_date}</strong></div>}
-                  {form.deadline&&<div><span style={{color:"var(--text3)"}}>Deadline: </span><strong>{form.deadline}</strong></div>}
-                  {form.posting_start&&<div><span style={{color:"var(--text3)"}}>Posting: </span><strong>{form.posting_start} → {form.posting_end}</strong></div>}
-                  {form.platforms.length>0&&<div><span style={{color:"var(--text3)"}}>Platforms: </span><strong>{form.platforms.join(", ")}</strong></div>}
-                </div>
-              </div>
-
-              <div>
-                <div style={{fontWeight:700,fontSize:14,color:"var(--text1)",marginBottom:10}}>Tasks to be generated ({totalPosts} posts)</div>
-                <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:240,overflowY:"auto"}}>
-                  {pillars.filter(p=>p.pillar_name).map(p=>
-                    Array.from({length:parseInt(p.post_count)||0},(_,i)=>(
-                      <div key={`${p.id}-${i}`} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"var(--surface2)",borderRadius:8}}>
-                        <span style={{fontSize:18}}></span>
-                        <div style={{flex:1}}>
-                          <div style={{fontWeight:600,fontSize:13,color:"var(--text1)"}}>{p.pillar_name} — Post {i+1}</div>
-                          <div style={{color:"var(--text3)",fontSize:11}}>{p.post_type} · {p.assigned_to||"Unassigned"}</div>
-                        </div>
-                        <div style={{display:"flex",gap:4}}>
-                          {WORKFLOW_STAGES.slice(0,3).map(s=>(
-                            <span key={s} style={{fontSize:10,padding:"2px 6px",borderRadius:99,background:"var(--surface1)",color:"var(--text3)"}}>{s}</span>
-                          ))}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {intel&&(
-                <div style={{padding:14,background:"#10b98115",borderRadius:10,border:"1px solid #10b98133",fontSize:13}}>
-                  <div style={{fontWeight:700,color:"#10b981",marginBottom:6}}> Client Intelligence Applied</div>
-                  <div style={{color:"var(--text2)"}}>Posts will be scheduled using {form.client_name}'s intelligence: {intel.avoid_weekends?"no weekends, ":""}{intel.posting_frequency} posts/week, best times per platform.</div>
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
         {/* Footer */}
         <div className="modal-footer" style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-          <Btn variant="secondary" onClick={step===1?onClose:()=>setStep(s=>s-1)}>
-            {step===1?"Cancel":"← Back"}
+          <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={handleSubmit} disabled={submitting}>
+            {submitting?<><Spinner size={14}/> Creating…</>:" Create Project"}
           </Btn>
-          <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            <span style={{fontSize:12,color:"var(--text3)"}}>{step} / {totalSteps}</span>
-            {step<totalSteps?(
-              <Btn onClick={()=>{if(step===1&&(!form.name||!form.client_id)){alert("Fill project name and client first");return;}setStep(s=>s+1);}}>
-                Next →
-              </Btn>
-            ):(
-              <Btn onClick={handleSubmit} disabled={submitting}>
-                {submitting?<><Spinner size={14}/> Creating…</>:" Create Project"}
-              </Btn>
-            )}
-          </div>
         </div>
       </div>
     </div>
@@ -42464,6 +42299,7 @@ function App() {
   };
   const [showAddPost,setShowAddPost] = useState(false);
   const [showAddProject,setShowAddProject] = useState(false);
+  const [addProjectForClient,setAddProjectForClient] = useState(null);
   const [showCreateBrief,setShowCreateBrief] = useState(false);
   const [addPostForClient,setAddPostForClient] = useState(null);
   const [showAddTask,setShowAddTask] = useState(false);
@@ -45728,7 +45564,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
               invoices={data.invoices||[]}
               leads={data.leads||[]}
               onBack={()=>{ try{ window.history.back(); }catch(e){ setSelectedClientId(null); } }} onPostClick={setSelectedPost}
-              onAddProject={()=>setShowAddProject(true)}
+              onAddProject={()=>{setAddProjectForClient(selectedClient);setShowAddProject(true);}}
               onAddPost={()=>{setAddPostForClient(selectedClient);setShowAddPost(true);}}
               onAddTask={()=>{setAddTaskForClient(selectedClient);setShowAddTask(true);}}
               onAddCalendar={()=>{setCalendarPreselectedClient(selectedClient);setShowFABCalendar(true);}}
@@ -46129,10 +45965,11 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
 
     {/* New Project Wizard — used by FAB, Dashboard, Projects page */}
     {(showFABProject||showAddProject)&&<ProjectWizard
-      onClose={()=>{setShowFABProject(false);setShowAddProject(false);}}
+      onClose={()=>{setShowFABProject(false);setShowAddProject(false);setAddProjectForClient(null);}}
       onSubmit={async (form,pillars,intel)=>{await addProject(form,pillars,intel);}}
       clients={data.clients}
       team={data.team}
+      presetClient={showAddProject?addProjectForClient:null}
       clientIntelligence={data.clientIntelligence||[]}
     />}
 
