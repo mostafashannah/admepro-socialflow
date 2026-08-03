@@ -17453,6 +17453,44 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
   const myLeave = (leaveRequests||[]).filter(r=>r.team_member_id===member.id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
   const allMyAttendance = (attendanceRecords||[]).filter(a=>a.team_member_id===member.id || a.member_name===member.name).sort((a,b)=>new Date(b.work_date)-new Date(a.work_date));
   const overtime = calcExtraHours(allMyAttendance);
+  // Mirror of calcExtraHours above, but for the shortfall on a day someone
+  // clocked in but worked LESS than the daily threshold — the "opposite"
+  // total the extra-hours figure doesn't cover.
+  const deductionHours = allMyAttendance.reduce((sum, a) => {
+    if (a.status !== "present") return sum;
+    const worked = workedHoursFor(a.check_in, a.check_out);
+    if (worked == null) return sum;
+    return sum + Math.max(0, 9 - worked);
+  }, 0);
+  // The import never stores a row for a weekend/holiday day (see
+  // attendance-import.php) — imported days off never count as an absence,
+  // but that also left visible gaps in this list with no indication of
+  // WHY that day is missing. Fill them in here, display-only, so a day
+  // off reads as "Weekend"/"Holiday" instead of just not being there.
+  const attendanceRulesForFill = appSettings?.attendance_rules || {};
+  const weekendDaysForFill = attendanceRulesForFill.weekendDays ?? [5, 6]; // PHP date('N'): 1=Mon..7=Sun
+  const holidayDatesForFill = new Set((attendanceRulesForFill.holidays || []).map(h => typeof h === "string" ? h : h?.date).filter(Boolean));
+  const isDayOffForFill = (ymd) => {
+    if (holidayDatesForFill.has(ymd)) return true;
+    const jsDay = new Date(ymd + "T00:00:00").getDay(); // 0=Sun..6=Sat
+    return weekendDaysForFill.includes(jsDay === 0 ? 7 : jsDay);
+  };
+  const allMyAttendanceWithGaps = (() => {
+    if (allMyAttendance.length === 0) return [];
+    const existingDates = new Set(allMyAttendance.map(a => a.work_date));
+    const sortedDates = [...existingDates].sort();
+    const filled = [...allMyAttendance];
+    const cursor = new Date(sortedDates[0] + "T00:00:00");
+    const end = new Date(sortedDates[sortedDates.length - 1] + "T00:00:00");
+    while (cursor <= end) {
+      const ymd = cursor.toISOString().slice(0, 10);
+      if (!existingDates.has(ymd) && isDayOffForFill(ymd)) {
+        filled.push({id: "dayoff-" + ymd, work_date: ymd, status: holidayDatesForFill.has(ymd) ? "holiday" : "weekend", _synthetic: true});
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return filled.sort((a, b) => new Date(b.work_date) - new Date(a.work_date));
+  })();
   const mySalaryRecords = (expenses||[]).filter(e=>e.team_member_id===member.id && e.category==="salaries").sort((a,b)=>new Date(b.date)-new Date(a.date));
   const totalPaid = mySalaryRecords.reduce((sum,e)=>sum+Number(e.amount||0),0);
   const docs = [member.id_photo_front_url&&{label:"ID Photo — Front", url:member.id_photo_front_url}, member.id_photo_back_url&&{label:"ID Photo — Back", url:member.id_photo_back_url}].filter(Boolean);
@@ -17771,25 +17809,38 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
       )}
 
       {tab==="attendance"&&(
-        <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
-          <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <h3 style={{fontWeight:700,fontSize:14}}>All Attendance</h3>
-            <span style={{fontSize:12,color:"var(--text3)"}}>{allMyAttendance.length} record{allMyAttendance.length!==1?"s":""}</span>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"14px 18px"}}>
+              <div style={{fontSize:12,color:"var(--text3)",fontWeight:600}}>Total Extra Hours</div>
+              <div style={{fontSize:20,fontWeight:800,color:"#f59e0b"}}>+{overtime.total.toFixed(1)}h</div>
+            </div>
+            <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"14px 18px"}}>
+              <div style={{fontSize:12,color:"var(--text3)",fontWeight:600}}>Total Deduction Hours</div>
+              <div style={{fontSize:20,fontWeight:800,color:"#ef4444"}}>-{deductionHours.toFixed(1)}h</div>
+            </div>
           </div>
-          {allMyAttendance.length===0?(
-            <div style={{padding:20,textAlign:"center",color:"var(--text2)",fontSize:13}}>No attendance records imported yet.</div>
-          ):allMyAttendance.map((a,i)=>{
-            const worked = workedHoursFor(a.check_in, a.check_out);
-            const extra = worked!=null ? Math.max(0, worked-9) : 0;
-            return (
-              <div key={a.id} style={{padding:"10px 18px",borderBottom:i<allMyAttendance.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12}}>
-                <span style={{fontSize:13,flex:1}}>{a.work_date?new Date(a.work_date).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}):""}</span>
-                {a.check_in&&<span style={{fontSize:12,color:"var(--text3)"}}>{a.check_in}{a.check_out?` – ${a.check_out}`:""}{worked!=null?` (${worked.toFixed(1)}h)`:""}</span>}
-                {extra>0&&<span style={{fontSize:11,fontWeight:700,color:"#f59e0b"}}>+{extra.toFixed(1)}h</span>}
-                <span style={{textTransform:"capitalize",fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:6,background:"var(--surface2)",color:"var(--text2)"}}>{a.status}</span>
-              </div>
-            );
-          })}
+          <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
+            <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <h3 style={{fontWeight:700,fontSize:14}}>All Attendance</h3>
+              <span style={{fontSize:12,color:"var(--text3)"}}>{allMyAttendance.length} record{allMyAttendance.length!==1?"s":""}</span>
+            </div>
+            {allMyAttendanceWithGaps.length===0?(
+              <div style={{padding:20,textAlign:"center",color:"var(--text2)",fontSize:13}}>No attendance records imported yet.</div>
+            ):allMyAttendanceWithGaps.map((a,i)=>{
+              const worked = workedHoursFor(a.check_in, a.check_out);
+              const extra = worked!=null ? Math.max(0, worked-9) : 0;
+              const isDayOff = a.status==="weekend" || a.status==="holiday";
+              return (
+                <div key={a.id} style={{padding:"10px 18px",borderBottom:i<allMyAttendanceWithGaps.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12,opacity:isDayOff?0.6:1}}>
+                  <span style={{fontSize:13,flex:1}}>{a.work_date?new Date(a.work_date).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}):""}</span>
+                  {a.check_in&&<span style={{fontSize:12,color:"var(--text3)"}}>{a.check_in}{a.check_out?` – ${a.check_out}`:""}{worked!=null?` (${worked.toFixed(1)}h)`:""}</span>}
+                  {extra>0&&<span style={{fontSize:11,fontWeight:700,color:"#f59e0b"}}>+{extra.toFixed(1)}h</span>}
+                  <span style={{textTransform:"capitalize",fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:6,background:isDayOff?"var(--accentbg)":"var(--surface2)",color:isDayOff?"var(--accent)":"var(--text2)"}}>{a.status}</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
