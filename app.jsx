@@ -17931,7 +17931,11 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
             </div>
             <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:"14px 18px"}}>
               <div style={{fontSize:12,color:"var(--text3)",fontWeight:600}}>Total Deduction Hours</div>
-              <div style={{fontSize:20,fontWeight:800,color:"#ef4444"}}>-{deductionHours.toFixed(1)}h</div>
+              {/* Personal Leave hours already used (see the credit tile below)
+                  cover part of this shortfall — it's an allowed, already-
+                  spent credit, not an additional real deduction on top, so
+                  it's netted out here rather than double-counted. */}
+              <div style={{fontSize:20,fontWeight:800,color:"#ef4444"}}>-{Math.max(0,deductionHours-Number(member.personal_leave_hours_used||0)).toFixed(1)}h</div>
             </div>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
