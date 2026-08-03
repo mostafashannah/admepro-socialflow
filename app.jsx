@@ -17482,10 +17482,21 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
     const filled = [...allMyAttendance];
     const cursor = new Date(sortedDates[0] + "T00:00:00");
     const end = new Date(sortedDates[sortedDates.length - 1] + "T00:00:00");
+    // Build the ymd from LOCAL date parts, not toISOString() — that method
+    // converts to UTC first, which silently rolls the date back a day in
+    // any timezone ahead of UTC (e.g. Cairo, UTC+3: local midnight becomes
+    // 21:00 the previous day in UTC), producing a bogus extra/shifted date.
+    const toYmd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     while (cursor <= end) {
-      const ymd = cursor.toISOString().slice(0, 10);
-      if (!existingDates.has(ymd) && isDayOffForFill(ymd)) {
-        filled.push({id: "dayoff-" + ymd, work_date: ymd, status: holidayDatesForFill.has(ymd) ? "holiday" : "weekend", _synthetic: true});
+      const ymd = toYmd(cursor);
+      if (!existingDates.has(ymd)) {
+        // Any day that isn't a configured weekend/holiday and has no
+        // imported row for it is a genuine gap — the import's own row-per-
+        // clocked-in-day design means a day nobody clocked in for never got
+        // a row at all, which used to just render as nothing rather than
+        // an actual absence.
+        const dayOff = isDayOffForFill(ymd);
+        filled.push({id: "dayoff-" + ymd, work_date: ymd, status: dayOff ? (holidayDatesForFill.has(ymd) ? "holiday" : "weekend") : "absent", _synthetic: true});
       }
       cursor.setDate(cursor.getDate() + 1);
     }
