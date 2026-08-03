@@ -409,6 +409,19 @@ if ($isRawDeviceFormat) {
     }
 }
 
+// Records one deduction/credit event permanently, keyed to the calendar
+// month it happened in — team_members' own totals get reset every month
+// (see monthly-leave-reset-cron.php) so that's the only place a PAST
+// month's actual usage can still be read back from afterward.
+function logLeaveCreditEvent($pdo, $teamMemberId, $creditType, $amount, $reason, $workDate = null) {
+    $monthKey = $workDate ? substr($workDate, 0, 7) : date('Y-m');
+    $stmt = $pdo->prepare(
+        "INSERT INTO leave_credit_events (id, team_member_id, credit_type, amount, month_key, work_date, reason)
+         VALUES (UUID(), ?, ?, ?, ?, ?, ?)"
+    );
+    $stmt->execute([$teamMemberId, $creditType, $amount, $monthKey, $workDate, $reason]);
+}
+
 // ── Attendance rules: late-arrival + unapproved-absence deductions ──
 // Configured from the app (Users > Attendance tab, admin only), stored as
 // JSON on app_settings.attendance_rules. Applied on every import so it
@@ -466,10 +479,12 @@ try {
 
             if ($fromPersonalLeave > 0) {
                 $pdo->prepare("UPDATE team_members SET personal_leave_hours_used = COALESCE(personal_leave_hours_used,0) + ? WHERE id = ?")->execute([$fromPersonalLeave, $tid]);
+                logLeaveCreditEvent($pdo, $tid, 'personal_leave_hours', $fromPersonalLeave, 'late_arrival');
             }
             if ($remainingHours > 0) {
                 $deductDays = $remainingHours / 8;
                 $pdo->prepare("UPDATE team_members SET vacation_days_used = COALESCE(vacation_days_used,0) + ? WHERE id = ?")->execute([$deductDays, $tid]);
+                logLeaveCreditEvent($pdo, $tid, 'vacation_days', $deductDays, 'late_arrival_spillover');
             }
             $rulesDeducted['late'] += $groups;
         }
@@ -500,6 +515,7 @@ try {
             $covered = $checkStmt->fetchColumn() > 0;
             if (!$covered) {
                 $pdo->prepare("UPDATE team_members SET vacation_days_used = COALESCE(vacation_days_used,0) + ? WHERE id = ?")->execute([$deductDays, $row['team_member_id']]);
+                logLeaveCreditEvent($pdo, $row['team_member_id'], 'vacation_days', $deductDays, 'unapproved_absence', $row['work_date']);
                 $rulesDeducted['absent']++;
             }
             $pdo->prepare("UPDATE attendance_records SET absence_deducted = 1 WHERE id = ?")->execute([$row['id']]);

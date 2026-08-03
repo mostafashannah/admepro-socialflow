@@ -53,6 +53,7 @@ $ALLOWED_TABLES = [
     'job_openings','job_applications','deleted_email_applications','job_application_activity',
     'outstanding_liabilities','outstanding_payments','team_member_events',
     'pro_chat_sessions','contact_report_activity','mai_report_sessions',
+    'leave_credit_events',
 ];
 
 $table = $_GET['table'] ?? '';
@@ -172,6 +173,7 @@ $NUMERIC_COLUMNS = [
     // client-side (fixed separately in app.jsx's b44Create too).
     'posts' => ['estimated_minutes'],
     'team_members' => ['vacation_days_total','vacation_days_used','wfh_days_total','wfh_days_used','personal_leave_hours_total','personal_leave_hours_used','extra_hours_banked'],
+    'leave_credit_events' => ['amount'],
 ];
 
 // Numeric columns get "" (an empty/unfilled number input from the client)
