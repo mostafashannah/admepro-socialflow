@@ -12324,6 +12324,7 @@ function AssetCard({asset:a, proj, allFolders=[], onUpdate, onDelete, selected, 
             {proj&&<p style={{fontSize:10,color:"var(--text3)",marginTop:4}}>{proj.client_name}</p>}
             <div style={{display:"flex",gap:8,marginTop:8}}>
               {a.file_url&&a.file_url!="#"&&<a href={a.file_url} target="_blank" rel="noreferrer" style={{fontSize:11,color:"var(--accent)",fontWeight:600,textDecoration:"none"}}>Open</a>}
+              {a.file_url&&a.file_url!="#"&&<a href={a.file_url} download={a.name} target="_blank" rel="noreferrer" style={{fontSize:11,color:"var(--accent)",fontWeight:600,textDecoration:"none"}}>Download</a>}
               {onUpdate&&<button onClick={()=>setEditing(true)} style={{fontSize:11,color:"var(--text3)",fontWeight:600,background:"none",border:"none",cursor:"pointer",padding:0}}>Rename</button>}
               {onUpdate&&<button onClick={()=>setShowPicker(true)} style={{fontSize:11,color:"var(--text3)",fontWeight:600,background:"none",border:"none",cursor:"pointer",padding:0}}>Move</button>}
             </div>
