@@ -6772,16 +6772,15 @@ Return ONLY valid JSON (no markdown):
       // client's own Tasks tab, which filters by client_id) on the next
       // full reload even though it still existed in the posts table.
       const proj = projects.find(p=>p.id===f.project_id);
-      // One task per selected platform (mirrors the Ready Content branch
-      // above) — Platform used to be a single-select here, so a task
-      // needed for both Instagram and Facebook meant creating it twice by
-      // hand. platform_types falls back to f.post_type for any platform
-      // that was never given its own type.
+      // ONE task covering every selected platform (not one task per
+      // platform) — platforms carries the full list for the "FB/IG" chips
+      // shown on the task card, platform stays the first one selected for
+      // any code that only reads the old singular field.
       const plts = f.platforms.length ? f.platforms : [f.platform];
-      await Promise.all(plts.map(pl=>onAdd({
-        ...f, platform:pl, post_type:f.platform_types[pl]||f.post_type,
+      await onAdd({
+        ...f, platform:plts[0], post_type:f.platform_types[plts[0]]||f.post_type,
         client_id:proj?.client_id||"", client_name:proj?.client_name||"",
-      })));
+      });
     }
     setSaving(false); onClose();
   };
