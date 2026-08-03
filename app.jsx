@@ -767,6 +767,7 @@ const SB_TABLE = {
   OutstandingPayment:"outstanding_payments",
   TeamMemberEvent:"team_member_events",
   MaiReportSession:"mai_report_sessions",
+  LeaveCreditEvent:"leave_credit_events",
 };
 
 function sbTable(entityName) {
@@ -18059,7 +18060,6 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                 // total only for the current month if no history rows
                 // exist yet (e.g. before this log started recording).
                 const monthPlUsed = myCreditEventsByMonth[g.key]?.personal_leave_hours ?? (isCurrentMonth ? Number(member.personal_leave_hours_used||0) : 0);
-                const monthWfhUsed = myCreditEventsByMonth[g.key]?.wfh_days ?? (isCurrentMonth ? Number(member.wfh_days_used||0) : 0);
                 const plUsedApplied = Math.min(rawDeductH, monthPlUsed);
                 const extraBankedApplied = isCurrentMonth ? Number(member.extra_hours_banked||0) : 0;
                 deductH = Math.max(0, rawDeductH - plUsedApplied);
@@ -18076,7 +18076,6 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                         <span>WFH/Leave {wfhCt}</span>
                         <span>Off {dayOffCt}</span>
                         <span>Personal Leave {monthPlUsed}h{isCurrentMonth?`/${Number(member.personal_leave_hours_total??4)}h`:"h"}</span>
-                        <span>WFH Used {monthWfhUsed}d</span>
                         <span style={{fontWeight:800,color:netH>=0?"#10b981":"#ef4444"}}>{netH>=0?"+":""}{netH.toFixed(1)}h</span>
                       </div>
                     </div>
