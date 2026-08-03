@@ -33871,7 +33871,14 @@ function MyPerformancePage({currentUser, posts, timeEntries, perfLogs, aiInsight
   // Review-score data (merged in from the old standalone "My Report" page)
   const myLogs = (perfLogs||[]).filter(l=>l.user_email===currentUser?.email);
   const reviewPerf = calcUserPerf(currentUser?.email, perfLogs);
-  const myInsights = (aiInsights||[]).filter(i=>!i.related_user||i.related_user===currentUser?.email);
+  // Team-wide insights (no related_user) are management-level analysis
+  // ("Content Creators Show Zero Activity", naming OTHER people by name) —
+  // they were showing up on every individual's own My Performance page,
+  // including content creators reading recommendations about themselves in
+  // the third person. Only a manager should see the team-wide ones; anyone
+  // else only ever sees an insight specifically about them.
+  const isPerfManager = ["admin","account_manager"].includes(currentUser?.role);
+  const myInsights = (aiInsights||[]).filter(i=>i.related_user ? i.related_user===currentUser?.email : isPerfManager);
   const [aiRec, setAiRec] = React.useState(null);
   const [aiLoading, setAiLoading] = React.useState(false);
   const getAiRecommendations = async () => {
