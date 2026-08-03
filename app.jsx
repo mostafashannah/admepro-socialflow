@@ -6765,7 +6765,14 @@ Return ONLY valid JSON (no markdown):
       });
       await (onAddReady ? onAddReady(list,{postNow:f.publish_mode==="now"}) : Promise.all(list.map(onAdd)));
     } else {
-      await onAdd({...f});
+      // Unlike the "Ready Content" branch above, this path never set
+      // client_id/client_name at all — a task created this way saved fine
+      // (project_id was there) but with no client attribution, so it
+      // silently dropped out of any client-scoped Tasks view (e.g. a
+      // client's own Tasks tab, which filters by client_id) on the next
+      // full reload even though it still existed in the posts table.
+      const proj = projects.find(p=>p.id===f.project_id);
+      await onAdd({...f, client_id:proj?.client_id||"", client_name:proj?.client_name||""});
     }
     setSaving(false); onClose();
   };
@@ -42590,6 +42597,15 @@ function App() {
         setData(d => ({...d, [stateKey]: d[stateKey].map(r => r.id===tempId ? {...r,...real} : r)}));
         return real;
       }
+      // The request came back 2xx with no _saveError flag, but also no
+      // usable id (e.g. an empty [] body) — this used to fall straight
+      // through to "return localRecord" below with no toast at all: the
+      // optimistic row stayed on screen looking saved, then silently
+      // vanished on the next refresh since it was never actually
+      // persisted. Surface it instead of pretending it worked.
+      console.error(`[Save] ${entity} returned no id — response:`, res);
+      setToast(` Save failed (${entity}: no record returned). It won't survive a refresh — check console/Activity Log.`);
+      if(entity!=="ActivityLog") logActivity(`Save Failed: ${entity}`, "system", "POST returned 2xx with no usable record/id", "error", JSON.stringify(res).slice(0,500), "system");
     } catch(e){ setToast(` Network error saving ${entity}: ${e.message}`); }
     return localRecord;
   };
