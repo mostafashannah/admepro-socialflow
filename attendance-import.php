@@ -472,11 +472,17 @@ try {
     }
 
     // Unapproved absences: any 'absent' row with no approved vacation/WFH
-    // request covering that date deducts a fixed number of days. Weekend/
-    // holiday dates never reach here as 'absent' rows in the first place
-    // (skipped above at import time), so nothing further to exclude.
-    if (!empty($rules['absentEnabled']) && floatval($rules['absentDeductDays'] ?? 0) > 0) {
-        $deductDays = floatval($rules['absentDeductDays']);
+    // request covering that date deducts vacation days — 2 days by default
+    // (a no-request absence is penalized double a normal leave day; an
+    // absence that's actually covered by an approved request only ever
+    // costs the usual 1 day, deducted separately when that request was
+    // approved — see decideLeaveRequest). Weekend/holiday dates never
+    // reach here as 'absent' rows in the first place (skipped above at
+    // import time), so nothing further to exclude. On by default —
+    // absentEnabled only exists to let an admin turn this OFF entirely,
+    // not to opt into it.
+    if (($rules['absentEnabled'] ?? true)) {
+        $deductDays = floatval($rules['absentDeductDays'] ?? 2);
         $absentStmt = $pdo->query(
             "SELECT id, team_member_id, work_date FROM attendance_records
              WHERE status = 'absent' AND absence_deducted = 0 AND team_member_id IS NOT NULL"
