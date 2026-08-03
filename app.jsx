@@ -18055,6 +18055,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                         <span>Absent {absentCt}</span>
                         <span>WFH/Leave {wfhCt}</span>
                         <span>Off {dayOffCt}</span>
+                        {isCurrentMonth&&<span>Personal Leave {Number(member.personal_leave_hours_used||0)}h/{Number(member.personal_leave_hours_total??4)}h</span>}
                         <span style={{fontWeight:800,color:netH>=0?"#10b981":"#ef4444"}}>{netH>=0?"+":""}{netH.toFixed(1)}h</span>
                       </div>
                     </div>
