@@ -17482,8 +17482,16 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
   const approvedLeaveDatesForFill = (() => {
     const map = {};
     myLeave.filter(r => r.status === "approved").forEach(r => {
-      const cursor = new Date((r.start_date || "") + "T00:00:00");
-      const end = new Date((r.end_date || r.start_date || "") + "T00:00:00");
+      // start_date/end_date can come back as a plain "YYYY-MM-DD" OR a full
+      // "YYYY-MM-DDTHH:MM:SS..." datetime depending on the column type —
+      // slicing to the first 10 chars before appending a time avoids
+      // building an invalid double-time string like
+      // "2026-07-22T00:00:00.000ZT00:00:00" (which silently produced an
+      // Invalid Date and dropped the whole request).
+      const startYmd = String(r.start_date || "").slice(0, 10);
+      const endYmd = String(r.end_date || r.start_date || "").slice(0, 10);
+      const cursor = new Date(startYmd + "T00:00:00");
+      const end = new Date(endYmd + "T00:00:00");
       if (isNaN(cursor) || isNaN(end)) return;
       while (cursor <= end) {
         const ymd = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`;
