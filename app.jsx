@@ -28572,6 +28572,10 @@ function MyWorkTab({member, attendanceRecords, leaveRequests, onSubmit}) {
             <p style={{fontSize:11,color:"var(--text3)"}}>WFH Days (this month)</p>
             <p style={{fontSize:14,fontWeight:700}}>{Number(member.wfh_days_used||0)} / {Number(member.wfh_days_total??2)}</p>
           </div>
+          <div>
+            <p style={{fontSize:11,color:"var(--text3)"}}>Personal Leave Hours (this month)</p>
+            <p style={{fontSize:14,fontWeight:700}}>{Number(member.personal_leave_hours_used||0)}h / {Number(member.personal_leave_hours_total??4)}h</p>
+          </div>
         </div>
         <div>
           <Btn onClick={()=>setShowRequest(true)} size="sm"><Ico d={Icons.plus} size={13}/> Request Vacation / WFH</Btn>
