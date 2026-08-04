@@ -1,7 +1,9 @@
 <?php
-// READ-ONLY diagnostic — run once, then delete. Shows exactly what's stored
-// for a given team member's name so we can see why the backfill did or
-// didn't touch their posts.
+// READ-ONLY diagnostic — run once, then delete. Shows, for EVERY team
+// member, how many posts currently point at them (assigned_to,
+// content_assigned_to, or design_assigned_to) vs. how many stage-change
+// comments exist mentioning their name — so we can spot exactly who still
+// has a gap between their real activity history and what's stored.
 require_once __DIR__ . '/config.php';
 $pdo = new PDO(
     'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4',
@@ -9,25 +11,29 @@ $pdo = new PDO(
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
 );
 
-$name = $argv[1] ?? 'Sherif Hossam';
-$member = $pdo->prepare("SELECT id, name, email, role FROM team_members WHERE name = ?");
-$member->execute([$name]);
-$m = $member->fetch(PDO::FETCH_ASSOC);
-if (!$m) { echo json_encode(['error' => "No team member named '$name'"]) . "\n"; exit; }
-echo "Member: " . json_encode($m) . "\n\n";
+$members = $pdo->query("SELECT id, name, email, role, status FROM team_members WHERE role IN ('content_creator','graphic_designer') ORDER BY name")->fetchAll(PDO::FETCH_ASSOC);
 
-$posts = $pdo->prepare(
+$postsStmt = $pdo->prepare(
     "SELECT id, title, stage, platform, assigned_to, content_assigned_to, design_assigned_to
-     FROM posts WHERE assigned_to = ? OR content_assigned_to = ? OR design_assigned_to = ?"
+     FROM posts WHERE assigned_to = :e OR content_assigned_to = :e OR design_assigned_to = :e"
 );
-$posts->execute([$m['email'], $m['email'], $m['email']]);
-$rows = $posts->fetchAll(PDO::FETCH_ASSOC);
-echo "Posts currently pointing at them (any of the 3 fields): " . count($rows) . "\n";
-foreach ($rows as $r) echo json_encode($r) . "\n";
+$commentsStmt = $pdo->prepare("SELECT COUNT(*) FROM comments WHERE type='stage_change' AND content LIKE :n");
 
-echo "\n-- Stage-change comments mentioning their name --\n";
-$comments = $pdo->prepare("SELECT post_id, content, created_at FROM comments WHERE type='stage_change' AND content LIKE ?");
-$comments->execute(['%assigned to ' . $name]);
-$crows = $comments->fetchAll(PDO::FETCH_ASSOC);
-echo "Found: " . count($crows) . "\n";
-foreach ($crows as $c) echo json_encode($c) . "\n";
+$out = [];
+foreach ($members as $m) {
+    $postsStmt->execute([':e' => $m['email']]);
+    $posts = $postsStmt->fetchAll(PDO::FETCH_ASSOC);
+    $commentsStmt->execute([':n' => '%assigned to ' . $m['name']]);
+    $commentCount = (int) $commentsStmt->fetchColumn();
+    $out[] = [
+        'name' => $m['name'], 'email' => $m['email'], 'role' => $m['role'], 'status' => $m['status'],
+        'posts_pointing_at_them' => count($posts),
+        'stage_change_comments_with_their_name' => $commentCount,
+        'posts' => array_map(fn($p) => [
+            'title' => $p['title'], 'stage' => $p['stage'], 'platform' => $p['platform'],
+            'assigned_to' => $p['assigned_to'], 'content_assigned_to' => $p['content_assigned_to'], 'design_assigned_to' => $p['design_assigned_to'],
+        ], $posts),
+    ];
+}
+
+echo json_encode($out, JSON_PRETTY_PRINT) . "\n";
