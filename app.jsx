@@ -529,7 +529,23 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
   const slots = [];
   const usedSlots = new Set();
   for(const post of myPosts) {
-    const dur = estimateDuration(post);
+    // If they actually pushed their own work forward before/after the
+    // planned block ended (content_completed_at/design_completed_at,
+    // stamped in handleStageChange), show how long it REALLY took instead
+    // of always rendering the full originally-estimated block — a 2-3pm
+    // slot finished at 2:15 shows as a real 15-minute task, not a full hour.
+    const dur = (() => {
+      const est = estimateDuration(post);
+      if (!post.due_time) return est;
+      const completedAtField = userRole==="graphic_designer" ? "design_completed_at" : userRole==="content_creator" ? "content_completed_at" : null;
+      const completedAt = completedAtField ? post[completedAtField] : null;
+      if (!completedAt) return est;
+      const compDate = new Date(completedAt);
+      if (compDate.toISOString().split("T")[0] !== date) return est; // only trust same-day completions
+      const [hh, mm] = post.due_time.split(":").map(Number);
+      const actual = (compDate.getHours()*60 + compDate.getMinutes()) - (hh*60 + (mm||0));
+      return actual > 0 ? actual : est;
+    })();
     let cursor;
     if(post.due_time) {
       const [hh, mm] = post.due_time.split(":").map(Number);
@@ -45240,6 +45256,13 @@ Return ONLY valid JSON (no markdown, no explanation):
       estimated_minutes: overrides.estimated_minutes || post.estimated_minutes,
       content_assigned_to: newStage==="content_creation" ? (assigneeEmail||post.assigned_to) : post.content_assigned_to,
       design_assigned_to: newStage==="design" ? (assigneeEmail||post.assigned_to) : post.design_assigned_to,
+      // Stamped the moment someone actually pushes their own work forward
+      // out of Content/Design — lets the Timeline show the REAL time spent
+      // (e.g. a 2-3pm block finished at 2:15 shows as a 15-min task) instead
+      // of always rendering the full originally-planned block regardless of
+      // how long it actually took (see generateDailySchedule).
+      content_completed_at: (post.stage==="content_creation" && newStage!=="content_creation") ? new Date().toISOString() : post.content_completed_at,
+      design_completed_at: (post.stage==="design" && newStage!=="design") ? new Date().toISOString() : post.design_completed_at,
       project_id: overrides.project_id || post.project_id,
       revision_count: revisionCount,
       was_rejected: wasRejected,
