@@ -28548,6 +28548,9 @@ function MyWorkTab({member, attendanceRecords, leaveRequests, onSubmit}) {
 
   const plRemaining = Math.max(0, Number(member.personal_leave_hours_total??4) - Number(member.personal_leave_hours_used||0));
   const isPersonal = reqType==="personal_leave";
+  const isWfh = reqType==="wfh";
+  const wfhRemaining = Math.max(0, Number(member.wfh_days_total??2) - Number(member.wfh_days_used||0));
+  const requestedDays = startDate && endDate && endDate>=startDate ? Math.round((new Date(endDate) - new Date(startDate))/86400000)+1 : 0;
 
   // "To" is derived from "From" + hours — e.g. 16:00 + 2h → 18:00 — never
   // entered directly, so it can't drift out of sync with the hour count.
@@ -28561,6 +28564,9 @@ function MyWorkTab({member, attendanceRecords, leaveRequests, onSubmit}) {
 
   const resetForm = () => { setReqType("vacation"); setStartDate(""); setEndDate(""); setHours(2); setStartTime(""); setReason(""); };
 
+  // WFH isn't blocked past the monthly quota — any day beyond it just gets
+  // approved as a half-day instead of a full WFH day off (see
+  // decideLeaveRequest), so there's no reason to stop the request itself.
   const canSubmit = !!reason.trim() && (isPersonal
     ? !!startDate && !!startTime && Number(hours)>=2 && Number(hours)<=plRemaining
     : !!startDate && !!endDate);
@@ -28681,10 +28687,13 @@ function MyWorkTab({member, attendanceRecords, leaveRequests, onSubmit}) {
               {plRemaining<2 && <p style={{fontSize:12,color:"#ef4444"}}>Less than 2 hours remaining this month — no personal leave left to request.</p>}
             </>
           ) : (
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-              <Field label="Start Date" required><input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} style={inputSt}/></Field>
-              <Field label="End Date" required><input type="date" value={endDate} min={startDate||undefined} onChange={e=>setEndDate(e.target.value)} style={inputSt}/></Field>
-            </div>
+            <>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                <Field label="Start Date" required><input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} style={inputSt}/></Field>
+                <Field label="End Date" required hint={isWfh?`${wfhRemaining} day(s) remaining this month`:undefined}><input type="date" value={endDate} min={startDate||undefined} onChange={e=>setEndDate(e.target.value)} style={inputSt}/></Field>
+              </div>
+              {isWfh && requestedDays>wfhRemaining && <p style={{fontSize:12,color:"#f59e0b"}}>That's {requestedDays} day(s) — only {wfhRemaining} full WFH day(s) left this month; the other {requestedDays-wfhRemaining} will be approved as half-day{requestedDays-wfhRemaining!==1?"s":""}.</p>}
+            </>
           )}
           <Field label="Reason" required><textarea value={reason} onChange={e=>setReason(e.target.value)} rows={3} style={{...inputSt,resize:"vertical"}}/></Field>
         </div>
@@ -43477,11 +43486,28 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
           a.work_date>=req.start_date && a.work_date<=req.end_date
         );
         const refundDays = staleAbsences.length * 2;
-        const newUsed = Math.max(0, (Number(member[col])||0) + Number(req.days||1) - refundDays);
+        // WFH is capped at wfh_days_total/month — any day requested beyond
+        // what's left this month still gets approved, but only counts as a
+        // half-day (not a full WFH day off) instead of being blocked or
+        // silently over-drawing the monthly quota.
+        let creditDays = Number(req.days||1);
+        let halfDayOverflow = 0;
+        if(req.type==="wfh") {
+          const wfhRemaining = Math.max(0, Number(member.wfh_days_total??2) - Number(member.wfh_days_used||0));
+          halfDayOverflow = Math.max(0, creditDays - wfhRemaining);
+          creditDays = creditDays - halfDayOverflow;
+        }
+        const newUsed = Math.max(0, (Number(member[col])||0) + creditDays - refundDays);
         await updateTeamMember(member.id, {[col]: newUsed});
         const creditType = req.type==="vacation" ? "vacation_days" : "wfh_days";
         const monthKey = (req.start_date||"").slice(0,7);
-        ce("LeaveCreditEvent",[{team_member_id:member.id, member_name:member.name, credit_type:creditType, amount:Number(req.days||1), month_key:monthKey, work_date:req.start_date, reason:"leave_request_approved"}]).catch(()=>{});
+        if(creditDays>0) ce("LeaveCreditEvent",[{team_member_id:member.id, member_name:member.name, credit_type:creditType, amount:creditDays, month_key:monthKey, work_date:req.start_date, reason:"leave_request_approved"}]).catch(()=>{});
+        if(halfDayOverflow>0) {
+          ce("LeaveCreditEvent",[{team_member_id:member.id, member_name:member.name, credit_type:"wfh_half_day", amount:halfDayOverflow, month_key:monthKey, work_date:req.start_date, reason:"wfh_over_monthly_quota"}]).catch(()=>{});
+          const overflowNote = `${halfDayOverflow} of ${req.days} day(s) over the monthly WFH quota — counted as half-day.`;
+          setData(d=>({...d, leaveRequests:d.leaveRequests.map(r=>r.id===req.id?{...r,decision_note:[note,overflowNote].filter(Boolean).join(" — ")}:r)}));
+          ue("LeaveRequest", req.id, {decision_note:[note,overflowNote].filter(Boolean).join(" — ")}).catch(()=>{});
+        }
         if(staleAbsences.length) {
           await Promise.all(staleAbsences.map(a=>ue("AttendanceRecord", a.id, {absence_deducted:0})));
           setData(d=>({...d, attendanceRecords:(d.attendanceRecords||[]).map(a=>staleAbsences.some(s=>s.id===a.id)?{...a,absence_deducted:0}:a)}));
