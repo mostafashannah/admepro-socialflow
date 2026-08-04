@@ -28564,12 +28564,17 @@ function MyWorkTab({member, attendanceRecords, leaveRequests, onSubmit}) {
 
   const resetForm = () => { setReqType("vacation"); setStartDate(""); setEndDate(""); setHours(2); setStartTime(""); setReason(""); };
 
-  // WFH isn't blocked past the monthly quota — any day beyond it just gets
-  // approved as a half-day instead of a full WFH day off (see
-  // decideLeaveRequest), so there's no reason to stop the request itself.
+  const wfhTotal = Number(member.wfh_days_total??2);
+  // A single WFH request is hard-capped at wfh_days_total (2 by default) —
+  // anyone needing more has to split it across separate requests. Within
+  // that per-request cap, going over what's LEFT this month still isn't
+  // blocked — the excess just gets approved as a half-day instead of a
+  // full WFH day off (see decideLeaveRequest).
   const canSubmit = !!reason.trim() && (isPersonal
     ? !!startDate && !!startTime && Number(hours)>=2 && Number(hours)<=plRemaining
-    : !!startDate && !!endDate);
+    : isWfh
+      ? !!startDate && !!endDate && requestedDays>0 && requestedDays<=wfhTotal
+      : !!startDate && !!endDate);
 
   const handleSubmit = async () => {
     if(!canSubmit) return;
@@ -28690,9 +28695,10 @@ function MyWorkTab({member, attendanceRecords, leaveRequests, onSubmit}) {
             <>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                 <Field label="Start Date" required><input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} style={inputSt}/></Field>
-                <Field label="End Date" required hint={isWfh?`${wfhRemaining} day(s) remaining this month`:undefined}><input type="date" value={endDate} min={startDate||undefined} onChange={e=>setEndDate(e.target.value)} style={inputSt}/></Field>
+                <Field label="End Date" required hint={isWfh?`Max ${wfhTotal} day(s) per request · ${wfhRemaining} full day(s) left this month`:undefined}><input type="date" value={endDate} min={startDate||undefined} onChange={e=>setEndDate(e.target.value)} style={inputSt}/></Field>
               </div>
-              {isWfh && requestedDays>wfhRemaining && <p style={{fontSize:12,color:"#f59e0b"}}>That's {requestedDays} day(s) — only {wfhRemaining} full WFH day(s) left this month; the other {requestedDays-wfhRemaining} will be approved as half-day{requestedDays-wfhRemaining!==1?"s":""}.</p>}
+              {isWfh && requestedDays>wfhTotal && <p style={{fontSize:12,color:"#ef4444"}}>A single WFH request can't be more than {wfhTotal} day(s) — split it into separate requests.</p>}
+              {isWfh && requestedDays>0 && requestedDays<=wfhTotal && requestedDays>wfhRemaining && <p style={{fontSize:12,color:"#f59e0b"}}>Only {wfhRemaining} full WFH day(s) left this month; the other {requestedDays-wfhRemaining} will be approved as half-day{requestedDays-wfhRemaining!==1?"s":""}.</p>}
             </>
           )}
           <Field label="Reason" required><textarea value={reason} onChange={e=>setReason(e.target.value)} rows={3} style={{...inputSt,resize:"vertical"}}/></Field>
