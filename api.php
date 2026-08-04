@@ -175,6 +175,7 @@ $NUMERIC_COLUMNS = [
     'team_members' => ['vacation_days_total','vacation_days_used','wfh_days_total','wfh_days_used','personal_leave_hours_total','personal_leave_hours_used','extra_hours_banked'],
     'leave_credit_events' => ['amount'],
     'payroll_runs' => ['base_salary','vacation_overage_days','deduction_amount','net_amount'],
+    'leave_requests' => ['days','hours'],
 ];
 
 // Numeric columns get "" (an empty/unfilled number input from the client)
