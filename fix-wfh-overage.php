@@ -27,7 +27,7 @@ $requests = $pdo->query(
     "SELECT lr.id, lr.team_member_id, lr.member_name, lr.days, lr.start_date, lr.decision_note,
             tm.wfh_days_total, tm.wfh_days_used
      FROM leave_requests lr
-     JOIN team_members tm ON tm.id = lr.team_member_id
+     JOIN team_members tm ON tm.id COLLATE utf8mb4_unicode_ci = lr.team_member_id COLLATE utf8mb4_unicode_ci
      WHERE lr.type = 'wfh' AND lr.status = 'approved'
        AND lr.days > COALESCE(tm.wfh_days_total, 2)
        AND (lr.decision_note IS NULL OR lr.decision_note NOT LIKE '%[retroactively split]%')"
