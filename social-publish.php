@@ -53,8 +53,18 @@ $post_type    = trim($data["post_type"]    ?? "");
 $cover_url    = trim($data["cover_url"]    ?? "");
 
 if (!$platform || !$page_id || !$access_token || !$message) {
+    // Naming exactly which field(s) are empty (instead of always listing all
+    // four) — a post with a real, connected integration but just no caption
+    // yet used to surface "platform, page_id, access_token, message" all
+    // missing, which reads like the whole integration is broken when it's
+    // really just an empty caption.
+    $missing = [];
+    if (!$platform) $missing[] = "platform";
+    if (!$page_id) $missing[] = "page_id";
+    if (!$access_token) $missing[] = "access_token";
+    if (!$message) $missing[] = "message (caption)";
     http_response_code(400);
-    echo json_encode(["error" => "Missing required fields: platform, page_id, access_token, message"]);
+    echo json_encode(["error" => "Missing required field(s): " . implode(", ", $missing)]);
     exit;
 }
 
