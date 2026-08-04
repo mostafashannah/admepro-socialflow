@@ -344,11 +344,29 @@ const STAGES = [
   { key: "design", label: "Design", color: "#8b5cf6", icon: "" },
   { key: "design_review", label: "Design Review", color: "#f59e0b", icon: "" },
   { key: "client_approval", label: "Client Approval", color: "#ec4899", icon: "✓" },
+  // A Task (no platform — see nextStageFor below) finishes HERE, right after
+  // Client Approval — it never gets published, so it never touches
+  // Scheduled/Published. A real Post skips straight past this stage.
+  { key: "approved", label: "Approved", color: "#10b981", icon: "✓" },
   { key: "scheduled", label: "Scheduled", color: "#06b6d4", icon: "" },
   { key: "published", label: "Published", color: "#10b981", icon: "" },
   { key: "on_hold", label: "On Hold", color: "#f97316", icon: "" },
   { key: "rejected", label: "Rejected", color: "#ef4444", icon: "✕" },
 ];
+// The single source of truth for "what comes next" from any given
+// stage/kind — a Task (platform is always empty) and a Post share the same
+// STAGES array up through Client Approval, then diverge: a Task's next
+// stop is Approved (terminal, never Scheduled/Published); a Post skips
+// Approved entirely and goes straight to Scheduled. Anything already at a
+// terminal stage for its kind (Approved for a Task, Published for a Post)
+// has no next stage at all.
+function nextStageFor(post) {
+  const isTask = !post.platform;
+  if (post.stage === "client_approval") return STAGES.find(s => s.key === (isTask ? "approved" : "scheduled"));
+  if (post.stage === "approved") return null;
+  const ci = STAGES.findIndex(s => s.key === post.stage);
+  return ci === -1 ? null : STAGES[ci + 1];
+}
 // Which pipeline stage a role is actually responsible for finishing — their
 // part of a task is done the moment it leaves that stage moving forward,
 // regardless of what happens to it afterward (a designer can't control
@@ -369,7 +387,7 @@ function countOverdueTasks(member, posts) {
   return (posts||[]).filter(p=>{
     if (p.assigned_to !== member?.email) return false;
     if (!p.due_date || p.due_date >= today) return false;
-    if (["published","scheduled","rejected","on_hold"].includes(p.stage)) return false;
+    if (["published","scheduled","approved","rejected","on_hold"].includes(p.stage)) return false;
     if (ownedStage && p.stage !== ownedStage) return false;
     return true;
   }).length;
@@ -496,7 +514,7 @@ function generateDailySchedule(posts, userEmail, date) {
     // pipeline, not just the earlier stages. Only Published (truly done)
     // and Rejected (dead) actually free up a slot; Scheduled still has a
     // real publish step to do and used to silently disappear from here.
-    if (["published","rejected"].includes(p.stage)) return false;
+    if (["published","approved","rejected"].includes(p.stage)) return false;
     if (p.due_date) return p.due_date === date;
     // Tasks without a due_date only appear on today's view
     return date === today;
@@ -3640,12 +3658,18 @@ function ImageLightbox({url, alt, onClose}) {
 // STAGE PIPELINE
 // ════════════════════════════════════════════════════════════════
 function StagePipeline({post}) {
-  const ci = STAGES.findIndex(s=>s.key===post.stage);
+  // A Task (no platform) never reaches Scheduled/Published — its real path
+  // ends at Approved; a Post never touches Approved at all. Each kind only
+  // shows the stages it can actually pass through.
+  const isTask = !post.platform;
+  const shown = STAGES.filter(s => s.key!=="rejected" && (isTask ? s.key!=="scheduled" && s.key!=="published" : s.key!=="approved"));
+  const terminalKey = isTask ? "approved" : "published";
+  const ci = shown.findIndex(s=>s.key===post.stage);
   return (
     <div style={{display:"flex",alignItems:"center",gap:0,overflowX:"auto",padding:"4px 0"}}>
-      {STAGES.filter(s=>s.key!=="rejected").map((s,i)=>{
-        const done = i < ci || post.stage==="published";
-        const active = s.key===post.stage && post.stage!=="published";
+      {shown.map((s,i)=>{
+        const done = i < ci || post.stage===terminalKey;
+        const active = s.key===post.stage && post.stage!==terminalKey;
         return (
           <div key={s.key} style={{display:"flex",alignItems:"center"}}>
             <div style={{
@@ -3658,7 +3682,7 @@ function StagePipeline({post}) {
               {done && <Ico d={Icons.check} size={10} stroke="#10b981"/>}
               {s.label}
             </div>
-            {i < STAGES.filter(s=>s.key!=="rejected").length-1 && (
+            {i < shown.length-1 && (
               <div style={{width:16,height:1,background:i<ci?"#10b98166":"var(--border)",flexShrink:0}}/>
             )}
           </div>
@@ -4335,8 +4359,8 @@ function ContentPhaseGenerator({post, project, clientKnowledge, clientIntelligen
     const posts = allClientPosts||[];
 
     // Past approved/published captions — same platform first, then others
-    const samePlatform = posts.filter(p=>p.platform===post?.platform && ["published","scheduled"].includes(p.stage) && p.caption);
-    const otherPlatform = posts.filter(p=>p.platform!==post?.platform && ["published","scheduled"].includes(p.stage) && p.caption);
+    const samePlatform = posts.filter(p=>p.platform===post?.platform && ["published","scheduled","approved"].includes(p.stage) && p.caption);
+    const otherPlatform = posts.filter(p=>p.platform!==post?.platform && ["published","scheduled","approved"].includes(p.stage) && p.caption);
     const approvedCaptions = [...samePlatform, ...otherPlatform].slice(0,8);
 
     // Rejected posts — what the client didn't like
@@ -4374,7 +4398,7 @@ ${rejectedBlock}`.trim();
     const tovForThis = tovOf(tovKey||tov);
     const tovInstr = `Tone of Voice: ${tovForThis.label} — ${tovForThis.desc}`;
     const ctx = clientCtx();
-    const hasPastCaptions = (allClientPosts||[]).some(p=>["published","scheduled"].includes(p.stage)&&p.caption);
+    const hasPastCaptions = (allClientPosts||[]).some(p=>["published","scheduled","approved"].includes(p.stage)&&p.caption);
     const learningNote = hasPastCaptions
       ? `CRITICAL INSTRUCTION: Study the "APPROVED & PUBLISHED CAPTIONS" above carefully. Your generated content MUST:
 - Match the same writing style, sentence length, and energy level as those examples
@@ -5389,8 +5413,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   const [tkBrandedContent, setTkBrandedContent] = useState(false);
   if(!post) return null;
   const stage = STAGE_MAP[post.stage]||STAGES[0];
-  const ci = STAGES.findIndex(s=>s.key===post.stage);
-  const next = STAGES[ci+1];
+  const next = nextStageFor(post);
   const postComments = comments.filter(c=>c.post_id===post.id);
   const assignee = team?.find(t=>t.email===post.assigned_to);
 
@@ -8704,7 +8727,7 @@ function computePerformance(team, posts, timelogs, perfLogs) {
     const assigned = posts.filter(p=>wasOwnerOf(p, member.email, member.role));
     const completed = assigned.filter(p=>["published","scheduled","client_approval"].includes(p.stage));
     const rejected = assigned.filter(p=>p.stage==="rejected");
-    const inProgress= assigned.filter(p=>!["published","scheduled","rejected"].includes(p.stage));
+    const inProgress= assigned.filter(p=>!["published","scheduled","approved","rejected"].includes(p.stage));
     const myLogs = perfLogs.filter(l=>l.user_email===member.email);
     const myTime = timelogs.filter(t=>t.logged_by===member.email);
     // Numeric DB columns can arrive as strings depending on the backend —
@@ -8951,7 +8974,7 @@ function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAdd
   // admin and account managers still see everything.
   const isManager = ["admin","account_manager"].includes(currentUser?.role);
   const visibleTeam = (team||[]).filter(m=>!["hr","accountant","office_boy"].includes(m.role));
-  const myPosts = filteredPosts.filter(p=>p.assigned_to===currentUser?.email);
+  const myPosts = filteredPosts.filter(p=>wasOwnerOf(p, currentUser?.email, currentUser?.role));
   const myPerf = perf.find(p=>p.email===currentUser?.email) || {};
 
   // Stage bottleneck analysis
@@ -10804,7 +10827,7 @@ The more you tell me, the better I'll get at generating their content. I'll reme
     const mem = formatClientMemory(client.id, clientMemory||[]);
 
     // Past approved captions as examples
-    const approved = (allClientPosts||[]).filter(p=>["published","scheduled"].includes(p.stage)&&p.caption).slice(0,6);
+    const approved = (allClientPosts||[]).filter(p=>["published","scheduled","approved"].includes(p.stage)&&p.caption).slice(0,6);
     const rejected = (allClientPosts||[]).filter(p=>p.stage==="rejected"&&p.caption).slice(0,4);
     const approvedBlock = approved.map(p=>`[${p.platform}] "${p.title}": ${(p.caption||"").slice(0,200)}`).join("\n")||"None yet";
     const rejectedBlock = rejected.map(p=>`[${p.platform}] "${p.title}": ${(p.caption||"").slice(0,150)}`).join("\n")||"None";
@@ -10985,7 +11008,7 @@ Be specific. Extract as many insights as possible. Return ONLY the JSON array, n
   };
 
   // Content analysis summary
-  const publishedPosts = (allClientPosts||[]).filter(p=>["published","scheduled"].includes(p.stage)&&p.caption);
+  const publishedPosts = (allClientPosts||[]).filter(p=>["published","scheduled","approved"].includes(p.stage)&&p.caption);
   const rejectedPosts = (allClientPosts||[]).filter(p=>p.stage==="rejected"&&p.caption);
   const platformBreakdown = {};
   publishedPosts.forEach(p=>{ platformBreakdown[p.platform]=(platformBreakdown[p.platform]||0)+1; });
@@ -12299,7 +12322,7 @@ function ProjectsPage({projects, posts, clients, team, assets, clientIntelligenc
         {filtered.map(proj=>{
           const pt = PROJECT_TYPES.find(t=>t.id===proj.project_type)||PROJECT_TYPES[0];
           const projPosts = posts.filter(p=>p.project_id===proj.id);
-          const done = projPosts.filter(p=>["published","scheduled"].includes(p.stage)).length;
+          const done = projPosts.filter(p=>["published","scheduled","approved"].includes(p.stage)).length;
           const pct = projPosts.length>0?Math.round(done/projPosts.length*100):0;
           return (
             <div key={proj.id} onClick={()=>setSelectedProject(proj.id)} style={{background:"var(--surface1)",borderRadius:16,border:"1px solid var(--border)",overflow:"hidden",cursor:"pointer",transition:"transform 0.15s,box-shadow 0.15s"}}
@@ -13771,7 +13794,7 @@ function ClientContextFile({client, knowledge, posts, projects, currentUser, onS
     const rejectedReasons = cPosts.filter(p=>p.rejection_reason).map(p=>`"${p.title}": ${p.rejection_reason}`).slice(0,6).join("\n");
 
     // ── Approved/published captions (what worked) ──
-    const approvedCaptions = cPosts.filter(p=>["scheduled","published"].includes(p.stage)&&p.caption).map(p=>`[${p.platform||""}] ${p.title}: ${(p.caption||"").slice(0,120)}`).slice(0,5).join("\n");
+    const approvedCaptions = cPosts.filter(p=>["scheduled","published","approved"].includes(p.stage)&&p.caption).map(p=>`[${p.platform||""}] ${p.title}: ${(p.caption||"").slice(0,120)}`).slice(0,5).join("\n");
 
     // ── Recent briefs/descriptions ──
     const recentBriefs = cPosts.filter(p=>p.description).map(p=>`${p.title}: ${(p.description||"").slice(0,100)}`).slice(0,5).join("\n");
@@ -13882,7 +13905,7 @@ Rules: Max 60 words per section. Specific and actionable — no generic advice. 
     const slug = client.name.replace(/\s+/g,"_");
     const total = cPosts.length;
     const published = cPosts.filter(p=>p.stage==="published").length;
-    const approved = cPosts.filter(p=>["scheduled","published"].includes(p.stage)).length;
+    const approved = cPosts.filter(p=>["scheduled","published","approved"].includes(p.stage)).length;
     const rejected = cPosts.filter(p=>p.stage==="rejected").length;
     const pending = cPosts.filter(p=>p.stage==="client_approval").length;
     const approvalRate = total>0 ? Math.round(approved/total*100) : 0;
@@ -17208,7 +17231,7 @@ function MemberScoringTab({member, perfLogs, maiReportSessions, posts=[]}) {
   // from their real logged completions (perf.total), not a live stage scan.
   const assigned = (posts||[]).filter(p=>p.assigned_to===member.email);
   const rejectedCount = assigned.filter(p=>p.stage==="rejected").length;
-  const inProgressCount = assigned.filter(p=>!["published","scheduled","rejected"].includes(p.stage)).length;
+  const inProgressCount = assigned.filter(p=>!["published","scheduled","approved","rejected"].includes(p.stage)).length;
   const completedCount = perf.total;
   const onTimeCount = perf.logs.filter(l=>l.on_time).length;
   const lateCount = perf.total - onTimeCount;
@@ -25848,8 +25871,8 @@ const MOTIVATIONAL_MESSAGES = [
 function generateEmailHTML(es, member, perf, posts, timelogs, appSettings, accentColor) {
   const memberPerf = perf.find(p=>p.email===member.email)||{};
   const assignedPosts = posts.filter(p=>wasOwnerOf(p, member.email, member.role));
-  const completed = assignedPosts.filter(p=>["published","scheduled"].includes(p.stage));
-  const pending = assignedPosts.filter(p=>!["published","scheduled","rejected"].includes(p.stage));
+  const completed = assignedPosts.filter(p=>["published","scheduled","approved"].includes(p.stage));
+  const pending = assignedPosts.filter(p=>!["published","scheduled","approved","rejected"].includes(p.stage));
   const overdue = assignedPosts.filter(p=>p.scheduled_date&&new Date(p.scheduled_date)<new Date()&&!["published","rejected"].includes(p.stage));
   const myLogs = timelogs.filter(t=>t.logged_by===member.email);
   const totalHrs = myLogs.reduce((a,t)=>a+(t.duration_minutes||0)/60,0);
@@ -26104,7 +26127,7 @@ function DailyEmailSettings({emailSettings, onSave, team, posts, timelogs, perfL
   // Compute mock performance for preview
   const perf = (team||[]).map(m=>{
     const assigned=posts.filter(p=>wasOwnerOf(p, m.email, m.role));
-    const completed=assigned.filter(p=>["published","scheduled"].includes(p.stage));
+    const completed=assigned.filter(p=>["published","scheduled","approved"].includes(p.stage));
     const myLogs=perfLogs.filter(l=>l.user_email===m.email);
     const avgQ=myLogs.length?myLogs.reduce((a,l)=>a+(l.quality_score||0),0)/myLogs.length:0;
     const perfScore=myLogs.length?Math.min(100,Math.round(completed.length*18+(avgQ*0.4))):0;
@@ -33697,8 +33720,8 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
         {[
           {label:"Total", count:myPosts.length, color:"#6366f1"},
-          {label:"In Progress", count:myPosts.filter(p=>!["published","scheduled","rejected"].includes(p.stage)).length, color:"#3b82f6"},
-          {label:"Completed", count:myPosts.filter(p=>["published","scheduled"].includes(p.stage)).length, color:"#10b981"},
+          {label:"In Progress", count:myPosts.filter(p=>!["published","scheduled","approved","rejected"].includes(p.stage)).length, color:"#3b82f6"},
+          {label:"Completed", count:myPosts.filter(p=>["published","scheduled","approved"].includes(p.stage)).length, color:"#10b981"},
           {label:"Rejected", count:myPosts.filter(p=>p.stage==="rejected").length, color:"#ef4444"},
         ].map((stat,i)=>(
           <div key={i} style={{background:"var(--surface)",border:`1px solid ${stat.color}44`,borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"column",gap:6}}>
@@ -33722,7 +33745,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
           {filteredPosts.map(post=>{
             const stage = STAGE_MAP[post.stage];
             const project = projects.find(p => p.id === post.project_id);
-            const nextStage = STAGES[STAGES.findIndex(s=>s.key===post.stage)+1];
+            const nextStage = nextStageFor(post);
             const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
             const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
             const lastDesignAsset = designAssets[designAssets.length-1];
@@ -34007,7 +34030,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   const activeTimers = (timeEntries||[]).filter(t => t.user_email===effectiveUser?.email && t.status==='active');
   const completionPct = slots.length > 0 ? Math.round(slots.filter(s => {
     const p = posts.find(p=>p.id===s.post_id);
-    return p && ["published","scheduled"].includes(p.stage);
+    return p && ["published","scheduled","approved"].includes(p.stage);
   }).length / slots.length * 100) : 0;
 
   // Same member list the combined timeline below renders one row per — the
@@ -34024,7 +34047,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   const combinedActiveTimers = combinedView ? timelineMembers.flatMap(m=>(timeEntries||[]).filter(t=>t.user_email===m.email && t.status==='active')) : null;
   const combinedCompletionPct = combinedView && combinedSlots.length > 0 ? Math.round(combinedSlots.filter(s => {
     const p = posts.find(p=>p.id===s.post_id);
-    return p && ["published","scheduled"].includes(p.stage);
+    return p && ["published","scheduled","approved"].includes(p.stage);
   }).length / combinedSlots.length * 100) : 0;
 
   const summaryTotalTasks = combinedView ? combinedSlots.length : slots.length;
@@ -34453,7 +34476,7 @@ Based ONLY on this person's own numbers and task history above, give 3 specific,
   const maxDaySecs = Math.max(...days.map(d=>d.secs), 3600);
 
   // Tasks completed this week
-  const completedPosts = myPosts.filter(p => ["published","scheduled"].includes(p.stage));
+  const completedPosts = myPosts.filter(p => ["published","scheduled","approved"].includes(p.stage));
   const avgEfficiency = postStats.filter(s=>s.ratio!==null && s.tracked>0).reduce((a,s,_,arr)=>a+(s.ratio/arr.length),0);
 
   // Performance score: 100 if exactly on time, penalize overrun & underrun
