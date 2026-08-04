@@ -23,7 +23,7 @@ $pdo = new PDO(
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]
 );
 
-$ams = $pdo->query("SELECT id, name, email, whatsapp_number FROM team_members WHERE role = 'account_manager' AND status = 'active' AND whatsapp_number IS NOT NULL AND whatsapp_number != ''")->fetchAll(PDO::FETCH_ASSOC);
+$ams = $pdo->query("SELECT id, name, email, whatsapp_number FROM team_members WHERE role = 'account_manager' AND status = 'active' AND mai_checkins_enabled = 1 AND whatsapp_number IS NOT NULL AND whatsapp_number != ''")->fetchAll(PDO::FETCH_ASSOC);
 $started = 0;
 foreach ($ams as $am) {
     try {

@@ -17307,9 +17307,11 @@ function MemberScoringTab({member, perfLogs, maiReportSessions, posts=[]}) {
 // — score per session, which checklist items were/weren't confirmed, and
 // the full transcript on demand. Fetches its own data (mai_report_sessions
 // isn't part of the app's normal preloaded data set).
-function AccountManagerMaiReportsTab({member}) {
+function AccountManagerMaiReportsTab({member, onUpdateTeamMember}) {
   const [sessions, setSessions] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
+  const [clearing, setClearing] = useState(false);
+  const enabled = member.mai_checkins_enabled !== 0 && member.mai_checkins_enabled !== "0";
 
   useEffect(()=>{
     let cancelled = false;
@@ -17319,10 +17321,49 @@ function AccountManagerMaiReportsTab({member}) {
     return ()=>{cancelled=true;};
   },[member.id]);
 
+  // Pausing skips them entirely in the morning/EOD cron (they never get
+  // texted while it's off), for someone still in training who shouldn't be
+  // scored on check-ins they're not expected to reliably do yet.
+  const toggleEnabled = () => onUpdateTeamMember && onUpdateTeamMember(member.id, {mai_checkins_enabled: enabled ? 0 : 1});
+
+  // Deletes every 'missed' session on file for this person — a training-
+  // period no-show shouldn't keep dragging their score down (counted
+  // double, see calcMaiCheckinScore) forever once they're actually up to
+  // speed. Completed sessions are untouched.
+  const clearMissed = async () => {
+    const missed = (sessions||[]).filter(s=>s.status==="missed");
+    if(!missed.length) return;
+    setClearing(true);
+    await Promise.all(missed.map(s=>de("MaiReportSession", s.id).catch(()=>{})));
+    setSessions(prev=>(prev||[]).filter(s=>s.status!=="missed"));
+    setClearing(false);
+  };
+
+  const missedOnFile = (sessions||[]).filter(s=>s.status==="missed").length;
+  const headerBar = (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",padding:"12px 16px",background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <PermSwitch checked={enabled} onChange={toggleEnabled}/>
+        <div>
+          <p style={{fontSize:13,fontWeight:700}}>{enabled?"Check-ins on":"Check-ins paused"}</p>
+          <p style={{fontSize:11,color:"var(--text3)"}}>{enabled?"Mai texts them every weekday at 12pm and 7pm.":"Mai won't message them until this is switched back on — useful while they're still training."}</p>
+        </div>
+      </div>
+      {missedOnFile>0 && (
+        <button onClick={clearMissed} disabled={clearing} style={{padding:"7px 14px",borderRadius:8,fontSize:12,fontWeight:700,border:"1px solid #ef444444",background:"#ef444411",color:"#ef4444",cursor:clearing?"wait":"pointer",whiteSpace:"nowrap"}}>
+          {clearing?<><Spinner size={12}/> Clearing…</>:`Clear ${missedOnFile} Missed Check-in${missedOnFile!==1?"s":""}`}
+        </button>
+      )}
+    </div>
+  );
+
   if(sessions===null) return <div style={{padding:30,display:"flex",justifyContent:"center"}}><Spinner size={18}/></div>;
   if(sessions.length===0) return (
-    <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:30,textAlign:"center",color:"var(--text2)",fontSize:13}}>
-      No Mai check-ins yet — the morning (12pm) and end-of-day (7pm) WhatsApp check-ins run automatically on weekdays.
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {headerBar}
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:30,textAlign:"center",color:"var(--text2)",fontSize:13}}>
+        No Mai check-ins yet — the morning (12pm) and end-of-day (7pm) WhatsApp check-ins run automatically on weekdays.
+      </div>
     </div>
   );
 
@@ -17345,6 +17386,7 @@ function AccountManagerMaiReportsTab({member}) {
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {headerBar}
       {avgScore!=null&&(
         <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20,display:"flex",alignItems:"center",gap:16}}>
           <div style={{width:56,height:56,borderRadius:"50%",background:avgScore>=80?"#10b98122":avgScore>=50?"#f59e0b22":"#ef444422",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:16,color:avgScore>=80?"#10b981":avgScore>=50?"#f59e0b":"#ef4444",flexShrink:0}}>{avgScore}%</div>
@@ -18036,7 +18078,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
 
       {tab==="scoring"&&<MemberScoringTab member={member} perfLogs={perfLogs} maiReportSessions={maiReportSessions} posts={posts}/>}
 
-      {tab==="mai_reports"&&<AccountManagerMaiReportsTab member={member}/>}
+      {tab==="mai_reports"&&<AccountManagerMaiReportsTab member={member} onUpdateTeamMember={onUpdateTeamMember}/>}
 
       {tab==="hiring"&&(
         loadingHiring ? (

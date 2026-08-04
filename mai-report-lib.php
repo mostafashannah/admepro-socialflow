@@ -369,7 +369,7 @@ function maiSendAdminDigest(PDO $pdo, $reportType) {
     if ($flagStmt->fetchColumn()) return;
     $pdo->prepare("INSERT IGNORE INTO mai_report_digests (report_type, report_date) VALUES (:t, :d)")->execute([':t' => $reportType, ':d' => $today]);
 
-    $ams = $pdo->query("SELECT id, name FROM team_members WHERE role = 'account_manager' AND status = 'active'")->fetchAll(PDO::FETCH_ASSOC);
+    $ams = $pdo->query("SELECT id, name FROM team_members WHERE role = 'account_manager' AND status = 'active' AND mai_checkins_enabled = 1")->fetchAll(PDO::FETCH_ASSOC);
     if (!$ams) return;
 
     $sessStmt = $pdo->prepare("SELECT * FROM mai_report_sessions WHERE account_manager_id = :id AND report_type = :t AND report_date = :d LIMIT 1");
