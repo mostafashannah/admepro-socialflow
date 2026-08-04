@@ -499,13 +499,20 @@ function minsToAmPm(mins) {
   return `${h12}:${String(m).padStart(2,'0')} ${ampm}`;
 }
 
-function generateDailySchedule(posts, userEmail, date) {
+function generateDailySchedule(posts, userEmail, date, userRole) {
   // Show tasks whose due_date matches the selected day; fall back to
   // tasks with no due_date only for "today" so the schedule makes sense
   // when navigating forward/backward.
   const today = new Date().toISOString().split("T")[0];
   const myPosts = posts.filter(p => {
-    if (p.assigned_to !== userEmail) return false;
+    // wasOwnerOf (not just live assigned_to) so a content creator's/
+    // designer's own work still shows on THEIR day even after the stage
+    // moves on to a reviewer — otherwise the exact time slot they spent
+    // on it that day just vanishes from their own timeline once it's
+    // handed off. (userRole is optional — omitting it falls back to the
+    // plain current-assignee check, e.g. the double-booking conflict
+    // check in the assign modal, which cares who holds it right now.)
+    if (!wasOwnerOf(p, userEmail, userRole)) return false;
     // This timeline's whole purpose is capacity planning — seeing what's
     // already on someone's plate to find real empty slots before assigning
     // them something new — so it needs to show EVERY task still in the
@@ -34024,7 +34031,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   }, []);
 
   const dateStr = viewDate.toISOString().split('T')[0];
-  const rawSlots = generateDailySchedule(posts, effectiveUser?.email, dateStr);
+  const rawSlots = generateDailySchedule(posts, effectiveUser?.email, dateStr, effectiveUser?.role);
   // Apply schedule overrides
   const slots = rawSlots.map(slot => {
     const ov = (scheduleOverrides||[]).find(o => o.post_id===slot.post_id && o.user_email===effectiveUser?.email && o.date===dateStr);
@@ -34068,7 +34075,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   // view, so it read all-zero whenever the viewer themself had no tasks
   // that day despite the timeline clearly showing other members' tasks.
   const timelineMembers = [currentUser, ...(team||[]).filter(m=>m.email!==currentUser?.email)].filter(m=>!["hr","accountant","office_boy"].includes(m.role));
-  const combinedSlots = combinedView ? timelineMembers.flatMap(m=>generateDailySchedule(posts, m.email, dateStr)) : null;
+  const combinedSlots = combinedView ? timelineMembers.flatMap(m=>generateDailySchedule(posts, m.email, dateStr, m.role)) : null;
   const combinedTrackedSecs = combinedView ? timelineMembers.reduce((sum,m)=>sum + (timeEntries||[]).filter(t=>t.user_email===m.email && t.date===dateStr).reduce((acc,t)=>{
     if(t.status==='active') return acc + (t.total_seconds||0) + Math.floor((Date.now()-new Date(t.started_at).getTime())/1000);
     return acc + (t.total_seconds||0);
@@ -34174,7 +34181,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
             </div>
           </div>
           {timelineMembers.map(member=>{
-            const memberSlots = generateDailySchedule(posts, member.email, dateStr).map(slot=>{
+            const memberSlots = generateDailySchedule(posts, member.email, dateStr, member.role).map(slot=>{
               const ov = (scheduleOverrides||[]).find(o=>o.post_id===slot.post_id && o.user_email===member.email && o.date===dateStr);
               if(!ov) return slot;
               const dur = slot.end_mins - slot.start_mins;
