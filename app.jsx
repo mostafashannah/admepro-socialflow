@@ -18633,7 +18633,7 @@ function LeaveRequestsTab({requests, canDecide, onDecide}) {
       <div style={{display:"flex",alignItems:"center",gap:12}}>
         <div style={{flex:1}}>
           <div style={{fontWeight:600,fontSize:14,color:"var(--text)"}}>{r.member_name} — {r.type==="vacation"?"Vacation":r.type==="personal_leave"?"Personal Leave":"WFH"}</div>
-          <div style={{color:"var(--text2)",fontSize:12}}>{r.start_date===r.end_date?r.start_date:`${r.start_date} → ${r.end_date}`} · {r.type==="personal_leave"?`${r.hours}h`:`${r.days} day(s)`}{r.manager_name?` · Manager: ${r.manager_name}`:""}</div>
+          <div style={{color:"var(--text2)",fontSize:12}}>{r.start_date===r.end_date?r.start_date:`${r.start_date} → ${r.end_date}`} · {r.type==="personal_leave"?`${r.start_time&&r.end_time?`${r.start_time.slice(0,5)}–${r.end_time.slice(0,5)} · `:""}${r.hours}h`:`${r.days} day(s)`}{r.manager_name?` · Manager: ${r.manager_name}`:""}</div>
           {r.created_at&&<div style={{color:"var(--text3)",fontSize:11,marginTop:2}}>Submitted {fmtDateTime(r.created_at)}</div>}
           {r.reason&&<div style={{color:"var(--text3)",fontSize:12,marginTop:2}}>"{r.reason}"</div>}
         </div>
@@ -28537,6 +28537,7 @@ function MyWorkTab({member, attendanceRecords, leaveRequests, onSubmit}) {
   const [startDate, setStartDate] = React.useState("");
   const [endDate, setEndDate] = React.useState("");
   const [hours, setHours] = React.useState(2);
+  const [startTime, setStartTime] = React.useState("");
   const [reason, setReason] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
 
@@ -28548,17 +28549,27 @@ function MyWorkTab({member, attendanceRecords, leaveRequests, onSubmit}) {
   const plRemaining = Math.max(0, Number(member.personal_leave_hours_total??4) - Number(member.personal_leave_hours_used||0));
   const isPersonal = reqType==="personal_leave";
 
-  const resetForm = () => { setReqType("vacation"); setStartDate(""); setEndDate(""); setHours(2); setReason(""); };
+  // "To" is derived from "From" + hours — e.g. 16:00 + 2h → 18:00 — never
+  // entered directly, so it can't drift out of sync with the hour count.
+  const endTime = React.useMemo(()=>{
+    if(!startTime || !Number(hours)) return "";
+    const [h,m] = startTime.split(":").map(Number);
+    const total = h*60 + m + Math.round(Number(hours)*60);
+    const eh = Math.floor((total/60)%24), em = total%60;
+    return `${String(eh).padStart(2,"0")}:${String(em).padStart(2,"0")}`;
+  },[startTime, hours]);
+
+  const resetForm = () => { setReqType("vacation"); setStartDate(""); setEndDate(""); setHours(2); setStartTime(""); setReason(""); };
 
   const canSubmit = isPersonal
-    ? !!startDate && Number(hours)>=2 && Number(hours)<=plRemaining
+    ? !!startDate && !!startTime && Number(hours)>=2 && Number(hours)<=plRemaining
     : !!startDate && !!endDate;
 
   const handleSubmit = async () => {
     if(!canSubmit) return;
     setSubmitting(true);
     await onSubmit(isPersonal
-      ? {type:reqType, start_date:startDate, end_date:startDate, hours:Number(hours), reason}
+      ? {type:reqType, start_date:startDate, end_date:startDate, hours:Number(hours), start_time:startTime, end_time:endTime, reason}
       : {type:reqType, start_date:startDate, end_date: endDate<startDate?startDate:endDate, reason});
     setSubmitting(false);
     setShowRequest(false);
@@ -28603,7 +28614,7 @@ function MyWorkTab({member, attendanceRecords, leaveRequests, onSubmit}) {
               <div key={r.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"var(--surface2)",borderRadius:10}}>
                 <div style={{flex:1,minWidth:0}}>
                   <p style={{fontSize:13,fontWeight:700}}>{r.type==="vacation"?"Vacation":r.type==="personal_leave"?"Personal Leave":"WFH"} — {r.start_date===r.end_date?r.start_date:`${r.start_date} → ${r.end_date}`}</p>
-                  <p style={{fontSize:11,color:"var(--text3)"}}>{r.type==="personal_leave"?`${r.hours}h`:`${r.days} day(s)`}{r.reason?` · "${r.reason}"`:""}{r.decision_note?` · Note: ${r.decision_note}`:""}</p>
+                  <p style={{fontSize:11,color:"var(--text3)"}}>{r.type==="personal_leave"?`${r.start_time&&r.end_time?`${r.start_time.slice(0,5)}–${r.end_time.slice(0,5)} · `:""}${r.hours}h`:`${r.days} day(s)`}{r.reason?` · "${r.reason}"`:""}{r.decision_note?` · Note: ${r.decision_note}`:""}</p>
                 </div>
                 <span style={{
                   background:r.status==="approved"?"#10b98122":r.status==="rejected"?"#ef444422":"#f59e0b22",
@@ -28660,6 +28671,10 @@ function MyWorkTab({member, attendanceRecords, leaveRequests, onSubmit}) {
           {isPersonal ? (
             <>
               <Field label="Date" required><input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} style={inputSt}/></Field>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                <Field label="From" required><input type="time" value={startTime} onChange={e=>setStartTime(e.target.value)} style={inputSt}/></Field>
+                <Field label="To" hint="Auto-calculated"><input type="time" value={endTime} disabled style={{...inputSt,opacity:0.6,cursor:"not-allowed"}}/></Field>
+              </div>
               <Field label="Hours" required hint={`Min 2h per request · ${plRemaining}h remaining this month`}>
                 <input type="number" min={2} max={plRemaining} step={0.5} value={hours} onChange={e=>setHours(e.target.value)} style={inputSt}/>
               </Field>
@@ -43403,7 +43418,7 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
   // leave" flow) — just creates a pending leave_requests row;
   // decideLeaveRequest above is what actually deducts credit once a
   // manager approves it.
-  const submitLeaveRequest = async ({type, start_date, end_date, hours, reason}) => {
+  const submitLeaveRequest = async ({type, start_date, end_date, hours, start_time, end_time, reason}) => {
     const member = data.team?.find(t=>t.email===currentUser?.email);
     if(!member) return;
     const isPersonal = type==="personal_leave";
@@ -43413,15 +43428,17 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
     const hrs = isPersonal ? Number(hours||0) : null;
     const local = {
       id:uid(), team_member_id:member.id, member_name:member.name, type,
-      start_date, end_date, days, hours:hrs, reason:reason||"", status:"pending",
+      start_date, end_date, days, hours:hrs,
+      start_time: isPersonal ? start_time||null : null, end_time: isPersonal ? end_time||null : null,
+      reason:reason||"", status:"pending",
       manager_name: member.manager_id ? (data.team.find(t=>t.id===member.manager_id)?.name||"") : "",
       source:"app", created_at:new Date().toISOString(),
     };
     setData(d=>({...d, leaveRequests:[local, ...(d.leaveRequests||[])]}));
-    const res = await ce("LeaveRequest",[{team_member_id:member.id, member_name:member.name, type, start_date, end_date, days, hours:hrs, reason:reason||"", status:"pending", manager_name:local.manager_name, source:"app"}]).catch(()=>null);
+    const res = await ce("LeaveRequest",[{team_member_id:member.id, member_name:member.name, type, start_date, end_date, days, hours:hrs, start_time:local.start_time, end_time:local.end_time, reason:reason||"", status:"pending", manager_name:local.manager_name, source:"app"}]).catch(()=>null);
     const real = res?.entities?.[0];
     if(real?.id) setData(d=>({...d, leaveRequests:d.leaveRequests.map(r=>r.id===local.id?real:r)}));
-    logActivity("Leave Request Submitted","users",`${member.name} — ${type} (${start_date}${isPersonal?` — ${hrs}h`:end_date!==start_date?` → ${end_date}`:""})`,"success","",currentUser?.email||"admin");
+    logActivity("Leave Request Submitted","users",`${member.name} — ${type} (${start_date}${isPersonal?` — ${start_time||""}–${end_time||""} (${hrs}h)`:end_date!==start_date?` → ${end_date}`:""})`,"success","",currentUser?.email||"admin");
     setToast("Request submitted");
   };
 
