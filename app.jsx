@@ -28561,9 +28561,9 @@ function MyWorkTab({member, attendanceRecords, leaveRequests, onSubmit}) {
 
   const resetForm = () => { setReqType("vacation"); setStartDate(""); setEndDate(""); setHours(2); setStartTime(""); setReason(""); };
 
-  const canSubmit = isPersonal
+  const canSubmit = !!reason.trim() && (isPersonal
     ? !!startDate && !!startTime && Number(hours)>=2 && Number(hours)<=plRemaining
-    : !!startDate && !!endDate;
+    : !!startDate && !!endDate);
 
   const handleSubmit = async () => {
     if(!canSubmit) return;
@@ -28686,7 +28686,7 @@ function MyWorkTab({member, attendanceRecords, leaveRequests, onSubmit}) {
               <Field label="End Date" required><input type="date" value={endDate} min={startDate||undefined} onChange={e=>setEndDate(e.target.value)} style={inputSt}/></Field>
             </div>
           )}
-          <Field label="Reason" hint="Optional"><textarea value={reason} onChange={e=>setReason(e.target.value)} rows={3} style={{...inputSt,resize:"vertical"}}/></Field>
+          <Field label="Reason" required><textarea value={reason} onChange={e=>setReason(e.target.value)} rows={3} style={{...inputSt,resize:"vertical"}}/></Field>
         </div>
       </Modal>
     </div>
