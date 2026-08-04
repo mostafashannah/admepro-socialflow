@@ -28563,7 +28563,7 @@ function MyWorkTab({member, attendanceRecords, leaveRequests, onSubmit}) {
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(200px,100%),1fr))",gap:14}}>
           <div><p style={{fontSize:11,color:"var(--text3)"}}>Title</p><p style={{fontSize:14,fontWeight:700}}>{member.title||"—"}</p></div>
           <div><p style={{fontSize:11,color:"var(--text3)"}}>Role</p><p style={{fontSize:14,fontWeight:700}}>{ROLES[member.role]?.label||member.role||"—"}</p></div>
-          <div><p style={{fontSize:11,color:"var(--text3)"}}>Joined</p><p style={{fontSize:14,fontWeight:700}}>{member.created_date?fmtDate(member.created_date):"—"}</p></div>
+          <div><p style={{fontSize:11,color:"var(--text3)"}}>Joined</p><p style={{fontSize:14,fontWeight:700}}>{(member.created_date||member.created_at)?fmtDate(member.created_date||member.created_at):"—"}</p></div>
           <div>
             <p style={{fontSize:11,color:"var(--text3)"}}>Vacation Days</p>
             <p style={{fontSize:14,fontWeight:700}}>{Number(member.vacation_days_used||0)} / {Number(member.vacation_days_total??21)}</p>
