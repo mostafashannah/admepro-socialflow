@@ -490,7 +490,13 @@ function generateDailySchedule(posts, userEmail, date) {
   const today = new Date().toISOString().split("T")[0];
   const myPosts = posts.filter(p => {
     if (p.assigned_to !== userEmail) return false;
-    if (["published","scheduled","rejected"].includes(p.stage)) return false;
+    // This timeline's whole purpose is capacity planning — seeing what's
+    // already on someone's plate to find real empty slots before assigning
+    // them something new — so it needs to show EVERY task still in the
+    // pipeline, not just the earlier stages. Only Published (truly done)
+    // and Rejected (dead) actually free up a slot; Scheduled still has a
+    // real publish step to do and used to silently disappear from here.
+    if (["published","rejected"].includes(p.stage)) return false;
     if (p.due_date) return p.due_date === date;
     // Tasks without a due_date only appear on today's view
     return date === today;
@@ -6270,6 +6276,18 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
             <button onClick={()=>{
               if(post.stage==="client_request"&&next.key==="planning") { setPickedProjectId(""); setShowPickProject(true); return; }
               if(["content_creation","design"].includes(next.key)) { openAssignModal(next.key); return; }
+              // A real social post (has a platform — a plain Task never has
+              // one, and never has a caption/hashtags to begin with) can't
+              // reach Client Approval or Scheduled without both a caption
+              // and hashtags actually written — that's exactly how the Bino
+              // carousel slipped all the way to Scheduled with nothing but
+              // its content brief showing, and then failed to publish.
+              // Stories don't carry hashtags at all (no field for it), so
+              // they're exempt from that half of the check.
+              if(post.platform && ["client_approval","scheduled"].includes(next.key)) {
+                if(!post.caption) { alert("This post has no caption yet — add one before moving it forward."); return; }
+                if(post.post_type!=="story" && !post.hashtags) { alert("This post has no hashtags yet — add some before moving it forward."); return; }
+              }
               onStageChange(post,next.key);
             }} style={{
               flex:1,padding:"10px 16px",borderRadius:"var(--rs)",
@@ -33667,7 +33685,14 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
 
                 {/* Actions */}
                 {nextStage && (
-                  <button onClick={e=>{e.stopPropagation();onStageChange(post, nextStage.key);}} style={{
+                  <button onClick={e=>{
+                    e.stopPropagation();
+                    if(post.platform && ["client_approval","scheduled"].includes(nextStage.key)) {
+                      if(!post.caption) { alert("This post has no caption yet — add one before moving it forward."); return; }
+                      if(post.post_type!=="story" && !post.hashtags) { alert("This post has no hashtags yet — add some before moving it forward."); return; }
+                    }
+                    onStageChange(post, nextStage.key);
+                  }} style={{
                     padding:"10px 16px",borderRadius:"var(--rs)",
                     background:nextStage.color+"22",border:`1px solid ${nextStage.color}55`,
                     color:nextStage.color,fontSize:12,fontWeight:700,
