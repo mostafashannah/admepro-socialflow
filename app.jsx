@@ -33842,6 +33842,28 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
     return p && ["published","scheduled"].includes(p.stage);
   }).length / slots.length * 100) : 0;
 
+  // Same member list the combined timeline below renders one row per — the
+  // summary bar (Total Tasks/Active Now/Time Tracked/Completion) previously
+  // stayed scoped to `effectiveUser` (a single person) even in Combined
+  // view, so it read all-zero whenever the viewer themself had no tasks
+  // that day despite the timeline clearly showing other members' tasks.
+  const timelineMembers = [currentUser, ...(team||[]).filter(m=>m.email!==currentUser?.email)].filter(m=>!["hr","accountant","office_boy"].includes(m.role));
+  const combinedSlots = combinedView ? timelineMembers.flatMap(m=>generateDailySchedule(posts, m.email, dateStr)) : null;
+  const combinedTrackedSecs = combinedView ? timelineMembers.reduce((sum,m)=>sum + (timeEntries||[]).filter(t=>t.user_email===m.email && t.date===dateStr).reduce((acc,t)=>{
+    if(t.status==='active') return acc + (t.total_seconds||0) + Math.floor((Date.now()-new Date(t.started_at).getTime())/1000);
+    return acc + (t.total_seconds||0);
+  },0), 0) : null;
+  const combinedActiveTimers = combinedView ? timelineMembers.flatMap(m=>(timeEntries||[]).filter(t=>t.user_email===m.email && t.status==='active')) : null;
+  const combinedCompletionPct = combinedView && combinedSlots.length > 0 ? Math.round(combinedSlots.filter(s => {
+    const p = posts.find(p=>p.id===s.post_id);
+    return p && ["published","scheduled"].includes(p.stage);
+  }).length / combinedSlots.length * 100) : 0;
+
+  const summaryTotalTasks = combinedView ? combinedSlots.length : slots.length;
+  const summaryActiveNow = combinedView ? combinedActiveTimers.length : activeTimers.length;
+  const summaryTrackedSecs = combinedView ? combinedTrackedSecs : todayTrackedSecs;
+  const summaryCompletionPct = combinedView ? combinedCompletionPct : completionPct;
+
   const hours = Array.from({length: WORKING_END - WORKING_START}, (_, i) => WORKING_START + i);
 
   const prevDay = () => { const d = new Date(viewDate); d.setDate(d.getDate()-1); setViewDate(d); };
@@ -33894,10 +33916,10 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
       {/* Summary bar */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
         {[
-          {label:"Total Tasks",value:slots.length,color:"var(--accent)"},
-          {label:"Active Now",value:activeTimers.length,color:"#10b981"},
-          {label:"Time Tracked",value:fmtSecs(todayTrackedSecs),color:"#3b82f6"},
-          {label:"Completion",value:`${completionPct}%`,color:"#f59e0b"},
+          {label:"Total Tasks",value:summaryTotalTasks,color:"var(--accent)"},
+          {label:"Active Now",value:summaryActiveNow,color:"#10b981"},
+          {label:"Time Tracked",value:fmtSecs(summaryTrackedSecs),color:"#3b82f6"},
+          {label:"Completion",value:`${summaryCompletionPct}%`,color:"#f59e0b"},
         ].map(stat=>(
           <div key={stat.label} style={{padding:14,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",display:"flex",flexDirection:"column",gap:4}}>
             <p style={{fontSize:11,color:"var(--text3)",fontWeight:600,textTransform:"uppercase",letterSpacing:"0.06em"}}>{stat.label}</p>
@@ -33931,7 +33953,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
               ))}
             </div>
           </div>
-          {[currentUser, ...(team||[]).filter(m=>m.email!==currentUser?.email)].filter(m=>!["hr","accountant","office_boy"].includes(m.role)).map(member=>{
+          {timelineMembers.map(member=>{
             const memberSlots = generateDailySchedule(posts, member.email, dateStr).map(slot=>{
               const ov = (scheduleOverrides||[]).find(o=>o.post_id===slot.post_id && o.user_email===member.email && o.date===dateStr);
               if(!ov) return slot;
