@@ -582,6 +582,27 @@ const getAssigneeForStage = (stage, teamMembers) => {
   return (teamMembers || []).find(m => m.role === roleNeeded && m.status !== "inactive");
 };
 
+// `assigned_to` is deliberately overwritten every time a post moves into a
+// review/approval stage (see WORKFLOW_ASSIGNMENTS above) — it always means
+// "who needs to act on this right now", not "who did the work". That's
+// correct for showing current owners, but it means a content
+// creator's/designer's OWN finished work silently loses their name the
+// moment it leaves their stage — permanently, even once published — so
+// counting "my completed work" off assigned_to alone makes real, published
+// work disappear from their own dashboard. content_assigned_to/
+// design_assigned_to (stamped once, in handleStageChange, the moment
+// they're assigned into their own stage) are the durable record of who
+// actually did it; this
+// checks BOTH so current owners AND past doers each still see their own
+// posts/tasks.
+function wasOwnerOf(post, email, role) {
+  if (!email) return false;
+  if (post.assigned_to === email) return true;
+  if (role === "content_creator" && post.content_assigned_to === email) return true;
+  if (role === "graphic_designer" && post.design_assigned_to === email) return true;
+  return false;
+}
+
 // Restricts an assignee picker to only the team members eligible for a given
 // stage (e.g. Brief/planning -> Account Managers only). Falls back to the
 // full team for stages with no defined role (scheduled/published/etc).
@@ -5498,6 +5519,15 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   // Admin/AM only — everyone else just reads these off the tile.
   const [dueEdit, setDueEdit] = useState(null); // {date,time} | null
   const [pubEdit, setPubEdit] = useState(null);
+  const [showAssigneePicker, setShowAssigneePicker] = useState(false);
+  // Distinct from toggleExtraAssignee below (which only stages a change into
+  // editForm until the whole Edit form is saved) — this one is the quick
+  // "Assigned To" card picker, saving each toggle immediately on its own.
+  const toggleExtraAssigneeLive = (email) => {
+    const current = parseJ(post.assigned_to_extra||"[]");
+    const next = current.includes(email) ? current.filter(e=>e!==email) : [...current, email];
+    onEdit&&onEdit({...post, assigned_to_extra: JSON.stringify(next)});
+  };
   const saveDueEdit = () => {
     if(!dueEdit) return;
     if(dueEdit.date && !dueEdit.time) return;
@@ -5753,11 +5783,14 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 </div>
               ) : <span style={{fontSize:12,color:"var(--text3)"}}>Not set</span>}
             </div>
-            <div style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
-              <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Assigned To</p>
+            <div onClick={()=>isManager&&setShowAssigneePicker(v=>!v)} style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",cursor:isManager?"pointer":"default"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+                <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Assigned To</p>
+                {isManager&&<Ico d={showAssigneePicker?Icons.x:Icons.plus} size={12} stroke="var(--text3)"/>}
+              </div>
               {assignee ? (
                 <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                  <Avatar name={assignee.name} size={20} role={assignee.role}/>
+                  <Avatar name={assignee.name} size={20} role={assignee.role} title={assignee.name}/>
                   <span style={{fontSize:13,fontWeight:600}}>{assignee.name}</span>
                   {parseJ(post.assigned_to_extra||"[]").map(email=>{
                     const m = team?.find(t=>t.email===email);
@@ -5767,6 +5800,28 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
               ) : <span style={{fontSize:12,color:"var(--text3)"}}>Unassigned</span>}
             </div>
           </div>
+
+          {/* Extra-assignee picker — anyone besides the primary Assigned To
+              (which still drives the workflow/ownership logic above) can be
+              tagged on as an additional person working this task; toggling a
+              row saves immediately, no separate "Save" step. */}
+          {showAssigneePicker&&isManager&&(
+            <div style={{padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",display:"flex",flexDirection:"column",gap:6}}>
+              <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Add People to This Task</p>
+              <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:220,overflowY:"auto"}}>
+                {(team||[]).filter(m=>m.status!=="inactive"&&m.email!==post.assigned_to).map(m=>{
+                  const active = parseJ(post.assigned_to_extra||"[]").includes(m.email);
+                  return (
+                    <button key={m.email} onClick={()=>toggleExtraAssigneeLive(m.email)} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",borderRadius:7,border:"none",background:active?"var(--accent)22":"transparent",cursor:"pointer",textAlign:"left"}}>
+                      <Avatar name={m.name} size={20} role={m.role}/>
+                      <span style={{fontSize:12,fontWeight:600,color:"var(--text)",flex:1}}>{m.name}</span>
+                      {active&&<Ico d={Icons.check} size={13} stroke="var(--accent)"/>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {currentUser?.email===post.assigned_to ? (
             <TimeTracker postId={post.id} userEmail={currentUser?.email} timeEntries={timeEntries||[]} onStart={onStartTimer} onPause={onPauseTimer} onResume={onResumeTimer}/>
           ) : (
@@ -8582,7 +8637,7 @@ function SparkLine({data,color,height=40,width=120}) {
 // ── Compute per-user performance metrics ──
 function computePerformance(team, posts, timelogs, perfLogs) {
   return team.map(member => {
-    const assigned = posts.filter(p=>p.assigned_to===member.email);
+    const assigned = posts.filter(p=>wasOwnerOf(p, member.email, member.role));
     const completed = assigned.filter(p=>["published","scheduled","client_approval"].includes(p.stage));
     const rejected = assigned.filter(p=>p.stage==="rejected");
     const inProgress= assigned.filter(p=>!["published","scheduled","rejected"].includes(p.stage));
@@ -8802,7 +8857,7 @@ function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAdd
   );
 
   const myNotifs = notifications.filter(n=>n.recipient_email===currentUser.email&&!n.is_read);
-  const myTasks = posts.filter(p=>p.assigned_to===currentUser.email);
+  const myTasks = posts.filter(p=>wasOwnerOf(p, currentUser.email, currentUser.role));
   const pendingApproval = posts.filter(p=>p.stage==="client_approval").length;
 
   // Filter posts by date range
@@ -17554,7 +17609,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
   // Clients where this member is listed as an account manager — surfaced on
   // Overview so assigning an AM to a client is visible from both directions.
   const myClients = (clients||[]).filter(c=>getAccountManagerIds(c).includes(member.id));
-  const myTasks = (posts||[]).filter(p=>p.assigned_to===member.email);
+  const myTasks = (posts||[]).filter(p=>wasOwnerOf(p, member.email, member.role));
   const myScheduled = myTasks.filter(p=>p.scheduled_date).sort((a,b)=>new Date(a.scheduled_date)-new Date(b.scheduled_date));
   const myLeave = (leaveRequests||[]).filter(r=>r.team_member_id===member.id).sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
   // Per-month history of actual Personal Leave/WFH/Vacation usage — needed
@@ -25686,7 +25741,7 @@ const MOTIVATIONAL_MESSAGES = [
 
 function generateEmailHTML(es, member, perf, posts, timelogs, appSettings, accentColor) {
   const memberPerf = perf.find(p=>p.email===member.email)||{};
-  const assignedPosts = posts.filter(p=>p.assigned_to===member.email);
+  const assignedPosts = posts.filter(p=>wasOwnerOf(p, member.email, member.role));
   const completed = assignedPosts.filter(p=>["published","scheduled"].includes(p.stage));
   const pending = assignedPosts.filter(p=>!["published","scheduled","rejected"].includes(p.stage));
   const overdue = assignedPosts.filter(p=>p.scheduled_date&&new Date(p.scheduled_date)<new Date()&&!["published","rejected"].includes(p.stage));
@@ -25942,7 +25997,7 @@ function DailyEmailSettings({emailSettings, onSave, team, posts, timelogs, perfL
 
   // Compute mock performance for preview
   const perf = (team||[]).map(m=>{
-    const assigned=posts.filter(p=>p.assigned_to===m.email);
+    const assigned=posts.filter(p=>wasOwnerOf(p, m.email, m.role));
     const completed=assigned.filter(p=>["published","scheduled"].includes(p.stage));
     const myLogs=perfLogs.filter(l=>l.user_email===m.email);
     const avgQ=myLogs.length?myLogs.reduce((a,l)=>a+(l.quality_score||0),0)/myLogs.length:0;
@@ -43095,6 +43150,10 @@ function App() {
       const am = amIds.length ? data.team.find(m=>amIds.includes(m.id)) : null;
       if(am) postData = {...postData, assigned_to: am.email};
     }
+    // Recorded once, permanently, so review/approval stages always have
+    // someone real to fall back to (see handleStageChange) instead of
+    // auto-picking an arbitrary "first active account manager".
+    if(!postData.created_by_email) postData = {...postData, created_by_email: currentUser?.email||""};
     const local = {...postData, id:uid(), created_date:new Date().toISOString()};
     // Notify assignee
     if(postData.assigned_to && postData.assigned_to !== currentUser?.email) {
@@ -44983,17 +45042,23 @@ Return ONLY valid JSON (no markdown, no explanation):
 
     // A manually-picked assignee/schedule (from the Move-to modal) always wins.
     // On a backward move (rejection/return), keep it with whoever actually
-    // already owned that stage on THIS post — falling through to
-    // getAssigneeForStage's generic "any active content_creator" pick here
-    // used to silently re-attribute (and re-assign!) the task to an
-    // unrelated team member who never touched it, just because they
-    // happened to be first by role.
+    // already owned that stage on THIS post. NEVER auto-pick "any active
+    // member with the right role" — that used to silently re-attribute
+    // (and re-assign!) the task to an unrelated team member who never
+    // touched it, just because they happened to be first by role
+    // (getAssigneeForStage — now only used for the picker's *eligible*
+    // list, never to actually assign). Falling through with no explicit
+    // pick lands review/approval stages on the AM who created the
+    // post/task in the first place — they're the one accountable for it
+    // start to finish — and if even that's unknown (legacy posts with no
+    // creator recorded), it just leaves assigned_to exactly as it was.
     const priorStageOwnerEmail = newStage==="content_creation" ? (post.content_assigned_to || post.assigned_to)
       : ["design","internal_review","design_review"].includes(newStage) ? post.assigned_to
       : null;
     const assignee = overrides.assigned_to ? data.team.find(m=>m.email===overrides.assigned_to)
       : (wentBackward && priorStageOwnerEmail) ? data.team.find(m=>m.email===priorStageOwnerEmail)
-      : getAssigneeForStage(newStage, data.team);
+      : post.created_by_email ? data.team.find(m=>m.email===post.created_by_email)
+      : null;
     const assigneeName = assignee?.name || "Unassigned";
     const assigneeEmail = overrides.assigned_to || assignee?.email || "";
 
@@ -45002,6 +45067,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       due_time: overrides.due_time || post.due_time,
       estimated_minutes: overrides.estimated_minutes || post.estimated_minutes,
       content_assigned_to: newStage==="content_creation" ? (assigneeEmail||post.assigned_to) : post.content_assigned_to,
+      design_assigned_to: newStage==="design" ? (assigneeEmail||post.assigned_to) : post.design_assigned_to,
       project_id: overrides.project_id || post.project_id,
       revision_count: revisionCount,
       was_rejected: wasRejected,
