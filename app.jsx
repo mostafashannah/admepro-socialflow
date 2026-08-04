@@ -353,16 +353,14 @@ const STAGES = [
   { key: "on_hold", label: "On Hold", color: "#f97316", icon: "" },
   { key: "rejected", label: "Rejected", color: "#ef4444", icon: "✕" },
 ];
-// The single source of truth for "what comes next" from any given
-// stage/kind — a Task (platform is always empty) and a Post share the same
-// STAGES array up through Client Approval, then diverge: a Task's next
-// stop is Approved (terminal, never Scheduled/Published); a Post skips
-// Approved entirely and goes straight to Scheduled. Anything already at a
-// terminal stage for its kind (Approved for a Task, Published for a Post)
-// has no next stage at all.
+// The single source of truth for "what comes next" from any given stage —
+// EVERYTHING (Task or Post) lands on Approved once Client Approval clears;
+// a Task is done right there (never touches Scheduled/Published at all).
+// A Post keeps going, but only ever manually from here — via "Jump to
+// stage" — never as an automatic "next" step, so nothing accidentally
+// gets scheduled/published straight off an approval. Approved therefore
+// never has an auto-advance "next" stage for either kind.
 function nextStageFor(post) {
-  const isTask = !post.platform;
-  if (post.stage === "client_approval") return STAGES.find(s => s.key === (isTask ? "approved" : "scheduled"));
   if (post.stage === "approved") return null;
   const ci = STAGES.findIndex(s => s.key === post.stage);
   return ci === -1 ? null : STAGES[ci + 1];
@@ -624,6 +622,21 @@ function wasOwnerOf(post, email, role) {
   if (post.assigned_to === email) return true;
   if (role === "content_creator" && post.content_assigned_to === email) return true;
   if (role === "graphic_designer" && post.design_assigned_to === email) return true;
+  return false;
+}
+
+// Whether a post/task counts as DONE for a given role. A content
+// creator's/designer's job is finished the moment the client signs off —
+// Approved is their real finish line, same as Published/Scheduled. An
+// account manager's job spans the WHOLE pipeline through to actually
+// publishing, so for them a real Post only counts once it's genuinely
+// Scheduled/Published — sitting in Approved still has real work left (the
+// manual move to Scheduled) that's on the AM, not done yet. A Task, which
+// ends at Approved for everyone (it never touches Scheduled/Published at
+// all), is the one exception — it counts as done for an AM there too.
+function isCompletedForRole(post, role) {
+  if (post.stage === "published" || post.stage === "scheduled") return true;
+  if (post.stage === "approved") return role !== "account_manager" || !post.platform;
   return false;
 }
 
@@ -3662,7 +3675,7 @@ function StagePipeline({post}) {
   // ends at Approved; a Post never touches Approved at all. Each kind only
   // shows the stages it can actually pass through.
   const isTask = !post.platform;
-  const shown = STAGES.filter(s => s.key!=="rejected" && (isTask ? s.key!=="scheduled" && s.key!=="published" : s.key!=="approved"));
+  const shown = STAGES.filter(s => s.key!=="rejected" && (isTask ? s.key!=="scheduled" && s.key!=="published" : true));
   const terminalKey = isTask ? "approved" : "published";
   const ci = shown.findIndex(s=>s.key===post.stage);
   return (
@@ -6229,9 +6242,22 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
         {isManager && (
           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",padding:"8px 12px",background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:"var(--rs)"}}>
             <span style={{fontSize:11,fontWeight:700,color:"var(--text3)",whiteSpace:"nowrap"}}>Jump to stage:</span>
-            <select value="" onChange={e=>{ if(e.target.value) onStageChange(post, e.target.value); }} style={{...inputSt,flex:1,minWidth:140,padding:"6px 10px",fontSize:12}}>
+            <select value="" onChange={e=>{
+              if(!e.target.value) return;
+              // Same caption/hashtags requirement as the normal "Move to X"
+              // buttons — jumping straight to Client Approval/Scheduled is
+              // still just as capable of shipping a post with no real
+              // content as the step-by-step path was.
+              if(post.platform && ["client_approval","scheduled"].includes(e.target.value)) {
+                if(!post.caption) { alert("This post has no caption yet — add one before moving it forward."); return; }
+                if(post.post_type!=="story" && !post.hashtags) { alert("This post has no hashtags yet — add some before moving it forward."); return; }
+              }
+              onStageChange(post, e.target.value);
+            }} style={{...inputSt,flex:1,minWidth:140,padding:"6px 10px",fontSize:12}}>
               <option value="">Choose a stage…</option>
-              {STAGES.filter(s=>s.key!==post.stage).map(s=>(
+              {/* A Task (no platform) never reaches Scheduled/Published —
+                  its real path ends at Approved. */}
+              {STAGES.filter(s=>s.key!==post.stage && (post.platform || (s.key!=="scheduled" && s.key!=="published"))).map(s=>(
                 <option key={s.key} value={s.key}>{s.label}</option>
               ))}
             </select>
@@ -8725,9 +8751,9 @@ function SparkLine({data,color,height=40,width=120}) {
 function computePerformance(team, posts, timelogs, perfLogs) {
   return team.map(member => {
     const assigned = posts.filter(p=>wasOwnerOf(p, member.email, member.role));
-    const completed = assigned.filter(p=>["published","scheduled","client_approval"].includes(p.stage));
+    const completed = assigned.filter(p=>isCompletedForRole(p, member.role));
     const rejected = assigned.filter(p=>p.stage==="rejected");
-    const inProgress= assigned.filter(p=>!["published","scheduled","approved","rejected"].includes(p.stage));
+    const inProgress= assigned.filter(p=>p.stage!=="rejected" && !isCompletedForRole(p, member.role));
     const myLogs = perfLogs.filter(l=>l.user_email===member.email);
     const myTime = timelogs.filter(t=>t.logged_by===member.email);
     // Numeric DB columns can arrive as strings depending on the backend —
@@ -9125,8 +9151,8 @@ No markdown, no explanation.`;
                 {label:"Pending Approval",value:pendingApproval,color:"#ec4899",sub:"awaiting client"},
                 {label:"Avg Quality Score",value:avgQualityAll+"%",color:"#8b5cf6",sub:`${approvedPosts} approved`},
               ] : [
-                {label:"My Active Tasks",value:myPosts.filter(p=>!["published","rejected"].includes(p.stage)).length,color:"#3b82f6",sub:`${myPosts.length} total`},
-                {label:"My Completed Posts",value:myPosts.filter(p=>p.stage==="published").length,color:"#10b981",sub:`${myPosts.length?Math.round(myPosts.filter(p=>p.stage==="published").length/myPosts.length*100):0}% rate`},
+                {label:"My Active Tasks",value:myPosts.filter(p=>p.stage!=="rejected" && !isCompletedForRole(p, currentUser?.role)).length,color:"#3b82f6",sub:`${myPosts.length} total`},
+                {label:"My Completed Posts",value:myPosts.filter(p=>isCompletedForRole(p, currentUser?.role)).length,color:"#10b981",sub:`${myPosts.length?Math.round(myPosts.filter(p=>isCompletedForRole(p, currentUser?.role)).length/myPosts.length*100):0}% rate`},
                 {label:"Pending Approval",value:myPosts.filter(p=>p.stage==="client_approval").length,color:"#ec4899",sub:"awaiting client"},
                 {label:"My Quality Score",value:(myPerf.perfScore||0)+"%",color:"#8b5cf6",sub:"your score"},
               ]).map(s=>(
@@ -25871,8 +25897,8 @@ const MOTIVATIONAL_MESSAGES = [
 function generateEmailHTML(es, member, perf, posts, timelogs, appSettings, accentColor) {
   const memberPerf = perf.find(p=>p.email===member.email)||{};
   const assignedPosts = posts.filter(p=>wasOwnerOf(p, member.email, member.role));
-  const completed = assignedPosts.filter(p=>["published","scheduled","approved"].includes(p.stage));
-  const pending = assignedPosts.filter(p=>!["published","scheduled","approved","rejected"].includes(p.stage));
+  const completed = assignedPosts.filter(p=>isCompletedForRole(p, member.role));
+  const pending = assignedPosts.filter(p=>p.stage!=="rejected" && !isCompletedForRole(p, member.role));
   const overdue = assignedPosts.filter(p=>p.scheduled_date&&new Date(p.scheduled_date)<new Date()&&!["published","rejected"].includes(p.stage));
   const myLogs = timelogs.filter(t=>t.logged_by===member.email);
   const totalHrs = myLogs.reduce((a,t)=>a+(t.duration_minutes||0)/60,0);
@@ -26127,7 +26153,7 @@ function DailyEmailSettings({emailSettings, onSave, team, posts, timelogs, perfL
   // Compute mock performance for preview
   const perf = (team||[]).map(m=>{
     const assigned=posts.filter(p=>wasOwnerOf(p, m.email, m.role));
-    const completed=assigned.filter(p=>["published","scheduled","approved"].includes(p.stage));
+    const completed=assigned.filter(p=>isCompletedForRole(p, m.role));
     const myLogs=perfLogs.filter(l=>l.user_email===m.email);
     const avgQ=myLogs.length?myLogs.reduce((a,l)=>a+(l.quality_score||0),0)/myLogs.length:0;
     const perfScore=myLogs.length?Math.min(100,Math.round(completed.length*18+(avgQ*0.4))):0;
@@ -33606,8 +33632,11 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
       .map(c => c.post_id)
   );
 
-  // Posts assigned to the current user OR where they were @mentioned
-  const myPosts = posts.filter(p => p.assigned_to === currentUser?.email || mentionedPostIds.has(p.id));
+  // Posts currently OR historically owned by the current user (see
+  // wasOwnerOf — content_assigned_to/design_assigned_to survive their own
+  // stage getting handed off to a reviewer, unlike plain assigned_to) OR
+  // where they were @mentioned.
+  const myPosts = posts.filter(p => wasOwnerOf(p, currentUser?.email, currentUser?.role) || mentionedPostIds.has(p.id));
   const filteredPosts = filterStage ? myPosts.filter(p => p.stage === filterStage) : myPosts;
 
   // Group by stage
@@ -33672,7 +33701,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
               <div>
                 {filteredPosts.map(post=>{
                   const stage = STAGE_MAP[post.stage];
-                  const isDone = post.stage==="published";
+                  const isDone = isCompletedForRole(post, currentUser?.role);
                   const project = projects.find(p => p.id === post.project_id);
                   return (
                     <div key={post.id} onClick={()=>onPostClick&&onPostClick(post)} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",borderBottom:"1px solid var(--border)",cursor:"pointer"}}>
@@ -33720,8 +33749,8 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
         {[
           {label:"Total", count:myPosts.length, color:"#6366f1"},
-          {label:"In Progress", count:myPosts.filter(p=>!["published","scheduled","approved","rejected"].includes(p.stage)).length, color:"#3b82f6"},
-          {label:"Completed", count:myPosts.filter(p=>["published","scheduled","approved"].includes(p.stage)).length, color:"#10b981"},
+          {label:"In Progress", count:myPosts.filter(p=>p.stage!=="rejected" && !isCompletedForRole(p, currentUser?.role)).length, color:"#3b82f6"},
+          {label:"Completed", count:myPosts.filter(p=>isCompletedForRole(p, currentUser?.role)).length, color:"#10b981"},
           {label:"Rejected", count:myPosts.filter(p=>p.stage==="rejected").length, color:"#ef4444"},
         ].map((stat,i)=>(
           <div key={i} style={{background:"var(--surface)",border:`1px solid ${stat.color}44`,borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"column",gap:6}}>
