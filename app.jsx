@@ -9054,7 +9054,12 @@ No markdown, no explanation.`;
                   <div style={{maxHeight:"min(280px,40vh)",overflowY:"auto"}}>
                     {visibleTeam.map(member=>{
                       const mPerf=perf.find(p=>p.email===member.email)||{};
-                      const activeTasks=filteredPosts.filter(p=>p.assigned_to===member.email&&!["published","rejected"].includes(p.stage));
+                      // Deliberately uses the unfiltered `posts`, not `filteredPosts` —
+                      // this card is "what is this person working on right now",
+                      // and shouldn't silently go blank just because the page's
+                      // date-range/user/client filter (meant for the overview
+                      // widgets above) happens to exclude their active task.
+                      const activeTasks=posts.filter(p=>p.assigned_to===member.email&&!["published","rejected"].includes(p.stage));
                       const isOnline=liveMemberEmails.has(member.email);
                       return (
                         <div key={member.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 18px",borderBottom:"1px solid var(--border)"}}>
