@@ -4383,9 +4383,9 @@ ${postInfo}`;
 
     if(isReel) return `${sharedHeader}
 
-Generate 3 REEL content options. Each must use a different angle/energy. Study the approved examples above and match that client's style. Every option must follow the LANGUAGE INSTRUCTION above exactly — if it lists more than one language, EVERY option must contain all of them together, not just one.
+Generate 1 REEL content option. Study the approved examples above and match that client's style. Every option must follow the LANGUAGE INSTRUCTION above exactly — if it lists more than one language, it must contain all of them together, not just one.
 
-Return ONLY a valid JSON array with exactly 3 objects:
+Return ONLY a valid JSON array with exactly 1 object:
 [
   {
     "tov_label": "Name of this tone angle",
@@ -4401,9 +4401,9 @@ No markdown, no explanation outside JSON. Return array only.`;
 
     if(isCarousel) return `${sharedHeader}
 
-Generate 3 CAROUSEL options, each with a different angle. Match this client's approved caption style. Every option must follow the LANGUAGE INSTRUCTION above exactly — if it lists more than one language, EVERY option must contain all of them together, not just one.
+Generate 1 CAROUSEL option. Match this client's approved caption style. Every option must follow the LANGUAGE INSTRUCTION above exactly — if it lists more than one language, it must contain all of them together, not just one.
 
-Return ONLY a valid JSON array with exactly 3 objects:
+Return ONLY a valid JSON array with exactly 1 object:
 [
   {
     "tov_label": "Name of this angle",
@@ -4424,9 +4424,9 @@ Exactly 4 slides per option. No markdown. Return array only.`;
     // Default: Image / Story / Static
     return `${sharedHeader}
 
-Generate 3 CAPTION options, each with a completely different tone angle. The captions must feel like they were written by someone who knows this client deeply — not generic social media copy. Every option must follow the LANGUAGE INSTRUCTION above exactly — if it lists more than one language, EVERY option must contain all of them together, not just one.
+Generate 1 CAPTION option. It must feel like it was written by someone who knows this client deeply — not generic social media copy. It must follow the LANGUAGE INSTRUCTION above exactly — if it lists more than one language, it must contain all of them together, not just one.
 
-Return ONLY a valid JSON array with exactly 3 objects:
+Return ONLY a valid JSON array with exactly 1 object:
 [
   {
     "tov_label": "Name of this tone/angle",
@@ -4459,6 +4459,21 @@ No markdown, no explanation. Return the JSON array only.`;
       setResult([{tov_label:"Error",caption:`Generation failed: ${e.message}`,hashtags:"",hook:"",script:"",cta:"",cover:"",slides:[],cta_slide:"",music_direction:""}]);
     }
     setGenerating(false);
+  };
+
+  // Skips Sara entirely — drops a blank option straight into the same
+  // editable card the AI-generated one would land in, so content/TOV/
+  // hashtags can just be typed by hand when there's nothing to generate
+  // from (or the writer already knows exactly what they want to say).
+  const writeManually = () => {
+    setChosenIdx(null);
+    const blank = isReel
+      ? {tov_label:"Manual", hook:"", script:"", cta:"", caption:"", hashtags:"", music_direction:""}
+      : isCarousel
+      ? {tov_label:"Manual", cover:"", slides:[{title:"",body:""},{title:"",body:""},{title:"",body:""},{title:"",body:""}], cta_slide:"", caption:"", hashtags:""}
+      : {tov_label:"Manual", ...(post.post_type!=="story"?{text_on_visual:""}:{}), caption:"", hashtags:""};
+    setResult([{...blank, tov, languages:[...langs]}]);
+    setEditingIdx(0); // start in Edit mode — nothing to look at until they type
   };
 
   const updateField = (optIdx, field, val) => {
@@ -4586,16 +4601,19 @@ ${shapeInstr}`;
           <Ico d={Icons.sparkle} size={16} stroke="var(--accent)"/>
           <div>
             <p style={{fontSize:13,fontWeight:700}}>Sara — Content Generator — {typeLabel}</p>
-            <p style={{fontSize:11,color:"var(--text3)"}}>3 options to start · add more anytime · editable · push to Design</p>
+            <p style={{fontSize:11,color:"var(--text3)"}}>1 option to start · add more anytime · editable · push to Design</p>
           </div>
         </div>
-        {/* Only shown before anything exists — once options are generated,
-            each one has its own Regenerate, so a global "wipe all 3" button
+        {/* Only shown before anything exists — once an option is on the
+            board, it has its own Regenerate, so a global regenerate button
             here just duplicates that with no real use. */}
         {!result&&(
-          <Btn size="sm" onClick={handleGenerate} disabled={generating}>
-            {generating?<><Spinner size={12}/> Sara is now working…</>:<><Ico d={Icons.sparkle} size={12}/>Generate 3 Options</>}
-          </Btn>
+          <div style={{display:"flex",gap:8}}>
+            <Btn size="sm" onClick={handleGenerate} disabled={generating}>
+              {generating?<><Spinner size={12}/> Sara is now working…</>:<><Ico d={Icons.sparkle} size={12}/>Generate Option</>}
+            </Btn>
+            <Btn size="sm" variant="secondary" onClick={writeManually} disabled={generating}>Write Manually</Btn>
+          </div>
         )}
       </div>
 
@@ -4642,9 +4660,9 @@ ${shapeInstr}`;
           <div style={{padding:32,textAlign:"center",border:"2px dashed var(--border2)",borderRadius:"var(--rs)"}}>
             <Ico d={Icons.sparkle} size={36} stroke="var(--text3)"/>
             <p style={{fontSize:13,color:"var(--text3)",marginTop:10,marginBottom:4,fontWeight:600}}>
-              Ready to generate {isReel?"reel script + hook + CTA":isCarousel?"carousel slides + cover":"3 caption options"}
+              Ready to generate {isReel?"a reel script + hook + CTA":isCarousel?"carousel slides + cover":"a caption"}
             </p>
-            <p style={{fontSize:12,color:"var(--text3)"}}>Select language & TOV above → click Generate</p>
+            <p style={{fontSize:12,color:"var(--text3)"}}>Select language & TOV above → click Generate, or Write Manually to skip Sara entirely</p>
           </div>
         )}
 
