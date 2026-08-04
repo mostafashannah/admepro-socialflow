@@ -5335,8 +5335,12 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [captionInlineEdit, setCaptionInlineEdit] = useState(false);
-  const [captionDraft, setCaptionDraft] = useState({caption:"",hashtags:"",text_on_visual:"",reel_hook:""});
+  // Opens the caption straight into Edit mode for an AM/admin reviewing a
+  // post in Internal Review or Design — they're the ones expected to tweak
+  // wording during review, so making them click "Edit" first every time was
+  // just an extra step for no reason.
+  const [captionInlineEdit, setCaptionInlineEdit] = useState(()=>isManager && ["internal_review","design"].includes(post.stage));
+  const [captionDraft, setCaptionDraft] = useState(()=>({caption:post.caption||"",hashtags:post.hashtags||"",text_on_visual:post.text_on_visual||"",reel_hook:post.reel_hook||""}));
   const [publishing, setPublishing] = useState(false);
   const [publishResult, setPublishResult] = useState(null);
   const [lightboxImage, setLightboxImage] = useState(null);
