@@ -5584,6 +5584,15 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   // now actually goes out to both instead of only post.platform.
   const handlePublish = async () => {
     if(!connectedMultiPlatforms.length) return;
+    // Fails fast with a real explanation instead of letting it hit the API
+    // and come back with a generic "missing platform/page_id/access_token/
+    // message" error that reads like the whole integration is broken when
+    // it's really just an empty caption — easy to end up with (nothing
+    // currently blocks scheduling a post before Content ever wrote one).
+    if(!post.caption && !post.hashtags) {
+      setPublishResult({ok:false, msg:"This post has no caption yet — add one (Edit, or the Content phase) before publishing."});
+      return;
+    }
     setPublishing(true); setPublishResult(null);
     const results = [];
     for(const pl of connectedMultiPlatforms) {
