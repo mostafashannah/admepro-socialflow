@@ -493,11 +493,27 @@ try {
         $triggerCount = max(1, intval($rules['lateTriggerCount'] ?? 1));
         $deductHours = floatval($rules['lateDeductHours'] ?? 2);
 
+        // A late check-in already covered by an APPROVED personal-leave
+        // request for that same date (and, when the request has clock
+        // times, actually spanning the check-in moment) is expected, not a
+        // violation — its hours were already deducted from Personal Leave
+        // when the request was approved (see decideLeaveRequest), so
+        // counting it again here would double-charge the same lateness.
+        // Older personal-leave rows saved before start_time/end_time
+        // existed fall back to a day-level match (NULL bound = unbounded).
         $lateStmt = $pdo->prepare(
-            "SELECT id, team_member_id FROM attendance_records
+            "SELECT id, team_member_id FROM attendance_records a
              WHERE team_member_id IS NOT NULL AND late_deducted = 0
                AND check_in IS NOT NULL AND check_in > :thresh
                AND status NOT IN ('leave','wfh')
+               AND NOT EXISTS (
+                 SELECT 1 FROM leave_requests lr
+                 WHERE lr.team_member_id = a.team_member_id
+                   AND lr.type = 'personal_leave' AND lr.status = 'approved'
+                   AND lr.start_date = a.work_date
+                   AND (lr.start_time IS NULL OR a.check_in >= lr.start_time)
+                   AND (lr.end_time IS NULL OR a.check_in <= lr.end_time)
+               )
              ORDER BY team_member_id, work_date"
         );
         $lateStmt->execute([':thresh' => $threshold]);
