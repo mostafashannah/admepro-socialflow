@@ -28265,7 +28265,7 @@ function ProfilePhoto({photoUrl, name, role, size=56, onClick}) {
 // ════════════════════════════════════════════════════════════════
 // MY ACCOUNT PAGE
 // ════════════════════════════════════════════════════════════════
-function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange, wallpaper, notifPrefs, onSaveNotifPrefs, rolePermsMap, teamMember}) {
+function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange, wallpaper, notifPrefs, onSaveNotifPrefs, rolePermsMap, teamMember, attendanceRecords=[], leaveRequests=[], onSubmitLeaveRequest}) {
   const [tab, setTab] = usePersistentState("sf_tab_account","profile");
   // Bio/Title falls back to the title set on this person's Team Management
   // record (member.title) when they haven't overridden it here themselves —
@@ -28329,6 +28329,7 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
     {key:"profile", label:"Profile", ico:Icons.person},
     {key:"appearance", label:"Appearance", ico:Icons.palette},
     {key:"notifications", label:"Notifications", ico:Icons.bell2},
+    ...(teamMember ? [{key:"work", label:"Attendance & Leave", ico:Icons.calendar||Icons.clock}] : []),
   ];
 
   return (
@@ -28519,6 +28520,135 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
 
       {/* ─── NOTIFICATIONS TAB ─── */}
       {tab==="notifications"&&<NotificationPrefsTab notifPrefs={notifPrefs} onSaveNotifPrefs={onSaveNotifPrefs} currentUser={currentUser} rolePermsMap={rolePermsMap}/>}
+
+      {/* ─── ATTENDANCE & LEAVE TAB ─── */}
+      {tab==="work"&&teamMember&&<MyWorkTab member={teamMember} attendanceRecords={attendanceRecords} leaveRequests={leaveRequests} onSubmit={onSubmitLeaveRequest}/>}
+    </div>
+  );
+}
+
+// Self-service "my data" tab on the Account page — main info, attendance
+// history, and vacation/WFH requests (submit + track status of your own).
+// Its own component (not inline) for the same hooks-order reason as
+// NotificationPrefsTab above: it only mounts when tab==="work".
+function MyWorkTab({member, attendanceRecords, leaveRequests, onSubmit}) {
+  const [showRequest, setShowRequest] = React.useState(false);
+  const [reqType, setReqType] = React.useState("vacation");
+  const [startDate, setStartDate] = React.useState("");
+  const [endDate, setEndDate] = React.useState("");
+  const [reason, setReason] = React.useState("");
+  const [submitting, setSubmitting] = React.useState(false);
+
+  const myAttendance = (attendanceRecords||[]).filter(a=>a.team_member_id===member.id || a.member_name===member.name)
+    .sort((a,b)=>new Date(b.work_date)-new Date(a.work_date)).slice(0,30);
+  const myRequests = (leaveRequests||[]).filter(r=>r.team_member_id===member.id)
+    .sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+
+  const resetForm = () => { setReqType("vacation"); setStartDate(""); setEndDate(""); setReason(""); };
+
+  const handleSubmit = async () => {
+    if(!startDate || !endDate) return;
+    setSubmitting(true);
+    await onSubmit({type:reqType, start_date:startDate, end_date: endDate<startDate?startDate:endDate, reason});
+    setSubmitting(false);
+    setShowRequest(false);
+    resetForm();
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
+      {/* Main data */}
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:24,display:"flex",flexDirection:"column",gap:16}}>
+        <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>My Data</p>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(200px,100%),1fr))",gap:14}}>
+          <div><p style={{fontSize:11,color:"var(--text3)"}}>Title</p><p style={{fontSize:14,fontWeight:700}}>{member.title||"—"}</p></div>
+          <div><p style={{fontSize:11,color:"var(--text3)"}}>Role</p><p style={{fontSize:14,fontWeight:700}}>{ROLES[member.role]?.label||member.role||"—"}</p></div>
+          <div><p style={{fontSize:11,color:"var(--text3)"}}>Joined</p><p style={{fontSize:14,fontWeight:700}}>{member.created_date?fmtDate(member.created_date):"—"}</p></div>
+          <div>
+            <p style={{fontSize:11,color:"var(--text3)"}}>Vacation Days</p>
+            <p style={{fontSize:14,fontWeight:700}}>{Number(member.vacation_days_used||0)} / {Number(member.vacation_days_total??21)}</p>
+          </div>
+          <div>
+            <p style={{fontSize:11,color:"var(--text3)"}}>WFH Days (this month)</p>
+            <p style={{fontSize:14,fontWeight:700}}>{Number(member.wfh_days_used||0)} / {Number(member.wfh_days_total??2)}</p>
+          </div>
+        </div>
+        <div>
+          <Btn onClick={()=>setShowRequest(true)} size="sm"><Ico d={Icons.plus} size={13}/> Request Vacation / WFH</Btn>
+        </div>
+      </div>
+
+      {/* My requests */}
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:24,display:"flex",flexDirection:"column",gap:12}}>
+        <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>My Requests</p>
+        {myRequests.length===0?(
+          <p style={{fontSize:13,color:"var(--text2)"}}>No vacation/WFH requests yet.</p>
+        ):(
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {myRequests.map(r=>(
+              <div key={r.id} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"var(--surface2)",borderRadius:10}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <p style={{fontSize:13,fontWeight:700}}>{r.type==="vacation"?"Vacation":"WFH"} — {r.start_date===r.end_date?r.start_date:`${r.start_date} → ${r.end_date}`}</p>
+                  <p style={{fontSize:11,color:"var(--text3)"}}>{r.days} day(s){r.reason?` · "${r.reason}"`:""}{r.decision_note?` · Note: ${r.decision_note}`:""}</p>
+                </div>
+                <span style={{
+                  background:r.status==="approved"?"#10b98122":r.status==="rejected"?"#ef444422":"#f59e0b22",
+                  color:r.status==="approved"?"#10b981":r.status==="rejected"?"#ef4444":"#f59e0b",
+                  borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600,textTransform:"capitalize",flexShrink:0,
+                }}>{r.status}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Attendance history */}
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:24,display:"flex",flexDirection:"column",gap:12}}>
+        <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>Attendance</p>
+        {myAttendance.length===0?(
+          <p style={{fontSize:13,color:"var(--text2)"}}>No attendance records yet.</p>
+        ):(
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",minWidth:420}}>
+              <thead>
+                <tr>
+                  <th style={{textAlign:"left",padding:"6px 10px",fontSize:11,color:"var(--text3)",borderBottom:"1px solid var(--border)"}}>Date</th>
+                  <th style={{textAlign:"left",padding:"6px 10px",fontSize:11,color:"var(--text3)",borderBottom:"1px solid var(--border)"}}>Check In</th>
+                  <th style={{textAlign:"left",padding:"6px 10px",fontSize:11,color:"var(--text3)",borderBottom:"1px solid var(--border)"}}>Check Out</th>
+                  <th style={{textAlign:"left",padding:"6px 10px",fontSize:11,color:"var(--text3)",borderBottom:"1px solid var(--border)"}}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {myAttendance.map(a=>(
+                  <tr key={a.id}>
+                    <td style={{padding:"6px 10px",fontSize:12,borderBottom:"1px solid var(--border)"}}>{a.work_date}</td>
+                    <td style={{padding:"6px 10px",fontSize:12,borderBottom:"1px solid var(--border)"}}>{a.check_in||"—"}</td>
+                    <td style={{padding:"6px 10px",fontSize:12,borderBottom:"1px solid var(--border)"}}>{a.check_out||"—"}</td>
+                    <td style={{padding:"6px 10px",fontSize:12,borderBottom:"1px solid var(--border)",textTransform:"capitalize"}}>{a.status||"—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <Modal open={showRequest} onClose={()=>{setShowRequest(false);resetForm();}} title="Request Vacation / WFH" width={460}
+        footer={<Btn onClick={handleSubmit} disabled={submitting||!startDate||!endDate} style={{width:"100%"}}>{submitting?<><Spinner size={14}/> Submitting…</>:"Submit Request"}</Btn>}>
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          <Field label="Type" required>
+            <select value={reqType} onChange={e=>setReqType(e.target.value)} style={inputSt}>
+              <option value="vacation">Vacation</option>
+              <option value="wfh">WFH</option>
+            </select>
+          </Field>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <Field label="Start Date" required><input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} style={inputSt}/></Field>
+            <Field label="End Date" required><input type="date" value={endDate} min={startDate||undefined} onChange={e=>setEndDate(e.target.value)} style={inputSt}/></Field>
+          </div>
+          <Field label="Reason" hint="Optional"><textarea value={reason} onChange={e=>setReason(e.target.value)} rows={3} style={{...inputSt,resize:"vertical"}}/></Field>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -43243,6 +43373,28 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
     }
   };
 
+  // Self-service: a team member submitting their own vacation/WFH request
+  // from the Account page (mirrors the WhatsApp "request leave" flow) — just
+  // creates a pending leave_requests row; decideLeaveRequest above is what
+  // actually deducts credit once a manager approves it.
+  const submitLeaveRequest = async ({type, start_date, end_date, reason}) => {
+    const member = data.team?.find(t=>t.email===currentUser?.email);
+    if(!member) return;
+    const days = Math.max(1, Math.round((new Date(end_date) - new Date(start_date)) / 86400000) + 1);
+    const local = {
+      id:uid(), team_member_id:member.id, member_name:member.name, type,
+      start_date, end_date, days, reason:reason||"", status:"pending",
+      manager_name: member.manager_id ? (data.team.find(t=>t.id===member.manager_id)?.name||"") : "",
+      source:"app", created_at:new Date().toISOString(),
+    };
+    setData(d=>({...d, leaveRequests:[local, ...(d.leaveRequests||[])]}));
+    const res = await ce("LeaveRequest",[{team_member_id:member.id, member_name:member.name, type, start_date, end_date, days, reason:reason||"", status:"pending", manager_name:local.manager_name, source:"app"}]).catch(()=>null);
+    const real = res?.entities?.[0];
+    if(real?.id) setData(d=>({...d, leaveRequests:d.leaveRequests.map(r=>r.id===local.id?real:r)}));
+    logActivity("Leave Request Submitted","users",`${member.name} — ${type} (${start_date}${end_date!==start_date?` → ${end_date}`:""})`,"success","",currentUser?.email||"admin");
+    setToast("Request submitted");
+  };
+
   // Approve/reject a leave/WFH request from the web UI (mirrors the WhatsApp
   // decide_pending_request flow in pro-lib.php) — deducts credit on approval
   // and notifies the requester over WhatsApp via whatsapp.php.
@@ -46048,6 +46200,9 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             onSaveNotifPrefs={saveNotifPrefs}
             rolePermsMap={rolePermsMap}
             teamMember={data.team?.find(m=>m.email===currentUser?.email)}
+            attendanceRecords={data.attendanceRecords||[]}
+            leaveRequests={data.leaveRequests||[]}
+            onSubmitLeaveRequest={submitLeaveRequest}
           />
         )}
         {page==="settings"&&currentUser?.role==="admin"&&(
