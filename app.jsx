@@ -5776,7 +5776,10 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 </div>
               ) : <span style={{fontSize:12,color:"var(--text3)"}}>Not set</span>}
             </div>
-            <div onClick={()=>{if(isManager&&!pubEdit) setPubEdit({date:post.scheduled_date||"",time:post.scheduled_time||""});}}
+            {/* A Task (no platform — a real post always has one) never gets
+                published, only client-approved, so a "Publish Date" field
+                for it is always empty and meaningless. */}
+            {post.platform && <div onClick={()=>{if(isManager&&!pubEdit) setPubEdit({date:post.scheduled_date||"",time:post.scheduled_time||""});}}
               style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",cursor:isManager?"pointer":"default"}}>
               <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:4}}>Publish Date</p>
               {pubEdit ? (
@@ -5797,7 +5800,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                   <span style={{fontSize:13,fontWeight:600}}>{fmtDate(post.scheduled_date)}{post.scheduled_time?` · ${post.scheduled_time}`:""}</span>
                 </div>
               ) : <span style={{fontSize:12,color:"var(--text3)"}}>Not set</span>}
-            </div>
+            </div>}
             <div onClick={()=>isManager&&setShowAssigneePicker(v=>!v)} style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",cursor:isManager?"pointer":"default"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
                 <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Assigned To</p>
