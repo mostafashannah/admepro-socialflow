@@ -5354,7 +5354,7 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
 
 // POST DETAIL MODAL
 // ════════════════════════════════════════════════════════════════
-function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onAddComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,onInsightsRefreshed,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[]}) {
+function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onAddComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,onInsightsRefreshed,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[],allPosts=[]}) {
   const {isMobile} = useResponsive();
   const [comment,setComment] = useState("");
   const [sending,setSending] = useState(false);
@@ -6606,9 +6606,33 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
         </div>
       </Modal>
     )}
-    {assignStage&&(
+    {assignStage&&(() => {
+      // Double-booking check — this modal is the one place a due date/time
+      // actually lands on someone's timeline, so it's also the one place
+      // that can catch two different tasks getting stacked on top of each
+      // other before it happens, instead of only surfacing the clash after
+      // the fact on the Timeline page.
+      const chosenRange = (() => {
+        if(!assignForm.scheduled_date) return null;
+        if(assignForm.mode==="due") {
+          if(!assignForm.scheduled_time) return null;
+          const [h,m] = assignForm.scheduled_time.split(":").map(Number);
+          const start = h*60+(m||0);
+          return {start, end: start+estimateDuration(post)};
+        }
+        if(!assignForm.start_time||!assignForm.end_time) return null;
+        const [sh,sm] = assignForm.start_time.split(":").map(Number);
+        const [eh,em] = assignForm.end_time.split(":").map(Number);
+        return {start: sh*60+(sm||0), end: eh*60+(em||0)};
+      })();
+      const assigneeConflicts = (assignForm.assigned_to && chosenRange)
+        ? generateDailySchedule(allPosts, assignForm.assigned_to, assignForm.scheduled_date)
+            .filter(s=>s.post_id!==post.id && chosenRange.start<s.end_mins && chosenRange.end>s.start_mins)
+            .map(s=>({...s, title: allPosts.find(p=>p.id===s.post_id)?.title||"Untitled"}))
+        : [];
+      return (
       <Modal open onClose={()=>setAssignStage(null)} title={`Move to ${STAGE_MAP[assignStage].label}`} width={440}
-        footer={<Btn onClick={confirmAssignModal} disabled={!assignForm.assigned_to||!assignForm.scheduled_date||(assignForm.mode==="due"?!assignForm.scheduled_time:!(assignForm.start_time&&assignForm.end_time))}>Confirm</Btn>}>
+        footer={<Btn onClick={confirmAssignModal} disabled={!assignForm.assigned_to||!assignForm.scheduled_date||(assignForm.mode==="due"?!assignForm.scheduled_time:!(assignForm.start_time&&assignForm.end_time))||assigneeConflicts.length>0}>Confirm</Btn>}>
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           <div>
             <label style={{fontSize:12,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:6}}>Assign To</label>
@@ -6657,9 +6681,19 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
               </div>
             </div>
           )}
+          {assigneeConflicts.length>0 && (
+            <div style={{padding:"10px 12px",background:"#ef444411",border:"1px solid #ef444444",borderRadius:8,display:"flex",flexDirection:"column",gap:4}}>
+              <p style={{fontSize:12,fontWeight:700,color:"#ef4444"}}> Already busy at this time</p>
+              {assigneeConflicts.map(c=>(
+                <p key={c.post_id} style={{fontSize:11,color:"#ef4444"}}>{c.title} — {c.start_time}–{c.end_time}</p>
+              ))}
+              <p style={{fontSize:11,color:"var(--text3)"}}>Pick a different time, or assign to someone else.</p>
+            </div>
+          )}
         </div>
       </Modal>
-    )}
+      );
+    })()}
     {lightboxImage&&<ImageLightbox url={lightboxImage.url} alt={lightboxImage.name} onClose={()=>setLightboxImage(null)}/>}
     </>
   );
@@ -46578,6 +46612,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         onMemoryLearn={upsertClientMemory}
         onAddAsset={addAsset}
         assets={data.assets||[]}
+        allPosts={data.posts||[]}
       />;
     })()}
 
