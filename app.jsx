@@ -28594,7 +28594,6 @@ function MyWorkTab({member, attendanceRecords, leaveRequests, onSubmit}) {
         <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase"}}>My Data</p>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(200px,100%),1fr))",gap:14}}>
           <div><p style={{fontSize:11,color:"var(--text3)"}}>Title</p><p style={{fontSize:14,fontWeight:700}}>{member.title||"—"}</p></div>
-          <div><p style={{fontSize:11,color:"var(--text3)"}}>Role</p><p style={{fontSize:14,fontWeight:700}}>{ROLES[member.role]?.label||member.role||"—"}</p></div>
           <div><p style={{fontSize:11,color:"var(--text3)"}}>Joined</p><p style={{fontSize:14,fontWeight:700}}>{(member.created_date||member.created_at)?fmtDate(member.created_date||member.created_at):"—"}</p></div>
           <div>
             <p style={{fontSize:11,color:"var(--text3)"}}>Vacation Days</p>
