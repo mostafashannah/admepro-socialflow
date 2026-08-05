@@ -16768,7 +16768,7 @@ function AgentProfilePage({agent, avatarUrl, activityLogs=[], onBack}) {
 
 function UsersPage({currentUser, team, invitations, accessRequests, clientUsers, clients,
   onInviteUser, onCancelInvitation, onApproveRequest, onRejectRequest,
-  onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation, onGenerateClientActivationLink,
+  onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation, onGenerateClientActivationLink, onActivateInvitation,
   rolePerms, onUpdateTeamMember, onRemoveMember, onToggleRolePermission, onAddExpense, leaveRequests, onDecideLeaveRequest, attendanceRecords,
   posts, onImpersonate, appSettings, brandingAssets, onSaveSettings, expenses, onDeclareCompanyDayOff, invoices, payments, subscriptionPayments, activityLogs=[], perfLogs=[], maiReportSessions=[], leaveCreditEvents=[]}) {
   const [tab, setTab] = usePersistentState("sf_tab_users","team");
@@ -17019,6 +17019,9 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
                     <div style={{display:"flex",gap:6}}>
                       <button onClick={()=>{navigator.clipboard?.writeText(link);alert("Link copied!");}} style={{background:"var(--surface2)",border:"none",borderRadius:6,padding:"6px 12px",cursor:"pointer",fontSize:12,color:"var(--text)"}}>Copy Link</button>
                       <button onClick={()=>onResendInvitation&&onResendInvitation(inv)} style={{background:"var(--surface2)",border:"none",borderRadius:6,padding:"6px 12px",cursor:"pointer",fontSize:12,color:"var(--text)"}}>Resend</button>
+                      {onActivateInvitation&&(
+                        <button onClick={()=>{ if(confirm(`Activate ${inv.name||inv.email} now with a generated password, instead of waiting for them to use the invite link?`)) onActivateInvitation(inv); }} style={{background:"#10b98122",border:"none",borderRadius:6,padding:"6px 12px",cursor:"pointer",fontSize:12,color:"#10b981",fontWeight:600}}>Activate</button>
+                      )}
                       <button onClick={()=>onCancelInvitation&&onCancelInvitation(inv.id)} style={{background:"#ef444422",border:"none",borderRadius:6,padding:"6px 12px",cursor:"pointer",fontSize:12,color:"#ef4444"}}>Cancel</button>
                     </div>
                   )}
@@ -44228,6 +44231,41 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
     setToast("Invitation cancelled");
   };
 
+  // Skips waiting for the invitee to click their link — creates the
+  // account (or reactivates a matching one) with a generated temp
+  // password right now, for when the admin wants them in immediately.
+  const activateInvitation = async (inv) => {
+    const tempPass = Math.random().toString(36).slice(2,10).toUpperCase();
+    if(inv.user_type==="client") {
+      const dupe = (data.clientUsers||[]).find(u=>u.email===inv.email && (u.client_id||"")===(inv.client_id||""));
+      if(dupe) await updateClientUser(dupe.id, {status:"active", password:tempPass});
+      else await addClientUser({name:inv.name||"", email:inv.email, role:inv.role, client_id:inv.client_id||"", client_name:inv.client_name||"", status:"active", password:tempPass});
+    } else {
+      const dupe = (data.team||[]).find(m=>m.email===inv.email);
+      if(dupe) {
+        await updateTeamMember(dupe.id, {status:"active", password:tempPass});
+      } else {
+        const res = await ce("TeamMember",[{name:inv.name||inv.email.split("@")[0], email:inv.email, role:inv.role, status:"active", password:tempPass}]).catch(()=>null);
+        const real = res?.entities?.[0];
+        if(real?.id) setData(d=>({...d, team:[real,...(d.team||[])]}));
+      }
+    }
+    setData(d=>({...d, invitations:d.invitations.map(i=>i.id===inv.id?{...i,status:"accepted"}:i)}));
+    ue("UserInvitation", inv.id, {status:"accepted"}).catch(()=>{});
+    const html = `<div style="font-family:'Montserrat',sans-serif;max-width:500px;margin:0 auto;padding:32px;background:#fff;border-radius:12px">
+      <img src="/favicon.svg" width="44" height="44" style="border-radius:10px;display:block;margin:0 auto 20px"/>
+      <h2 style="text-align:center;font-size:20px;font-weight:800;color:#111827;margin-bottom:8px">Your SocialFlow account is active</h2>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;text-align:center">Hi ${inv.name||inv.email}, your account has been activated. Here's your temporary password:</p>
+      <div style="margin:24px auto;text-align:center;background:#f9fafb;border:2px dashed #d1d5db;border-radius:10px;padding:18px 24px">
+        <span style="font-size:26px;font-weight:800;letter-spacing:3px;color:#d90b2c;font-family:monospace">${tempPass}</span>
+      </div>
+      <p style="color:#6b7280;font-size:13px;text-align:center;line-height:1.6">Sign in with this temporary password, then update it in your account settings.</p>
+    </div>`;
+    sendEmail(inv.email, "Your SocialFlow account is active", html, "SocialFlow").catch(()=>{});
+    logActivity("Invitation Activated","users",inv.email||"","success","",currentUser?.email||"admin");
+    setToast(`${inv.email} activated — temporary password emailed`);
+  };
+
   const approveRequest = async (req, role) => {
     // req.status flips to "approved" further below, but a slow network round
     // trip left a window where clicking Approve twice (or a component
@@ -46849,6 +46887,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             onUpdateClientUser={updateClientUser}
             onDeleteClientUser={deleteClientUser}
             onGenerateClientActivationLink={generateClientActivationLink}
+            onActivateInvitation={activateInvitation}
             onResendInvitation={(inv)=>setToast("Invitation link updated — copy it again")}
             rolePerms={rolePermsMap}
             onUpdateTeamMember={updateTeamMember}
