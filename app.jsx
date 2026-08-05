@@ -19730,7 +19730,7 @@ function AddClientUserModal({onClose, onSubmit, clients, onGenerateActivationLin
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{background:"var(--surface)",borderRadius:16,padding:28,width:440,border:"1px solid var(--border)"}}>
+      <div style={{background:"var(--surface)",borderRadius:16,padding:28,width:440,maxHeight:"90vh",overflowY:"auto",border:"1px solid var(--border)"}}>
         <h3 style={{fontWeight:700,fontSize:17,color:"var(--text)",marginBottom:20}}>Add Client User</h3>
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           <div>
@@ -19815,7 +19815,7 @@ function EditClientUserModal({clientUser, onClose, onSubmit, clients, onGenerate
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{background:"var(--surface)",borderRadius:16,padding:28,width:440,border:"1px solid var(--border)"}}>
+      <div style={{background:"var(--surface)",borderRadius:16,padding:28,width:440,maxHeight:"90vh",overflowY:"auto",border:"1px solid var(--border)"}}>
         <h3 style={{fontWeight:700,fontSize:17,color:"var(--text)",marginBottom:20}}>Edit Client User</h3>
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           <div>
