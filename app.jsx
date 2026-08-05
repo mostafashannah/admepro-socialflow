@@ -5917,7 +5917,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                     <div style={{display:"flex",flexShrink:0}}>
                       {all.map((p,i)=>(
                         <div key={p.email} style={{marginLeft:i===0?0:-8,borderRadius:"50%",border:"2px solid var(--surface2)",lineHeight:0}} title={p.name}>
-                          <Avatar name={p.name} size={26} role={p.role}/>
+                          <Avatar name={p.name} size={26} role={p.role} photoUrl={p.avatar_url}/>
                         </div>
                       ))}
                     </div>
