@@ -18215,8 +18215,8 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
 
       <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,padding:20,display:"flex",flexDirection:"column",gap:14}}>
         <div style={{display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
-          <div onClick={()=>member.avatar_url&&setShowPhoto(true)} style={{width:56,height:56,borderRadius:"50%",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:20,flexShrink:0,overflow:"hidden",cursor:member.avatar_url?"zoom-in":"default"}}>
-            {member.avatar_url?<img src={member.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:member.name?.[0]?.toUpperCase()||"?"}
+          <div onClick={()=>member.avatar_url&&setShowPhoto(true)} style={{flexShrink:0,cursor:member.avatar_url?"zoom-in":"default"}}>
+            <Avatar name={member.name||"?"} size={56} role={member.role} photoUrl={member.avatar_url}/>
           </div>
           {showPhoto&&<ImageLightbox url={member.avatar_url} alt={member.name} onClose={()=>setShowPhoto(false)}/>}
           <div style={{flex:1,minWidth:180}}>
