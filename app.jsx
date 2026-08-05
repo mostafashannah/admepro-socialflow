@@ -3522,9 +3522,14 @@ function commentAvatarUrl(comment, team) {
 }
 function Avatar({name,size=32,role,photoUrl}) {
   const c = role ? (ROLES[role]?.color||clr(name)) : clr(name);
-  if(photoUrl) {
+  // A broken/expired photo URL used to just render nothing (a failed <img>
+  // takes up no visible space unless given explicit dimensions elsewhere),
+  // which looked like that person had silently vanished from an avatar
+  // stack — falls back to the normal initials circle instead.
+  const [imgFailed, setImgFailed] = useState(false);
+  if(photoUrl && !imgFailed) {
     return (
-      <img src={photoUrl} alt={name} title={name} style={{
+      <img src={photoUrl} alt={name} title={name} onError={()=>setImgFailed(true)} style={{
         width:size,height:size,borderRadius:"50%",objectFit:"cover",flexShrink:0,
       }}/>
     );
