@@ -180,7 +180,11 @@ var WORKFLOW_ASSIGNMENTS={planning:{role:"account_manager",label:"Account Manage
 // actually did it; this
 // checks BOTH so current owners AND past doers each still see their own
 // posts/tasks.
-function wasOwnerOf(post,email,role){if(!email)return false;if(post.assigned_to===email)return true;if(role==="content_creator"&&post.content_assigned_to===email)return true;if(role==="graphic_designer"&&post.design_assigned_to===email)return true;return false;}// Whether a post/task counts as DONE for a given role. A content
+function wasOwnerOf(post,email,role){if(!email)return false;if(post.assigned_to===email)return true;if(role==="content_creator"&&post.content_assigned_to===email)return true;if(role==="graphic_designer"&&post.design_assigned_to===email)return true;// assigned_to_extra — the extra people tagged onto a task via the
+// Assigned To card's "+" picker — is just as real an assignment as the
+// primary one; someone added there should see the task on their own
+// dashboard/timeline/My Tasks exactly like the primary assignee does.
+if(parseJ(post.assigned_to_extra||"[]").includes(email))return true;return false;}// Whether a post/task counts as DONE for a given role. A content
 // creator's/designer's job is finished the moment the client signs off —
 // Approved is their real finish line, same as Published/Scheduled. An
 // account manager's job spans the WHOLE pipeline through to actually
