@@ -2209,7 +2209,7 @@ function getAgentCfg(agentId){
 // else (bad request, auth, etc.) would fail identically on the fallback
 // too, so retrying there would just waste a call.
 const AI_OVERLOAD_STATUSES = new Set([429, 500, 502, 503, 529]);
-const agentAI = async (agentId, taskLabel, prompt, maxTokens=1000, imageUrl=null) => {
+const agentAI = async (agentId, taskLabel, prompt, maxTokens=1000, imageUrl=null, extraBlocks=null) => {
   const cfg = getAgentCfg(agentId);
   const model = cfg.model || "claude-sonnet-4-6";
   const fallbackModel = (cfg.fallback_model||"").trim();
@@ -2243,10 +2243,17 @@ const agentAI = async (agentId, taskLabel, prompt, maxTokens=1000, imageUrl=null
       if(match) imageBase64Block = {media_type: match[1], data: match[2]};
     } catch(e) { /* fall through to the url-source attempt below as a last resort */ }
   }
+  // extraBlocks (e.g. a PDF "document" block — see buildCvContentBlockFromUrl,
+  // reused for reference attachments on a Content-phase task) only applies to
+  // the Claude path below; the OpenAI branch has no document-block equivalent
+  // and just falls back to text-only, which still works, just without that
+  // extra context.
   const content = imageBase64Block
-    ? [{type:"image", source:{type:"base64", media_type:imageBase64Block.media_type, data:imageBase64Block.data}}, {type:"text", text:fullPrompt}]
+    ? [{type:"image", source:{type:"base64", media_type:imageBase64Block.media_type, data:imageBase64Block.data}}, ...(extraBlocks||[]), {type:"text", text:fullPrompt}]
     : imageUrl
-    ? [{type:"image", source:{type:"url", url:imageUrl}}, {type:"text", text:fullPrompt}]
+    ? [{type:"image", source:{type:"url", url:imageUrl}}, ...(extraBlocks||[]), {type:"text", text:fullPrompt}]
+    : extraBlocks
+    ? [...extraBlocks, {type:"text", text:fullPrompt}]
     : fullPrompt;
   const startedAt = new Date();
   const timingSuffix = () => `|start:${startedAt.toISOString()}|end:${new Date().toISOString()}`;
@@ -4462,7 +4469,8 @@ CLIENT & BRAND CONTEXT:
 ${ctx}
 
 THIS POST:
-${postInfo}`;
+${postInfo}
+${(Array.isArray(post.design_assets)?post.design_assets:parseJ(post.design_assets||"[]")).some(a=>(a.url||a.file_url||"").toLowerCase().split("?")[0].endsWith(".pdf")) ? "\nA reference PDF is attached to this task (sent above as a document) — read it and treat it as the primary source of truth for this content, not just the brief text." : ""}`;
   };
 
   const buildPrompt = () => {
@@ -4525,10 +4533,32 @@ Return ONLY a valid JSON array with exactly 1 object:
 No markdown, no explanation. Return the JSON array only.`;
   };
 
+  // Reference attachments (design_assets — see the Content Phase
+  // "Attachments" block above ContentPhaseGenerator) can include real brief
+  // documents, not just images — a PDF gets sent to Sara as an actual
+  // Claude document block (reusing the same PDF-handling built for CV
+  // review) so she can read and use it, not just see its filename. Capped
+  // at 3 so one task doesn't blow the request up.
+  const buildAttachmentBlocks = async () => {
+    const attachments = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
+    const pdfs = attachments.filter(a => (a.url||a.file_url||"").toLowerCase().split("?")[0].endsWith(".pdf")).slice(0,3);
+    const blocks = [];
+    for(const a of pdfs) {
+      const url = a.url || a.file_url;
+      try {
+        const res = await fetchFileUrl(url);
+        const blob = await res.blob();
+        blocks.push(await buildCvContentBlockFromUrl(blob, url));
+      } catch(e) { /* skip a single bad attachment rather than failing the whole generation */ }
+    }
+    return blocks;
+  };
+
   const handleGenerate = async () => {
     setGenerating(true); setResult(null); setChosenIdx(null); setEditingIdx(null);
     try {
-      const raw = await agentAI("content_creator", `Content phase: ${post?.title||"post"}`, buildPrompt(), 4000);
+      const attachmentBlocks = await buildAttachmentBlocks();
+      const raw = await agentAI("content_creator", `Content phase: ${post?.title||"post"}`, buildPrompt(), 4000, null, attachmentBlocks.length?attachmentBlocks:null);
       const arrMatch = (raw||"").match(/\[[\s\S]*\]/);
       const clean = arrMatch ? arrMatch[0] : (raw||"").replace(/```json|```/g,"").trim();
       let parsed;
