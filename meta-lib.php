@@ -16,10 +16,14 @@ define('META_GRAPH_VERSION', 'v23.0');
 // For REELS, returns [202, {status:"processing", container_id, ig_user_id}] so
 // the caller can hand the container_id back to the client for async polling
 // (avoids nginx gateway timeout on slow Meta video processing).
-function meta_publish($platform, $page_id, $access_token, $message, $image_url, $scheduled_at = null, $story_image_url = null, $post_type = null, $cover_url = null) {
+function meta_publish($platform, $page_id, $access_token, $message, $image_url, $scheduled_at = null, $story_image_url = null, $post_type = null, $cover_url = null, $image_urls = null) {
     $v = META_GRAPH_VERSION;
+    $isCarousel = $post_type === 'carousel' && is_array($image_urls) && count($image_urls) > 1;
 
     if ($platform === 'facebook') {
+        if ($isCarousel) {
+            return fb_publish_carousel($v, $page_id, $access_token, $message, $image_urls, $scheduled_at);
+        }
         $isFbVideo = in_array($post_type, ['reel', 'video'], true);
         if ($isFbVideo && $image_url) {
             // Facebook video/reel: use the /videos endpoint with file_url
@@ -43,6 +47,9 @@ function meta_publish($platform, $page_id, $access_token, $message, $image_url, 
     }
 
     if ($platform === 'instagram') {
+        if ($isCarousel) {
+            return ig_publish_carousel($v, $page_id, $access_token, $message, $image_urls);
+        }
         $isReel = in_array($post_type, ['reel', 'video'], true);
         if (!$image_url) return [400, ['error' => 'Instagram requires image_url (or video_url for reels)']];
 
@@ -78,14 +85,92 @@ function meta_publish($platform, $page_id, $access_token, $message, $image_url, 
 
 // Creates an Instagram media container without polling or publishing.
 // Returns [http_code, response] — on success response contains 'id'.
-function ig_create_container($v, $ig_user_id, $access_token, $media_url, $caption, $media_type, $cover_url = null) {
+function ig_create_container($v, $ig_user_id, $access_token, $media_url, $caption, $media_type, $cover_url = null, $is_carousel_item = false) {
     $container_ep = "https://graph.instagram.com/{$v}/{$ig_user_id}/media";
     $url_key = ($media_type === 'REELS') ? 'video_url' : 'image_url';
     $container_data = [$url_key => $media_url, 'access_token' => $access_token];
     if ($caption)    $container_data['caption']    = $caption;
     if ($media_type) $container_data['media_type'] = $media_type;
     if ($cover_url)  $container_data['cover_url']  = $cover_url;
+    if ($is_carousel_item) $container_data['is_carousel_item'] = 'true';
     return meta_curl($container_ep, $container_data);
+}
+
+// Instagram carousel (2-10 images/videos in one post, published in the
+// exact order given — see DesignAssetGrid's drag/arrow reordering on the
+// frontend, which IS this order). Each slide is first created as its own
+// "child" container (is_carousel_item=true, no caption of its own), then
+// a parent container of media_type=CAROUSEL references all the child ids
+// and carries the actual caption; that parent is what actually gets
+// polled and published, same as a normal single-image post.
+function ig_publish_carousel($v, $ig_user_id, $access_token, $caption, $image_urls) {
+    $image_urls = array_slice($image_urls, 0, 10); // Instagram's own carousel limit
+    $children = [];
+    foreach ($image_urls as $url) {
+        [$code, $resp] = ig_create_container($v, $ig_user_id, $access_token, $url, null, null, null, true);
+        if ($code !== 200 || empty($resp['id'])) {
+            return [$code ?: 502, ['error' => 'Failed to create carousel slide container', 'detail' => $resp]];
+        }
+        $children[] = $resp['id'];
+    }
+
+    $container_ep = "https://graph.instagram.com/{$v}/{$ig_user_id}/media";
+    [$code, $resp] = meta_curl($container_ep, [
+        'media_type' => 'CAROUSEL',
+        'children' => implode(',', $children),
+        'caption' => $caption ?: '',
+        'access_token' => $access_token,
+    ]);
+    if ($code !== 200 || empty($resp['id'])) {
+        return [$code ?: 502, ['error' => 'Failed to create carousel container', 'detail' => $resp]];
+    }
+
+    $status_ep = "https://graph.instagram.com/{$v}/{$resp['id']}?" . http_build_query([
+        'fields' => 'status_code', 'access_token' => $access_token,
+    ]);
+    for ($i = 0; $i < 12; $i++) {
+        usleep(($i === 0 ? 500 : 1500) * 1000);
+        [, $statusResp] = meta_curl_get($status_ep);
+        $status = $statusResp['status_code'] ?? null;
+        if ($status === 'FINISHED') break;
+        if ($status === 'ERROR') return [502, ['error' => 'Instagram failed to process the carousel', 'detail' => $statusResp]];
+    }
+
+    $publish_ep = "https://graph.instagram.com/{$v}/{$ig_user_id}/media_publish";
+    return meta_curl($publish_ep, ['creation_id' => $resp['id'], 'access_token' => $access_token]);
+}
+
+// Facebook multi-photo post: each image is first uploaded "unpublished"
+// (published=false, just registers it and returns a photo id, doesn't
+// post anything on its own), then one /feed post attaches all of them via
+// attached_media, in the same order they were uploaded — that's what
+// actually makes it render as one multi-photo post instead of N separate
+// single-photo posts.
+function fb_publish_carousel($v, $page_id, $access_token, $message, $image_urls, $scheduled_at = null) {
+    $image_urls = array_slice($image_urls, 0, 10);
+    $attached = [];
+    foreach ($image_urls as $url) {
+        $photo_ep = "https://graph.facebook.com/{$v}/{$page_id}/photos";
+        [$code, $resp] = meta_curl($photo_ep, ['url' => $url, 'published' => 'false', 'access_token' => $access_token]);
+        if ($code !== 200 || empty($resp['id'])) {
+            return [$code ?: 502, ['error' => 'Failed to upload carousel photo', 'detail' => $resp]];
+        }
+        $attached[] = $resp['id'];
+    }
+
+    $feed_ep = "https://graph.facebook.com/{$v}/{$page_id}/feed";
+    $post_data = ['message' => $message ?: '', 'access_token' => $access_token];
+    foreach (array_values($attached) as $i => $photoId) {
+        $post_data["attached_media[{$i}]"] = json_encode(['media_fbid' => $photoId]);
+    }
+    if ($scheduled_at) {
+        $ts = strtotime($scheduled_at);
+        if ($ts && $ts > time()) {
+            $post_data['published'] = 'false';
+            $post_data['scheduled_publish_time'] = $ts;
+        }
+    }
+    return meta_curl($feed_ep, $post_data);
 }
 
 // Polls a container's status_code once and, if FINISHED, calls media_publish.
