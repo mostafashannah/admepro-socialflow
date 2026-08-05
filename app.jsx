@@ -15,8 +15,30 @@ const SB_BUCKET = "socialflow-media";
 // not a way to exceed it.
 const DEFAULT_MAX_UPLOAD_MB = 100;
 
+// iPhones save photos as .heic/.heif by default — the format loads as
+// bytes just fine over HTTP (not a network error) but essentially no
+// desktop browser can actually DECODE it in an <img> tag, so a photo
+// uploaded straight from an iPhone (profile photo, ID docs, design
+// references, etc.) used to silently render blank everywhere forever.
+// Converting to JPEG once, right here at upload time, fixes it at the
+// source for every upload path in the app instead of patching each
+// display spot individually.
+async function convertHeicIfNeeded(file) {
+  const isHeic = /\.(heic|heif)$/i.test(file.name) || /^image\/hei[cf]/i.test(file.type||"");
+  if (!isHeic || !window.heic2any) return file;
+  try {
+    const converted = await window.heic2any({blob:file, toType:"image/jpeg", quality:0.9});
+    const jpegBlob = Array.isArray(converted) ? converted[0] : converted;
+    return new File([jpegBlob], file.name.replace(/\.(heic|heif)$/i, ".jpg"), {type:"image/jpeg"});
+  } catch(e) {
+    console.warn("[heic2any] conversion failed, uploading original file:", e.message);
+    return file; // better to upload the unusable original than to block the whole upload
+  }
+}
+
 // Upload a file to self-hosted storage (vps-migration/storage.php) — returns public URL
-const uploadToStorage = async (file, folder="uploads") => {
+const uploadToStorage = async (rawFile, folder="uploads") => {
+  const file = await convertHeicIfNeeded(rawFile);
   const maxMB = window.__sfMaxUploadMB || DEFAULT_MAX_UPLOAD_MB;
   if(file.size > maxMB*1024*1024){
     throw new Error(`This file is ${(file.size/1024/1024).toFixed(1)}MB, over the ${maxMB}MB upload limit set in Settings. Try a smaller file, or ask an admin to raise the limit.`);
