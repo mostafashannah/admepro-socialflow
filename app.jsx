@@ -3693,15 +3693,24 @@ function Modal({open,onClose,title,subtitle,width=560,children,footer,headerActi
 // Full-size view of a profile photo — click any avatar image to open it here.
 function ImageLightbox({url, alt, onClose}) {
   if(!url) return null;
+  // PDFs (and anything else that isn't an image) get an embedded viewer
+  // instead of trying to render a broken <img> — same modal chrome/Download
+  // button either way, so "View" on any attachment (not just photos) opens
+  // in-app instead of just linking out.
+  const isPdf = (url||"").toLowerCase().split("?")[0].endsWith(".pdf");
   return ReactDOM.createPortal(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:1200,display:"flex",alignItems:"center",justifyContent:"center",padding:24,cursor:"zoom-out"}} className="fade-in">
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:1200,display:"flex",alignItems:"center",justifyContent:"center",padding:24,cursor:isPdf?"default":"zoom-out"}} className="fade-in">
       <a href={url} download={alt||""} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} aria-label="Download" style={{position:"absolute",top:20,right:66,width:38,height:38,borderRadius:"50%",background:"rgba(255,255,255,0.12)",border:"none",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",textDecoration:"none"}}>
         <Ico d={Icons.download||Icons.upload} size={17} stroke="#fff"/>
       </a>
       <button onClick={onClose} aria-label="Close" style={{position:"absolute",top:20,right:20,width:38,height:38,borderRadius:"50%",background:"rgba(255,255,255,0.12)",border:"none",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
         <Ico d={Icons.x} size={17} stroke="#fff"/>
       </button>
-      <img src={url} alt={alt||""} onClick={e=>e.stopPropagation()} style={{maxWidth:"90vw",maxHeight:"90vh",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,0.5)",cursor:"default"}}/>
+      {isPdf ? (
+        <iframe src={url} title={alt||"Attachment"} onClick={e=>e.stopPropagation()} style={{width:"85vw",height:"88vh",border:"none",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,0.5)",background:"#fff"}}/>
+      ) : (
+        <img src={url} alt={alt||""} onClick={e=>e.stopPropagation()} style={{maxWidth:"90vw",maxHeight:"90vh",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,0.5)",cursor:"default"}}/>
+      )}
     </div>,
     document.body
   );
@@ -5117,7 +5126,7 @@ function DesignFilePicker({post, assets, onAddAsset, project, onStageChange}) {
 // Design assets grid — its own component (rather than inline JSX in
 // PostDetail) purely so it can hold its own per-asset "upscaling" state
 // without adding more hooks to PostDetail's own hook list.
-function DesignAssetGrid({post, onStageChange}) {
+function DesignAssetGrid({post, onStageChange, onView}) {
   const [upscalingIdx, setUpscalingIdx] = useState(null);
   const [err, setErr] = useState("");
   if(!post.design_assets || post.design_assets.length===0) return null;
@@ -5157,7 +5166,9 @@ function DesignAssetGrid({post, onStageChange}) {
               :<div style={{textAlign:"center",padding:8}}>
                 <div style={{fontSize:24,marginBottom:4}}></div>
                 <p style={{fontSize:9,color:"var(--text3)",wordBreak:"break-all"}}>{(asset.name||"").substring(0,14)}…</p>
-                {asset.url&&<a href={asset.url} target="_blank" rel="noreferrer" style={{fontSize:9,color:"var(--accent)"}}>View</a>}
+                {asset.url&&(onView
+                  ? <button onClick={()=>onView({url:asset.url, name:asset.name})} style={{fontSize:9,color:"var(--accent)",background:"none",border:"none",cursor:"pointer",padding:0,textDecoration:"underline"}}>View</button>
+                  : <a href={asset.url} target="_blank" rel="noreferrer" style={{fontSize:9,color:"var(--accent)"}}>View</a>)}
               </div>}
               <button onClick={()=>{
                 const newAssets = post.design_assets.filter((_,idx)=>idx!==i);
@@ -5930,13 +5941,23 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
               </div>
               {assignee ? (() => {
                 const extras = parseJ(post.assigned_to_extra||"[]").map(email=>team?.find(t=>t.email===email)).filter(Boolean);
-                const all = [assignee, ...extras];
+                // Dedupe by email — if the primary assignee's email also
+                // somehow ends up in assigned_to_extra, a plain
+                // key={p.email} on two identical-key elements makes React
+                // silently drop one from the DOM (the name list below,
+                // which doesn't key off anything, still lists it — that
+                // split is exactly what "third avatar missing" looked like).
+                const seen = new Set();
+                const all = [assignee, ...extras].filter(p=>{
+                  if(seen.has(p.email)) return false;
+                  seen.add(p.email); return true;
+                });
                 return (
                   <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                     {/* Overlapping avatar stack, Instagram "Followed by" style */}
                     <div style={{display:"flex",flexShrink:0}}>
                       {all.map((p,i)=>(
-                        <div key={p.email} style={{marginLeft:i===0?0:-8,borderRadius:"50%",border:"2px solid var(--surface2)",lineHeight:0}} title={p.name}>
+                        <div key={p.email} style={{marginLeft:i===0?0:-8,borderRadius:"50%",border:"2px solid var(--surface2)",lineHeight:0,position:"relative",zIndex:all.length-i}} title={p.name}>
                           <Avatar name={p.name} size={26} role={p.role} photoUrl={p.avatar_url}/>
                         </div>
                       ))}
@@ -6243,7 +6264,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
         {(post.stage==="content_creation" || (post.design_assets||[]).length>0)&&(
           <div style={{display:"flex",flexDirection:"column",gap:12,padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
             <h4 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:14}}>Attachments</h4>
-            <DesignAssetGrid post={post} onStageChange={onStageChange}/>
+            <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage}/>
             {post.stage==="content_creation"&&(
               <>
                 <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>
@@ -6345,7 +6366,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
             )}
 
             {/* Display existing assets */}
-            <DesignAssetGrid post={post} onStageChange={onStageChange}/>
+            <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage}/>
 
             {/* File picker — choose from assets or upload new */}
             <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>
