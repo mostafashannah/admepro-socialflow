@@ -5771,6 +5771,16 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
     if(!comment.trim()&&!commentAttachment) return;
     setSending(true);
     await onAddComment(post.id, comment.trim()||"📎 Attachment", currentUser, commentAttachment, "internal");
+    // A file attached through the comment box used to only ever show up
+    // buried in the Activity feed — invisible the moment the task moved
+    // past whatever stage it was attached in, since nothing else reads
+    // Comment.file_url. Mirroring it into design_assets puts it in the
+    // same persistent Attachments section everything else lives in, so a
+    // reviewer actually sees it instead of having to scroll the activity log.
+    if(commentAttachment?.file_url) {
+      const newAssets = [...(post.design_assets||[]), {url:commentAttachment.file_url, name:commentAttachment.file_name, type:commentAttachment.file_type}];
+      onEdit&&onEdit({...post, design_assets:newAssets});
+    }
     setComment(""); setCommentAttachment(null); setSending(false);
   };
 
@@ -6219,28 +6229,37 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
             content creator was given to work from. Reuses the same asset
             grid/picker the Design phase already has — design_assets isn't
             actually design-only in storage, just a generic attachment
-            list on the post. */}
-        {post.stage==="content_creation"&&(
+            list on the post. Stays visible past Content (e.g. once it's
+            with the reviewer/AM) as long as there's actually something
+            attached — it used to hard-disappear the moment the stage moved
+            on, so a reviewer had no way to see what was attached at all,
+            only a mention of it buried in the Activity feed. Only the
+            add-controls (upload/link) are content-phase-only. */}
+        {(post.stage==="content_creation" || (post.design_assets||[]).length>0)&&(
           <div style={{display:"flex",flexDirection:"column",gap:12,padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
             <h4 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:14}}>Attachments</h4>
             <DesignAssetGrid post={post} onStageChange={onStageChange}/>
-            <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              <button onClick={()=>{
-                const url = prompt("Paste a reference link (e.g. a Drive file, competitor post, brief doc):");
-                if(!url||!url.trim()) return;
-                const newAssets = [...(post.design_assets||[]), {url:url.trim(), name:url.trim(), type:"link"}];
-                onStageChange({...post, design_assets:newAssets}, post.stage);
-              }} style={{fontSize:12,fontWeight:700,color:"var(--accent)",background:"none",border:"1px solid var(--accent)44",borderRadius:8,padding:"7px 12px",cursor:"pointer"}}>+ Add Link</button>
-              {/* Real PDF upload — "Add Photo/Video" above only accepts
-                  images/video, so a brief document handed to the content
-                  team as an actual PDF file had no way in except pasting a
-                  link to somewhere it was already hosted. */}
-              <button onClick={()=>pdfFileRef.current?.click()} disabled={uploadingPdf} style={{fontSize:12,fontWeight:700,color:"var(--accent)",background:"none",border:"1px solid var(--accent)44",borderRadius:8,padding:"7px 12px",cursor:uploadingPdf?"wait":"pointer"}}>
-                {uploadingPdf?<><Spinner size={12}/> Uploading…</>:"+ Upload PDF"}
-              </button>
-              <input ref={pdfFileRef} type="file" accept="application/pdf,.pdf" style={{display:"none"}} onChange={e=>{handlePdfUpload(e.target.files?.[0]); e.target.value="";}}/>
-            </div>
+            {post.stage==="content_creation"&&(
+              <>
+                <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  <button onClick={()=>{
+                    const url = prompt("Paste a reference link (e.g. a Drive file, competitor post, brief doc):");
+                    if(!url||!url.trim()) return;
+                    const newAssets = [...(post.design_assets||[]), {url:url.trim(), name:url.trim(), type:"link"}];
+                    onStageChange({...post, design_assets:newAssets}, post.stage);
+                  }} style={{fontSize:12,fontWeight:700,color:"var(--accent)",background:"none",border:"1px solid var(--accent)44",borderRadius:8,padding:"7px 12px",cursor:"pointer"}}>+ Add Link</button>
+                  {/* Real PDF upload — "Add Photo/Video" above only accepts
+                      images/video, so a brief document handed to the content
+                      team as an actual PDF file had no way in except pasting a
+                      link to somewhere it was already hosted. */}
+                  <button onClick={()=>pdfFileRef.current?.click()} disabled={uploadingPdf} style={{fontSize:12,fontWeight:700,color:"var(--accent)",background:"none",border:"1px solid var(--accent)44",borderRadius:8,padding:"7px 12px",cursor:uploadingPdf?"wait":"pointer"}}>
+                    {uploadingPdf?<><Spinner size={12}/> Uploading…</>:"+ Upload PDF"}
+                  </button>
+                  <input ref={pdfFileRef} type="file" accept="application/pdf,.pdf" style={{display:"none"}} onChange={e=>{handlePdfUpload(e.target.files?.[0]); e.target.value="";}}/>
+                </div>
+              </>
+            )}
           </div>
         )}
 
