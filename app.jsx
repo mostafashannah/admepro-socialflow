@@ -5914,7 +5914,14 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                   <span style={{fontSize:13,fontWeight:600}}>{assignee.name}</span>
                   {parseJ(post.assigned_to_extra||"[]").map(email=>{
                     const m = team?.find(t=>t.email===email);
-                    return m ? <Avatar key={email} name={m.name} size={20} role={m.role} title={m.name}/> : null;
+                    if(!m) return null;
+                    return (
+                      <React.Fragment key={email}>
+                        <span style={{fontSize:12,color:"var(--text3)"}}>+</span>
+                        <Avatar name={m.name} size={20} role={m.role} title={m.name}/>
+                        <span style={{fontSize:13,fontWeight:600}}>{m.name}</span>
+                      </React.Fragment>
+                    );
                   })}
                 </div>
               ) : <span style={{fontSize:12,color:"var(--text3)"}}>Unassigned</span>}
