@@ -5615,6 +5615,19 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   const [dueEdit, setDueEdit] = useState(null); // {date,time} | null
   const [pubEdit, setPubEdit] = useState(null);
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
+  const [assigneeNameInput, setAssigneeNameInput] = useState("");
+  const [uploadingPdf, setUploadingPdf] = useState(false);
+  const pdfFileRef = useRef(null);
+  const handlePdfUpload = async (file) => {
+    if(!file) return;
+    setUploadingPdf(true);
+    try {
+      const url = await uploadToStorage(file, "design/picker");
+      const newAssets = [...(post.design_assets||[]), {url, name:file.name, type:"application/pdf"}];
+      onStageChange({...post, design_assets:newAssets}, post.stage);
+    } catch(e) { alert("PDF upload failed: " + (e?.message||"unknown error")); }
+    setUploadingPdf(false);
+  };
   // Distinct from toggleExtraAssignee below (which only stages a change into
   // editForm until the whole Edit form is saved) — this one is the quick
   // "Assigned To" card picker, saving each toggle immediately on its own.
@@ -5915,6 +5928,25 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
           {showAssigneePicker&&isManager&&(
             <div style={{padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",display:"flex",flexDirection:"column",gap:6}}>
               <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Add People to This Task</p>
+              {/* Quick-add by typing first names, comma or space separated
+                  ("nuha, monay, mostafa") — matches against each active
+                  member's first name (or full name) instead of clicking
+                  through the list one at a time for a bigger group. */}
+              <div style={{display:"flex",gap:6}}>
+                <input value={assigneeNameInput} onChange={e=>setAssigneeNameInput(e.target.value)}
+                  onKeyDown={e=>{if(e.key!=="Enter") return; e.preventDefault();
+                    const tokens = assigneeNameInput.split(/[,\n]/).map(t=>t.trim().toLowerCase()).filter(Boolean);
+                    if(!tokens.length) return;
+                    const eligible = (team||[]).filter(m=>m.status!=="inactive"&&m.email!==post.assigned_to);
+                    const matchedEmails = tokens.map(tok=>eligible.find(m=>m.name.toLowerCase().split(" ").some(part=>part.startsWith(tok))||m.name.toLowerCase().startsWith(tok))?.email).filter(Boolean);
+                    const current = parseJ(post.assigned_to_extra||"[]");
+                    const next = [...new Set([...current, ...matchedEmails])];
+                    if(next.length!==current.length) onEdit&&onEdit({...post, assigned_to_extra: JSON.stringify(next)});
+                    setAssigneeNameInput("");
+                  }}
+                  placeholder="Type first names, e.g. nuha, monay, mostafa — Enter to add"
+                  style={{flex:1,fontSize:12,padding:"6px 8px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)"}}/>
+              </div>
               <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:220,overflowY:"auto"}}>
                 {(team||[]).filter(m=>m.status!=="inactive"&&m.email!==post.assigned_to).map(m=>{
                   const active = parseJ(post.assigned_to_extra||"[]").includes(m.email);
@@ -6179,12 +6211,22 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
             <h4 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:14}}>Attachments</h4>
             <DesignAssetGrid post={post} onStageChange={onStageChange}/>
             <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>
-            <button onClick={()=>{
-              const url = prompt("Paste a reference link (e.g. a Drive file, competitor post, brief doc):");
-              if(!url||!url.trim()) return;
-              const newAssets = [...(post.design_assets||[]), {url:url.trim(), name:url.trim(), type:"link"}];
-              onStageChange({...post, design_assets:newAssets}, post.stage);
-            }} style={{alignSelf:"flex-start",fontSize:12,fontWeight:700,color:"var(--accent)",background:"none",border:"1px solid var(--accent)44",borderRadius:8,padding:"7px 12px",cursor:"pointer"}}>+ Add Link</button>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              <button onClick={()=>{
+                const url = prompt("Paste a reference link (e.g. a Drive file, competitor post, brief doc):");
+                if(!url||!url.trim()) return;
+                const newAssets = [...(post.design_assets||[]), {url:url.trim(), name:url.trim(), type:"link"}];
+                onStageChange({...post, design_assets:newAssets}, post.stage);
+              }} style={{fontSize:12,fontWeight:700,color:"var(--accent)",background:"none",border:"1px solid var(--accent)44",borderRadius:8,padding:"7px 12px",cursor:"pointer"}}>+ Add Link</button>
+              {/* Real PDF upload — "Add Photo/Video" above only accepts
+                  images/video, so a brief document handed to the content
+                  team as an actual PDF file had no way in except pasting a
+                  link to somewhere it was already hosted. */}
+              <button onClick={()=>pdfFileRef.current?.click()} disabled={uploadingPdf} style={{fontSize:12,fontWeight:700,color:"var(--accent)",background:"none",border:"1px solid var(--accent)44",borderRadius:8,padding:"7px 12px",cursor:uploadingPdf?"wait":"pointer"}}>
+                {uploadingPdf?<><Spinner size={12}/> Uploading…</>:"+ Upload PDF"}
+              </button>
+              <input ref={pdfFileRef} type="file" accept="application/pdf,.pdf" style={{display:"none"}} onChange={e=>{handlePdfUpload(e.target.files?.[0]); e.target.value="";}}/>
+            </div>
           </div>
         )}
 
