@@ -3535,7 +3535,14 @@ function Avatar({name,size=32,role,photoUrl}) {
   // which looked like that person had silently vanished from an avatar
   // stack — falls back to the normal initials circle instead.
   const [imgFailed, setImgFailed] = useState(false);
-  if(photoUrl && !imgFailed) {
+  // .heic/.heif (iPhone's native photo format, e.g. straight from an
+  // onboarding upload) loads as bytes just fine — it's not a network
+  // failure, so onError below never fires — but essentially no desktop
+  // browser can actually DECODE/display it in an <img>, so it just renders
+  // blank instead of erroring. Treated as "no photo" up front instead of
+  // relying on an error event that browsers won't reliably raise for it.
+  const isUnsupportedFormat = /\.(heic|heif)(\?|$)/i.test(photoUrl||"");
+  if(photoUrl && !imgFailed && !isUnsupportedFormat) {
     return (
       <img src={photoUrl} alt={name} title={name} onError={()=>setImgFailed(true)} style={{
         width:size,height:size,borderRadius:"50%",objectFit:"cover",flexShrink:0,
