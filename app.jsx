@@ -3557,18 +3557,20 @@ function Avatar({name,size=32,role,photoUrl}) {
   // which looked like that person had silently vanished from an avatar
   // stack — falls back to the normal initials circle instead.
   const [imgFailed, setImgFailed] = useState(false);
-  // .heic/.heif (iPhone's native photo format, e.g. straight from an
-  // onboarding upload) loads as bytes just fine — it's not a network
-  // failure, so onError below never fires — but essentially no desktop
-  // browser can actually DECODE/display it in an <img>, so it just renders
-  // blank instead of erroring. Treated as "no photo" up front instead of
-  // relying on an error event that browsers won't reliably raise for it.
-  const isUnsupportedFormat = /\.(heic|heif)(\?|$)/i.test(photoUrl||"");
-  if(photoUrl && !imgFailed && !isUnsupportedFormat) {
+  // HEIC display support turns out to actually vary by browser/OS (some
+  // genuinely can decode it in an <img>, confirmed by the same file
+  // rendering fine in the full-size Lightbox) — so this can't be a blanket
+  // "always block .heic" rule; that was hiding photos that do work.
+  // onError catches the browsers that truly can't render it.
+  if(photoUrl && !imgFailed) {
     return (
-      <img src={photoUrl} alt={name} title={name} onError={()=>setImgFailed(true)} style={{
-        width:size,height:size,borderRadius:"50%",objectFit:"cover",flexShrink:0,
-      }}/>
+      <img src={photoUrl} alt={name} title={name}
+        onError={()=>setImgFailed(true)}
+        // Some browsers fire `load` for a format they can't actually
+        // rasterize instead of `error` — naturalWidth stays 0 in that case,
+        // so it's caught here too instead of just leaving a blank circle.
+        onLoad={e=>{ if(!e.target.naturalWidth) setImgFailed(true); }}
+        style={{width:size,height:size,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/>
     );
   }
   return (
