@@ -5908,23 +5908,25 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Assigned To</p>
                 {isManager&&<Ico d={showAssigneePicker?Icons.x:Icons.plus} size={12} stroke="var(--text3)"/>}
               </div>
-              {assignee ? (
-                <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                  <Avatar name={assignee.name} size={20} role={assignee.role} title={assignee.name}/>
-                  <span style={{fontSize:13,fontWeight:600}}>{assignee.name}</span>
-                  {parseJ(post.assigned_to_extra||"[]").map(email=>{
-                    const m = team?.find(t=>t.email===email);
-                    if(!m) return null;
-                    return (
-                      <React.Fragment key={email}>
-                        <span style={{fontSize:12,color:"var(--text3)"}}>+</span>
-                        <Avatar name={m.name} size={20} role={m.role} title={m.name}/>
-                        <span style={{fontSize:13,fontWeight:600}}>{m.name}</span>
-                      </React.Fragment>
-                    );
-                  })}
-                </div>
-              ) : <span style={{fontSize:12,color:"var(--text3)"}}>Unassigned</span>}
+              {assignee ? (() => {
+                const extras = parseJ(post.assigned_to_extra||"[]").map(email=>team?.find(t=>t.email===email)).filter(Boolean);
+                const all = [assignee, ...extras];
+                return (
+                  <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                    {/* Overlapping avatar stack, Instagram "Followed by" style */}
+                    <div style={{display:"flex",flexShrink:0}}>
+                      {all.map((p,i)=>(
+                        <div key={p.email} style={{marginLeft:i===0?0:-8,borderRadius:"50%",border:"2px solid var(--surface2)",lineHeight:0}} title={p.name}>
+                          <Avatar name={p.name} size={26} role={p.role}/>
+                        </div>
+                      ))}
+                    </div>
+                    <span style={{fontSize:13,fontWeight:600,lineHeight:1.3}}>
+                      {all.length===1 ? all[0].name : all.map(p=>p.name).join(", ")}
+                    </span>
+                  </div>
+                );
+              })() : <span style={{fontSize:12,color:"var(--text3)"}}>Unassigned</span>}
             </div>
           </div>
 
