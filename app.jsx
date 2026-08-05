@@ -19671,16 +19671,53 @@ function InviteUserModal({onClose, onSubmit, clients, team, initial}) {
 function AddClientUserModal({onClose, onSubmit, clients}) {
   const [form, setForm] = useState({name:"",email:"",role:"client_member",client_id:"",client_name:""});
   const [loading, setLoading] = useState(false);
+  const [createdPass, setCreatedPass] = useState(null); // set once the user's made — shows the generated password instead of closing immediately
+  const [copied, setCopied] = useState(false);
   const sf = (k,v)=>setForm(p=>({...p,[k]:v}));
 
   const handleSubmit = async ()=>{
     if(!form.email||!form.client_id) return;
     setLoading(true);
     const client = (clients||[]).find(c=>c.id===form.client_id);
-    await onSubmit({...form, client_name: client?.name||""});
+    // Same random-temp-password convention as the "Forgot Password" flow
+    // (LoginScreen) — a client user used to be created with no password at
+    // all, meaning they couldn't actually log in until someone separately
+    // ran Forgot Password for them.
+    const tempPass = Math.random().toString(36).slice(2,10).toUpperCase();
+    await onSubmit({...form, client_name: client?.name||"", password: tempPass});
+    const html = `<div style="font-family:'Montserrat',sans-serif;max-width:500px;margin:0 auto;padding:32px;background:#fff;border-radius:12px">
+      <img src="/favicon.svg" width="44" height="44" style="border-radius:10px;display:block;margin:0 auto 20px"/>
+      <h2 style="text-align:center;font-size:20px;font-weight:800;color:#111827;margin-bottom:8px">Welcome to SocialFlow</h2>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;text-align:center">Hi ${form.name||form.email}, you've been given access to ${client?.name||"your"} account. Here's your temporary password:</p>
+      <div style="margin:24px auto;text-align:center;background:#f9fafb;border:2px dashed #d1d5db;border-radius:10px;padding:18px 24px">
+        <span style="font-size:26px;font-weight:800;letter-spacing:3px;color:#d90b2c;font-family:monospace">${tempPass}</span>
+      </div>
+      <p style="color:#6b7280;font-size:13px;text-align:center;line-height:1.6">Sign in with your email and this password, then update it in your account settings.</p>
+    </div>`;
+    await sendEmail(form.email, "Your SocialFlow client portal access", html, "SocialFlow").catch(()=>{});
     setLoading(false);
-    onClose();
+    setCreatedPass(tempPass);
   };
+
+  if(createdPass) {
+    return (
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div style={{background:"var(--surface)",borderRadius:16,padding:28,width:440,border:"1px solid var(--border)"}}>
+          <h3 style={{fontWeight:700,fontSize:17,color:"var(--text)",marginBottom:6}}>Client User Added</h3>
+          <p style={{fontSize:13,color:"var(--text2)",marginBottom:16}}>A temporary password was emailed to {form.email}. You can also share it directly:</p>
+          <div style={{display:"flex",alignItems:"center",gap:8,background:"var(--surface2)",border:"2px dashed var(--border2)",borderRadius:10,padding:"14px 18px",justifyContent:"center"}}>
+            <span style={{fontSize:22,fontWeight:800,letterSpacing:3,color:"var(--accent)",fontFamily:"monospace"}}>{createdPass}</span>
+          </div>
+          <div style={{display:"flex",gap:8,marginTop:20,justifyContent:"flex-end"}}>
+            <button onClick={()=>{navigator.clipboard?.writeText(createdPass); setCopied(true); setTimeout(()=>setCopied(false),2000);}} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"9px 18px",cursor:"pointer",color:"var(--text)",fontWeight:600}}>
+              {copied?"Copied!":"Copy Password"}
+            </button>
+            <button onClick={onClose} style={{background:"var(--accent)",color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",cursor:"pointer",fontWeight:600}}>Done</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -19709,6 +19746,7 @@ function AddClientUserModal({onClose, onSubmit, clients}) {
               <option value="client_member">Client Member — tasks & approvals only</option>
             </select>
           </div>
+          <p style={{fontSize:11,color:"var(--text3)"}}>A temporary password is generated automatically and emailed to them — no need to set one yourself.</p>
         </div>
         <div style={{display:"flex",gap:8,marginTop:20,justifyContent:"flex-end"}}>
           <button onClick={onClose} style={{background:"var(--surface2)",border:"none",borderRadius:8,padding:"9px 18px",cursor:"pointer",color:"var(--text)",fontWeight:500}}>Cancel</button>
