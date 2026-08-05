@@ -35070,16 +35070,28 @@ function sortAttendeesForDisplay(list) {
 function formatRoleLabel(role) {
   return (role||"").replace(/_/g," ").replace(/\b\w/g, c=>c.toUpperCase());
 }
+// Voice-note reports rarely capture a person's full name exactly as it's
+// stored (e.g. "Ahmed Selim" in a report vs "Ahmed Maged Selim" in the
+// client record) — an exact-string match would silently fail and leave
+// the frozen (often wrong) title from the report instead of the real one.
+// Matching first+last word instead tolerates a dropped middle name.
+function namesLooselyMatch(a, b) {
+  if (!a || !b) return false;
+  if (a===b) return true;
+  const wa = a.split(/\s+/).filter(Boolean), wb = b.split(/\s+/).filter(Boolean);
+  if (!wa.length || !wb.length) return false;
+  return wa[0]===wb[0] && wa[wa.length-1]===wb[wb.length-1];
+}
 function resolveAttendeeTitleLive(a, client, team) {
   const name = (a.name||"").trim().toLowerCase();
   if (!name) return a.title||"";
   if (a.kind==="team") {
-    const t = (team||[]).find(m=>(m.name||"").trim().toLowerCase()===name);
+    const t = (team||[]).find(m=>namesLooselyMatch((m.name||"").trim().toLowerCase(),name));
     if (t) return t.title?.trim() || formatRoleLabel(t.role) || a.title || "";
   }
   if (a.kind==="client" && client) {
     const contactName = (client.username||client.name||"").trim().toLowerCase();
-    if (contactName && contactName===name) return client.contact_title?.trim() || a.title || "";
+    if (contactName && namesLooselyMatch(contactName,name)) return client.contact_title?.trim() || a.title || "";
   }
   return a.title || "";
 }

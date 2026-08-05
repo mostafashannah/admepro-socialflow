@@ -1310,23 +1310,39 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
         // permission role) or 'client' (matches the client's own contact
         // name), so the UI can visually tell them apart — same distinction
         // the app's own attendee picker makes when a human fills this in.
+        // Match loosely on first+last word (voice notes often drop a middle
+        // name, e.g. "Ahmed Selim" vs the stored "Ahmed Maged Selim") and
+        // always trust the real DB title over whatever the model guessed —
+        // the model has no visibility into actual job titles, so a
+        // non-empty $att['title'] here is a guess, not a source of truth.
+        $namesLooselyMatch = function($a, $b) {
+            $a = trim(mb_strtolower($a)); $b = trim(mb_strtolower($b));
+            if ($a === '' || $b === '') return false;
+            if ($a === $b) return true;
+            $wa = preg_split('/\s+/', $a); $wb = preg_split('/\s+/', $b);
+            return $wa[0] === $wb[0] && end($wa) === end($wb);
+        };
         $attendees = json_decode($input['attendees'] ?? '[]', true) ?: [];
         foreach ($attendees as &$att) {
             $aName = trim($att['name'] ?? '');
             if ($aName === '') continue;
-            if ($clientUsername && strcasecmp($aName, $clientUsername) === 0) {
+            if ($clientUsername && $namesLooselyMatch($aName, $clientUsername)) {
                 $att['kind'] = 'client';
-                if (empty($att['title']) && $clientContactTitle) $att['title'] = $clientContactTitle;
+                if ($clientContactTitle) $att['title'] = $clientContactTitle;
                 continue;
             }
-            $tm = $pdo->prepare("SELECT title, role FROM team_members WHERE name = :n LIMIT 1");
-            $tm->execute([':n' => $aName]);
-            if ($row = $tm->fetch(PDO::FETCH_ASSOC)) {
+            $tm = $pdo->prepare("SELECT name, title, role FROM team_members WHERE status = 'active'");
+            $tm->execute();
+            $matched = null;
+            foreach ($tm->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                if ($namesLooselyMatch($aName, $row['name'])) { $matched = $row; break; }
+            }
+            if ($matched) {
                 $att['kind'] = 'team';
-                if (empty($att['title'])) $att['title'] = $row['title'] ?: str_replace('_', ' ', ucwords($row['role'] ?? '', '_'));
+                $att['title'] = $matched['title'] ?: str_replace('_', ' ', ucwords($matched['role'] ?? '', '_'));
             } else {
                 $att['kind'] = 'client';
-                if (empty($att['title']) && $clientContactTitle) $att['title'] = $clientContactTitle;
+                if ($clientContactTitle) $att['title'] = $clientContactTitle;
             }
         }
         unset($att);
@@ -1777,6 +1793,10 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                       . "meeting (mentions a client and what was discussed), extract and save it with "
                       . "save_contact_report, then confirm briefly what you saved. If it's just a normal question "
                       . "instead, answer it normally like any other message.\n\n"
+                      . "The summary, key_points, and action_items you save must be written in the SAME language "
+                      . "the meeting/call actually happened in (i.e. the language of this voice note) — if it was "
+                      . "in Arabic, write them in Arabic, not translated to English. Only attendee names/titles, "
+                      . "the client name, and dates stay as-is regardless of language, same as normal.\n\n"
                       . "CRITICAL for attendee names: voice transcription frequently mishears similar-sounding "
                       . "names (e.g. Arabic \"علاء\"/Alaa vs \"علي\"/Ali are commonly confused). Our real team "
                       . "members are:\n" . (function() use ($pdo) {
