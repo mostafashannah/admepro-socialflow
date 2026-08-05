@@ -44557,6 +44557,14 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
           sendWhatsApp(newWaNumber, `Hi ${name}! Your WhatsApp number is now linked to your SocialFlow account.\n\nName: ${name}\nEmail: ${currentUser.email}\nRole: ${role}\n\nYou'll receive task and approval notifications here, and can message "Pro" anytime for help.`).catch(()=>{});
         }
       }
+      // Mirror into team_members.title too — contact reports (and anywhere
+      // else that shows a person's job title, e.g. Mai's meeting logging)
+      // read team_members.title, not the user_profiles row, so a bio saved
+      // only here would never actually change what shows on those.
+      if(ok && "bio" in profileData) {
+        const member = data.team.find(m=>m.email===currentUser.email);
+        if(member) updateTeamMember(member.id, {title: profileData.bio||null});
+      }
     } catch(e){ ok = false; }
     logActivity("Profile Updated","users",currentUser?.email||"",ok?"success":"error","",currentUser?.email||"admin");
     setToast(ok ? "Profile saved successfully" : "Failed to save profile — please try again");
