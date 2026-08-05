@@ -16768,7 +16768,7 @@ function AgentProfilePage({agent, avatarUrl, activityLogs=[], onBack}) {
 
 function UsersPage({currentUser, team, invitations, accessRequests, clientUsers, clients,
   onInviteUser, onCancelInvitation, onApproveRequest, onRejectRequest,
-  onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation,
+  onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation, onGenerateClientActivationLink,
   rolePerms, onUpdateTeamMember, onRemoveMember, onToggleRolePermission, onAddExpense, leaveRequests, onDecideLeaveRequest, attendanceRecords,
   posts, onImpersonate, appSettings, brandingAssets, onSaveSettings, expenses, onDeclareCompanyDayOff, invoices, payments, subscriptionPayments, activityLogs=[], perfLogs=[], maiReportSessions=[], leaveCreditEvents=[]}) {
   const [tab, setTab] = usePersistentState("sf_tab_users","team");
@@ -17133,8 +17133,8 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
       )}
 
       {showInviteModal&&<InviteUserModal onClose={()=>setShowInviteModal(false)} onSubmit={onInviteUser} clients={clients} team={team}/>}
-      {showClientUserModal&&<AddClientUserModal onClose={()=>setShowClientUserModal(false)} onSubmit={onAddClientUser} clients={clients}/>}
-      {editingClientUser&&<EditClientUserModal clientUser={editingClientUser} onClose={()=>setEditingClientUser(null)} onSubmit={onUpdateClientUser} clients={clients}/>}
+      {showClientUserModal&&<AddClientUserModal onClose={()=>setShowClientUserModal(false)} onSubmit={onAddClientUser} clients={clients} onGenerateActivationLink={onGenerateClientActivationLink}/>}
+      {editingClientUser&&<EditClientUserModal clientUser={editingClientUser} onClose={()=>setEditingClientUser(null)} onSubmit={onUpdateClientUser} clients={clients} onGenerateActivationLink={onGenerateClientActivationLink}/>}
       {editingMember&&(
         <EditMemberModal
           member={editingMember}
@@ -19668,17 +19668,25 @@ function InviteUserModal({onClose, onSubmit, clients, team, initial}) {
   );
 }
 
-function AddClientUserModal({onClose, onSubmit, clients}) {
-  const [form, setForm] = useState({name:"",email:"",role:"client_member",client_id:"",client_name:""});
+function AddClientUserModal({onClose, onSubmit, clients, onGenerateActivationLink}) {
+  const [form, setForm] = useState({name:"",email:"",role:"client_member",client_id:"",client_name:"",title:"",mobile:""});
   const [loading, setLoading] = useState(false);
   const [createdPass, setCreatedPass] = useState(null); // set once the user's made — shows the generated password instead of closing immediately
+  const [createdLink, setCreatedLink] = useState(null); // set instead, if "Send Activation Link" was chosen
   const [copied, setCopied] = useState(false);
   const sf = (k,v)=>setForm(p=>({...p,[k]:v}));
 
-  const handleSubmit = async ()=>{
+  const handleSubmit = async (useActivationLink)=>{
     if(!form.email||!form.client_id) return;
     setLoading(true);
     const client = (clients||[]).find(c=>c.id===form.client_id);
+    if(useActivationLink) {
+      await onSubmit({...form, client_name: client?.name||""});
+      const link = await onGenerateActivationLink({name:form.name, email:form.email, role:form.role, client_id:form.client_id, client_name:client?.name||""});
+      setLoading(false);
+      setCreatedLink(link);
+      return;
+    }
     // Same random-temp-password convention as the "Forgot Password" flow
     // (LoginScreen) — a client user used to be created with no password at
     // all, meaning they couldn't actually log in until someone separately
@@ -19699,18 +19707,19 @@ function AddClientUserModal({onClose, onSubmit, clients}) {
     setCreatedPass(tempPass);
   };
 
-  if(createdPass) {
+  if(createdPass || createdLink) {
+    const value = createdPass || createdLink;
     return (
       <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}}>
-        <div style={{background:"var(--surface)",borderRadius:16,padding:28,width:440,border:"1px solid var(--border)"}}>
+        <div style={{background:"var(--surface)",borderRadius:16,padding:28,width:480,border:"1px solid var(--border)"}}>
           <h3 style={{fontWeight:700,fontSize:17,color:"var(--text)",marginBottom:6}}>Client User Added</h3>
-          <p style={{fontSize:13,color:"var(--text2)",marginBottom:16}}>A temporary password was emailed to {form.email}. You can also share it directly:</p>
+          <p style={{fontSize:13,color:"var(--text2)",marginBottom:16}}>{createdPass ? <>A temporary password was emailed to {form.email}. You can also share it directly:</> : <>An activation link was emailed to {form.email} so they can set their own password. You can also share it directly:</>}</p>
           <div style={{display:"flex",alignItems:"center",gap:8,background:"var(--surface2)",border:"2px dashed var(--border2)",borderRadius:10,padding:"14px 18px",justifyContent:"center"}}>
-            <span style={{fontSize:22,fontWeight:800,letterSpacing:3,color:"var(--accent)",fontFamily:"monospace"}}>{createdPass}</span>
+            <span style={{fontSize:createdPass?22:13,fontWeight:800,letterSpacing:createdPass?3:0,color:"var(--accent)",fontFamily:createdPass?"monospace":"inherit",wordBreak:"break-all",textAlign:"center"}}>{value}</span>
           </div>
           <div style={{display:"flex",gap:8,marginTop:20,justifyContent:"flex-end"}}>
-            <button onClick={()=>{navigator.clipboard?.writeText(createdPass); setCopied(true); setTimeout(()=>setCopied(false),2000);}} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"9px 18px",cursor:"pointer",color:"var(--text)",fontWeight:600}}>
-              {copied?"Copied!":"Copy Password"}
+            <button onClick={()=>{navigator.clipboard?.writeText(value); setCopied(true); setTimeout(()=>setCopied(false),2000);}} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"9px 18px",cursor:"pointer",color:"var(--text)",fontWeight:600}}>
+              {copied?"Copied!":createdPass?"Copy Password":"Copy Link"}
             </button>
             <button onClick={onClose} style={{background:"var(--accent)",color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",cursor:"pointer",fontWeight:600}}>Done</button>
           </div>
@@ -19736,8 +19745,16 @@ function AddClientUserModal({onClose, onSubmit, clients}) {
             <input value={form.name} onChange={e=>sf("name",e.target.value)} placeholder="Jane Smith" style={inputSt}/>
           </div>
           <div>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Title</label>
+            <input value={form.title} onChange={e=>sf("title",e.target.value)} placeholder="e.g. CEO, Marketing Manager" style={inputSt}/>
+          </div>
+          <div>
             <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Email *</label>
             <input type="email" value={form.email} onChange={e=>sf("email",e.target.value)} style={inputSt}/>
+          </div>
+          <div>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Phone Number</label>
+            <input value={form.mobile} onChange={e=>sf("mobile",e.target.value)} placeholder="+20 100 000 0000" style={inputSt}/>
           </div>
           <div>
             <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Role</label>
@@ -19746,12 +19763,17 @@ function AddClientUserModal({onClose, onSubmit, clients}) {
               <option value="client_member">Client Member — tasks & approvals only</option>
             </select>
           </div>
-          <p style={{fontSize:11,color:"var(--text3)"}}>A temporary password is generated automatically and emailed to them — no need to set one yourself.</p>
+          <p style={{fontSize:11,color:"var(--text3)"}}>Either generate a temporary password yourself, or send an activation link and let them set their own.</p>
         </div>
-        <div style={{display:"flex",gap:8,marginTop:20,justifyContent:"flex-end"}}>
+        <div style={{display:"flex",gap:8,marginTop:20,justifyContent:"flex-end",flexWrap:"wrap"}}>
           <button onClick={onClose} style={{background:"var(--surface2)",border:"none",borderRadius:8,padding:"9px 18px",cursor:"pointer",color:"var(--text)",fontWeight:500}}>Cancel</button>
-          <button onClick={handleSubmit} disabled={loading||!form.email||!form.client_id} style={{background:"var(--accent)",color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",cursor:"pointer",fontWeight:600,opacity:loading||!form.email||!form.client_id?0.6:1}}>
-            {loading?"Adding...":"Add User"}
+          {onGenerateActivationLink&&(
+            <button onClick={()=>handleSubmit(true)} disabled={loading||!form.email||!form.client_id} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"9px 16px",cursor:"pointer",color:"var(--text)",fontWeight:600,opacity:loading||!form.email||!form.client_id?0.6:1}}>
+              {loading?"Sending...":"Send Activation Link"}
+            </button>
+          )}
+          <button onClick={()=>handleSubmit(false)} disabled={loading||!form.email||!form.client_id} style={{background:"var(--accent)",color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",cursor:"pointer",fontWeight:600,opacity:loading||!form.email||!form.client_id?0.6:1}}>
+            {loading?"Adding...":"Generate Password"}
           </button>
         </div>
       </div>
@@ -19759,10 +19781,13 @@ function AddClientUserModal({onClose, onSubmit, clients}) {
   );
 }
 
-function EditClientUserModal({clientUser, onClose, onSubmit, clients}) {
-  const [form, setForm] = useState({name:clientUser.name||"", email:clientUser.email||"", role:clientUser.role||"client_member", client_id:clientUser.client_id||"", status:clientUser.status||"active", password:clientUser.password||""});
+function EditClientUserModal({clientUser, onClose, onSubmit, clients, onGenerateActivationLink}) {
+  const [form, setForm] = useState({name:clientUser.name||"", email:clientUser.email||"", role:clientUser.role||"client_member", client_id:clientUser.client_id||"", status:clientUser.status||"active", password:clientUser.password||"", title:clientUser.title||"", mobile:clientUser.mobile||""});
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [linkSending, setLinkSending] = useState(false);
+  const [sentLink, setSentLink] = useState(null);
+  const [copied, setCopied] = useState(false);
   const sf = (k,v)=>setForm(p=>({...p,[k]:v}));
 
   const handleSubmit = async ()=>{
@@ -19772,6 +19797,20 @@ function EditClientUserModal({clientUser, onClose, onSubmit, clients}) {
     await onSubmit(clientUser.id, {...form, client_name: client?.name||clientUser.client_name||""});
     setLoading(false);
     onClose();
+  };
+
+  const handleGeneratePassword = () => {
+    sf("password", Math.random().toString(36).slice(2,10).toUpperCase());
+    setShowPassword(true);
+  };
+
+  const handleSendActivationLink = async () => {
+    if(!onGenerateActivationLink) return;
+    setLinkSending(true);
+    const client = (clients||[]).find(c=>c.id===form.client_id);
+    const link = await onGenerateActivationLink({name:form.name, email:form.email, role:form.role, client_id:form.client_id, client_name:client?.name||clientUser.client_name||""});
+    setLinkSending(false);
+    setSentLink(link);
   };
 
   return (
@@ -19791,8 +19830,16 @@ function EditClientUserModal({clientUser, onClose, onSubmit, clients}) {
             <input value={form.name} onChange={e=>sf("name",e.target.value)} placeholder="Jane Smith" style={inputSt}/>
           </div>
           <div>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Title</label>
+            <input value={form.title} onChange={e=>sf("title",e.target.value)} placeholder="e.g. CEO, Marketing Manager" style={inputSt}/>
+          </div>
+          <div>
             <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Email *</label>
             <input type="email" value={form.email} onChange={e=>sf("email",e.target.value)} style={inputSt}/>
+          </div>
+          <div>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Phone Number</label>
+            <input value={form.mobile} onChange={e=>sf("mobile",e.target.value)} placeholder="+20 100 000 0000" style={inputSt}/>
           </div>
           <div>
             <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Role</label>
@@ -19814,8 +19861,24 @@ function EditClientUserModal({clientUser, onClose, onSubmit, clients}) {
             <div style={{display:"flex",gap:8}}>
               <input type={showPassword?"text":"password"} value={form.password} onChange={e=>sf("password",e.target.value)} placeholder="No password set" style={{...inputSt,flex:1}}/>
               <button type="button" onClick={()=>setShowPassword(p=>!p)} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"0 14px",cursor:"pointer",color:"var(--text2)",fontSize:12,fontWeight:600,flexShrink:0}}>{showPassword?"Hide":"Show"}</button>
+              <button type="button" onClick={handleGeneratePassword} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"0 14px",cursor:"pointer",color:"var(--text2)",fontSize:12,fontWeight:600,flexShrink:0}}>Generate</button>
             </div>
           </div>
+          {onGenerateActivationLink&&(
+            <div>
+              <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Activation Link</label>
+              {sentLink ? (
+                <div style={{display:"flex",alignItems:"center",gap:8,background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"8px 12px"}}>
+                  <span style={{fontSize:12,color:"var(--text2)",flex:1,wordBreak:"break-all"}}>{sentLink}</span>
+                  <button type="button" onClick={()=>{navigator.clipboard?.writeText(sentLink); setCopied(true); setTimeout(()=>setCopied(false),2000);}} style={{background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:6,padding:"4px 10px",cursor:"pointer",color:"var(--text)",fontSize:11,fontWeight:600,flexShrink:0}}>{copied?"Copied!":"Copy"}</button>
+                </div>
+              ) : (
+                <button type="button" onClick={handleSendActivationLink} disabled={linkSending||!form.email} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"9px 14px",cursor:"pointer",color:"var(--text)",fontSize:12,fontWeight:600,width:"100%",opacity:linkSending||!form.email?0.6:1}}>
+                  {linkSending?"Sending...":"Send Activation Link (let them set their own password)"}
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <div style={{display:"flex",gap:8,marginTop:20,justifyContent:"flex-end"}}>
           <button onClick={onClose} style={{background:"var(--surface2)",border:"none",borderRadius:8,padding:"9px 18px",cursor:"pointer",color:"var(--text)",fontWeight:500}}>Cancel</button>
@@ -44229,6 +44292,21 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
     setToast("Client user updated");
   };
 
+  // Lets a client set their own password instead of the admin generating
+  // one for them — reuses the same UserInvitation + AcceptInvitationPage
+  // flow team invites already go through (it already handles
+  // user_type==="client" — see AcceptInvitationPage's handleSubmit).
+  const generateClientActivationLink = async ({name, email, role, client_id, client_name}) => {
+    const token = uid().replace("local_","") + uid().replace("local_","");
+    const expiresAt = new Date(Date.now() + 7*24*60*60*1000).toISOString();
+    const payload = {name, email, role, client_id, client_name, user_type:"client", token, expires_at:expiresAt, status:"pending", invited_by:currentUser?.email};
+    ce("UserInvitation",[payload]).catch(()=>{});
+    const inviteUrl = window.location.origin + "?invite=" + token;
+    sendEmail(email, "Set up your SocialFlow client portal access", EMAIL_TEMPLATES.invitation(name||email, "Client", inviteUrl)).catch(()=>{});
+    logActivity("Client Activation Link Sent","clients",email,"success","",currentUser?.email||"admin");
+    return inviteUrl;
+  };
+
   const deleteClientUser = async (cuId) => {
     const cu = (data.clientUsers||[]).find(u=>u.id===cuId);
     setData(d=>({...d, clientUsers:(d.clientUsers||[]).filter(u=>u.id!==cuId)}));
@@ -46770,6 +46848,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             onAddClientUser={addClientUser}
             onUpdateClientUser={updateClientUser}
             onDeleteClientUser={deleteClientUser}
+            onGenerateClientActivationLink={generateClientActivationLink}
             onResendInvitation={(inv)=>setToast("Invitation link updated — copy it again")}
             rolePerms={rolePermsMap}
             onUpdateTeamMember={updateTeamMember}
