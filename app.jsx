@@ -33962,6 +33962,11 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
   const {isMobile} = useResponsive();
   const [filterStage, setFilterStage] = useState(null);
   const [myView, setMyView] = usePersistentState("sf_my_tasks_view","kanban");
+  // Only admin/AM can send work to Client Approval or Scheduled — same
+  // gate PostDetail's stage buttons already enforce; this quick "Move to
+  // X" button on My Tasks was missing it entirely, letting anyone push
+  // straight to the client.
+  const isManager = ["admin","account_manager"].includes(currentUser?.role);
 
   // Post IDs where the current user was @mentioned in a comment — same
   // @Name-matching convention used when firing mention notifications
@@ -34156,7 +34161,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
                 </div>
 
                 {/* Actions */}
-                {nextStage && (
+                {nextStage && (isManager || !["client_approval","scheduled"].includes(nextStage.key)) && (
                   <button onClick={e=>{
                     e.stopPropagation();
                     if(post.platform && ["client_approval","scheduled"].includes(nextStage.key)) {
