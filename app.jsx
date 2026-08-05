@@ -645,6 +645,11 @@ function wasOwnerOf(post, email, role) {
   if (post.assigned_to === email) return true;
   if (role === "content_creator" && post.content_assigned_to === email) return true;
   if (role === "graphic_designer" && post.design_assigned_to === email) return true;
+  // assigned_to_extra — the extra people tagged onto a task via the
+  // Assigned To card's "+" picker — is just as real an assignment as the
+  // primary one; someone added there should see the task on their own
+  // dashboard/timeline/My Tasks exactly like the primary assignee does.
+  if (parseJ(post.assigned_to_extra||"[]").includes(email)) return true;
   return false;
 }
 
