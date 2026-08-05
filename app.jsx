@@ -8120,18 +8120,22 @@ Return ONLY the brief text — no markdown, no labels, no quotes.`, 300);
     return {dates, conflict:false, requestedEnd:null};
   };
 
-  const handleGenerate = async () => {
+  // skipAI: builds the exact same task cards (same counts, dates,
+  // assignees, platforms) but never calls Sara — each one just carries its
+  // brief as the description, blank caption/hashtags, ready for the content
+  // team to write individually later through the normal per-post Content
+  // phase instead of all being pre-written up front.
+  const handleGenerate = async (skipAI=false) => {
     if(!canGenerate) return;
     setStep("generating");
-    setGenPhase("brain");
+    setGenPhase(skipAI ? "dates" : "brain");
     const postTypes = ["image","carousel","reel"];
     const clientCtxBlock = selClient ? `Client: ${selClient.name}\nIndustry: ${selClient.industry||""}\n${clientBrainBlock(selClient.id, selClient.name)}` : "";
-    setGenPhase("brief");
+    if(!skipAI) setGenPhase("brief");
 
     // Generate ideas per kind, each with its OWN brief/platforms/assignee.
     const ideasByKind = {};
     for(const kind of activeKinds){
-      setGenPhase(kind);
       const cfg = f.kinds[kind];
       // Full Grid Layout is design-only — no caption/hashtag content to
       // write, so skip the AI call entirely and synthesize its one fixed
@@ -8140,6 +8144,17 @@ Return ONLY the brief text — no markdown, no labels, no quotes.`, 300);
         ideasByKind[kind] = [{title:`Full Grid Layout — ${f.campaign}`, caption:"", hashtags:"", text_on_visual:""}];
         continue;
       }
+      if(skipAI) {
+        const total = cfg.briefBatches.reduce((a,b)=>a+(Number(b.count)||0),0);
+        const firstBrief = cfg.briefBatches[0]?.brief||"";
+        ideasByKind[kind] = Array.from({length:total},(_,i)=>({
+          title:`${kind.charAt(0).toUpperCase()+kind.slice(1)} ${i+1} — ${f.campaign}`,
+          caption:"", hashtags:"", text_on_visual:"", hook:"",
+          _sourceBrief: firstBrief,
+        }));
+        continue;
+      }
+      setGenPhase(kind);
       const kindGuide = kind==="article"
         ? `These are long-form pieces (e.g. a LinkedIn article) — give each a real headline and a longer, structured body (several paragraphs), not a short caption.`
         : kind==="story"
@@ -8216,6 +8231,7 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
           id: uid(),
           kind,
           title: idea?.title||`${kind} ${i+1}`,
+          description: idea?._sourceBrief||"",
           caption: idea?.caption||"",
           hashtags: idea?.hashtags||"",
           text_on_visual: idea?.text_on_visual||"",
@@ -8554,12 +8570,15 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
 
           <div style={{padding:12,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)",display:"flex",alignItems:"center",gap:10}}>
             <Ico d={Icons.sparkle} size={16} stroke="var(--accent)"/>
-            <p style={{fontSize:12,color:"var(--text2)"}}>AI will generate <strong>{totalCount} pieces of content</strong> ({activeKinds.map(k=>`${f.kinds[k].count} ${k}s`).join(", ")||"none yet — set a count above"}) as <strong>{totalCount} separate task cards</strong>, each with its own due date picked automatically or from your chosen window, checked against each assignee's availability.</p>
+            <p style={{fontSize:12,color:"var(--text2)"}}>Either way, this creates <strong>{totalCount} separate task cards</strong> ({activeKinds.map(k=>`${f.kinds[k].count} ${k}s`).join(", ")||"none yet — set a count above"}), each with its own due date picked automatically or from your chosen window, checked against each assignee's availability — Sara can pre-write all their captions now, or each one can just carry its brief and get written individually later by whoever's assigned.</p>
           </div>
           <div style={{display:"flex",gap:10,paddingTop:6}}>
             <Btn variant="secondary" onClick={()=>{reset();onClose();}} style={{flex:1}}>Cancel</Btn>
-            <Btn onClick={handleGenerate} disabled={!canGenerate} style={{flex:2}}>
-              <Ico d={Icons.sparkle} size={15}/> Generate Calendar Plan
+            <Btn variant="secondary" onClick={()=>handleGenerate(true)} disabled={!canGenerate} style={{flex:2}}>
+              Create Without Generating
+            </Btn>
+            <Btn onClick={()=>handleGenerate(false)} disabled={!canGenerate} style={{flex:2}}>
+              <Ico d={Icons.sparkle} size={15}/> Generate with Sara
             </Btn>
           </div>
         </div>
