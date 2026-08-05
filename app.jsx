@@ -2074,6 +2074,13 @@ async function publishPost(post, integration, tiktokOptions=null) {
   // attachments (revisions/replacements), the most recently added one is
   // the intended final version to actually publish.
   const imageUrl = designUrls[designUrls.length-1] || designAssets[designAssets.length-1]?.url || "";
+  // A carousel publishes EVERY design asset (excluding the "story" one, if
+  // any), in the exact order they're arranged in the Design phase's
+  // Attachments grid — that arrangement IS the slide order Instagram/
+  // Facebook actually publishes.
+  const carouselUrls = post.post_type==="carousel"
+    ? (designAssets.length ? designAssets : designUrls.map(url=>({url}))).filter(a=>a.kind!=="story").map(a=>a.url||a.file_url).filter(Boolean)
+    : [];
   // A design_assets entry tagged kind:"story" (set by the Ready Content "Also
   // post as Instagram Story" option) requests a parallel Story publish alongside
   // the regular feed post — only meaningful for Instagram.
@@ -2088,6 +2095,7 @@ async function publishPost(post, integration, tiktokOptions=null) {
       access_token: creds.access_token||"",
       message: [post.caption, post.hashtags].filter(Boolean).join("\n\n"),
       image_url: imageUrl,
+      image_urls: carouselUrls.length>1 ? carouselUrls : undefined,
       story_image_url: storyUrl,
       post_type: post.post_type||"",
       cover_url: coverUrl,
@@ -5129,7 +5137,17 @@ function DesignFilePicker({post, assets, onAddAsset, project, onStageChange}) {
 function DesignAssetGrid({post, onStageChange, onView}) {
   const [upscalingIdx, setUpscalingIdx] = useState(null);
   const [err, setErr] = useState("");
+  const [dragIdx, setDragIdx] = useState(null);
   if(!post.design_assets || post.design_assets.length===0) return null;
+
+  const isCarousel = post.post_type==="carousel";
+  const moveAsset = (from, to) => {
+    if(to<0 || to>=post.design_assets.length || from===to) return;
+    const next = [...post.design_assets];
+    const [moved] = next.splice(from,1);
+    next.splice(to,0,moved);
+    onStageChange({...post, design_assets:next}, post.stage);
+  };
 
   const handleUpscale = async (asset, i, scaleFactor) => {
     setUpscalingIdx(i); setErr("");
@@ -5157,8 +5175,17 @@ function DesignAssetGrid({post, onStageChange, onView}) {
           const isImage = (asset.url||asset.data||"").match(/\.(jpg|jpeg|png|gif|webp|svg)/i)||(asset.type||"").startsWith("image");
           const isVideo = (asset.url||asset.data||"").match(/\.(mp4|mov|webm|m4v)/i)||(asset.type||"").startsWith("video");
           return (
-          <div key={i} style={{display:"flex",flexDirection:"column",gap:4}}>
+          <div key={i} draggable={isCarousel} onDragStart={()=>setDragIdx(i)}
+            onDragOver={e=>e.preventDefault()}
+            onDrop={e=>{e.preventDefault(); if(dragIdx!==null) moveAsset(dragIdx,i); setDragIdx(null);}}
+            style={{display:"flex",flexDirection:"column",gap:4,opacity:dragIdx===i?0.4:1,cursor:isCarousel?"grab":"default"}}>
             <div style={{position:"relative",aspectRatio:"1/1",background:"var(--surface)",borderRadius:"var(--rs)",border:"1px solid var(--border)",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              {/* Slide order — a carousel publishes in exactly this array
+                  order, so it needs to be obvious (and adjustable, via
+                  drag or the arrows below) which image goes where. */}
+              {isCarousel&&(
+                <span style={{position:"absolute",top:3,left:3,minWidth:18,height:18,padding:"0 4px",borderRadius:9,background:"rgba(0,0,0,0.65)",color:"#fff",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",zIndex:1}}>{i+1}</span>
+              )}
               {isImage?
                 <img src={asset.url||asset.data} style={{width:"100%",height:"100%",objectFit:"cover"}} alt={asset.name}/>
               :isVideo?
@@ -5176,6 +5203,12 @@ function DesignAssetGrid({post, onStageChange, onView}) {
               }} style={{position:"absolute",top:3,right:3,width:20,height:20,borderRadius:99,background:"#ef4444",border:"none",color:"#fff",cursor:"pointer",fontSize:12,fontWeight:700,padding:0,lineHeight:"20px"}}>×</button>
               {asset.upscaledTo&&<span style={{position:"absolute",bottom:3,left:3,padding:"1px 6px",borderRadius:99,background:"rgba(16,185,129,0.9)",color:"#fff",fontSize:9,fontWeight:700}}>{asset.upscaledTo}</span>}
             </div>
+            {isCarousel&&(
+              <div style={{display:"flex",gap:3}}>
+                <button onClick={()=>moveAsset(i,i-1)} disabled={i===0} style={{flex:1,height:20,borderRadius:5,border:"1px solid var(--border2)",background:"var(--surface)",color:i===0?"var(--text3)":"var(--text2)",fontSize:10,fontWeight:700,cursor:i===0?"default":"pointer",opacity:i===0?0.4:1}}>← Slide</button>
+                <button onClick={()=>moveAsset(i,i+1)} disabled={i===post.design_assets.length-1} style={{flex:1,height:20,borderRadius:5,border:"1px solid var(--border2)",background:"var(--surface)",color:i===post.design_assets.length-1?"var(--text3)":"var(--text2)",fontSize:10,fontWeight:700,cursor:i===post.design_assets.length-1?"default":"pointer",opacity:i===post.design_assets.length-1?0.4:1}}>Slide →</button>
+              </div>
+            )}
             {isImage&&!asset.upscaledTo&&(
               <div style={{display:"flex",gap:3}}>
                 {["2x","4x"].map(sf=>(

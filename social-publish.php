@@ -47,6 +47,8 @@ $page_id      = trim($data["page_id"]      ?? "");
 $access_token = trim($data["access_token"] ?? "");
 $message      = trim($data["message"]      ?? "");
 $image_url    = trim($data["image_url"]    ?? "");
+// Carousel — every slide, in the exact order arranged in the Design phase.
+$image_urls   = array_values(array_filter(array_map('trim', $data["image_urls"] ?? []), fn($u) => $u !== ''));
 $story_image_url = trim($data["story_image_url"] ?? "");
 $scheduled_at = trim($data["scheduled_at"] ?? "");
 $post_type    = trim($data["post_type"]    ?? "");
@@ -96,7 +98,7 @@ if ($platform === "linkedin") {
     ];
     [$http_code, $response] = tiktok_publish_video($access_token, $image_url, $message, $tiktokOptions);
 } else {
-    [$http_code, $response] = meta_publish($platform, $page_id, $access_token, $message, $image_url, $scheduled_at ?: null, $story_image_url ?: null, $post_type ?: null, $cover_url ?: null);
+    [$http_code, $response] = meta_publish($platform, $page_id, $access_token, $message, $image_url, $scheduled_at ?: null, $story_image_url ?: null, $post_type ?: null, $cover_url ?: null, $image_urls ?: null);
 }
 http_response_code($http_code);
 echo json_encode($response);

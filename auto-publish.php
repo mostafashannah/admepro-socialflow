@@ -99,6 +99,11 @@ foreach ($due as $post) {
     // when a task has multiple attachments (revisions/replacements), the most
     // recently added one is the intended final version to actually publish.
     $image_url     = end($design_urls) ?: ($design_assets ? (end($design_assets)['url'] ?? '') : '');
+    // Carousel — every slide, in the exact order arranged in the Design
+    // phase (see DesignAssetGrid's drag/arrow reordering in app.jsx).
+    $image_urls    = ($post['post_type'] ?? '') === 'carousel'
+        ? array_values(array_filter(array_map(fn($a) => ($a['kind'] ?? '') === 'story' ? null : ($a['url'] ?? null), $design_assets ?: array_map(fn($u) => ['url' => $u], $design_urls))))
+        : [];
     $cover_url     = $post['carousel_cover'] ?? '';
     // Tagged kind:"story" by the Ready Content "Also post as Instagram Story" option.
     $story_image_url = '';
@@ -118,7 +123,7 @@ foreach ($due as $post) {
         }
         [$code, $resp] = tiktok_publish_video($access_token, $image_url, $message);
     } else {
-        [$code, $resp] = meta_publish($platform, $page_id, $access_token, $message, $image_url, null, $story_image_url ?: null, $post['post_type'] ?? null, $cover_url ?: null);
+        [$code, $resp] = meta_publish($platform, $page_id, $access_token, $message, $image_url, null, $story_image_url ?: null, $post['post_type'] ?? null, $cover_url ?: null, $image_urls ?: null);
     }
 
     // Reels return 202 with a container_id; poll synchronously here since the
