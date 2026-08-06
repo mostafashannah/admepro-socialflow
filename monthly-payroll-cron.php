@@ -47,10 +47,34 @@ $insert = $pdo->prepare(
     "INSERT INTO payroll_runs (id, team_member_id, member_name, salary_month, base_salary, vacation_overage_days, deduction_amount, net_amount, status)
      VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, 'pending')"
 );
+$raiseEventsStmt = $pdo->prepare(
+    "SELECT effective_date, previous_value, new_value FROM team_member_events WHERE team_member_id = ? AND event_type = 'salary_raise' AND effective_date IS NOT NULL ORDER BY effective_date ASC"
+);
 
+$year = (int)substr($lastMonth, 0, 4);
+$month = (int)substr($lastMonth, 5, 2);
 $monthStart = $lastMonth . '-01';
 $daysInMonth = (int)date('t', strtotime($monthStart));
 $monthEnd = $lastMonth . '-' . str_pad($daysInMonth, 2, '0', STR_PAD_LEFT);
+
+// Mirrors app.jsx's computeProratedMonthlySalary exactly: a salary raise
+// (or a start_date) landing partway through the month means part of it
+// was actually earned at the old rate and part at the new one, instead
+// of the whole month being paid at whatever the salary is right now.
+$parseNum = function($v) { return (float)preg_replace('/[^0-9.]/', '', (string)$v); };
+function proratedMonthlySalary($currentSalary, $events, $year, $month, $startDay, $daysInMonth) {
+    $total = 0.0;
+    for ($d = $startDay; $d <= $daysInMonth; $d++) {
+        $dateStr = sprintf('%04d-%02d-%02d', $year, $month, $d);
+        $rate = $currentSalary;
+        $applicable = null;
+        foreach ($events as $e) { if ($e['date'] <= $dateStr) $applicable = $e; }
+        if ($applicable) $rate = $applicable['rate'];
+        elseif (count($events) > 0 && $events[0]['prevRate'] > 0) $rate = $events[0]['prevRate'];
+        $total += $rate / $daysInMonth;
+    }
+    return round($total, 2);
+}
 
 $created = 0;
 $skipped = 0;
@@ -64,14 +88,19 @@ foreach ($members as $m) {
     // Not employed yet during this payroll month at all — skip entirely.
     if ($startDate && $startDate > $monthEnd) { $skipped++; continue; }
 
-    // Joined partway through this month — pay only for the days actually
-    // worked instead of a full month, rather than assuming everyone
-    // active today was active for the whole period being paid.
-    $baseSalary = $fullSalary;
+    // Joined partway through this month — only count days from their real
+    // start date onward, instead of assuming a full month.
+    $startDay = 1;
     if ($startDate && $startDate > $monthStart) {
-        $daysWorked = $daysInMonth - ((int)date('j', strtotime($startDate))) + 1;
-        $baseSalary = round($fullSalary * $daysWorked / $daysInMonth, 2);
+        $startDay = (int)date('j', strtotime($startDate));
     }
+
+    $raiseEventsStmt->execute([$m['id']]);
+    $events = array_map(function($r) use ($parseNum) {
+        return ['date' => $r['effective_date'], 'rate' => $parseNum($r['new_value']), 'prevRate' => $parseNum($r['previous_value'])];
+    }, $raiseEventsStmt->fetchAll(PDO::FETCH_ASSOC));
+
+    $baseSalary = proratedMonthlySalary($fullSalary, $events, $year, $month, $startDay, $daysInMonth);
 
     $used = floatval($m['vacation_days_used'] ?? 0);
     $total = floatval($m['vacation_days_total'] ?? 30);
