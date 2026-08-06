@@ -16770,7 +16770,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   onInviteUser, onCancelInvitation, onApproveRequest, onRejectRequest,
   onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation, onGenerateClientActivationLink, onActivateInvitation,
   rolePerms, onUpdateTeamMember, onRemoveMember, onToggleRolePermission, onAddExpense, leaveRequests, onDecideLeaveRequest, attendanceRecords,
-  posts, onImpersonate, appSettings, brandingAssets, onSaveSettings, expenses, onDeclareCompanyDayOff, invoices, payments, subscriptionPayments, activityLogs=[], perfLogs=[], maiReportSessions=[], leaveCreditEvents=[]}) {
+  posts, onImpersonate, appSettings, brandingAssets, onSaveSettings, expenses, onDeclareCompanyDayOff, invoices, payments, subscriptionPayments, activityLogs=[], perfLogs=[], maiReportSessions=[], leaveCreditEvents=[], payrollRuns=[], onDecidePayrollRun}) {
   const [tab, setTab] = usePersistentState("sf_tab_users","team");
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showClientUserModal, setShowClientUserModal] = useState(false);
@@ -16844,6 +16844,8 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
           perfLogs={perfLogs}
           maiReportSessions={maiReportSessions}
           leaveCreditEvents={leaveCreditEvents}
+          payrollRuns={payrollRuns}
+          onDecidePayrollRun={onDecidePayrollRun}
           onUpdateTeamMember={onUpdateTeamMember}
           onAddExpense={onAddExpense}
           canEdit={!isOfficeBoy && hasPerm(currentUser,rolePerms,"hr.edit_team")}
@@ -17736,7 +17738,7 @@ function AccountManagerMaiReportsTab({member, onUpdateTeamMember}) {
   );
 }
 
-function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, attendanceRecords, expenses, invoices, payments, subscriptionPayments, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense, appSettings, brandingAssets, perfLogs=[], maiReportSessions=[], leaveCreditEvents=[]}) {
+function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, attendanceRecords, expenses, invoices, payments, subscriptionPayments, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense, appSettings, brandingAssets, perfLogs=[], maiReportSessions=[], leaveCreditEvents=[], payrollRuns=[], onDecidePayrollRun}) {
   // Plain state, not persisted — opening any team member should always
   // start on Overview, not silently reopen to whatever tab was last viewed.
   const [tab, setTab] = useState("overview");
@@ -18116,7 +18118,26 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
     return overridden.sort((a, b) => new Date(b.work_date) - new Date(a.work_date));
   })();
   const mySalaryRecords = (expenses||[]).filter(e=>e.team_member_id===member.id && e.category==="salaries").sort((a,b)=>new Date(b.date)-new Date(a.date));
-  const totalPaid = mySalaryRecords.reduce((sum,e)=>sum+Number(e.amount||0),0);
+  // Pending monthly payroll runs awaiting approval (see monthly-payroll-cron.php)
+  // — surfaced right here so an admin doesn't have to leave the profile and
+  // go dig through Finance > Payroll just to approve/reject this person's.
+  const myPendingPayroll = (payrollRuns||[]).filter(r=>r.team_member_id===member.id && r.status==="pending").sort((a,b)=>b.salary_month.localeCompare(a.salary_month));
+  // Once approved, a payroll run becomes an Outstanding-liability Expense
+  // (outstanding_kind:"team_member") — lazy-fetch actual payments made
+  // against those so Salary Records can show Outstanding/Partial/Paid
+  // instead of treating every linked expense as if it were already paid
+  // in full, same paid-so-far convention as the Finance > Outstanding tab.
+  const [outstandingPayments, setOutstandingPayments] = useState([]);
+  useEffect(()=>{
+    qe("OutstandingPayment", {}, "-date", 2000).then(res=>setOutstandingPayments(res.entities||[])).catch(()=>{});
+  },[member.id]);
+  const paidSoFarByExpense = {};
+  outstandingPayments.forEach(p=>{ paidSoFarByExpense[p.expense_id] = (paidSoFarByExpense[p.expense_id]||0) + Number(p.amount||0); });
+  const totalPaid = mySalaryRecords.reduce((sum,e)=>{
+    const total = Number(e.outstanding_total_payable ?? e.amount ?? 0);
+    const paid = e.outstanding_kind==="team_member" ? Math.min(paidSoFarByExpense[e.id]||0, total) : total;
+    return sum+paid;
+  },0);
   const docs = [member.id_photo_front_url&&{label:"ID Photo — Front", url:member.id_photo_front_url}, member.id_photo_back_url&&{label:"ID Photo — Back", url:member.id_photo_back_url}].filter(Boolean);
   const extraDocs = parseMaybeJson(member.extra_documents, []);
 
@@ -18345,19 +18366,55 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
               <p style={{fontSize:22,fontWeight:800,marginTop:4}}>EGP {Math.round(totalPaid).toLocaleString()}</p>
             </div>
           </div>
+          {myPendingPayroll.length>0&&(
+            <div style={{background:"var(--surface)",border:"1px solid #f59e0b55",borderRadius:12,overflow:"hidden"}}>
+              <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}><h3 style={{fontWeight:700,fontSize:14}}>Pending Approval</h3></div>
+              {myPendingPayroll.map((r,i)=>(
+                <div key={r.id} style={{padding:"12px 18px",borderBottom:i<myPendingPayroll.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12}}>
+                  <div style={{flex:1}}>
+                    <p style={{fontWeight:600,fontSize:13}}>{new Date(r.salary_month+"-01").toLocaleDateString("en-US",{month:"long",year:"numeric"})} · Base EGP {Math.round(r.base_salary).toLocaleString()}</p>
+                    {Number(r.vacation_overage_days)>0&&<p style={{fontSize:11,color:"#ef4444"}}>−{r.vacation_overage_days}d over vacation credit (−EGP {Math.round(r.deduction_amount).toLocaleString()})</p>}
+                  </div>
+                  <span style={{fontWeight:800,fontSize:15,flexShrink:0}}>EGP {Math.round(r.net_amount).toLocaleString()}</span>
+                  {onDecidePayrollRun&&(
+                    <div style={{display:"flex",gap:6,flexShrink:0}}>
+                      <button onClick={()=>onDecidePayrollRun(r,"reject")} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:600,color:"var(--text2)"}}>Reject</button>
+                      <button onClick={()=>onDecidePayrollRun(r,"approve")} style={{background:"var(--accent)",border:"none",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:600,color:"#fff"}}>Approve</button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
           <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
             <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}><h3 style={{fontWeight:700,fontSize:14}}>Salary Records</h3></div>
             {mySalaryRecords.length===0?(
               <div style={{padding:20,textAlign:"center",color:"var(--text2)",fontSize:13}}>No salary payments linked to {member.name} yet — link one by picking them as "For (Team Member)" when adding a Salaries & Payroll transaction on the Finance page.</div>
-            ):mySalaryRecords.map((e,i)=>(
+            ):mySalaryRecords.map((e,i)=>{
+              // Approved payroll runs land here as an Outstanding-liability
+              // Expense (outstanding_kind:"team_member") — reflect its real
+              // paid-so-far state instead of assuming every linked expense
+              // was already paid in full. Anything without that marker is
+              // a plain manually-logged payment, which always was fully paid.
+              const isOutstanding = e.outstanding_kind==="team_member";
+              const total = Number(e.outstanding_total_payable ?? e.amount);
+              const paidSoFar = isOutstanding ? Math.min(paidSoFarByExpense[e.id]||0, total) : total;
+              const remaining = Math.max(0, total-paidSoFar);
+              const statusLabel = !isOutstanding ? null : remaining<=0 ? "Fully Transferred" : paidSoFar>0 ? "Partial Transfer" : "Outstanding";
+              const statusColor = statusLabel==="Fully Transferred" ? "#10b981" : statusLabel==="Partial Transfer" ? "#f59e0b" : "#ef4444";
+              return (
               <div key={e.id} style={{padding:"12px 18px",borderBottom:i<mySalaryRecords.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12}}>
                 <div style={{flex:1}}>
-                  <p style={{fontWeight:600,fontSize:13}}>{e.description}{e.salary_month&&<span style={{fontWeight:400,color:"var(--text3)"}}> — {new Date(e.salary_month+"-01").toLocaleDateString("en-US",{month:"long",year:"numeric"})}</span>}</p>
-                  <p style={{fontSize:11,color:"var(--text3)"}}>Paid {fmtDate(e.date)}{e.method?` · ${e.method}`:""}</p>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <p style={{fontWeight:600,fontSize:13}}>{e.description}{e.salary_month&&<span style={{fontWeight:400,color:"var(--text3)"}}> — {new Date(e.salary_month+"-01").toLocaleDateString("en-US",{month:"long",year:"numeric"})}</span>}</p>
+                    {statusLabel&&<Badge label={statusLabel} color={statusColor} xs/>}
+                  </div>
+                  <p style={{fontSize:11,color:"var(--text3)"}}>{isOutstanding ? (remaining<=0?`Fully paid`:`EGP ${Math.round(paidSoFar).toLocaleString()} of ${Math.round(total).toLocaleString()} transferred so far`) : `Paid ${fmtDate(e.date)}${e.method?` · ${e.method}`:""}`}</p>
                 </div>
-                <span style={{fontWeight:800,fontSize:14,color:"#ef4444"}}>-{e.currency||"EGP"} {Number(e.amount).toLocaleString()}</span>
+                <span style={{fontWeight:800,fontSize:14,color:"#ef4444"}}>-{e.currency||"EGP"} {Math.round(total).toLocaleString()}</span>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -46921,6 +46978,8 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             perfLogs={data.perfLogs||[]}
             maiReportSessions={data.maiReportSessions||[]}
             leaveCreditEvents={data.leaveCreditEvents||[]}
+            payrollRuns={data.payrollRuns||[]}
+            onDecidePayrollRun={decidePayrollRun}
           />
         )}
         {page==="performance"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.view_performance"))&&(
