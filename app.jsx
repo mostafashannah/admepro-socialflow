@@ -13268,6 +13268,27 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
 
   const FREEPIK_ASPECT = {"1024x1024":"square_1_1", "1024x1536":"social_story_9_16", "1536x1024":"widescreen_16_9"};
 
+  // gpt-image-1 caps input-image requests at 5/minute per org — firing all
+  // N slides at once via Promise.all (see handleGenerate below) burst past
+  // that instantly on anything with >5 slides/reference images and failed
+  // with a 429. Runs one at a time instead, and on a 429 waits out
+  // whichever cooldown OpenAI actually reports ("Please try again in Ns")
+  // rather than guessing, then retries once.
+  const sleep = (ms) => new Promise(res=>setTimeout(res, ms));
+  const generateOneWithRetry = async (finalPrompt) => {
+    try {
+      return await generateOne(finalPrompt);
+    } catch(e) {
+      const msg = e.message || "";
+      const m = msg.match(/rate limit/i) && msg.match(/try again in ([\d.]+)s/i);
+      if (m) {
+        await sleep(Math.ceil(parseFloat(m[1])*1000) + 500);
+        return await generateOne(finalPrompt);
+      }
+      throw e;
+    }
+  };
+
   const generateOne = async (finalPrompt) => {
     const modelDef = IMAGE_MODELS.find(m=>m.id===model) || IMAGE_MODELS[0];
     if(modelDef.provider==="freepik") {
@@ -13339,12 +13360,14 @@ Return ONLY a JSON array of ${count} strings, one prompt per slide, no markdown,
     setLoading(true); setError("");
     try {
       if(contentType==="image") {
-        const dataUrls = await Promise.all(Array.from({length:count}, ()=>generateOne(prompt.trim())));
+        const dataUrls = [];
+        for (let i=0;i<count;i++) dataUrls.push(await generateOneWithRetry(prompt.trim()));
         const urls = await Promise.all(dataUrls.map(persistGenerated));
         setHistory(h=>[...urls.map(url=>({id:uid(), url, prompt:prompt.trim(), scale, client:client?.name||"", contentType, saved:false})), ...h].slice(0,60));
       } else {
         const slidePrompts = await buildSequencePrompts(prompt.trim());
-        const dataUrls = await Promise.all(slidePrompts.map(p=>generateOne(p)));
+        const dataUrls = [];
+        for (const p of slidePrompts) dataUrls.push(await generateOneWithRetry(p));
         const urls = await Promise.all(dataUrls.map(persistGenerated));
         setHistory(h=>[...urls.map((url,i)=>({id:uid(), url, prompt:slidePrompts[i], scale, client:client?.name||"", contentType, slideIndex:i+1, slideCount:slidePrompts.length, saved:false})), ...h].slice(0,60));
       }
