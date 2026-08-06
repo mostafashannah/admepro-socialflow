@@ -376,14 +376,13 @@ const STAGES = [
   { key: "rejected", label: "Rejected", color: "#ef4444", icon: "✕" },
 ];
 // The single source of truth for "what comes next" from any given stage —
-// EVERYTHING (Task or Post) lands on Approved once Client Approval clears;
-// a Task is done right there (never touches Scheduled/Published at all).
-// A Post keeps going, but only ever manually from here — via "Jump to
-// stage" — never as an automatic "next" step, so nothing accidentally
-// gets scheduled/published straight off an approval. Approved therefore
-// never has an auto-advance "next" stage for either kind.
+// EVERYTHING (Task or Post) lands on Approved once Client Approval clears.
+// A Task (no platform) is done right there — it never touches Scheduled/
+// Published. A real Post keeps going: from Approved its next stage is
+// Scheduled, same "Move to X" button as every other stage, instead of
+// being buried behind the generic "Jump to stage" dropdown only.
 function nextStageFor(post) {
-  if (post.stage === "approved") return null;
+  if (post.stage === "approved") return post.platform ? STAGE_MAP.scheduled : null;
   const ci = STAGES.findIndex(s => s.key === post.stage);
   return ci === -1 ? null : STAGES[ci + 1];
 }
@@ -6533,7 +6532,10 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
               }}>Give Edits</button>
             </div>
           )}
-          {!["internal_review","design_review"].includes(post.stage)&&(()=>{
+          {/* Only admin/AM can push a post into Client Approval or Scheduled
+              — same gate the My Tasks quick-action button enforces, applied
+              here too now that Approved's next stage is Scheduled. */}
+          {!["internal_review","design_review"].includes(post.stage)&&(isManager||!["client_approval","scheduled"].includes(next.key))&&(()=>{
             const needsIgCover = post.stage==="design" && post.post_type==="reel" && post.platform==="instagram" && !post.carousel_cover;
             return (
           <div style={{display:"flex",gap:8}}>

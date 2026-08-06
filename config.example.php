@@ -25,9 +25,17 @@ define('WA_APP_SECRET',   'your_meta_app_secret');
 // integration in Settings → Integrations with a real Page Access Token.
 define('AUTO_PUBLISH_ENABLED', false);
 
-// Timezone used when comparing posts' scheduled_date/scheduled_time against
-// "now" in auto-publish.php. Use a PHP timezone identifier, e.g. 'Africa/Cairo'.
-define('APP_TIMEZONE', 'UTC');
+// The business's real operating timezone — every scheduled_date/
+// scheduled_time a user types into the app (calendar plan, post
+// scheduling, reminders) is a plain wall-clock value with no timezone
+// attached, meant as "3pm here", not "3pm UTC". Applied globally right
+// below so EVERY script that requires config.php compares "now" the same
+// way, instead of only auto-publish.php setting it for itself — a script
+// left on the PHP/MySQL default (UTC) would fire real actions up to
+// several hours off from what was actually scheduled. Use a real PHP
+// timezone identifier, e.g. 'Africa/Cairo'.
+define('APP_TIMEZONE', 'Africa/Cairo');
+date_default_timezone_set(APP_TIMEZONE);
 
 // Meta App (Messenger/Instagram customer inbox webhook). App ID + Secret:
 // developers.facebook.com → your app → Settings → Basic.

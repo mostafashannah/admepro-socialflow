@@ -33,7 +33,10 @@ if (!defined('AUTO_PUBLISH_ENABLED') || !AUTO_PUBLISH_ENABLED) {
     exit;
 }
 
-date_default_timezone_set(defined('APP_TIMEZONE') ? APP_TIMEZONE : 'UTC');
+// Redundant now that config.php itself calls date_default_timezone_set(APP_TIMEZONE)
+// for every script that requires it — kept as a defensive fallback in case this
+// runs against an older config.php that doesn't do that yet.
+date_default_timezone_set(defined('APP_TIMEZONE') ? APP_TIMEZONE : 'Africa/Cairo');
 
 $pdo = new PDO(
     'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4',
