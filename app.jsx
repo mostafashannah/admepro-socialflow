@@ -18933,6 +18933,7 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
   const [f,setF] = useState({
     name:member.name, email:member.email, role:member.role, department:member.department||"", title:member.title||"",
     status:member.status||"active", manager_id:member.manager_id||"", whatsapp_number:member.whatsapp_number||"",
+    start_date:member.start_date||"",
     salary:member.salary??"", probation_salary:member.probation_salary??"", probation_months:member.probation_months??"",
     vacation_days_total:member.vacation_days_total??21, wfh_days_total:member.wfh_days_total??2,
     personal_leave_hours_total:member.personal_leave_hours_total??4,
@@ -18979,6 +18980,7 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
     if(updates.salary==="") updates.salary = null;
     if(updates.probation_salary==="") updates.probation_salary = null;
     if(updates.probation_months==="") updates.probation_months = null;
+    if(updates.start_date==="") updates.start_date = null;
     // Full-time always means the standard Sun-Thu week (work_days only
     // matters/persists for part-timers with a custom schedule).
     updates.work_days = JSON.stringify(updates.employment_type==="part_time" ? updates.work_days : WORK_DAYS_DEFAULT);
@@ -19065,6 +19067,9 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
                 ))}
               </div>
             </Field>
+          )}
+          {canEditSalary&&(
+            <Field label="Start Date" hint="Used to skip/prorate payroll before their real join date"><input type="date" value={f.start_date} onChange={e=>s("start_date",e.target.value)} style={inputSt}/></Field>
           )}
           {canEditSalary&&(
             <Field label="Salary"><input type="number" value={f.salary} onChange={e=>s("salary",e.target.value)} placeholder="Monthly salary" style={inputSt}/></Field>
@@ -27749,7 +27754,7 @@ function mergeContractTemplate(template, member, manager, appSettings) {
     job_title: member.title||ROLES[member.role]?.label||member.role||"",
     department: member.department||"",
     manager_name: manager?.name||"—",
-    start_date: member.created_at ? fmtDate(member.created_at) : fmtDate(new Date().toISOString()),
+    start_date: member.start_date ? fmtDate(member.start_date) : (member.created_at ? fmtDate(member.created_at) : fmtDate(new Date().toISOString())),
     salary: member.salary?`EGP ${Number(member.salary).toLocaleString()}`:"________________",
     probation_months: member.probation_months ?? "3",
     probation_salary: member.probation_salary?`EGP ${Number(member.probation_salary).toLocaleString()}`:(member.salary?`EGP ${Number(member.salary).toLocaleString()}`:"________________"),

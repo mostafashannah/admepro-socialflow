@@ -39,7 +39,7 @@ if ($hasAttendance->fetchColumn() == 0) {
 $dayRate = 30; // salary / 30 as the per-day deduction rate
 
 $members = $pdo->query(
-    "SELECT id, name, salary, vacation_days_used, vacation_days_total FROM team_members WHERE status != 'inactive' AND salary IS NOT NULL AND salary > 0"
+    "SELECT id, name, salary, vacation_days_used, vacation_days_total, start_date FROM team_members WHERE status != 'inactive' AND salary IS NOT NULL AND salary > 0"
 )->fetchAll(PDO::FETCH_ASSOC);
 
 $exists = $pdo->prepare("SELECT 1 FROM payroll_runs WHERE team_member_id = ? AND salary_month = ? LIMIT 1");
@@ -48,20 +48,39 @@ $insert = $pdo->prepare(
      VALUES (UUID(), ?, ?, ?, ?, ?, ?, ?, 'pending')"
 );
 
+$monthStart = $lastMonth . '-01';
+$daysInMonth = (int)date('t', strtotime($monthStart));
+$monthEnd = $lastMonth . '-' . str_pad($daysInMonth, 2, '0', STR_PAD_LEFT);
+
 $created = 0;
+$skipped = 0;
 foreach ($members as $m) {
     $exists->execute([$m['id'], $lastMonth]);
     if ($exists->fetchColumn()) continue; // already generated this month — safe to re-run
 
-    $baseSalary = floatval($m['salary']);
+    $fullSalary = floatval($m['salary']);
+    $startDate = $m['start_date'] ?: null;
+
+    // Not employed yet during this payroll month at all — skip entirely.
+    if ($startDate && $startDate > $monthEnd) { $skipped++; continue; }
+
+    // Joined partway through this month — pay only for the days actually
+    // worked instead of a full month, rather than assuming everyone
+    // active today was active for the whole period being paid.
+    $baseSalary = $fullSalary;
+    if ($startDate && $startDate > $monthStart) {
+        $daysWorked = $daysInMonth - ((int)date('j', strtotime($startDate))) + 1;
+        $baseSalary = round($fullSalary * $daysWorked / $daysInMonth, 2);
+    }
+
     $used = floatval($m['vacation_days_used'] ?? 0);
     $total = floatval($m['vacation_days_total'] ?? 30);
     $overage = max(0, $used - $total);
-    $deduction = round($overage * ($baseSalary / $dayRate), 2);
+    $deduction = round($overage * ($fullSalary / $dayRate), 2);
     $net = max(0, $baseSalary - $deduction);
 
     $insert->execute([$m['id'], $m['name'], $lastMonth, $baseSalary, $overage, $deduction, $net]);
     $created++;
 }
 
-echo json_encode(['ok' => true, 'month' => $lastMonth, 'created' => $created]) . "\n";
+echo json_encode(['ok' => true, 'month' => $lastMonth, 'created' => $created, 'skipped_not_yet_hired' => $skipped]) . "\n";
