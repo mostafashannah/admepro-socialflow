@@ -542,11 +542,16 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
         // the model often rewords it slightly ("Fawry office supplies" vs
         // "Office supplies - Fawry installment"), which let three
         // differently-worded duplicates of the same transaction slip past
-        // an exact-description match. Same sender/type/amount within 30
-        // minutes is treated as a repeat and rejected outright rather than
-        // trusting the prompt instructions alone to prevent it — widened
-        // from 10 to 30 after seeing the same stale transaction re-fire
-        // several exchanges into an unrelated conversation.
+        // an exact-description match. Same sender/type/amount within the
+        // window below is treated as a repeat and rejected outright rather
+        // than trusting the prompt instructions alone to prevent it —
+        // widened from 10 to 30, then to 240 minutes after the model told a
+        // user "I didn't actually save that — please resend your
+        // confirmation" for a transaction it HAD already saved ~50 minutes
+        // earlier, and the resend landed outside the 30-minute window and
+        // created a real duplicate. A same amount/type/sender genuinely
+        // recurring within a few hours is rare enough that force=true
+        // covers it.
         // force=true (only ever set after the user has explicitly confirmed
         // this is a genuinely separate transaction, not a repeat) bypasses
         // this check — without it, there was no way to actually save a
@@ -554,7 +559,7 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
         // was papering over that dead end by just claiming success in its
         // reply without the tool having done anything.
         $force = !empty($input['force']);
-        $dupCheck = $pdo->prepare("SELECT ref FROM expenses WHERE type = :type AND amount = :amt AND created_by = :by AND created_at >= (NOW() - INTERVAL 30 MINUTE) LIMIT 1");
+        $dupCheck = $pdo->prepare("SELECT ref FROM expenses WHERE type = :type AND amount = :amt AND created_by = :by AND created_at >= (NOW() - INTERVAL 240 MINUTE) LIMIT 1");
         $dupCheck->execute([':type' => $type, ':amt' => $amount, ':by' => $senderName]);
         $dup = $dupCheck->fetchColumn();
         if ($dup && !$force) {
@@ -2107,9 +2112,22 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
     // confirmation (has a currency marker), since a plain "✅ done" success
     // reply for some other unrelated tool is completely legitimate and
     // must not be touched.
+    // A reply that also asks the user something (ends in a question) is
+    // never a bare "it's done" claim in isolation — it's Pro recapping
+    // transactions ALREADY saved in an earlier turn as context for a new
+    // question ("here's what I've logged so far — is X a separate
+    // transaction?"). That recap legitimately uses words like "saved"
+    // alongside an amount, which used to trip this guard even though
+    // nothing false was claimed and no tool call was needed this turn —
+    // the override then replaced the ENTIRE reply, including the real
+    // question, with a false "I didn't save that, please resend", which
+    // led a user to re-confirm an already-saved transaction and create a
+    // genuine duplicate. Only fire when the reply reads as a closing
+    // confirmation with nothing left to ask.
     $claimsSuccess = preg_match('/(✅|تم\b|done\b|saved\b|logged\b|recorded\b)/iu', $reply);
     $mentionsMoney = preg_match('/(جنيه|EGP|USD|\$)/iu', $reply);
-    if ($claimsSuccess && $mentionsMoney) {
+    $asksQuestion = strpos($reply, '?') !== false || strpos($reply, '؟') !== false;
+    if ($claimsSuccess && $mentionsMoney && !$asksQuestion) {
         if (!$mutationAttempted) {
             $reply = "Actually, I didn't save that — something went wrong before I could log it. Please resend your confirmation and I'll try again.";
         } elseif (is_array($lastMutationResult) && !empty($lastMutationResult['error'])) {
