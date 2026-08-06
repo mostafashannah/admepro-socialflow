@@ -38,8 +38,12 @@ if ($hasAttendance->fetchColumn() == 0) {
 
 $dayRate = 30; // salary / 30 as the per-day deduction rate
 
+// Falls back to created_at (when their record was actually added to the
+// system) whenever start_date was never explicitly set — for most hires
+// that's the same day they really joined, so this avoids requiring an
+// extra manual step for every new team member just to get correct payroll.
 $members = $pdo->query(
-    "SELECT id, name, salary, vacation_days_used, vacation_days_total, start_date FROM team_members WHERE status != 'inactive' AND salary IS NOT NULL AND salary > 0"
+    "SELECT id, name, salary, vacation_days_used, vacation_days_total, COALESCE(start_date, DATE(created_at)) AS start_date FROM team_members WHERE status != 'inactive' AND salary IS NOT NULL AND salary > 0"
 )->fetchAll(PDO::FETCH_ASSOC);
 
 $exists = $pdo->prepare("SELECT 1 FROM payroll_runs WHERE team_member_id = ? AND salary_month = ? LIMIT 1");

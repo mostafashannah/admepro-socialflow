@@ -29,7 +29,7 @@ function proratedMonthlySalary($currentSalary, $events, $year, $month, $startDay
 
 $rows = $pdo->query(
     "SELECT pr.id, pr.team_member_id, pr.member_name, pr.salary_month, pr.vacation_overage_days,
-            tm.salary, tm.start_date
+            tm.salary, COALESCE(tm.start_date, DATE(tm.created_at)) AS start_date
      FROM payroll_runs pr JOIN team_members tm ON tm.id = pr.team_member_id
      WHERE pr.status = 'pending'"
 )->fetchAll(PDO::FETCH_ASSOC);
