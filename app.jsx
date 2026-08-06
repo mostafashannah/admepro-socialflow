@@ -6469,6 +6469,12 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 if(!post.caption) { alert("This post has no caption yet — add one before moving it forward."); return; }
                 if(post.post_type!=="story" && !post.hashtags) { alert("This post has no hashtags yet — add some before moving it forward."); return; }
               }
+              // Same IG reel cover requirement as the normal "Move to X"
+              // button — jumping straight past Design still shouldn't skip
+              // it, same reasoning as the caption/hashtags check above.
+              if(post.stage==="design" && post.post_type==="reel" && post.platform==="instagram" && !post.carousel_cover) {
+                alert("Upload the Instagram Cover before moving this reel forward."); return;
+              }
               onStageChange(post, e.target.value);
             }} style={{...inputSt,flex:1,minWidth:140,padding:"6px 10px",fontSize:12}}>
               <option value="">Choose a stage…</option>
@@ -34231,6 +34237,9 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
                     if(post.platform && ["client_approval","scheduled"].includes(nextStage.key)) {
                       if(!post.caption) { alert("This post has no caption yet — add one before moving it forward."); return; }
                       if(post.post_type!=="story" && !post.hashtags) { alert("This post has no hashtags yet — add some before moving it forward."); return; }
+                    }
+                    if(post.stage==="design" && post.post_type==="reel" && post.platform==="instagram" && !post.carousel_cover) {
+                      alert("Upload the Instagram Cover before moving this reel forward."); return;
                     }
                     onStageChange(post, nextStage.key);
                   }} style={{
