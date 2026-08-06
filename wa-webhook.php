@@ -62,8 +62,8 @@ $body    = json_decode($raw, true);
 $value   = $body['entry'][0]['changes'][0]['value'] ?? [];
 $message = $value['messages'][0] ?? null;
 $msgType = $message['type'] ?? '';
-if (!$message || !in_array($msgType, ['text', 'audio', 'image'], true)) {
-    exit; // ignore statuses, non-text/audio/image messages, etc.
+if (!$message || !in_array($msgType, ['text', 'audio', 'image', 'document'], true)) {
+    exit; // ignore statuses, non-text/audio/image/document messages, etc.
 }
 
 $phoneNumberId = (string)($value['metadata']['phone_number_id'] ?? ''); // which of our numbers received it
@@ -72,6 +72,8 @@ $contactName = $value['contacts'][0]['profile']['name'] ?? null; // customer dis
 $isVoiceNote = false;
 $imageBase64 = null;
 $imageMime = null;
+$documentBase64 = null;
+$documentMime = null;
 
 if ($msgType === 'audio') {
     // Voice notes only make sense on the Pro number (client inbox numbers
@@ -123,6 +125,32 @@ if ($msgType === 'audio') {
     $text = ($caption !== '' ? $caption : "Here's a photo — take a look and help with whatever it's for.")
         . ($receiptUrl ? "\n[photo_url: {$receiptUrl}]" : '');
     error_log('[wa-webhook] image received, receiptUrl=' . var_export($receiptUrl, true) . ' from=' . $from);
+} elseif ($msgType === 'document') {
+    // Same reasoning as photos above — only meaningful on the Pro number.
+    // Only PDFs are actually readable as a document content block; other
+    // file types (docx, xlsx, etc.) still get saved/attached but Pro is
+    // told plainly it can't read them instead of silently guessing.
+    require_once __DIR__ . '/pro-lib.php';
+    $mediaId = $message['document']['id'] ?? '';
+    if (!$from || !$mediaId) exit;
+    [$bytes, $mime] = downloadWhatsAppMedia($mediaId);
+    if (!$bytes) exit;
+    $mime = $mime ?: 'application/pdf';
+    $receiptUrl = saveReceiptImage($bytes, $mime);
+    $caption = trim($message['document']['caption'] ?? '');
+    $filename = trim($message['document']['filename'] ?? 'document');
+    if ($mime === 'application/pdf') {
+        $documentBase64 = base64_encode($bytes);
+        $documentMime = $mime;
+        $text = ($caption !== '' ? $caption : "Here's a PDF ({$filename}) — take a look and help with whatever it's for.")
+            . ($receiptUrl ? "\n[photo_url: {$receiptUrl}]" : '');
+    } else {
+        $text = ($caption !== '' ? $caption . "\n\n" : '')
+            . "[Sent a {$mime} file ({$filename}) — I can only actually read PDFs, images, and voice notes right now. "
+            . "If this is a receipt/invoice, please resend it as a PDF or photo instead so I can log it.]"
+            . ($receiptUrl ? "\n[photo_url: {$receiptUrl}]" : '');
+    }
+    error_log('[wa-webhook] document received, mime=' . $mime . ' receiptUrl=' . var_export($receiptUrl, true) . ' from=' . $from);
 } else {
     $text = trim($message['text']['body'] ?? '');
 }
@@ -249,7 +277,7 @@ try {
         catch (\Throwable $e) { error_log('[wa-webhook] lead-capture EXCEPTION: ' . $e->getMessage()); }
     }
     error_log("[wa-webhook] routing to Pro: senderName=" . var_export($senderName, true) . " senderRole=" . var_export($senderRole, true));
-    $reply = askPro($pdo, $senderName, $senderRole, $contextBlock, $text, $senderId, $isVoiceNote ? $text : null, $from, $imageBase64, $imageMime, $voiceRecordingUrl ?? null);
+    $reply = askPro($pdo, $senderName, $senderRole, $contextBlock, $text, $senderId, $isVoiceNote ? $text : null, $from, $imageBase64, $imageMime, $voiceRecordingUrl ?? null, $documentBase64, $documentMime);
     error_log("[wa-webhook] askPro returned: " . var_export($reply, true));
     if ($reply) sendWhatsAppReply($from, $reply);
 } catch (Throwable $e) {

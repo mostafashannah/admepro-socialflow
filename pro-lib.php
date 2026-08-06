@@ -49,17 +49,17 @@ function downloadWhatsAppMedia(string $mediaId) {
     return $bytes ? [$bytes, $mime] : [null, null];
 }
 
-// Saves a WhatsApp photo straight to disk (same storage the app's own
+// Saves a WhatsApp photo or PDF straight to disk (same storage the app's own
 // uploadToStorage() writes to via storage.php) and returns its public URL —
-// used so a receipt/invoice photo sent to Pro can end up attached to the
-// expense record it gets logged against, the same "attachments" JSON field
-// the Finance page's own upload UI already writes to.
+// used so a receipt/invoice photo or PDF sent to Pro can end up attached to
+// the expense record it gets logged against, the same "attachments" JSON
+// field the Finance page's own upload UI already writes to.
 function saveReceiptImage(string $bytes, string $mimeType): ?string {
     if (!defined('STORAGE_ROOT') || !defined('STORAGE_PUBLIC_URL')) {
         error_log('[saveReceiptImage] STORAGE_ROOT/STORAGE_PUBLIC_URL not defined in config.php — receipt photo cannot be saved.');
         return null;
     }
-    $ext = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'][$mimeType] ?? 'jpg';
+    $ext = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif', 'application/pdf' => 'pdf'][$mimeType] ?? 'jpg';
     $path = 'wa-receipts/' . date('Y/m') . '/' . bin2hex(random_bytes(8)) . '.' . $ext;
     $dest = STORAGE_ROOT . '/finance-docs/' . $path;
     $dir = dirname($dest);
@@ -375,7 +375,7 @@ function financeTools() {
                     'outstanding_team_member' => ['type' => 'string', 'description' => 'Name of the team member this is owed to — required when outstanding_kind=team_member.'],
                     'outstanding_months' => ['type' => 'integer', 'description' => 'Installment plan length in months — required when outstanding_kind=installment.'],
                     'outstanding_monthly_interest_rate' => ['type' => 'number', 'description' => 'Flat monthly interest %. If the user does not give one, use Fawry\'s known rate for that month count (see tool description).'],
-                    'photo_url' => ['type' => 'string', 'description' => 'The URL from a "[photo_url: ...]" marker in this conversation, if this transaction came from a receipt/invoice photo the user sent — attaches it to the record. Omit if there was no photo.'],
+                    'photo_url' => ['type' => 'string', 'description' => 'The URL from a "[photo_url: ...]" marker in this conversation, if this transaction came from a receipt/invoice photo or PDF the user sent — attaches it to the record. Omit if there was no photo/PDF.'],
                     'force' => ['type' => 'boolean', 'description' => 'Set true ONLY on a retry after the user explicitly confirmed a same-amount transaction flagged as a possible duplicate is genuinely separate. Never set true on a first attempt.'],
                 ],
                 'required' => ['type', 'category', 'description', 'amount'],
@@ -1702,7 +1702,7 @@ function saveProMessage(PDO $pdo, string $phone, string $role, string $content) 
     }
 }
 
-function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $senderId = null, $voiceTranscript = null, $fromPhone = null, $imageBase64 = null, $imageMime = null, $voiceRecordingUrl = null) {
+function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $senderId = null, $voiceTranscript = null, $fromPhone = null, $imageBase64 = null, $imageMime = null, $voiceRecordingUrl = null, $documentBase64 = null, $documentMime = null) {
     // Persist the voice recording URL across turns so it can be attached to
     // the contact report even if Pro asks a follow-up question first.
     if ($voiceRecordingUrl && $fromPhone) savePendingVoiceUrl($pdo, $fromPhone, $voiceRecordingUrl);
@@ -1838,11 +1838,21 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                       . "ask what they'd like done with it. Never invent numbers or text you can't actually read "
                       . "clearly in the image — say so and ask them to confirm instead."
                     : '')
+                . ($documentBase64
+                    ? "\n\nThey just sent you a PDF (attached). Read it and help with whatever it's for: if it's a "
+                      . "receipt, invoice, or bank transfer confirmation, read the exact amount/vendor-or-recipient/"
+                      . "date and, if the context makes clear it should be logged, use add_transaction — pass the "
+                      . "[photo_url: ...] value from this message as the tool's photo_url so the PDF ends up "
+                      . "attached to the record (the field is named photo_url but works the same for a PDF URL); "
+                      . "if it's a contract, report, or other document, summarize the relevant part or read out the "
+                      . "text they likely want instead. Never invent numbers or text you can't actually read "
+                      . "clearly in the PDF — say so and ask them to confirm instead."
+                    : '')
                 . "\n\nA message may end with a hidden marker like \"[photo_url: https://...]\" — this is the "
-                  . "already-uploaded URL of a photo they sent (possibly several turns back, e.g. before you asked "
-                  . "a clarifying question and they confirmed). Never read this marker aloud or mention its literal "
-                  . "text to the user; when calling add_transaction for a transaction that photo represents, pass "
-                  . "that URL as photo_url so the receipt stays attached to the record.";
+                  . "already-uploaded URL of a photo or PDF they sent (possibly several turns back, e.g. before you "
+                  . "asked a clarifying question and they confirmed). Never read this marker aloud or mention its "
+                  . "literal text to the user; when calling add_transaction for a transaction that file represents, "
+                  . "pass that URL as photo_url so the receipt stays attached to the record.";
 
         // Recruitment tools follow the app's own Roles & Permissions
         // (hr.manage_recruitment) rather than a hardcoded role list — same
@@ -1975,12 +1985,15 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
     if ($hasArabic && !$hasLatinLetters) $langNote = "\n\n[Reply in Arabic — the current message above is in Arabic, regardless of what language earlier messages in this conversation used.]";
     elseif ($hasLatinLetters && !$hasArabic) $langNote = "\n\n[Reply in English — the current message above is in English, regardless of what language earlier messages in this conversation used.]";
     $taggedText = "[CURRENT MESSAGE — this is the ONLY thing to answer. Everything above is history for context only, never something to re-answer, recap, or continue]:\n" . $userText . $anchor . $langNote;
-    // A photo message goes in as a real image content block (not just an
-    // OCR'd string beforehand) so Pro can actually look at it directly —
-    // history stays plain text since past images aren't re-sent each turn.
+    // A photo/PDF message goes in as a real image/document content block
+    // (not just an OCR'd string beforehand) so Pro can actually read it
+    // directly — history stays plain text since past attachments aren't
+    // re-sent each turn.
     $currentContent = $imageBase64
         ? [['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $imageMime ?: 'image/jpeg', 'data' => $imageBase64]], ['type' => 'text', 'text' => $taggedText]]
-        : $taggedText;
+        : ($documentBase64
+            ? [['type' => 'document', 'source' => ['type' => 'base64', 'media_type' => $documentMime ?: 'application/pdf', 'data' => $documentBase64]], ['type' => 'text', 'text' => $taggedText]]
+            : $taggedText);
     $messages = array_merge($history, [['role' => 'user', 'content' => $currentContent]]);
 
     $reply = null;
