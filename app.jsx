@@ -551,7 +551,15 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     // and Rejected (dead) actually free up a slot; Scheduled still has a
     // real publish step to do and used to silently disappear from here.
     if (["published","approved","rejected"].includes(p.stage)) return false;
-    if (p.due_date) return p.due_date === date;
+    if (p.due_date) {
+      if (p.due_date === date) return true;
+      // Still not done and its due date has already passed — roll it
+      // forward onto today's view instead of letting it silently vanish
+      // once its original day is over. Only applies when actually looking
+      // at today (not when paging through past/future days).
+      if (date === today && p.due_date < today) return true;
+      return false;
+    }
     // Tasks without a due_date only appear on today's view
     return date === today;
   }).sort((a,b) => priorityScore(b) - priorityScore(a));
@@ -610,6 +618,7 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
       end_time: minsToAmPm(cursor + dur),
       duration_mins: dur,
       completed_today: completedToday,
+      overdue: !!(post.due_date && date === today && post.due_date < today),
     });
   }
   // Tasks actually finished today (moved out of Design/Content, e.g. to
@@ -34834,9 +34843,9 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     const widthPct = Math.max(2,(slot.end_mins-slot.start_mins)/WORKING_MINS*100);
                     const stage = post ? (STAGE_MAP[post.stage]||STAGES[0]) : null;
                     return (
-                      <div key={slot.post_id} title={`${post?.title||""} (${slot.start_time}–${slot.end_time})`}
+                      <div key={slot.post_id} title={`${post?.title||""} (${slot.start_time}–${slot.end_time})${slot.overdue?" — OVERDUE":""}`}
                         onClick={()=>onPostClick&&post&&onPostClick(post)}
-                        style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:3,bottom:3,background:stage?.color||"var(--accent)",borderRadius:5,cursor:post?"pointer":"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 6px"}}>
+                        style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:3,bottom:3,background:slot.overdue?"#ef4444":(stage?.color||"var(--accent)"),borderRadius:5,cursor:post?"pointer":"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 6px",...(slot.overdue?{boxShadow:"0 0 0 1px #b91c1c inset"}:{})}}>
                         <span style={{fontSize:10,color:"#fff",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span>
                         {widthPct>8&&<span style={{fontSize:8.5,color:"#fff",opacity:0.85,whiteSpace:"nowrap"}}>{slot.start_time}–{slot.end_time}</span>}
                       </div>
@@ -34929,6 +34938,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     const post = posts.find(p=>p.id===slot.post_id);
                     if(!post) return null;
                     const stage = STAGE_MAP[post.stage]||STAGES[0];
+                    const stageColor = slot.overdue ? "#ef4444" : stage.color;
                     const isActive = (timeEntries||[]).some(t=>t.post_id===post.id&&t.user_email===currentUser?.email&&t.status==='active');
                     const trackedSecs = getPostTrackedSecs(post.id);
                     const durMins = slot.end_mins - slot.start_mins;
@@ -34936,13 +34946,13 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     return (
                       <div key={slot.post_id} onClick={()=>onPostClick&&onPostClick(post)} style={{
                         padding:"8px 12px",borderRadius:"var(--rs)",
-                        background:stage.color+"22",border:`1px solid ${stage.color}55`,
-                        borderLeft:`3px solid ${stage.color}`,
+                        background:stageColor+"22",border:`1px solid ${stageColor}55`,
+                        borderLeft:`3px solid ${stageColor}`,
                         cursor:"pointer",display:"flex",flexDirection:"column",gap:4,
                         transition:"all 0.15s",flex:1,
                       }}
-                      onMouseEnter={e=>{e.currentTarget.style.background=stage.color+"33";}}
-                      onMouseLeave={e=>{e.currentTarget.style.background=stage.color+"22";}}>
+                      onMouseEnter={e=>{e.currentTarget.style.background=stageColor+"33";}}
+                      onMouseLeave={e=>{e.currentTarget.style.background=stageColor+"22";}}>
                         <div style={{display:"flex",alignItems:"center",gap:8}}>
                           <span style={{fontSize:12,flexShrink:0}}>{PLT_ICON[post.platform]||""}</span>
                           <span style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{post.title}</span>
@@ -34952,7 +34962,8 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                           <span style={{fontSize:10,color:"var(--text3)"}}>{slot.start_time}–{slot.end_time}</span>
                           <span style={{fontSize:10,color:"var(--text3)"}}>·</span>
                           <span style={{fontSize:10,color:"var(--text3)"}}>{durLabel}</span>
-                          <Badge label={stage.label} color={stage.color} xs/>
+                          <Badge label={stage.label} color={stageColor} xs/>
+                          {slot.overdue && <Badge label="OVERDUE" color="#ef4444" xs/>}
                           {isActive && <span style={{fontSize:9,color:"#10b981",fontWeight:700,textTransform:"uppercase"}}>● Recording</span>}
                           {isAM && <button onClick={e=>{e.stopPropagation();setOverrideTarget({slot,post});setOverrideTime(`${String(Math.floor(slot.start_mins/60)).padStart(2,'0')}:${String(slot.start_mins%60).padStart(2,'0')}`);}} style={{marginLeft:"auto",padding:"1px 7px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface2)",color:"var(--text3)",fontSize:9,fontWeight:700,cursor:"pointer"}}> Override</button>}
                         </div>
@@ -35004,11 +35015,12 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                 if(!post) return null;
                 const stage = STAGE_MAP[post.stage]||STAGES[0];
                 return (
-                  <div key={slot.post_id} onClick={()=>onPostClick&&onPostClick(post)} style={{padding:"6px 10px",borderRadius:"var(--rs)",background:"var(--surface2)",border:"1px solid var(--border)",cursor:"pointer",display:"flex",flexDirection:"column",gap:2}}>
+                  <div key={slot.post_id} onClick={()=>onPostClick&&onPostClick(post)} style={{padding:"6px 10px",borderRadius:"var(--rs)",background:"var(--surface2)",border:`1px solid ${slot.overdue?"#ef444455":"var(--border)"}`,cursor:"pointer",display:"flex",flexDirection:"column",gap:2}}>
                     <p style={{fontSize:11,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{post.title}</p>
                     <div style={{display:"flex",gap:6,alignItems:"center"}}>
                       <span style={{fontSize:9,color:"var(--text3)"}}>{slot.start_time}–{slot.end_time}</span>
-                      <Badge label={stage.label} color={stage.color} xs/>
+                      <Badge label={stage.label} color={slot.overdue?"#ef4444":stage.color} xs/>
+                      {slot.overdue && <Badge label="OVERDUE" color="#ef4444" xs/>}
                     </div>
                   </div>
                 );
