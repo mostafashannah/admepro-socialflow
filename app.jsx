@@ -6320,6 +6320,13 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                             </div>
                           </div>
                         )}
+                        {/* Confirms the "Also post as Instagram Story" upload
+                            actually attached — otherwise it sat anonymously
+                            mixed into this grid with nothing to show it was
+                            there at all. */}
+                        {asset.kind==="story"&&(
+                          <span style={{position:"absolute",top:6,left:6,background:"rgba(0,0,0,0.65)",color:"#fff",fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:99}}>Story</span>
+                        )}
                       </Wrapper>
                     );
                   })}
@@ -6405,6 +6412,40 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
 
         {/* Due date is now shown in the details strip at the top of the modal. */}
 
+        {/* Instagram Reels need a separate cover thumbnail alongside the
+            video itself — lives on the same post/task (not a separate
+            card), stored in carousel_cover (already the shared "reel
+            cover" field used elsewhere in the app, e.g. NewPostModal,
+            AddPostModal's Ready Content flow). Shown at ANY stage once set
+            (not just Design) — a Ready Content reel skips Design entirely,
+            so this used to be the only place a cover attached that way
+            could ever be confirmed as actually there, and it was invisible
+            for exactly those posts. Required-before-advancing warning only
+            applies while still in Design — see the "Move to" button's guard. */}
+        {post.post_type==="reel" && post.platform==="instagram" && (post.stage==="design" || post.carousel_cover) && (
+          <div style={{display:"flex",flexDirection:"column",gap:8,padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:`1px solid ${post.carousel_cover?"var(--border)":"#f59e0b55"}`}}>
+            <p style={{fontSize:12,fontWeight:700,color:post.carousel_cover?"var(--text2)":"#f59e0b"}}>
+              Instagram Cover {post.carousel_cover?"":"(required before this can move to review)"}
+            </p>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              {post.carousel_cover && (
+                <img src={post.carousel_cover} alt="Cover" style={{width:56,height:56,objectFit:"cover",borderRadius:8,border:"1px solid var(--border)",cursor:"pointer"}} onClick={()=>setLightboxImage({url:post.carousel_cover})}/>
+              )}
+              <input type="file" accept="image/*" id={`ig-cover-${post.id}`} style={{display:"none"}}
+                onChange={async e=>{
+                  const file = e.target.files?.[0]; e.target.value="";
+                  if(!file) return;
+                  const url = await uploadToStorage(file, monthProjectFolder(project?.title, project?.client_name));
+                  ue("Post", post.id, {carousel_cover:url}).catch(()=>{});
+                  onStageChange({...post, carousel_cover:url}, post.stage);
+                }}/>
+              <label htmlFor={`ig-cover-${post.id}`} style={{cursor:"pointer",fontSize:12,fontWeight:700,color:"var(--accent)",padding:"7px 12px",borderRadius:8,border:"1px solid var(--accent)44",background:"var(--accentbg,var(--surface2))"}}>
+                {post.carousel_cover?"Replace Cover":"Upload Cover"}
+              </label>
+            </div>
+          </div>
+        )}
+
         {/* DESIGN PHASE - File Upload for Photos/Videos */}
         {post.stage==="design"&&(
           <div style={{display:"flex",flexDirection:"column",gap:12,padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid #8b5cf6aa"}}>
@@ -6413,36 +6454,6 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
               <h4 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:14}}>Design Assets</h4>
               {assignee&&<span style={{fontSize:11,color:"var(--text3)",marginLeft:"auto"}}>Assigned to {assignee.name}</span>}
             </div>
-
-            {/* Instagram Reels need a separate cover thumbnail alongside the
-                video itself — lives on the same post/task (not a separate
-                card), stored in carousel_cover (already the shared "reel
-                cover" field used elsewhere in the app, e.g. NewPostModal).
-                Required before this task can leave Design — see the "Move
-                to" button's guard below. */}
-            {post.post_type==="reel" && post.platform==="instagram" && (
-              <div style={{display:"flex",flexDirection:"column",gap:8,padding:12,background:"var(--surface)",borderRadius:"var(--rs)",border:`1px solid ${post.carousel_cover?"var(--border)":"#f59e0b55"}`}}>
-                <p style={{fontSize:12,fontWeight:700,color:post.carousel_cover?"var(--text2)":"#f59e0b"}}>
-                  Instagram Cover {post.carousel_cover?"":"(required before this can move to review)"}
-                </p>
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  {post.carousel_cover && (
-                    <img src={post.carousel_cover} alt="Cover" style={{width:56,height:56,objectFit:"cover",borderRadius:8,border:"1px solid var(--border)"}}/>
-                  )}
-                  <input type="file" accept="image/*" id={`ig-cover-${post.id}`} style={{display:"none"}}
-                    onChange={async e=>{
-                      const file = e.target.files?.[0]; e.target.value="";
-                      if(!file) return;
-                      const url = await uploadToStorage(file, monthProjectFolder(project?.title, project?.client_name));
-                      ue("Post", post.id, {carousel_cover:url}).catch(()=>{});
-                      onStageChange({...post, carousel_cover:url}, post.stage);
-                    }}/>
-                  <label htmlFor={`ig-cover-${post.id}`} style={{cursor:"pointer",fontSize:12,fontWeight:700,color:"var(--accent)",padding:"7px 12px",borderRadius:8,border:"1px solid var(--accent)44",background:"var(--accentbg,var(--surface2))"}}>
-                    {post.carousel_cover?"Replace Cover":"Upload Cover"}
-                  </label>
-                </div>
-              </div>
-            )}
 
             {/* Display existing assets */}
             <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage}/>
