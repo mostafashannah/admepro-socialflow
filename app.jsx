@@ -11686,7 +11686,7 @@ function ClientLoginsTab({client,onUpdateClient,canAdd=false,canEdit=false}) {
   );
 }
 
-function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,onAddCalendar,onAddTask,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],onSaveContactReport,onDeleteContactReport,leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient,integrationLogs=[],onAddIntegration,onUpdateIntegration,onDeleteIntegration,onRetryIntegration,brandingAssets,deepLinkContactReportId,contactReportActivity=[]}) {
+function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,onAddCalendar,onAddTask,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],onSaveContactReport,onDeleteContactReport,leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient,integrationLogs=[],onAddIntegration,onUpdateIntegration,onDeleteIntegration,onRetryIntegration,brandingAssets,deepLinkContactReportId,contactReportActivity=[],clientUsers=[]}) {
   const {isMobile} = useResponsive();
   // Plain state, not persisted — opening any client should always start on
   // Overview, not silently reopen to whatever tab was last viewed for them —
@@ -11958,7 +11958,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
             <ClientBrandGuidelinesSubTab client={client} knowledge={knowledge} onSaveKnowledge={onSaveKnowledge}/>
           )}
           {brainSubTab==="contact_reports"&&(
-            <ContactReportsSubTab client={client} contactReports={contactReports} onSaveContactReport={onSaveContactReport} onDeleteContactReport={onDeleteContactReport} brandingAssets={brandingAssets} team={team} currentUser={currentUser} knowledge={knowledge} onSaveKnowledge={onSaveKnowledge} highlightReportId={deepLinkContactReportId} contactReportActivity={contactReportActivity}/>
+            <ContactReportsSubTab client={client} contactReports={contactReports} onSaveContactReport={onSaveContactReport} onDeleteContactReport={onDeleteContactReport} brandingAssets={brandingAssets} team={team} currentUser={currentUser} knowledge={knowledge} onSaveKnowledge={onSaveKnowledge} highlightReportId={deepLinkContactReportId} contactReportActivity={contactReportActivity} clientUsers={clientUsers}/>
           )}
           {brainSubTab==="integrations"&&(
             <ClientIntegrationsSubTab client={client} integrations={integrations} integrationLogs={integrationLogs} currentUser={currentUser}
@@ -32898,7 +32898,7 @@ function resolveContactReportRecipients(report, client, team=[]) {
   return [...new Set([...(client?.email?[client.email]:[]), ...resolvedEmails])];
 }
 
-function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, onDeleteContactReport, brandingAssets, team=[], currentUser, knowledge, onSaveKnowledge, highlightReportId, contactReportActivity=[]}) {
+function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, onDeleteContactReport, brandingAssets, team=[], currentUser, knowledge, onSaveKnowledge, highlightReportId, contactReportActivity=[], clientUsers=[]}) {
   const isAdmin = currentUser?.role==="admin";
   // Optimistic local additions on top of whatever was already loaded at app
   // start — every send/edit/export appends here immediately so a detailed,
@@ -33109,13 +33109,13 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
         );
       })}
       {showModal&&(
-        <ContactReportModal open onClose={()=>setShowModal(false)} onSave={async(rData)=>{ const wasEdit=!!rData.id; await onSaveContactReport(rData); if(wasEdit) logReportActivity(rData.id, "edited", ""); }} clientId={client.id} clientName={client.name} report={editing} team={team} client={client} currentUser={currentUser}/>
+        <ContactReportModal open onClose={()=>setShowModal(false)} onSave={async(rData)=>{ const wasEdit=!!rData.id; await onSaveContactReport(rData); if(wasEdit) logReportActivity(rData.id, "edited", ""); }} clientId={client.id} clientName={client.name} report={editing} team={team} client={client} currentUser={currentUser} clientUsers={(clientUsers||[]).filter(u=>u.client_id===client.id)}/>
       )}
     </div>
   );
 }
 
-function ContactReportModal({open, onClose, onSave, clientId, clientName, report, team=[], client, currentUser}) {
+function ContactReportModal({open, onClose, onSave, clientId, clientName, report, team=[], client, currentUser, clientUsers=[]}) {
   const [f,setF] = useState(()=>({
     meeting_type: report?.meeting_type||"meeting",
     meeting_date: report?.meeting_date || (report?.created_at ? report.created_at.slice(0,10) : new Date().toISOString().slice(0,10)),
@@ -33131,13 +33131,22 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
   const [showAttendeeSuggestions, setShowAttendeeSuggestions] = useState(false);
   const [saving, setSaving] = useState(false);
   const formatRole = (role) => (role||"").replace(/_/g," ").replace(/\b\w/g, c=>c.toUpperCase());
+  // Every client-portal login for this client (see ClientUser), not just
+  // the client record's own single legacy "primary contact" fields — a
+  // client can have several people with portal access (e.g. Asma added
+  // alongside the original contact), and all of them should be pickable
+  // as attendees, not just whichever one happens to be on the Client
+  // record itself.
+  const clientContactSuggestions = (clientUsers||[]).length
+    ? (clientUsers||[]).map(u=>({name:u.name||u.email, title:u.title||"Client Contact", email:u.email||"", kind:"client"}))
+    : (client?.name ? [{name:client.username||client.name, title:client.contact_title||"Client Contact", email:client.email||"", kind:"client"}] : []);
   const attendeeSuggestions = [
     ...(team||[]).filter(t=>t.status==="active").map(t=>{
       const isMe = currentUser && (t.id===currentUser.id || t.email===currentUser.email);
       const title = (isMe ? currentUser.title?.trim() : t.title?.trim()) || t.title?.trim() || formatRole(t.role);
       return {name:t.name, title, email:t.email||"", kind:"team"};
     }),
-    ...(client?.name ? [{name:client.username||client.name, title:client.contact_title||"Client Contact", email:client.email||"", kind:"client"}] : []),
+    ...clientContactSuggestions,
   ];
   const filteredAttendeeSuggestions = attendeeSuggestions.filter(s=>
     !newAttendee.name.trim() || s.name.toLowerCase().includes(newAttendee.name.trim().toLowerCase())
@@ -46854,6 +46863,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
           );
           return (
             <ClientDetailPage key={selectedClient.id} client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} onAddAsset={addAsset} currentUser={currentUser} onImpersonateClient={impersonateClient}
+              clientUsers={data.clientUsers||[]}
               deepLinkContactReportId={contactReportDeepLink?.clientId===selectedClient.id ? contactReportDeepLink.reportId : null}
               contactReportActivity={data.contactReportActivity||[]}
               contactReports={data.contactReports||[]}
