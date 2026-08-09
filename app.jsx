@@ -34692,20 +34692,23 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
     return {...slot, start_mins:ov.start_mins, end_mins:newEnd, start_time:pad(ov.start_mins), end_time:pad(newEnd)};
   });
 
-  // Persist the rollover, not just display it — a task flagged OVERDUE here
-  // (still unfinished, due_date already past) gets its real due_date pushed
-  // to today so Calendar Plan and every other view agree with what the
-  // Timeline is showing, instead of only this page knowing it moved.
-  // Self-limiting: once due_date actually becomes today, the post no longer
-  // qualifies as overdue on the next render, so this naturally stops firing
-  // for it.
-  const overdueIds = rawSlots.filter(s=>s.overdue).map(s=>s.post_id).join(",");
+  // Capacity overflow — today's real workload doesn't fit inside working
+  // hours (10am-7pm) even after overdue work jumped the queue — pushes
+  // whatever runs past end-of-day forward onto the next working day's real
+  // due_date, instead of just letting it silently run late on today's
+  // view forever. Deliberately does NOT touch due_date for tasks merely
+  // flagged OVERDUE (still due_date < today but fits fine once repacked) —
+  // that flag stays purely a live, original-due_date comparison so the red
+  // label and queue-jump stay stable instead of disappearing the moment
+  // it's acted on.
+  const overflowIds = rawSlots.filter(s=>s.start_mins >= WORKING_END*60).map(s=>s.post_id).join(",");
   useEffect(()=>{
-    if(!onShiftOverdue || !overdueIds) return;
+    if(!onShiftOverdue || !overflowIds) return;
     const today = new Date().toISOString().split("T")[0];
     if(dateStr!==today) return;
-    overdueIds.split(",").forEach(id=>onShiftOverdue(id, today));
-  },[overdueIds, dateStr]);
+    const nextDay = addWorkingDays(new Date(), 1).toISOString().split("T")[0];
+    overflowIds.split(",").forEach(id=>onShiftOverdue(id, nextDay));
+  },[overflowIds, dateStr]);
 
   const fmtSecs = (s) => {
     // A fractional/garbage value (e.g. total_seconds picking up a stray

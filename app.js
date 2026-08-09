@@ -2641,14 +2641,16 @@ useEffect(function(){if(initialJump&&onJumpConsumed)onJumpConsumed();},[]);useEf
 // entirely left the Timeline completely empty on any day nothing had
 // been marked done yet, which isn't useful for anyone.
 var rawSlots=generateDailySchedule(posts,effectiveUser===null||effectiveUser===void 0?void 0:effectiveUser.email,dateStr,effectiveUser===null||effectiveUser===void 0?void 0:effectiveUser.role);// Apply schedule overrides
-var slots=rawSlots.map(function(slot){var ov=(scheduleOverrides||[]).find(function(o){return o.post_id===slot.post_id&&o.user_email===(effectiveUser===null||effectiveUser===void 0?void 0:effectiveUser.email)&&o.date===dateStr;});if(!ov)return slot;var dur=slot.end_mins-slot.start_mins;var newEnd=ov.start_mins+dur;var pad=function pad(n){return String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');};return _objectSpread(_objectSpread({},slot),{},{start_mins:ov.start_mins,end_mins:newEnd,start_time:pad(ov.start_mins),end_time:pad(newEnd)});});// Persist the rollover, not just display it — a task flagged OVERDUE here
-// (still unfinished, due_date already past) gets its real due_date pushed
-// to today so Calendar Plan and every other view agree with what the
-// Timeline is showing, instead of only this page knowing it moved.
-// Self-limiting: once due_date actually becomes today, the post no longer
-// qualifies as overdue on the next render, so this naturally stops firing
-// for it.
-var overdueIds=rawSlots.filter(function(s){return s.overdue;}).map(function(s){return s.post_id;}).join(",");useEffect(function(){if(!onShiftOverdue||!overdueIds)return;var today=new Date().toISOString().split("T")[0];if(dateStr!==today)return;overdueIds.split(",").forEach(function(id){return onShiftOverdue(id,today);});},[overdueIds,dateStr]);var fmtSecs=function fmtSecs(s){// A fractional/garbage value (e.g. total_seconds picking up a stray
+var slots=rawSlots.map(function(slot){var ov=(scheduleOverrides||[]).find(function(o){return o.post_id===slot.post_id&&o.user_email===(effectiveUser===null||effectiveUser===void 0?void 0:effectiveUser.email)&&o.date===dateStr;});if(!ov)return slot;var dur=slot.end_mins-slot.start_mins;var newEnd=ov.start_mins+dur;var pad=function pad(n){return String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');};return _objectSpread(_objectSpread({},slot),{},{start_mins:ov.start_mins,end_mins:newEnd,start_time:pad(ov.start_mins),end_time:pad(newEnd)});});// Capacity overflow — today's real workload doesn't fit inside working
+// hours (10am-7pm) even after overdue work jumped the queue — pushes
+// whatever runs past end-of-day forward onto the next working day's real
+// due_date, instead of just letting it silently run late on today's
+// view forever. Deliberately does NOT touch due_date for tasks merely
+// flagged OVERDUE (still due_date < today but fits fine once repacked) —
+// that flag stays purely a live, original-due_date comparison so the red
+// label and queue-jump stay stable instead of disappearing the moment
+// it's acted on.
+var overflowIds=rawSlots.filter(function(s){return s.start_mins>=WORKING_END*60;}).map(function(s){return s.post_id;}).join(",");useEffect(function(){if(!onShiftOverdue||!overflowIds)return;var today=new Date().toISOString().split("T")[0];if(dateStr!==today)return;var nextDay=addWorkingDays(new Date(),1).toISOString().split("T")[0];overflowIds.split(",").forEach(function(id){return onShiftOverdue(id,nextDay);});},[overflowIds,dateStr]);var fmtSecs=function fmtSecs(s){// A fractional/garbage value (e.g. total_seconds picking up a stray
 // decimal from some other write path) used to render straight through
 // as-is — "00:00:0.0011705" instead of "00:00:00" — since only h/m were
 // floored, not the raw seconds remainder. Floors the whole input up
