@@ -46149,6 +46149,8 @@ Return ONLY valid JSON (no markdown, no explanation):
       await ue("Post", post.id, {stage:newStage, assigned_to:updatedPost.assigned_to,
         due_date:updatedPost.due_date, due_time:updatedPost.due_time,
         estimated_minutes:updatedPost.estimated_minutes, content_assigned_to:updatedPost.content_assigned_to,
+        design_assigned_to:updatedPost.design_assigned_to,
+        content_completed_at:updatedPost.content_completed_at, design_completed_at:updatedPost.design_completed_at,
         project_id:updatedPost.project_id, revision_count:updatedPost.revision_count, was_rejected:updatedPost.was_rejected,
         published_at:updatedPost.published_at});
       await ce("Comment",[{post_id:post.id,author_name:comment.author_name,type:"stage_change",content:comment.content}]);
