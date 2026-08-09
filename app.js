@@ -2650,7 +2650,13 @@ var slots=rawSlots.map(function(slot){var ov=(scheduleOverrides||[]).find(functi
 // that flag stays purely a live, original-due_date comparison so the red
 // label and queue-jump stay stable instead of disappearing the moment
 // it's acted on.
-var overflowIds=rawSlots.filter(function(s){return s.start_mins>=WORKING_END*60;}).map(function(s){return s.post_id;}).join(",");useEffect(function(){if(!onShiftOverdue||!overflowIds)return;var today=new Date().toISOString().split("T")[0];if(dateStr!==today)return;var nextDay=addWorkingDays(new Date(),1).toISOString().split("T")[0];overflowIds.split(",").forEach(function(id){return onShiftOverdue(id,nextDay);});},[overflowIds,dateStr]);var fmtSecs=function fmtSecs(s){// A fractional/garbage value (e.g. total_seconds picking up a stray
+// Guarded to run exactly ONCE per calendar day (per viewed user), not on
+// every recompute of rawSlots — this page re-renders every second (the
+// live-timer tick below), and without this guard each of those re-renders
+// could see a still-updating `posts` prop and independently decide more
+// needs to overflow, cascading well past the real minimum (e.g. shifting
+// 6 tasks to tomorrow when only 3 genuinely didn't fit).
+var overflowRanForRef=useRef(null);useEffect(function(){if(!onShiftOverdue||!posts||!posts.length)return;var today=new Date().toISOString().split("T")[0];if(dateStr!==today)return;var guardKey="".concat(effectiveUser===null||effectiveUser===void 0?void 0:effectiveUser.email,"|").concat(today);if(overflowRanForRef.current===guardKey)return;overflowRanForRef.current=guardKey;var overflow=rawSlots.filter(function(s){return s.start_mins>=WORKING_END*60;});if(!overflow.length)return;var nextDay=addWorkingDays(new Date(),1).toISOString().split("T")[0];overflow.forEach(function(s){return onShiftOverdue(s.post_id,nextDay);});},[posts,dateStr,effectiveUser===null||effectiveUser===void 0?void 0:effectiveUser.email]);var fmtSecs=function fmtSecs(s){// A fractional/garbage value (e.g. total_seconds picking up a stray
 // decimal from some other write path) used to render straight through
 // as-is — "00:00:0.0011705" instead of "00:00:00" — since only h/m were
 // floored, not the raw seconds remainder. Floors the whole input up

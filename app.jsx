@@ -34701,14 +34701,25 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   // that flag stays purely a live, original-due_date comparison so the red
   // label and queue-jump stay stable instead of disappearing the moment
   // it's acted on.
-  const overflowIds = rawSlots.filter(s=>s.start_mins >= WORKING_END*60).map(s=>s.post_id).join(",");
+  // Guarded to run exactly ONCE per calendar day (per viewed user), not on
+  // every recompute of rawSlots — this page re-renders every second (the
+  // live-timer tick below), and without this guard each of those re-renders
+  // could see a still-updating `posts` prop and independently decide more
+  // needs to overflow, cascading well past the real minimum (e.g. shifting
+  // 6 tasks to tomorrow when only 3 genuinely didn't fit).
+  const overflowRanForRef = useRef(null);
   useEffect(()=>{
-    if(!onShiftOverdue || !overflowIds) return;
+    if(!onShiftOverdue || !posts || !posts.length) return;
     const today = new Date().toISOString().split("T")[0];
     if(dateStr!==today) return;
+    const guardKey = `${effectiveUser?.email}|${today}`;
+    if(overflowRanForRef.current===guardKey) return;
+    overflowRanForRef.current = guardKey;
+    const overflow = rawSlots.filter(s=>s.start_mins >= WORKING_END*60);
+    if(!overflow.length) return;
     const nextDay = addWorkingDays(new Date(), 1).toISOString().split("T")[0];
-    overflowIds.split(",").forEach(id=>onShiftOverdue(id, nextDay));
-  },[overflowIds, dateStr]);
+    overflow.forEach(s=>onShiftOverdue(s.post_id, nextDay));
+  },[posts, dateStr, effectiveUser?.email]);
 
   const fmtSecs = (s) => {
     // A fractional/garbage value (e.g. total_seconds picking up a stray
