@@ -25,10 +25,10 @@ $stmt = $pdo->prepare(
     "SELECT id, title, stage, post_type, priority, estimated_minutes,
             assigned_to, content_assigned_to, design_assigned_to,
             due_date, due_time, scheduled_date, scheduled_time,
-            content_completed_at, design_completed_at, updated_at
+            content_completed_at, design_completed_at, created_at
      FROM posts
      WHERE (assigned_to = :e OR content_assigned_to = :e OR design_assigned_to = :e)
-     ORDER BY updated_at DESC
+     ORDER BY GREATEST(COALESCE(content_completed_at,'1970-01-01'),COALESCE(design_completed_at,'1970-01-01'),created_at) DESC
      LIMIT 20"
 );
 $stmt->execute([':e' => $email]);
