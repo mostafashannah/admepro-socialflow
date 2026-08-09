@@ -46529,7 +46529,17 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
 
   // Client portal
   if(currentUser?.isClient) {
-    const clientRecord = data.clients.find(c=>c.email===currentUser.email)||currentUser;
+    // Resolve by client_id first — a ClientUser login's own email (e.g.
+    // Asma's personal address) never matches the Client record's email
+    // field, which only the ORIGINAL single primary contact happens to
+    // share. Matching by email alone silently fell through to using the
+    // ClientUser row itself as "the client", whose .id is that person's own
+    // row id, not the real client's — every client_id-filtered list (contact
+    // reports, tasks, subscriptions, etc.) then came up empty for anyone
+    // added as a second/third portal user. client_id is set on every
+    // ClientUser login; the email match stays as a fallback for the legacy
+    // portal_password login path, where currentUser IS the client record.
+    const clientRecord = data.clients.find(c=>c.id===currentUser.client_id) || data.clients.find(c=>c.email===currentUser.email) || currentUser;
     return (<>
       <GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/>
       {impersonatorUser&&(
