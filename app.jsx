@@ -4211,7 +4211,14 @@ function TimeTracker({postId, userEmail, timeEntries, onStart, onPause, onResume
     }, 0);
 
   const fmtSecs = (s) => {
-    const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+    // A fractional/garbage value (e.g. total_seconds picking up a stray
+    // decimal from some other write path) used to render straight through
+    // as-is — "00:00:0.0011705" instead of "00:00:00" — since only h/m were
+    // floored, not the raw seconds remainder. Floors the whole input up
+    // front so this always renders a clean integer HH:MM:SS no matter what
+    // comes in.
+    const total = Math.max(0, Math.floor(Number(s)||0));
+    const h = Math.floor(total/3600), m = Math.floor((total%3600)/60), sec = total%60;
     return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
   };
 
@@ -34651,7 +34658,14 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   });
 
   const fmtSecs = (s) => {
-    const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+    // A fractional/garbage value (e.g. total_seconds picking up a stray
+    // decimal from some other write path) used to render straight through
+    // as-is — "00:00:0.0011705" instead of "00:00:00" — since only h/m were
+    // floored, not the raw seconds remainder. Floors the whole input up
+    // front so this always renders a clean integer HH:MM:SS no matter what
+    // comes in.
+    const total = Math.max(0, Math.floor(Number(s)||0));
+    const h = Math.floor(total/3600), m = Math.floor((total%3600)/60), sec = total%60;
     return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
   };
 
