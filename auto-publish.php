@@ -47,7 +47,17 @@ $pdo = new PDO(
 $now = new DateTime();
 // task_type 'grid_layout' (Calendar Plan's Full Grid Layout kind) is a
 // design-only deliverable, never actually published to a platform.
-$due = $pdo->query("SELECT * FROM posts WHERE stage = 'scheduled' AND (task_type IS NULL OR task_type <> 'grid_layout')")->fetchAll(PDO::FETCH_ASSOC);
+// A client with auto_publish_enabled explicitly set to 0 (Settings >
+// Scheduling > Auto Publishing) is skipped entirely — their posts still
+// go to Scheduled normally, they just always wait for a manual Publish
+// Now instead of firing automatically. No client_intelligence row at all
+// (never configured) is treated as enabled, same as today's behavior.
+$due = $pdo->query(
+    "SELECT p.* FROM posts p
+     LEFT JOIN client_intelligence ci ON ci.client_id = p.client_id
+     WHERE p.stage = 'scheduled' AND (p.task_type IS NULL OR p.task_type <> 'grid_layout')
+       AND (ci.auto_publish_enabled IS NULL OR ci.auto_publish_enabled = 1)"
+)->fetchAll(PDO::FETCH_ASSOC);
 
 $results = [];
 

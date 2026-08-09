@@ -8209,7 +8209,7 @@ function AddCalendarPlanModal({open,onClose,clients,team,posts,projects,preselec
   // pushing a different message) instead of forcing one brief onto all of
   // them. `count` is kept in sync as the sum of all batches' counts, since
   // scheduling/due-date/token-budget logic elsewhere reads it directly.
-  const makeKindDefaults = (count, kind) => ({count, platforms:platformsForKind(kind, preselectedClient?.platforms), briefBatches:[{count, brief:""}], assigned_to:"", due_mode:"auto", manual_due_date:"", manual_due_time:"13:00"});
+  const makeKindDefaults = (count, kind) => ({count, platforms:platformsForKind(kind, preselectedClient?.platforms), briefBatches:[{count, brief:"", assigned_to:""}], due_mode:"auto", manual_due_date:"", manual_due_time:"13:00"});
   const [f,setF] = useState({
     client_id: preselectedClient?.id||"",
     campaign: "",
@@ -8252,7 +8252,7 @@ function AddCalendarPlanModal({open,onClose,clients,team,posts,projects,preselec
     const batches = p.kinds[kind].briefBatches.map((b,i)=>i===idx?{...b,[key]:val}:b);
     return {...p,kinds:{...p.kinds,[kind]:{...p.kinds[kind],briefBatches:batches,count:recount(batches)}}};
   });
-  const addBatch = (kind) => setF(p=>({...p,kinds:{...p.kinds,[kind]:{...p.kinds[kind],briefBatches:[...p.kinds[kind].briefBatches,{count:0,brief:""}]}}}));
+  const addBatch = (kind) => setF(p=>({...p,kinds:{...p.kinds,[kind]:{...p.kinds[kind],briefBatches:[...p.kinds[kind].briefBatches,{count:0,brief:"",assigned_to:""}]}}}));
   const removeBatch = (kind,idx) => setF(p=>{
     const cur = p.kinds[kind].briefBatches;
     if(cur.length<=1) return p; // always keep at least one group
@@ -8324,17 +8324,21 @@ Return ONLY the brief text — no markdown, no labels, no quotes.`, 300);
   // starting from the campaign start date; "manual" checks the ONE picked
   // due date/time — if that person doesn't have room there, scheduling
   // spills onto their next free days and the UI flags that as a conflict.
-  const kindDueDate = (kind) => {
+  // Assignment (and therefore availability/due-date) is per GROUP now, not
+  // per content type — a "Reels" kind split into two groups can go to two
+  // different teammates, each scheduled against their own real calendar.
+  const batchDueDate = (kind, batchIdx) => {
     const cfg = f.kinds[kind];
-    if(!cfg.count || !cfg.assigned_to) return null;
+    const batch = cfg.briefBatches[batchIdx];
+    if(!batch?.count || !batch.assigned_to) return null;
     const perItemMins = estimateDuration({post_type: CALENDAR_KIND_POST_TYPE[kind], priority:"medium"});
-    const assignee = (team||[]).find(t=>t.email===cfg.assigned_to);
+    const assignee = (team||[]).find(t=>t.email===batch.assigned_to);
     const workDays = assignee?.employment_type==="part_time" ? parseMaybeJson(assignee.work_days, companyWorkDays) : companyWorkDays;
     if(cfg.due_mode==="manual" && cfg.manual_due_date) {
-      const {dates, overflow} = scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, cfg.count, cfg.manual_due_date, cfg.manual_due_date, workDays, companyHolidays);
+      const {dates, overflow} = scheduleItemDates(posts||[], batch.assigned_to, perItemMins, batch.count, cfg.manual_due_date, cfg.manual_due_date, workDays, companyHolidays);
       return {dates, conflict:overflow, requestedEnd: cfg.manual_due_date};
     }
-    const {dates} = scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, cfg.count, f.date_from||new Date(), null, workDays, companyHolidays);
+    const {dates} = scheduleItemDates(posts||[], batch.assigned_to, perItemMins, batch.count, f.date_from||new Date(), null, workDays, companyHolidays);
     return {dates, conflict:false, requestedEnd:null};
   };
 
@@ -8359,17 +8363,16 @@ Return ONLY the brief text — no markdown, no labels, no quotes.`, 300);
       // write, so skip the AI call entirely and synthesize its one fixed
       // idea locally (count is always 1 for this kind).
       if(kind==="grid_layout") {
-        ideasByKind[kind] = [{title:`Full Grid Layout — ${f.campaign}`, caption:"", hashtags:"", text_on_visual:""}];
+        ideasByKind[kind] = [{title:`Full Grid Layout — ${f.campaign}`, caption:"", hashtags:"", text_on_visual:"", _assignedTo:cfg.briefBatches[0]?.assigned_to||""}];
         continue;
       }
       if(skipAI) {
-        const total = cfg.briefBatches.reduce((a,b)=>a+(Number(b.count)||0),0);
-        const firstBrief = cfg.briefBatches[0]?.brief||"";
-        ideasByKind[kind] = Array.from({length:total},(_,i)=>({
+        ideasByKind[kind] = cfg.briefBatches.flatMap(batch=>Array.from({length:Number(batch.count)||0},(_,i)=>({
           title:`${kind.charAt(0).toUpperCase()+kind.slice(1)} ${i+1} — ${f.campaign}`,
           caption:"", hashtags:"", text_on_visual:"", hook:"",
-          _sourceBrief: firstBrief,
-        }));
+          _sourceBrief: batch.brief||"",
+          _assignedTo: batch.assigned_to||"",
+        })));
         continue;
       }
       setGenPhase(kind);
@@ -8416,7 +8419,7 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
           // fail JSON.parse and silently fall back to placeholder text.
           const match = aiRes.match(/\[[\s\S]*\]/);
           const parsedBatch = JSON.parse(match ? match[0] : aiRes);
-          kindIdeas.push(...parsedBatch.map(idea=>({...idea, _sourceBrief:batch.brief})));
+          kindIdeas.push(...parsedBatch.map(idea=>({...idea, _sourceBrief:batch.brief, _assignedTo:batch.assigned_to||""})));
         } catch(e) {
           kindIdeas.push(...Array.from({length:batch.count},(_,i)=>({
             title:`${kind.charAt(0).toUpperCase()+kind.slice(1)} ${i+1} — ${f.campaign}`,
@@ -8424,6 +8427,7 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
             hashtags: kind==="story" ? "" : `#${f.campaign.toLowerCase().replace(/\s+/g,"")} #socialmedia`,
             text_on_visual: kind==="article" ? "" : `${f.campaign}`,
             _sourceBrief: batch.brief,
+            _assignedTo: batch.assigned_to||"",
             hook: kind==="reel" ? `Wait — you need to see this.` : "",
           })));
         }
@@ -8466,7 +8470,7 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
           priority: "medium",
           client_id: f.client_id,
           client_name: selectedClient?.name||"",
-          assigned_to: cfg.assigned_to||"",
+          assigned_to: idea?._assignedTo||"",
           project_name: f.campaign,
           status:"pending",
           _sourceBrief: idea?._sourceBrief||"",
@@ -8528,29 +8532,35 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
     // free capacity per kind, in order, instead of every item in a kind
     // landing on the same day.
     const approved = generated.filter(t=>t.approved);
-    const byKind = {};
-    approved.forEach(t=>{ (byKind[t.kind]=byKind[t.kind]||[]).push(t); });
-    const dueDatesByKind = {};
-    Object.entries(byKind).forEach(([kind,items])=>{
+    // Grouped by (kind + assignee), not just kind — a kind split into
+    // groups with different assignees now schedules each group against
+    // THAT person's own real calendar, instead of everyone in the kind
+    // sharing one assignee's availability.
+    const byKindAssignee = {};
+    approved.forEach(t=>{ const key=`${t.kind}|${t.assigned_to||""}`; (byKindAssignee[key]=byKindAssignee[key]||[]).push(t); });
+    const dueDatesByKey = {};
+    Object.entries(byKindAssignee).forEach(([key,items])=>{
+      const [kind, assignedTo] = key.split("|");
       const cfg = f.kinds[kind]||{};
       const perItemMins = estimateDuration({post_type: CALENDAR_KIND_POST_TYPE[kind], priority:"medium"});
-      if(cfg.assigned_to) {
-        const assignee = (team||[]).find(t=>t.email===cfg.assigned_to);
+      if(assignedTo) {
+        const assignee = (team||[]).find(t=>t.email===assignedTo);
         const workDays = assignee?.employment_type==="part_time" ? parseMaybeJson(assignee.work_days, companyWorkDays) : companyWorkDays;
         const {dates} = cfg.due_mode==="manual" && cfg.manual_due_date
-          ? scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, items.length, cfg.manual_due_date, cfg.manual_due_date, workDays, companyHolidays)
-          : scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, items.length, f.date_from||new Date(), null, workDays, companyHolidays);
-        dueDatesByKind[kind] = dates;
+          ? scheduleItemDates(posts||[], assignedTo, perItemMins, items.length, cfg.manual_due_date, cfg.manual_due_date, workDays, companyHolidays)
+          : scheduleItemDates(posts||[], assignedTo, perItemMins, items.length, f.date_from||new Date(), null, workDays, companyHolidays);
+        dueDatesByKey[key] = dates;
       } else {
-        dueDatesByKind[kind] = [];
+        dueDatesByKey[key] = [];
       }
     });
-    const kindCursor = {};
+    const keyCursor = {};
     const finalTasks = approved.map(t=>{
-      kindCursor[t.kind] = kindCursor[t.kind]||0;
-      const dueDate = dueDatesByKind[t.kind]?.[kindCursor[t.kind]] || "";
+      const key = `${t.kind}|${t.assigned_to||""}`;
+      keyCursor[key] = keyCursor[key]||0;
+      const dueDate = dueDatesByKey[key]?.[keyCursor[key]] || "";
       const cfg = f.kinds[t.kind]||{};
-      kindCursor[t.kind]++;
+      keyCursor[key]++;
       return {...t, due_date: dueDate, due_time: cfg.due_mode==="manual" ? (cfg.manual_due_time||"") : ""};
     });
     await onGenerate({...f, start_stage: startStage}, finalTasks);
@@ -8647,7 +8657,7 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                     <p style={{fontWeight:700,fontSize:13,whiteSpace:"nowrap"}}>{label}</p>
                     {!isOpen && (
                       <span style={{fontSize:11.5,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                        {cfg.count>0 ? `${cfg.count} · ${cfg.assigned_to ? (team.find(t=>t.email===cfg.assigned_to)?.name||"assigned") : "unassigned"} · ${cfg.platforms.length} platform${cfg.platforms.length!==1?"s":""}` : "0 — not included"}
+                        {cfg.count>0 ? (()=>{ const assignees=[...new Set(cfg.briefBatches.map(b=>b.assigned_to).filter(Boolean))]; const who = assignees.length===0?"unassigned":assignees.length===1?(team.find(t=>t.email===assignees[0])?.name||"assigned"):`${assignees.length} assignees`; return `${cfg.count} · ${who} · ${cfg.platforms.length} platform${cfg.platforms.length!==1?"s":""}`; })() : "0 — not included"}
                       </span>
                     )}
                   </div>
@@ -8658,21 +8668,21 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                 </div>
                 {isOpen && (<>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(180px,100%),1fr))",gap:10}}>
-                  {kind==="grid_layout" ? (
+                  {kind==="grid_layout" ? (<>
                     <Field label="Number of Full Grid Layout">
                       <div style={{...inputSt,display:"flex",alignItems:"center",color:"var(--text3)"}}>1 — always included</div>
                     </Field>
-                  ) : (
+                    <Field label="Assign To">
+                      <select value={cfg.briefBatches[0]?.assigned_to||""} onChange={e=>skBatch(kind,0,"assigned_to",e.target.value)} style={inputSt}>
+                        <option value="">— Unassigned —</option>
+                        {eligibleAssignees(startStage,team).map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
+                      </select>
+                    </Field>
+                  </>) : (
                     <Field label={`Total ${label}`} hint="Sum of the group(s) below">
                       <div style={{...inputSt,display:"flex",alignItems:"center",fontWeight:700}}>{cfg.count} {label.toLowerCase()}</div>
                     </Field>
                   )}
-                  <Field label="Assign To">
-                    <select value={cfg.assigned_to} onChange={e=>sk(kind,"assigned_to",e.target.value)} style={inputSt}>
-                      <option value="">— Unassigned —</option>
-                      {eligibleAssignees(startStage,team).map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
-                    </select>
-                  </Field>
                   <Field label="Due Date">
                     <div style={{display:"flex",gap:6}}>
                       <button type="button" onClick={()=>sk(kind,"due_mode","auto")} style={{flex:1,padding:"8px 6px",borderRadius:8,border:`1.5px solid ${cfg.due_mode!=="manual"?"var(--accent)":"var(--border2)"}`,background:cfg.due_mode!=="manual"?"var(--accent)18":"var(--surface)",fontWeight:700,fontSize:11.5,color:cfg.due_mode!=="manual"?"var(--accent)":"var(--text2)",cursor:"pointer"}}>Auto</button>
@@ -8690,30 +8700,6 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                     </Field>
                   )}
                 </div>
-                {cfg.count>0 && cfg.assigned_to && (()=>{
-                  const due = kindDueDate(kind);
-                  if(!due || !due.dates?.length) return (
-                    <div style={{fontSize:11.5,padding:"8px 10px",borderRadius:8,background:"#f59e0b18",border:"1px solid #f59e0b55",color:"#b45309"}}>
-                      No free slot found for this teammate — try a different assignee.
-                    </div>
-                  );
-                  const first = due.dates[0], last = due.dates[due.dates.length-1];
-                  return (
-                    <div style={{fontSize:11.5,padding:"8px 10px",borderRadius:8,
-                      background:due.conflict?"#f59e0b18":"#10b98118",
-                      border:`1px solid ${due.conflict?"#f59e0b55":"#10b98155"}`,
-                      color:due.conflict?"#b45309":"#059669"}}>
-                      {due.conflict
-                        ? `Not free on ${fmtDate(due.requestedEnd)}${cfg.manual_due_time?` at ${cfg.manual_due_time}`:""} — pushed to this teammate's next free day(s): ${fmtDate(first)}${first!==last?` → ${fmtDate(last)}`:""}.`
-                        : first===last
-                        ? `Due ${fmtDate(first)}${cfg.due_mode==="manual"&&cfg.manual_due_time?` at ${cfg.manual_due_time}`:""} — this teammate has room for all ${cfg.count} ${label.toLowerCase()} then.`
-                        : `Spread across this teammate's free days: ${fmtDate(first)} → ${fmtDate(last)}.`}
-                    </div>
-                  );
-                })()}
-                {cfg.count>0 && !cfg.assigned_to && (
-                  <p style={{fontSize:11,color:"var(--text3)"}}>Assign someone to see their availability and due dates.</p>
-                )}
                 {kind==="grid_layout" ? (
                   <Field label="Platforms">
                     <div style={{display:"flex",alignItems:"center",gap:5,padding:"6px 12px",borderRadius:99,fontSize:11.5,fontWeight:700,border:`1.5px solid ${PLT_COLOR.instagram}`,background:PLT_COLOR.instagram+"22",color:PLT_COLOR.instagram,width:"fit-content"}}>
@@ -8773,6 +8759,36 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                             </button>
                           </div>
                         </div>
+                        <Field label="Assign To">
+                          <select value={batch.assigned_to} onChange={e=>skBatch(kind,bi,"assigned_to",e.target.value)} style={inputSt}>
+                            <option value="">— Unassigned —</option>
+                            {eligibleAssignees(startStage,team).map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
+                          </select>
+                        </Field>
+                        {batch.count>0 && batch.assigned_to && (()=>{
+                          const due = batchDueDate(kind,bi);
+                          if(!due || !due.dates?.length) return (
+                            <div style={{fontSize:11.5,padding:"8px 10px",borderRadius:8,background:"#f59e0b18",border:"1px solid #f59e0b55",color:"#b45309"}}>
+                              No free slot found for this teammate — try a different assignee.
+                            </div>
+                          );
+                          const first = due.dates[0], last = due.dates[due.dates.length-1];
+                          return (
+                            <div style={{fontSize:11.5,padding:"8px 10px",borderRadius:8,
+                              background:due.conflict?"#f59e0b18":"#10b98118",
+                              border:`1px solid ${due.conflict?"#f59e0b55":"#10b98155"}`,
+                              color:due.conflict?"#b45309":"#059669"}}>
+                              {due.conflict
+                                ? `Not free on ${fmtDate(due.requestedEnd)}${cfg.manual_due_time?` at ${cfg.manual_due_time}`:""} — pushed to this teammate's next free day(s): ${fmtDate(first)}${first!==last?` → ${fmtDate(last)}`:""}.`
+                                : first===last
+                                ? `Due ${fmtDate(first)}${cfg.due_mode==="manual"&&cfg.manual_due_time?` at ${cfg.manual_due_time}`:""} — this teammate has room for all ${batch.count} then.`
+                                : `Spread across this teammate's free days: ${fmtDate(first)} → ${fmtDate(last)}.`}
+                            </div>
+                          );
+                        })()}
+                        {batch.count>0 && !batch.assigned_to && (
+                          <p style={{fontSize:11,color:"var(--text3)"}}>Assign someone to see their availability and due dates.</p>
+                        )}
                       </div>
                     );
                   })}
@@ -15715,6 +15731,23 @@ function ClientIntelligenceTab({client, intelligence, onSave, integrations=[], p
     best_performing_type:existing.best_performing_type||"",
     best_performing_day: existing.best_performing_day||"",
     avg_engagement_rate: existing.avg_engagement_rate||"",
+    // Auto Scheduling: whether new posts for this client get their
+    // scheduled_date/time auto-assigned (Calendar Plan's "Auto" due-date
+    // mode, Best Posting Times above) or always require someone to type
+    // a specific date/time by hand. Auto Publishing: whether
+    // auto-publish.php's cron is allowed to actually publish this
+    // client's posts once their scheduled_date/time arrives, or whether
+    // every post — however it got its date — always waits for a human to
+    // hit Publish Now. Independent of each other on purpose: e.g. auto
+    // scheduling OFF + auto publishing ON means every date/time is typed
+    // in by hand but still fires automatically once it arrives.
+    auto_schedule_enabled: existing.auto_schedule_enabled ?? true,
+    // Defaults to true (opt-out, not opt-in) — auto-publishing already
+    // works today with no per-client restriction, so defaulting this off
+    // would silently break it for every existing client the moment
+    // someone saves this form for an unrelated reason (e.g. changing
+    // Posting Frequency), since the whole form saves together.
+    auto_publish_enabled: existing.auto_publish_enabled ?? true,
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -15911,6 +15944,24 @@ function ClientIntelligenceTab({client, intelligence, onSave, integrations=[], p
         <div style={{marginBottom:12}}>
           <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Posting Frequency (posts/week)</label>
           <input type="number" min={1} max={21} value={form.posting_frequency} onChange={e=>sf("posting_frequency",parseInt(e.target.value)||1)} style={{...inSt,width:120}}/>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+          <div>
+            <label style={{fontSize:13,color:"var(--text1)",fontWeight:500,display:"block"}}>Auto Scheduling</label>
+            <p style={{fontSize:11,color:"var(--text3)"}}>New posts get a date/time picked automatically. Off = every post's date/time is typed in by hand.</p>
+          </div>
+          <div onClick={()=>sf("auto_schedule_enabled",!form.auto_schedule_enabled)} style={{width:40,height:22,borderRadius:99,background:form.auto_schedule_enabled?"var(--accent)":"var(--border)",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0,marginLeft:"auto"}}>
+            <div style={{width:16,height:16,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:form.auto_schedule_enabled?20:4,transition:"left 0.2s"}}/>
+          </div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+          <div>
+            <label style={{fontSize:13,color:"var(--text1)",fontWeight:500,display:"block"}}>Auto Publishing</label>
+            <p style={{fontSize:11,color:"var(--text3)"}}>Posts in Scheduled go out automatically once their date/time arrives. Off = someone has to click Publish Now.</p>
+          </div>
+          <div onClick={()=>sf("auto_publish_enabled",!form.auto_publish_enabled)} style={{width:40,height:22,borderRadius:99,background:form.auto_publish_enabled?"var(--accent)":"var(--border)",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0,marginLeft:"auto"}}>
+            <div style={{width:16,height:16,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:form.auto_publish_enabled?20:4,transition:"left 0.2s"}}/>
+          </div>
         </div>
       </Section>
 
