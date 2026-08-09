@@ -553,11 +553,13 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     if (["published","approved","rejected"].includes(p.stage)) return false;
     if (p.due_date) {
       if (p.due_date === date) return true;
-      // Still not done and its due date has already passed — roll it
-      // forward onto today's view instead of letting it silently vanish
-      // once its original day is over. Only applies when actually looking
-      // at today (not when paging through past/future days).
-      if (date === today && p.due_date < today) return true;
+      // Still not done AND still sitting in their own stage (not handed
+      // off to someone else, e.g. Client Approval) with its due date
+      // already passed — roll it forward onto today's view instead of
+      // letting it silently vanish once its original day is over. Once
+      // it's left their stage it's no longer unfinished work ON THEM, so
+      // it shouldn't keep reappearing on their daily view either.
+      if (date === today && p.due_date < today && p.stage === ROLE_OWNED_STAGE[userRole]) return true;
       return false;
     }
     // Tasks without a due_date only appear on today's view

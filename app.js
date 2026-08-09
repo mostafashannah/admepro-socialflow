@@ -159,11 +159,13 @@ if(!wasOwnerOf(p,userEmail,userRole))return false;// This timeline's whole purpo
 // pipeline, not just the earlier stages. Only Published (truly done)
 // and Rejected (dead) actually free up a slot; Scheduled still has a
 // real publish step to do and used to silently disappear from here.
-if(["published","approved","rejected"].includes(p.stage))return false;if(p.due_date){if(p.due_date===date)return true;// Still not done and its due date has already passed — roll it
-// forward onto today's view instead of letting it silently vanish
-// once its original day is over. Only applies when actually looking
-// at today (not when paging through past/future days).
-if(date===today&&p.due_date<today)return true;return false;}// Tasks without a due_date only appear on today's view
+if(["published","approved","rejected"].includes(p.stage))return false;if(p.due_date){if(p.due_date===date)return true;// Still not done AND still sitting in their own stage (not handed
+// off to someone else, e.g. Client Approval) with its due date
+// already passed — roll it forward onto today's view instead of
+// letting it silently vanish once its original day is over. Once
+// it's left their stage it's no longer unfinished work ON THEM, so
+// it shouldn't keep reappearing on their daily view either.
+if(date===today&&p.due_date<today&&p.stage===ROLE_OWNED_STAGE[userRole])return true;return false;}// Tasks without a due_date only appear on today's view
 return date===today;}).sort(function(a,b){return priorityScore(b)-priorityScore(a);});// Use due_time as the anchor when available, otherwise pack sequentially
 var slots=[];var usedSlots=new Set();var _iterator=_createForOfIteratorHelper(myPosts),_step;try{for(_iterator.s();!(_step=_iterator.n()).done;){var post=_step.value;var est=estimateDuration(post);var cursor=void 0;if(post.due_time){var _post$due_time$split$=post.due_time.split(":").map(Number),_post$due_time$split$2=_slicedToArray(_post$due_time$split$,2),hh=_post$due_time$split$2[0],mm=_post$due_time$split$2[1];var startMins=hh*60+(mm||0);// Clamp within working hours
 cursor=Math.max(WORKING_START*60,Math.min(startMins,WORKING_END*60-est));}else{// Find next free slot after the last used one. Deliberately does NOT
