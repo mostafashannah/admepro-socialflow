@@ -618,7 +618,12 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
       end_time: minsToAmPm(cursor + dur),
       duration_mins: dur,
       completed_today: completedToday,
-      overdue: !!(post.due_date && date === today && post.due_date < today),
+      // Only flag it red/overdue while it's still sitting in THEIR own
+      // stage, unfinished — once they've actually moved it forward (e.g.
+      // to Client Approval, waiting on someone else entirely), it's no
+      // longer their unfinished work and shouldn't read as if they're
+      // still behind on it.
+      overdue: !!(post.due_date && date === today && post.due_date < today && post.stage === ROLE_OWNED_STAGE[userRole]),
     });
   }
   // Tasks actually finished today (moved out of Design/Content, e.g. to

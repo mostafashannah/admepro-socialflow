@@ -187,7 +187,12 @@ cursor=WORKING_START*60;var sortedSlots=slots.map(function(s){return s.end_mins;
 // finished. A real duration shrinking or growing here naturally shifts
 // every task after it too, since their own cursor search reads this
 // task's real end_mins, not the estimate.
-var dur=est;var completedAtField=userRole==="graphic_designer"?"design_completed_at":userRole==="content_creator"?"content_completed_at":null;var completedAt=completedAtField?post[completedAtField]:null;var completedToday=!!(completedAt&&new Date(completedAt).toISOString().split("T")[0]===date);if(completedToday){var compDate=new Date(completedAt);var actual=compDate.getHours()*60+compDate.getMinutes()-cursor;if(actual>0)dur=actual;}slots.push({post_id:post.id,start_mins:cursor,end_mins:cursor+dur,start_time:minsToAmPm(cursor),end_time:minsToAmPm(cursor+dur),duration_mins:dur,completed_today:completedToday,overdue:!!(post.due_date&&date===today&&post.due_date<today)});}// Tasks actually finished today (moved out of Design/Content, e.g. to
+var dur=est;var completedAtField=userRole==="graphic_designer"?"design_completed_at":userRole==="content_creator"?"content_completed_at":null;var completedAt=completedAtField?post[completedAtField]:null;var completedToday=!!(completedAt&&new Date(completedAt).toISOString().split("T")[0]===date);if(completedToday){var compDate=new Date(completedAt);var actual=compDate.getHours()*60+compDate.getMinutes()-cursor;if(actual>0)dur=actual;}slots.push({post_id:post.id,start_mins:cursor,end_mins:cursor+dur,start_time:minsToAmPm(cursor),end_time:minsToAmPm(cursor+dur),duration_mins:dur,completed_today:completedToday,// Only flag it red/overdue while it's still sitting in THEIR own
+// stage, unfinished — once they've actually moved it forward (e.g.
+// to Client Approval, waiting on someone else entirely), it's no
+// longer their unfinished work and shouldn't read as if they're
+// still behind on it.
+overdue:!!(post.due_date&&date===today&&post.due_date<today&&post.stage===ROLE_OWNED_STAGE[userRole])});}// Tasks actually finished today (moved out of Design/Content, e.g. to
 // Design Review) show first, ahead of everything still pending —
 // otherwise a real "what did they actually get done today" glance meant
 // scanning the whole list for the DESIGN badge vs not.
