@@ -560,29 +560,13 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
   const slots = [];
   const usedSlots = new Set();
   for(const post of myPosts) {
-    // If they actually pushed their own work forward before/after the
-    // planned block ended (content_completed_at/design_completed_at,
-    // stamped in handleStageChange), show how long it REALLY took instead
-    // of always rendering the full originally-estimated block — a 2-3pm
-    // slot finished at 2:15 shows as a real 15-minute task, not a full hour.
-    const dur = (() => {
-      const est = estimateDuration(post);
-      if (!post.due_time) return est;
-      const completedAtField = userRole==="graphic_designer" ? "design_completed_at" : userRole==="content_creator" ? "content_completed_at" : null;
-      const completedAt = completedAtField ? post[completedAtField] : null;
-      if (!completedAt) return est;
-      const compDate = new Date(completedAt);
-      if (compDate.toISOString().split("T")[0] !== date) return est; // only trust same-day completions
-      const [hh, mm] = post.due_time.split(":").map(Number);
-      const actual = (compDate.getHours()*60 + compDate.getMinutes()) - (hh*60 + (mm||0));
-      return actual > 0 ? actual : est;
-    })();
+    const est = estimateDuration(post);
     let cursor;
     if(post.due_time) {
       const [hh, mm] = post.due_time.split(":").map(Number);
       const startMins = hh * 60 + (mm || 0);
       // Clamp within working hours
-      cursor = Math.max(WORKING_START * 60, Math.min(startMins, WORKING_END * 60 - dur));
+      cursor = Math.max(WORKING_START * 60, Math.min(startMins, WORKING_END * 60 - est));
     } else {
       // Find next free slot after the last used one. Deliberately does NOT
       // reset back to WORKING_START when a task doesn't fit before end of
@@ -596,7 +580,28 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
       // a corrupted, overlapping layout.
       cursor = WORKING_START * 60;
       const sortedSlots = slots.map(s => s.end_mins).sort((a,b) => a-b);
-      for(const end of sortedSlots) { if(end >= cursor) cursor = end + 10; }
+      for(const end of sortedSlots) { if(end >= cursor) cursor = end; }
+    }
+    // If they actually pushed their own work forward (content_completed_at/
+    // design_completed_at, stamped in handleStageChange when it leaves
+    // their stage — e.g. a designer's task moving to Design Review), show
+    // how long it REALLY took instead of always rendering the full
+    // originally-estimated block. Anchored to `cursor` (the slot this task
+    // would have started at) rather than requiring an explicit due_time —
+    // most tasks here (e.g. anything from a Calendar Plan) never get one,
+    // so this used to never apply to them even after they were genuinely
+    // finished. A real duration shrinking or growing here naturally shifts
+    // every task after it too, since their own cursor search reads this
+    // task's real end_mins, not the estimate.
+    let dur = est;
+    const completedAtField = userRole==="graphic_designer" ? "design_completed_at" : userRole==="content_creator" ? "content_completed_at" : null;
+    const completedAt = completedAtField ? post[completedAtField] : null;
+    if(completedAt) {
+      const compDate = new Date(completedAt);
+      if(compDate.toISOString().split("T")[0] === date) {
+        const actual = (compDate.getHours()*60 + compDate.getMinutes()) - cursor;
+        if(actual > 0) dur = actual;
+      }
     }
     slots.push({
       post_id: post.id,
