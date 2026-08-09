@@ -6187,6 +6187,12 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Publish Time{editForm.scheduled_date?" *":""}</label>
                 <input type="time" value={editForm.scheduled_time} onChange={e=>setEditForm(f=>({...f,scheduled_time:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:`1px solid ${editForm.scheduled_date&&!editForm.scheduled_time?"#ef4444":"var(--border2)"}`,background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
                 {editForm.scheduled_date&&!editForm.scheduled_time&&<p style={{fontSize:10,color:"#ef4444",marginTop:3}}>A publish date needs a time too</p>}
+                {(()=>{ const bt = post.platform && editForm.scheduled_date ? bestTimeForDate(clientIntelligence, post.platform, editForm.scheduled_date) : ""; return bt && bt!==editForm.scheduled_time ? (
+                  <p style={{fontSize:10,color:"var(--accent)",marginTop:3,display:"flex",alignItems:"center",gap:4}}>
+                    <Ico d={Icons.sparkle||Icons.clock} size={10} stroke="var(--accent)"/> Best time for this date on {post.platform}: {bt}
+                    <button type="button" onClick={()=>setEditForm(f=>({...f,scheduled_time:bt}))} style={{marginLeft:2,fontWeight:700,textDecoration:"underline",background:"none",border:"none",color:"var(--accent)",cursor:"pointer",fontSize:10,padding:0}}>Use it</button>
+                  </p>
+                ) : null; })()}
               </div>
               <div>
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Est. Duration (mins, for Timeline)</label>
@@ -7542,6 +7548,19 @@ Return ONLY valid JSON (no markdown):
                     <input type="time" value={f.scheduled_time} onChange={e=>s("scheduled_time",e.target.value)} style={{...inputSt,borderColor:f.scheduled_date&&!f.scheduled_time?"#ef4444":undefined}}/>
                   </div>
                   {f.scheduled_date&&!f.scheduled_time&&<p style={{fontSize:11,color:"#ef4444",marginTop:4}}>A scheduled date needs a time too</p>}
+                  {(()=>{
+                    if(!f.scheduled_date||!f.platform) return null;
+                    const proj = projects.find(p=>p.id===f.project_id);
+                    const ci = clientIntelligenceList.find(i=>i.client_id===proj?.client_id);
+                    const bt = bestTimeForDate(ci, f.platform, f.scheduled_date);
+                    if(!bt || bt===f.scheduled_time) return null;
+                    return (
+                      <p style={{fontSize:11,color:"var(--accent)",marginTop:6,display:"flex",alignItems:"center",gap:4}}>
+                        <Ico d={Icons.sparkle} size={11} stroke="var(--accent)"/> Best time for this date on {f.platform}: {bt}
+                        <button type="button" onClick={()=>s("scheduled_time",bt)} style={{marginLeft:2,fontWeight:700,textDecoration:"underline",background:"none",border:"none",color:"var(--accent)",cursor:"pointer",fontSize:11,padding:0}}>Use it</button>
+                      </p>
+                    );
+                  })()}
                 </Field>
                 <Field label={
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -7575,10 +7594,26 @@ Return ONLY valid JSON (no markdown):
                   ))}
                 </div>
                 {f.publish_mode==="schedule"&&(
+                  <>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                     <input type="date" value={f.scheduled_date} onChange={e=>s("scheduled_date",e.target.value)} style={inputSt}/>
                     <input type="time" value={f.scheduled_time} onChange={e=>s("scheduled_time",e.target.value)} style={inputSt}/>
                   </div>
+                  {(()=>{
+                    const primaryPl = f.platforms[0];
+                    if(!f.scheduled_date||!primaryPl) return null;
+                    const proj = projects.find(p=>p.id===f.project_id);
+                    const ci = clientIntelligenceList.find(i=>i.client_id===proj?.client_id);
+                    const bt = bestTimeForDate(ci, primaryPl, f.scheduled_date);
+                    if(!bt || bt===f.scheduled_time) return null;
+                    return (
+                      <p style={{fontSize:11,color:"var(--accent)",marginTop:6,display:"flex",alignItems:"center",gap:4}}>
+                        <Ico d={Icons.sparkle} size={11} stroke="var(--accent)"/> Best time for this date on {primaryPl}: {bt}
+                        <button type="button" onClick={()=>s("scheduled_time",bt)} style={{marginLeft:2,fontWeight:700,textDecoration:"underline",background:"none",border:"none",color:"var(--accent)",cursor:"pointer",fontSize:11,padding:0}}>Use it</button>
+                      </p>
+                    );
+                  })()}
+                  </>
                 )}
               </Field>
             )}
