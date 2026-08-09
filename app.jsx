@@ -6538,10 +6538,12 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
               }}>Give Edits</button>
             </div>
           )}
-          {/* Only admin/AM can push a post into Client Approval or Scheduled
-              — same gate the My Tasks quick-action button enforces, applied
-              here too now that Approved's next stage is Scheduled. */}
-          {!["internal_review","design_review"].includes(post.stage)&&(isManager||!["client_approval","scheduled"].includes(next.key))&&(()=>{
+          {/* Only admin/AM can push a post into Client Approval or Scheduled,
+              or OUT of Client Approval — leaving that stage means confirming
+              the client actually approved it, a call only a manager should
+              make, not just whoever happens to be viewing the post. Same
+              gate the My Tasks quick-action button enforces. */}
+          {!["internal_review","design_review"].includes(post.stage)&&(isManager||(post.stage!=="client_approval"&&!["client_approval","scheduled"].includes(next.key)))&&(()=>{
             const needsIgCover = post.stage==="design" && post.post_type==="reel" && post.platform==="instagram" && !post.carousel_cover;
             return (
           <div style={{display:"flex",gap:8}}>
@@ -34254,7 +34256,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
                 </div>
 
                 {/* Actions */}
-                {nextStage && (isManager || !["client_approval","scheduled"].includes(nextStage.key)) && (
+                {nextStage && (isManager || (post.stage!=="client_approval" && !["client_approval","scheduled"].includes(nextStage.key))) && (
                   <button onClick={e=>{
                     e.stopPropagation();
                     if(post.platform && ["client_approval","scheduled"].includes(nextStage.key)) {
