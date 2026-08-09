@@ -166,8 +166,16 @@ if(["published","approved","rejected"].includes(p.stage))return false;if(p.due_d
 // it's left their stage it's no longer unfinished work ON THEM, so
 // it shouldn't keep reappearing on their daily view either.
 if(date===today&&p.due_date<today&&p.stage===ROLE_OWNED_STAGE[userRole])return true;return false;}// Tasks without a due_date only appear on today's view
-return date===today;}).sort(function(a,b){return priorityScore(b)-priorityScore(a);});// Use due_time as the anchor when available, otherwise pack sequentially
-var slots=[];var usedSlots=new Set();var _iterator=_createForOfIteratorHelper(myPosts),_step;try{for(_iterator.s();!(_step=_iterator.n()).done;){var post=_step.value;var est=estimateDuration(post);var cursor=void 0;if(post.due_time){var _post$due_time$split$=post.due_time.split(":").map(Number),_post$due_time$split$2=_slicedToArray(_post$due_time$split$,2),hh=_post$due_time$split$2[0],mm=_post$due_time$split$2[1];var startMins=hh*60+(mm||0);// Clamp within working hours
+return date===today;});var isOverduePost=function isOverduePost(p){return!!(p.due_date&&date===today&&p.due_date<today&&p.stage===ROLE_OWNED_STAGE[userRole]);};// Overdue work jumps the queue — it's already late, so it gets packed
+// first (from the start of the day) instead of waiting for whatever
+// due_time it was originally given, which used to just collide head-on
+// with whatever else was already anchored to that same time.
+myPosts.sort(function(a,b){return isOverduePost(b)-isOverduePost(a)||priorityScore(b)-priorityScore(a);});// Use due_time as the anchor when available, otherwise pack sequentially
+var slots=[];var usedSlots=new Set();var _iterator=_createForOfIteratorHelper(myPosts),_step;try{for(_iterator.s();!(_step=_iterator.n()).done;){var post=_step.value;var est=estimateDuration(post);var cursor=void 0;// Overdue tasks ignore their old due_time entirely and pack
+// sequentially from the front of the day instead, same as a task with
+// no due_time — this is what actually pushes the rest of the day's
+// tasks later instead of overlapping them.
+if(post.due_time&&!isOverduePost(post)){var _post$due_time$split$=post.due_time.split(":").map(Number),_post$due_time$split$2=_slicedToArray(_post$due_time$split$,2),hh=_post$due_time$split$2[0],mm=_post$due_time$split$2[1];var startMins=hh*60+(mm||0);// Clamp within working hours
 cursor=Math.max(WORKING_START*60,Math.min(startMins,WORKING_END*60-est));}else{// Find next free slot after the last used one. Deliberately does NOT
 // reset back to WORKING_START when a task doesn't fit before end of
 // day — that used to guarantee a collision with whatever was already
@@ -194,7 +202,7 @@ var dur=est;var completedAtField=userRole==="graphic_designer"?"design_completed
 // to Client Approval, waiting on someone else entirely), it's no
 // longer their unfinished work and shouldn't read as if they're
 // still behind on it.
-overdue:!!(post.due_date&&date===today&&post.due_date<today&&post.stage===ROLE_OWNED_STAGE[userRole])});}// Tasks actually finished today (moved out of Design/Content, e.g. to
+overdue:isOverduePost(post)});}// Tasks actually finished today (moved out of Design/Content, e.g. to
 // Design Review) show first, ahead of everything still pending —
 // otherwise a real "what did they actually get done today" glance meant
 // scanning the whole list for the DESIGN badge vs not.
