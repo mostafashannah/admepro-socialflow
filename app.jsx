@@ -34649,7 +34649,7 @@ function MyCalendarPage({posts,currentUser,team,onDayClick}) {
 // ════════════════════════════════════════════════════════════════
 // MY TIMELINE PAGE - Daily schedule view 9am-6pm
 // ════════════════════════════════════════════════════════════════
-function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onStartTimer, onPauseTimer, onResumeTimer, schedules, scheduleOverrides, onOverrideSchedule, initialJump, onJumpConsumed, onBackToCalendar, activityLogs=[], appSettings}) {
+function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onStartTimer, onPauseTimer, onResumeTimer, schedules, scheduleOverrides, onOverrideSchedule, onShiftOverdue, initialJump, onJumpConsumed, onBackToCalendar, activityLogs=[], appSettings}) {
   const {isMobile} = useResponsive();
   const [viewDate, setViewDate] = useState(()=>initialJump?.date ? new Date(initialJump.date+"T00:00:00") : new Date());
   const [tick, setTick] = useState(0);
@@ -34691,6 +34691,21 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
     const pad = n => String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
     return {...slot, start_mins:ov.start_mins, end_mins:newEnd, start_time:pad(ov.start_mins), end_time:pad(newEnd)};
   });
+
+  // Persist the rollover, not just display it — a task flagged OVERDUE here
+  // (still unfinished, due_date already past) gets its real due_date pushed
+  // to today so Calendar Plan and every other view agree with what the
+  // Timeline is showing, instead of only this page knowing it moved.
+  // Self-limiting: once due_date actually becomes today, the post no longer
+  // qualifies as overdue on the next render, so this naturally stops firing
+  // for it.
+  const overdueIds = rawSlots.filter(s=>s.overdue).map(s=>s.post_id).join(",");
+  useEffect(()=>{
+    if(!onShiftOverdue || !overdueIds) return;
+    const today = new Date().toISOString().split("T")[0];
+    if(dateStr!==today) return;
+    overdueIds.split(",").forEach(id=>onShiftOverdue(id, today));
+  },[overdueIds, dateStr]);
 
   const fmtSecs = (s) => {
     // A fractional/garbage value (e.g. total_seconds picking up a stray
@@ -46717,6 +46732,18 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
     setToast(" Schedule updated");
   };
 
+  // A task still sitting unfinished in its own stage past its due_date gets
+  // rolled forward to actually show as due today — not just visually
+  // flagged OVERDUE on the Timeline (computed live, only there) but the
+  // real due_date field too, so Calendar Plan and every other view agree
+  // with what the Timeline is showing instead of still pointing at the
+  // stale original date. Best-effort/silent — a failed write here should
+  // never disrupt the page just rendering the Timeline.
+  const shiftOverdueDueDate = (postId, newDate) => {
+    setData(d=>({...d, posts:d.posts.map(p=>p.id===postId?{...p,due_date:newDate}:p)}));
+    ue("Post", postId, {due_date:newDate}).catch(()=>{});
+  };
+
   const handleClientAction = async (post,action,reason) => {
     const newStage = action==="rejected"?"rejected":"scheduled";
     setData(d=>({...d,posts:d.posts.map(p=>p.id===post.id?{...p,stage:newStage,rejection_reason:reason||undefined}:p)}));
@@ -47342,7 +47369,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             onDayClick={(jump)=>{ setTimelineJump(jump); setPage("my_timeline"); }}
           />
         )}
-        {page==="my_timeline"&&<MyTimelinePage posts={data.posts} team={data.team} currentUser={currentUser} timeEntries={data.timeEntries||[]} onPostClick={setSelectedPost} onStartTimer={startTimer} onPauseTimer={pauseTimer} onResumeTimer={resumeTimer} schedules={data.schedules||[]} scheduleOverrides={data.scheduleOverrides||[]} onOverrideSchedule={overrideSchedule} initialJump={timelineJump} onJumpConsumed={()=>setTimelineJump(null)} onBackToCalendar={()=>setPage("my_calendar")} activityLogs={data.activityLogs||[]} appSettings={appSettings}/>}
+        {page==="my_timeline"&&<MyTimelinePage posts={data.posts} team={data.team} currentUser={currentUser} timeEntries={data.timeEntries||[]} onPostClick={setSelectedPost} onStartTimer={startTimer} onPauseTimer={pauseTimer} onResumeTimer={resumeTimer} schedules={data.schedules||[]} scheduleOverrides={data.scheduleOverrides||[]} onOverrideSchedule={overrideSchedule} onShiftOverdue={shiftOverdueDueDate} initialJump={timelineJump} onJumpConsumed={()=>setTimelineJump(null)} onBackToCalendar={()=>setPage("my_calendar")} activityLogs={data.activityLogs||[]} appSettings={appSettings}/>}
         {(page==="my_performance"||page==="reports")&&<MyPerformancePage currentUser={currentUser} posts={data.posts} timeEntries={data.timeEntries||[]} perfLogs={data.perfLogs||[]} aiInsights={data.aiInsights||[]}/>}
         {page==="account"&&(
           <AccountPage
