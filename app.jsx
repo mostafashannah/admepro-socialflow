@@ -596,12 +596,11 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     let dur = est;
     const completedAtField = userRole==="graphic_designer" ? "design_completed_at" : userRole==="content_creator" ? "content_completed_at" : null;
     const completedAt = completedAtField ? post[completedAtField] : null;
-    if(completedAt) {
+    const completedToday = !!(completedAt && new Date(completedAt).toISOString().split("T")[0] === date);
+    if(completedToday) {
       const compDate = new Date(completedAt);
-      if(compDate.toISOString().split("T")[0] === date) {
-        const actual = (compDate.getHours()*60 + compDate.getMinutes()) - cursor;
-        if(actual > 0) dur = actual;
-      }
+      const actual = (compDate.getHours()*60 + compDate.getMinutes()) - cursor;
+      if(actual > 0) dur = actual;
     }
     slots.push({
       post_id: post.id,
@@ -610,9 +609,14 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
       start_time: minsToAmPm(cursor),
       end_time: minsToAmPm(cursor + dur),
       duration_mins: dur,
+      completed_today: completedToday,
     });
   }
-  slots.sort((a,b) => a.start_mins - b.start_mins);
+  // Tasks actually finished today (moved out of Design/Content, e.g. to
+  // Design Review) show first, ahead of everything still pending —
+  // otherwise a real "what did they actually get done today" glance meant
+  // scanning the whole list for the DESIGN badge vs not.
+  slots.sort((a,b) => (b.completed_today - a.completed_today) || (a.start_mins - b.start_mins));
   return slots;
 }
 
@@ -34646,7 +34650,13 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   }, []);
 
   const dateStr = viewDate.toISOString().split('T')[0];
-  const rawSlots = generateDailySchedule(posts, effectiveUser?.email, dateStr, effectiveUser?.role);
+  // Timeline is meant to show what was REALLY done, not the originally
+  // planned/estimated block for work that hasn't actually happened yet —
+  // only tasks genuinely finished that day (moved out of Design/Content)
+  // are shown. generateDailySchedule itself stays unfiltered since the
+  // Assign+Schedule modal's conflict check (elsewhere) needs to see
+  // pending work too, to warn about double-booking someone.
+  const rawSlots = generateDailySchedule(posts, effectiveUser?.email, dateStr, effectiveUser?.role).filter(s=>s.completed_today);
   // Apply schedule overrides
   const slots = rawSlots.map(slot => {
     const ov = (scheduleOverrides||[]).find(o => o.post_id===slot.post_id && o.user_email===effectiveUser?.email && o.date===dateStr);
@@ -34697,7 +34707,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   // view, so it read all-zero whenever the viewer themself had no tasks
   // that day despite the timeline clearly showing other members' tasks.
   const timelineMembers = [currentUser, ...(team||[]).filter(m=>m.email!==currentUser?.email)].filter(m=>!["hr","accountant","office_boy"].includes(m.role));
-  const combinedSlots = combinedView ? timelineMembers.flatMap(m=>generateDailySchedule(posts, m.email, dateStr, m.role)) : null;
+  const combinedSlots = combinedView ? timelineMembers.flatMap(m=>generateDailySchedule(posts, m.email, dateStr, m.role).filter(s=>s.completed_today)) : null;
   const combinedTrackedSecs = combinedView ? timelineMembers.reduce((sum,m)=>sum + (timeEntries||[]).filter(t=>t.user_email===m.email && t.date===dateStr).reduce((acc,t)=>{
     if(t.status==='active') return acc + (t.total_seconds||0) + Math.floor((Date.now()-new Date(t.started_at).getTime())/1000);
     return acc + (t.total_seconds||0);
@@ -34803,7 +34813,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
             </div>
           </div>
           {timelineMembers.map(member=>{
-            const memberSlots = generateDailySchedule(posts, member.email, dateStr, member.role).map(slot=>{
+            const memberSlots = generateDailySchedule(posts, member.email, dateStr, member.role).filter(s=>s.completed_today).map(slot=>{
               const ov = (scheduleOverrides||[]).find(o=>o.post_id===slot.post_id && o.user_email===member.email && o.date===dateStr);
               if(!ov) return slot;
               const dur = slot.end_mins - slot.start_mins;
