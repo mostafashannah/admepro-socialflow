@@ -8594,7 +8594,17 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
     // assignee/date policy.
     const byKindAssignee = {};
     approved.forEach(t=>{ const key=`${t.kind}|${t.assigned_to||""}|${t.due_mode||"auto"}|${t.manual_due_date||""}`; (byKindAssignee[key]=byKindAssignee[key]||[]).push(t); });
+    // Scheduled ONE GROUP AT A TIME, feeding each group's picked dates back
+    // in as simulated posts before scheduling the next — different content
+    // kinds for the SAME assignee (e.g. Reels + Static both going to
+    // Sherif) used to each schedule independently against the same
+    // unchanged snapshot of `posts`, with no idea the other group in this
+    // exact same Generate action had already claimed that day's capacity,
+    // so two different kinds could both land on, say, 11:00 AM and
+    // visually overlap on the timeline. Object.entries().forEach runs in
+    // insertion order, so this stays deterministic.
     const dueDatesByKey = {};
+    let simulatedPosts = [...(posts||[])];
     Object.entries(byKindAssignee).forEach(([key,items])=>{
       const [kind, assignedTo, dueMode, manualDueDate] = key.split("|");
       const perItemMins = estimateDuration({post_type: CALENDAR_KIND_POST_TYPE[kind], priority:"medium"});
@@ -8602,9 +8612,10 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
         const assignee = (team||[]).find(t=>t.email===assignedTo);
         const workDays = assignee?.employment_type==="part_time" ? parseMaybeJson(assignee.work_days, companyWorkDays) : companyWorkDays;
         const {dates} = dueMode==="manual" && manualDueDate
-          ? scheduleItemDates(posts||[], assignedTo, perItemMins, items.length, manualDueDate, manualDueDate, workDays, companyHolidays)
-          : scheduleItemDates(posts||[], assignedTo, perItemMins, items.length, f.date_from||new Date(), null, workDays, companyHolidays);
+          ? scheduleItemDates(simulatedPosts, assignedTo, perItemMins, items.length, manualDueDate, manualDueDate, workDays, companyHolidays)
+          : scheduleItemDates(simulatedPosts, assignedTo, perItemMins, items.length, f.date_from||new Date(), null, workDays, companyHolidays);
         dueDatesByKey[key] = dates;
+        simulatedPosts = [...simulatedPosts, ...dates.map(d=>({assigned_to:assignedTo, due_date:d, stage:"pending", post_type:CALENDAR_KIND_POST_TYPE[kind], priority:"medium"}))];
       } else {
         dueDatesByKey[key] = [];
       }
