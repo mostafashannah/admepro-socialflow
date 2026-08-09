@@ -386,6 +386,16 @@ function nextStageFor(post) {
   const ci = STAGES.findIndex(s => s.key === post.stage);
   return ci === -1 ? null : STAGES[ci + 1];
 }
+// Every other stage transition (Client Approval, Scheduled, Approved,
+// skipping stages, etc.) is admin/AM-only — a non-manager team member can
+// ONLY hand their own work off to review: a content creator moving
+// Content -> Review, or a designer moving Design -> Design Review. Nothing
+// else, for any other role, ever gets a quick "Move to X" action.
+function canAdvanceStageAsNonManager(currentUser, post, nextKey) {
+  if (currentUser?.role === "content_creator") return post.stage === "content_creation" && nextKey === "internal_review";
+  if (currentUser?.role === "graphic_designer") return post.stage === "design" && nextKey === "design_review";
+  return false;
+}
 // Which pipeline stage a role is actually responsible for finishing — their
 // part of a task is done the moment it leaves that stage moving forward,
 // regardless of what happens to it afterward (a designer can't control
@@ -6538,12 +6548,11 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
               }}>Give Edits</button>
             </div>
           )}
-          {/* Only admin/AM can push a post into Client Approval or Scheduled,
-              or OUT of Client Approval — leaving that stage means confirming
-              the client actually approved it, a call only a manager should
-              make, not just whoever happens to be viewing the post. Same
-              gate the My Tasks quick-action button enforces. */}
-          {!["internal_review","design_review"].includes(post.stage)&&(isManager||(post.stage!=="client_approval"&&!["client_approval","scheduled"].includes(next.key)))&&(()=>{
+          {/* Only admin/AM get a general "Move to X" — a non-manager can
+              only hand their own work off to review (content creator:
+              Content->Review, designer: Design->Design Review), nothing
+              else. Same gate the My Tasks quick-action button enforces. */}
+          {!["internal_review","design_review"].includes(post.stage)&&(isManager||canAdvanceStageAsNonManager(currentUser,post,next.key))&&(()=>{
             const needsIgCover = post.stage==="design" && post.post_type==="reel" && post.platform==="instagram" && !post.carousel_cover;
             return (
           <div style={{display:"flex",gap:8}}>
@@ -34256,7 +34265,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
                 </div>
 
                 {/* Actions */}
-                {nextStage && (isManager || (post.stage!=="client_approval" && !["client_approval","scheduled"].includes(nextStage.key))) && (
+                {nextStage && (isManager || canAdvanceStageAsNonManager(currentUser,post,nextStage.key)) && (
                   <button onClick={e=>{
                     e.stopPropagation();
                     if(post.platform && ["client_approval","scheduled"].includes(nextStage.key)) {
