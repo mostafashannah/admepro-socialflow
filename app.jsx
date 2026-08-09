@@ -584,11 +584,19 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
       // Clamp within working hours
       cursor = Math.max(WORKING_START * 60, Math.min(startMins, WORKING_END * 60 - dur));
     } else {
-      // Find next free slot after the last used one
+      // Find next free slot after the last used one. Deliberately does NOT
+      // reset back to WORKING_START when a task doesn't fit before end of
+      // day — that used to guarantee a collision with whatever was already
+      // sitting at the start of the day (an overloaded day with, say, 9
+      // hours of 60-min tasks packed into a 9-hour window would push the
+      // last one or two items past 7pm, and instead of just showing an
+      // honestly overloaded day running late, it silently snapped them
+      // back on top of the very first task). Running past the nominal end
+      // of day is a more honest signal that this person is overbooked than
+      // a corrupted, overlapping layout.
       cursor = WORKING_START * 60;
       const sortedSlots = slots.map(s => s.end_mins).sort((a,b) => a-b);
       for(const end of sortedSlots) { if(end >= cursor) cursor = end + 10; }
-      if(cursor + dur > WORKING_END * 60) cursor = WORKING_START * 60; // fallback
     }
     slots.push({
       post_id: post.id,

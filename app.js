@@ -168,9 +168,17 @@ var slots=[];var usedSlots=new Set();var _iterator=_createForOfIteratorHelper(my
 // slot finished at 2:15 shows as a real 15-minute task, not a full hour.
 var dur=function(){var est=estimateDuration(post);if(!post.due_time)return est;var completedAtField=userRole==="graphic_designer"?"design_completed_at":userRole==="content_creator"?"content_completed_at":null;var completedAt=completedAtField?post[completedAtField]:null;if(!completedAt)return est;var compDate=new Date(completedAt);if(compDate.toISOString().split("T")[0]!==date)return est;// only trust same-day completions
 var _post$due_time$split$=post.due_time.split(":").map(Number),_post$due_time$split$2=_slicedToArray(_post$due_time$split$,2),hh=_post$due_time$split$2[0],mm=_post$due_time$split$2[1];var actual=compDate.getHours()*60+compDate.getMinutes()-(hh*60+(mm||0));return actual>0?actual:est;}();var cursor;if(post.due_time){var _post$due_time$split$3=post.due_time.split(":").map(Number),_post$due_time$split$4=_slicedToArray(_post$due_time$split$3,2),hh=_post$due_time$split$4[0],mm=_post$due_time$split$4[1];var startMins=hh*60+(mm||0);// Clamp within working hours
-cursor=Math.max(WORKING_START*60,Math.min(startMins,WORKING_END*60-dur));}else{// Find next free slot after the last used one
-cursor=WORKING_START*60;var sortedSlots=slots.map(function(s){return s.end_mins;}).sort(function(a,b){return a-b;});var _iterator2=_createForOfIteratorHelper(sortedSlots),_step2;try{for(_iterator2.s();!(_step2=_iterator2.n()).done;){var end=_step2.value;if(end>=cursor)cursor=end+10;}}catch(err){_iterator2.e(err);}finally{_iterator2.f();}if(cursor+dur>WORKING_END*60)cursor=WORKING_START*60;// fallback
-}slots.push({post_id:post.id,start_mins:cursor,end_mins:cursor+dur,start_time:minsToAmPm(cursor),end_time:minsToAmPm(cursor+dur),duration_mins:dur});};for(_iterator.s();!(_step=_iterator.n()).done;){_loop();}}catch(err){_iterator.e(err);}finally{_iterator.f();}slots.sort(function(a,b){return a.start_mins-b.start_mins;});return slots;}// ── @mention helper ────────────────────────────────────────────
+cursor=Math.max(WORKING_START*60,Math.min(startMins,WORKING_END*60-dur));}else{// Find next free slot after the last used one. Deliberately does NOT
+// reset back to WORKING_START when a task doesn't fit before end of
+// day — that used to guarantee a collision with whatever was already
+// sitting at the start of the day (an overloaded day with, say, 9
+// hours of 60-min tasks packed into a 9-hour window would push the
+// last one or two items past 7pm, and instead of just showing an
+// honestly overloaded day running late, it silently snapped them
+// back on top of the very first task). Running past the nominal end
+// of day is a more honest signal that this person is overbooked than
+// a corrupted, overlapping layout.
+cursor=WORKING_START*60;var sortedSlots=slots.map(function(s){return s.end_mins;}).sort(function(a,b){return a-b;});var _iterator2=_createForOfIteratorHelper(sortedSlots),_step2;try{for(_iterator2.s();!(_step2=_iterator2.n()).done;){var end=_step2.value;if(end>=cursor)cursor=end+10;}}catch(err){_iterator2.e(err);}finally{_iterator2.f();}}slots.push({post_id:post.id,start_mins:cursor,end_mins:cursor+dur,start_time:minsToAmPm(cursor),end_time:minsToAmPm(cursor+dur),duration_mins:dur});};for(_iterator.s();!(_step=_iterator.n()).done;){_loop();}}catch(err){_iterator.e(err);}finally{_iterator.f();}slots.sort(function(a,b){return a.start_mins-b.start_mins;});return slots;}// ── @mention helper ────────────────────────────────────────────
 var URL_RE=/((?:https?:\/\/|www\.)[^\s<>"']+)/gi;function renderCommentText(text,team){if(!text)return null;// Match against real team-member full names first (longest first, so
 // "Monay Khalid" matches whole instead of the generic word-boundary
 // fallback stopping at the first space and leaving "Khalid" unstyled).
