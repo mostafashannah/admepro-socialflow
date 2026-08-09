@@ -7258,31 +7258,35 @@ Return ONLY valid JSON (no markdown):
     if(f.content_mode==="ready") {
       const proj = projects.find(p=>p.id===f.project_id);
       const design_urls = JSON.stringify(f.media.map(m=>m.url));
-      // Each platform gets its own client-configured Best Posting Time
-      // (Settings > Scheduling) when the user didn't type an explicit time
-      // for this post — whether that saved time came from the Manual or
-      // Auto (AI-predicted) toggle there doesn't matter here, it's just
-      // the number to use. An explicit time typed on this form always wins.
+      // ONE task covering every selected platform (not one task per
+      // platform, which used to leave e.g. an Instagram+Facebook post
+      // showing up as two separate duplicate cards) — platforms carries
+      // the full list, platform stays the first one selected for anything
+      // that only reads the old singular field. Publishing (addReadyContent)
+      // loops over platforms itself, same as the normal Publish Now button.
+      const primaryPl = f.platforms[0];
+      const post_type = f.platform_types[primaryPl] || defaultTypeFor();
+      const storySrc = f.storyImage || f.media[0];
+      const design_assets = f.platforms.includes("instagram") && f.postStory && storySrc
+        ? [...f.media, {...storySrc, kind:"story"}]
+        : f.media;
+      // Each platform has its own client-configured Best Posting Time
+      // (Settings > Scheduling) — the primary platform's time is used for
+      // the one scheduled_time this task carries. An explicit time typed on
+      // this form always wins.
       const ci = clientIntelligenceList.find(i=>i.client_id===proj?.client_id);
-      const list = f.platforms.map(pl=>{
-        const post_type = f.platform_types[pl] || defaultTypeFor();
-        const storySrc = f.storyImage || f.media[0];
-        const design_assets = pl==="instagram" && f.postStory && storySrc
-          ? [...f.media, {...storySrc, kind:"story"}]
-          : f.media;
-        const clientBestTime = bestTimeForDate(ci, pl, f.scheduled_date);
-        return {
-          title:f.title, client_id:proj?.client_id||"", project_id:f.project_id,
-          description:f.description, assigned_to:f.assigned_to,
-          scheduled_date: f.publish_mode==="schedule" ? f.scheduled_date : new Date().toISOString().slice(0,10),
-          scheduled_time: f.publish_mode==="schedule" ? (f.scheduled_time || clientBestTime || "") : "",
-          platform:pl, post_type, priority:f.priority, stage:"scheduled",
-          client_name: proj?.client_name||"", hashtags:"",
-          caption:f.caption, design_assets, design_urls,
-          carousel_cover: post_type==="reel" ? (f.cover?.url||"") : "",
-        };
-      });
-      await (onAddReady ? onAddReady(list,{postNow:f.publish_mode==="now"}) : Promise.all(list.map(onAdd)));
+      const clientBestTime = bestTimeForDate(ci, primaryPl, f.scheduled_date);
+      const single = {
+        title:f.title, client_id:proj?.client_id||"", project_id:f.project_id,
+        description:f.description, assigned_to:f.assigned_to,
+        scheduled_date: f.publish_mode==="schedule" ? f.scheduled_date : new Date().toISOString().slice(0,10),
+        scheduled_time: f.publish_mode==="schedule" ? (f.scheduled_time || clientBestTime || "") : "",
+        platform:primaryPl, platforms:f.platforms, post_type, priority:f.priority, stage:"scheduled",
+        client_name: proj?.client_name||"", hashtags:"",
+        caption:f.caption, design_assets, design_urls,
+        carousel_cover: post_type==="reel" ? (f.cover?.url||"") : "",
+      };
+      await (onAddReady ? onAddReady([single],{postNow:f.publish_mode==="now"}) : onAdd(single));
     } else {
       // Unlike the "Ready Content" branch above, this path never set
       // client_id/client_name at all — a task created this way saved fine
@@ -45973,23 +45977,32 @@ Return ONLY valid JSON (no markdown, no explanation):
   // Creates one Post per platform for "Ready Content" (already-finished caption+media), then,
   // when opts.postNow is set, immediately publishes each via its matching active Meta integration.
   const addReadyContent = async (list, opts={}) => {
+    // list now always holds exactly ONE task (see AddPostModal) — publishing
+    // loops over its platforms array itself, same as the normal Publish Now
+    // button, instead of the caller pre-splitting it into one task per
+    // platform (which used to create real duplicate Post rows).
     let publishedCount=0, failedCount=0;
     for(const pd of list) {
       const real = await addPost(pd);
       if(opts.postNow && real?.id) {
-        const integ = (data.integrations||[]).find(i=>i.status==="active" && i.app_key===pd.platform && i.client_id===pd.client_id)
-          || (data.integrations||[]).find(i=>i.status==="active" && i.app_key===pd.platform && !i.client_id);
-        if(!integ) { failedCount++; continue; }
-        try {
-          const res = await publishPost(real, integ);
-          const postId = res?.video_id || res?.id || res?.post_id || res?.creation_id;
-          if(postId) await ue("Post", real.id, {external_post_id: postId}).catch(()=>{});
-          handleStageChange(real,"published");
-          publishedCount++;
-        } catch(e) {
-          failedCount++;
-          setToast(`Publish failed for ${pd.platform}: ${e.message}`);
+        const platformsToPublish = Array.isArray(pd.platforms)&&pd.platforms.length ? pd.platforms : [pd.platform];
+        let anyOk = false;
+        for(const pl of platformsToPublish) {
+          const integ = (data.integrations||[]).find(i=>i.status==="active" && i.app_key===pl && i.client_id===pd.client_id)
+            || (data.integrations||[]).find(i=>i.status==="active" && i.app_key===pl && !i.client_id);
+          if(!integ) { failedCount++; continue; }
+          try {
+            const res = await publishPost(real, integ);
+            const postId = res?.video_id || res?.id || res?.post_id || res?.creation_id;
+            if(postId) await ue("Post", real.id, {external_post_id: postId}).catch(()=>{});
+            publishedCount++;
+            anyOk = true;
+          } catch(e) {
+            failedCount++;
+            setToast(`Publish failed for ${pl}: ${e.message}`);
+          }
         }
+        if(anyOk) handleStageChange(real,"published");
       }
     }
     if(opts.postNow) {
