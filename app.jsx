@@ -34916,7 +34916,23 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
           <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",background:"var(--surface2)"}}>
             <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Timeline · {dateStr}</p>
           </div>
-          {hours.map(hour => {
+          {(()=>{
+            // A slot that runs past its starting hour (e.g. a 4h task at
+            // 2pm) makes that hour's row tall enough to visually contain
+            // the whole block — but the hours it already covers (3, 4, 5pm)
+            // used to still render their own separate "—" row underneath,
+            // making an already-occupied stretch look like free time.
+            // Skip rendering a row for any hour that's fully covered by a
+            // slot that started earlier, so the tall block is the only
+            // thing shown for that whole span.
+            const coveredHours = new Set();
+            slots.forEach(s => {
+              const startHour = Math.floor(s.start_mins/60);
+              const endHour = Math.ceil(s.end_mins/60);
+              for(let h=startHour+1; h<endHour; h++) coveredHours.add(h);
+            });
+            return hours.filter(h=>!coveredHours.has(h));
+          })().map(hour => {
             const hourSlots = getSlotForHour(hour);
             const timeLabel = `${hour===0?12:hour>12?hour-12:hour}:00 ${hour<12?"AM":"PM"}`;
             const isCurrentHour = new Date().getHours()===hour && viewDate.toDateString()===new Date().toDateString();
