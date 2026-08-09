@@ -8255,7 +8255,7 @@ function AddCalendarPlanModal({open,onClose,clients,team,posts,projects,preselec
   // pushing a different message) instead of forcing one brief onto all of
   // them. `count` is kept in sync as the sum of all batches' counts, since
   // scheduling/due-date/token-budget logic elsewhere reads it directly.
-  const makeKindDefaults = (count, kind) => ({count, platforms:platformsForKind(kind, preselectedClient?.platforms), briefBatches:[{count, brief:"", assigned_to:""}], due_mode:"auto", manual_due_date:"", manual_due_time:"13:00"});
+  const makeKindDefaults = (count, kind) => ({count, platforms:platformsForKind(kind, preselectedClient?.platforms), briefBatches:[{count, brief:"", assigned_to:"", due_mode:"auto", manual_due_date:"", manual_due_time:"13:00"}]});
   const [f,setF] = useState({
     client_id: preselectedClient?.id||"",
     campaign: "",
@@ -8298,7 +8298,7 @@ function AddCalendarPlanModal({open,onClose,clients,team,posts,projects,preselec
     const batches = p.kinds[kind].briefBatches.map((b,i)=>i===idx?{...b,[key]:val}:b);
     return {...p,kinds:{...p.kinds,[kind]:{...p.kinds[kind],briefBatches:batches,count:recount(batches)}}};
   });
-  const addBatch = (kind) => setF(p=>({...p,kinds:{...p.kinds,[kind]:{...p.kinds[kind],briefBatches:[...p.kinds[kind].briefBatches,{count:0,brief:"",assigned_to:""}]}}}));
+  const addBatch = (kind) => setF(p=>({...p,kinds:{...p.kinds,[kind]:{...p.kinds[kind],briefBatches:[...p.kinds[kind].briefBatches,{count:0,brief:"",assigned_to:"",due_mode:"auto",manual_due_date:"",manual_due_time:"13:00"}]}}}));
   const removeBatch = (kind,idx) => setF(p=>{
     const cur = p.kinds[kind].briefBatches;
     if(cur.length<=1) return p; // always keep at least one group
@@ -8380,9 +8380,9 @@ Return ONLY the brief text — no markdown, no labels, no quotes.`, 300);
     const perItemMins = estimateDuration({post_type: CALENDAR_KIND_POST_TYPE[kind], priority:"medium"});
     const assignee = (team||[]).find(t=>t.email===batch.assigned_to);
     const workDays = assignee?.employment_type==="part_time" ? parseMaybeJson(assignee.work_days, companyWorkDays) : companyWorkDays;
-    if(cfg.due_mode==="manual" && cfg.manual_due_date) {
-      const {dates, overflow} = scheduleItemDates(posts||[], batch.assigned_to, perItemMins, batch.count, cfg.manual_due_date, cfg.manual_due_date, workDays, companyHolidays);
-      return {dates, conflict:overflow, requestedEnd: cfg.manual_due_date};
+    if(batch.due_mode==="manual" && batch.manual_due_date) {
+      const {dates, overflow} = scheduleItemDates(posts||[], batch.assigned_to, perItemMins, batch.count, batch.manual_due_date, batch.manual_due_date, workDays, companyHolidays);
+      return {dates, conflict:overflow, requestedEnd: batch.manual_due_date};
     }
     const {dates} = scheduleItemDates(posts||[], batch.assigned_to, perItemMins, batch.count, f.date_from||new Date(), null, workDays, companyHolidays);
     return {dates, conflict:false, requestedEnd:null};
@@ -8409,7 +8409,7 @@ Return ONLY the brief text — no markdown, no labels, no quotes.`, 300);
       // write, so skip the AI call entirely and synthesize its one fixed
       // idea locally (count is always 1 for this kind).
       if(kind==="grid_layout") {
-        ideasByKind[kind] = [{title:`Full Grid Layout — ${f.campaign}`, caption:"", hashtags:"", text_on_visual:"", _assignedTo:cfg.briefBatches[0]?.assigned_to||""}];
+        ideasByKind[kind] = [{title:`Full Grid Layout — ${f.campaign}`, caption:"", hashtags:"", text_on_visual:"", _assignedTo:cfg.briefBatches[0]?.assigned_to||"", _dueMode:cfg.briefBatches[0]?.due_mode||"auto", _manualDueDate:cfg.briefBatches[0]?.manual_due_date||"", _manualDueTime:cfg.briefBatches[0]?.manual_due_time||""}];
         continue;
       }
       if(skipAI) {
@@ -8418,6 +8418,9 @@ Return ONLY the brief text — no markdown, no labels, no quotes.`, 300);
           caption:"", hashtags:"", text_on_visual:"", hook:"",
           _sourceBrief: batch.brief||"",
           _assignedTo: batch.assigned_to||"",
+          _dueMode: batch.due_mode||"auto",
+          _manualDueDate: batch.manual_due_date||"",
+          _manualDueTime: batch.manual_due_time||"",
         })));
         continue;
       }
@@ -8465,7 +8468,7 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
           // fail JSON.parse and silently fall back to placeholder text.
           const match = aiRes.match(/\[[\s\S]*\]/);
           const parsedBatch = JSON.parse(match ? match[0] : aiRes);
-          kindIdeas.push(...parsedBatch.map(idea=>({...idea, _sourceBrief:batch.brief, _assignedTo:batch.assigned_to||""})));
+          kindIdeas.push(...parsedBatch.map(idea=>({...idea, _sourceBrief:batch.brief, _assignedTo:batch.assigned_to||"", _dueMode:batch.due_mode||"auto", _manualDueDate:batch.manual_due_date||"", _manualDueTime:batch.manual_due_time||""})));
         } catch(e) {
           kindIdeas.push(...Array.from({length:batch.count},(_,i)=>({
             title:`${kind.charAt(0).toUpperCase()+kind.slice(1)} ${i+1} — ${f.campaign}`,
@@ -8474,6 +8477,9 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
             text_on_visual: kind==="article" ? "" : `${f.campaign}`,
             _sourceBrief: batch.brief,
             _assignedTo: batch.assigned_to||"",
+            _dueMode: batch.due_mode||"auto",
+            _manualDueDate: batch.manual_due_date||"",
+            _manualDueTime: batch.manual_due_time||"",
             hook: kind==="reel" ? `Wait — you need to see this.` : "",
           })));
         }
@@ -8517,6 +8523,9 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
           client_id: f.client_id,
           client_name: selectedClient?.name||"",
           assigned_to: idea?._assignedTo||"",
+          due_mode: idea?._dueMode||"auto",
+          manual_due_date: idea?._manualDueDate||"",
+          manual_due_time: idea?._manualDueTime||"",
           project_name: f.campaign,
           status:"pending",
           _sourceBrief: idea?._sourceBrief||"",
@@ -8578,22 +8587,22 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
     // free capacity per kind, in order, instead of every item in a kind
     // landing on the same day.
     const approved = generated.filter(t=>t.approved);
-    // Grouped by (kind + assignee), not just kind — a kind split into
-    // groups with different assignees now schedules each group against
-    // THAT person's own real calendar, instead of everyone in the kind
-    // sharing one assignee's availability.
+    // Grouped by (kind + assignee + due mode/date), not just kind — a kind
+    // split into groups with different assignees AND/OR different due-date
+    // policies now schedules each group independently against that group's
+    // own settings, instead of everyone in the kind sharing one shared
+    // assignee/date policy.
     const byKindAssignee = {};
-    approved.forEach(t=>{ const key=`${t.kind}|${t.assigned_to||""}`; (byKindAssignee[key]=byKindAssignee[key]||[]).push(t); });
+    approved.forEach(t=>{ const key=`${t.kind}|${t.assigned_to||""}|${t.due_mode||"auto"}|${t.manual_due_date||""}`; (byKindAssignee[key]=byKindAssignee[key]||[]).push(t); });
     const dueDatesByKey = {};
     Object.entries(byKindAssignee).forEach(([key,items])=>{
-      const [kind, assignedTo] = key.split("|");
-      const cfg = f.kinds[kind]||{};
+      const [kind, assignedTo, dueMode, manualDueDate] = key.split("|");
       const perItemMins = estimateDuration({post_type: CALENDAR_KIND_POST_TYPE[kind], priority:"medium"});
       if(assignedTo) {
         const assignee = (team||[]).find(t=>t.email===assignedTo);
         const workDays = assignee?.employment_type==="part_time" ? parseMaybeJson(assignee.work_days, companyWorkDays) : companyWorkDays;
-        const {dates} = cfg.due_mode==="manual" && cfg.manual_due_date
-          ? scheduleItemDates(posts||[], assignedTo, perItemMins, items.length, cfg.manual_due_date, cfg.manual_due_date, workDays, companyHolidays)
+        const {dates} = dueMode==="manual" && manualDueDate
+          ? scheduleItemDates(posts||[], assignedTo, perItemMins, items.length, manualDueDate, manualDueDate, workDays, companyHolidays)
           : scheduleItemDates(posts||[], assignedTo, perItemMins, items.length, f.date_from||new Date(), null, workDays, companyHolidays);
         dueDatesByKey[key] = dates;
       } else {
@@ -8602,12 +8611,11 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
     });
     const keyCursor = {};
     const finalTasks = approved.map(t=>{
-      const key = `${t.kind}|${t.assigned_to||""}`;
+      const key = `${t.kind}|${t.assigned_to||""}|${t.due_mode||"auto"}|${t.manual_due_date||""}`;
       keyCursor[key] = keyCursor[key]||0;
       const dueDate = dueDatesByKey[key]?.[keyCursor[key]] || "";
-      const cfg = f.kinds[t.kind]||{};
       keyCursor[key]++;
-      return {...t, due_date: dueDate, due_time: cfg.due_mode==="manual" ? (cfg.manual_due_time||"") : ""};
+      return {...t, due_date: dueDate, due_time: t.due_mode==="manual" ? (t.manual_due_time||"") : ""};
     });
     await onGenerate({...f, start_stage: startStage}, finalTasks);
     // Sara learns from the plan she just delivered — best-effort, in the
@@ -8729,22 +8737,24 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                       <div style={{...inputSt,display:"flex",alignItems:"center",fontWeight:700}}>{cfg.count} {label.toLowerCase()}</div>
                     </Field>
                   )}
-                  <Field label="Due Date">
-                    <div style={{display:"flex",gap:6}}>
-                      <button type="button" onClick={()=>sk(kind,"due_mode","auto")} style={{flex:1,padding:"8px 6px",borderRadius:8,border:`1.5px solid ${cfg.due_mode!=="manual"?"var(--accent)":"var(--border2)"}`,background:cfg.due_mode!=="manual"?"var(--accent)18":"var(--surface)",fontWeight:700,fontSize:11.5,color:cfg.due_mode!=="manual"?"var(--accent)":"var(--text2)",cursor:"pointer"}}>Auto</button>
-                      <button type="button" onClick={()=>sk(kind,"due_mode","manual")} style={{flex:1,padding:"8px 6px",borderRadius:8,border:`1.5px solid ${cfg.due_mode==="manual"?"var(--accent)":"var(--border2)"}`,background:cfg.due_mode==="manual"?"var(--accent)18":"var(--surface)",fontWeight:700,fontSize:11.5,color:cfg.due_mode==="manual"?"var(--accent)":"var(--text2)",cursor:"pointer"}}>Pick date</button>
-                    </div>
-                  </Field>
-                  {cfg.due_mode==="manual" && (
+                  {kind==="grid_layout" && (()=>{ const b0 = cfg.briefBatches[0]; return (<>
                     <Field label="Due Date">
-                      <input type="date" value={cfg.manual_due_date} onChange={e=>sk(kind,"manual_due_date",e.target.value)} style={inputSt}/>
+                      <div style={{display:"flex",gap:6}}>
+                        <button type="button" onClick={()=>skBatch(kind,0,"due_mode","auto")} style={{flex:1,padding:"8px 6px",borderRadius:8,border:`1.5px solid ${b0.due_mode!=="manual"?"var(--accent)":"var(--border2)"}`,background:b0.due_mode!=="manual"?"var(--accent)18":"var(--surface)",fontWeight:700,fontSize:11.5,color:b0.due_mode!=="manual"?"var(--accent)":"var(--text2)",cursor:"pointer"}}>Auto</button>
+                        <button type="button" onClick={()=>skBatch(kind,0,"due_mode","manual")} style={{flex:1,padding:"8px 6px",borderRadius:8,border:`1.5px solid ${b0.due_mode==="manual"?"var(--accent)":"var(--border2)"}`,background:b0.due_mode==="manual"?"var(--accent)18":"var(--surface)",fontWeight:700,fontSize:11.5,color:b0.due_mode==="manual"?"var(--accent)":"var(--text2)",cursor:"pointer"}}>Pick date</button>
+                      </div>
                     </Field>
-                  )}
-                  {cfg.due_mode==="manual" && (
-                    <Field label="Due Time">
-                      <input type="time" value={cfg.manual_due_time} onChange={e=>sk(kind,"manual_due_time",e.target.value)} style={inputSt}/>
-                    </Field>
-                  )}
+                    {b0.due_mode==="manual" && (
+                      <Field label="Due Date">
+                        <input type="date" value={b0.manual_due_date} onChange={e=>skBatch(kind,0,"manual_due_date",e.target.value)} style={inputSt}/>
+                      </Field>
+                    )}
+                    {b0.due_mode==="manual" && (
+                      <Field label="Due Time">
+                        <input type="time" value={b0.manual_due_time} onChange={e=>skBatch(kind,0,"manual_due_time",e.target.value)} style={inputSt}/>
+                      </Field>
+                    )}
+                  </>); })()}
                 </div>
                 {kind==="grid_layout" ? (
                   <Field label="Platforms">
@@ -8805,12 +8815,30 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                             </button>
                           </div>
                         </div>
-                        <Field label="Assign To">
-                          <select value={batch.assigned_to} onChange={e=>skBatch(kind,bi,"assigned_to",e.target.value)} style={inputSt}>
-                            <option value="">— Unassigned —</option>
-                            {eligibleAssignees(startStage,team).map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
-                          </select>
-                        </Field>
+                        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                          <Field label="Assign To">
+                            <select value={batch.assigned_to} onChange={e=>skBatch(kind,bi,"assigned_to",e.target.value)} style={inputSt}>
+                              <option value="">— Unassigned —</option>
+                              {eligibleAssignees(startStage,team).map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
+                            </select>
+                          </Field>
+                          <Field label="Due Date">
+                            <div style={{display:"flex",gap:6}}>
+                              <button type="button" onClick={()=>skBatch(kind,bi,"due_mode","auto")} style={{flex:1,padding:"8px 6px",borderRadius:8,border:`1.5px solid ${batch.due_mode!=="manual"?"var(--accent)":"var(--border2)"}`,background:batch.due_mode!=="manual"?"var(--accent)18":"var(--surface)",fontWeight:700,fontSize:11.5,color:batch.due_mode!=="manual"?"var(--accent)":"var(--text2)",cursor:"pointer"}}>Auto</button>
+                              <button type="button" onClick={()=>skBatch(kind,bi,"due_mode","manual")} style={{flex:1,padding:"8px 6px",borderRadius:8,border:`1.5px solid ${batch.due_mode==="manual"?"var(--accent)":"var(--border2)"}`,background:batch.due_mode==="manual"?"var(--accent)18":"var(--surface)",fontWeight:700,fontSize:11.5,color:batch.due_mode==="manual"?"var(--accent)":"var(--text2)",cursor:"pointer"}}>Pick date</button>
+                            </div>
+                          </Field>
+                          {batch.due_mode==="manual" && (
+                            <Field label="Due Date">
+                              <input type="date" value={batch.manual_due_date} onChange={e=>skBatch(kind,bi,"manual_due_date",e.target.value)} style={inputSt}/>
+                            </Field>
+                          )}
+                          {batch.due_mode==="manual" && (
+                            <Field label="Due Time">
+                              <input type="time" value={batch.manual_due_time} onChange={e=>skBatch(kind,bi,"manual_due_time",e.target.value)} style={inputSt}/>
+                            </Field>
+                          )}
+                        </div>
                         {batch.count>0 && batch.assigned_to && (()=>{
                           const due = batchDueDate(kind,bi);
                           if(!due || !due.dates?.length) return (
@@ -8825,9 +8853,9 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                               border:`1px solid ${due.conflict?"#f59e0b55":"#10b98155"}`,
                               color:due.conflict?"#b45309":"#059669"}}>
                               {due.conflict
-                                ? `Not free on ${fmtDate(due.requestedEnd)}${cfg.manual_due_time?` at ${cfg.manual_due_time}`:""} — pushed to this teammate's next free day(s): ${fmtDate(first)}${first!==last?` → ${fmtDate(last)}`:""}.`
+                                ? `Not free on ${fmtDate(due.requestedEnd)}${batch.manual_due_time?` at ${batch.manual_due_time}`:""} — pushed to this teammate's next free day(s): ${fmtDate(first)}${first!==last?` → ${fmtDate(last)}`:""}.`
                                 : first===last
-                                ? `Due ${fmtDate(first)}${cfg.due_mode==="manual"&&cfg.manual_due_time?` at ${cfg.manual_due_time}`:""} — this teammate has room for all ${batch.count} then.`
+                                ? `Due ${fmtDate(first)}${batch.due_mode==="manual"&&batch.manual_due_time?` at ${batch.manual_due_time}`:""} — this teammate has room for all ${batch.count} then.`
                                 : `Spread across this teammate's free days: ${fmtDate(first)} → ${fmtDate(last)}.`}
                             </div>
                           );
