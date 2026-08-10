@@ -9080,7 +9080,7 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                       {task.caption&&<p style={{fontSize:11,color:"var(--text3)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:340}}>{task.caption}</p>}
                     </div>
                     <span style={{display:"flex",alignItems:"center",gap:5}}>
-                      <PChip platform={task.platform} xs/>
+                      {(task.platforms?.length?task.platforms:[task.platform]).map(p=><PChip key={p} platform={p} xs/>)}
                       {(task.post_type==="article"||task.post_type==="story")&&(
                         <span style={{fontSize:9,fontWeight:800,textTransform:"uppercase",padding:"2px 6px",borderRadius:99,background:"var(--surface)",border:"1px solid var(--border2)",color:"var(--text3)"}}>{task.post_type}</span>
                       )}
