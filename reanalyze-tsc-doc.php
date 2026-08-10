@@ -25,7 +25,7 @@ $prompt = "You are analyzing a ChatGPT conversation that contains discussions ab
     . "Client: {$client['name']}\nChatGPT Conversation:\n" . mb_substr($content, 0, 6000) . "\n\n"
     . "Extract ONLY the useful client brief information from this conversation. Ignore generic ChatGPT responses. Focus on what was discussed about the client's brand, goals, audience, and content preferences.\n\n"
     . "Return ONLY valid JSON (no markdown, no explanation):\n"
-    . '{"summary":"2-3 sentences about this client based on the chat","tone":"brand voice/communication style extracted from chat","content_preferences":"what type of content they want","industry_context":"their industry and market","keywords":["kw1","kw2","kw3"],"priorities":["priority1","priority2"],"skills":[{"name":"Skill","confidence":80,"category":"Content"}],"dos":["do this","and this"],"donts":["avoid this","never this"],"target_audience":"who they'"'"'re targeting"}';
+    . '{"summary":"2-3 sentences about this client based on the chat","tone":"brand voice/communication style extracted from chat","content_preferences":"what type of content they want","industry_context":"their industry and market","keywords":["kw1","kw2","kw3"],"priorities":["priority1","priority2"],"skills":[{"name":"Skill","confidence":80,"category":"Content"}],"dos":["do this","and this"],"donts":["avoid this","never this"],"target_audience":"who they are targeting"}';
 
 $ch = curl_init("https://api.anthropic.com/v1/messages");
 curl_setopt_array($ch, [
