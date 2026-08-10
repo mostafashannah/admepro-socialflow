@@ -372,7 +372,7 @@ function financeTools() {
             'description' => 'Record a new income or expense transaction. Before calling this, make sure you have all required fields from the user — if anything is missing or ambiguous (especially amount or whether it is money in or out), ASK the user instead of guessing. Once saved, confirm back to the user exactly what was recorded (type, amount, category, description, date). '
                 . 'Payment method is OPTIONAL — never ask for it as a separate follow-up question after you have already saved the transaction. If the user did not mention it, just save; it defaults to "Bank transfer" automatically, so do not hold the save hostage waiting for it. If, despite this, you already asked and the user\'s next message is just a bare method answer ("cash", "bank transfer", "card") with no new amount/description, that is updating the transaction you just saved, NOT a new transaction — call edit_transaction with the short_id this tool returned and the method, never call add_transaction again for it. '
                 . 'For an "outstanding" expense (money owed but not yet paid — e.g. "X is outstanding", "put this on Fawry installments", "so-and-so paid this for us, we owe them back"): set method to "Outstanding" and fill outstanding_kind. For outstanding_kind="team_member", set outstanding_team_member (their name) — no interest applies, amount is simply what\'s owed. For outstanding_kind="installment" (Fawry), set outstanding_months and, if not given, use Fawry\'s known flat monthly rates: 1mo=3.33%, 3mo=3.21%, 6/9/12/18/24mo=3.04% — ALWAYS tell the user the calculated total (principal + interest) and monthly installment before saving so they can confirm, since interest changes the real amount owed. For installment, treat the "amount" you were given as the PRINCIPAL — the tool computes and stores the true total automatically. '
-                . 'If this call is rejected with an error saying it looks like a repeat of an already-logged transaction, ASK the user whether it\'s a genuine separate transaction or an actual duplicate — never claim it saved successfully when this tool returned an error, that would be lying to the user. If they confirm it\'s genuinely separate, call add_transaction again with the exact same details plus force=true to actually save it this time.',
+                . 'If this call is rejected with an error saying it looks like a repeat of an already-logged transaction, DO NOT retry it in this same turn, and do not assume it is a duplicate OR that it is separate — tell the user in your reply that this looks like a repeat of the transaction already logged (name the ref) and ask them directly whether it is genuinely a separate transaction, then STOP and wait for their actual next message. A "Confirm" or "yes" the user sent about something else (a different transaction, or before you ever asked this question) is NOT an answer to this question and must never be treated as one — never set force=true just because the conversation contains an affirmative-sounding word somewhere. Only call add_transaction again with force=true after a later user message that is a direct, unambiguous answer to the specific duplicate question you asked (e.g. "yes it\'s a separate one", "different purchase").',
             'input_schema' => [
                 'type' => 'object',
                 'properties' => [
@@ -388,7 +388,7 @@ function financeTools() {
                     'outstanding_months' => ['type' => 'integer', 'description' => 'Installment plan length in months — required when outstanding_kind=installment.'],
                     'outstanding_monthly_interest_rate' => ['type' => 'number', 'description' => 'Flat monthly interest %. If the user does not give one, use Fawry\'s known rate for that month count (see tool description).'],
                     'photo_url' => ['type' => 'string', 'description' => 'The URL from a "[photo_url: ...]" marker in this conversation, if this transaction came from a receipt/invoice photo or PDF the user sent — attaches it to the record. Omit if there was no photo/PDF.'],
-                    'force' => ['type' => 'boolean', 'description' => 'Set true ONLY on a retry after the user explicitly confirmed a same-amount transaction flagged as a possible duplicate is genuinely separate. Never set true on a first attempt.'],
+                    'force' => ['type' => 'boolean', 'description' => 'Set true ONLY on a later turn, after you asked the user directly whether a duplicate-flagged transaction is genuinely separate AND their next message directly answered that specific question with yes/separate/different. Never set true in the same turn as the rejection, and never set true based on a generic "confirm"/"yes" that was not a direct answer to that question.'],
                 ],
                 'required' => ['type', 'category', 'description', 'amount'],
             ],
@@ -574,8 +574,27 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
         $dupCheck = $pdo->prepare("SELECT ref FROM expenses WHERE type = :type AND amount = :amt AND created_by = :by AND created_at >= (NOW() - INTERVAL 240 MINUTE) LIMIT 1");
         $dupCheck->execute([':type' => $type, ':amt' => $amount, ':by' => $senderName]);
         $dup = $dupCheck->fetchColumn();
+        // A single "Confirm" from the user can trigger several tool-use
+        // rounds back-to-back within the SAME webhook request (the loop in
+        // askPro() allows up to 4), with no real message from the user in
+        // between them. That let the model hit this exact dedup rejection,
+        // then — on its own, without ever actually asking the user anything
+        // — immediately retry the identical call with force=true a moment
+        // later in the same request, creating a real duplicate (seen in
+        // production: two "750 EGP Freepik" rows 32 seconds apart). The
+        // system prompt now tells it not to do this, but that's not
+        // trustworthy on its own — a static per-request set of every ref
+        // this SAME execution has already rejected makes force=true unable
+        // to override a rejection that happened in this same request,
+        // forcing an actual round-trip to the user before a retry can
+        // succeed, regardless of what the model decides to send.
+        static $rejectedThisRequest = [];
         if ($dup && !$force) {
+            $rejectedThisRequest[$dup] = true;
             return ['error' => "This looks like a repeat of a transaction already logged moments ago (ref {$dup}) — did not create a duplicate. If this is genuinely a separate transaction, ask the user to confirm explicitly."];
+        }
+        if ($dup && $force && !empty($rejectedThisRequest[$dup])) {
+            return ['error' => "Not saved — you just flagged ref {$dup} as a possible duplicate in this same exchange and cannot force-save it without the user actually replying to confirm it's separate. Ask them directly and wait for their next message before retrying."];
         }
 
         $id = generateProUuid();
