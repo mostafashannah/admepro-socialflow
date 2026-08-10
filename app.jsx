@@ -45939,11 +45939,21 @@ Return ONLY valid JSON (no markdown, no explanation):
 
       const r = await fetch(AI_ENDPOINT,{
         method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1200,
+        // 1200 was too tight for the ChatGPT-import prompt (asks for
+        // summary+tone+content_preferences+industry_context+keywords+
+        // priorities+skills+dos+donts+target_audience) — responses
+        // regularly got cut off mid-object, and since this path parses
+        // the raw text directly (no regex-extract-then-parse fallback
+        // like the other generation paths), any leftover fence markers or
+        // truncation threw immediately, landing silently in the catch
+        // below with "analyzed" never getting set to true.
+        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:2000,
           messages:[{role:"user",content:analysisPrompt}]})
       });
       const d2 = await r.json();
-      const raw = (d2.content||[]).map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
+      const rawFull = (d2.content||[]).map(b=>b.text||"").join("");
+      const jsonMatch = rawFull.match(/\{[\s\S]*\}/);
+      const raw = (jsonMatch ? jsonMatch[0] : rawFull).replace(/```json|```/g,"").trim();
       const parsed = JSON.parse(raw);
       const kPayload = {
         client_id:docData.client_id,client_name:docData.client_name,
@@ -45989,8 +45999,16 @@ Return ONLY valid JSON (no markdown, no explanation):
         if((parsed.dos||[]).length) upsertClientMemory(docData.client_id, docData.client_name, "doc_dos", parsed.dos.join("; "), "document_extract", {source:docData.name, created_by:currentUser?.email});
         if((parsed.donts||[]).length) upsertClientMemory(docData.client_id, docData.client_name, "doc_donts", parsed.donts.join("; "), "document_extract", {source:docData.name, created_by:currentUser?.email});
       } catch(e3) { console.log("Memory extraction error:", e3); }
-    } catch(err) { console.log("AI analysis error:",err); }
-    setToast("Document uploaded and analyzed!");
+      setToast("Document uploaded and analyzed!");
+    } catch(err) {
+      console.log("AI analysis error:",err);
+      // The document itself is still saved either way — only the AI
+      // analysis step failed — but silently claiming "analyzed" when it
+      // wasn't left no way to tell without checking the DB directly (the
+      // "0" that used to render in place of the Analyzed badge, or here
+      // just no badge at all with no explanation).
+      setToast("Document uploaded, but AI analysis failed — you can retry from the document list, or check Settings → Client Brain → Profile.");
+    }
   };
 
   const generateCalendarPlan = async (planForm, tasks) => {
