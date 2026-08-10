@@ -569,8 +569,14 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
   // Overdue work jumps the queue — it's already late, so it gets packed
   // first (from the start of the day) instead of waiting for whatever
   // due_time it was originally given, which used to just collide head-on
-  // with whatever else was already anchored to that same time.
-  myPosts.sort((a,b) => (isOverduePost(b) - isOverduePost(a)) || (priorityScore(b) - priorityScore(a)));
+  // with whatever else was already anchored to that same time. Within the
+  // overdue group itself, the OLDEST due_date goes first (something due
+  // Aug 5 is more overdue than something due Aug 9, and shouldn't just
+  // fall wherever a priority tie-break happens to leave it) — only once
+  // that's settled does priority break further ties.
+  myPosts.sort((a,b) => (isOverduePost(b) - isOverduePost(a))
+    || ((isOverduePost(a) && isOverduePost(b)) ? (a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : 0) : 0)
+    || (priorityScore(b) - priorityScore(a)));
 
   // Use due_time as the anchor when available, otherwise pack sequentially
   const slots = [];
