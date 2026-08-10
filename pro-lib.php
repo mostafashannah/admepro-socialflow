@@ -294,6 +294,18 @@ function proTools() {
             ],
         ],
         [
+            'name' => 'search_client_document',
+            'description' => 'Search the FULL text of a client\'s uploaded documents (ChatGPT chats, briefs, meeting notes, etc.) for a specific term or topic. Use this whenever asked something specific about a client that the summarized knowledge profile might not cover in detail (e.g. "what branches does TSC have", "what did the brief say about pricing") — uploaded chats can be huge, and only the first ~6000 characters ever get summarized into the profile, so real detail buried later in a long chat is invisible unless you search for it directly. Returns matching excerpts with surrounding context, not the whole document.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'client_name' => ['type' => 'string', 'description' => 'The client whose documents to search'],
+                    'query'       => ['type' => 'string', 'description' => 'The word or phrase to search for, e.g. "branch", "pricing", "logo"'],
+                ],
+                'required' => ['client_name', 'query'],
+            ],
+        ],
+        [
             'name' => 'search_tasks',
             'description' => 'Search posts/tasks. All filters are optional and combinable: query matches the task title, stage filters by exact pipeline stage, client_name matches the client (partial match ok), assigned_to matches the exact team member name. Returns up to 15 results.',
             'input_schema' => [
@@ -1537,6 +1549,38 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    if ($name === 'search_client_document') {
+        $clientName = trim($input['client_name'] ?? '');
+        $query = trim($input['query'] ?? '');
+        if ($clientName === '' || $query === '') return ['error' => 'client_name and query are both required.'];
+        $c = $pdo->prepare("SELECT id, name FROM clients WHERE name LIKE :n LIMIT 1");
+        $c->execute([':n' => '%' . $clientName . '%']);
+        $client = $c->fetch(PDO::FETCH_ASSOC);
+        if (!$client) return ['error' => "Client \"{$clientName}\" not found."];
+
+        $docs = $pdo->prepare("SELECT name, content FROM client_documents WHERE client_id = :cid ORDER BY created_at DESC");
+        $docs->execute([':cid' => $client['id']]);
+        $rows = $docs->fetchAll(PDO::FETCH_ASSOC);
+        if (!$rows) return ['error' => "{$client['name']} has no uploaded documents to search."];
+
+        $matches = [];
+        foreach ($rows as $doc) {
+            $content = $doc['content'] ?? '';
+            if ($content === '') continue;
+            $pos = mb_stripos($content, $query, 0);
+            $found = 0;
+            while ($pos !== false && $found < 5) {
+                $start = max(0, $pos - 300);
+                $excerpt = mb_substr($content, $start, 700);
+                $matches[] = "From \"{$doc['name']}\": ..." . trim($excerpt) . "...";
+                $found++;
+                $pos = mb_stripos($content, $query, $pos + mb_strlen($query));
+            }
+            if (count($matches) >= 10) break;
+        }
+        if (!$matches) return ['ok' => true, 'found' => false, 'message' => "No mention of \"{$query}\" found in {$client['name']}'s uploaded documents ({$rows[0]['name']}" . (count($rows) > 1 ? " + " . (count($rows) - 1) . " more" : "") . ")."];
+        return ['ok' => true, 'found' => true, 'excerpts' => array_slice($matches, 0, 10)];
     }
     if ($name === 'search_tasks') {
         // Resolve the sender's email — assigned_to stores email, not name/id.
