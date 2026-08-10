@@ -42601,6 +42601,13 @@ RULES:
         ? " — auth error. Check API key in ai-config.php."
         : "";
       addBotMsg(` AI error: ${reason}${hint}`,"error");
+      // A failed send (most often a large PDF tripping the server's request
+      // body limit) used to leave the attachment gone for good — it had
+      // already been cleared from the composer on send, with nothing to
+      // restore it, so the user's only option was to re-attach the file
+      // from scratch and hope the resend worked. Put it back in the
+      // composer instead so retrying is just hitting send again.
+      if(pendingAttachments.length) setAttachments(a=>[...pendingAttachments, ...a]);
     }
   };
 

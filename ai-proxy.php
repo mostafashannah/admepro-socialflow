@@ -19,7 +19,21 @@ set_time_limit(300);
 require_once __DIR__ . '/config.php';
 $ANTHROPIC_KEY = ANTHROPIC_API_KEY;
 
-$body = json_decode(file_get_contents("php://input"), true);
+$rawInput = file_get_contents("php://input");
+// A large PDF/image attachment (base64-inflated ~33% over the original file
+// size) can push the JSON body past PHP's post_max_size — when that happens
+// PHP silently empties php://input instead of erroring, so this used to
+// surface as a misleading generic "Invalid JSON body" with no indication
+// the file was ever the problem, right after the app had already cleared
+// the attachment from the composer on send. Content-Length still reflects
+// what the browser actually tried to send, so a mismatch between that and
+// an empty body is the tell.
+if($rawInput === '' && !empty($_SERVER['CONTENT_LENGTH']) && (int)$_SERVER['CONTENT_LENGTH'] > 0){
+  http_response_code(413);
+  echo json_encode(["error"=>"Request body too large for this server's PHP config (post_max_size) — attachment(s) never reached the AI. Ask an admin to raise post_max_size/upload_max_filesize, or use a smaller file."]);
+  exit;
+}
+$body = json_decode($rawInput, true);
 if(!$body){
   http_response_code(400);
   echo json_encode(["error"=>"Invalid JSON body"]);
