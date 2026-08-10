@@ -34701,25 +34701,25 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   // that flag stays purely a live, original-due_date comparison so the red
   // label and queue-jump stay stable instead of disappearing the moment
   // it's acted on.
-  // Guarded to run exactly ONCE per calendar day (per viewed user), not on
-  // every recompute of rawSlots — this page re-renders every second (the
-  // live-timer tick below), and without this guard each of those re-renders
-  // could see a still-updating `posts` prop and independently decide more
-  // needs to overflow, cascading well past the real minimum (e.g. shifting
-  // 6 tasks to tomorrow when only 3 genuinely didn't fit).
-  const overflowRanForRef = useRef(null);
+  // Computed from a FROZEN snapshot of posts taken at mount, and run
+  // exactly once ([] deps) — never recomputed reactively off the live
+  // `posts` prop. This page re-renders every second (the live-timer tick
+  // below), and a reactive version of this check kept re-evaluating
+  // against a `posts` reference that could still be mid-update from an
+  // earlier round of shifts, compounding into shifting far more tasks
+  // than actually overflow (seen shifting 6 when only 4 truly didn't fit).
+  // A one-time calculation off a fixed snapshot can't cascade like that.
+  const [frozenPostsForOverflow] = useState(()=>posts);
   useEffect(()=>{
-    if(!onShiftOverdue || !posts || !posts.length) return;
+    if(!onShiftOverdue || !frozenPostsForOverflow || !frozenPostsForOverflow.length) return;
     const today = new Date().toISOString().split("T")[0];
     if(dateStr!==today) return;
-    const guardKey = `${effectiveUser?.email}|${today}`;
-    if(overflowRanForRef.current===guardKey) return;
-    overflowRanForRef.current = guardKey;
-    const overflow = rawSlots.filter(s=>s.start_mins >= WORKING_END*60);
+    const frozenSlots = generateDailySchedule(frozenPostsForOverflow, effectiveUser?.email, dateStr, effectiveUser?.role);
+    const overflow = frozenSlots.filter(s=>s.start_mins >= WORKING_END*60);
     if(!overflow.length) return;
     const nextDay = addWorkingDays(new Date(), 1).toISOString().split("T")[0];
     overflow.forEach(s=>onShiftOverdue(s.post_id, nextDay));
-  },[posts, dateStr, effectiveUser?.email]);
+  },[]);
 
   const fmtSecs = (s) => {
     // A fractional/garbage value (e.g. total_seconds picking up a stray
