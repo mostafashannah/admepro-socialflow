@@ -2421,7 +2421,40 @@ function parseAgentRunTiming(details){
 // Full client-brain context block for any Sara task, read from a global App()
 // keeps mirrored (same pattern as __SF_AI_AGENTS) — knowledge + intelligence +
 // learned memory, without prop-drilling three lists into every modal.
-function clientBrainBlock(clientId, clientName){
+// topicHint (optional — a post's title/brief, or any free text describing
+// what's being written) triggers a real search over the client's FULL
+// uploaded document text (not just the AI-summarized context_file, which
+// only ever covers the first ~100K chars of what can be a 500K+ char
+// ChatGPT export) — so a specific detail buried deep in a long chat (a
+// named branch, an exact spec) reaches content generation even when the
+// distilled summary missed it. Client-side and synchronous since
+// documents are already loaded in memory — no extra round-trip needed.
+function searchClientDocsForTopic(documents, clientId, topicHint) {
+  if(!topicHint) return "";
+  const stopwords = new Set(["what","which","who","when","where","why","how","does","did","the","and","for","with","about","have","has","are","is","was","were","this","that","their","they","can","you","please","content","post","caption","about","client"]);
+  const terms = [...new Set((topicHint.match(/[A-Za-z؀-ۿ]{4,}/g)||[]).filter(w=>!stopwords.has(w.toLowerCase())))].slice(0,4);
+  if(!terms.length) return "";
+  const docs = (documents||[]).filter(d=>d.client_id===clientId && d.content);
+  if(!docs.length) return "";
+  const excerpts = [];
+  for(const term of terms) {
+    for(const doc of docs) {
+      const content = doc.content||"";
+      let idx = content.toLowerCase().indexOf(term.toLowerCase());
+      let found = 0;
+      while(idx!==-1 && found<3 && excerpts.length<6) {
+        const start = Math.max(0, idx-300);
+        excerpts.push(`From "${doc.name}": ...${content.slice(start, start+700).trim()}...`);
+        found++;
+        idx = content.toLowerCase().indexOf(term.toLowerCase(), idx+term.length);
+      }
+      if(excerpts.length>=6) break;
+    }
+    if(excerpts.length>=6) break;
+  }
+  return excerpts.length ? `\nRelevant excerpts from uploaded documents (found by searching the FULL document for terms from what's being written):\n${excerpts.join("\n")}\n` : "";
+}
+function clientBrainBlock(clientId, clientName, topicHint){
   try {
     const b = window.__SF_CLIENT_BRAIN||{};
     const know = (b.knowledge||[]).find(k=>k.client_id===clientId||(clientName&&k.client_name===clientName));
@@ -2468,6 +2501,7 @@ ${know?.content_language?`Copy Language: ${know.content_language}`:""}
 ${memBlock ? `LEARNED MEMORY (highest priority — always follow):\n${memBlock}` : ""}
 ${publishedBlock ? `RECENTLY PUBLISHED — ${allPublished.length} total published, showing the ${recentPublished.length} most recent (real examples — match this proven style/format, and do NOT repeat these ideas/angles):\n${publishedBlock}` : "RECENTLY PUBLISHED: none yet for this client."}
 Context: ${(know?.context_file||"").slice(-800)}
+${searchClientDocsForTopic(b.documents, clientId, topicHint)}
 === END CLIENT BRAIN ===`;
   } catch(e){ return ""; }
 }
@@ -4550,6 +4584,7 @@ CONTENT PREFERENCES: ${ck?.content_preferences||ci?.content_preferences||"none s
 TARGET AUDIENCE: ${ck?.target_audience||ci?.target_audience||"general audience"}
 DO NOT USE: ${ck?.donts||ci?.donts||"nothing restricted"}
 CONTEXT FILE: ${(ck?.context_file||"").slice(-800)||"none"}
+${searchClientDocsForTopic(window.__SF_CLIENT_BRAIN?.documents, client?.id, `${post?.title||""} ${post?.description||""}`)}
 ${memBlock ? `\nCLIENT MEMORY (highest priority, use this):\n${memBlock}` : ""}
 
 === APPROVED & PUBLISHED CAPTIONS (LEARN FROM THESE — match their style, tone, language) ===
@@ -5378,7 +5413,7 @@ function DesignAIGenerator({post, project, onAddAsset, onStageChange}) {
       let finalPrompt = "";
       try {
         const brief = await agentAI("graphic_designer", `Design prompt: ${post.title}`, `You are Yahia, the team's AI Senior Graphic Designer. Write a single, detailed, ready-to-use image-generation prompt for an AI image model — grounded in this client's real brand/design history below, not a generic style. You already have everything you need from the task itself; don't wait for a separate brief.
-${clientBrainBlock(post.client_id, post.client_name)}
+${clientBrainBlock(post.client_id, post.client_name, `${post.title||""} ${post.description||""}`)}
 
 Task: "${post.title}" — ${post.platform||"social"} ${post.post_type||"post"}
 ${post.caption?`Caption: ${post.caption}`:""}
@@ -10679,7 +10714,12 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
   const handleUpload = async () => {
     if(!docText.trim()||!docName.trim()) return;
     setUploading(true);
-    await onUploadDoc({client_id:client.id,client_name:client.name,name:docName,doc_type:docType,content:docText.slice(0,8000),char_count:docText.length,uploaded_by:currentUser?.email});
+    // Used to cap stored content at 8000 chars — for a long ChatGPT export
+    // (easily 500K+ characters) that silently discarded the vast majority
+    // of the conversation forever at the moment of upload, long before any
+    // AI analysis or search could ever see it. content_documents.content
+    // is now MEDIUMTEXT (16MB cap), so store the whole thing.
+    await onUploadDoc({client_id:client.id,client_name:client.name,name:docName,doc_type:docType,content:docText,char_count:docText.length,uploaded_by:currentUser?.email});
     setDocName(""); setDocText(""); setUploading(false); setSub("profile");
   };
 
@@ -43776,6 +43816,7 @@ function App() {
       intelligence: data.clientIntelligence||[],
       memory: data.clientMemory||[],
       publishedPosts: (data.posts||[]).filter(p=>p.stage==="published"),
+      documents: data.clientDocuments||[],
     };
   },[data.clientKnowledge, data.clientIntelligence, data.clientMemory, data.posts]);
   useEffect(()=>{
@@ -45882,13 +45923,13 @@ Return ONLY the JSON array, no markdown.`;
 
 Client: ${docData.client_name}
 ChatGPT Conversation:
-${docData.content.slice(0,6000)}
+${docData.content.slice(0,100000)}
 
-Extract ONLY the useful client brief information from this conversation. Ignore generic ChatGPT responses. Focus on what was discussed about the client's brand, goals, audience, and content preferences.
+Extract ONLY the useful client brief information from this conversation. Ignore generic ChatGPT responses. Focus on what was discussed about the client's brand, goals, audience, and content preferences. This is only part of a longer conversation if it was truncated — extract everything genuinely useful from what's shown, including specific concrete details (e.g. named branches/locations, specific products, exact pricing) not just generic brand descriptors.
 
 Return ONLY valid JSON (no markdown, no explanation):
 {"summary":"2-3 sentences about this client based on the chat","tone":"brand voice/communication style extracted from chat","content_preferences":"what type of content they want","industry_context":"their industry and market","keywords":["kw1","kw2","kw3"],"priorities":["priority1","priority2"],"skills":[{"name":"Skill","confidence":80,"category":"Content"}],"dos":["do this","and this"],"donts":["avoid this","never this"],"target_audience":"who they're targeting"}`
-        : `Analyze these client documents and extract a knowledge profile for: ${docData.client_name}\n\nDOCUMENTS:\n${allText.slice(0,6000)}\n\nReturn ONLY valid JSON (no markdown, no explanation):\n{"summary":"2-3 sentences about this client","tone":"communication style","content_preferences":"what they like","industry_context":"their industry","keywords":["kw1","kw2"],"priorities":["p1","p2"],"skills":[{"name":"Skill","confidence":85,"category":"Content"}]}`;
+        : `Analyze these client documents and extract a knowledge profile for: ${docData.client_name}\n\nDOCUMENTS:\n${allText.slice(0,100000)}\n\nReturn ONLY valid JSON (no markdown, no explanation):\n{"summary":"2-3 sentences about this client","tone":"communication style","content_preferences":"what they like","industry_context":"their industry","keywords":["kw1","kw2"],"priorities":["p1","p2"],"skills":[{"name":"Skill","confidence":85,"category":"Content"}]}`;
 
       const r = await fetch(AI_ENDPOINT,{
         method:"POST",headers:{"Content-Type":"application/json"},
@@ -46593,7 +46634,7 @@ Priority: ${post.priority||"-"}
 ${post.description?`Brief: ${post.description}`:""}
 ${post.caption?`Current caption: ${post.caption}`:""}`;
       const raw = await agentAI("content_creator", `Comment reply: ${post.title}`, `${SARA_PERSONA}
-${clientBrainBlock(post.client_id, post.client_name)}
+${clientBrainBlock(post.client_id, post.client_name, `${post.title||""} ${post.description||""}`)}
 ${taskBlock}
 
 RECENT THREAD ON THIS TASK:
@@ -46638,7 +46679,7 @@ Assigned to: ${post.assigned_to||"unassigned"} | Due: ${post.due_date||post.sche
 ${post.text_on_visual?`Text on visual: ${post.text_on_visual}`:""}
 ${post.design_assets?.length?`Existing design assets: ${post.design_assets.length} attached`:"No design assets uploaded yet"}`;
       const raw = await agentAI("graphic_designer", `Comment reply: ${post.title}`, `${YAHIA_PERSONA}
-${clientBrainBlock(post.client_id, post.client_name)}
+${clientBrainBlock(post.client_id, post.client_name, `${post.title||""} ${post.description||""}`)}
 ${taskBlock}
 
 RECENT THREAD ON THIS TASK:
@@ -46685,7 +46726,7 @@ ${post.caption?`Current caption: ${post.caption}`:""}
 ${post.text_on_visual?`Text on visual: ${post.text_on_visual}`:""}
 ${postImageUrl?"An image of this exact post/visual is attached above — look at it.":"No image attached to this task yet — judge only from what's described here."}`;
       const raw = await agentAI("account_executive", `Comment reply: ${post.title}`, `${MAI_PERSONA}
-${clientBrainBlock(post.client_id, post.client_name)}
+${clientBrainBlock(post.client_id, post.client_name, `${post.title||""} ${post.description||""}`)}
 ${maiPerformanceBlock(post.client_id)}
 ${taskBlock}
 

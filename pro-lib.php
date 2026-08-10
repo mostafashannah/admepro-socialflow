@@ -1558,29 +1558,10 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
         $c->execute([':n' => '%' . $clientName . '%']);
         $client = $c->fetch(PDO::FETCH_ASSOC);
         if (!$client) return ['error' => "Client \"{$clientName}\" not found."];
-
-        $docs = $pdo->prepare("SELECT name, content FROM client_documents WHERE client_id = :cid ORDER BY created_at DESC");
-        $docs->execute([':cid' => $client['id']]);
-        $rows = $docs->fetchAll(PDO::FETCH_ASSOC);
-        if (!$rows) return ['error' => "{$client['name']} has no uploaded documents to search."];
-
-        $matches = [];
-        foreach ($rows as $doc) {
-            $content = $doc['content'] ?? '';
-            if ($content === '') continue;
-            $pos = mb_stripos($content, $query, 0);
-            $found = 0;
-            while ($pos !== false && $found < 5) {
-                $start = max(0, $pos - 300);
-                $excerpt = mb_substr($content, $start, 700);
-                $matches[] = "From \"{$doc['name']}\": ..." . trim($excerpt) . "...";
-                $found++;
-                $pos = mb_stripos($content, $query, $pos + mb_strlen($query));
-            }
-            if (count($matches) >= 10) break;
-        }
-        if (!$matches) return ['ok' => true, 'found' => false, 'message' => "No mention of \"{$query}\" found in {$client['name']}'s uploaded documents ({$rows[0]['name']}" . (count($rows) > 1 ? " + " . (count($rows) - 1) . " more" : "") . ")."];
-        return ['ok' => true, 'found' => true, 'excerpts' => array_slice($matches, 0, 10)];
+        $matches = searchClientDocumentText($pdo, $client['id'], $query);
+        if ($matches === null) return ['error' => "{$client['name']} has no uploaded documents to search."];
+        if (!$matches) return ['ok' => true, 'found' => false, 'message' => "No mention of \"{$query}\" found in {$client['name']}'s uploaded documents."];
+        return ['ok' => true, 'found' => true, 'excerpts' => $matches];
     }
     if ($name === 'search_tasks') {
         // Resolve the sender's email — assigned_to stores email, not name/id.
@@ -1624,6 +1605,50 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
     return ['error' => 'Unknown tool: ' . $name];
 }
 
+// Full-text search over every document a client has uploaded (ChatGPT
+// chats can be 500K+ characters — the AI-generated summary only ever
+// covers a slice of that, so anything specific buried further in is
+// invisible unless actually searched for). Returns up to 10 excerpts with
+// surrounding context, or null if the client has no documents at all
+// (distinct from an empty array, which means documents exist but nothing
+// matched).
+function searchClientDocumentText(PDO $pdo, string $clientId, string $query): ?array {
+    $docs = $pdo->prepare("SELECT name, content FROM client_documents WHERE client_id = :cid ORDER BY created_at DESC");
+    $docs->execute([':cid' => $clientId]);
+    $rows = $docs->fetchAll(PDO::FETCH_ASSOC);
+    if (!$rows) return null;
+
+    $matches = [];
+    foreach ($rows as $doc) {
+        $content = $doc['content'] ?? '';
+        if ($content === '') continue;
+        $pos = mb_stripos($content, $query, 0);
+        $found = 0;
+        while ($pos !== false && $found < 5) {
+            $start = max(0, $pos - 300);
+            $excerpt = mb_substr($content, $start, 700);
+            $matches[] = "From \"{$doc['name']}\": ..." . trim($excerpt) . "...";
+            $found++;
+            $pos = mb_stripos($content, $query, $pos + mb_strlen($query));
+        }
+        if (count($matches) >= 10) break;
+    }
+    return array_slice($matches, 0, 10);
+}
+
+// Pulls a handful of significant words out of a free-form question (drops
+// short/common words) to use as document-search terms — lets Sara/Mai/
+// Yahia's answers automatically pull in relevant excerpts from a client's
+// full uploaded documents without the caller needing to call a separate
+// tool explicitly. Best-effort, not NLP — just enough to catch "what
+// branches does TSC have" -> search for "branches".
+function extractSearchTerms(string $question): array {
+    $stopwords = ['what','which','who','when','where','why','how','does','did','the','and','for','with','about','have','has','are','is','was','were','this','that','their','they','can','you','tell','me','please','know','client','about'];
+    preg_match_all('/[A-Za-z\x{0600}-\x{06FF}]{4,}/u', $question, $m);
+    $words = array_unique(array_filter($m[0] ?? [], fn($w) => !in_array(strtolower($w), $stopwords, true)));
+    return array_slice(array_values($words), 0, 3);
+}
+
 // Lets WhatsApp Pro relay a question to one of the other AI teammates (Sara,
 // Yahia, Mai) and bring their real answer back — same idea as @mentioning
 // them in an app comment thread, just triggered from a WhatsApp chat with
@@ -1664,6 +1689,23 @@ function askAiTeammate(PDO $pdo, string $agent, string $question, ?string $clien
             $posts->execute([':cid' => $client['id']]);
             $postRows = $posts->fetchAll(PDO::FETCH_ASSOC);
             if ($postRows) $clientBlock .= "Recent published posts:\n" . implode("\n", array_map(fn($r) => "- [{$r['platform']}/{$r['post_type']}] \"{$r['title']}\" — likes:" . ($r['insight_likes'] ?? '?') . " comments:" . ($r['insight_comments'] ?? '?'), $postRows)) . "\n";
+
+            // Automatic full-document search — the "Known facts" summary
+            // above only ever covers a slice of a long uploaded document
+            // (e.g. a 500K-char ChatGPT export). Pull real search terms out
+            // of the question itself and search the FULL stored text for
+            // them, so something specific buried deep in a huge chat (a
+            // named branch, an exact spec, a pricing detail) actually
+            // reaches Sara/Mai/Yahia instead of only whatever a generic
+            // AI-written summary happened to keep.
+            $terms = extractSearchTerms($question);
+            $docExcerpts = [];
+            foreach ($terms as $term) {
+                $found = searchClientDocumentText($pdo, $client['id'], $term);
+                if ($found) $docExcerpts = array_merge($docExcerpts, $found);
+                if (count($docExcerpts) >= 6) break;
+            }
+            if ($docExcerpts) $clientBlock .= "\nRelevant excerpts from uploaded documents (found by searching the FULL document for terms from the question):\n" . implode("\n", array_slice($docExcerpts, 0, 6)) . "\n";
         } else {
             $clientBlock = "\n\n(Client \"{$clientName}\" mentioned but not found in the system — answer generally if possible, or say you can't find that client.)";
         }
