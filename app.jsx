@@ -2467,7 +2467,7 @@ ${know?.visual_direction?`Visual Direction (follow this for any design/image wor
 ${know?.content_language?`Copy Language: ${know.content_language}`:""}
 ${memBlock ? `LEARNED MEMORY (highest priority — always follow):\n${memBlock}` : ""}
 ${publishedBlock ? `RECENTLY PUBLISHED — ${allPublished.length} total published, showing the ${recentPublished.length} most recent (real examples — match this proven style/format, and do NOT repeat these ideas/angles):\n${publishedBlock}` : "RECENTLY PUBLISHED: none yet for this client."}
-Context: ${(know?.context_file||"").slice(0,400)}
+Context: ${(know?.context_file||"").slice(-800)}
 === END CLIENT BRAIN ===`;
   } catch(e){ return ""; }
 }
@@ -4549,7 +4549,7 @@ KEYWORDS TO USE: ${ck?.keywords?(typeof ck.keywords==="string"?ck.keywords:JSON.
 CONTENT PREFERENCES: ${ck?.content_preferences||ci?.content_preferences||"none set"}
 TARGET AUDIENCE: ${ck?.target_audience||ci?.target_audience||"general audience"}
 DO NOT USE: ${ck?.donts||ci?.donts||"nothing restricted"}
-CONTEXT FILE: ${(ck?.context_file||"").slice(0,400)||"none"}
+CONTEXT FILE: ${(ck?.context_file||"").slice(-800)||"none"}
 ${memBlock ? `\nCLIENT MEMORY (highest priority, use this):\n${memBlock}` : ""}
 
 === APPROVED & PUBLISHED CAPTIONS (LEARN FROM THESE — match their style, tone, language) ===
@@ -38669,7 +38669,7 @@ const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId) => {
   • Products: ${ckProd.join(" | ")||"-"}
   • Key messages: ${ckKM.slice(0,5).join(" | ")||"-"}
   • Hashtags: ${ckHT.slice(0,8).join(" ")||"-"}
-  • Context file (deep notes): ${(ck.context_file||"").slice(0,2000)||"-"}` : "";
+  • Context file (deep notes): ${(ck.context_file||"").slice(-2000)||"-"}` : "";
     // ── v60: inject latest submitted brief ──
     const latestBrief = (data?.monthlyBriefs||[]).filter(b=>b.client_id===c.id&&b.status==="submitted").sort((a,b)=>new Date(b.submitted_at)-new Date(a.submitted_at))[0];
     const briefBlock = latestBrief ? `▼ LATEST MONTHLY BRIEF (submitted by client — use for content planning):
