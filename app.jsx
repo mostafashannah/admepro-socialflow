@@ -10706,6 +10706,17 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
       return parts.join("\n");
     }).join("\n\n---\n\n");
     const docFacts = (documents||[]).map(d=>d.content||"").filter(Boolean).slice(0,3).join("\n\n").slice(0,2000);
+    // With genuinely nothing to work from, Claude tends to deviate from
+    // the "return ONLY JSON" instruction and explain it can't do this
+    // instead — which the regex below can't parse, surfacing as an opaque
+    // "No JSON returned" with no clue why. Catch that case upfront with a
+    // real, actionable message instead of hitting the AI with an empty
+    // prompt and hoping.
+    if(!memFacts && !reportFacts && !pubPosts && !docFacts) {
+      alert("Nothing to generate from yet — this client has no saved memory, contact reports, published captions, or uploaded documents. Add at least one of those first (or use Upload → paste a ChatGPT chat/brief) so there's real data to build a profile from.");
+      setGenerating(false);
+      return;
+    }
     const prompt = `You are a senior brand strategist. Analyze ALL available data for the client "${client.name}" and produce a comprehensive, accurate brand knowledge profile.
 
 === MEMORY / SAVED BRAND FACTS ===
@@ -10731,7 +10742,7 @@ Based on ALL of the above, return ONLY valid JSON with these exact keys:
     try {
       const raw = await ai(prompt, 800);
       const m = raw.match(/\{[\s\S]*\}/);
-      if(!m) throw new Error("No JSON returned");
+      if(!m) throw new Error("No JSON returned — AI said: " + (raw.slice(0,200)||"(empty response)"));
       const parsed = JSON.parse(m[0]);
       await onSaveKnowledge({
         ...(knowledge||{}), client_id:client.id, client_name:client.name,

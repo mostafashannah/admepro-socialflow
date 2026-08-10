@@ -287,6 +287,83 @@ foreach ($clients as $client) {
                 }
             }
         }
+
+        // ── 4. Auto-refresh the Knowledge Profile ─────────────────
+        // Same synthesis the in-app "Generate from existing posts &
+        // memory" button does (summary/tone/content_preferences/keywords/
+        // priorities/dos/donts/target_audience from EVERY data source
+        // combined), but run automatically once a day per client instead
+        // of requiring a manual click — so the profile actually stays
+        // current with whatever's new (a fresh contact report, a newly
+        // published post, a new memory fact, an uploaded doc) without
+        // anyone remembering to regenerate it. Skipped entirely if there's
+        // genuinely nothing to synthesize from (same guard the in-app
+        // button now has) — an empty client shouldn't get a hallucinated
+        // profile just because the cron ran.
+        $memAll = $pdo->prepare("SELECT `key`, value FROM client_memory WHERE client_id = :cid ORDER BY priority DESC, updated_at DESC LIMIT 40");
+        $memAll->execute([':cid' => $clientId]);
+        $memAllLines = array_map(fn($m) => "- {$m['key']}: {$m['value']}", $memAll->fetchAll(PDO::FETCH_ASSOC));
+
+        $crAll = $pdo->prepare("SELECT summary, key_points, action_items, created_by_name, created_at FROM contact_reports WHERE client_id = :cid ORDER BY created_at DESC LIMIT 10");
+        $crAll->execute([':cid' => $clientId]);
+        $crAllLines = array_map(function($r) {
+            $parts = ["Meeting/Call with " . ($r['created_by_name'] ?: 'team') . " on " . substr((string)($r['created_at'] ?? ''), 0, 10)];
+            if ($r['summary']) $parts[] = "Summary: {$r['summary']}";
+            if ($r['key_points']) $parts[] = "Key points: {$r['key_points']}";
+            if ($r['action_items']) $parts[] = "Action items: {$r['action_items']}";
+            return implode("\n", $parts);
+        }, $crAll->fetchAll(PDO::FETCH_ASSOC));
+
+        $capStmt = $pdo->prepare("SELECT platform, caption FROM posts WHERE client_id = :cid AND stage = 'published' AND caption IS NOT NULL AND caption != '' ORDER BY published_at DESC LIMIT 20");
+        $capStmt->execute([':cid' => $clientId]);
+        $capLines = array_map(fn($p) => "[{$p['platform']}] " . mb_substr($p['caption'], 0, 300), $capStmt->fetchAll(PDO::FETCH_ASSOC));
+
+        $docStmt = $pdo->prepare("SELECT content FROM client_documents WHERE client_id = :cid ORDER BY created_at DESC LIMIT 3");
+        $docStmt->execute([':cid' => $clientId]);
+        $docText = mb_substr(implode("\n\n", array_filter(array_map(fn($d) => $d['content'] ?? '', $docStmt->fetchAll(PDO::FETCH_ASSOC)))), 0, 2000);
+
+        if ($memAllLines || $crAllLines || $capLines || $docText) {
+            $kbPrompt = "You are a senior brand strategist. Analyze ALL available data for the client \"{$clientName}\" and produce a comprehensive, "
+                . "accurate brand knowledge profile.\n\n=== MEMORY / SAVED BRAND FACTS ===\n" . ($memAllLines ? implode("\n", $memAllLines) : "None saved yet")
+                . "\n\n=== CONTACT REPORTS (recent client meetings & calls) ===\n" . ($crAllLines ? implode("\n\n---\n\n", $crAllLines) : "None yet")
+                . "\n\n=== PUBLISHED CAPTIONS (sample of real content) ===\n" . ($capLines ? implode("\n\n", $capLines) : "None available")
+                . "\n\n=== UPLOADED DOCUMENTS ===\n" . ($docText ?: "None uploaded")
+                . "\n\nBased on ALL of the above, return ONLY valid JSON with these exact keys:\n"
+                . '{"summary":"3-4 sentence brand overview covering who they are, what they sell/offer, and their positioning","tone":"comma-separated tone descriptors","content_preferences":"what content formats/themes work for them","keywords":["5-10 brand keywords"],"priorities":["3-5 strategic content priorities"],"dos":["do this","and this"],"donts":["avoid this","never this"],"target_audience":"who they are targeting"}';
+            [$status, $data] = callClaude(['model' => 'claude-sonnet-4-6', 'max_tokens' => 1000, 'messages' => [['role' => 'user', 'content' => $kbPrompt]]]);
+            $kbRaw = '';
+            if ($status >= 200 && $status < 300) {
+                foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $kbRaw .= $block['text']; }
+            }
+            if (preg_match('/\{[\s\S]*\}/', $kbRaw, $m)) {
+                $kb = json_decode($m[0], true);
+                if (is_array($kb)) {
+                    $ckExisting = $pdo->prepare("SELECT id, version FROM client_knowledge WHERE client_id = :cid");
+                    $ckExisting->execute([':cid' => $clientId]);
+                    $ckRow = $ckExisting->fetch(PDO::FETCH_ASSOC);
+                    $kbFields = [
+                        'summary' => $kb['summary'] ?? '', 'tone' => $kb['tone'] ?? '',
+                        'content_preferences' => $kb['content_preferences'] ?? '',
+                        'keywords' => json_encode($kb['keywords'] ?? []), 'priorities' => json_encode($kb['priorities'] ?? []),
+                        'dos' => implode("\n", $kb['dos'] ?? []), 'donts' => implode("\n", $kb['donts'] ?? []),
+                        'target_audience' => $kb['target_audience'] ?? '',
+                        'last_analyzed' => date('Y-m-d H:i:s'), 'analyzed_by' => 'mai-daily-cron',
+                    ];
+                    if ($ckRow) {
+                        $sets = implode(', ', array_map(fn($k) => "`$k` = :$k", array_keys($kbFields)));
+                        $pdo->prepare("UPDATE client_knowledge SET {$sets}, version = version + 1 WHERE id = :id")
+                            ->execute([...$kbFields, 'id' => $ckRow['id']]);
+                    } else {
+                        $kbFields['id'] = bin2hex(random_bytes(16));
+                        $kbFields['client_id'] = $clientId; $kbFields['client_name'] = $clientName; $kbFields['version'] = 1;
+                        $cols = implode(', ', array_map(fn($k) => "`$k`", array_keys($kbFields)));
+                        $ph = implode(', ', array_map(fn($k) => ":$k", array_keys($kbFields)));
+                        $pdo->prepare("INSERT INTO client_knowledge ({$cols}) VALUES ({$ph})")->execute($kbFields);
+                    }
+                    logMaiActivity($pdo, "Knowledge profile auto-refreshed — {$clientName}", "Regenerated from " . count($memAllLines) . " memory fact(s), " . count($crAllLines) . " contact report(s), " . count($capLines) . " caption(s).");
+                }
+            }
+        }
     } catch (Throwable $e) {
         $summary['errors'][] = "{$clientName}: " . $e->getMessage();
         error_log("[mai-daily-report-cron] {$clientName}: " . $e->getMessage());
