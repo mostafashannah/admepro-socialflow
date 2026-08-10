@@ -10828,7 +10828,7 @@ ${docFacts || "None uploaded"}
 Based on ALL of the above, return ONLY valid JSON with these exact keys:
 {
   "summary": "3-4 sentence brand overview covering who they are, what they sell/offer, and their positioning",
-  "tone": "comma-separated tone descriptors that define their content voice (e.g. fun, energetic, warm, professional)",
+  "tone": "detailed, actionable writing-voice guide for this client — not just adjectives. Cover: formality level, sentence length/rhythm, language mix (e.g. Arabic/English usage), emoji/punctuation habits, words or phrases they consistently use or avoid, and 1-2 short example phrases pulled directly from the data above if any real captions/copy appear. Write it as instructions a copywriter could follow.",
   "content_preferences": "describe what content formats/themes work for them — what the client likes, what gets good engagement",
   "keywords": ["5-10 brand keywords and hashtag topics"],
   "priorities": ["3-5 strategic content priorities for this client"],
@@ -10969,16 +10969,16 @@ Based on ALL of the above, return ONLY valid JSON with these exact keys:
                       </div>
                     ))}
                   </div>
+                  {knowledge.general_info&&(
+                    <div style={{padding:14,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)"}}>
+                      <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>General Info (contacts, locations, branches, addresses)</p>
+                      <p style={{fontSize:13,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{knowledge.general_info}</p>
+                    </div>
+                  )}
                   {knowledge.industry_context&&(
                     <div style={{gridColumn:"1/-1",padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
                       <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:5}}>Industry Context</p>
                       <p style={{fontSize:12,color:"var(--text2)"}}>{knowledge.industry_context}</p>
-                    </div>
-                  )}
-                  {knowledge.general_info&&(
-                    <div style={{gridColumn:"1/-1",padding:16,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)"}}>
-                      <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>General Info (contacts, locations, branches, addresses)</p>
-                      <p style={{fontSize:13,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{knowledge.general_info}</p>
                     </div>
                   )}
                 </div>
@@ -40282,14 +40282,14 @@ RULES:
     setMessages(m=>[...m,{role:"bot",content,id:uid(),type,actionBtn,ts:new Date().toISOString()}]);
   };
 
-  const runOneFloat = async (payload) => {
+  const runOneFloat = async (payload, session) => {
     const addBotMsg = addBotMsgFloat;
     try {
       const act = payload.action;
 
       if(act==="create_task") {
-        const client = payload.client_id ? data.clients.find(c=>c.id===payload.client_id) : resolveEntity(payload.client_name,data.clients);
-        const project = payload.project_id ? data.projects.find(p=>p.id===payload.project_id) : resolveEntity(payload.client_name,data.projects,"client_name");
+        const client = payload.client_id ? data.clients.find(c=>c.id===payload.client_id) : (resolveEntity(payload.client_name,data.clients) || resolveEntity(payload.client_name,session?.clients||[]));
+        const project = payload.project_id ? data.projects.find(p=>p.id===payload.project_id) : (resolveEntity(payload.client_name,session?.projects||[],"client_name") || resolveEntity(payload.client_name,data.projects,"client_name"));
         const taskData = {
           title: payload.title||"New Task",
           description: payload.description||"",
@@ -40311,7 +40311,7 @@ RULES:
       }
 
       else if(act==="create_project") {
-        const client = resolveEntity(payload.client_name,data.clients);
+        const client = resolveEntity(payload.client_name,data.clients) || resolveEntity(payload.client_name,session?.clients||[]);
         const projData = {
           name: payload.title,
           client_id: client?.id||"",
@@ -40325,6 +40325,12 @@ RULES:
         if(!projData.client_id){ addBotMsg(` Couldn't create project "${projData.name}" — I couldn't match a client called "${payload.client_name||""}". Every project needs a client; create or name one first.`,"error"); return; }
         const ok = onDirectAction ? await onDirectAction("add_project", projData) : true;
         if(!ok){ addBotMsg(` Couldn't create project "${projData.name}" — save failed.`,"error"); return; }
+        // data.projects won't reflect this new project until the next render —
+        // this whole multi-step run keeps executing against the SAME stale
+        // `data` closure, so later create_task steps targeting this client in
+        // the same sequence must be able to find it via the session cache
+        // instead of only via (stale) data.projects.
+        if(session && ok?.id) session.projects.push({...ok, id:ok.id});
         addBotMsg(` Project "${projData.name}" created for ${projData.client_name||"client"}!`,"success",{label:" View Projects", fn:"nav_projects"});
       }
 
@@ -40332,6 +40338,7 @@ RULES:
         const clientData = {name:payload.name,email:payload.email||"",phone:payload.phone||"",industry:payload.industry||"",platforms:payload.platforms||["instagram"],status:"active"};
         let realClient = null;
         if(onDirectAction) realClient = await onDirectAction("add_client", clientData);
+        if(session && realClient?.id) session.clients.push(realClient);
         if(payload.brief && realClient?.id && onUpsertMemory) onUpsertMemory(realClient.id, realClient.name, "brief", payload.brief, "ai");
         addBotMsg(` Client "${clientData.name}" added successfully!`,"success",{label:" View Clients", fn:"nav_clients"});
       }
@@ -40494,10 +40501,11 @@ RULES:
     setPendingActions(p=>{ const n={...p}; delete n[msgId]; return n; });
     setMessages(m=>m.map(msg=>msg.id===msgId?{...msg,pendingAction:false,confirmData:null}:msg));
     if(list.length>1) addBotMsgFloat(` Running ${list.length} steps in sequence…`);
+    const session = {projects:[],clients:[]};
     for(let i=0;i<list.length;i++){
       if(list.length>1) addBotMsgFloat(`Step ${i+1}/${list.length}: ${list[i].action.replace(/_/g," ")}…`);
       // eslint-disable-next-line no-await-in-loop
-      await runOneFloat(list[i]);
+      await runOneFloat(list[i], session);
     }
     if(list.length>1) addBotMsgFloat(` All ${list.length} steps complete!`,"success");
   };
@@ -42040,12 +42048,12 @@ RULES:
   const addBotMsg = (content, type="", actionBtn=null) =>
     setMessages(m=>[...m,{role:"bot",content,id:uid(),type,actionBtn,ts:new Date().toISOString()}]);
 
-  const runOneAction = async (payload) => {
+  const runOneAction = async (payload, session) => {
     try {
       const act = payload.action;
       if(act==="create_task") {
-        const client = resolveEntity(payload.client_name, data.clients);
-        const project = resolveEntity(payload.client_name, data.projects, "client_name");
+        const client = resolveEntity(payload.client_name, data.clients) || resolveEntity(payload.client_name, session?.clients||[]);
+        const project = resolveEntity(payload.client_name, session?.projects||[], "client_name") || resolveEntity(payload.client_name, data.projects, "client_name");
         const taskData = {
           title: payload.title||"New Task",
           description: payload.description||"",
@@ -42065,16 +42073,21 @@ RULES:
         if(!ok){ addBotMsg(` Couldn't create "${taskData.title}" — save failed.`,"error"); return; }
         addBotMsg(` Done. Task **"${taskData.title}"** created${taskData.client_name?` for ${taskData.client_name}`:""}!`,"success",{label:"View Tasks →", fn:"nav_tasks"});
       } else if(act==="create_project") {
-        const client = resolveEntity(payload.client_name, data.clients);
+        const client = resolveEntity(payload.client_name, data.clients) || resolveEntity(payload.client_name, session?.clients||[]);
         const projData = {name:payload.title,client_id:client?.id||"",client_name:client?.name||payload.client_name||"",description:payload.description||"",project_type:payload.project_type||"social_media",platforms:payload.platforms||["instagram"],start_date:payload.start_date||new Date().toISOString().slice(0,10),deadline:payload.end_date||""};
         if(!projData.client_id){ addBotMsg(` Couldn't create project "${projData.name}" — I couldn't match a client called "${payload.client_name||""}". Every project needs a client; create or name one first.`,"error"); return; }
         const ok = onDirectAction ? await onDirectAction("add_project", projData) : true;
         if(!ok){ addBotMsg(` Couldn't create project "${projData.name}" — save failed.`,"error"); return; }
+        // Same stale-closure issue as create_task's client/project lookup —
+        // data.projects won't include this until next render, so later
+        // create_task steps in this same sequence need it from the session.
+        if(session && ok?.id) session.projects.push({...ok, id:ok.id});
         addBotMsg(` Project **"${projData.name}"** created for ${projData.client_name||"client"}!`,"success",{label:"View Projects →", fn:"nav_projects"});
       } else if(act==="create_client") {
         const clientData={name:payload.name,email:payload.email||"",phone:payload.phone||"",industry:payload.industry||"",platforms:payload.platforms||["instagram"],status:"active"};
         let realClient = null;
         if(onDirectAction) realClient = await onDirectAction("add_client", clientData);
+        if(session && realClient?.id) session.clients.push(realClient);
         // Migrate any temp/prospective memory saved for this client onto the real record
         const slug = slugifyName(clientData.name);
         const tempId = `temp_${slug}`;
@@ -42223,10 +42236,11 @@ RULES:
     setPendingActions(p=>{ const n={...p}; delete n[msgId]; return n; });
     setMessages(m=>m.map(msg=>msg.id===msgId?{...msg,pendingAction:false,confirmData:null}:msg));
     if(list.length>1) addBotMsg(` Running ${list.length} steps in sequence…`);
+    const session = {projects:[],clients:[]};
     for(let i=0;i<list.length;i++){
       if(list.length>1) addBotMsg(`Step ${i+1}/${list.length}: ${list[i].action.replace(/_/g," ")}…`);
       // eslint-disable-next-line no-await-in-loop
-      await runOneAction(list[i]);
+      await runOneAction(list[i], session);
     }
     if(list.length>1) addBotMsg(` All ${list.length} steps complete!`,"success");
   };
@@ -44363,7 +44377,7 @@ function App() {
     });
     logActivity("Project Created","clients",`New project: ${formData.name} for ${formData.client_name} (${scheduledPosts.length} posts)`,"success","",currentUser?.email||"admin");
     setToast(` "${formData.name}" created with ${scheduledPosts.length} posts${formData.posting_start?" — smart scheduled":""}!`);
-    return true;
+    return {...projPayload, id:projectId};
   };
 
   const updateProject = async (projectId, patch) => {
@@ -46018,8 +46032,8 @@ ${docData.content.slice(0,700000)}
 Extract ONLY the useful client brief information from this conversation. Ignore generic ChatGPT responses. Focus on what was discussed about the client's brand, goals, audience, and content preferences. This is only part of a longer conversation if it was truncated — extract everything genuinely useful from what's shown, including specific concrete details (e.g. named branches/locations, specific products, exact pricing) not just generic brand descriptors.
 
 Return ONLY valid JSON (no markdown, no explanation):
-{"summary":"2-3 sentences about this client based on the chat","tone":"brand voice/communication style extracted from chat","content_preferences":"what type of content they want","industry_context":"their industry and market","keywords":["kw1","kw2","kw3"],"priorities":["priority1","priority2"],"skills":[{"name":"Skill","confidence":80,"category":"Content"}],"dos":["do this","and this"],"donts":["avoid this","never this"],"target_audience":"who they're targeting","general_info":"any contacts, locations/branches, addresses, phone numbers, hours, or other general company facts mentioned — plain text, one fact per line. Empty string if none found."}`
-        : `Analyze these client documents and extract a knowledge profile for: ${docData.client_name}\n\nDOCUMENTS:\n${allText.slice(0,700000)}\n\nReturn ONLY valid JSON (no markdown, no explanation):\n{"summary":"2-3 sentences about this client","tone":"communication style","content_preferences":"what they like","industry_context":"their industry","keywords":["kw1","kw2"],"priorities":["p1","p2"],"skills":[{"name":"Skill","confidence":85,"category":"Content"}],"general_info":"any contacts, locations/branches, addresses, phone numbers, hours, or other general company facts mentioned — plain text, one fact per line. Empty string if none found."}`;
+{"summary":"2-3 sentences about this client based on the chat","tone":"detailed, actionable writing-voice guide for this client — not just adjectives. Cover: formality level, sentence length/rhythm, language mix (e.g. Arabic/English usage), emoji/punctuation habits, words or phrases they consistently use or avoid, and 1-2 short example phrases pulled directly from the chat if any real captions/copy appear. Write it as instructions a copywriter could follow.","content_preferences":"what type of content they want","industry_context":"their industry and market","keywords":["kw1","kw2","kw3"],"priorities":["priority1","priority2"],"skills":[{"name":"Skill","confidence":80,"category":"Content"}],"dos":["do this","and this"],"donts":["avoid this","never this"],"target_audience":"who they're targeting","general_info":"any contacts, locations/branches, addresses, phone numbers, hours, or other general company facts mentioned — plain text, one fact per line. Empty string if none found."}`
+        : `Analyze these client documents and extract a knowledge profile for: ${docData.client_name}\n\nDOCUMENTS:\n${allText.slice(0,700000)}\n\nReturn ONLY valid JSON (no markdown, no explanation):\n{"summary":"2-3 sentences about this client","tone":"detailed, actionable writing-voice guide for this client — not just adjectives. Cover: formality level, sentence length/rhythm, language mix (e.g. Arabic/English usage), emoji/punctuation habits, words or phrases they consistently use or avoid, and 1-2 short example phrases pulled directly from the documents if any real captions/copy appear. Write it as instructions a copywriter could follow.","content_preferences":"what they like","industry_context":"their industry","keywords":["kw1","kw2"],"priorities":["p1","p2"],"skills":[{"name":"Skill","confidence":85,"category":"Content"}],"general_info":"any contacts, locations/branches, addresses, phone numbers, hours, or other general company facts mentioned — plain text, one fact per line. Empty string if none found."}`;
 
       const r = await fetch(AI_ENDPOINT,{
         method:"POST",headers:{"Content-Type":"application/json"},
@@ -47832,7 +47846,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
       }}
       onDirectAction={async (actionType, payload) => {
         if(actionType==="add_post") { return await addPost(payload); }
-        if(actionType==="add_client") { await addClient(payload); }
+        if(actionType==="add_client") { return await addClient(payload); }
         if(actionType==="update_client") { await updateClient(payload.clientId, payload.updates); }
         if(actionType==="add_lead") { addLead && addLead(payload); }
         if(actionType==="add_invoice") { await createInvoice(payload); }
