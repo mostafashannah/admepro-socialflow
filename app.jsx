@@ -8661,12 +8661,22 @@ ${note?`FEEDBACK FROM THE TEAM — apply this: ${note}`:"The team asked for a fr
 
 ${kindGuide}
 
-Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":"...","text_on_visual":"..."${kind==="reel"?`,"hook":"..."`:""}} (text_on_visual = the short headline overlaid on the design itself — MUST be genuinely catchy, not the same as the caption, empty string for articles.${kind==="reel"?` hook = the exact line spoken/shown in the FIRST 3 SECONDS of the video — it MUST be scroll-stopping and catchy, since if it doesn't grab attention in under 3 seconds the whole reel fails before anything else matters. Never a generic opener like "Hey guys".`:""})`, kind==="article"?2500:700);
+Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":"...","text_on_visual":"..."${kind==="reel"?`,"hook":"..."`:""}} (text_on_visual = the short headline overlaid on the design itself — MUST be genuinely catchy, not the same as the caption, empty string for articles.${kind==="reel"?` hook = the exact line spoken/shown in the FIRST 3 SECONDS of the video — it MUST be scroll-stopping and catchy, since if it doesn't grab attention in under 3 seconds the whole reel fails before anything else matters. Never a generic opener like "Hey guys".`:""})`,
+        // 2500 still isn't a reliable margin for "several paragraphs" of a
+        // real long-form article, especially bilingual (Arabic runs more
+        // tokens per character than English) — a response cut off before
+        // its closing brace fails JSON.parse below, and used to surface as
+        // a completely opaque "please try again" with no way to tell why.
+        kind==="article"?4000:700);
       const match = aiRes.match(/\{[\s\S]*\}/);
-      const idea = JSON.parse(match ? match[0] : aiRes);
+      if(!match) throw new Error("No JSON in Sara's response: " + aiRes.slice(0,300));
+      const idea = JSON.parse(match[0]);
       setGenerated(prev=>prev.map((t,i)=>i===idx?{...t,title:idea.title||t.title,caption:idea.caption||t.caption,hashtags:idea.hashtags??t.hashtags,text_on_visual:idea.text_on_visual??t.text_on_visual,reel_hook:kind==="reel"?(idea.hook??t.reel_hook):t.reel_hook,approved:false}:t));
       setRegenNotes(prev=>({...prev,[idx]:""}));
-    } catch(e) { alert("Sara couldn't regenerate that item — please try again."); }
+    } catch(e) {
+      console.error("Sara regenerate failed:", e);
+      alert("Sara couldn't regenerate that item: " + (e?.message||"unknown error").slice(0,200));
+    }
     setRegenIdx(null);
   };
   const toggleApprove = (idx) => setGenerated(prev=>prev.map((t,i)=>i===idx?{...t,approved:!t.approved}:t));
