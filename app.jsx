@@ -10920,7 +10920,7 @@ Based on ALL of the above, return ONLY valid JSON with these exact keys:
                     <p style={{fontWeight:600,fontSize:13}}>{doc.name}</p>
                     <p style={{fontSize:11,color:"var(--text3)"}}>{doc.doc_type} · {doc.char_count||0} chars · {fmtDate(doc.created_date)}</p>
                   </div>
-                  {doc.analyzed&&<Badge label="Analyzed" color="#10b981" xs/>}
+                  {!!doc.analyzed&&<Badge label="Analyzed" color="#10b981" xs/>}
                 </div>
               ))}
             </div>
@@ -45847,7 +45847,19 @@ Return ONLY the JSON array, no markdown.`;
   const uploadClientDoc = async (docData) => {
     const newDoc = {...docData,id:uid(),analyzed:false,created_date:new Date().toISOString()};
     setData(d=>({...d,clientDocuments:[newDoc,...d.clientDocuments]}));
-    try { await ce("ClientDocument",[docData]); } catch(e){}
+    // ce() strips uid()'s "local_..." id before insert (Supabase assigns
+    // its own real one) — the local optimistic id never matches the real
+    // DB row, so any later ue() targeting newDoc.id silently updates
+    // nothing. Track the real id so the "analyzed" flag set below actually
+    // persists instead of only ever living in local state (reverting to 0
+    // on every reload, which — being a falsy non-boolean — used to render
+    // as a literal "0" next to the doc instead of the Analyzed badge).
+    let realDocId = newDoc.id;
+    try {
+      const res = await ce("ClientDocument",[docData]);
+      const real = res?.entities?.[0];
+      if(real?.id) { realDocId = real.id; setData(d=>({...d,clientDocuments:d.clientDocuments.map(doc=>doc.id===newDoc.id?{...doc,id:real.id}:doc)})); }
+    } catch(e){}
     logActivity("Client Document Uploaded","clients",`${docData.name} (${docData.client_name})`,"success","",currentUser?.email||"admin");
     // AI analysis
     const allDocs = [newDoc,...data.clientDocuments.filter(d=>d.client_id===docData.client_id)];
@@ -45890,7 +45902,8 @@ Return ONLY valid JSON (no markdown, no explanation):
         version:(data.clientKnowledge.find(k=>k.client_id===docData.client_id)?.version||0)+1,
       };
       await saveClientKnowledge(kPayload);
-      setData(d=>({...d,clientDocuments:d.clientDocuments.map(doc=>doc.id===newDoc.id?{...doc,analyzed:true}:doc)}));
+      setData(d=>({...d,clientDocuments:d.clientDocuments.map(doc=>doc.id===realDocId?{...doc,analyzed:true}:doc)}));
+      ue("ClientDocument", realDocId, {analyzed:true}).catch(()=>{});
       // Auto-update context_file with a brief summary of new learnings
       try {
         const existingKnowledge = data.clientKnowledge.find(k=>k.client_id===docData.client_id);
