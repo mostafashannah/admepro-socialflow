@@ -320,7 +320,11 @@ foreach ($clients as $client) {
 
         $docStmt = $pdo->prepare("SELECT content FROM client_documents WHERE client_id = :cid ORDER BY created_at DESC LIMIT 3");
         $docStmt->execute([':cid' => $clientId]);
-        $docText = mb_substr(implode("\n\n", array_filter(array_map(fn($d) => $d['content'] ?? '', $docStmt->fetchAll(PDO::FETCH_ASSOC)))), 0, 2000);
+        // Was capped at 2000 chars — harmless while uploads themselves were
+        // capped at 8000, but documents are now stored in full (500K+
+        // chars for a real ChatGPT export), so this fed the AI almost
+        // nothing from the real upload.
+        $docText = mb_substr(implode("\n\n", array_filter(array_map(fn($d) => $d['content'] ?? '', $docStmt->fetchAll(PDO::FETCH_ASSOC)))), 0, 100000);
 
         if ($memAllLines || $crAllLines || $capLines || $docText) {
             $kbPrompt = "You are a senior brand strategist. Analyze ALL available data for the client \"{$clientName}\" and produce a comprehensive, "
@@ -329,7 +333,7 @@ foreach ($clients as $client) {
                 . "\n\n=== PUBLISHED CAPTIONS (sample of real content) ===\n" . ($capLines ? implode("\n\n", $capLines) : "None available")
                 . "\n\n=== UPLOADED DOCUMENTS ===\n" . ($docText ?: "None uploaded")
                 . "\n\nBased on ALL of the above, return ONLY valid JSON with these exact keys:\n"
-                . '{"summary":"3-4 sentence brand overview covering who they are, what they sell/offer, and their positioning","tone":"comma-separated tone descriptors","content_preferences":"what content formats/themes work for them","keywords":["5-10 brand keywords"],"priorities":["3-5 strategic content priorities"],"dos":["do this","and this"],"donts":["avoid this","never this"],"target_audience":"who they are targeting"}';
+                . '{"summary":"3-4 sentence brand overview covering who they are, what they sell/offer, and their positioning","tone":"comma-separated tone descriptors","content_preferences":"what content formats/themes work for them","keywords":["5-10 brand keywords"],"priorities":["3-5 strategic content priorities"],"dos":["do this","and this"],"donts":["avoid this","never this"],"target_audience":"who they are targeting","general_info":"any contacts, locations/branches, addresses, phone numbers, hours, or other general company facts mentioned above — plain text, one fact per line. Empty string if none found."}';
             // 1000 was too tight for a full summary+tone+content_preferences+
             // keywords+priorities+dos+donts+target_audience response — it
             // regularly cut off mid-object, which the regex below correctly
@@ -351,6 +355,7 @@ foreach ($clients as $client) {
                         'keywords' => json_encode($kb['keywords'] ?? []), 'priorities' => json_encode($kb['priorities'] ?? []),
                         'dos' => implode("\n", $kb['dos'] ?? []), 'donts' => implode("\n", $kb['donts'] ?? []),
                         'target_audience' => $kb['target_audience'] ?? '',
+                        'general_info' => $kb['general_info'] ?? '',
                         'last_analyzed' => date('Y-m-d H:i:s'), 'analyzed_by' => 'mai-daily-cron',
                     ];
                     if ($ckRow) {

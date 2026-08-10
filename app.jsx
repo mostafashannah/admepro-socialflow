@@ -2480,6 +2480,7 @@ Target Audience: ${intel?.target_audience||""}
 Keywords: ${know?.keywords ? (typeof know.keywords==="string"?know.keywords:JSON.stringify(know.keywords)) : ""}
 Do's: ${know?.dos||""}
 Don'ts: ${know?.donts||intel?.donts||""}
+${know?.general_info?`General Info (contacts/locations/branches/addresses): ${know.general_info}`:""}
 ${(()=>{
   const c = parseJ(know?.brand_colors) || {};
   const primary = ["primary_1","primary_2"].map(k=>c[k]).filter(Boolean);
@@ -10686,6 +10687,7 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
   const [ePrefs,setEPrefs] = useState("");
   const [eKeywords,setEKeywords] = useState("");
   const [ePriorities,setEPriorities] = useState("");
+  const [eGeneralInfo,setEGeneralInfo] = useState("");
   const fileRef = useRef(null);
   const isPriv = ["admin","account_manager"].includes(currentUser?.role);
 
@@ -10701,6 +10703,7 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
       setEPrefs(knowledge.content_preferences||"");
       setEKeywords(parseJ(knowledge.keywords).join(", "));
       setEPriorities(parseJ(knowledge.priorities).join("\n"));
+      setEGeneralInfo(knowledge.general_info||"");
     }
   },[editing,knowledge]);
 
@@ -10730,6 +10733,7 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
       summary:eSummary,tone:eTone,content_preferences:ePrefs,
       keywords:JSON.stringify(eKeywords.split(",").map(s=>s.trim()).filter(Boolean)),
       priorities:JSON.stringify(ePriorities.split("\n").map(s=>s.trim()).filter(Boolean)),
+      general_info:eGeneralInfo,
     });
     setSaving(false); setEditing(false);
   };
@@ -10745,7 +10749,10 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
       if(r.action_items) parts.push(`Action items: ${r.action_items}`);
       return parts.join("\n");
     }).join("\n\n---\n\n");
-    const docFacts = (documents||[]).map(d=>d.content||"").filter(Boolean).slice(0,3).join("\n\n").slice(0,2000);
+    // Was capped at 2000 chars — harmless when docs were themselves capped
+    // at 8000, but now that full documents (500K+ chars) are stored, this
+    // silently fed the AI almost nothing from a real upload.
+    const docFacts = (documents||[]).map(d=>d.content||"").filter(Boolean).slice(0,3).join("\n\n").slice(0,100000);
     // With genuinely nothing to work from, Claude tends to deviate from
     // the "return ONLY JSON" instruction and explain it can't do this
     // instead — which the regex below can't parse, surfacing as an opaque
@@ -10777,7 +10784,8 @@ Based on ALL of the above, return ONLY valid JSON with these exact keys:
   "tone": "comma-separated tone descriptors that define their content voice (e.g. fun, energetic, warm, professional)",
   "content_preferences": "describe what content formats/themes work for them — what the client likes, what gets good engagement",
   "keywords": ["5-10 brand keywords and hashtag topics"],
-  "priorities": ["3-5 strategic content priorities for this client"]
+  "priorities": ["3-5 strategic content priorities for this client"],
+  "general_info": "any contacts, locations/branches, addresses, phone numbers, hours, or other general company facts mentioned in the data above — plain text, one fact per line. Empty string if none found."
 }`;
     try {
       // 800 was too tight — a full summary+tone+content_preferences+
@@ -10786,7 +10794,7 @@ Based on ALL of the above, return ONLY valid JSON with these exact keys:
       // which the regex below correctly refuses to treat as valid JSON
       // (an incomplete object isn't one) — surfacing as an opaque "No
       // JSON returned" that was actually "JSON never finished".
-      const raw = await ai(prompt, 1500);
+      const raw = await ai(prompt, 1800);
       const m = raw.match(/\{[\s\S]*\}/);
       if(!m) throw new Error("No JSON returned — AI said: " + (raw.slice(0,200)||"(empty response)"));
       const parsed = JSON.parse(m[0]);
@@ -10797,6 +10805,7 @@ Based on ALL of the above, return ONLY valid JSON with these exact keys:
         content_preferences: parsed.content_preferences||"",
         keywords: JSON.stringify(Array.isArray(parsed.keywords)?parsed.keywords:[]),
         priorities: JSON.stringify(Array.isArray(parsed.priorities)?parsed.priorities:[]),
+        general_info: parsed.general_info||"",
         last_analyzed: new Date().toISOString(),
         analyzed_by: currentUser?.email||"auto",
         version: (knowledge?.version||0)+1,
@@ -10881,6 +10890,7 @@ Based on ALL of the above, return ONLY valid JSON with these exact keys:
                   </div>
                   <Field label="Keywords (comma-separated)"><input value={eKeywords} onChange={e=>setEKeywords(e.target.value)} style={inputSt}/></Field>
                   <Field label="Priorities (one per line)"><textarea value={ePriorities} onChange={e=>setEPriorities(e.target.value)} rows={3} style={inputSt}/></Field>
+                  <Field label="General Info (contacts, locations, branches, addresses)"><textarea value={eGeneralInfo} onChange={e=>setEGeneralInfo(e.target.value)} rows={4} style={inputSt}/></Field>
                   <Btn onClick={handleSave} disabled={saving}>{saving?<><Spinner size={14}/> Saving…</>:<><Ico d={Icons.check} size={14}/> Save Changes</>}</Btn>
                 </div>
               ):(
@@ -10916,6 +10926,12 @@ Based on ALL of the above, return ONLY valid JSON with these exact keys:
                     <div style={{gridColumn:"1/-1",padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
                       <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:5}}>Industry Context</p>
                       <p style={{fontSize:12,color:"var(--text2)"}}>{knowledge.industry_context}</p>
+                    </div>
+                  )}
+                  {knowledge.general_info&&(
+                    <div style={{gridColumn:"1/-1",padding:16,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)"}}>
+                      <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>General Info (contacts, locations, branches, addresses)</p>
+                      <p style={{fontSize:13,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{knowledge.general_info}</p>
                     </div>
                   )}
                 </div>
@@ -38728,6 +38744,7 @@ const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId, userMessage) => 
   • Products: ${ckProd.join(" | ")||"-"}
   • Key messages: ${ckKM.slice(0,5).join(" | ")||"-"}
   • Hashtags: ${ckHT.slice(0,8).join(" ")||"-"}
+  • General info (contacts/locations/branches/addresses): ${ck.general_info||"-"}
   • Context file (deep notes): ${(ck.context_file||"").slice(-2000)||"-"}` : "";
     // The knowledge profile above is only a distilled AI summary — specific
     // granular details (e.g. "what branches/locations does this client
@@ -45945,8 +45962,8 @@ ${docData.content.slice(0,100000)}
 Extract ONLY the useful client brief information from this conversation. Ignore generic ChatGPT responses. Focus on what was discussed about the client's brand, goals, audience, and content preferences. This is only part of a longer conversation if it was truncated — extract everything genuinely useful from what's shown, including specific concrete details (e.g. named branches/locations, specific products, exact pricing) not just generic brand descriptors.
 
 Return ONLY valid JSON (no markdown, no explanation):
-{"summary":"2-3 sentences about this client based on the chat","tone":"brand voice/communication style extracted from chat","content_preferences":"what type of content they want","industry_context":"their industry and market","keywords":["kw1","kw2","kw3"],"priorities":["priority1","priority2"],"skills":[{"name":"Skill","confidence":80,"category":"Content"}],"dos":["do this","and this"],"donts":["avoid this","never this"],"target_audience":"who they're targeting"}`
-        : `Analyze these client documents and extract a knowledge profile for: ${docData.client_name}\n\nDOCUMENTS:\n${allText.slice(0,100000)}\n\nReturn ONLY valid JSON (no markdown, no explanation):\n{"summary":"2-3 sentences about this client","tone":"communication style","content_preferences":"what they like","industry_context":"their industry","keywords":["kw1","kw2"],"priorities":["p1","p2"],"skills":[{"name":"Skill","confidence":85,"category":"Content"}]}`;
+{"summary":"2-3 sentences about this client based on the chat","tone":"brand voice/communication style extracted from chat","content_preferences":"what type of content they want","industry_context":"their industry and market","keywords":["kw1","kw2","kw3"],"priorities":["priority1","priority2"],"skills":[{"name":"Skill","confidence":80,"category":"Content"}],"dos":["do this","and this"],"donts":["avoid this","never this"],"target_audience":"who they're targeting","general_info":"any contacts, locations/branches, addresses, phone numbers, hours, or other general company facts mentioned — plain text, one fact per line. Empty string if none found."}`
+        : `Analyze these client documents and extract a knowledge profile for: ${docData.client_name}\n\nDOCUMENTS:\n${allText.slice(0,100000)}\n\nReturn ONLY valid JSON (no markdown, no explanation):\n{"summary":"2-3 sentences about this client","tone":"communication style","content_preferences":"what they like","industry_context":"their industry","keywords":["kw1","kw2"],"priorities":["p1","p2"],"skills":[{"name":"Skill","confidence":85,"category":"Content"}],"general_info":"any contacts, locations/branches, addresses, phone numbers, hours, or other general company facts mentioned — plain text, one fact per line. Empty string if none found."}`;
 
       const r = await fetch(AI_ENDPOINT,{
         method:"POST",headers:{"Content-Type":"application/json"},
@@ -45975,6 +45992,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         priorities:JSON.stringify(parsed.priorities||[]),
         skills:JSON.stringify(parsed.skills||[]),
         ...(isChatGPT && parsed.dos ? {dos:parsed.dos.join("\n"), donts:(parsed.donts||[]).join("\n"), target_audience:parsed.target_audience||""} : {}),
+        ...(parsed.general_info ? {general_info:parsed.general_info} : {}),
         sources_count:allDocs.length,
         last_analyzed:new Date().toISOString(),
         analyzed_by:currentUser?.email||"",
