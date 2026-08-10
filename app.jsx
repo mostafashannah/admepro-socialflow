@@ -8736,9 +8736,27 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
 
   const reset = () => { setStep("form"); setGenerated([]); setAiIdeas([]); };
 
+  // Clicking the backdrop (or the X) used to close this instantly, silently
+  // discarding a filled-out campaign name/dates/briefs with zero warning —
+  // a real loss on a form this long. Only actually prompts when there's
+  // something to lose (still on the form step, with real input typed) —
+  // the preview/done steps close straight through since nothing further
+  // would be lost there.
+  const [confirmClose, setConfirmClose] = useState(false);
+  const hasUnsavedInput = () => step==="form" && !!(
+    f.campaign.trim() || f.date_from || f.date_to ||
+    Object.values(f.kinds).some(k=>(k.briefBatches||[]).some(b=>(b.brief||"").trim()))
+  );
+  const requestClose = () => {
+    if(hasUnsavedInput()) setConfirmClose(true);
+    else { reset(); onClose(); }
+  };
+  const discardAndClose = () => { setConfirmClose(false); reset(); onClose(); };
+
   if(!open) return null;
   return (
-    <Modal open onClose={()=>{reset();onClose();}} title={
+    <>
+    <Modal open onClose={requestClose} title={
       step==="form"?"Add Calendar Plan":
       step==="generating"?"Generating…":
       step==="preview"?"Preview Calendar Plan":
@@ -9133,6 +9151,19 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
         </div>
       )}
     </Modal>
+    {confirmClose && (
+      <div onClick={()=>setConfirmClose(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1300,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+        <div onClick={e=>e.stopPropagation()} style={{background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:"var(--r)",padding:22,width:340,display:"flex",flexDirection:"column",gap:14}}>
+          <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:15,fontWeight:800}}>Discard this calendar plan?</h3>
+          <p style={{fontSize:13,color:"var(--text2)"}}>You've started filling this out — closing now will lose the campaign name, dates, and briefs you've entered.</p>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setConfirmClose(false)} style={{flex:1,padding:"9px 0",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:13,fontWeight:600,cursor:"pointer"}}>Keep editing</button>
+            <button onClick={discardAndClose} style={{flex:1,padding:"9px 0",borderRadius:8,border:"1px solid #ef444455",background:"#ef444422",color:"#ef4444",fontSize:13,fontWeight:700,cursor:"pointer"}}>Discard</button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
