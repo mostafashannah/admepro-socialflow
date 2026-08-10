@@ -19,9 +19,12 @@ $doc->execute([$client['id']]);
 echo "\n=== Documents ===\n";
 foreach ($doc->fetchAll(PDO::FETCH_ASSOC) as $d) echo json_encode($d) . "\n";
 
-$ck = $pdo->prepare("SELECT summary, tone, keywords, priorities, dos, donts, target_audience, LENGTH(context_file) as ctx_len, last_analyzed FROM client_knowledge WHERE client_id = ?");
+$ckCols = $pdo->query("SHOW COLUMNS FROM client_knowledge")->fetchAll(PDO::FETCH_COLUMN);
+echo "\n=== client_knowledge columns ===\n" . implode(", ", $ckCols) . "\n";
+$ck = $pdo->prepare("SELECT * FROM client_knowledge WHERE client_id = ?");
 $ck->execute([$client['id']]);
 $ckRow = $ck->fetch(PDO::FETCH_ASSOC);
+if ($ckRow && isset($ckRow['context_file'])) $ckRow['context_file'] = '(len=' . strlen($ckRow['context_file']) . ', see below)';
 echo "\n=== client_knowledge (Profile) ===\n" . json_encode($ckRow) . "\n";
 
 $ckFull = $pdo->prepare("SELECT context_file FROM client_knowledge WHERE client_id = ?");
