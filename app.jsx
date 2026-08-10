@@ -1158,12 +1158,13 @@ async function proLearnFromExchange({client, userText, botText, existingKeys=[],
   const combined = `USER: ${userText}\n\nPRO: ${botText}`.slice(0,8000);
   if(combined.length<150) return [];
   try{
-    const sys = `You silently extract DURABLE brand knowledge from a chat exchange about "${client.name}". Return ONLY JSON: {"insights":[{"key":"snake_case","value":"≤140 chars concrete directive","confidence":0.4-0.95}]}.
+    const sys = `You silently extract DURABLE brand knowledge from a chat exchange about "${client.name}". Return ONLY JSON: {"insights":[{"key":"snake_case","value":"≤500 chars concrete directive","confidence":0.4-0.95}]}.
 Rules:
 - FIRST check: is this exchange actually about "${client.name}"'s brand/business (products, audience, tone, industry, goals, preferences)? If the user/Pro is instead discussing something unrelated — system-wide CRM/leads, other clients, admin/team matters, app features, general questions with no connection to this client's brand — return {"insights":[]} immediately. Do not extract anything just because the chat happened to be locked onto this client at the time.
-- 0–4 insights only (skip if nothing durable).
+- 0–6 insights only (skip if nothing durable).
 - key snake_case, ≤32 chars. Avoid these existing keys: ${existingKeys.slice(0,30).join(", ")||"(none)"}.
 - value: a stable fact about the brand/audience/tone/products/preferences. Skip ephemeral chat-specific things.
+- If the user gave a genuine LIST (e.g. branch locations, product lines, contacts) — capture the FULL list verbatim in one insight, don't truncate or summarize it down to a vague generality. Lists like this are exactly the kind of durable fact worth saving in full.
 - Skip greetings, scheduling, one-off questions.
 - Return {"insights":[]} if nothing durable.`;
     const res = await fetch(AI_ENDPOINT,{method:"POST",headers:AI_HEADERS,
@@ -1172,11 +1173,11 @@ Rules:
     const raw = (d.content?.map(b=>b.text||"").join("")||"").trim();
     const m = raw.match(/\{[\s\S]*\}/); if(!m) return [];
     const parsed = JSON.parse(m[0]);
-    const items = (parsed.insights||[]).slice(0,4);
+    const items = (parsed.insights||[]).slice(0,6);
     const saved = [];
     for(const it of items){
       const k = (it.key||"").toLowerCase().replace(/[^a-z0-9_]/g,"_").slice(0,32);
-      const v = (it.value||"").slice(0,140);
+      const v = (it.value||"").slice(0,500);
       if(!k||!v) continue;
       if(existingKeys.includes(k)) continue; // don't overwrite stronger existing memories
       await onUpsertMemory(client.id, client.name||"", k, v, "auto", {source:"conversation", confidence: typeof it.confidence==="number"?it.confidence:0.5, created_by: currentUserEmail});
