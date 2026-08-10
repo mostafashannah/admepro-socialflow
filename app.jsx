@@ -38785,7 +38785,8 @@ const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId, userMessage) => 
   • Products: ${ckProd.join(" | ")||"-"}
   • Key messages: ${ckKM.slice(0,5).join(" | ")||"-"}
   • Hashtags: ${ckHT.slice(0,8).join(" ")||"-"}
-  • General info (contacts/locations/branches/addresses): ${ck.general_info||"-"}
+  • General info (contacts/locations/branches/addresses) — when asked about any of these, relay EVERY relevant line below VERBATIM, don't summarize/pick a subset of it:
+${ck.general_info?ck.general_info.split("\n").map(l=>`    - ${l}`).join("\n"):"    - (none saved yet)"}
   • Context file (deep notes): ${(ck.context_file||"").slice(-2000)||"-"}` : "";
     // The knowledge profile above is only a distilled AI summary — specific
     // granular details (e.g. "what branches/locations does this client
