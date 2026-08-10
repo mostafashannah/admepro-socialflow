@@ -35187,7 +35187,7 @@ Based ONLY on this person's own numbers and task history above, give 3 specific,
   };
 
   const getEntrySecs = (entry) => {
-    if(entry.status==='active') return (entry.total_seconds||0) + Math.floor((now - new Date(entry.started_at).getTime())/1000);
+    if(entry.status==='active') return (entry.total_seconds||0) + Math.floor((now - parseSqlUtc(entry.started_at).getTime())/1000);
     return entry.total_seconds||0;
   };
 
