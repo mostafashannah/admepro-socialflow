@@ -61,7 +61,12 @@ function logMaiActivity(PDO $pdo, string $action, string $details, string $statu
 
 // The recipient set every one of Mai's per-client findings shares: that
 // client's own account manager (only, not every AM) plus every admin,
-// deduped by email.
+// deduped by email. `$admins` here MUST already be filtered to role='admin'
+// only — passing a list that also contains account managers would silently
+// fan every client's findings out to every AM instead of just the one
+// actually assigned to that client (this was a real bug: the caller used
+// to fetch role IN ('admin','account_manager') into a variable it then
+// blindly merged into every client's recipient list).
 function clientAlertRecipients(PDO $pdo, array $client, array $admins): array {
     $recipients = [];
     if (!empty($client['account_manager_id'])) {
@@ -99,7 +104,11 @@ function workingDaysBetween(DateTime $from, DateTime $to): int {
 }
 
 $clients = $pdo->query("SELECT id, name, account_manager_id FROM clients WHERE status = 'active'")->fetchAll(PDO::FETCH_ASSOC);
-$admins = $pdo->query("SELECT email, whatsapp_number FROM team_members WHERE role IN ('admin','account_manager') AND whatsapp_number IS NOT NULL AND whatsapp_number != ''")->fetchAll(PDO::FETCH_ASSOC);
+// Real admins ONLY — every account manager already gets their own clients'
+// findings via clientAlertRecipients() reading client.account_manager_id;
+// including AMs here too used to fan every client's alerts out to every
+// AM regardless of assignment (see the comment on clientAlertRecipients).
+$admins = $pdo->query("SELECT email, whatsapp_number FROM team_members WHERE role = 'admin' AND whatsapp_number IS NOT NULL AND whatsapp_number != ''")->fetchAll(PDO::FETCH_ASSOC);
 $summary = ['clients_checked' => count($clients), 'cadence_alerts' => 0, 'pipeline_alerts' => 0, 'reports_written' => 0, 'memory_curated' => 0, 'errors' => []];
 
 // Raw structured findings per recipient — no pre-written prose. One Claude
@@ -286,6 +295,9 @@ $maiWaSystem = "You are Mai, the agency's AI Account Executive, sending a WhatsA
     . "- Use ⚠️ ONLY for a client with a REAL problem below (cadence behind schedule, or pipeline low/empty). Never use it for a client that's fine.\n"
     . "- For clients with no problems, mention them briefly or in a single grouped line (e.g. \"X and Y are on track\") — never a paragraph per healthy client.\n"
     . "- NEVER repeat/paste full report text, numbers, or multiple sentences per client — one short clause per client, max.\n"
+    . "- FORMAT: one account per line, starting with the account name, so it reads as a clear per-account list, not a flowing paragraph — "
+    . "e.g. \"Bino ⚠️ — cadence behind, 1/3 this week\" on its own line, next account on the next line. Healthy accounts can still be grouped "
+    . "onto one shared line together, but never blend an account with a real issue into the same line as one that's fine.\n"
     . "- End with ONE short line pointing to SocialFlow notifications for full details and inviting them to ask you for more — not a full sentence per client repeating this.\n"
     . "- Never use markdown headers, '#', or bullet-point '-' lists — write like a real WhatsApp text (short lines/emoji are fine, formal lists/headers are not).";
 
