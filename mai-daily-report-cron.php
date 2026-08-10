@@ -324,7 +324,7 @@ foreach ($clients as $client) {
         // capped at 8000, but documents are now stored in full (500K+
         // chars for a real ChatGPT export), so this fed the AI almost
         // nothing from the real upload.
-        $docText = mb_substr(implode("\n\n", array_filter(array_map(fn($d) => $d['content'] ?? '', $docStmt->fetchAll(PDO::FETCH_ASSOC)))), 0, 100000);
+        $docText = mb_substr(implode("\n\n", array_filter(array_map(fn($d) => $d['content'] ?? '', $docStmt->fetchAll(PDO::FETCH_ASSOC)))), 0, 700000);
 
         if ($memAllLines || $crAllLines || $capLines || $docText) {
             $kbPrompt = "You are a senior brand strategist. Analyze ALL available data for the client \"{$clientName}\" and produce a comprehensive, "

@@ -45,11 +45,11 @@ foreach ($docs as $doc) {
     $content = $doc['content'] ?? '';
     $prompt = $isChatGPT
         ? "You are analyzing a ChatGPT conversation that contains discussions about a client's brand and content strategy.\n\n"
-            . "Client: {$doc['client_name']}\nChatGPT Conversation:\n" . mb_substr($content, 0, 100000) . "\n\n"
+            . "Client: {$doc['client_name']}\nChatGPT Conversation:\n" . mb_substr($content, 0, 700000) . "\n\n"
             . "Extract ONLY the useful client brief information from this conversation. Ignore generic ChatGPT responses. Focus on what was discussed about the client's brand, goals, audience, and content preferences.\n\n"
             . "Return ONLY valid JSON (no markdown, no explanation):\n"
             . '{"summary":"2-3 sentences about this client based on the chat","tone":"brand voice/communication style extracted from chat","content_preferences":"what type of content they want","industry_context":"their industry and market","keywords":["kw1","kw2","kw3"],"priorities":["priority1","priority2"],"skills":[{"name":"Skill","confidence":80,"category":"Content"}],"dos":["do this","and this"],"donts":["avoid this","never this"],"target_audience":"who they are targeting"}'
-        : "Analyze these client documents and extract a knowledge profile for: {$doc['client_name']}\n\nDOCUMENTS:\n" . mb_substr($content, 0, 100000)
+        : "Analyze these client documents and extract a knowledge profile for: {$doc['client_name']}\n\nDOCUMENTS:\n" . mb_substr($content, 0, 700000)
             . "\n\nReturn ONLY valid JSON (no markdown, no explanation):\n{\"summary\":\"2-3 sentences about this client\",\"tone\":\"communication style\",\"content_preferences\":\"what they like\",\"industry_context\":\"their industry\",\"keywords\":[\"kw1\",\"kw2\"],\"priorities\":[\"p1\",\"p2\"],\"skills\":[{\"name\":\"Skill\",\"confidence\":85,\"category\":\"Content\"}]}";
 
     [$parsed, $err] = callClaudeDirect($prompt);

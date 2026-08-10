@@ -10793,7 +10793,7 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
     // Was capped at 2000 chars — harmless when docs were themselves capped
     // at 8000, but now that full documents (500K+ chars) are stored, this
     // silently fed the AI almost nothing from a real upload.
-    const docFacts = (documents||[]).map(d=>d.content||"").filter(Boolean).slice(0,3).join("\n\n").slice(0,100000);
+    const docFacts = (documents||[]).map(d=>d.content||"").filter(Boolean).slice(0,3).join("\n\n").slice(0,700000);
     // With genuinely nothing to work from, Claude tends to deviate from
     // the "return ONLY JSON" instruction and explain it can't do this
     // instead — which the regex below can't parse, surfacing as an opaque
@@ -45999,13 +45999,13 @@ Return ONLY the JSON array, no markdown.`;
 
 Client: ${docData.client_name}
 ChatGPT Conversation:
-${docData.content.slice(0,100000)}
+${docData.content.slice(0,700000)}
 
 Extract ONLY the useful client brief information from this conversation. Ignore generic ChatGPT responses. Focus on what was discussed about the client's brand, goals, audience, and content preferences. This is only part of a longer conversation if it was truncated — extract everything genuinely useful from what's shown, including specific concrete details (e.g. named branches/locations, specific products, exact pricing) not just generic brand descriptors.
 
 Return ONLY valid JSON (no markdown, no explanation):
 {"summary":"2-3 sentences about this client based on the chat","tone":"brand voice/communication style extracted from chat","content_preferences":"what type of content they want","industry_context":"their industry and market","keywords":["kw1","kw2","kw3"],"priorities":["priority1","priority2"],"skills":[{"name":"Skill","confidence":80,"category":"Content"}],"dos":["do this","and this"],"donts":["avoid this","never this"],"target_audience":"who they're targeting","general_info":"any contacts, locations/branches, addresses, phone numbers, hours, or other general company facts mentioned — plain text, one fact per line. Empty string if none found."}`
-        : `Analyze these client documents and extract a knowledge profile for: ${docData.client_name}\n\nDOCUMENTS:\n${allText.slice(0,100000)}\n\nReturn ONLY valid JSON (no markdown, no explanation):\n{"summary":"2-3 sentences about this client","tone":"communication style","content_preferences":"what they like","industry_context":"their industry","keywords":["kw1","kw2"],"priorities":["p1","p2"],"skills":[{"name":"Skill","confidence":85,"category":"Content"}],"general_info":"any contacts, locations/branches, addresses, phone numbers, hours, or other general company facts mentioned — plain text, one fact per line. Empty string if none found."}`;
+        : `Analyze these client documents and extract a knowledge profile for: ${docData.client_name}\n\nDOCUMENTS:\n${allText.slice(0,700000)}\n\nReturn ONLY valid JSON (no markdown, no explanation):\n{"summary":"2-3 sentences about this client","tone":"communication style","content_preferences":"what they like","industry_context":"their industry","keywords":["kw1","kw2"],"priorities":["p1","p2"],"skills":[{"name":"Skill","confidence":85,"category":"Content"}],"general_info":"any contacts, locations/branches, addresses, phone numbers, hours, or other general company facts mentioned — plain text, one fact per line. Empty string if none found."}`;
 
       const r = await fetch(AI_ENDPOINT,{
         method:"POST",headers:{"Content-Type":"application/json"},
