@@ -10305,9 +10305,9 @@ function SkillPill({skill}) {
   const conf = skill.confidence||0;
   const confColor = conf>=90?"#10b981":conf>=75?"#f59e0b":"#ef4444";
   return (
-    <div style={{padding:"10px 14px",background:cat.color+"11",border:`1px solid ${cat.color}33`,borderRadius:"var(--rs)",minWidth:150,flex:"1 1 150px"}}>
-      <div style={{display:"flex",justifyContent:"space-between",gap:6}}>
-        <span style={{fontSize:12,fontWeight:700,color:cat.color}}>{skill.name}</span>
+    <div style={{padding:"10px 14px",background:cat.color+"11",border:`1px solid ${cat.color}33`,borderRadius:"var(--rs)",minWidth:0}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:6}}>
+        <span style={{fontSize:12,fontWeight:700,color:cat.color,minWidth:0}}>{skill.name}</span>
         <span style={{fontSize:11,fontWeight:800,color:confColor,flexShrink:0}}>{conf}%</span>
       </div>
       <ConfidenceBar value={conf} color={confColor}/>
@@ -10863,9 +10863,11 @@ Based on ALL of the above, return ONLY valid JSON with these exact keys:
               {/* Skills */}
               <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:18}}>
                 <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:12}}>Extracted Skills</p>
-                <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-                  {skills.length>0?skills.map((s,i)=><SkillPill key={i} skill={s}/>):<p style={{color:"var(--text3)",fontSize:13}}>No skills extracted yet</p>}
-                </div>
+                {skills.length>0?(
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(200px,100%),1fr))",gap:10}}>
+                    {skills.map((s,i)=><SkillPill key={i} skill={s}/>)}
+                  </div>
+                ):<p style={{color:"var(--text3)",fontSize:13}}>No skills extracted yet</p>}
               </div>
 
               {/* Edit form */}
