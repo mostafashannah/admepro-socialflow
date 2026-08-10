@@ -92,7 +92,7 @@ foreach ($clients as $client) {
         'dos' => implode("\n", $parsed['dos'] ?? []),
         'donts' => implode("\n", $parsed['donts'] ?? []),
         'target_audience' => $parsed['target_audience'] ?? '',
-        'context_file' => mb_substr($mergedCtx, 0, 6000),
+        'context_file' => mb_substr($mergedCtx, 0, 100000),
         'last_analyzed' => date('Y-m-d H:i:s'),
         'analyzed_by' => 'backfill-script',
     ];

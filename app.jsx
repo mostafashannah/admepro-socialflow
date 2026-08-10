@@ -1155,29 +1155,34 @@ const AI_HEADERS = {"Content-Type":"application/json"};
 // floating Chatbot) so conversation-learning is universal and identical.
 async function proLearnFromExchange({client, userText, botText, existingKeys=[], onUpsertMemory, currentUserEmail=""}) {
   if(!client?.id || !onUpsertMemory) return [];
-  const combined = `USER: ${userText}\n\nPRO: ${botText}`.slice(0,8000);
+  // Was capped at 8000 chars — a real problem once someone pastes a
+  // substantial brief/list directly into a Pro message rather than
+  // uploading it as a document.
+  const combined = `USER: ${userText}\n\nPRO: ${botText}`.slice(0,100000);
   if(combined.length<150) return [];
   try{
-    const sys = `You silently extract DURABLE brand knowledge from a chat exchange about "${client.name}". Return ONLY JSON: {"insights":[{"key":"snake_case","value":"≤500 chars concrete directive","confidence":0.4-0.95}]}.
+    const sys = `You silently extract DURABLE brand knowledge from a chat exchange about "${client.name}". Return ONLY JSON: {"insights":[{"key":"snake_case","value":"concrete directive, no length limit — see rules below","confidence":0.4-0.95}]}.
 Rules:
 - FIRST check: is this exchange actually about "${client.name}"'s brand/business (products, audience, tone, industry, goals, preferences)? If the user/Pro is instead discussing something unrelated — system-wide CRM/leads, other clients, admin/team matters, app features, general questions with no connection to this client's brand — return {"insights":[]} immediately. Do not extract anything just because the chat happened to be locked onto this client at the time.
-- 0–6 insights only (skip if nothing durable).
+- 0–10 insights (skip if nothing durable) — don't artificially limit yourself to fewer if there's genuinely more worth saving.
 - key snake_case, ≤32 chars. Avoid these existing keys: ${existingKeys.slice(0,30).join(", ")||"(none)"}.
-- value: a stable fact about the brand/audience/tone/products/preferences. Skip ephemeral chat-specific things.
-- If the user gave a genuine LIST (e.g. branch locations, product lines, contacts) — capture the FULL list verbatim in one insight, don't truncate or summarize it down to a vague generality. Lists like this are exactly the kind of durable fact worth saving in full.
+- value: a stable fact about the brand/audience/tone/products/preferences. Skip ephemeral chat-specific things. NO length cap on value — a short fact should be short, but a genuine LIST (branch locations, product lines, contacts, full pricing table, etc.) must be captured COMPLETE and VERBATIM, never truncated or compressed into a vague generality just to keep it short.
 - Skip greetings, scheduling, one-off questions.
 - Return {"insights":[]} if nothing durable.`;
     const res = await fetch(AI_ENDPOINT,{method:"POST",headers:AI_HEADERS,
-      body: JSON.stringify({model:"claude-haiku-4-5-20251001", max_tokens:600, system:sys, messages:[{role:"user",content:combined}]})});
+      body: JSON.stringify({model:"claude-haiku-4-5-20251001", max_tokens:4000, system:sys, messages:[{role:"user",content:combined}]})});
     const d = await res.json();
     const raw = (d.content?.map(b=>b.text||"").join("")||"").trim();
     const m = raw.match(/\{[\s\S]*\}/); if(!m) return [];
     const parsed = JSON.parse(m[0]);
-    const items = (parsed.insights||[]).slice(0,6);
+    const items = (parsed.insights||[]).slice(0,10);
     const saved = [];
     for(const it of items){
       const k = (it.key||"").toLowerCase().replace(/[^a-z0-9_]/g,"_").slice(0,32);
-      const v = (it.value||"").slice(0,500);
+      // No cap here — client_memory.value is TEXT (65KB), the real ceiling.
+      // An arbitrary JS-side cap was the whole reason a real branch list
+      // got silently mangled before.
+      const v = (it.value||"").trim();
       if(!k||!v) continue;
       if(existingKeys.includes(k)) continue; // don't overwrite stronger existing memories
       await onUpsertMemory(client.id, client.name||"", k, v, "auto", {source:"conversation", confidence: typeof it.confidence==="number"?it.confidence:0.5, created_by: currentUserEmail});
@@ -2502,7 +2507,7 @@ ${know?.visual_direction?`Visual Direction (follow this for any design/image wor
 ${know?.content_language?`Copy Language: ${know.content_language}`:""}
 ${memBlock ? `LEARNED MEMORY (highest priority — always follow):\n${memBlock}` : ""}
 ${publishedBlock ? `RECENTLY PUBLISHED — ${allPublished.length} total published, showing the ${recentPublished.length} most recent (real examples — match this proven style/format, and do NOT repeat these ideas/angles):\n${publishedBlock}` : "RECENTLY PUBLISHED: none yet for this client."}
-Context: ${(know?.context_file||"").slice(-800)}
+Context: ${(know?.context_file||"").slice(-15000)}
 ${searchClientDocsForTopic(b.documents, clientId, topicHint)}
 === END CLIENT BRAIN ===`;
   } catch(e){ return ""; }
@@ -4585,7 +4590,7 @@ KEYWORDS TO USE: ${ck?.keywords?(typeof ck.keywords==="string"?ck.keywords:JSON.
 CONTENT PREFERENCES: ${ck?.content_preferences||ci?.content_preferences||"none set"}
 TARGET AUDIENCE: ${ck?.target_audience||ci?.target_audience||"general audience"}
 DO NOT USE: ${ck?.donts||ci?.donts||"nothing restricted"}
-CONTEXT FILE: ${(ck?.context_file||"").slice(-800)||"none"}
+CONTEXT FILE: ${(ck?.context_file||"").slice(-15000)||"none"}
 ${searchClientDocsForTopic(window.__SF_CLIENT_BRAIN?.documents, client?.id, `${post?.title||""} ${post?.description||""}`)}
 ${memBlock ? `\nCLIENT MEMORY (highest priority, use this):\n${memBlock}` : ""}
 
@@ -11504,7 +11509,7 @@ CLIENT: ${client.name} | Industry: ${client.industry||"?"} | Platforms: ${(clien
 
 CONVERSATION TO ANALYZE:
 ---
-${text.slice(0, 12000)}
+${text.slice(0, 100000)}
 ---
 
 Extract ALL of the following (only include what's actually mentioned in the conversation):
@@ -11522,14 +11527,14 @@ Extract ALL of the following (only include what's actually mentioned in the conv
 - Any other insight useful for content generation
 
 Return a JSON array of insights. Each insight:
-{"key": "memory_key", "value": "specific actionable insight", "category": "brand_voice|target_audience|content_themes|content_style|approved_patterns|rejected_patterns|platform_strategy|keywords|donts|product_info|campaign_idea|other"}
+{"key": "memory_key", "value": "specific actionable insight — NO length cap; if it's a genuine LIST (branch locations, product lines, contacts, pricing), capture it COMPLETE and verbatim, never truncated or compressed", "category": "brand_voice|target_audience|content_themes|content_style|approved_patterns|rejected_patterns|platform_strategy|keywords|donts|product_info|campaign_idea|other"}
 
 Be specific. Extract as many insights as possible. Return ONLY the JSON array, no explanation.`;
 
     try {
       const res = await fetch(AI_ENDPOINT, {method:"POST", headers:AI_HEADERS, body:JSON.stringify({
         model:"claude-haiku-4-5-20251001",
-        max_tokens:3000,
+        max_tokens:5000,
         messages:[{role:"user",content:analysisPrompt}],
       })});
       const d = await res.json();
@@ -38735,8 +38740,12 @@ const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId, userMessage) => 
     const ck = (data?.clientKnowledge||[]).find(k=>k.client_id===c.id);
     const ci = (data?.clientIntelligence||[]).find(i=>i.client_id===c.id);
     const mem = formatClientMemory(c.id, data?.clientMemory||[]);
-    // When a client is focused, dump deep memory; otherwise keep brief
-    const memCap = isFocused ? 3000 : 400;
+    // When a client is focused, dump ALL of it — Client Brain is core
+    // infrastructure and nothing saved to it should become invisible again
+    // just because the memory grew past an arbitrary size (this is exactly
+    // how the branch list got lost the first time). Unfocused clients
+    // still stay brief to save tokens across up to 12 clients at once.
+    const memCap = isFocused ? Infinity : 400;
     const stageCounts = ["planning","content_creation","design","internal_review","client_approval","scheduled","published","rejected"]
       .map(s=>`${s.replace(/_/g," ")}:${cPost.filter(p=>p.stage===s).length}`)
       .filter(s=>!s.endsWith(":0")).join(", ");
@@ -38788,7 +38797,7 @@ const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId, userMessage) => 
   • Hashtags: ${ckHT.slice(0,8).join(" ")||"-"}
   • General info (contacts/locations/branches/addresses) — when asked about any of these, relay EVERY relevant line below VERBATIM, don't summarize/pick a subset of it:
 ${ck.general_info?ck.general_info.split("\n").map(l=>`    - ${l}`).join("\n"):"    - (none saved yet)"}
-  • Context file (deep notes): ${(ck.context_file||"").slice(-2000)||"-"}` : "";
+  • Context file (deep notes): ${(ck.context_file||"").slice(-15000)||"-"}` : "";
     // The knowledge profile above is only a distilled AI summary — specific
     // granular details (e.g. "what branches/locations does this client
     // have") can be buried in the full raw uploaded document text without
@@ -39406,7 +39415,7 @@ OUTPUT: return ONLY a JSON object of the form:
 {"insights":[{"key":"snake_case_key","value":"short concrete value","confidence":0.0-1.0,"evidence":"≤80-char quote/snippet from text"}]}
 Rules:
 - key must be snake_case, ≤32 chars
-- value ≤140 chars, concrete, written as a directive ("use casual tone", "reels preferred", "avoid technical jargon")
+- value: no length cap — a short fact should be short, but if the text contains a genuine LIST (branch locations, product lines, contacts, full pricing table, etc.), capture the FULL list verbatim in one insight, never truncated or compressed into a vague generality
 - confidence 0.5–0.99 based on how clearly the source supports it
 - DO NOT invent things not supported by the text
 - If text is too vague, return {"insights":[]}
@@ -39416,9 +39425,13 @@ Rules:
         method:"POST", headers:AI_HEADERS,
         body: JSON.stringify({
           model:"claude-haiku-4-5-20251001",
-          max_tokens:1500,
+          // 1500 was too tight once values can be full lists rather than
+          // one-liners — bumped alongside removing the 140-char cap below.
+          max_tokens:4000,
           system: sysPrompt,
-          messages:[{role:"user", content: `Analyze this conversation and extract memory:\n\n${text.slice(0,12000)}`}],
+          // 12000 was a real ceiling for someone pasting a genuinely long
+          // brief/chat directly into this box.
+          messages:[{role:"user", content: `Analyze this conversation and extract memory:\n\n${text.slice(0,100000)}`}],
         }),
       });
       const d = await res.json();
@@ -39431,7 +39444,7 @@ Rules:
         return {
           id: uid(),
           key: (it.key||`insight_${i+1}`).toLowerCase().replace(/[^a-z0-9_]/g,"_").slice(0,32),
-          value: (it.value||"").slice(0,140),
+          value: (it.value||"").trim(),
           confidence: typeof it.confidence==="number" ? Math.min(0.99, Math.max(0.3, it.confidence)) : 0.7,
           evidence: it.evidence||"",
           checked: true,
@@ -45616,7 +45629,7 @@ Return ONLY the JSON array, no markdown.`;
     // Avoid duplicates — don't append the exact same note twice
     if(oldCtx.includes(note.slice(0,40))) return;
     const timestamp = new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
-    const updated = (oldCtx + `\n\n---\n_${timestamp}_\n${note}`).slice(0, 6000);
+    const updated = (oldCtx + `\n\n---\n_${timestamp}_\n${note}`).slice(0, 100000);
     const updatedKnowledge = {...existing, context_file:updated, last_analyzed:new Date().toISOString()};
     setData(d=>({...d,clientKnowledge:d.clientKnowledge.map(k=>k.client_id===clientId?updatedKnowledge:k)}));
     if(existing.id) ue("ClientKnowledge",existing.id,{context_file:updated,last_analyzed:updatedKnowledge.last_analyzed}).catch(()=>{});
@@ -46051,7 +46064,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         const srcLabel = isChatGPT ? " ChatGPT Import" : ` ${docData.name}`;
         const newSummary = `## ${srcLabel}\n${parsed.summary||""}\n\n**Tone:** ${parsed.tone||""}\n**Keywords:** ${(parsed.keywords||[]).slice(0,6).join(", ")}\n**Priorities:** ${(parsed.priorities||[]).slice(0,3).join(", ")}${parsed.dos?`\n**Do's:** ${parsed.dos.slice(0,2).join(", ")}`:""}${parsed.donts?`\n**Don'ts:** ${parsed.donts.slice(0,2).join(", ")}`:""}\n**Audience:** ${parsed.target_audience||""}`;
         const mergedCtx = oldCtx ? oldCtx + "\n\n---\n\n" + newSummary : newSummary;
-        const ctxPayload = {...kPayload, context_file: mergedCtx.slice(0, 6000)};
+        const ctxPayload = {...kPayload, context_file: mergedCtx.slice(0, 100000)};
         await saveClientKnowledge(ctxPayload);
       } catch(e2) { console.log("Context file update error:", e2); }
       // Also save into client_memory (not just the client_knowledge profile
