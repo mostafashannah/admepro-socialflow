@@ -25,6 +25,14 @@ $stmt = $pdo->prepare(
 $stmt->execute([':e' => $email]);
 $all = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// The previous (buggy) run already shifted 6 of these to 2026-08-10 in the
+// real DB — restore that for THIS simulation only (not a real DB write) so
+// we're replicating the original, pre-shift scenario.
+foreach ($all as &$p) {
+    if (strpos($p['title'], 'Aug Calendar') !== false) $p['due_date'] = '2026-08-09';
+}
+unset($p);
+
 $today = '2026-08-09';
 $WORKING_START = 10 * 60;
 $WORKING_END = 19 * 60;
