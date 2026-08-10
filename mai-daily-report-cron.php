@@ -73,7 +73,7 @@ function clientAlertRecipients(PDO $pdo, array $client, array $admins): array {
         $amIds = json_decode($client['account_manager_id'], true);
         if (!is_array($amIds)) $amIds = [$client['account_manager_id']];
         foreach ($amIds as $amId) {
-            $am = $pdo->prepare("SELECT email, whatsapp_number FROM team_members WHERE id = :id");
+            $am = $pdo->prepare("SELECT email, whatsapp_number, name FROM team_members WHERE id = :id");
             $am->execute([':id' => $amId]);
             if ($row = $am->fetch(PDO::FETCH_ASSOC)) $recipients[] = $row;
         }
@@ -108,7 +108,7 @@ $clients = $pdo->query("SELECT id, name, account_manager_id FROM clients WHERE s
 // findings via clientAlertRecipients() reading client.account_manager_id;
 // including AMs here too used to fan every client's alerts out to every
 // AM regardless of assignment (see the comment on clientAlertRecipients).
-$admins = $pdo->query("SELECT email, whatsapp_number FROM team_members WHERE role = 'admin' AND whatsapp_number IS NOT NULL AND whatsapp_number != ''")->fetchAll(PDO::FETCH_ASSOC);
+$admins = $pdo->query("SELECT email, whatsapp_number, name FROM team_members WHERE role = 'admin' AND whatsapp_number IS NOT NULL AND whatsapp_number != ''")->fetchAll(PDO::FETCH_ASSOC);
 $summary = ['clients_checked' => count($clients), 'cadence_alerts' => 0, 'pipeline_alerts' => 0, 'reports_written' => 0, 'memory_curated' => 0, 'errors' => []];
 
 // Raw structured findings per recipient — no pre-written prose. One Claude
@@ -119,7 +119,7 @@ $recipientFindings = []; // email => ['whatsapp_number'=>string, 'clients'=>[cli
 function addFinding(array &$recipientFindings, PDO $pdo, array $client, array $admins, string $clientName, string $field, $value) {
     foreach (clientAlertRecipients($pdo, $client, $admins) as $r) {
         if (empty($r['whatsapp_number'])) continue;
-        if (!isset($recipientFindings[$r['email']])) $recipientFindings[$r['email']] = ['whatsapp_number' => $r['whatsapp_number'], 'clients' => []];
+        if (!isset($recipientFindings[$r['email']])) $recipientFindings[$r['email']] = ['whatsapp_number' => $r['whatsapp_number'], 'name' => $r['name'] ?? '', 'clients' => []];
         if (!isset($recipientFindings[$r['email']]['clients'][$clientName])) $recipientFindings[$r['email']]['clients'][$clientName] = [];
         $recipientFindings[$r['email']]['clients'][$clientName][$field] = $value;
     }
@@ -386,10 +386,12 @@ foreach ($clients as $client) {
 // notifications for the full detail and offering to elaborate if asked —
 // never a fixed template, so the wording genuinely varies run to run.
 $maiWaSystem = "You are Mai, the agency's AI Account Executive, sending a WhatsApp update to a teammate. Your character: "
-    . "analytical and decisive, warm but not chatty, no corporate filler. You never open with the exact same line twice — "
-    . "vary your phrasing/greeting naturally like a real person texting, not a template.\n\n"
+    . "analytical and decisive, warm but not chatty, no corporate filler.\n\n"
     . "HARD RULES — these are not suggestions, a long message defeats the entire point:\n"
-    . "- STRICT LENGTH LIMIT: the ENTIRE message must be under 500 characters total, no exceptions. If you have many clients, that means "
+    . "- ALWAYS start the message with a morning greeting addressed to them by first name, e.g. \"Good morning {NAME},\" on its own — "
+    . "vary the exact phrasing naturally (Good morning / Morning / Morning!) so it doesn't read as a fixed template, but it must always "
+    . "include \"good morning\" (or a clear variant of it) plus their first name, every single time.\n"
+    . "- STRICT LENGTH LIMIT: the ENTIRE message (including the greeting) must be under 550 characters total, no exceptions. If you have many clients, that means "
     . "one short clause each, not a paragraph — group the fine ones into a single line rather than listing each individually.\n"
     . "- ONE message only. This is a WhatsApp ping, not an email or a report — nobody will read a wall of text, so being readable matters "
     . "more than being complete.\n"
@@ -413,19 +415,28 @@ foreach ($recipientFindings as $email => $entry) {
         if (!$parts) $parts[] = "no issues, nothing new to flag";
         $lines[] = "{$name} — " . implode(" | ", $parts);
     }
-    $userMsg = "Today's findings across your accounts:\n" . implode("\n", $lines) . "\n\nWrite the one WhatsApp message now.";
+    $nameParts = explode(' ', trim($entry['name'] ?? ''));
+    $firstName = trim($nameParts[0] ?? '');
+    $nameHint = $firstName !== '' ? $firstName : '(unknown — just say Good morning, with no name)';
+    $userMsg = "Recipient's first name: {$nameHint}\n\nToday's findings across your accounts:\n" . implode("\n", $lines) . "\n\nWrite the one WhatsApp message now, starting with the morning greeting.";
     [$status, $data] = callClaude(['model' => 'claude-sonnet-4-6', 'max_tokens' => 400, 'system' => $maiWaSystem, 'messages' => [['role' => 'user', 'content' => $userMsg]]]);
     $msg = '';
     if ($status >= 200 && $status < 300) {
         foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $msg .= $block['text']; }
     }
     $msg = trim($msg);
-    // Belt-and-suspenders: the system prompt asks for under 500 characters,
-    // but never trust a model's length compliance completely — a message
-    // nobody will actually read defeats the entire point of this rewrite.
-    // Cut at the last whole word before the limit rather than mid-word.
-    if (mb_strlen($msg) > 550) {
-        $cut = mb_substr($msg, 0, 500);
+    $greeting = "Good morning" . ($firstName !== '' ? " {$firstName}" : '') . ",";
+    // Belt-and-suspenders: never trust the model's compliance with either
+    // the greeting or the length limit completely.
+    if ($msg !== '' && !preg_match('/good\s*morning|صباح\s*الخير/iu', mb_substr($msg, 0, 60))) {
+        $msg = $greeting . "\n" . $msg;
+    }
+    // The system prompt asks for under 550 characters (greeting included),
+    // but a message nobody will actually read defeats the entire point of
+    // this rewrite. Cut at the last whole word before the limit rather than
+    // mid-word.
+    if (mb_strlen($msg) > 600) {
+        $cut = mb_substr($msg, 0, 550);
         $lastSpace = mb_strrpos($cut, ' ');
         if ($lastSpace !== false) $cut = mb_substr($cut, 0, $lastSpace);
         $msg = $cut . "… full details in SocialFlow notifications.";
@@ -433,7 +444,7 @@ foreach ($recipientFindings as $email => $entry) {
     if ($msg === '') {
         // Fallback if the AI call itself fails — still one message, still
         // short, just without her usual phrasing variety.
-        $msg = "Mai here — quick account check: " . implode("; ", array_map(
+        $msg = "{$greeting} quick account check: " . implode("; ", array_map(
             fn($n, $f) => $n . (!empty($f['cadence']) || !empty($f['pipeline']) ? " ⚠️" : " ✅"),
             array_keys($entry['clients']), array_values($entry['clients'])
         )) . ". Full details in SocialFlow notifications — ask me for more on any account.";
