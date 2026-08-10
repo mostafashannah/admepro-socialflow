@@ -616,9 +616,9 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     let dur = est;
     const completedAtField = userRole==="graphic_designer" ? "design_completed_at" : userRole==="content_creator" ? "content_completed_at" : null;
     const completedAt = completedAtField ? post[completedAtField] : null;
-    const completedToday = !!(completedAt && new Date(completedAt).toISOString().split("T")[0] === date);
+    const completedToday = !!(completedAt && parseSqlUtc(completedAt).toISOString().split("T")[0] === date);
     if(completedToday) {
-      const compDate = new Date(completedAt);
+      const compDate = parseSqlUtc(completedAt);
       const actual = (compDate.getHours()*60 + compDate.getMinutes()) - cursor;
       if(actual > 0) dur = actual;
     }
@@ -4235,7 +4235,7 @@ function TimeTracker({postId, userEmail, timeEntries, onStart, onPause, onResume
     .filter(t => t.post_id===postId && t.user_email===userEmail)
     .reduce((acc, t) => {
       if(t.status==='active') {
-        return acc + (t.total_seconds||0) + Math.floor((Date.now()-new Date(t.started_at).getTime())/1000);
+        return acc + (t.total_seconds||0) + Math.floor((Date.now()-parseSqlUtc(t.started_at).getTime())/1000);
       }
       return acc + (t.total_seconds||0);
     }, 0);
@@ -34737,7 +34737,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
     return (timeEntries||[])
       .filter(t => t.post_id===postId && t.user_email===effectiveUser?.email)
       .reduce((acc, t) => {
-        if(t.status==='active') return acc + (t.total_seconds||0) + Math.floor((Date.now()-new Date(t.started_at).getTime())/1000);
+        if(t.status==='active') return acc + (t.total_seconds||0) + Math.floor((Date.now()-parseSqlUtc(t.started_at).getTime())/1000);
         return acc + (t.total_seconds||0);
       }, 0);
   };
@@ -34745,7 +34745,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   const todayTrackedSecs = (timeEntries||[])
     .filter(t => t.user_email===effectiveUser?.email && t.date===dateStr)
     .reduce((acc, t) => {
-      if(t.status==='active') return acc + (t.total_seconds||0) + Math.floor((Date.now()-new Date(t.started_at).getTime())/1000);
+      if(t.status==='active') return acc + (t.total_seconds||0) + Math.floor((Date.now()-parseSqlUtc(t.started_at).getTime())/1000);
       return acc + (t.total_seconds||0);
     }, 0);
 
@@ -34763,7 +34763,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   const timelineMembers = [currentUser, ...(team||[]).filter(m=>m.email!==currentUser?.email)].filter(m=>!["hr","accountant","office_boy"].includes(m.role));
   const combinedSlots = combinedView ? timelineMembers.flatMap(m=>generateDailySchedule(posts, m.email, dateStr, m.role)) : null;
   const combinedTrackedSecs = combinedView ? timelineMembers.reduce((sum,m)=>sum + (timeEntries||[]).filter(t=>t.user_email===m.email && t.date===dateStr).reduce((acc,t)=>{
-    if(t.status==='active') return acc + (t.total_seconds||0) + Math.floor((Date.now()-new Date(t.started_at).getTime())/1000);
+    if(t.status==='active') return acc + (t.total_seconds||0) + Math.floor((Date.now()-parseSqlUtc(t.started_at).getTime())/1000);
     return acc + (t.total_seconds||0);
   },0), 0) : null;
   const combinedActiveTimers = combinedView ? timelineMembers.flatMap(m=>(timeEntries||[]).filter(t=>t.user_email===m.email && t.status==='active')) : null;
@@ -35049,7 +35049,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                 <p style={{fontSize:12,color:"var(--text3)",textAlign:"center",padding:12}}>No active timers</p>
               ) : activeTimers.map(timer => {
                 const post = posts.find(p=>p.id===timer.post_id);
-                const secs = (timer.total_seconds||0) + Math.floor((Date.now()-new Date(timer.started_at).getTime())/1000);
+                const secs = (timer.total_seconds||0) + Math.floor((Date.now()-parseSqlUtc(timer.started_at).getTime())/1000);
                 return (
                   <div key={timer.id} style={{padding:10,background:"#10b98111",border:"1px solid #10b98133",borderRadius:"var(--rs)",display:"flex",flexDirection:"column",gap:4}}>
                     <p style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{post?.title||timer.post_id}</p>
@@ -46677,7 +46677,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
     setData(d => {
       const updated = (d.timeEntries||[]).map(t => {
         if(t.user_email===currentUser?.email && t.status==='active') {
-          const elapsed = Math.floor((Date.now()-new Date(t.started_at).getTime())/1000);
+          const elapsed = Math.floor((Date.now()-parseSqlUtc(t.started_at).getTime())/1000);
           const paused = {...t, status:'paused', paused_at:startedAt, total_seconds:(t.total_seconds||0)+elapsed};
           ue("TimeEntry", t.id, {status:'paused', paused_at:startedAt, total_seconds:paused.total_seconds}).catch(()=>{});
           return paused;
@@ -46697,7 +46697,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
     const pausedAt = new Date().toISOString();
     setData(d => ({...d, timeEntries: (d.timeEntries||[]).map(t => {
       if(t.post_id===postId && t.user_email===currentUser?.email && t.status==='active') {
-        const elapsed = Math.floor((Date.now()-new Date(t.started_at).getTime())/1000);
+        const elapsed = Math.floor((Date.now()-parseSqlUtc(t.started_at).getTime())/1000);
         const newSecs = (t.total_seconds||0)+elapsed;
         ue("TimeEntry", t.id, {status:'paused', paused_at:pausedAt, total_seconds:newSecs}).catch(()=>{});
         return {...t, status:'paused', paused_at:pausedAt, total_seconds:newSecs};
@@ -46713,7 +46713,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
       ...d,
       timeEntries: (d.timeEntries||[]).map(t => {
         if(t.user_email===currentUser?.email && t.status==='active') {
-          const elapsed = Math.floor((Date.now()-new Date(t.started_at).getTime())/1000);
+          const elapsed = Math.floor((Date.now()-parseSqlUtc(t.started_at).getTime())/1000);
           const newSecs = (t.total_seconds||0)+elapsed;
           ue("TimeEntry", t.id, {status:'paused', paused_at:resumedAt, total_seconds:newSecs}).catch(()=>{});
           return {...t, status:'paused', paused_at:resumedAt, total_seconds:newSecs};
