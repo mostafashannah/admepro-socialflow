@@ -10259,7 +10259,7 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
         <div style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"var(--text3)"}}><Ico d={Icons.search} size={15}/></div>
         <input value={search} onChange={e=>setSearch(e.target.value)} aria-label="Search clients" placeholder="Search clients…" style={{...inputSt,paddingLeft:36}}/>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:10}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,320px))",gap:10}}>
         {filtered.map(client=>{
           const isHidden = client.status==="hidden";
           const cProjects = projects.filter(p=>p.client_id===client.id||p.client_name===client.name);
@@ -10292,7 +10292,7 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
                   </button>
                 )}
               </div>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
                   {(client.platforms||[]).slice(0,4).map(p=>(
                     <span key={p} style={{fontSize:9,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",color:"var(--text3)",background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:6,padding:"2px 6px"}}>
@@ -10300,7 +10300,7 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
                     </span>
                   ))}
                 </div>
-                <p style={{fontSize:11,color:"var(--text3)",whiteSpace:"nowrap",flexShrink:0}}>
+                <p style={{fontSize:11,color:"var(--text3)",whiteSpace:"nowrap"}}>
                   <b style={{color:"var(--text)"}}>{cProjects.length}</b> proj · <b style={{color:"var(--text)"}}>{cPosts.length}</b> posts · <b style={{color:"var(--text)"}}>{cPosts.filter(p=>p.stage==="published").length}</b> pub
                 </p>
               </div>
