@@ -215,6 +215,13 @@ function maiStartReportSession(PDO $pdo, array $am, $reportType) {
             ? "Hi {$firstName}! Quick check-in — have you had a chance to look at your clients' platforms and ad accounts today?"
             : "Hi {$firstName}, end-of-day check-in — how did today go with your clients?";
     }
+    // The AM otherwise has no way to tell "still more coming" from "that's
+    // it, done" across a free-flowing multi-turn conversation of unknown
+    // length — a real checklist-progress marker (not a fake message count,
+    // since one checklist item can take several back-and-forth messages)
+    // on every reply. maiContinueReportSession appends the matching marker
+    // on each follow-up; this is just the opener's, always 0 done.
+    $opener .= "\n\n[0/" . count($checklist) . " covered]";
 
     $sessionId = generateProUuid();
     $ins = $pdo->prepare("INSERT INTO mai_report_sessions (id, account_manager_id, account_manager_name, account_manager_email, report_type, report_date, status, checklist, transcript) VALUES (:id, :amid, :amname, :amemail, :type, :date, 'in_progress', :checklist, :transcript)");
@@ -285,6 +292,16 @@ function maiContinueReportSession(PDO $pdo, array $session, $incomingText) {
     foreach (($parsed['checklist_done'] ?? []) as $key) {
         if (isset($checklist[$key])) $checklist[$key]['done'] = true;
     }
+
+    // Same progress marker as the opener — lets the AM tell at a glance
+    // whether there's more coming or the report is actually finished,
+    // instead of the conversation just trailing off with no signal either
+    // way. A clear distinct marker on the true final message so "done" is
+    // never ambiguous with "still 6/7, more questions coming".
+    $doneCount = count(array_filter($checklist, fn($v) => !empty($v['done'])));
+    $totalCount = count($checklist);
+    $reply .= $complete ? "\n\n✅ Report complete ({$doneCount}/{$totalCount})" : "\n\n[{$doneCount}/{$totalCount} covered]";
+
     foreach (($parsed['client_memory'] ?? []) as $fact) {
         $cname = trim($fact['client_name'] ?? '');
         $key = trim($fact['key'] ?? '');
