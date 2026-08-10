@@ -330,7 +330,11 @@ foreach ($clients as $client) {
                 . "\n\n=== UPLOADED DOCUMENTS ===\n" . ($docText ?: "None uploaded")
                 . "\n\nBased on ALL of the above, return ONLY valid JSON with these exact keys:\n"
                 . '{"summary":"3-4 sentence brand overview covering who they are, what they sell/offer, and their positioning","tone":"comma-separated tone descriptors","content_preferences":"what content formats/themes work for them","keywords":["5-10 brand keywords"],"priorities":["3-5 strategic content priorities"],"dos":["do this","and this"],"donts":["avoid this","never this"],"target_audience":"who they are targeting"}';
-            [$status, $data] = callClaude(['model' => 'claude-sonnet-4-6', 'max_tokens' => 1000, 'messages' => [['role' => 'user', 'content' => $kbPrompt]]]);
+            // 1000 was too tight for a full summary+tone+content_preferences+
+            // keywords+priorities+dos+donts+target_audience response — it
+            // regularly cut off mid-object, which the regex below correctly
+            // refuses as invalid JSON (silently skipping the whole refresh).
+            [$status, $data] = callClaude(['model' => 'claude-sonnet-4-6', 'max_tokens' => 1800, 'messages' => [['role' => 'user', 'content' => $kbPrompt]]]);
             $kbRaw = '';
             if ($status >= 200 && $status < 300) {
                 foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $kbRaw .= $block['text']; }

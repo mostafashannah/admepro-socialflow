@@ -16,7 +16,7 @@ function callClaudeDirect(string $prompt): ?array {
     $ch = curl_init("https://api.anthropic.com/v1/messages");
     curl_setopt_array($ch, [
         CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => json_encode(['model' => 'claude-sonnet-4-6', 'max_tokens' => 1200, 'messages' => [['role' => 'user', 'content' => $prompt]]]),
+        CURLOPT_POSTFIELDS => json_encode(['model' => 'claude-sonnet-4-6', 'max_tokens' => 1800, 'messages' => [['role' => 'user', 'content' => $prompt]]]),
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT => 120,
         CURLOPT_HTTPHEADER => ['x-api-key: ' . ANTHROPIC_API_KEY, 'anthropic-version: 2023-06-01', 'Content-Type: application/json'],

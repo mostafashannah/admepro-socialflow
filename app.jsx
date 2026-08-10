@@ -10780,7 +10780,13 @@ Based on ALL of the above, return ONLY valid JSON with these exact keys:
   "priorities": ["3-5 strategic content priorities for this client"]
 }`;
     try {
-      const raw = await ai(prompt, 800);
+      // 800 was too tight — a full summary+tone+content_preferences+
+      // keywords+priorities response for a client with real data
+      // regularly got cut off mid-sentence before the closing brace,
+      // which the regex below correctly refuses to treat as valid JSON
+      // (an incomplete object isn't one) — surfacing as an opaque "No
+      // JSON returned" that was actually "JSON never finished".
+      const raw = await ai(prompt, 1500);
       const m = raw.match(/\{[\s\S]*\}/);
       if(!m) throw new Error("No JSON returned — AI said: " + (raw.slice(0,200)||"(empty response)"));
       const parsed = JSON.parse(m[0]);
