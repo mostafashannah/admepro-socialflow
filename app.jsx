@@ -38637,7 +38637,7 @@ const stripActionBlocks = (text) => {
   return out.trim();
 };
 
-const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId) => {
+const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId, userMessage) => {
   // ── Live data summaries ─────────────────────────────────────────
   const allPosts = data?.posts||[];
   const allProj = data?.projects||[];
@@ -38729,6 +38729,14 @@ const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId) => {
   • Key messages: ${ckKM.slice(0,5).join(" | ")||"-"}
   • Hashtags: ${ckHT.slice(0,8).join(" ")||"-"}
   • Context file (deep notes): ${(ck.context_file||"").slice(-2000)||"-"}` : "";
+    // The knowledge profile above is only a distilled AI summary — specific
+    // granular details (e.g. "what branches/locations does this client
+    // have") can be buried in the full raw uploaded document text without
+    // ever making it into that summary. Search the actual document content
+    // for terms from what the user just asked, same mechanism
+    // clientBrainBlock/searchClientDocsForTopic already uses for content
+    // generation — this in-app chat never called it before.
+    const docSearchBlock = isFocused ? searchClientDocsForTopic(data?.clientDocuments, c.id, userMessage||"") : "";
     // ── v60: inject latest submitted brief ──
     const latestBrief = (data?.monthlyBriefs||[]).filter(b=>b.client_id===c.id&&b.status==="submitted").sort((a,b)=>new Date(b.submitted_at)-new Date(a.submitted_at))[0];
     const briefBlock = latestBrief ? `▼ LATEST MONTHLY BRIEF (submitted by client — use for content planning):
@@ -38770,7 +38778,8 @@ ${intelBlock}
 ${replyBotBlock}
 ${mem?`MEMORY (key=value):\n${mem.slice(0,memCap)}`:"MEMORY: (empty — say so honestly if asked)"}
 ${isFocused && recentPosts?`RECENT POSTS:\n${recentPosts}`:""}
-${publishedLib?`▼ PUBLISHED CONTENT LIBRARY (what actually went live — full captions; use this to review covered topics, TOV, and avoid repeating angles):\n${publishedLib}`:""}`.trim();
+${publishedLib?`▼ PUBLISHED CONTENT LIBRARY (what actually went live — full captions; use this to review covered topics, TOV, and avoid repeating angles):\n${publishedLib}`:""}
+${docSearchBlock}`.trim();
   }).join("\n\n");
 
   const teamList = allTeam.slice(0,20).map(m=>`- ${m.name} <${m.email}> [${m.role}]`).join("\n");
@@ -40525,7 +40534,7 @@ RULES:
     try {
       let sysPrompt = "";
       try {
-        sysPrompt = CHATBOT_SYSTEM_PROMPT(currentUser, currentPage, data, selectedClientId);
+        sysPrompt = CHATBOT_SYSTEM_PROMPT(currentUser, currentPage, data, selectedClientId, userMsg);
         // Strong context lock so Pro never re-asks for the active client
         const focused = (data?.clients||[]).find(c=>c.id===selectedClientId);
         if(focused){
@@ -42402,7 +42411,7 @@ RULES:
     try {
       let sysPrompt="";
       try {
-        sysPrompt = CHATBOT_SYSTEM_PROMPT(currentUser,"home",data, activeClient?.id||null);
+        sysPrompt = CHATBOT_SYSTEM_PROMPT(currentUser,"home",data, activeClient?.id||null, userMsg);
         if(activeClient){
           const ck = (data?.clientKnowledge||[]).find(k=>k.client_id===activeClient.id);
           const ci = (data?.clientIntelligence||[]).find(i=>i.client_id===activeClient.id);
@@ -43826,7 +43835,7 @@ function App() {
       publishedPosts: (data.posts||[]).filter(p=>p.stage==="published"),
       documents: data.clientDocuments||[],
     };
-  },[data.clientKnowledge, data.clientIntelligence, data.clientMemory, data.posts]);
+  },[data.clientKnowledge, data.clientIntelligence, data.clientMemory, data.posts, data.clientDocuments]);
   useEffect(()=>{
     const f = appSettings?.feature_flags;
     Object.assign(FEATURE_FLAGS, typeof f === "string" ? parseJ(f,{}) : (f||{}));
