@@ -45901,6 +45901,23 @@ Return ONLY valid JSON (no markdown, no explanation):
         const ctxPayload = {...kPayload, context_file: mergedCtx.slice(0, 6000)};
         await saveClientKnowledge(ctxPayload);
       } catch(e2) { console.log("Context file update error:", e2); }
+      // Also save into client_memory (not just the client_knowledge profile
+      // record) — this is the ONLY data source Mai (both her daily per-client
+      // analysis and the AM check-in context) and Pro's "ask Mai" tool
+      // actually read. A ChatGPT chat full of real brand/strategy discussion
+      // used to just sit in client_knowledge, invisible to both, until now.
+      // Fixed keys (not one-per-upload) so re-uploading refreshes these
+      // instead of piling up duplicates every time.
+      try {
+        if(parsed.summary) upsertClientMemory(docData.client_id, docData.client_name, "doc_summary", parsed.summary, "document_extract", {source:docData.name, created_by:currentUser?.email});
+        if(parsed.tone) upsertClientMemory(docData.client_id, docData.client_name, "doc_tone", parsed.tone, "document_extract", {source:docData.name, created_by:currentUser?.email});
+        if(parsed.content_preferences) upsertClientMemory(docData.client_id, docData.client_name, "doc_content_preferences", parsed.content_preferences, "document_extract", {source:docData.name, created_by:currentUser?.email});
+        if((parsed.priorities||[]).length) upsertClientMemory(docData.client_id, docData.client_name, "doc_priorities", parsed.priorities.join("; "), "document_extract", {source:docData.name, created_by:currentUser?.email});
+        if((parsed.keywords||[]).length) upsertClientMemory(docData.client_id, docData.client_name, "doc_keywords", parsed.keywords.join(", "), "document_extract", {source:docData.name, created_by:currentUser?.email});
+        if(parsed.target_audience) upsertClientMemory(docData.client_id, docData.client_name, "doc_target_audience", parsed.target_audience, "document_extract", {source:docData.name, created_by:currentUser?.email});
+        if((parsed.dos||[]).length) upsertClientMemory(docData.client_id, docData.client_name, "doc_dos", parsed.dos.join("; "), "document_extract", {source:docData.name, created_by:currentUser?.email});
+        if((parsed.donts||[]).length) upsertClientMemory(docData.client_id, docData.client_name, "doc_donts", parsed.donts.join("; "), "document_extract", {source:docData.name, created_by:currentUser?.email});
+      } catch(e3) { console.log("Memory extraction error:", e3); }
     } catch(err) { console.log("AI analysis error:",err); }
     setToast("Document uploaded and analyzed!");
   };

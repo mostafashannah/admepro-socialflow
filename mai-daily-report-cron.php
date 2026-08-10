@@ -189,15 +189,30 @@ foreach ($clients as $client) {
         $posts->execute([':cid' => $clientId]);
         $postRows = $posts->fetchAll(PDO::FETCH_ASSOC);
 
-        if ($postRows) {
-            $postLines = array_map(function($p) {
+        // Brand/strategy context (uploaded ChatGPT chats, brand docs, AM
+        // check-in facts, manual notes) — this used to be completely
+        // invisible to the daily analysis, which only ever looked at raw
+        // post insight numbers. Without it Mai can't actually reason about
+        // WHY something is or isn't working, just report the numbers back.
+        $memStmt = $pdo->prepare("SELECT `key`, value FROM client_memory WHERE client_id = :cid AND type != 'mai_daily_report' ORDER BY priority DESC, updated_at DESC LIMIT 10");
+        $memStmt->execute([':cid' => $clientId]);
+        $memRows = $memStmt->fetchAll(PDO::FETCH_ASSOC);
+        $memBlock = $memRows ? "\n\nKNOWN BRAND/STRATEGY CONTEXT (from uploaded docs, check-ins, notes):\n" . implode("\n", array_map(fn($m) => "- {$m['key']}: {$m['value']}", $memRows)) : '';
+
+        // Runs even with zero recent posts — a quiet account is itself
+        // something Mai should be able to speak to (using cadence/pipeline
+        // state + memory context), not just silently skipped, since
+        // "analyze what's happening on every account daily" means every
+        // account, not only the ones that happened to post recently.
+        if ($postRows || $memRows || $cadenceBehind || $pipelineLow) {
+            $postLines = $postRows ? array_map(function($p) {
                 return "- [{$p['platform']}/{$p['post_type']}] \"{$p['title']}\" on " . substr((string)$p['published_at'], 0, 10)
                     . " — likes:" . ($p['insight_likes'] ?? '?') . " comments:" . ($p['insight_comments'] ?? '?')
                     . " shares:" . ($p['insight_shares'] ?? '?') . " reach:" . ($p['insight_reach'] ?? '?');
-            }, $postRows);
+            }, $postRows) : ["(nothing published in the last 14 days)"];
             $prompt = "You are Mai, the agency's internal AI Account Executive, analyzing the client \"{$clientName}\"'s last 14 days "
                 . "of published posts below. This is NEVER shown to the client — be direct and specific, not diplomatic filler.\n\n"
-                . implode("\n", $postLines)
+                . implode("\n", $postLines) . $memBlock
                 . "\n\nReturn ONLY valid JSON (no markdown): {\"analysis\":\"120-180 word internal analysis covering what's working, "
                 . "what's underperforming, and one concrete recommendation\",\"takeaway\":\"ONE short punchy sentence, under 15 words, "
                 . "no jargon — this exact sentence gets texted to a teammate on WhatsApp, so it must stand alone and make sense with zero "

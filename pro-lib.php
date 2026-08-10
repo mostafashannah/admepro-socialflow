@@ -1606,10 +1606,16 @@ function askAiTeammate(PDO $pdo, string $agent, string $question, ?string $clien
         $c->execute([':n' => '%' . $clientName . '%']);
         if ($client = $c->fetch(PDO::FETCH_ASSOC)) {
             $clientBlock = "\n\nCLIENT: {$client['name']}\n";
-            $mem = $pdo->prepare("SELECT `key`, value FROM client_memory WHERE client_id = :cid ORDER BY priority DESC, updated_at DESC LIMIT 15");
+            // Every fact here — including her own daily-report analysis
+            // (type='mai_daily_report', excluded elsewhere but wanted HERE
+            // so Pro can literally relay what Mai already concluded) and
+            // whatever an uploaded ChatGPT chat/brand doc extracted
+            // (type='document_extract') — key included, not just the bare
+            // value, so a heading like "doc_priorities" isn't lost context.
+            $mem = $pdo->prepare("SELECT `key`, value, type FROM client_memory WHERE client_id = :cid ORDER BY priority DESC, updated_at DESC LIMIT 20");
             $mem->execute([':cid' => $client['id']]);
             $memRows = $mem->fetchAll(PDO::FETCH_ASSOC);
-            if ($memRows) $clientBlock .= "Known facts:\n" . implode("\n", array_map(fn($m) => "- {$m['value']}", $memRows)) . "\n";
+            if ($memRows) $clientBlock .= "Known facts (from check-ins, uploaded docs, her own daily analysis, manual notes):\n" . implode("\n", array_map(fn($m) => "- [{$m['type']}] {$m['key']}: {$m['value']}", $memRows)) . "\n";
             $posts = $pdo->prepare("SELECT title, platform, post_type, published_at, insight_likes, insight_comments FROM posts WHERE client_id = :cid AND stage = 'published' ORDER BY published_at DESC LIMIT 8");
             $posts->execute([':cid' => $client['id']]);
             $postRows = $posts->fetchAll(PDO::FETCH_ASSOC);
