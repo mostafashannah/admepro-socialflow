@@ -47055,7 +47055,15 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
                 else if(type==="add_invoice") await createInvoice(payload);
                 else if(type==="update_stage") {
                   const {postId,newStage,updates} = payload;
-                  if(newStage) await handleStageChange(postId,newStage);
+                  // handleStageChange needs the real post OBJECT (it reads
+                  // post.stage/assigned_to/due_date/etc throughout) — passing
+                  // the raw id string here silently corrupted every update:
+                  // {...post} on a string spreads its characters as numeric
+                  // keys, post.id ends up undefined, so the id===post.id
+                  // match in setData/ue() never finds the real post and
+                  // nothing actually persists (e.g. a post the AI moved to
+                  // Published this way never got published_at stamped).
+                  if(newStage) { const post = data.posts.find(p=>p.id===postId); if(post) await handleStageChange(post,newStage); }
                   if(updates) await ue("Post",postId,updates).then(()=>setData(d=>({...d,posts:d.posts.map(p=>p.id===postId?{...p,...updates}:p)})));
                 }
                 else if(type==="add_comment") {
