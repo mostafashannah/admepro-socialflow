@@ -42399,10 +42399,18 @@ RULES:
       if(acronym.length>=2) cands.add(acronym);
       return [...cands];
     };
-    // word-boundary check
+    // word-boundary check — a client/project name containing a character
+    // some engines' regex compiler rejects (e.g. a stray unpaired Unicode
+    // surrogate from a bad copy-paste) used to throw here and crash the
+    // ENTIRE send before the AI was ever called, for a client completely
+    // unrelated to what the user was even asking about, since this runs
+    // against every client's name on every message. Treat an unmatchable
+    // token as simply "no match" instead of letting it kill the send.
     const tokenHit=(tok,text)=>{
-      const re=new RegExp(`(^|[^a-z0-9])${tok.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}([^a-z0-9]|$)`,"i");
-      return re.test(text);
+      try {
+        const re=new RegExp(`(^|[^a-z0-9])${tok.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}([^a-z0-9]|$)`,"i");
+        return re.test(text);
+      } catch(e) { return false; }
     };
     // Explicit mention of a DIFFERENT client in the current message always wins,
     // so saying a new client's name mid-conversation switches Pro's context even
