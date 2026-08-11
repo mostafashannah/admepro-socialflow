@@ -5855,8 +5855,13 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   // so it's excluded from this simple multi-publish button.
   const allPostPlatforms = (Array.isArray(post.platforms)&&post.platforms.length ? post.platforms : [post.platform]).filter(Boolean);
   const multiPublishPlatforms = allPostPlatforms.filter(pl=>pl!=="tiktok");
-  const connectedMultiPlatforms = multiPublishPlatforms.filter(pl=>findIntegrationForPlatform(pl));
-  const disconnectedMultiPlatforms = multiPublishPlatforms.filter(pl=>!findIntegrationForPlatform(pl));
+  // Platforms already confirmed live (by an earlier click of this same
+  // button, or by the auto-publish cron) — re-publishing must never resend
+  // to these, or the client ends up with the same post live twice on the
+  // platform that already succeeded.
+  const alreadyPublishedPlatforms = Array.isArray(post.published_platforms) ? post.published_platforms : parseJ(post.published_platforms||"[]");
+  const connectedMultiPlatforms = multiPublishPlatforms.filter(pl=>findIntegrationForPlatform(pl) && !alreadyPublishedPlatforms.includes(pl));
+  const disconnectedMultiPlatforms = multiPublishPlatforms.filter(pl=>!findIntegrationForPlatform(pl) && !alreadyPublishedPlatforms.includes(pl));
 
   // TikTok only — fetches creator_info fresh (see fetchTikTokCreatorInfo's
   // comment for why this can't be cached/hardcoded) and resets every
@@ -5909,14 +5914,23 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
       }
     }
     const platformLabel = (pl) => ({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn"})[pl]||pl;
-    const anyOk = results.some(r=>r.ok);
+    const newlyOk = results.filter(r=>r.ok).map(r=>r.platform);
+    const anyOk = newlyOk.length>0;
     const firstOkId = results.find(r=>r.ok)?.postId;
+    // Every platform this post carries (not just the ones this click
+    // attempted — a prior click may have already gotten some of them live)
+    // has to have succeeded before the post itself counts as Published.
+    // Attempting only one platform's failure used to still flip the whole
+    // post to Published, silently leaving the other platform never sent.
+    const nowPublished = [...new Set([...alreadyPublishedPlatforms, ...newlyOk])];
+    const stillMissing = multiPublishPlatforms.filter(pl=>!nowPublished.includes(pl));
     setPublishResult({
       ok: anyOk,
-      msg: results.map(r=>`${platformLabel(r.platform)}: ${r.ok?"✓ published":"✗ "+(r.msg||"failed")}`).join("  ·  "),
+      msg: results.map(r=>`${platformLabel(r.platform)}: ${r.ok?"✓ published":"✗ "+(r.msg||"failed")}`).join("  ·  ")
+        + (stillMissing.length ? `  ·  Still needs: ${stillMissing.map(platformLabel).join(", ")} — click Publish again once fixed.` : ""),
     });
-    if(firstOkId) await ue("Post", post.id, {external_post_id: firstOkId}).catch(()=>{});
-    if(anyOk) onStageChange(post, "published");
+    if(nowPublished.length) await ue("Post", post.id, {published_platforms: JSON.stringify(nowPublished), ...(firstOkId?{external_post_id:firstOkId}:{})}).catch(()=>{});
+    if(!stillMissing.length) onStageChange(post, "published");
     setPublishing(false);
   };
 
