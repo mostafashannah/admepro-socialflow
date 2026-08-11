@@ -921,6 +921,7 @@ const SB_TABLE = {
   AttendanceRecord:"attendance_records",
   ContactReport:"contact_reports",
   ContactReportActivity:"contact_report_activity",
+  ClientApprovalLink:"client_approval_links",
   LeadNotifySetting:"lead_notify_settings",
   Expense:"expenses",
   FinanceClientNote:"finance_client_notes",
@@ -954,7 +955,8 @@ const SB_SCHEMA = {
   // and username both exist but were missing from this list, so they always
   // got stripped before the request went out (see
   // migration-client-username.sql for the added username column).
-  clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","account_manager_commissions","username","contact_title","notes","logo_url","allowed_task_types","platform_credentials","portal_features","website","social_links"],
+  clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","account_manager_commissions","username","contact_title","notes","logo_url","allowed_task_types","platform_credentials","portal_features","website","social_links","whatsapp_group_link"],
+  client_approval_links: ["post_id","client_id","token","expires_at","status","created_by"],
   client_tasks: ["client_id","client_name","title","description","task_type","priority","stage","assigned_to","created_by","deliverable_note"],
   team_member_events: ["team_member_id","team_member_name","event_type","title","previous_value","new_value","amount","effective_date","notes","recorded_by"],
   // DEFAULT_NOTIF_PREFS (used to build every save payload) has a
@@ -5634,6 +5636,78 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
   );
 }
 
+// Shown on a task sitting in Client Approval — generates a 24h-expiring
+// public link (see client-preview.php) + QR code the client can scan (no
+// SocialFlow login) to see the media/caption/hashtags/publish date and
+// Approve or comment, with the approve action moving the task straight to
+// Approved server-side. "Send via WhatsApp" opens the client's saved
+// WhatsApp group (Settings → Client → WhatsApp Group Link) with a
+// pre-filled share message, since a group invite link can't receive a
+// programmatically pre-filled message the way a wa.me DM link can — the AM
+// pastes the message into the chat themselves.
+function ClientApprovalLinkCard({post, client, currentUser}) {
+  const [link, setLink] = useState(null); // {token, expires_at, status, comment}
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+
+  const loadLink = async () => {
+    setLoading(true);
+    const {entities} = await qe("ClientApprovalLink", {post_id: post.id}, "-created_date", 1);
+    setLink(entities?.[0] || null);
+    setLoading(false);
+  };
+  useEffect(()=>{ loadLink(); }, [post.id]);
+
+  const isExpired = link && new Date(link.expires_at) < new Date();
+  const isActive = link && !isExpired && link.status !== "approved";
+
+  const generate = async () => {
+    setGenerating(true);
+    const token = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random())).replace(/-/g,"") + Date.now().toString(36);
+    const expiresAt = new Date(Date.now() + 24*60*60*1000).toISOString();
+    const {entities} = await ce("ClientApprovalLink", [{post_id:post.id, client_id:client?.id||post.client_id||"", token, expires_at:expiresAt, status:"pending", created_by:currentUser?.email||""}]);
+    setLink(entities?.[0] || null);
+    setGenerating(false);
+  };
+
+  const previewUrl = link ? `${window.location.origin}/client-preview.php?token=${link.token}` : null;
+  const qrUrl = previewUrl ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(previewUrl)}` : null;
+  const waMessage = previewUrl ? `Hi! Please review this content for approval: ${previewUrl}\n(This link is valid for 24 hours.)` : "";
+  const waHref = client?.whatsapp_group_link ? `https://wa.me/?text=${encodeURIComponent(waMessage)}` : null;
+
+  if (loading) return null;
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:10,padding:14,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
+      <p style={{fontSize:12,fontWeight:700,color:"var(--text2)"}}>Client Approval Link</p>
+      {link && link.status==="approved" && (
+        <div style={{fontSize:12,color:"#10b981",fontWeight:600}}>✓ Client approved this via the link.</div>
+      )}
+      {link && link.status==="commented" && (
+        <div style={{fontSize:12,color:"#f59e0b"}}>Client left a comment via the link — see comments below.</div>
+      )}
+      {isExpired && link.status==="pending" && (
+        <div style={{fontSize:12,color:"var(--text3)"}}>The last link expired without a response — generate a new one below.</div>
+      )}
+      {isActive && (
+        <div style={{display:"flex",gap:12,alignItems:"center"}}>
+          <img src={qrUrl} alt="QR code" style={{width:100,height:100,borderRadius:8,border:"1px solid var(--border)"}}/>
+          <div style={{display:"flex",flexDirection:"column",gap:6,flex:1,minWidth:0}}>
+            <div style={{fontSize:11,color:"var(--text3)"}}>Expires {new Date(link.expires_at).toLocaleString()}</div>
+            <button onClick={()=>navigator.clipboard?.writeText(previewUrl)} style={{fontSize:11.5,fontWeight:600,padding:"5px 10px",borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",cursor:"pointer",textAlign:"left",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Copy link</button>
+            {waHref
+              ? <a href={waHref} target="_blank" rel="noopener noreferrer" style={{fontSize:11.5,fontWeight:700,padding:"5px 10px",borderRadius:6,border:"none",background:"#25D36622",color:"#25D366",cursor:"pointer",textAlign:"center",textDecoration:"none"}}>Send via WhatsApp</a>
+              : <span style={{fontSize:10.5,color:"var(--text3)"}}>Add a WhatsApp Group Link in Client → Edit Info to enable one-click sending.</span>}
+          </div>
+        </div>
+      )}
+      <button onClick={generate} disabled={generating} style={{fontSize:12,fontWeight:700,padding:"7px 12px",borderRadius:8,border:"1px solid var(--accent)44",background:"var(--accentbg,var(--surface))",color:"var(--accent)",cursor:generating?"wait":"pointer",alignSelf:"flex-start"}}>
+        {generating?<><Spinner size={11}/> Generating…</> : (isActive ? "Regenerate Link" : "Generate Approval Link")}
+      </button>
+    </div>
+  );
+}
+
 // POST DETAIL MODAL
 // ════════════════════════════════════════════════════════════════
 function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onAddComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,onInsightsRefreshed,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[],allPosts=[]}) {
@@ -6742,6 +6816,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
           </div>
             );
           })()}
+          {post.stage==="client_approval"&&<ClientApprovalLinkCard post={post} client={client} currentUser={currentUser}/>}
           {/* Publish Now — shown when post is scheduled and a matching social integration is active */}
           {FEATURE_FLAGS.social_publishing&&post.stage==="scheduled"&&post.task_type!=="grid_layout"&&(
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -11303,6 +11378,16 @@ function EditClientPage({client,onBack,onSave,canDelete,onRequestDelete,team=[]}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <Field label="Email"><input value={f.email||""} onChange={e=>setF(x=>({...x,email:e.target.value}))} style={inputSt} type="email"/></Field>
           <Field label="Phone"><input value={f.phone||""} onChange={e=>setF(x=>({...x,phone:e.target.value}))} style={inputSt}/></Field>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          {/* Used by the Client Approval preview link's "Send via WhatsApp"
+              button (PostDetail) — WhatsApp invite links can't receive a
+              pre-filled message programmatically, so that button opens this
+              group chat and a share sheet with the approval message
+              pre-filled, for the AM to paste in manually. */}
+          <Field label="WhatsApp Group Link" hint="Client's WhatsApp group invite link — used to send approval-preview messages">
+            <input value={f.whatsapp_group_link||""} onChange={e=>setF(x=>({...x,whatsapp_group_link:e.target.value}))} style={inputSt} placeholder="https://chat.whatsapp.com/..."/>
+          </Field>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <Field label="Industry"><input value={f.industry||""} onChange={e=>setF(x=>({...x,industry:e.target.value}))} style={inputSt}/></Field>
