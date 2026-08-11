@@ -6669,7 +6669,18 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
               with edits. */}
           {post.stage==="design_review"&&isManager&&(
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              <button onClick={()=>onStageChange(post,"client_approval")} style={{
+              <button onClick={()=>{
+                // Same IG reel cover requirement as the Design->Design Review
+                // move and the admin "Jump to stage" dropdown — this button
+                // used to skip it entirely, letting a cover-less IG reel
+                // sail through Client Approval to Scheduled/Published, where
+                // Instagram's publish then fails silently (no cover_url) while
+                // Facebook goes out fine, looking like "only IG didn't post".
+                if(post.post_type==="reel" && post.platform==="instagram" && !post.carousel_cover) {
+                  alert("Upload the Instagram Cover before moving this reel forward."); return;
+                }
+                onStageChange(post,"client_approval");
+              }} style={{
                 flex:"1 1 140px",padding:"10px 16px",borderRadius:"var(--rs)",
                 background:STAGE_MAP.client_approval.color+"22",border:`1px solid ${STAGE_MAP.client_approval.color}55`,
                 color:STAGE_MAP.client_approval.color,fontSize:13,fontWeight:700,
