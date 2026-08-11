@@ -143,8 +143,18 @@ foreach ($clients as $client) {
         $lastPublishedAt = $lastPub->fetchColumn();
 
         $cadenceBehind = $expectedPerWeek > 0 && $actualLast7 < $expectedPerWeek;
+        $daysSince = $lastPublishedAt ? floor((time() - strtotime($lastPublishedAt)) / 86400) : null;
+        // Always record the raw numbers, even for a healthy account — the
+        // WhatsApp writer used to only ever see concrete figures (X/Y this
+        // week, last post Nd ago) for accounts that were flagged as
+        // behind, so a fine account got reduced to a bare "on track" with
+        // nothing to actually check it against. Real numbers on every
+        // account daily also make it far easier to catch a stale
+        // published_at bug (an account genuinely posted yesterday but the
+        // report still calling it stale) at a glance instead of it hiding
+        // behind a vague "no issues" line.
+        addFinding($recipientFindings, $pdo, $client, $admins, $clientName, 'stats', "{$actualLast7}/{$expectedPerWeek} per week posted, last post " . ($daysSince !== null ? "{$daysSince}d ago" : "never"));
         if ($cadenceBehind) {
-            $daysSince = $lastPublishedAt ? floor((time() - strtotime($lastPublishedAt)) / 86400) : null;
             $msg = "{$clientName} is behind its posting schedule — {$actualLast7} published in the last 7 days vs a target of {$expectedPerWeek}/week."
                 . ($daysSince !== null ? " Last post was {$daysSince} day(s) ago." : " No posts published yet.");
             foreach (clientAlertRecipients($pdo, $client, $admins) as $r) {
@@ -396,8 +406,11 @@ $maiWaSystem = "You are Mai, the agency's AI Account Executive, sending a WhatsA
     . "- ONE message only. This is a WhatsApp ping, not an email or a report — nobody will read a wall of text, so being readable matters "
     . "more than being complete.\n"
     . "- Use ⚠️ ONLY for a client with a REAL problem below (cadence behind schedule, or pipeline low/empty). Never use it for a client that's fine.\n"
-    . "- For clients with no problems, mention them briefly or in a single grouped line (e.g. \"X and Y are on track\") — never a paragraph per healthy client.\n"
-    . "- NEVER repeat/paste full report text, numbers, or multiple sentences per client — one short clause per client, max.\n"
+    . "- Every client below has a \"stats\" figure (posts this week / target, days since last post) — always work the actual number into that "
+    . "client's line, even a healthy one, e.g. \"Bino ✅ 3/3 this week, last post 1d ago\" — never just \"on track\" with no number, that's not "
+    . "actually useful to check against. You may still group several healthy clients onto one shared line if it keeps things short, but keep "
+    . "each one's own number attached to its name within that line.\n"
+    . "- NEVER repeat/paste full report text or multiple sentences per client — one short clause (with its number) per client, max.\n"
     . "- FORMAT: one account per line, starting with the account name, so it reads as a clear per-account list, not a flowing paragraph — "
     . "e.g. \"Bino ⚠️ — cadence behind, 1/3 this week\" on its own line, next account on the next line. Healthy accounts can still be grouped "
     . "onto one shared line together, but never blend an account with a real issue into the same line as one that's fine.\n"
@@ -409,6 +422,11 @@ foreach ($recipientFindings as $email => $entry) {
     $lines = [];
     foreach ($entry['clients'] as $name => $facts) {
         $parts = [];
+        // Always lead with the raw numbers — present for every account,
+        // flagged or not, so the message never reduces a fine account to a
+        // content-free "on track" and gives the AM something concrete to
+        // spot-check against reality.
+        if (!empty($facts['stats'])) $parts[] = $facts['stats'];
         if (!empty($facts['cadence'])) $parts[] = "cadence: " . $facts['cadence'];
         if (!empty($facts['pipeline'])) $parts[] = "pipeline: " . $facts['pipeline'];
         if (!empty($facts['report'])) $parts[] = "today's read: " . $facts['report'];
