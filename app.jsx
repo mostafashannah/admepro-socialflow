@@ -5671,9 +5671,16 @@ function ClientApprovalLinkCard({post, client, currentUser}) {
   };
 
   const previewUrl = link ? `${window.location.origin}/client-preview.php?token=${link.token}` : null;
-  const qrUrl = previewUrl ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(previewUrl)}` : null;
   const waMessage = previewUrl ? `Hi! Please review this content for approval: ${previewUrl}\n(This link is valid for 24 hours.)` : "";
-  const waHref = client?.whatsapp_group_link ? `https://wa.me/?text=${encodeURIComponent(waMessage)}` : null;
+  // A "share this text, let me pick who to send it to" link needs
+  // api.whatsapp.com/send?text= — wa.me only supports a link that's
+  // recipient-specific (wa.me/<number>), a bare "wa.me/?text=" isn't the
+  // documented/reliable form and silently fails on some WhatsApp versions.
+  // This is also what WhatsApp's OWN in-app QR scanner recognizes and opens
+  // directly in the app, unlike a plain https:// link (which just opens a
+  // browser when scanned by a generic camera app).
+  const waHref = previewUrl ? `https://api.whatsapp.com/send?text=${encodeURIComponent(waMessage)}` : null;
+  const qrUrl = waHref ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(waHref)}` : null;
 
   if (loading) return null;
 
@@ -5695,9 +5702,15 @@ function ClientApprovalLinkCard({post, client, currentUser}) {
           <div style={{display:"flex",flexDirection:"column",gap:6,flex:1,minWidth:0}}>
             <div style={{fontSize:11,color:"var(--text3)"}}>Expires {new Date(link.expires_at).toLocaleString()}</div>
             <button onClick={()=>navigator.clipboard?.writeText(previewUrl)} style={{fontSize:11.5,fontWeight:600,padding:"5px 10px",borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",cursor:"pointer",textAlign:"left",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Copy link</button>
-            {waHref
-              ? <a href={waHref} target="_blank" rel="noopener noreferrer" style={{fontSize:11.5,fontWeight:700,padding:"5px 10px",borderRadius:6,border:"none",background:"#25D36622",color:"#25D366",cursor:"pointer",textAlign:"center",textDecoration:"none"}}>Send via WhatsApp</a>
-              : <span style={{fontSize:10.5,color:"var(--text3)"}}>Add a WhatsApp Group Link in Client → Edit Info to enable one-click sending.</span>}
+            {waHref&&<a href={waHref} target="_blank" rel="noopener noreferrer" style={{fontSize:11.5,fontWeight:700,padding:"5px 10px",borderRadius:6,border:"none",background:"#25D36622",color:"#25D366",cursor:"pointer",textAlign:"center",textDecoration:"none"}}>Send via WhatsApp</a>}
+            {/* WhatsApp has no way to deep-link a pre-filled message directly
+                into a specific EXISTING group — the button above opens
+                WhatsApp's own contact/group picker with the message ready to
+                send, so this just gets the client's saved group chat open in
+                a second tab/app to pick from, for convenience. */}
+            {client?.whatsapp_group_link
+              ? <a href={client.whatsapp_group_link} target="_blank" rel="noopener noreferrer" style={{fontSize:10.5,color:"var(--text3)",textDecoration:"underline"}}>Open {client.name}'s WhatsApp group</a>
+              : <span style={{fontSize:10.5,color:"var(--text3)"}}>Tip: add a WhatsApp Group Link in Client → Edit Info to quickly open the right group.</span>}
           </div>
         </div>
       )}
