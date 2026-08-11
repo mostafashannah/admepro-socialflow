@@ -76,8 +76,30 @@ foreach ($due as $post) {
     }
     if ($scheduledAt > $now) continue; // not due yet
 
-    $platform = strtolower(trim($post['platform'] ?? ''));
-    if (!in_array($platform, ['facebook', 'instagram', 'linkedin', 'tiktok'], true)) continue;
+    // A post can carry several platforms at once (the in-app Publish button
+    // sends to all of them — see connectedMultiPlatforms/handlePublish in
+    // app.jsx). This used to read only the single legacy `platform` column,
+    // so a post scheduled for Instagram + Facebook silently published to
+    // just one of them. Fall back to the legacy single column only when
+    // `platforms` was never populated (older posts).
+    $allPlatforms = json_decode($post['platforms'] ?? '[]', true) ?: [];
+    if (!$allPlatforms) {
+        $single = strtolower(trim($post['platform'] ?? ''));
+        if ($single) $allPlatforms = [$single];
+    }
+    $alreadyDone = json_decode($post['published_platforms'] ?? '[]', true) ?: [];
+    $targetPlatforms = array_values(array_diff(
+        array_filter(array_map('strtolower', array_map('trim', $allPlatforms)), fn($p) => in_array($p, ['facebook', 'instagram', 'linkedin', 'tiktok'], true)),
+        $alreadyDone
+    ));
+    if (!$targetPlatforms) continue; // nothing valid, or every platform already published
+
+    $anyOk = false;
+    $anyAttempted = false;
+    $lastExtId = null;
+    $errorsByPlatform = [];
+
+    foreach ($targetPlatforms as $platform) {
 
     // Prefer an integration scoped to this post's client; fall back to any
     // active integration for the platform (e.g. a single shared Page).
@@ -130,8 +152,8 @@ foreach ($due as $post) {
         [$code, $resp] = linkedin_publish($page_id, $access_token, $message, $image_url);
     } elseif ($platform === 'tiktok') {
         if (!$image_url) {
-            $upd = $pdo->prepare("UPDATE posts SET publish_attempts = :att, publish_error = :err WHERE id = :id");
-            $upd->execute([':att' => $attempts + 1, ':err' => 'TikTok requires a video file attached to this post', ':id' => $post['id']]);
+            $anyAttempted = true;
+            $errorsByPlatform[$platform] = 'TikTok requires a video file attached to this post';
             continue;
         }
         [$code, $resp] = tiktok_publish_video($access_token, $image_url, $message);
@@ -158,18 +180,18 @@ foreach ($due as $post) {
     }
 
     $ok = $code >= 200 && $code < 300;
+    $anyAttempted = true;
 
     if ($ok) {
+        $anyOk = true;
+        $alreadyDone[] = $platform;
         // TikTok's publish_id ($resp['id']) can't be looked up by the
         // insights API — video_id (only present once TikTok finishes
         // processing) is what post-insights-cron.php needs stored instead.
-        $extId = $resp['video_id'] ?? $resp['id'] ?? $resp['post_id'] ?? null;
-        $upd = $pdo->prepare("UPDATE posts SET stage = 'published', published_at = :now, external_post_id = :ext, publish_error = NULL WHERE id = :id");
-        $upd->execute([':now' => $now->format('Y-m-d H:i:s'), ':ext' => $extId, ':id' => $post['id']]);
+        $lastExtId = $resp['video_id'] ?? $resp['id'] ?? $resp['post_id'] ?? $lastExtId;
         sara_learn_from_publish($pdo, $post, $platform);
     } else {
-        $upd = $pdo->prepare("UPDATE posts SET publish_attempts = :att, publish_error = :err WHERE id = :id");
-        $upd->execute([':att' => $attempts + 1, ':err' => json_encode($resp), ':id' => $post['id']]);
+        $errorsByPlatform[$platform] = $resp;
     }
 
     $logStmt = $pdo->prepare(
@@ -197,6 +219,33 @@ foreach ($due as $post) {
     ]);
 
     $results[] = ['post_id' => $post['id'], 'platform' => $platform, 'ok' => $ok, 'http_code' => $code];
+    } // end foreach $targetPlatforms
+
+    if (!$anyAttempted) continue; // no integration connected for any target platform yet
+
+    // Fully done once every platform on this post has succeeded at some
+    // point (this run or an earlier one) — only then does the post itself
+    // move to Published, matching the in-app Publish button's per-platform
+    // behavior (Instagram + Facebook both have to land before the card
+    // moves out of Content/Scheduled).
+    $stillMissing = array_diff($allPlatforms, $alreadyDone);
+    if (!$stillMissing) {
+        $upd = $pdo->prepare("UPDATE posts SET stage = 'published', published_at = :now, external_post_id = :ext, published_platforms = :pp, publish_error = NULL WHERE id = :id");
+        $upd->execute([
+            ':now' => $now->format('Y-m-d H:i:s'), ':ext' => $lastExtId,
+            ':pp' => json_encode(array_values(array_unique($alreadyDone))), ':id' => $post['id'],
+        ]);
+    } else {
+        // Partial progress (e.g. Instagram went out, Facebook failed) is
+        // saved either way so a retry never re-posts to a platform that
+        // already succeeded — only the attempt counter advances toward the
+        // 3-try cutoff, and only for the platform(s) still failing.
+        $upd = $pdo->prepare("UPDATE posts SET publish_attempts = :att, publish_error = :err, published_platforms = :pp WHERE id = :id");
+        $upd->execute([
+            ':att' => $attempts + 1, ':err' => json_encode($errorsByPlatform),
+            ':pp' => json_encode(array_values(array_unique($alreadyDone))), ':id' => $post['id'],
+        ]);
+    }
 }
 
 header('Content-Type: application/json');
