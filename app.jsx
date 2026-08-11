@@ -6547,6 +6547,11 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 onChange={async e=>{
                   const file = e.target.files?.[0]; e.target.value="";
                   if(!file) return;
+                  // Instagram Reel covers must be a still image — a video slipping in
+                  // here fails silently on Instagram (Facebook doesn't enforce the same
+                  // way, so it looks like only IG "didn't publish"). The accept="image/*"
+                  // hint above doesn't actually block a mismatched file, so check for real.
+                  if(!file.type.startsWith("image/")) { alert("The Instagram Cover must be an image, not a video."); return; }
                   const url = await uploadToStorage(file, monthProjectFolder(project?.title, project?.client_name));
                   ue("Post", post.id, {carousel_cover:url}).catch(()=>{});
                   onStageChange({...post, carousel_cover:url}, post.stage);
@@ -7592,7 +7597,13 @@ Return ONLY valid JSON (no markdown):
                       style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontSize:13,fontWeight:600,color:"var(--text2)",width:"100%"}}>
                       <Ico d={Icons.upload} size={14} stroke="var(--text2)"/> Choose Cover Image…
                     </button>
-                    <AssetPickerModal open={showCoverPicker} assets={assets.filter(a=>a.file_type==="image"||(a.file_url||"").match(/\.(jpg|jpeg|png|gif|webp)/i))} multiple={false} onClose={()=>setShowCoverPicker(false)}
+                    {/* A Reel cover must be a still image — Instagram's media-container
+                        call fails if it's actually a video (matches the "posted to FB but
+                        not IG" symptom). Explicitly reject anything that looks like a
+                        video, rather than only allowing what looks like an image — a
+                        video ever mistagged file_type:"image" upstream used to slip
+                        through the old OR-based filter and show up as pickable. */}
+                    <AssetPickerModal open={showCoverPicker} assets={assets.filter(a=>a.file_type!=="video"&&!(a.file_url||"").match(/\.(mp4|mov|webm|m4v)/i))} multiple={false} onClose={()=>setShowCoverPicker(false)}
                       onPick={(picked)=>{ const a=picked[0]; if(a.url&&onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(selectableProjects.find(p=>p.id===f.project_id)?.title, selectableProjects.find(p=>p.id===f.project_id)?.client_name), project_id:f.project_id, tags:[], file_size:a.file_size}).catch(()=>{}); s("cover",a.url?a:{name:a.name,type:a.file_type,url:a.file_url}); }}/>
                     {uploadingCover&&<div style={{fontSize:12,color:"var(--text3)",marginTop:6}}><Spinner size={12}/> Uploading…</div>}
                     {f.cover&&(
