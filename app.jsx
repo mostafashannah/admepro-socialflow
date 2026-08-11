@@ -6574,8 +6574,14 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
           </div>
         )}
 
-        {/* Content Phase Generator */}
-        {post.stage==="content_creation"&&(
+        {/* Content Phase Generator — always available to admin/AM on ANY
+            stage (not just Content), so they can write/edit/regenerate a
+            caption at any point without having to walk the task backward
+            through the pipeline first. Only the ORIGINAL Content stage
+            flow auto-advances to Review on Choose — an admin/AM using this
+            from any other stage is just editing in place, the task stays
+            exactly where it already was. */}
+        {(post.stage==="content_creation"||isManager)&&(
           <ContentPhaseGenerator
             post={post}
             project={project}
@@ -6586,6 +6592,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
             onCaptionChosen={onCaptionChosen}
             onMemoryLearn={onMemoryLearn}
             onChoose={(updatedPost)=>{
+              const wasContentStage = post.stage==="content_creation";
               ue("Post", post.id, {
                 caption:updatedPost.caption, hashtags:updatedPost.hashtags, text_on_visual:updatedPost.text_on_visual,
                 reel_hook:updatedPost.reel_hook, reel_script:updatedPost.reel_script,
@@ -6594,8 +6601,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 tov_used:updatedPost.tov_used, content_language:updatedPost.content_language,
               }).catch(()=>{});
               try{ localStorage.removeItem(`sf_content_${post.id}`); }catch(e){}
-              onStageChange({...post,...updatedPost}, "internal_review");
-              onClose();
+              if(wasContentStage) { onStageChange({...post,...updatedPost}, "internal_review"); onClose(); }
             }}
           />
         )}
