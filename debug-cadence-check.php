@@ -29,12 +29,12 @@ foreach (['SLVR', 'Bino'] as $needle) {
     $recent->execute([':cid' => $c['id']]);
     echo "published in last 7 days (per cron query): " . $recent->fetchColumn() . "\n";
 
-    $stmt = $pdo->prepare("SELECT id, title, stage, published_at, scheduled_date, updated_at, created_date FROM posts WHERE client_id = :cid AND (stage = 'published' OR published_at IS NOT NULL) ORDER BY COALESCE(published_at, updated_at, created_date) DESC LIMIT 8");
+    $stmt = $pdo->prepare("SELECT id, title, stage, published_at, scheduled_date, created_date FROM posts WHERE client_id = :cid AND (stage = 'published' OR published_at IS NOT NULL) ORDER BY COALESCE(published_at, created_date) DESC LIMIT 8");
     $stmt->execute([':cid' => $c['id']]);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     echo "Most recent published/published_at rows:\n";
     foreach ($rows as $r) {
-        echo "  [{$r['stage']}] {$r['title']} | published_at=" . var_export($r['published_at'], true) . " | scheduled_date={$r['scheduled_date']} | updated_at={$r['updated_at']} | created_date={$r['created_date']}\n";
+        echo "  [{$r['stage']}] {$r['title']} | published_at=" . var_export($r['published_at'], true) . " | scheduled_date={$r['scheduled_date']} | created_date={$r['created_date']}\n";
     }
 
     // Also check for posts stuck in 'published' stage but client_id/client_name mismatch,
