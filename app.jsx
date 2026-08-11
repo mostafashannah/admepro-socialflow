@@ -6744,7 +6744,14 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 color:STAGE_MAP.design.color,fontSize:13,fontWeight:700,
                 display:"flex",alignItems:"center",justifyContent:"center",gap:8,
               }}>Move to Design <Ico d={Icons.arrow} size={14} stroke={STAGE_MAP.design.color}/></button>
-              <button onClick={()=>onStageChange(post,"client_approval")} style={{
+              <button onClick={()=>{
+                // Same caption/hashtags requirement as every other path into
+                // Client Approval — this "skip straight there" button had no
+                // check at all.
+                if(post.platform && !post.caption) { alert("This post has no caption yet — add one before moving it forward."); return; }
+                if(post.platform && post.post_type!=="story" && !post.hashtags) { alert("This post has no hashtags yet — add some before moving it forward."); return; }
+                onStageChange(post,"client_approval");
+              }} style={{
                 flex:"1 1 140px",padding:"10px 16px",borderRadius:"var(--rs)",
                 background:STAGE_MAP.client_approval.color+"22",border:`1px solid ${STAGE_MAP.client_approval.color}55`,
                 color:STAGE_MAP.client_approval.color,fontSize:13,fontWeight:700,
@@ -6772,6 +6779,11 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 if(post.post_type==="reel" && post.platform==="instagram" && !post.carousel_cover) {
                   alert("Upload the Instagram Cover before moving this reel forward."); return;
                 }
+                // Same caption/hashtags requirement as the "Move to X" button
+                // and the "Jump to stage" dropdown — this was the one path
+                // into Client Approval that had no caption check at all.
+                if(post.platform && !post.caption) { alert("This post has no caption yet — add one before moving it forward."); return; }
+                if(post.platform && post.post_type!=="story" && !post.hashtags) { alert("This post has no hashtags yet — add some before moving it forward."); return; }
                 onStageChange(post,"client_approval");
               }} style={{
                 flex:"1 1 140px",padding:"10px 16px",borderRadius:"var(--rs)",
