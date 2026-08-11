@@ -67,6 +67,19 @@ $postStmt->execute([':id' => $link['post_id']]);
 $post = $postStmt->fetch(PDO::FETCH_ASSOC);
 if (!$post) { renderShell('Not found', '<div class="notice">This task no longer exists.</div>'); exit; }
 
+// A link generated while a task sat in Client Approval must stop working
+// the moment the task moves anywhere else (forward once approved, or back
+// to an earlier stage) — the 24h expiry alone doesn't cover a task that
+// moves within that window, e.g. approved by a teammate in-app, or sent
+// back for edits. Checked fresh on every hit, not just at generation time.
+if ($post['stage'] !== 'client_approval' && $link['status'] === 'pending') {
+    $msg = $post['stage'] === 'approved' || $post['stage'] === 'scheduled' || $post['stage'] === 'published'
+        ? 'This content has already been approved and moved forward — no action needed.'
+        : 'This content is no longer awaiting your approval — it was sent back for edits. Ask your account manager for an updated link once it\'s ready again.';
+    renderShell('No longer pending', '<div class="notice">' . h($msg) . '</div>');
+    exit;
+}
+
 $clientStmt = $pdo->prepare("SELECT name, logo_url FROM clients WHERE id = :id LIMIT 1");
 $clientStmt->execute([':id' => $link['client_id'] ?: $post['client_id']]);
 $client = $clientStmt->fetch(PDO::FETCH_ASSOC) ?: [];
