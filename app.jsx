@@ -43308,7 +43308,7 @@ function CreateBriefModal({open, onClose, clients, onCreate}) {
   );
 }
 
-function NotificationsPage({notifications, currentUser, onMarkRead, onNavigate, onOpenPost, onOpenApplication}) {
+function NotificationsPage({notifications, currentUser, onMarkRead, onNavigate, onOpenPost, onOpenApplication, onOpenClient}) {
   const [filter, setFilter] = useState("all");
   const myNotifs = (notifications||[]).filter(n=>n.recipient_email===currentUser?.email);
   const unread = myNotifs.filter(n=>!n.is_read);
@@ -43324,6 +43324,14 @@ function NotificationsPage({notifications, currentUser, onMarkRead, onNavigate, 
       onOpenPost&&onOpenPost(n.link_id);
     } else if(n.link_type==="job_application") {
       onOpenApplication&&onOpenApplication(n.link_id);
+    } else if(n.link_type==="client") {
+      // Mai's daily-report/performance-alert notifications link to a client
+      // id, not a page — this used to fall through to the generic page
+      // fallback below, which called setPage(clientId) with a raw UUID (no
+      // matching page = blank content) AND explicitly cleared
+      // selectedClientId, so even fixing the page name alone wouldn't have
+      // opened the right client.
+      onOpenClient&&onOpenClient(n.link_id);
     } else if(n.link_type==="page") {
       onNavigate&&onNavigate(n.link_id);
     } else {
@@ -47678,6 +47686,10 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             onOpenPost={post=>{
               const found = data.posts.find(p=>p.id===post);
               if(found) setSelectedPost(found);
+            }}
+            onOpenClient={clientId=>{
+              const found = data.clients.find(c=>c.id===clientId);
+              if(found) { setPage("clients"); setSelectedClientId(found.id); }
             }}
             onOpenApplication={id=>{
               // Full-access users (admin / hr.manage_recruitment) jump straight
