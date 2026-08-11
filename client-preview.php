@@ -108,8 +108,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ]);
             $pdo->prepare("UPDATE client_approval_links SET status = 'commented', comment = :c, responded_at = NOW() WHERE id = :id")
                 ->execute([':c' => $text, ':id' => $link['id']]);
+            // A comment IS a change request — send the task back to Design
+            // Review (not all the way to Content) so the designer picks it
+            // up with the client's feedback attached, same destination as
+            // clicking "Give Edits" from Design Review normally goes to.
+            $pdo->prepare("UPDATE posts SET stage = 'design' WHERE id = :id")->execute([':id' => $post['id']]);
         }
-        renderShell('Comment sent', '<div class="ok">✓ Your comment was sent to the team.</div>');
+        renderShell('Comment sent', '<div class="ok">✓ Your comment was sent to the team — they\'ll review and follow up.</div>');
         exit;
     }
     http_response_code(400);
