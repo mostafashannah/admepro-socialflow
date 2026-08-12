@@ -5104,7 +5104,7 @@ ${shapeInstr}`;
               <button onClick={()=>handleChoose(idx)} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 18px",borderRadius:8,fontSize:12,fontWeight:700,background:"var(--accent)",color:"#fff",border:"none",cursor:"pointer",opacity:chosenIdx===idx?0.7:1}}
                 onMouseEnter={e=>e.currentTarget.style.opacity="0.88"} onMouseLeave={e=>e.currentTarget.style.opacity=chosenIdx===idx?"0.7":"1"}>
                 <Ico d={Icons.check} size={13} stroke="#fff"/>
-                {chosenIdx===idx?"✓ Chosen":"Choose & Push to Review"}
+                {chosenIdx===idx?"✓ Chosen":(post.stage==="content_creation"?"Choose & Push to Review":"Choose This Option")}
               </button>
             </div>
           </div>
@@ -6546,11 +6546,11 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
             on, so a reviewer had no way to see what was attached at all,
             only a mention of it buried in the Activity feed. Only the
             add-controls (upload/link) are content-phase-only. */}
-        {(post.stage==="content_creation" || (post.design_assets||[]).length>0)&&(
+        {(post.stage==="content_creation" || isManager || (post.design_assets||[]).length>0)&&(
           <div style={{display:"flex",flexDirection:"column",gap:12,padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
             <h4 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:14}}>Attachments</h4>
             <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage}/>
-            {post.stage==="content_creation"&&(
+            {(post.stage==="content_creation"||isManager)&&(
               <>
                 <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
