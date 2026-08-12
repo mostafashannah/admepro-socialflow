@@ -44904,11 +44904,16 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
       start_date, end_date, days, hours:hrs,
       start_time: isPersonal ? start_time||null : null, end_time: isPersonal ? end_time||null : null,
       reason:reason||"", status:"pending",
+      manager_id: member.manager_id||null,
       manager_name: member.manager_id ? (data.team.find(t=>t.id===member.manager_id)?.name||"") : "",
       source:"app", created_at:new Date().toISOString(),
     };
     setData(d=>({...d, leaveRequests:[local, ...(d.leaveRequests||[])]}));
-    const res = await ce("LeaveRequest",[{team_member_id:member.id, member_name:member.name, type, start_date, end_date, days, hours:hrs, start_time:local.start_time, end_time:local.end_time, reason:reason||"", status:"pending", manager_name:local.manager_name, source:"app"}]).catch(()=>null);
+    // manager_id (not just manager_name) has to be set — the WhatsApp bot's
+    // pending-request lookup (decide_pending_request in pro-lib.php) filters
+    // by manager_id, so a request missing it is invisible to "approve"/
+    // "reject" replies even though it shows up fine in the app's own UI.
+    const res = await ce("LeaveRequest",[{team_member_id:member.id, member_name:member.name, type, start_date, end_date, days, hours:hrs, start_time:local.start_time, end_time:local.end_time, reason:reason||"", status:"pending", manager_id:local.manager_id, manager_name:local.manager_name, source:"app"}]).catch(()=>null);
     const real = res?.entities?.[0];
     if(real?.id) setData(d=>({...d, leaveRequests:d.leaveRequests.map(r=>r.id===local.id?real:r)}));
     logActivity("Leave Request Submitted","users",`${member.name} — ${type} (${start_date}${isPersonal?` — ${start_time||""}–${end_time||""} (${hrs}h)`:end_date!==start_date?` → ${end_date}`:""})`,"success","",currentUser?.email||"admin");
