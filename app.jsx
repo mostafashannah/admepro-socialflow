@@ -44852,6 +44852,25 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
     const real = res?.entities?.[0];
     if(real?.id) setData(d=>({...d, leaveRequests:d.leaveRequests.map(r=>r.id===local.id?real:r)}));
     logActivity("Leave Request Submitted","users",`${member.name} — ${type} (${start_date}${isPersonal?` — ${start_time||""}–${end_time||""} (${hrs}h)`:end_date!==start_date?` → ${end_date}`:""})`,"success","",currentUser?.email||"admin");
+    // The WhatsApp "request leave" flow (pro-lib.php's request_leave tool)
+    // notifies the manager over WhatsApp + email + an in-app notification
+    // the moment a request comes in — this in-app self-service path only
+    // ever created the row itself, so a request submitted from the app
+    // (not via WhatsApp) silently never reached the manager at all until
+    // they happened to open Team → Leave & WFH. Mirror that same 3-channel
+    // notify here.
+    const manager = member.manager_id ? data.team.find(t=>t.id===member.manager_id) : null;
+    if(manager?.email) {
+      const label = type==="personal_leave" ? "personal leave" : type==="vacation" ? "vacation" : "work-from-home";
+      const range = isPersonal ? start_date : (end_date!==start_date ? `${start_date} → ${end_date}` : start_date);
+      const amount = isPersonal ? `${hrs}h` : `${days} day(s)`;
+      const msg = `${member.name} requested ${label} for ${range} (${amount}).${reason?`\nReason: ${reason}`:""}`;
+      ce("Notification",[{recipient_email:manager.email, title:"New leave/WFH request", message:msg, type:"info", is_read:false, link_type:"page", link_id:"team"}]).catch(()=>{});
+      sendNotification("wa_leave_requests", manager.email, `New request: ${member.name} — ${label}`,
+        `<div style="font-family:sans-serif;font-size:14px;color:#111827;line-height:1.6"><p>${msg.replace(/\n/g,"<br>")}</p><p>Log in to SocialFlow → Team → Leave & WFH to approve or reject it.</p></div>`,
+        getNotifPrefs(manager.email), manager.whatsapp_number||null
+      ).catch(()=>{});
+    }
     setToast("Request submitted");
   };
 
