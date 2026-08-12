@@ -42021,12 +42021,16 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
   const [brainOpen, setBrainOpen] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [dragOverComposer, setDragOverComposer] = useState(false);
-  // Raw GPT chat — a fully separate path from Pro's tool-calling/client-
-  // detection logic below: no system prompt, no business context injected,
-  // no actions/tools, just the conversation forwarded straight to OpenAI.
-  // Admin/AM only, since it has none of Pro's guardrails.
+  // Raw GPT chat — totally isolated from Pro: its own message list, its own
+  // localStorage key, never reads or writes Pro's chatSessions/messages.
+  // Switching the Pro/GPT toggle just swaps which list the page renders and
+  // sends from — no shared history, no business context, no tools/actions,
+  // no client auto-lock. Admin/AM only, since it has none of Pro's guardrails.
   const canUseGptChat = ["admin","account_manager"].includes(currentUser?.role);
   const [gptMode, setGptMode] = useState(false);
+  const gptStorageKey = "sf_gpt_chat_v1_" + (currentUser?.email||"anon");
+  const [gptMessages, setGptMessages] = useState(()=>{ try{ return JSON.parse(localStorage.getItem(gptStorageKey)||"[]"); }catch(e){ return []; } });
+  useEffect(()=>{ try{ localStorage.setItem(gptStorageKey, JSON.stringify(gptMessages.slice(-200))); }catch(e){} },[gptMessages]);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -42535,27 +42539,37 @@ RULES:
   const removeAttachment = (id) => setAttachments(a=>a.filter(x=>x.id!==id));
 
   // Raw GPT chat send — deliberately bypasses EVERYTHING below (client
-  // auto-lock, memory, tool actions, brand context): just the running
-  // conversation forwarded to OpenAI with no system message at all, so
-  // it behaves exactly like using ChatGPT directly, not "Pro with a
-  // different model." Text-only — attachments aren't sent to GPT this way.
+  // auto-lock, memory, tool actions, brand context) AND Pro's shared
+  // messages/session state entirely: reads/writes ONLY gptMessages, so
+  // there's no way a Pro conversation's content (attachment blocks, action
+  // payloads) ever leaks into what gets sent to OpenAI, and no way a GPT
+  // reply ends up saved into a Pro session. Text-only — attachments aren't
+  // sent to GPT this way.
   const sendGptMessage = async (userMsg) => {
     const userMsgObj = {role:"user",content:userMsg,id:uid(),ts:new Date().toISOString()};
-    setMessages(m=>[...m,userMsgObj]);
+    setGptMessages(m=>[...m,userMsgObj]);
     setTyping(true);
     try {
-      const history = [...messages, userMsgObj]
-        .filter(m=>m.role==="user"||m.role==="assistant")
-        .map(m=>({role:m.role, content:m.content||""}));
+      // Pro's own bot replies use role "bot" (see ChatMessage), not the
+      // standard "assistant" — translate that here since OpenAI only
+      // accepts user/assistant/system. gptMessages only ever contains
+      // "user"/"bot" entries (set below), never anything from Pro.
+      const history = [...gptMessages, userMsgObj]
+        .filter(m=>m.role==="user"||m.role==="bot")
+        .map(m=>({role: m.role==="bot"?"assistant":"user", content: typeof m.content==="string" ? m.content : JSON.stringify(m.content??"")}));
       const res = await fetch(OPENAI_ENDPOINT, {
         method:"POST", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({model:"gpt-5", messages:history}),
       });
       const data = await res.json();
       const reply = data?.choices?.[0]?.message?.content;
-      setMessages(m=>[...m, {role:"assistant", content: reply || `Error: ${data?.error?.message||"No response from GPT"}`, id:uid(), ts:new Date().toISOString()}]);
+      // role:"bot" (not "assistant") — that's what ChatMessage checks to
+      // left-align+markdown-render a reply; using "assistant" here made
+      // every GPT reply render as an unformatted, right-aligned USER bubble
+      // instead of a bot reply (no markdown, wrong side of the screen).
+      setGptMessages(m=>[...m, {role:"bot", content: reply || `Error: ${data?.error?.message||"No response from GPT"}`, id:uid(), ts:new Date().toISOString()}]);
     } catch(e) {
-      setMessages(m=>[...m, {role:"assistant", content:`Error: ${e.message}`, id:uid(), ts:new Date().toISOString()}]);
+      setGptMessages(m=>[...m, {role:"bot", content:`Error: ${e.message}`, id:uid(), ts:new Date().toISOString()}]);
     }
     setTyping(false);
   };
@@ -42825,7 +42839,7 @@ RULES:
     return h<5 ? "Working late" : h<12 ? "Morning" : h<18 ? "Afternoon" : "Evening";
   })();
 
-  const isEmpty = messages.length<=1;
+  const isEmpty = gptMode ? gptMessages.length===0 : messages.length<=1;
 
   // Composer — shared between the centered empty state and the bottom-pinned bar
   const Composer = (
@@ -43117,7 +43131,7 @@ RULES:
           </div>
         ) : (
           <>
-            {messages.map(msg=>(
+            {(gptMode?gptMessages:messages).map(msg=>(
               <ChatMessage key={msg.id} msg={msg}
                 onConfirm={handleConfirmHome} onReject={handleRejectHome}
                 onExecuteAction={handleActionBtnHome}/>
