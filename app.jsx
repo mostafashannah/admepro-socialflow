@@ -16917,6 +16917,161 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
     }
   };
 
+  const [fullCalExporting, setFullCalExporting] = useState(false);
+  const downloadFullCalendarPdf = async () => {
+    const jsPDFCtor = window.jspdf?.jsPDF;
+    if (!jsPDFCtor || !gridExportRef.current || !window.html2canvas) return;
+    setFullCalExporting(true);
+    try {
+      const W = 1280, H = 720, M = 70; // 16:9 "slide" canvas, in px units
+      const pdf = new jsPDFCtor({orientation:"l", unit:"px", format:[W,H]});
+      const brand = "#0f172a";
+
+      const imgToDataURL = async (url) => {
+        if (!url) return null;
+        try {
+          const res = await fetch(url);
+          const blob = await res.blob();
+          return await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+          });
+        } catch(e) { return null; }
+      };
+      // Scales an image into a maxW×maxH box without distorting it —
+      // every media/logo placement below needs this, so computed once.
+      const fitBox = (imgW, imgH, maxW, maxH) => {
+        const ratio = Math.min(maxW/imgW, maxH/imgH);
+        return {w: imgW*ratio, h: imgH*ratio};
+      };
+      const addWrapped = (x, y, maxWidth, text, fontSize, opts={}) => {
+        pdf.setFontSize(fontSize);
+        pdf.setFont(undefined, opts.bold ? "bold" : "normal");
+        pdf.setTextColor(opts.color || "#111827");
+        const lines = pdf.splitTextToSize(String(text||"—"), maxWidth);
+        pdf.text(lines, x, y);
+        return y + lines.length * fontSize * 1.35;
+      };
+
+      const client = clients.find(c=>c.id===project.client_id);
+      const ci = (clientIntelligence||[]).find(c=>c.client_id===project.client_id);
+      const orderedPosts = taskOrder ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort(postSortCmp);
+      const dates = projectPosts.map(p=>p.scheduled_date).filter(Boolean).sort();
+      const startDate = dates[0] || project.start_date || "";
+      const endDate = dates[dates.length-1] || project.end_date || "";
+      const monthLabel = startDate ? new Date(startDate).toLocaleDateString("en-US",{month:"long",year:"numeric"}) : "—";
+      const platformSet = new Set();
+      projectPosts.forEach(p=>{
+        const plts = Array.isArray(p.platforms) ? p.platforms : parseJ(p.platforms||"[]");
+        (plts.length?plts:[p.platform]).filter(Boolean).forEach(pl=>platformSet.add(pl));
+      });
+      const keywords = Array.isArray(ci?.keywords) ? ci.keywords.join(", ") : (ci?.keywords||"");
+
+      // ── Slide 1: cover, agency logo centered ──
+      pdf.setFillColor(brand);
+      pdf.rect(0,0,W,H,"F");
+      const logoData = await imgToDataURL("/icon-512.png");
+      if (logoData) {
+        const box = fitBox(512,512,160,160);
+        pdf.addImage(logoData, "PNG", (W-box.w)/2, (H-box.h)/2-30, box.w, box.h);
+      }
+      pdf.setFontSize(22); pdf.setFont(undefined,"bold"); pdf.setTextColor("#ffffff");
+      pdf.text(project.title||"Content Calendar", W/2, H/2+130, {align:"center"});
+
+      // ── Slide 2: client + calendar details ──
+      pdf.addPage([W,H],"l");
+      pdf.setFillColor("#ffffff"); pdf.rect(0,0,W,H,"F");
+      let y = M;
+      y = addWrapped(M, y, W-M*2, client?.name||project.client_name||"Client", 26, {bold:true}) + 10;
+      const fields = [
+        ["Month", monthLabel],
+        ["Start Date", startDate || "—"],
+        ["End Date", endDate || "—"],
+        ["Number of Posts", String(projectPosts.length)],
+        ["Platforms", [...platformSet].join(", ") || "—"],
+        ["Main Keywords", keywords || "—"],
+        ["Objective", ci?.content_preferences || ci?.summary || "—"],
+        ["Brief", project.description || "—"],
+      ];
+      fields.forEach(([label,val])=>{
+        pdf.setFontSize(11); pdf.setFont(undefined,"bold"); pdf.setTextColor("#6b7280");
+        pdf.text(label.toUpperCase(), M, y);
+        y = addWrapped(M, y+18, W-M*2, val, 14) + 14;
+      });
+
+      // ── Slide 3: full grid screenshot ──
+      pdf.addPage([W,H],"l");
+      pdf.setFillColor("#ffffff"); pdf.rect(0,0,W,H,"F");
+      const statusBadges = gridExportRef.current.querySelectorAll(".sf-grid-status-badge");
+      statusBadges.forEach(el => { el.style.visibility = "hidden"; });
+      try {
+        const canvas = await window.html2canvas(gridExportRef.current, {
+          backgroundColor:"#ffffff", scale:2, useCORS:true,
+          scrollX:0, scrollY:-window.scrollY,
+          windowWidth: document.documentElement.scrollWidth,
+          windowHeight: document.documentElement.scrollHeight,
+        });
+        const box = fitBox(canvas.width, canvas.height, W-M*2, H-M*2);
+        pdf.addImage(canvas.toDataURL("image/jpeg",0.92), "JPEG", (W-box.w)/2, (H-box.h)/2, box.w, box.h);
+      } finally {
+        statusBadges.forEach(el => { el.style.visibility = ""; });
+      }
+
+      // ── One slide per post ──
+      for (const post of orderedPosts) {
+        pdf.addPage([W,H],"l");
+        pdf.setFillColor("#ffffff"); pdf.rect(0,0,W,H,"F");
+        const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
+        const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
+        const isReelPost = post.post_type==="reel" || post.post_type==="video";
+        const mediaUrl = (isReelPost && post.carousel_cover) || designUrls[designUrls.length-1] || designAssets[designAssets.length-1]?.url || post.carousel_cover || "";
+        const mediaBoxW = 420, mediaBoxH = H-M*2;
+        if (mediaUrl) {
+          const dataUrl = await imgToDataURL(mediaUrl);
+          if (dataUrl) {
+            try {
+              const dims = await new Promise((resolve,reject)=>{ const im=new Image(); im.onload=()=>resolve({w:im.width,h:im.height}); im.onerror=reject; im.src=dataUrl; });
+              const box = fitBox(dims.w, dims.h, mediaBoxW, mediaBoxH);
+              pdf.setFillColor("#f3f4f6"); pdf.rect(M,M,mediaBoxW,mediaBoxH,"F");
+              pdf.addImage(dataUrl, (dataUrl.match(/^data:image\/(\w+)/)||[])[1]==="png"?"PNG":"JPEG", M+(mediaBoxW-box.w)/2, M+(mediaBoxH-box.h)/2, box.w, box.h);
+            } catch(e) {}
+          }
+        } else {
+          pdf.setFillColor("#f3f4f6"); pdf.rect(M,M,mediaBoxW,mediaBoxH,"F");
+        }
+
+        const tx = M + mediaBoxW + 50, tw = W - tx - M;
+        let ty = M;
+        ty = addWrapped(tx, ty+10, tw, post.title||"Untitled", 20, {bold:true}) + 6;
+        const plts = Array.isArray(post.platforms) ? post.platforms : parseJ(post.platforms||"[]");
+        const pltLabel = (plts.length?plts:[post.platform]).filter(Boolean).join(", ");
+        ty = addWrapped(tx, ty, tw, `${pltLabel||"—"}  ·  ${post.scheduled_date||"No date"}${post.scheduled_time?` at ${post.scheduled_time}`:""}`, 12, {color:"#6b7280"}) + 16;
+
+        const block = (label, val) => {
+          pdf.setFontSize(10); pdf.setFont(undefined,"bold"); pdf.setTextColor("#6b7280");
+          pdf.text(label.toUpperCase(), tx, ty);
+          ty = addWrapped(tx, ty+16, tw, val, 13) + 14;
+        };
+        if (post.text_on_visual) block("Text on Visual", post.text_on_visual);
+        if (post.caption) block("Caption", post.caption);
+        if (post.hashtags) block("Hashtags", post.hashtags);
+        block("Stage", STAGE_MAP[post.stage]?.label || post.stage);
+      }
+
+      // ── Final slide: Thank You ──
+      pdf.addPage([W,H],"l");
+      pdf.setFillColor(brand); pdf.rect(0,0,W,H,"F");
+      pdf.setFontSize(34); pdf.setFont(undefined,"bold"); pdf.setTextColor("#ffffff");
+      pdf.text("Thank You", W/2, H/2, {align:"center"});
+
+      pdf.save(`${(project.title||"calendar").replace(/[^a-z0-9]+/gi,"_")}_full_calendar.pdf`);
+    } finally {
+      setFullCalExporting(false);
+    }
+  };
+
   const projectPosts = posts.filter(p=>p.project_id===project.id);
   // Natural (no custom drag order) sort: unpublished/upcoming posts first in
   // chronological order, published posts always trail at the end (also
@@ -17125,6 +17280,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                 <div style={{display:"flex",gap:6}}>
                   <button disabled={gridExporting} onClick={()=>downloadGrid("png")} style={{padding:"5px 12px",borderRadius:20,fontSize:11,fontWeight:600,border:"1px solid var(--border)",cursor:gridExporting?"default":"pointer",background:"var(--surface2)",color:"var(--text2)",opacity:gridExporting?0.6:1}}>{gridExporting?"Exporting…":"Download PNG"}</button>
                   <button disabled={gridExporting} onClick={()=>downloadGrid("pdf")} style={{padding:"5px 12px",borderRadius:20,fontSize:11,fontWeight:600,border:"1px solid var(--border)",cursor:gridExporting?"default":"pointer",background:"var(--surface2)",color:"var(--text2)",opacity:gridExporting?0.6:1}}>{gridExporting?"Exporting…":"Download PDF"}</button>
+                  <button disabled={fullCalExporting} onClick={downloadFullCalendarPdf} title="Cover, calendar details, full grid, then one slide per post" style={{padding:"5px 12px",borderRadius:20,fontSize:11,fontWeight:700,border:"none",cursor:fullCalExporting?"default":"pointer",background:"var(--accent)",color:"#fff",opacity:fullCalExporting?0.6:1}}>{fullCalExporting?"Building PDF…":"Download Full Calendar"}</button>
                 </div>
               </div>
               <div ref={gridExportRef} style={{display:"grid",gridTemplateColumns:"repeat(3, 1fr)",gap:3}}>
