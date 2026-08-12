@@ -3838,9 +3838,11 @@ function ImageLightbox({url, alt, onClose}) {
   // instead of trying to render a broken <img> — same modal chrome/Download
   // button either way, so "View" on any attachment (not just photos) opens
   // in-app instead of just linking out.
-  const isPdf = (url||"").toLowerCase().split("?")[0].endsWith(".pdf");
+  const cleanUrl = (url||"").toLowerCase().split("?")[0];
+  const isPdf = cleanUrl.endsWith(".pdf");
+  const isVideo = /\.(mp4|mov|webm|m4v)$/.test(cleanUrl);
   return ReactDOM.createPortal(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:1200,display:"flex",alignItems:"center",justifyContent:"center",padding:24,cursor:isPdf?"default":"zoom-out"}} className="fade-in">
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:1200,display:"flex",alignItems:"center",justifyContent:"center",padding:24,cursor:(isPdf||isVideo)?"default":"zoom-out"}} className="fade-in">
       <a href={url} download={alt||""} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} aria-label="Download" style={{position:"absolute",top:20,right:66,width:38,height:38,borderRadius:"50%",background:"rgba(255,255,255,0.12)",border:"none",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",textDecoration:"none"}}>
         <Ico d={Icons.download||Icons.upload} size={17} stroke="#fff"/>
       </a>
@@ -3849,6 +3851,8 @@ function ImageLightbox({url, alt, onClose}) {
       </button>
       {isPdf ? (
         <iframe src={url} title={alt||"Attachment"} onClick={e=>e.stopPropagation()} style={{width:"85vw",height:"88vh",border:"none",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,0.5)",background:"#fff"}}/>
+      ) : isVideo ? (
+        <video src={url} controls autoPlay playsInline onClick={e=>e.stopPropagation()} style={{maxWidth:"90vw",maxHeight:"90vh",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,0.5)"}}/>
       ) : (
         <img src={url} alt={alt||""} onClick={e=>e.stopPropagation()} style={{maxWidth:"90vw",maxHeight:"90vh",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,0.5)",cursor:"default"}}/>
       )}
@@ -7068,11 +7072,15 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                         : <p style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content, team)}</p>}
                       {c.file_url&&(
                         c.file_type==="image" ? (
-                          <a href={c.file_url} target="_blank" rel="noreferrer" style={{display:"block",marginTop:8,maxWidth:220,borderRadius:8,overflow:"hidden",border:"1px solid var(--border)"}}>
+                          <div onClick={()=>setLightboxImage({url:c.file_url, name:c.file_name})} style={{display:"block",marginTop:8,maxWidth:220,borderRadius:8,overflow:"hidden",border:"1px solid var(--border)",cursor:"zoom-in"}}>
                             <img src={c.file_url} alt={c.file_name||""} style={{width:"100%",display:"block"}}/>
-                          </a>
+                          </div>
                         ) : c.file_type==="video" ? (
-                          <video src={c.file_url} controls playsInline preload="metadata" style={{marginTop:8,maxWidth:220,borderRadius:8,border:"1px solid var(--border)"}}/>
+                          <video src={c.file_url} controls playsInline preload="metadata" onClick={()=>setLightboxImage({url:c.file_url, name:c.file_name})} style={{marginTop:8,maxWidth:220,borderRadius:8,border:"1px solid var(--border)",cursor:"zoom-in"}}/>
+                        ) : (c.file_url||"").toLowerCase().split("?")[0].endsWith(".pdf") ? (
+                          <button onClick={()=>setLightboxImage({url:c.file_url, name:c.file_name})} style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:8,padding:"6px 10px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border)",fontSize:12,color:"var(--accent)",fontWeight:600,cursor:"pointer"}}>
+                            <Ico d={Icons.upload} size={12} stroke="var(--accent)"/> {c.file_name||"Attachment"}
+                          </button>
                         ) : (
                           <a href={c.file_url} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:8,padding:"6px 10px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border)",fontSize:12,color:"var(--accent)",fontWeight:600,textDecoration:"none"}}>
                             <Ico d={Icons.upload} size={12} stroke="var(--accent)"/> {c.file_name||"Attachment"}
@@ -7086,11 +7094,28 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 <div ref={commentsEndRef}/>
               </div>
               {commentAttachments.length>0&&(
-                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
                   {commentAttachments.map((a,i)=>(
-                    <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border)",fontSize:12}}>
-                      <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📎 {a.file_name}</span>
-                      <button onClick={()=>removeCommentAttachment(i)} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontWeight:700}}>×</button>
+                    <div key={i} style={{position:"relative",width:64,height:64,borderRadius:8,overflow:"hidden",border:"1px solid var(--border)",background:"var(--surface2)",cursor:a.file_type==="file"?"default":"pointer",flexShrink:0}}
+                      onClick={()=>a.file_type!=="file"&&setLightboxImage({url:a.file_url, name:a.file_name})}>
+                      {a.file_type==="image" ? (
+                        <img src={a.file_url} alt={a.file_name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                      ) : a.file_type==="video" ? (
+                        <>
+                          <video src={a.file_url+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                          <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.15)"}}>
+                            <div style={{width:22,height:22,borderRadius:"50%",background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                              <Ico d={Icons.play} size={10} stroke="#fff"/>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,padding:4}}>
+                          <Ico d={Icons.upload} size={16} stroke="var(--text3)"/>
+                          <span style={{fontSize:9,color:"var(--text3)",textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",width:"100%"}}>{a.file_name}</span>
+                        </div>
+                      )}
+                      <button onClick={e=>{e.stopPropagation(); removeCommentAttachment(i);}} style={{position:"absolute",top:2,right:2,width:18,height:18,borderRadius:"50%",background:"rgba(0,0,0,0.6)",border:"none",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
                     </div>
                   ))}
                 </div>
@@ -7133,11 +7158,15 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                       <p style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content, team)}</p>
                       {c.file_url&&(
                         c.file_type==="image" ? (
-                          <a href={c.file_url} target="_blank" rel="noreferrer" style={{display:"block",marginTop:8,maxWidth:220,borderRadius:8,overflow:"hidden",border:"1px solid var(--border)"}}>
+                          <div onClick={()=>setLightboxImage({url:c.file_url, name:c.file_name})} style={{display:"block",marginTop:8,maxWidth:220,borderRadius:8,overflow:"hidden",border:"1px solid var(--border)",cursor:"zoom-in"}}>
                             <img src={c.file_url} alt={c.file_name||""} style={{width:"100%",display:"block"}}/>
-                          </a>
+                          </div>
                         ) : c.file_type==="video" ? (
-                          <video src={c.file_url} controls playsInline preload="metadata" style={{marginTop:8,maxWidth:220,borderRadius:8,border:"1px solid var(--border)"}}/>
+                          <video src={c.file_url} controls playsInline preload="metadata" onClick={()=>setLightboxImage({url:c.file_url, name:c.file_name})} style={{marginTop:8,maxWidth:220,borderRadius:8,border:"1px solid var(--border)",cursor:"zoom-in"}}/>
+                        ) : (c.file_url||"").toLowerCase().split("?")[0].endsWith(".pdf") ? (
+                          <button onClick={()=>setLightboxImage({url:c.file_url, name:c.file_name})} style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:8,padding:"6px 10px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border)",fontSize:12,color:"var(--accent)",fontWeight:600,cursor:"pointer"}}>
+                            <Ico d={Icons.upload} size={12} stroke="var(--accent)"/> {c.file_name||"Attachment"}
+                          </button>
                         ) : (
                           <a href={c.file_url} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:8,padding:"6px 10px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border)",fontSize:12,color:"var(--accent)",fontWeight:600,textDecoration:"none"}}>
                             <Ico d={Icons.upload} size={12} stroke="var(--accent)"/> {c.file_name||"Attachment"}
