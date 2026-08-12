@@ -17043,6 +17043,9 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
               <span style={{fontSize:12,color:"var(--text3)"}}>Drag rows to reorder publishing schedule</span>
               <div style={{display:"flex",gap:6}}>
+                {taskOrder && (
+                  <button onClick={()=>setTaskOrder(null)} title="Clear custom order, sort chronologically by publish date" style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"1px solid var(--border)",cursor:"pointer",background:"var(--surface2)",color:"var(--text2)"}}>Sort by Date</button>
+                )}
                 <button onClick={()=>setViewMode("list")} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:viewMode==="list"?"var(--accent)":"var(--surface2)",color:viewMode==="list"?"#fff":"var(--text2)"}}>List</button>
                 <button onClick={()=>setViewMode("kanban")} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:viewMode==="kanban"?"var(--accent)":"var(--surface2)",color:viewMode==="kanban"?"#fff":"var(--text2)"}}>Kanban</button>
                 <button onClick={()=>setViewMode("cards")} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:viewMode==="cards"?"var(--accent)":"var(--surface2)",color:viewMode==="cards"?"#fff":"var(--text2)"}}>Cards</button>
