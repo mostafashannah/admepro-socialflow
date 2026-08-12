@@ -17087,6 +17087,23 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                           newIds.splice(fromIdx,1);
                           newIds.splice(toIdx,0,fromId);
                           setTaskOrder(newIds);
+                          // The whole point of dragging a card to a new slot is to
+                          // move it into that slot's publishing date — otherwise
+                          // the card visually moves but keeps showing its old date,
+                          // which looks broken next to the reordered position. Swap
+                          // scheduled_date/scheduled_time between the two posts that
+                          // traded places and persist it, same as List view's date
+                          // column would reflect after a manual date edit.
+                          const fromPost = base[fromIdx];
+                          const toPost = post;
+                          if(fromPost && toPost && fromPost.scheduled_date!==toPost.scheduled_date) {
+                            const fromDate = fromPost.scheduled_date, fromTime = fromPost.scheduled_time;
+                            const toDate = toPost.scheduled_date, toTime = toPost.scheduled_time;
+                            ue("Post", fromPost.id, {scheduled_date: toDate, scheduled_time: toTime}).catch(()=>{});
+                            ue("Post", toPost.id, {scheduled_date: fromDate, scheduled_time: fromTime}).catch(()=>{});
+                            onStageChange({...fromPost, scheduled_date: toDate, scheduled_time: toTime}, fromPost.stage);
+                            onStageChange({...toPost, scheduled_date: fromDate, scheduled_time: fromTime}, toPost.stage);
+                          }
                           dragTaskRef.current=null;
                         }}
                         onClick={()=>onPostClick&&onPostClick(post)}
