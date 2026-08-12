@@ -35045,7 +35045,11 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
               if (!groups.has(key)) groups.set(key, []);
               groups.get(key).push(post);
             });
-            const sortedClients = [...groups.keys()].sort((a,b)=>a.localeCompare(b));
+            // Most-recently-active client first — "recent" meaning whichever
+            // client has the newest task activity (falls back to created_at
+            // when a task has no scheduled_date yet), not alphabetical.
+            const mostRecentTs = posts => Math.max(...posts.map(p => new Date(p.scheduled_date || p.created_at || 0).getTime() || 0));
+            const sortedClients = [...groups.keys()].sort((a,b)=>mostRecentTs(groups.get(b)) - mostRecentTs(groups.get(a)));
 
             return sortedClients.map(clientName => {
               const clientPosts = groups.get(clientName);
