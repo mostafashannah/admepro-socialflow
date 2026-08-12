@@ -44896,11 +44896,26 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
       const range = isPersonal ? start_date : (end_date!==start_date ? `${start_date} → ${end_date}` : start_date);
       const amount = isPersonal ? `${hrs}h` : `${days} day(s)`;
       const msg = `${member.name} requested ${label} for ${range} (${amount}).${reason?`\nReason: ${reason}`:""}`;
+      const prefs = getNotifPrefs(manager.email);
       ce("Notification",[{recipient_email:manager.email, title:"New leave/WFH request", message:msg, type:"info", is_read:false, link_type:"page", link_id:"team"}]).catch(()=>{});
+      // sendNotification's WhatsApp branch only ever sends "{subject}\n\nView:
+      // {link}" — a generic fallback shared by every other notification type
+      // — which reads nothing like the rich, actionable message the
+      // WhatsApp-native request_leave bot flow sends (with the reply-
+      // approve/reject instruction). Email still goes through sendNotification
+      // normally; WhatsApp is sent directly here instead, mirroring that same
+      // format (same reqId-based short id decide_pending_request expects).
       sendNotification("wa_leave_requests", manager.email, `New request: ${member.name} — ${label}`,
         `<div style="font-family:sans-serif;font-size:14px;color:#111827;line-height:1.6"><p>${msg.replace(/\n/g,"<br>")}</p><p>Log in to SocialFlow → Team → Leave & WFH to approve or reject it.</p></div>`,
-        getNotifPrefs(manager.email), manager.whatsapp_number||null
+        prefs
       ).catch(()=>{});
+      if(manager.whatsapp_number && !prefs.all_disabled && prefs.wa_leave_requests!==false) {
+        const shortId = String(real?.id||local.id).slice(-8);
+        sendWhatsApp(manager.whatsapp_number,
+          `🗓️ ${member.name} requested ${label} for ${range} (${amount}).\nReason: ${reason||"(none given)"}\n\n` +
+          `Reply here to approve or reject it — just tell Pro, e.g. "approve ${shortId}" or "reject ${shortId}".`
+        ).catch(()=>{});
+      }
     }
     setToast("Request submitted");
   };
