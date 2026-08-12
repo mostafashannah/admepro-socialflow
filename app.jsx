@@ -16870,6 +16870,33 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
   const [viewMode, setViewMode] = React.useState("grid"); // list | kanban | cards | grid
   const [taskOrder, setTaskOrder] = React.useState(null); // null = natural order, else array of ids
   const dragTaskRef = React.useRef(null);
+  const gridExportRef = React.useRef(null);
+  const [gridExporting, setGridExporting] = useState(false);
+  const downloadGrid = async (as) => {
+    if (!gridExportRef.current || !window.html2canvas) return;
+    setGridExporting(true);
+    try {
+      const canvas = await window.html2canvas(gridExportRef.current, {backgroundColor:"#ffffff", scale:2, useCORS:true});
+      const filename = `${(project.title||"grid").replace(/[^a-z0-9]+/gi,"_")}_grid`;
+      if (as === "pdf") {
+        const jsPDFCtor = window.jspdf?.jsPDF;
+        if (!jsPDFCtor) return;
+        const imgData = canvas.toDataURL("image/jpeg", 0.92);
+        // Fit the full grid onto one page at its own aspect ratio, rather
+        // than a fixed A4 that would crop or leave dead space either way.
+        const pdf = new jsPDFCtor({orientation: canvas.width>canvas.height?"l":"p", unit:"px", format:[canvas.width, canvas.height]});
+        pdf.addImage(imgData, "JPEG", 0, 0, canvas.width, canvas.height);
+        pdf.save(`${filename}.pdf`);
+      } else {
+        const link = document.createElement("a");
+        link.href = canvas.toDataURL("image/png");
+        link.download = `${filename}.png`;
+        link.click();
+      }
+    } finally {
+      setGridExporting(false);
+    }
+  };
 
   const projectPosts = posts.filter(p=>p.project_id===project.id);
   // Natural (no custom drag order) sort: unpublished/upcoming posts first in
@@ -17074,8 +17101,14 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
             <KanbanView posts={projectPosts} project={project} team={team} onPostClick={onPostClick} onStageChange={onStageChange}/>
           ) : viewMode==="grid" ? (
             <div>
-              <p style={{fontSize:12,color:"var(--text3)",marginBottom:10}}>Drag cards to reorder the publishing schedule — same order as List view.</p>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(3, 1fr)",gap:3}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginBottom:10}}>
+                <p style={{fontSize:12,color:"var(--text3)"}}>Drag cards to reorder the publishing schedule — same order as List view.</p>
+                <div style={{display:"flex",gap:6}}>
+                  <button disabled={gridExporting} onClick={()=>downloadGrid("png")} style={{padding:"5px 12px",borderRadius:20,fontSize:11,fontWeight:600,border:"1px solid var(--border)",cursor:gridExporting?"default":"pointer",background:"var(--surface2)",color:"var(--text2)",opacity:gridExporting?0.6:1}}>{gridExporting?"Exporting…":"Download PNG"}</button>
+                  <button disabled={gridExporting} onClick={()=>downloadGrid("pdf")} style={{padding:"5px 12px",borderRadius:20,fontSize:11,fontWeight:600,border:"1px solid var(--border)",cursor:gridExporting?"default":"pointer",background:"var(--surface2)",color:"var(--text2)",opacity:gridExporting?0.6:1}}>{gridExporting?"Exporting…":"Download PDF"}</button>
+                </div>
+              </div>
+              <div ref={gridExportRef} style={{display:"grid",gridTemplateColumns:"repeat(3, 1fr)",gap:3}}>
                 {(()=>{
                   const gridOrdered = taskOrder ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort(postSortCmp);
                   return gridOrdered.map(post=>{
