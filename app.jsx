@@ -16876,7 +16876,19 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
     if (!gridExportRef.current || !window.html2canvas) return;
     setGridExporting(true);
     try {
-      const canvas = await window.html2canvas(gridExportRef.current, {backgroundColor:"#ffffff", scale:2, useCORS:true});
+      // html2canvas positions cloned nodes using their on-page coordinates —
+      // without compensating for however far the page happens to be
+      // scrolled, absolutely-positioned children (the date/status/platform
+      // label overlays) of any card outside the current viewport land in
+      // the wrong spot in the clone and simply don't render. scrollY/scrollX
+      // + explicit window size makes it capture the full off-screen element
+      // correctly regardless of scroll position.
+      const canvas = await window.html2canvas(gridExportRef.current, {
+        backgroundColor:"#ffffff", scale:2, useCORS:true,
+        scrollX:0, scrollY:-window.scrollY,
+        windowWidth: document.documentElement.scrollWidth,
+        windowHeight: document.documentElement.scrollHeight,
+      });
       const filename = `${(project.title||"grid").replace(/[^a-z0-9]+/gi,"_")}_grid`;
       if (as === "pdf") {
         const jsPDFCtor = window.jspdf?.jsPDF;
