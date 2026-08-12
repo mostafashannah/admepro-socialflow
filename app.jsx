@@ -17060,10 +17060,16 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                         full portrait/landscape image actually reads clearly
                         instead of the old cramped 150px thumbnail strip. */}
                     {thumbUrl ? (
-                      <div style={{position:"relative",width:isMobile?"100%":420,minWidth:isMobile?"100%":420,height:isMobile?320:440,background:"var(--surface2)",flexShrink:0}}>
+                      // No fixed height here — a forced box around an
+                      // object-fit:contain image just letterboxes into dead
+                      // space whenever the image's own aspect ratio doesn't
+                      // match it. Sizing to the image's natural aspect
+                      // ratio instead means it always fills the box exactly,
+                      // no gap, no crop.
+                      <div style={{width:isMobile?"100%":420,minWidth:isMobile?"100%":420,maxHeight:520,overflow:"hidden",flexShrink:0,display:"flex",alignItems:"center"}}>
                         {thumbIsVideo
-                          ? <video src={thumbUrl} controls playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
-                          : <img src={thumbUrl} alt={post.title} style={{width:"100%",height:"100%",objectFit:"contain"}}/>}
+                          ? <video src={thumbUrl} controls playsInline preload="metadata" style={{width:"100%",height:"auto",maxHeight:520,display:"block"}}/>
+                          : <img src={thumbUrl} alt={post.title} style={{width:"100%",height:"auto",maxHeight:520,display:"block",objectFit:"cover"}}/>}
                       </div>
                     ) : (
                       <div style={{width:isMobile?"100%":420,minWidth:isMobile?"100%":420,height:isMobile?200:440,background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text3)",fontSize:13,flexShrink:0}}>No media yet</div>
