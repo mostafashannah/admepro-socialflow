@@ -17101,6 +17101,10 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                         ) : (
                           <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text3)",fontSize:11,textAlign:"center",padding:8}}>{post.title}</div>
                         )}
+                        <div style={{position:"absolute",left:0,right:0,bottom:0,padding:"18px 8px 6px",background:"linear-gradient(to top, rgba(0,0,0,.75), transparent)",display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,pointerEvents:"none"}}>
+                          <span style={{fontSize:11,fontWeight:600,color:"#fff",textShadow:"0 1px 2px rgba(0,0,0,.6)"}}>{post.scheduled_date||"No date"}</span>
+                          <span style={{fontSize:10,fontWeight:700,color:"#fff",padding:"2px 7px",borderRadius:20,background:post.stage==="published"?"#10b981":"rgba(255,255,255,.22)",whiteSpace:"nowrap"}}>{post.stage==="published"?"Published":"Unpublished"}</span>
+                        </div>
                       </div>
                     );
                   });
