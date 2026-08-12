@@ -2025,6 +2025,7 @@ const DEFAULT_NOTIF_PREFS = {
   client_approval_required: true,
   post_approved: true,
   post_rejected: true,
+  task_sent_back: true,
   // Finance events
   invoice_created: true,
   payment_received: true,
@@ -46563,6 +46564,21 @@ Return ONLY valid JSON (no markdown, no explanation):
           const created = r.entities?.[0];
           if(created && !created._saveError) setData(d=>({...d, perfLogs:[...(d.perfLogs||[]), created]}));
         }).catch(()=>{});
+        // Being sent backward used to only log a performance record — the
+        // person it landed on had no actual notification telling them a
+        // task came BACK for revision, distinct from a normal "assigned to
+        // you" (which reads like brand-new work, not a return).
+        const returnee = data.team.find(m=>m.email===returnEmail);
+        if(returnee && returnEmail !== currentUser?.email) {
+          const returnPrefs = getNotifPrefs(returnEmail);
+          sendNotification("task_sent_back", returnEmail,
+            `[SocialFlow] Sent back for revision: ${post.title}`,
+            `<div style="font-family:sans-serif;font-size:14px;color:#111827;line-height:1.6">` +
+            `<p>"${post.title}"${post.client_name?` (${post.client_name})`:""} was sent back to ${STAGE_MAP[newStage]?.label||newStage} for revision${post.rejection_reason?`:</p><p style="color:#555">${post.rejection_reason}</p><p>`:"."}</p>` +
+            `<p>Log in to SocialFlow to see the details.</p></div>`,
+            returnPrefs, returnee.whatsapp_number||null
+          ).catch(()=>{});
+        }
       }
     }
 
@@ -46817,7 +46833,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         sendNotification("task_mention", mentioned.email,
           `[SocialFlow] ${user?.name||"Someone"} mentioned you`,
           EMAIL_TEMPLATES.mentionNotification(mentioned.name, user?.name||"A colleague", postTitle, content.slice(0,200), project?.title||""),
-          prefs
+          prefs, mentioned.whatsapp_number||null
         ).catch(()=>{});
       }
     }
@@ -46829,7 +46845,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         sendNotification("task_comment", assigneeMember.email,
           `[SocialFlow] New comment on: ${post.title}`,
           EMAIL_TEMPLATES.commentAdded(assigneeMember.name, user?.name||"A colleague", post.title, content.slice(0,200), project?.title||""),
-          prefs
+          prefs, assigneeMember.whatsapp_number||null
         ).catch(()=>{});
       }
     }
@@ -46850,7 +46866,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         sendNotification("task_comment", participant.email,
           `[SocialFlow] New comment on: ${postTitle}`,
           EMAIL_TEMPLATES.commentAdded(participant.name, user?.name||"A colleague", postTitle, content.slice(0,200), project?.title||""),
-          prefs
+          prefs, participant.whatsapp_number||null
         ).catch(()=>{});
       }
     }
