@@ -17002,11 +17002,11 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
       const objective = ci?.content_preferences || ci?.summary || overview;
       const brief = project.description || overview;
 
-      // Small brand mark bottom-right on every slide.
+      // Small brand mark bottom-right on every slide — Light Mode Logo,
+      // unconditionally, on every slide including the dark Thank You one.
       const lightLogoData = await imgToDataURL(brandingAssets?.light_logo || brandingAssets?.primary_logo || "");
-      const darkLogoData = await imgToDataURL(brandingAssets?.dark_logo || brandingAssets?.primary_logo || "");
-      const stampFooterLogo = async (onDark) => {
-        const data = onDark ? (darkLogoData||lightLogoData) : (lightLogoData||darkLogoData);
+      const stampFooterLogo = async () => {
+        const data = lightLogoData;
         if (!data) return;
         try {
           const dims = await new Promise((resolve,reject)=>{ const im=new Image(); im.onload=()=>resolve({w:im.width,h:im.height}); im.onerror=reject; im.src=data; });
@@ -17026,7 +17026,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
       }
       pdf.setFontSize(22); pdf.setFont(undefined,"bold"); pdf.setTextColor("#111827");
       pdf.text(project.title||"Content Calendar", W/2, H/2+130, {align:"center"});
-      await stampFooterLogo(false);
+      await stampFooterLogo();
 
       // ── Slide 2: client + calendar details ──
       pdf.addPage([W,H],"l");
@@ -17048,7 +17048,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
         pdf.text(label.toUpperCase(), M, y);
         y = addWrapped(M, y+18, W-M*2, val, 14) + 14;
       });
-      await stampFooterLogo(false);
+      await stampFooterLogo();
 
       // ── Slide 3: full grid screenshot ──
       pdf.addPage([W,H],"l");
@@ -17067,7 +17067,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
       } finally {
         statusBadges.forEach(el => { el.style.visibility = ""; });
       }
-      await stampFooterLogo(false);
+      await stampFooterLogo();
 
       // ── One slide per post ──
       for (const post of orderedPosts) {
@@ -17108,15 +17108,15 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
         if (post.caption) block("Caption", post.caption);
         if (post.hashtags) block("Hashtags", post.hashtags);
         block("Stage", STAGE_MAP[post.stage]?.label || post.stage);
-        await stampFooterLogo(false);
+        await stampFooterLogo();
       }
 
       // ── Final slide: Thank You ──
       pdf.addPage([W,H],"l");
-      pdf.setFillColor(brand); pdf.rect(0,0,W,H,"F");
+      pdf.setFillColor("#000000"); pdf.rect(0,0,W,H,"F");
       pdf.setFontSize(34); pdf.setFont(undefined,"bold"); pdf.setTextColor("#ffffff");
       pdf.text("Thank You", W/2, H/2, {align:"center"});
-      await stampFooterLogo(true);
+      await stampFooterLogo();
 
       pdf.save(`${(project.title||"calendar").replace(/[^a-z0-9]+/gi,"_")}_full_calendar.pdf`);
     } finally {
