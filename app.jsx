@@ -34987,7 +34987,8 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
                 )}
                 {/* Content */}
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+                    {post.client_name && <Badge label={post.client_name} color="#8b5cf6"/>}
                     <Badge label={post.platform} color={PLT_COLOR[post.platform]}/>
                     <Badge label={stage.label} color={stage.color}/>
                     <Badge label={post.priority} color={PRI_COLOR[post.priority]} xs/>
