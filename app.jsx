@@ -16875,6 +16875,12 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
   const downloadGrid = async (as) => {
     if (!gridExportRef.current || !window.html2canvas) return;
     setGridExporting(true);
+    // Hide the Published/Unpublished badge for the exported file only — it's
+    // a live-status indicator useful while working in the app, not something
+    // that belongs on a board handed to a client. Toggled on the real DOM
+    // nodes (not React state) so the on-screen grid is completely unaffected.
+    const statusBadges = gridExportRef.current.querySelectorAll(".sf-grid-status-badge");
+    statusBadges.forEach(el => { el.style.visibility = "hidden"; });
     try {
       // html2canvas positions cloned nodes using their on-page coordinates —
       // without compensating for however far the page happens to be
@@ -16906,6 +16912,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
         link.click();
       }
     } finally {
+      statusBadges.forEach(el => { el.style.visibility = ""; });
       setGridExporting(false);
     }
   };
@@ -17184,7 +17191,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                         )}
                         <div style={{position:"absolute",top:0,left:0,right:0,padding:"8px 8px 24px",background:"linear-gradient(to bottom, rgba(0,0,0,.75), transparent)",display:"flex",flexDirection:"column",alignItems:"flex-start",gap:4,pointerEvents:"none"}}>
                           <span style={{fontSize:14,fontWeight:700,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,.7)"}}>{post.scheduled_date||"No date"}</span>
-                          <span style={{fontSize:12,fontWeight:700,lineHeight:1,color:"#fff",padding:"5px 9px 4px",borderRadius:20,background:post.stage==="published"?"#10b981":"rgba(255,255,255,.28)",whiteSpace:"nowrap",display:"inline-block"}}>{post.stage==="published"?"Published":"Unpublished"}</span>
+                          <span className="sf-grid-status-badge" style={{fontSize:12,fontWeight:700,lineHeight:1,color:"#fff",padding:"5px 9px 4px",borderRadius:20,background:post.stage==="published"?"#10b981":"rgba(255,255,255,.28)",whiteSpace:"nowrap",display:"inline-block"}}>{post.stage==="published"?"Published":"Unpublished"}</span>
                         </div>
                         <div style={{position:"absolute",top:8,right:8,display:"flex",flexWrap:"wrap",justifyContent:"flex-end",gap:4,pointerEvents:"none"}}>
                           {(()=>{
