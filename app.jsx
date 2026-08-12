@@ -16869,6 +16869,15 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
   const dragTaskRef = React.useRef(null);
 
   const projectPosts = posts.filter(p=>p.project_id===project.id);
+  // Natural (no custom drag order) sort: unpublished/upcoming posts first in
+  // chronological order, published posts always trail at the end (also
+  // chronological among themselves) — a post that already went out shouldn't
+  // sit ahead of what's still upcoming in the schedule.
+  const postSortCmp = (a,b) => {
+    const aPub = a.stage==="published" ? 1 : 0, bPub = b.stage==="published" ? 1 : 0;
+    if (aPub !== bPub) return aPub - bPub;
+    return (a.scheduled_date||"").localeCompare(b.scheduled_date||"");
+  };
   const projType = PROJECT_TYPES.find(t=>t.id===project.project_type)||PROJECT_TYPES[0];
   const stageOrder = ["planning","content","design","review","approval","scheduled","published"];
   const stageCounts = stageOrder.reduce((a,s)=>({...a,[s]:projectPosts.filter(p=>p.stage===s).length}),{});
@@ -17061,7 +17070,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
               <p style={{fontSize:12,color:"var(--text3)",marginBottom:10}}>Drag cards to reorder the publishing schedule — same order as List view.</p>
               <div style={{display:"grid",gridTemplateColumns:"repeat(3, 1fr)",gap:3}}>
                 {(()=>{
-                  const gridOrdered = taskOrder ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort((a,b)=>(a.scheduled_date||"").localeCompare(b.scheduled_date||""));
+                  const gridOrdered = taskOrder ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort(postSortCmp);
                   return gridOrdered.map(post=>{
                     const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
                     const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
@@ -17081,7 +17090,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                           e.preventDefault();
                           const fromId = dragTaskRef.current;
                           if(!fromId || fromId===post.id) return;
-                          const base = taskOrder ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort((a,b)=>(a.scheduled_date||"").localeCompare(b.scheduled_date||""));
+                          const base = taskOrder ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort(postSortCmp);
                           const ids = base.map(p=>p.id);
                           const fromIdx = ids.indexOf(fromId);
                           const toIdx = ids.indexOf(post.id);
@@ -17133,7 +17142,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
             </div>
           ) : viewMode==="cards" ? (
             <div style={{display:"flex",flexDirection:"column",gap:16}}>
-              {[...projectPosts].sort((a,b)=>(a.scheduled_date||"").localeCompare(b.scheduled_date||"")).map(post=>{
+              {[...projectPosts].sort(postSortCmp).map(post=>{
                 const stageInfo = STAGE_MAP[post.stage]||{label:post.stage,color:"#888"};
                 const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
                 const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
@@ -17197,7 +17206,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
           ) : (
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {(()=>{
-              const ordered = taskOrder ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort((a,b)=>(a.scheduled_date||"").localeCompare(b.scheduled_date||""));
+              const ordered = taskOrder ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort(postSortCmp);
               return ordered.map((post,idx)=>{
               const stageInfo = STAGE_MAP[post.stage]||{label:post.stage,color:"#888"};
               const assignee = team.find(m=>m.email===post.assigned_to);
@@ -17210,7 +17219,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                     e.preventDefault();
                     const fromId = dragTaskRef.current;
                     if(!fromId || fromId===post.id) return;
-                    const base = taskOrder ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort((a,b)=>(a.scheduled_date||"").localeCompare(b.scheduled_date||""));
+                    const base = taskOrder ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort(postSortCmp);
                     const ids = base.map(p=>p.id);
                     const fromIdx = ids.indexOf(fromId);
                     const toIdx = ids.indexOf(post.id);
