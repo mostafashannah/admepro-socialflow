@@ -17116,7 +17116,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                 const thumbUrl = designUrls[designUrls.length-1] || designAssets[designAssets.length-1]?.url || post.carousel_cover || "";
                 const thumbIsVideo = (designAssets[designAssets.length-1]?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i);
                 return (
-                  <div key={post.id} onClick={()=>onPostClick&&onPostClick(post)} style={{background:"var(--surface1)",borderRadius:14,border:"1px solid var(--border)",overflow:"hidden",cursor:"pointer",display:"flex",flexDirection:isMobile?"column":"row",width:"100%"}}>
+                  <div key={post.id} onClick={()=>onPostClick&&onPostClick(post)} style={{background:"var(--surface1)",borderRadius:14,border:"1px solid var(--border)",overflow:"hidden",cursor:"pointer",display:"flex",flexDirection:isMobile?"column":"row",width:"100%",maxHeight:isMobile?"none":520}}>
                     {/* Media at full size — object-fit:contain (not cover)
                         so nothing gets cropped, in a tall enough box that a
                         full portrait/landscape image actually reads clearly
@@ -17136,7 +17136,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                     ) : (
                       <div style={{width:isMobile?"100%":420,minWidth:isMobile?"100%":420,height:isMobile?200:440,background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text3)",fontSize:13,flexShrink:0}}>No media yet</div>
                     )}
-                    <div style={{padding:20,display:"flex",flexDirection:"column",gap:12,flex:1,minWidth:0}}>
+                    <div style={{padding:20,display:"flex",flexDirection:"column",gap:12,flex:1,minWidth:0,overflowY:isMobile?"visible":"auto",maxHeight:isMobile?"none":520}}>
                       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
                         <span style={{fontWeight:700,fontSize:17,color:"var(--text1)"}}>{post.title}</span>
                         <span style={{background:stageInfo.color+"22",color:stageInfo.color,borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:600,flexShrink:0,whiteSpace:"nowrap"}}>{stageInfo.label}</span>
