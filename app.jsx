@@ -454,6 +454,7 @@ const SOCIAL_POST_TYPES = new Set([...POST_TYPES, "social_post", "story_reel", "
 const PRIORITIES = ["low","medium","high","urgent"];
 
 const PLT_COLOR = { instagram:"#e1306c", facebook:"#1877f2", linkedin:"#0a66c2", tiktok:"#69c9d0", twitter:"#1da1f2" };
+const PLT_ABBR = { instagram:"IG", facebook:"FB", linkedin:"IN", tiktok:"TT", twitter:"X" };
 const PLT_ICON = { instagram:"IG", facebook:"FB", linkedin:"IN", tiktok:"TK", twitter:"X" };
 const PRI_COLOR = { low:"#6b7280", medium:"#3b82f6", high:"#f59e0b", urgent:"#ef4444" };
 const STAGE_MAP = Object.fromEntries(STAGES.map(s=>[s.key,s]));
@@ -17139,14 +17140,14 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                         <div style={{position:"absolute",top:0,left:0,right:0,padding:"8px 8px 24px",background:"linear-gradient(to bottom, rgba(0,0,0,.75), transparent)",display:"flex",flexDirection:"column",alignItems:"flex-start",gap:4,pointerEvents:"none"}}>
                           <span style={{fontSize:14,fontWeight:700,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,.7)"}}>{post.scheduled_date||"No date"}</span>
                           <span style={{fontSize:12,fontWeight:700,color:"#fff",padding:"3px 9px",borderRadius:20,background:post.stage==="published"?"#10b981":"rgba(255,255,255,.28)",whiteSpace:"nowrap"}}>{post.stage==="published"?"Published":"Unpublished"}</span>
-                          <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
-                            {(()=>{
-                              const plts = Array.isArray(post.platforms) ? post.platforms : parseJ(post.platforms||"[]");
-                              return (plts.length ? plts : [post.platform]).filter(Boolean);
-                            })().map(plt=>(
-                              <span key={plt} style={{fontSize:10,fontWeight:700,color:"#fff",padding:"2px 7px",borderRadius:20,background:(PLT_COLOR[plt]||"#6b7280")+"cc",textTransform:"capitalize",whiteSpace:"nowrap"}}>{plt}</span>
-                            ))}
-                          </div>
+                        </div>
+                        <div style={{position:"absolute",top:8,right:8,display:"flex",flexWrap:"wrap",justifyContent:"flex-end",gap:4,pointerEvents:"none"}}>
+                          {(()=>{
+                            const plts = Array.isArray(post.platforms) ? post.platforms : parseJ(post.platforms||"[]");
+                            return (plts.length ? plts : [post.platform]).filter(Boolean);
+                          })().map(plt=>(
+                            <span key={plt} style={{fontSize:10,fontWeight:800,color:"#fff",width:22,height:22,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",background:(PLT_COLOR[plt]||"#6b7280")+"e6",textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>{PLT_ABBR[plt]||(plt||"").slice(0,2).toUpperCase()}</span>
+                          ))}
                         </div>
                       </div>
                     );
