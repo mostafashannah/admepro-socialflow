@@ -34801,7 +34801,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
   const {isMobile} = useResponsive();
   const [filterStage, setFilterStage] = useState(null);
   const [myView, setMyView] = usePersistentState("sf_my_tasks_view","kanban");
-  const [groupByClient, setGroupByClient] = usePersistentState("sf_my_tasks_group_client", false);
+  const [groupByClient, setGroupByClient] = usePersistentState("sf_my_tasks_group_client", true);
   const [collapsedClients, setCollapsedClients] = useState(new Set());
   // Only admin/AM can send work to Client Approval or Scheduled — same
   // gate PostDetail's stage buttons already enforce; this quick "Move to
