@@ -16873,10 +16873,14 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
   // chronological order, published posts always trail at the end (also
   // chronological among themselves) — a post that already went out shouldn't
   // sit ahead of what's still upcoming in the schedule.
+  // Newest publish date first, oldest last — across every post regardless
+  // of published/unpublished status. Posts with no date at all sort to
+  // the very end, after every dated post.
   const postSortCmp = (a,b) => {
-    const aPub = a.stage==="published" ? 1 : 0, bPub = b.stage==="published" ? 1 : 0;
-    if (aPub !== bPub) return aPub - bPub;
-    return (a.scheduled_date||"").localeCompare(b.scheduled_date||"");
+    if (!a.scheduled_date && !b.scheduled_date) return 0;
+    if (!a.scheduled_date) return 1;
+    if (!b.scheduled_date) return -1;
+    return b.scheduled_date.localeCompare(a.scheduled_date);
   };
   const projType = PROJECT_TYPES.find(t=>t.id===project.project_type)||PROJECT_TYPES[0];
   const stageOrder = ["planning","content","design","review","approval","scheduled","published"];
