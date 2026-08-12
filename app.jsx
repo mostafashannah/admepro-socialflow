@@ -5279,7 +5279,7 @@ function DesignFilePicker({post, assets, onAddAsset, project, onStageChange}) {
 // Design assets grid — its own component (rather than inline JSX in
 // PostDetail) purely so it can hold its own per-asset "upscaling" state
 // without adding more hooks to PostDetail's own hook list.
-function DesignAssetGrid({post, onStageChange, onView}) {
+function DesignAssetGrid({post, onStageChange, onView, onRemove}) {
   const [upscalingIdx, setUpscalingIdx] = useState(null);
   const [err, setErr] = useState("");
   const [dragIdx, setDragIdx] = useState(null);
@@ -5343,6 +5343,7 @@ function DesignAssetGrid({post, onStageChange, onView}) {
                   : <a href={asset.url} target="_blank" rel="noreferrer" style={{fontSize:9,color:"var(--accent)"}}>View</a>)}
               </div>}
               <button onClick={()=>{
+                if(onRemove) { onRemove(asset, i); return; }
                 const newAssets = post.design_assets.filter((_,idx)=>idx!==i);
                 onStageChange({...post,design_assets:newAssets},post.stage);
               }} style={{position:"absolute",top:3,right:3,width:20,height:20,borderRadius:99,background:"#ef4444",border:"none",color:"#fff",cursor:"pointer",fontSize:12,fontWeight:700,padding:0,lineHeight:"20px"}}>×</button>
@@ -6046,6 +6047,26 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
     setPublishing(false);
   };
 
+  // Removing a design asset used to just filter it out of design_assets —
+  // a comment that had mirrored the same file in (see sendComment's
+  // "Mirroring it into design_assets" comment) kept showing it forever,
+  // since the two copies had no link back to each other, and nothing in
+  // the Activity log actually said an attachment was removed (the next
+  // real log entry, e.g. a stage change, just looked like it came right
+  // after the file was still there). Now also clears it from any comment
+  // that carried it, and posts an explicit system note.
+  const handleRemoveDesignAsset = (asset, i) => {
+    const newAssets = post.design_assets.filter((_,idx)=>idx!==i);
+    onStageChange({...post,design_assets:newAssets},post.stage);
+    const assetUrl = asset.url||asset.data;
+    if(assetUrl) {
+      (comments||[]).filter(c=>c.post_id===post.id && c.file_url===assetUrl).forEach(c=>{
+        ue("Comment", c.id, {file_url:null, file_name:null, file_type:null}).catch(()=>{});
+      });
+    }
+    if(onAddComment) onAddComment(post.id, `🗑️ Removed attachment${asset.name?`: ${asset.name}`:""}`, currentUser, null, "internal");
+  };
+
   const [commentAttachments, setCommentAttachments] = useState([]); // any number of files
   const [attaching, setAttaching] = useState(false);
   const [dragOverComment, setDragOverComment] = useState(false);
@@ -6582,7 +6603,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
         {(post.stage==="content_creation" || isManager || (post.design_assets||[]).length>0)&&(
           <div style={{display:"flex",flexDirection:"column",gap:12,padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
             <h4 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:14}}>Attachments</h4>
-            <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage}/>
+            <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage} onRemove={handleRemoveDesignAsset}/>
             {(post.stage==="content_creation"||isManager)&&(
               <>
                 <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>
@@ -6699,7 +6720,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
             </div>
 
             {/* Display existing assets */}
-            <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage}/>
+            <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage} onRemove={handleRemoveDesignAsset}/>
 
             {/* File picker — choose from assets or upload new */}
             <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>
