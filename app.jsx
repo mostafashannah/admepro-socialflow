@@ -34802,6 +34802,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
   const [filterStage, setFilterStage] = useState(null);
   const [myView, setMyView] = usePersistentState("sf_my_tasks_view","kanban");
   const [groupByClient, setGroupByClient] = usePersistentState("sf_my_tasks_group_client", false);
+  const [collapsedClients, setCollapsedClients] = useState(new Set());
   // Only admin/AM can send work to Client Approval or Scheduled — same
   // gate PostDetail's stage buttons already enforce; this quick "Move to
   // X" button on My Tasks was missing it entirely, letting anyone push
@@ -34963,15 +34964,9 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
           <p style={{fontSize:13,marginTop:4}}>{filterStage ? `No tasks in ${STAGE_MAP[filterStage].label}` : "You have no assigned tasks"}</p>
         </div>
       ) : (
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <div style={{display:"flex",flexDirection:"column",gap:groupByClient?16:12}}>
           {(() => {
-            const listPosts = groupByClient
-              ? [...filteredPosts].sort((a,b)=>(a.client_name||"zzz").localeCompare(b.client_name||"zzz"))
-              : filteredPosts;
-            let lastClient = null;
-            return listPosts.map(post=>{
-            const showClientHeader = groupByClient && post.client_name !== lastClient;
-            lastClient = post.client_name;
+            const renderCard = post => {
             const stage = STAGE_MAP[post.stage];
             const project = projects.find(p => p.id === post.project_id);
             const nextStage = nextStageFor(post);
@@ -34982,11 +34977,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
             const thumbIsVideo = (lastDesignAsset?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i);
 
             return (
-              <React.Fragment key={post.id}>
-              {showClientHeader && (
-                <p style={{fontSize:13,fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:"0.04em",margin:post===listPosts[0]?"0 0 -4px":"14px 0 -4px"}}>{post.client_name || "No Client"}</p>
-              )}
-              <div style={{background:"var(--surface)",border:`1px solid ${stage.color}44`,borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"row",gap:14,alignItems:"flex-start",cursor:"pointer",transition:"border-color 0.15s"}}
+              <div key={post.id} style={{background:"var(--surface)",border:`1px solid ${stage.color}44`,borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"row",gap:14,alignItems:"flex-start",cursor:"pointer",transition:"border-color 0.15s"}}
                 onClick={()=>onPostClick&&onPostClick(post)}
                 onMouseEnter={e=>e.currentTarget.style.borderColor=stage.color}
                 onMouseLeave={e=>e.currentTarget.style.borderColor=stage.color+"44"}>
@@ -35007,7 +34998,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
                 {/* Content */}
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
-                    {post.client_name && <Badge label={post.client_name} color="#8b5cf6"/>}
+                    {!groupByClient && post.client_name && <Badge label={post.client_name} color="#8b5cf6"/>}
                     <Badge label={post.platform} color={PLT_COLOR[post.platform]}/>
                     <Badge label={stage.label} color={stage.color}/>
                     <Badge label={post.priority} color={PRI_COLOR[post.priority]} xs/>
@@ -35043,8 +35034,39 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
                   </button>
                 )}
               </div>
-              </React.Fragment>
             );
+            };
+
+            if (!groupByClient) return filteredPosts.map(renderCard);
+
+            const groups = new Map();
+            filteredPosts.forEach(post => {
+              const key = post.client_name || "No Client";
+              if (!groups.has(key)) groups.set(key, []);
+              groups.get(key).push(post);
+            });
+            const sortedClients = [...groups.keys()].sort((a,b)=>a.localeCompare(b));
+
+            return sortedClients.map(clientName => {
+              const clientPosts = groups.get(clientName);
+              const isCollapsed = collapsedClients.has(clientName);
+              return (
+                <div key={clientName} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:"var(--r)",padding:14,display:"flex",flexDirection:"column",gap:isCollapsed?0:12}}>
+                  <div onClick={()=>setCollapsedClients(s=>{const n=new Set(s); n.has(clientName)?n.delete(clientName):n.add(clientName); return n;})}
+                    style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <span style={{fontSize:14,fontWeight:800,color:"var(--text1)"}}>{clientName}</span>
+                      <span style={{fontSize:11,fontWeight:700,color:"var(--text3)",background:"var(--surface)",borderRadius:20,padding:"2px 9px"}}>{clientPosts.length}</span>
+                    </div>
+                    <Ico d={Icons.chevD} size={16} stroke="var(--text3)" style={{transform:isCollapsed?"rotate(-90deg)":"none",transition:"transform 0.15s"}}/>
+                  </div>
+                  {!isCollapsed && (
+                    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                      {clientPosts.map(renderCard)}
+                    </div>
+                  )}
+                </div>
+              );
             });
           })()}
         </div>
