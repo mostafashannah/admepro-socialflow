@@ -17090,10 +17090,10 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                           dragTaskRef.current=null;
                         }}
                         onClick={()=>onPostClick&&onPostClick(post)}
-                        // 1350×1080 = 5:4 — every cell locked to that ratio,
-                        // filled edge-to-edge (cover), same as an Instagram
-                        // grid where every post crops uniformly into place.
-                        style={{position:"relative",aspectRatio:"1350/1080",background:"var(--surface2)",overflow:"hidden",cursor:"grab"}}>
+                        // 3:4 — every cell locked to that ratio, filled
+                        // edge-to-edge (cover), same as an Instagram grid
+                        // where every post crops uniformly into place.
+                        style={{position:"relative",aspectRatio:"3/4",background:"var(--surface2)",overflow:"hidden",cursor:"grab"}}>
                         {thumbUrl ? (
                           thumbIsVideo
                             ? <video src={thumbUrl+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
