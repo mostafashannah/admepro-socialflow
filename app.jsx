@@ -17184,14 +17184,14 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                         )}
                         <div style={{position:"absolute",top:0,left:0,right:0,padding:"8px 8px 24px",background:"linear-gradient(to bottom, rgba(0,0,0,.75), transparent)",display:"flex",flexDirection:"column",alignItems:"flex-start",gap:4,pointerEvents:"none"}}>
                           <span style={{fontSize:14,fontWeight:700,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,.7)"}}>{post.scheduled_date||"No date"}</span>
-                          <span style={{fontSize:12,fontWeight:700,color:"#fff",padding:"3px 9px",borderRadius:20,background:post.stage==="published"?"#10b981":"rgba(255,255,255,.28)",whiteSpace:"nowrap"}}>{post.stage==="published"?"Published":"Unpublished"}</span>
+                          <span style={{fontSize:12,fontWeight:700,lineHeight:1,color:"#fff",padding:"5px 9px 4px",borderRadius:20,background:post.stage==="published"?"#10b981":"rgba(255,255,255,.28)",whiteSpace:"nowrap",display:"inline-block"}}>{post.stage==="published"?"Published":"Unpublished"}</span>
                         </div>
                         <div style={{position:"absolute",top:8,right:8,display:"flex",flexWrap:"wrap",justifyContent:"flex-end",gap:4,pointerEvents:"none"}}>
                           {(()=>{
                             const plts = Array.isArray(post.platforms) ? post.platforms : parseJ(post.platforms||"[]");
                             return (plts.length ? plts : [post.platform]).filter(Boolean);
                           })().map(plt=>(
-                            <span key={plt} style={{fontSize:10,fontWeight:800,color:"#fff",width:22,height:22,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",background:(PLT_COLOR[plt]||"#6b7280")+"e6",textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>{PLT_ABBR[plt]||(plt||"").slice(0,2).toUpperCase()}</span>
+                            <span key={plt} style={{fontSize:10,fontWeight:800,lineHeight:1,color:"#fff",width:22,height:22,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",background:(PLT_COLOR[plt]||"#6b7280")+"e6",textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>{PLT_ABBR[plt]||(plt||"").slice(0,2).toUpperCase()}</span>
                           ))}
                         </div>
                       </div>
