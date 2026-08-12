@@ -34801,6 +34801,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
   const {isMobile} = useResponsive();
   const [filterStage, setFilterStage] = useState(null);
   const [myView, setMyView] = usePersistentState("sf_my_tasks_view","kanban");
+  const [groupByClient, setGroupByClient] = usePersistentState("sf_my_tasks_group_client", false);
   // Only admin/AM can send work to Client Approval or Scheduled — same
   // gate PostDetail's stage buttons already enforce; this quick "Move to
   // X" button on My Tasks was missing it entirely, letting anyone push
@@ -34921,12 +34922,19 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
           <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:32,fontWeight:800,marginBottom:6}}>My Tasks</h1>
           <p style={{fontSize:13,color:"var(--text2)"}}>All posts assigned to you across the workflow</p>
         </div>
-        <div style={{display:"inline-flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",flexShrink:0}}>
-          {[["kanban",Icons.grid,"Kanban"],["list",Icons.list,"List"],["calendar",Icons.calendar,"Calendar"]].map(([v,ico,label])=>(
-            <button key={v} onClick={()=>setMyView(v)} title={label} style={{padding:"6px 12px",borderRadius:99,background:myView===v?"var(--accent)":"none",color:myView===v?"#fff":"var(--text2)",border:"none",display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:700,cursor:"pointer"}}>
-              <Ico d={ico} size={13}/> {label}
+        <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+          {myView==="list" && (
+            <button onClick={()=>setGroupByClient(g=>!g)} title="Group tasks by client" style={{padding:"6px 12px",borderRadius:99,background:groupByClient?"var(--accent)":"var(--surface2)",color:groupByClient?"#fff":"var(--text2)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              Group by Client
             </button>
-          ))}
+          )}
+          <div style={{display:"inline-flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)"}}>
+            {[["kanban",Icons.grid,"Kanban"],["list",Icons.list,"List"],["calendar",Icons.calendar,"Calendar"]].map(([v,ico,label])=>(
+              <button key={v} onClick={()=>setMyView(v)} title={label} style={{padding:"6px 12px",borderRadius:99,background:myView===v?"var(--accent)":"none",color:myView===v?"#fff":"var(--text2)",border:"none",display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                <Ico d={ico} size={13}/> {label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -34956,7 +34964,14 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
         </div>
       ) : (
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          {filteredPosts.map(post=>{
+          {(() => {
+            const listPosts = groupByClient
+              ? [...filteredPosts].sort((a,b)=>(a.client_name||"zzz").localeCompare(b.client_name||"zzz"))
+              : filteredPosts;
+            let lastClient = null;
+            return listPosts.map(post=>{
+            const showClientHeader = groupByClient && post.client_name !== lastClient;
+            lastClient = post.client_name;
             const stage = STAGE_MAP[post.stage];
             const project = projects.find(p => p.id === post.project_id);
             const nextStage = nextStageFor(post);
@@ -34967,7 +34982,11 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
             const thumbIsVideo = (lastDesignAsset?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i);
 
             return (
-              <div key={post.id} style={{background:"var(--surface)",border:`1px solid ${stage.color}44`,borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"row",gap:14,alignItems:"flex-start",cursor:"pointer",transition:"border-color 0.15s"}}
+              <React.Fragment key={post.id}>
+              {showClientHeader && (
+                <p style={{fontSize:13,fontWeight:800,color:"var(--text2)",textTransform:"uppercase",letterSpacing:"0.04em",margin:post===listPosts[0]?"0 0 -4px":"14px 0 -4px"}}>{post.client_name || "No Client"}</p>
+              )}
+              <div style={{background:"var(--surface)",border:`1px solid ${stage.color}44`,borderRadius:"var(--r)",padding:16,display:"flex",flexDirection:"row",gap:14,alignItems:"flex-start",cursor:"pointer",transition:"border-color 0.15s"}}
                 onClick={()=>onPostClick&&onPostClick(post)}
                 onMouseEnter={e=>e.currentTarget.style.borderColor=stage.color}
                 onMouseLeave={e=>e.currentTarget.style.borderColor=stage.color+"44"}>
@@ -35024,8 +35043,10 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
                   </button>
                 )}
               </div>
+              </React.Fragment>
             );
-          })}
+            });
+          })()}
         </div>
       ))}
     </div>
