@@ -16858,7 +16858,14 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
   // Plain state, not persisted — opening any project should always start on
   // Overview, not silently reopen to whatever tab was last viewed for it.
   const [tab, setTab] = useState("overview");
-  const [taskOrder, setTaskOrder] = React.useState(null); // null = natural order
+  // taskOrder used to double as both "which view is active" (via sentinel
+  // strings "kanban"/"cards") AND "the custom publishing order" (an array
+  // of ids) — fine for two modes, but broke down adding a third: the List
+  // branch's `taskOrder && taskOrder!=="kanban"` check would have treated
+  // the "cards"/"grid" sentinel strings as if they were an order array and
+  // tried to .map() over their characters. Split into its own state.
+  const [viewMode, setViewMode] = React.useState("list"); // list | kanban | cards | grid
+  const [taskOrder, setTaskOrder] = React.useState(null); // null = natural order, else array of ids
   const dragTaskRef = React.useRef(null);
 
   const projectPosts = posts.filter(p=>p.project_id===project.id);
@@ -17036,16 +17043,66 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
               <span style={{fontSize:12,color:"var(--text3)"}}>Drag rows to reorder publishing schedule</span>
               <div style={{display:"flex",gap:6}}>
-                <button onClick={()=>setTaskOrder(null)} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:taskOrder===null?"var(--accent)":"var(--surface2)",color:taskOrder===null?"#fff":"var(--text2)"}}>List</button>
-                <button onClick={()=>setTaskOrder("kanban")} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:taskOrder==="kanban"?"var(--accent)":"var(--surface2)",color:taskOrder==="kanban"?"#fff":"var(--text2)"}}>Kanban</button>
-                <button onClick={()=>setTaskOrder("cards")} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:taskOrder==="cards"?"var(--accent)":"var(--surface2)",color:taskOrder==="cards"?"#fff":"var(--text2)"}}>Cards</button>
+                <button onClick={()=>setViewMode("list")} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:viewMode==="list"?"var(--accent)":"var(--surface2)",color:viewMode==="list"?"#fff":"var(--text2)"}}>List</button>
+                <button onClick={()=>setViewMode("kanban")} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:viewMode==="kanban"?"var(--accent)":"var(--surface2)",color:viewMode==="kanban"?"#fff":"var(--text2)"}}>Kanban</button>
+                <button onClick={()=>setViewMode("cards")} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:viewMode==="cards"?"var(--accent)":"var(--surface2)",color:viewMode==="cards"?"#fff":"var(--text2)"}}>Cards</button>
+                <button onClick={()=>setViewMode("grid")} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:viewMode==="grid"?"var(--accent)":"var(--surface2)",color:viewMode==="grid"?"#fff":"var(--text2)"}}>Grid</button>
               </div>
             </div>
           )}
           {projectPosts.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--text3)"}}>No tasks yet.</div>}
-          {taskOrder==="kanban" ? (
+          {viewMode==="kanban" ? (
             <KanbanView posts={projectPosts} project={project} team={team} onPostClick={onPostClick} onStageChange={onStageChange}/>
-          ) : taskOrder==="cards" ? (
+          ) : viewMode==="grid" ? (
+            <div>
+              <p style={{fontSize:12,color:"var(--text3)",marginBottom:10}}>Drag cards to reorder the publishing schedule — same order as List view.</p>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3, 1fr)",gap:3}}>
+                {(()=>{
+                  const gridOrdered = taskOrder ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort((a,b)=>(a.scheduled_date||"").localeCompare(b.scheduled_date||""));
+                  return gridOrdered.map(post=>{
+                    const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
+                    const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
+                    const thumbUrl = designUrls[designUrls.length-1] || designAssets[designAssets.length-1]?.url || post.carousel_cover || "";
+                    const thumbIsVideo = (designAssets[designAssets.length-1]?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i);
+                    return (
+                      <div key={post.id}
+                        draggable
+                        onDragStart={e=>{dragTaskRef.current=post.id;e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",post.id);}}
+                        onDragOver={e=>e.preventDefault()}
+                        onDrop={e=>{
+                          e.preventDefault();
+                          const fromId = dragTaskRef.current;
+                          if(!fromId || fromId===post.id) return;
+                          const base = taskOrder ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort((a,b)=>(a.scheduled_date||"").localeCompare(b.scheduled_date||""));
+                          const ids = base.map(p=>p.id);
+                          const fromIdx = ids.indexOf(fromId);
+                          const toIdx = ids.indexOf(post.id);
+                          if(fromIdx<0||toIdx<0) return;
+                          const newIds = [...ids];
+                          newIds.splice(fromIdx,1);
+                          newIds.splice(toIdx,0,fromId);
+                          setTaskOrder(newIds);
+                          dragTaskRef.current=null;
+                        }}
+                        onClick={()=>onPostClick&&onPostClick(post)}
+                        // 1350×1080 = 5:4 — every cell locked to that ratio,
+                        // filled edge-to-edge (cover), same as an Instagram
+                        // grid where every post crops uniformly into place.
+                        style={{position:"relative",aspectRatio:"1350/1080",background:"var(--surface2)",overflow:"hidden",cursor:"grab"}}>
+                        {thumbUrl ? (
+                          thumbIsVideo
+                            ? <video src={thumbUrl+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                            : <img src={thumbUrl} alt={post.title} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                        ) : (
+                          <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text3)",fontSize:11,textAlign:"center",padding:8}}>{post.title}</div>
+                        )}
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          ) : viewMode==="cards" ? (
             <div style={{display:"flex",flexDirection:"column",gap:16}}>
               {[...projectPosts].sort((a,b)=>(a.scheduled_date||"").localeCompare(b.scheduled_date||"")).map(post=>{
                 const stageInfo = STAGE_MAP[post.stage]||{label:post.stage,color:"#888"};
@@ -17111,7 +17168,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
           ) : (
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {(()=>{
-              const ordered = taskOrder && taskOrder!=="kanban" ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort((a,b)=>(a.scheduled_date||"").localeCompare(b.scheduled_date||""));
+              const ordered = taskOrder ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort((a,b)=>(a.scheduled_date||"").localeCompare(b.scheduled_date||""));
               return ordered.map((post,idx)=>{
               const stageInfo = STAGE_MAP[post.stage]||{label:post.stage,color:"#888"};
               const assignee = team.find(m=>m.email===post.assigned_to);
@@ -17124,7 +17181,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                     e.preventDefault();
                     const fromId = dragTaskRef.current;
                     if(!fromId || fromId===post.id) return;
-                    const base = taskOrder && taskOrder!=="kanban" ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort((a,b)=>(a.scheduled_date||"").localeCompare(b.scheduled_date||""));
+                    const base = taskOrder ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort((a,b)=>(a.scheduled_date||"").localeCompare(b.scheduled_date||""));
                     const ids = base.map(p=>p.id);
                     const fromIdx = ids.indexOf(fromId);
                     const toIdx = ids.indexOf(post.id);
