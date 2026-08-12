@@ -17032,12 +17032,64 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
               <div style={{display:"flex",gap:6}}>
                 <button onClick={()=>setTaskOrder(null)} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:taskOrder===null?"var(--accent)":"var(--surface2)",color:taskOrder===null?"#fff":"var(--text2)"}}>List</button>
                 <button onClick={()=>setTaskOrder("kanban")} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:taskOrder==="kanban"?"var(--accent)":"var(--surface2)",color:taskOrder==="kanban"?"#fff":"var(--text2)"}}>Kanban</button>
+                <button onClick={()=>setTaskOrder("cards")} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:taskOrder==="cards"?"var(--accent)":"var(--surface2)",color:taskOrder==="cards"?"#fff":"var(--text2)"}}>Cards</button>
               </div>
             </div>
           )}
           {projectPosts.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--text3)"}}>No tasks yet.</div>}
           {taskOrder==="kanban" ? (
             <KanbanView posts={projectPosts} project={project} team={team} onPostClick={onPostClick} onStageChange={onStageChange}/>
+          ) : taskOrder==="cards" ? (
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+              {[...projectPosts].sort((a,b)=>(a.scheduled_date||"").localeCompare(b.scheduled_date||"")).map(post=>{
+                const stageInfo = STAGE_MAP[post.stage]||{label:post.stage,color:"#888"};
+                const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
+                const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
+                const thumbUrl = designUrls[designUrls.length-1] || designAssets[designAssets.length-1]?.url || post.carousel_cover || "";
+                const thumbIsVideo = (designAssets[designAssets.length-1]?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i);
+                return (
+                  <div key={post.id} onClick={()=>onPostClick&&onPostClick(post)} style={{background:"var(--surface1)",borderRadius:12,border:"1px solid var(--border)",overflow:"hidden",cursor:"pointer",display:"flex",flexDirection:"column"}}>
+                    {thumbUrl ? (
+                      <div style={{position:"relative",height:150,background:"var(--surface2)"}}>
+                        {thumbIsVideo
+                          ? <video src={thumbUrl+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                          : <img src={thumbUrl} alt={post.title} style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
+                      </div>
+                    ) : (
+                      <div style={{height:150,background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text3)",fontSize:12}}>No media yet</div>
+                    )}
+                    <div style={{padding:14,display:"flex",flexDirection:"column",gap:8,flex:1}}>
+                      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
+                        <span style={{fontWeight:700,fontSize:14,color:"var(--text1)"}}>{post.title}</span>
+                        <span style={{background:stageInfo.color+"22",color:stageInfo.color,borderRadius:6,padding:"3px 8px",fontSize:11,fontWeight:600,flexShrink:0,whiteSpace:"nowrap"}}>{stageInfo.label}</span>
+                      </div>
+                      {post.text_on_visual&&(
+                        <div>
+                          <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Text on Visual</p>
+                          <p style={{fontSize:12,color:"var(--text2)"}}>{post.text_on_visual}</p>
+                        </div>
+                      )}
+                      {post.caption&&(
+                        <div>
+                          <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Caption</p>
+                          <p style={{fontSize:12,color:"var(--text2)",lineHeight:1.5,display:"-webkit-box",WebkitLineClamp:4,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{post.caption}</p>
+                        </div>
+                      )}
+                      {post.hashtags&&(
+                        <div>
+                          <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Hashtags</p>
+                          <p style={{fontSize:11,color:"var(--accent)"}}>{post.hashtags}</p>
+                        </div>
+                      )}
+                      <div style={{marginTop:"auto",paddingTop:8,borderTop:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        <span style={{fontSize:11,color:"var(--text3)"}}>{post.scheduled_date ? `${post.scheduled_date}${post.scheduled_time?` ${post.scheduled_time}`:""}` : "No publish date"}</span>
+                        {(Array.isArray(post.platforms)&&post.platforms.length ? post.platforms : [post.platform]).filter(Boolean).map(pl=><PChip key={pl} platform={pl} xs/>)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           ) : (
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {(()=>{
