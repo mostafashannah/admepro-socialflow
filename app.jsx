@@ -13043,7 +13043,7 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
 // ════════════════════════════════════════════════════════════════
 // PROJECTS PAGE
 // ════════════════════════════════════════════════════════════════
-function ProjectsPage({projects, posts, clients, team, assets, clientIntelligence, onPostClick, onAdd, onUpdateProject, onDeleteProject, currentUser, onSaveIntelligence, initialProjectId, onClearInitialProject}) {
+function ProjectsPage({projects, posts, comments, clients, team, assets, clientIntelligence, onPostClick, onAdd, onStageChange, onUpdateProject, onDeleteProject, currentUser, onSaveIntelligence, initialProjectId, onClearInitialProject}) {
   const [showWizard, setShowWizard] = useState(false);
   const [selectedProject, setSelectedProject_] = usePersistentState("sf_selected_project", initialProjectId||null);
   // Opening a project pushes its own history entry so the physical browser
@@ -13086,10 +13086,12 @@ function ProjectsPage({projects, posts, clients, team, assets, clientIntelligenc
         key={proj.id}
         project={proj}
         posts={posts}
+        comments={comments}
         assets={assets||[]}
         team={team}
         clients={clients}
         clientIntelligence={clientIntelligence}
+        onStageChange={onStageChange}
         // window.history.back() used to be tried first — unreliable here
         // since opening a project doesn't necessarily push a real browser
         // history entry, so the button could silently do nothing (or
@@ -17137,6 +17139,14 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                         <div style={{position:"absolute",top:0,left:0,right:0,padding:"8px 8px 24px",background:"linear-gradient(to bottom, rgba(0,0,0,.75), transparent)",display:"flex",flexDirection:"column",alignItems:"flex-start",gap:4,pointerEvents:"none"}}>
                           <span style={{fontSize:14,fontWeight:700,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,.7)"}}>{post.scheduled_date||"No date"}</span>
                           <span style={{fontSize:12,fontWeight:700,color:"#fff",padding:"3px 9px",borderRadius:20,background:post.stage==="published"?"#10b981":"rgba(255,255,255,.28)",whiteSpace:"nowrap"}}>{post.stage==="published"?"Published":"Unpublished"}</span>
+                          <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                            {(()=>{
+                              const plts = Array.isArray(post.platforms) ? post.platforms : parseJ(post.platforms||"[]");
+                              return (plts.length ? plts : [post.platform]).filter(Boolean);
+                            })().map(plt=>(
+                              <span key={plt} style={{fontSize:10,fontWeight:700,color:"#fff",padding:"2px 7px",borderRadius:20,background:(PLT_COLOR[plt]||"#6b7280")+"cc",textTransform:"capitalize",whiteSpace:"nowrap"}}>{plt}</span>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     );
@@ -48012,12 +48022,14 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         {page==="projects"&&<ProjectsPage
   projects={data.projects}
   posts={data.posts}
+  comments={data.comments}
   clients={data.clients}
   team={data.team}
   assets={data.assets}
   clientIntelligence={data.clientIntelligence||[]}
   onPostClick={setSelectedPost}
   onAdd={addProject}
+  onStageChange={handleStageChange}
   onUpdateProject={updateProject}
   onDeleteProject={deleteProject}
   currentUser={currentUser}
