@@ -17062,8 +17062,13 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                   return gridOrdered.map(post=>{
                     const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
                     const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
-                    const thumbUrl = designUrls[designUrls.length-1] || designAssets[designAssets.length-1]?.url || post.carousel_cover || "";
-                    const thumbIsVideo = (designAssets[designAssets.length-1]?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i);
+                    // Reels/videos: always show the dedicated cover image
+                    // (carousel_cover) rather than the raw video file — a
+                    // grid tile has no way to play video, so a video src
+                    // would just render a black/blank box.
+                    const isReelPost = post.post_type==="reel" || post.post_type==="video";
+                    const thumbUrl = (isReelPost && post.carousel_cover) || designUrls[designUrls.length-1] || designAssets[designAssets.length-1]?.url || post.carousel_cover || "";
+                    const thumbIsVideo = !isReelPost && ((designAssets[designAssets.length-1]?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i));
                     return (
                       <div key={post.id}
                         draggable
