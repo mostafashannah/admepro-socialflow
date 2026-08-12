@@ -16874,12 +16874,12 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
   // chronological among themselves) — a post that already went out shouldn't
   // sit ahead of what's still upcoming in the schedule.
   // Newest publish date first, oldest last — across every post regardless
-  // of published/unpublished status. Posts with no date at all sort to
-  // the very end, after every dated post.
+  // of published/unpublished status. Undated posts (still need a schedule)
+  // sort to the very top, ahead of every dated post.
   const postSortCmp = (a,b) => {
     if (!a.scheduled_date && !b.scheduled_date) return 0;
-    if (!a.scheduled_date) return 1;
-    if (!b.scheduled_date) return -1;
+    if (!a.scheduled_date) return -1;
+    if (!b.scheduled_date) return 1;
     return b.scheduled_date.localeCompare(a.scheduled_date);
   };
   const projType = PROJECT_TYPES.find(t=>t.id===project.project_type)||PROJECT_TYPES[0];
