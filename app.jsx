@@ -16864,7 +16864,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
   // branch's `taskOrder && taskOrder!=="kanban"` check would have treated
   // the "cards"/"grid" sentinel strings as if they were an order array and
   // tried to .map() over their characters. Split into its own state.
-  const [viewMode, setViewMode] = React.useState("list"); // list | kanban | cards | grid
+  const [viewMode, setViewMode] = React.useState("grid"); // list | kanban | cards | grid
   const [taskOrder, setTaskOrder] = React.useState(null); // null = natural order, else array of ids
   const dragTaskRef = React.useRef(null);
 

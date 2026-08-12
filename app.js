@@ -1706,7 +1706,7 @@ var _useState613=useState("overview"),_useState614=_slicedToArray(_useState613,2
 // branch's `taskOrder && taskOrder!=="kanban"` check would have treated
 // the "cards"/"grid" sentinel strings as if they were an order array and
 // tried to .map() over their characters. Split into its own state.
-var _React$useState=React.useState("list"),_React$useState2=_slicedToArray(_React$useState,2),viewMode=_React$useState2[0],setViewMode=_React$useState2[1];// list | kanban | cards | grid
+var _React$useState=React.useState("grid"),_React$useState2=_slicedToArray(_React$useState,2),viewMode=_React$useState2[0],setViewMode=_React$useState2[1];// list | kanban | cards | grid
 var _React$useState3=React.useState(null),_React$useState4=_slicedToArray(_React$useState3,2),taskOrder=_React$useState4[0],setTaskOrder=_React$useState4[1];// null = natural order, else array of ids
 var dragTaskRef=React.useRef(null);var projectPosts=posts.filter(function(p){return p.project_id===project.id;});// Natural (no custom drag order) sort: unpublished/upcoming posts first in
 // chronological order, published posts always trail at the end (also
