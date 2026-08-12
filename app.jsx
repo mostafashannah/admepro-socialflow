@@ -46356,7 +46356,15 @@ Return ONLY valid JSON (no markdown, no explanation):
     // roll them up into one description/platform list for the project record.
     const kindsCfg = planForm.kinds||{};
     const activeKindCfgs = Object.entries(kindsCfg).filter(([,v])=>v.count>0);
-    const combinedBrief = activeKindCfgs.map(([k,v])=>v.brief?`${k}: ${v.brief}`:null).filter(Boolean).join(" | ");
+    // v.brief doesn't exist (the real per-batch briefs live in
+    // v.briefBatches[].brief, a kind can have several batches with
+    // different briefs) — this always evaluated to null/empty, so the
+    // project record never actually captured any brief text either,
+    // compounding the same loss as the per-task description bug above.
+    const combinedBrief = activeKindCfgs.map(([k,v])=>{
+      const briefs = (v.briefBatches||[]).map(b=>(b.brief||"").trim()).filter(Boolean);
+      return briefs.length ? `${k}: ${briefs.join(" / ")}` : null;
+    }).filter(Boolean).join(" | ");
     const combinedPlatforms = [...new Set(activeKindCfgs.flatMap(([,v])=>v.platforms||[]))];
     // Find or create project for this campaign
     const existingProj = data.projects.find(p=>p.client_id===planForm.client_id&&p.title===planForm.campaign);
