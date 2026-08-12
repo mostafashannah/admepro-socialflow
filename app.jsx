@@ -6405,10 +6405,20 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
           </div>
         )}
 
-        {/* Description */}
-        {!editing&&post.description&&<div style={{padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
-          <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6}}>{post.description}</p>
-        </div>}
+        {/* Description/Brief — used to fully disappear whenever a task had
+            none written (e.g. some AI-generated calendar ideas never got
+            one), leaving admin/AM with no visible place to add one short of
+            opening Edit. Now always shown, with an explicit empty state. */}
+        {!editing&&(post.description
+          ? <div style={{padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
+              <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Brief</p>
+              <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6}}>{post.description}</p>
+            </div>
+          : <div style={{padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px dashed var(--border2)"}}>
+              <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>Brief</p>
+              <p style={{fontSize:12,color:"var(--text3)",fontStyle:"italic"}}>No brief written for this task yet — use Edit above to add one.</p>
+            </div>
+        )}
 
         {/* Workflow Path used to be shown here as a static row of stages — every
             move is now logged in the Activity feed instead (who moved it, to
