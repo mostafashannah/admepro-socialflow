@@ -13090,7 +13090,12 @@ function ProjectsPage({projects, posts, clients, team, assets, clientIntelligenc
         team={team}
         clients={clients}
         clientIntelligence={clientIntelligence}
-        onBack={()=>{ try{ window.history.back(); }catch(e){ setSelectedProject_(null); } }}
+        // window.history.back() used to be tried first — unreliable here
+        // since opening a project doesn't necessarily push a real browser
+        // history entry, so the button could silently do nothing (or
+        // navigate somewhere outside the app) instead of returning to the
+        // project list.
+        onBack={()=>setSelectedProject_(null)}
         onPostClick={onPostClick}
         onUpdateProject={onUpdateProject}
         onDeleteProject={(id)=>{ onDeleteProject&&onDeleteProject(id); setSelectedProject_(null); }}
@@ -17055,7 +17060,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                         full portrait/landscape image actually reads clearly
                         instead of the old cramped 150px thumbnail strip. */}
                     {thumbUrl ? (
-                      <div style={{position:"relative",width:isMobile?"100%":420,minWidth:isMobile?"100%":420,height:isMobile?320:440,background:"#000",flexShrink:0}}>
+                      <div style={{position:"relative",width:isMobile?"100%":420,minWidth:isMobile?"100%":420,height:isMobile?320:440,background:"var(--surface2)",flexShrink:0}}>
                         {thumbIsVideo
                           ? <video src={thumbUrl} controls playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
                           : <img src={thumbUrl} alt={post.title} style={{width:"100%",height:"100%",objectFit:"contain"}}/>}
