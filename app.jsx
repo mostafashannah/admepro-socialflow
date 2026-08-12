@@ -6042,35 +6042,53 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
     setPublishing(false);
   };
 
-  const [commentAttachment, setCommentAttachment] = useState(null);
+  const [commentAttachments, setCommentAttachments] = useState([]); // any number of files
   const [attaching, setAttaching] = useState(false);
+  const [dragOverComment, setDragOverComment] = useState(false);
   const commentFileRef = useRef(null);
 
-  const handleCommentFile = async (file) => {
-    if(!file) return;
+  // Comments only ever carry ONE attachment each at the DB level
+  // (Comment.file_url is a single column, not an array) — rather than a
+  // schema change, any number of picked files get uploaded here and later
+  // sent as separate comments in sendComment, one attachment each.
+  const handleCommentFile = async (fileList) => {
+    const files = Array.from(fileList||[]);
+    if(!files.length) return;
     setAttaching(true);
     try {
-      const url = await uploadToStorage(file, "comments");
-      setCommentAttachment({file_url:url, file_name:file.name, file_type:file.type.startsWith("video")?"video":file.type.startsWith("image")?"image":"file"});
+      const uploaded = await Promise.all(files.map(async file => {
+        const url = await uploadToStorage(file, "comments");
+        return {file_url:url, file_name:file.name, file_type:file.type.startsWith("video")?"video":file.type.startsWith("image")?"image":"file"};
+      }));
+      setCommentAttachments(prev=>[...prev, ...uploaded]);
     } catch(e){ alert("File upload failed"); }
     setAttaching(false);
   };
+  const removeCommentAttachment = (i) => setCommentAttachments(prev=>prev.filter((_,idx)=>idx!==i));
 
   const sendComment = async () => {
-    if(!comment.trim()&&!commentAttachment) return;
+    if(!comment.trim()&&!commentAttachments.length) return;
     setSending(true);
-    await onAddComment(post.id, comment.trim()||"📎 Attachment", currentUser, commentAttachment, "internal");
+    // First attachment rides along with the typed text (or a placeholder if
+    // there's no text); any extra attachments go out as their own
+    // attachment-only comments right after, same as attaching them one at a
+    // time would have.
+    const [first, ...rest] = commentAttachments;
+    await onAddComment(post.id, comment.trim()||(first?"📎 Attachment":""), currentUser, first||null, "internal");
+    for(const att of rest) {
+      await onAddComment(post.id, "📎 Attachment", currentUser, att, "internal");
+    }
     // A file attached through the comment box used to only ever show up
     // buried in the Activity feed — invisible the moment the task moved
     // past whatever stage it was attached in, since nothing else reads
     // Comment.file_url. Mirroring it into design_assets puts it in the
     // same persistent Attachments section everything else lives in, so a
     // reviewer actually sees it instead of having to scroll the activity log.
-    if(commentAttachment?.file_url) {
-      const newAssets = [...(post.design_assets||[]), {url:commentAttachment.file_url, name:commentAttachment.file_name, type:commentAttachment.file_type}];
+    if(commentAttachments.length) {
+      const newAssets = [...(post.design_assets||[]), ...commentAttachments.map(a=>({url:a.file_url, name:a.file_name, type:a.file_type}))];
       onEdit&&onEdit({...post, design_assets:newAssets});
     }
-    setComment(""); setCommentAttachment(null); setSending(false);
+    setComment(""); setCommentAttachments([]); setSending(false);
   };
 
   // ── Client-facing comments — a separate thread admin/AM can use to log
@@ -7067,23 +7085,35 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 {internalComments.length===0&&<p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:16}}>No activity yet</p>}
                 <div ref={commentsEndRef}/>
               </div>
-              {commentAttachment&&(
-                <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border)",fontSize:12}}>
-                  <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📎 {commentAttachment.file_name}</span>
-                  <button onClick={()=>setCommentAttachment(null)} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontWeight:700}}>×</button>
+              {commentAttachments.length>0&&(
+                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  {commentAttachments.map((a,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border)",fontSize:12}}>
+                      <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📎 {a.file_name}</span>
+                      <button onClick={()=>removeCommentAttachment(i)} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontWeight:700}}>×</button>
+                    </div>
+                  ))}
                 </div>
               )}
               {/* Composer — textarea gets its own full-width row, with attach/send
                   below it, instead of squeezing all three into one row that wraps
-                  badly once this column is only ~1/3 of the modal's width. */}
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                <MentionInput value={comment} onChange={setComment} team={team} placeholder="Add a comment… (type @ to mention)" rows={2}/>
+                  badly once this column is only ~1/3 of the modal's width. Also
+                  accepts a drag-and-drop of any number of files anywhere onto it. */}
+              <div style={{display:"flex",flexDirection:"column",gap:8,border:`1px dashed ${dragOverComment?"var(--accent)":"transparent"}`,borderRadius:8,padding:dragOverComment?6:0,transition:"border-color 0.15s"}}
+                onDragOver={e=>{ e.preventDefault(); if(e.dataTransfer.types.includes("Files")) setDragOverComment(true); }}
+                onDragLeave={e=>{ if(e.currentTarget===e.target || !e.currentTarget.contains(e.relatedTarget)) setDragOverComment(false); }}
+                onDrop={e=>{
+                  e.preventDefault();
+                  setDragOverComment(false);
+                  if(e.dataTransfer.files?.length) handleCommentFile(e.dataTransfer.files);
+                }}>
+                <MentionInput value={comment} onChange={setComment} team={team} placeholder="Add a comment… (type @ to mention, or drop files here)" rows={2}/>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                  <input ref={commentFileRef} type="file" style={{display:"none"}} onChange={e=>{handleCommentFile(e.target.files?.[0]); e.target.value="";}}/>
-                  <button onClick={()=>commentFileRef.current?.click()} disabled={attaching} title="Attach a file" style={{width:34,height:34,borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:attaching?"default":"pointer",flexShrink:0}}>
+                  <input ref={commentFileRef} type="file" multiple style={{display:"none"}} onChange={e=>{handleCommentFile(e.target.files); e.target.value="";}}/>
+                  <button onClick={()=>commentFileRef.current?.click()} disabled={attaching} title="Attach any number of files" style={{width:34,height:34,borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:attaching?"default":"pointer",flexShrink:0}}>
                     {attaching?<Spinner size={13}/>:<Ico d={Icons.upload} size={14}/>}
                   </button>
-                  <Btn onClick={sendComment} disabled={sending||(!comment.trim()&&!commentAttachment)}>
+                  <Btn onClick={sendComment} disabled={sending||(!comment.trim()&&!commentAttachments.length)}>
                     <Ico d={Icons.send} size={14}/> Send
                   </Btn>
                 </div>
