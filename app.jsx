@@ -13044,7 +13044,7 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
 // ════════════════════════════════════════════════════════════════
 // PROJECTS PAGE
 // ════════════════════════════════════════════════════════════════
-function ProjectsPage({projects, posts, comments, clients, team, assets, clientIntelligence, onPostClick, onAdd, onStageChange, onUpdateProject, onDeleteProject, currentUser, onSaveIntelligence, initialProjectId, onClearInitialProject}) {
+function ProjectsPage({projects, posts, comments, clients, team, assets, clientIntelligence, onPostClick, onAdd, onStageChange, onUpdateProject, onDeleteProject, currentUser, onSaveIntelligence, initialProjectId, onClearInitialProject, brandingAssets}) {
   const [showWizard, setShowWizard] = useState(false);
   const [selectedProject, setSelectedProject_] = usePersistentState("sf_selected_project", initialProjectId||null);
   // Opening a project pushes its own history entry so the physical browser
@@ -13093,6 +13093,7 @@ function ProjectsPage({projects, posts, comments, clients, team, assets, clientI
         clients={clients}
         clientIntelligence={clientIntelligence}
         onStageChange={onStageChange}
+        brandingAssets={brandingAssets}
         // window.history.back() used to be tried first — unreliable here
         // since opening a project doesn't necessarily push a real browser
         // history entry, so the button could silently do nothing (or
@@ -16852,7 +16853,7 @@ function EditProjectModal({project, clients, onClose, onSave}) {
 // ════════════════════════════════════════════════════════════════
 // PROJECT DETAIL PAGE — tabs: Overview, Tasks, Calendar, Assets, Reports
 // ════════════════════════════════════════════════════════════════
-function ProjectDetailPage({project, posts, comments, assets, team, clients, clientIntelligence, onBack, onPostClick, onStageChange, onUpdateProject, onDeleteProject, currentUser}) {
+function ProjectDetailPage({project, posts, comments, assets, team, clients, clientIntelligence, onBack, onPostClick, onStageChange, onUpdateProject, onDeleteProject, currentUser, brandingAssets}) {
   const {isMobile} = useResponsive();
   const [editingProject, setEditingProject] = useState(false);
   const [confirmDeleteProject, setConfirmDeleteProject] = useState(false);
@@ -16967,18 +16968,65 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
         const plts = Array.isArray(p.platforms) ? p.platforms : parseJ(p.platforms||"[]");
         (plts.length?plts:[p.platform]).filter(Boolean).forEach(pl=>platformSet.add(pl));
       });
-      const keywords = Array.isArray(ci?.keywords) ? ci.keywords.join(", ") : (ci?.keywords||"");
 
-      // ── Slide 1: cover, agency logo centered ──
-      pdf.setFillColor(brand);
+      // Keywords/overview/brief pulled straight from what's actually in this
+      // calendar's posts — clientIntelligence.keywords is a nice-to-have
+      // fallback, but most projects never have it filled in, so the export
+      // shouldn't just show "—" for every field when the real content is
+      // sitting right there in the captions/hashtags.
+      const STOPWORDS = new Set(["the","and","for","with","this","that","from","your","our","are","was","were","have","has","will","you","its","it's","to","of","in","on","a","an","is","be","as","at","by","or","we","us","also","into","about","more","than","how","why","what","when","where"]);
+      const hashtagFreq = new Map(), wordFreq = new Map();
+      projectPosts.forEach(p=>{
+        (p.hashtags||"").split(/[\s,]+/).forEach(h=>{
+          const tag = h.replace(/^#/,"").trim().toLowerCase();
+          if (tag) hashtagFreq.set(tag, (hashtagFreq.get(tag)||0)+1);
+        });
+        `${p.caption||""} ${p.text_on_visual||""}`.toLowerCase().replace(/[^a-z0-9\s]/g," ").split(/\s+/).forEach(w=>{
+          if (w.length>3 && !STOPWORDS.has(w)) wordFreq.set(w, (wordFreq.get(w)||0)+1);
+        });
+      });
+      const topHashtags = [...hashtagFreq.entries()].sort((a,b)=>b[1]-a[1]).slice(0,8).map(([w])=>w);
+      const topWords = [...wordFreq.entries()].sort((a,b)=>b[1]-a[1]).slice(0,8).map(([w])=>w);
+      const extractedKeywords = [...new Set([...topHashtags, ...topWords])].slice(0,10);
+      const ciKeywords = Array.isArray(ci?.keywords) ? ci.keywords : (ci?.keywords ? [ci.keywords] : []);
+      const keywords = [...new Set([...extractedKeywords, ...ciKeywords])].join(", ") || "—";
+
+      const stageCounts = {};
+      projectPosts.forEach(p=>{ stageCounts[p.stage] = (stageCounts[p.stage]||0)+1; });
+      const publishedCount = stageCounts.published||0;
+      const overview = `This calendar covers ${projectPosts.length} post${projectPosts.length===1?"":"s"} for ${client?.name||project.client_name||"the client"}`
+        + ([...platformSet].length ? ` across ${[...platformSet].join(", ")}` : "")
+        + (startDate && endDate ? `, scheduled from ${fmtDate(startDate)} to ${fmtDate(endDate)}` : "")
+        + `. ${publishedCount} of ${projectPosts.length} post${projectPosts.length===1?"":"s"} already published.`
+        + (extractedKeywords.length ? ` Recurring themes: ${extractedKeywords.slice(0,5).join(", ")}.` : "");
+      const objective = ci?.content_preferences || ci?.summary || overview;
+      const brief = project.description || overview;
+
+      // Small brand mark bottom-right on every slide.
+      const lightLogoData = await imgToDataURL(brandingAssets?.light_logo || brandingAssets?.primary_logo || "");
+      const darkLogoData = await imgToDataURL(brandingAssets?.dark_logo || brandingAssets?.primary_logo || "");
+      const stampFooterLogo = async (onDark) => {
+        const data = onDark ? (darkLogoData||lightLogoData) : (lightLogoData||darkLogoData);
+        if (!data) return;
+        try {
+          const dims = await new Promise((resolve,reject)=>{ const im=new Image(); im.onload=()=>resolve({w:im.width,h:im.height}); im.onerror=reject; im.src=data; });
+          const box = fitBox(dims.w, dims.h, 90, 32);
+          pdf.addImage(data, (data.match(/^data:image\/(\w+)/)||[])[1]==="png"?"PNG":"JPEG", W-M-box.w, H-M+18, box.w, box.h);
+        } catch(e) {}
+      };
+
+      // ── Slide 1: cover, uploaded agency logo centered on white ──
+      pdf.setFillColor("#ffffff");
       pdf.rect(0,0,W,H,"F");
-      const logoData = await imgToDataURL("/icon-512.png");
-      if (logoData) {
-        const box = fitBox(512,512,160,160);
-        pdf.addImage(logoData, "PNG", (W-box.w)/2, (H-box.h)/2-30, box.w, box.h);
+      const coverLogoData = await imgToDataURL(brandingAssets?.secondary_logo || brandingAssets?.primary_logo || "/icon-512.png");
+      if (coverLogoData) {
+        const dims = await new Promise((resolve,reject)=>{ const im=new Image(); im.onload=()=>resolve({w:im.width,h:im.height}); im.onerror=reject; im.src=coverLogoData; }).catch(()=>({w:512,h:512}));
+        const box = fitBox(dims.w, dims.h, 320, 160);
+        pdf.addImage(coverLogoData, (coverLogoData.match(/^data:image\/(\w+)/)||[])[1]==="png"?"PNG":"JPEG", (W-box.w)/2, (H-box.h)/2-30, box.w, box.h);
       }
-      pdf.setFontSize(22); pdf.setFont(undefined,"bold"); pdf.setTextColor("#ffffff");
+      pdf.setFontSize(22); pdf.setFont(undefined,"bold"); pdf.setTextColor("#111827");
       pdf.text(project.title||"Content Calendar", W/2, H/2+130, {align:"center"});
+      await stampFooterLogo(false);
 
       // ── Slide 2: client + calendar details ──
       pdf.addPage([W,H],"l");
@@ -16991,15 +17039,16 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
         ["End Date", endDate || "—"],
         ["Number of Posts", String(projectPosts.length)],
         ["Platforms", [...platformSet].join(", ") || "—"],
-        ["Main Keywords", keywords || "—"],
-        ["Objective", ci?.content_preferences || ci?.summary || "—"],
-        ["Brief", project.description || "—"],
+        ["Main Keywords", keywords],
+        ["Objective", objective],
+        ["Brief", brief],
       ];
       fields.forEach(([label,val])=>{
         pdf.setFontSize(11); pdf.setFont(undefined,"bold"); pdf.setTextColor("#6b7280");
         pdf.text(label.toUpperCase(), M, y);
         y = addWrapped(M, y+18, W-M*2, val, 14) + 14;
       });
+      await stampFooterLogo(false);
 
       // ── Slide 3: full grid screenshot ──
       pdf.addPage([W,H],"l");
@@ -17018,6 +17067,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
       } finally {
         statusBadges.forEach(el => { el.style.visibility = ""; });
       }
+      await stampFooterLogo(false);
 
       // ── One slide per post ──
       for (const post of orderedPosts) {
@@ -17058,6 +17108,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
         if (post.caption) block("Caption", post.caption);
         if (post.hashtags) block("Hashtags", post.hashtags);
         block("Stage", STAGE_MAP[post.stage]?.label || post.stage);
+        await stampFooterLogo(false);
       }
 
       // ── Final slide: Thank You ──
@@ -17065,6 +17116,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
       pdf.setFillColor(brand); pdf.rect(0,0,W,H,"F");
       pdf.setFontSize(34); pdf.setFont(undefined,"bold"); pdf.setTextColor("#ffffff");
       pdf.text("Thank You", W/2, H/2, {align:"center"});
+      await stampFooterLogo(true);
 
       pdf.save(`${(project.title||"calendar").replace(/[^a-z0-9]+/gi,"_")}_full_calendar.pdf`);
     } finally {
@@ -48245,6 +48297,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
   onSaveIntelligence={saveClientIntelligence}
   initialProjectId={selectedProjectId}
   onClearInitialProject={()=>setSelectedProjectId(null)}
+  brandingAssets={data.brandingAssets}
 />}
         {page==="tasks"&&<TasksPage posts={data.posts} projects={data.projects} team={data.team} onPostClick={setSelectedPost} onAdd={addPost} clientTasks={(data.tasks||[])} onUpdateTask={updateClientTask} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} currentUser={currentUser} clients={data.clients} clientIntelligenceList={data.clientIntelligence||[]}/>}
         {page==="calendar"&&<div className="fade-in"><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800,marginBottom:24}}>Content Calendar</h2><CalendarView posts={data.posts} onPostClick={setSelectedPost}/></div>}
