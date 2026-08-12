@@ -16845,6 +16845,7 @@ function EditProjectModal({project, clients, onClose, onSave}) {
 // PROJECT DETAIL PAGE — tabs: Overview, Tasks, Calendar, Assets, Reports
 // ════════════════════════════════════════════════════════════════
 function ProjectDetailPage({project, posts, comments, assets, team, clients, clientIntelligence, onBack, onPostClick, onStageChange, onUpdateProject, onDeleteProject, currentUser}) {
+  const {isMobile} = useResponsive();
   const [editingProject, setEditingProject] = useState(false);
   const [confirmDeleteProject, setConfirmDeleteProject] = useState(false);
   const isAdmin = currentUser?.role==="admin";
@@ -17040,7 +17041,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
           {taskOrder==="kanban" ? (
             <KanbanView posts={projectPosts} project={project} team={team} onPostClick={onPostClick} onStageChange={onStageChange}/>
           ) : taskOrder==="cards" ? (
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+            <div style={{display:"flex",flexDirection:"column",gap:16}}>
               {[...projectPosts].sort((a,b)=>(a.scheduled_date||"").localeCompare(b.scheduled_date||"")).map(post=>{
                 const stageInfo = STAGE_MAP[post.stage]||{label:post.stage,color:"#888"};
                 const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
@@ -17048,42 +17049,48 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                 const thumbUrl = designUrls[designUrls.length-1] || designAssets[designAssets.length-1]?.url || post.carousel_cover || "";
                 const thumbIsVideo = (designAssets[designAssets.length-1]?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i);
                 return (
-                  <div key={post.id} onClick={()=>onPostClick&&onPostClick(post)} style={{background:"var(--surface1)",borderRadius:12,border:"1px solid var(--border)",overflow:"hidden",cursor:"pointer",display:"flex",flexDirection:"column"}}>
+                  <div key={post.id} onClick={()=>onPostClick&&onPostClick(post)} style={{background:"var(--surface1)",borderRadius:14,border:"1px solid var(--border)",overflow:"hidden",cursor:"pointer",display:"flex",flexDirection:isMobile?"column":"row",width:"100%"}}>
+                    {/* Media at full size — object-fit:contain (not cover)
+                        so nothing gets cropped, in a tall enough box that a
+                        full portrait/landscape image actually reads clearly
+                        instead of the old cramped 150px thumbnail strip. */}
                     {thumbUrl ? (
-                      <div style={{position:"relative",height:150,background:"var(--surface2)"}}>
+                      <div style={{position:"relative",width:isMobile?"100%":420,minWidth:isMobile?"100%":420,height:isMobile?320:440,background:"#000",flexShrink:0}}>
                         {thumbIsVideo
-                          ? <video src={thumbUrl+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                          : <img src={thumbUrl} alt={post.title} style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
+                          ? <video src={thumbUrl} controls playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
+                          : <img src={thumbUrl} alt={post.title} style={{width:"100%",height:"100%",objectFit:"contain"}}/>}
                       </div>
                     ) : (
-                      <div style={{height:150,background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text3)",fontSize:12}}>No media yet</div>
+                      <div style={{width:isMobile?"100%":420,minWidth:isMobile?"100%":420,height:isMobile?200:440,background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text3)",fontSize:13,flexShrink:0}}>No media yet</div>
                     )}
-                    <div style={{padding:14,display:"flex",flexDirection:"column",gap:8,flex:1}}>
-                      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
-                        <span style={{fontWeight:700,fontSize:14,color:"var(--text1)"}}>{post.title}</span>
-                        <span style={{background:stageInfo.color+"22",color:stageInfo.color,borderRadius:6,padding:"3px 8px",fontSize:11,fontWeight:600,flexShrink:0,whiteSpace:"nowrap"}}>{stageInfo.label}</span>
+                    <div style={{padding:20,display:"flex",flexDirection:"column",gap:12,flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
+                        <span style={{fontWeight:700,fontSize:17,color:"var(--text1)"}}>{post.title}</span>
+                        <span style={{background:stageInfo.color+"22",color:stageInfo.color,borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:600,flexShrink:0,whiteSpace:"nowrap"}}>{stageInfo.label}</span>
                       </div>
                       {post.text_on_visual&&(
                         <div>
-                          <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Text on Visual</p>
-                          <p style={{fontSize:12,color:"var(--text2)"}}>{post.text_on_visual}</p>
+                          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Text on Visual</p>
+                          <p style={{fontSize:13,color:"var(--text2)"}}>{post.text_on_visual}</p>
                         </div>
                       )}
                       {post.caption&&(
                         <div>
-                          <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Caption</p>
-                          <p style={{fontSize:12,color:"var(--text2)",lineHeight:1.5,display:"-webkit-box",WebkitLineClamp:4,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{post.caption}</p>
+                          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Caption</p>
+                          <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{post.caption}</p>
                         </div>
                       )}
                       {post.hashtags&&(
                         <div>
-                          <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Hashtags</p>
-                          <p style={{fontSize:11,color:"var(--accent)"}}>{post.hashtags}</p>
+                          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Hashtags</p>
+                          <p style={{fontSize:12,color:"var(--accent)"}}>{post.hashtags}</p>
                         </div>
                       )}
-                      <div style={{marginTop:"auto",paddingTop:8,borderTop:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                        <span style={{fontSize:11,color:"var(--text3)"}}>{post.scheduled_date ? `${post.scheduled_date}${post.scheduled_time?` ${post.scheduled_time}`:""}` : "No publish date"}</span>
-                        {(Array.isArray(post.platforms)&&post.platforms.length ? post.platforms : [post.platform]).filter(Boolean).map(pl=><PChip key={pl} platform={pl} xs/>)}
+                      <div style={{marginTop:"auto",paddingTop:10,borderTop:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+                        <span style={{fontSize:12,color:"var(--text3)"}}>{post.scheduled_date ? `${post.scheduled_date}${post.scheduled_time?` ${post.scheduled_time}`:""}` : "No publish date"}</span>
+                        <div style={{display:"flex",gap:4}}>
+                          {(Array.isArray(post.platforms)&&post.platforms.length ? post.platforms : [post.platform]).filter(Boolean).map(pl=><PChip key={pl} platform={pl} xs/>)}
+                        </div>
                       </div>
                     </div>
                   </div>
