@@ -17550,29 +17550,29 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                           newIds.splice(fromIdx,1);
                           newIds.splice(toIdx,0,fromId);
                           setTaskOrder(newIds);
-                          // The whole point of dragging a card to a new slot is to
-                          // move it into that slot's publishing date — otherwise
-                          // the card visually moves but keeps showing its old date,
-                          // which looks broken next to the reordered position. Swap
-                          // scheduled_date/scheduled_time between the two posts that
-                          // traded places and persist it, same as List view's date
-                          // column would reflect after a manual date edit.
-                          const fromPost = base[fromIdx];
-                          const toPost = post;
-                          // Comparing scheduled_date alone missed same-day
-                          // posts that only differ by scheduled_time (e.g.
-                          // 13:00 vs 12:30 on the same date) — dragging those
-                          // to reorder them silently did nothing, since the
-                          // dates already matched. Compare the full
-                          // date+time pair instead so a same-day time-only
-                          // reorder actually swaps too.
-                          if(fromPost && toPost && `${fromPost.scheduled_date}|${fromPost.scheduled_time||""}`!==`${toPost.scheduled_date}|${toPost.scheduled_time||""}`) {
-                            const fromDate = fromPost.scheduled_date, fromTime = fromPost.scheduled_time;
-                            const toDate = toPost.scheduled_date, toTime = toPost.scheduled_time;
-                            ue("Post", fromPost.id, {scheduled_date: toDate, scheduled_time: toTime}).catch(()=>{});
-                            ue("Post", toPost.id, {scheduled_date: fromDate, scheduled_time: fromTime}).catch(()=>{});
-                            onStageChange({...fromPost, scheduled_date: toDate, scheduled_time: toTime}, fromPost.stage);
-                            onStageChange({...toPost, scheduled_date: fromDate, scheduled_time: fromTime}, toPost.stage);
+                          // Dragging a card into a new slot moves everything
+                          // between the old and new position over by one —
+                          // not just the two cards you touched. A plain
+                          // two-card date/time SWAP left every card in
+                          // between still showing its pre-drag date/time,
+                          // out of sync with its new visual position (visible
+                          // once 3+ same-day posts, differing only by time,
+                          // got reordered — only the dragged card and the one
+                          // it landed on updated, the ones shifted in
+                          // between didn't). Reassign every affected slot's
+                          // date/time instead of swapping just a pair: the
+                          // post that ends up in slot i takes whatever
+                          // date/time used to belong to slot i before the
+                          // drag, for every slot between fromIdx and toIdx.
+                          const lo = Math.min(fromIdx,toIdx), hi = Math.max(fromIdx,toIdx);
+                          const slotDates = base.slice(lo,hi+1).map(p=>({date:p.scheduled_date, time:p.scheduled_time}));
+                          for(let i=lo;i<=hi;i++){
+                            const newPost = base.find(p=>p.id===newIds[i]);
+                            const slot = slotDates[i-lo];
+                            if(!newPost || !slot) continue;
+                            if(newPost.scheduled_date===slot.date && newPost.scheduled_time===slot.time) continue;
+                            ue("Post", newPost.id, {scheduled_date: slot.date, scheduled_time: slot.time}).catch(()=>{});
+                            onStageChange({...newPost, scheduled_date: slot.date, scheduled_time: slot.time}, newPost.stage);
                           }
                           dragTaskRef.current=null;
                         }}
