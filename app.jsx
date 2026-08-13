@@ -946,7 +946,7 @@ function sbTable(entityName) {
 // Known columns per table — used to strip unknown fields before POST/PATCH
 const SB_SCHEMA = {
   projects: ["title","description","client_id","client_name","status","start_date","end_date","platforms","team_members","project_type","posting_start","posting_end"],
-  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","text_on_visual","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","assigned_to_extra","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","published_platforms","platform_post_ids","estimated_minutes","content_assigned_to","due_date","due_time","task_type","revision_count","was_rejected"],
+  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","text_on_visual","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","assigned_to_extra","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","published_platforms","platform_post_ids","estimated_minutes","content_assigned_to","due_date","due_time","task_type","revision_count","was_rejected","sector"],
   // address/website/contact_person were never real columns on the clients
   // table (mysql-schema.sql only has name/email/phone/logo_url/industry/
   // status/account_manager_id/notes/platforms/portal_password/username) —
@@ -956,7 +956,7 @@ const SB_SCHEMA = {
   // and username both exist but were missing from this list, so they always
   // got stripped before the request went out (see
   // migration-client-username.sql for the added username column).
-  clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","account_manager_commissions","username","contact_title","notes","logo_url","allowed_task_types","platform_credentials","portal_features","website","social_links","whatsapp_group_link"],
+  clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","account_manager_commissions","username","contact_title","notes","logo_url","allowed_task_types","platform_credentials","portal_features","website","social_links","whatsapp_group_link","has_sectors","sectors"],
   client_approval_links: ["post_id","client_id","token","expires_at","status","created_by"],
   client_tasks: ["client_id","client_name","title","description","task_type","priority","stage","assigned_to","created_by","deliverable_note"],
   team_member_events: ["team_member_id","team_member_name","event_type","title","previous_value","new_value","amount","effective_date","notes","recorded_by"],
@@ -6210,7 +6210,21 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
             })()}
             <Badge label={post.post_type} color="#6b7280"/>
             <Badge label={post.priority} color={PRI_COLOR[post.priority]}/>
+            {post.sector&&<Badge label={post.sector} color="#f59e0b"/>}
           </div>
+          {client?.has_sectors && Array.isArray(client.sectors) && client.sectors.length>0 && isManager && (
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              <span style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Sector</span>
+              <select value={post.sector||""} onChange={e=>{
+                const v = e.target.value;
+                ue("Post", post.id, {sector:v}).catch(()=>{});
+                onStageChange({...post, sector:v}, post.stage);
+              }} style={{padding:"4px 10px",borderRadius:"var(--rxs)",border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:12,color:"var(--text2)"}}>
+                <option value="">— None —</option>
+                {client.sectors.map(s=><option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          )}
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10}}>
             <div onClick={()=>{if(isManager&&!dueEdit) setDueEdit({date:post.due_date||"",time:post.due_time||""});}}
               style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",cursor:isManager?"pointer":"default"}}>
@@ -7472,7 +7486,7 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
   const activeClientId = presetClient?.id || pickedClientId;
   const selectableProjects = activeClientId ? projects.filter(p=>p.client_id===activeClientId) : projects;
   const defaultAssignee = eligibleAssignees("planning",team).some(m=>m.email===currentUser?.email) ? currentUser.email : "";
-  const blankForm = {project_id:selectableProjects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:defaultAssignee,scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",due_date:"",due_time:"",content_mode:"new",platforms:["instagram"],platform_types:{},media:[],cover:null,publish_mode:"schedule",postStory:false,storyImage:null,estimated_minutes:""};
+  const blankForm = {project_id:selectableProjects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:defaultAssignee,scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",due_date:"",due_time:"",content_mode:"new",platforms:["instagram"],platform_types:{},media:[],cover:null,publish_mode:"schedule",postStory:false,storyImage:null,estimated_minutes:"",sector:""};
   const [f,setF] = useState({...blankForm});
   // Which pipeline phase this post starts at — controls who's eligible to
   // be assigned it (Brief -> AM, Content -> Content team, Design -> Design team).
@@ -7520,6 +7534,7 @@ Post title: ${f.title}
 Project: ${proj?.title||"-"}
 Platform(s): ${(f.platforms.length?f.platforms:[f.platform]).join(", ")}
 Post type: ${f.post_type}
+${f.sector?`This client operates multiple business sectors — this post is specifically for their "${f.sector}" sector. Write content relevant to that sector, not the client's other lines of business.`:""}
 ${f.description?`Existing brief/notes: ${f.description}`:""}
 ${firstImage ? "An image is attached above — look at it and write a caption that actually matches what's shown in the photo, not a generic guess based on the title alone." : (f.media.length ? "A video file is attached, but you can't view video content — write the caption based on the title/brief/brand voice only." : "No media has been attached to this post yet — write the caption based on the title/brief/brand voice only.")}
 
@@ -7633,7 +7648,7 @@ Return ONLY valid JSON (no markdown):
         scheduled_date: f.publish_mode==="schedule" ? f.scheduled_date : new Date().toISOString().slice(0,10),
         scheduled_time: f.publish_mode==="schedule" ? (f.scheduled_time || clientBestTime || "") : "",
         platform:primaryPl, platforms:f.platforms, post_type, priority:f.priority, stage:"scheduled",
-        client_name: proj?.client_name||"", hashtags:"",
+        client_name: proj?.client_name||"", hashtags:"", sector:f.sector||"",
         caption:f.caption, design_assets, design_urls,
         carousel_cover: post_type==="reel" ? (f.cover?.url||"") : "",
       };
@@ -7705,6 +7720,19 @@ Return ONLY valid JSON (no markdown):
                 {selectableProjects.map(p=><option key={p.id} value={p.id}>{p.title} · {p.client_name}</option>)}
               </select>
             </Field>
+            {(()=>{
+              const proj = projects.find(p=>p.id===f.project_id);
+              const activeClient = clients.find(c=>c.id===(proj?.client_id||activeClientId));
+              if (!activeClient?.has_sectors || !Array.isArray(activeClient.sectors) || !activeClient.sectors.length) return null;
+              return (
+                <Field label="Sector" hint="Which of this client's sectors is this post/task for — Sara uses this to focus what she writes">
+                  <select value={f.sector} onChange={e=>s("sector",e.target.value)} style={inputSt}>
+                    <option value="">All sectors (general)</option>
+                    {activeClient.sectors.map(sec=><option key={sec} value={sec}>{sec}</option>)}
+                  </select>
+                </Field>
+              );
+            })()}
             {f.content_mode==="new"&&(
               <div>
                 <p style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:8}}>Starts at Phase</p>
@@ -8601,6 +8629,10 @@ function AddCalendarPlanModal({open,onClose,clients,team,posts,projects,preselec
     campaign: "",
     date_from: "",
     date_to: "",
+    // "" = client has no sectors / not applicable, "all" = rotate every
+    // generated post across all of the client's sectors, or a specific
+    // sector name = every generated post in this plan targets just that one.
+    sector: "",
     kinds: {
       static: makeKindDefaults(8,"static"),
       reel: makeKindDefaults(0,"reel"),
@@ -8789,6 +8821,8 @@ ${clientCtxBlock}
 Campaign: ${f.campaign}
 Brief for this content type: ${batch.brief||f.campaign}
 Platforms: ${cfg.platforms.join(", ")}
+${selectedClient?.has_sectors && f.sector && f.sector!=="all" ? `This client operates multiple business sectors — write EVERY idea specifically for their "${f.sector}" sector only, not their other lines of business.` : ""}
+${selectedClient?.has_sectors && f.sector==="all" && selectedClient.sectors?.length ? `This client operates multiple business sectors: ${selectedClient.sectors.join(", ")}. Spread the ${batch.count} ideas evenly and roughly in order across these sectors (idea 1 → first sector, idea 2 → next sector, and so on, cycling through), so each idea is specifically about ONE sector, not a generic mix.` : ""}
 
 ${kindGuide}
 
@@ -8841,9 +8875,17 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
         ? (plats.includes("linkedin")?"linkedin":plats[0])
         : plats[0];
       return (ideasByKind[kind]||[]).map((idea,i)=>{
+        // "all" spreads posts evenly across every one of the client's
+        // sectors (round-robin) rather than every post covering every
+        // sector at once — a specific sector name applies to every post
+        // generated in this plan.
+        const sector = f.sector==="all"
+          ? (selectedClient?.sectors?.[i % (selectedClient.sectors.length||1)] || "")
+          : (f.sector||"");
         return {
           id: uid(),
           kind,
+          sector,
           title: idea?.title||`${kind} ${i+1}`,
           description: idea?._sourceBrief||"",
           caption: idea?.caption||"",
@@ -9036,6 +9078,14 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                 {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </Field>
+            {selectedClient?.has_sectors && Array.isArray(selectedClient.sectors) && selectedClient.sectors.length>0 && (
+              <Field label="Sector" hint="One sector for every post in this plan, or spread posts evenly across all of them">
+                <select value={f.sector} onChange={e=>s("sector",e.target.value)} style={inputSt}>
+                  <option value="all">All sectors (spread evenly)</option>
+                  {selectedClient.sectors.map(sec=><option key={sec} value={sec}>{sec} only</option>)}
+                </select>
+              </Field>
+            )}
             <Field label="Campaign / Project Name" required>
               {clientProjects.length>0 && (
                 <select value={campaignChoice} onChange={e=>{
@@ -11487,7 +11537,15 @@ function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUs
 }
 
 function EditClientPage({client,onBack,onSave,canDelete,onRequestDelete,team=[]}) {
-  const [f,setF] = useState({name:client.name||"",username:client.username||"",contact_title:client.contact_title||"",email:client.email||"",phone:client.phone||"",website:client.website||"",whatsapp_group_link:client.whatsapp_group_link||"",social:{instagram:"",facebook:"",tiktok:"",linkedin:"",...((client.social_links && typeof client.social_links==="object") ? client.social_links : (parseJ(client.social_links,{})||{}))},industry:client.industry||"",status:client.status||"active",platforms:client.platforms||[],portal_password:client.portal_password||"",account_manager_ids:getAccountManagerIds(client),logo_url:client.logo_url||"",allowed_task_types:client.allowed_task_types?.length?client.allowed_task_types:TASK_TYPES.map(t=>t.id)});
+  const [f,setF] = useState({name:client.name||"",username:client.username||"",contact_title:client.contact_title||"",email:client.email||"",phone:client.phone||"",website:client.website||"",whatsapp_group_link:client.whatsapp_group_link||"",social:{instagram:"",facebook:"",tiktok:"",linkedin:"",...((client.social_links && typeof client.social_links==="object") ? client.social_links : (parseJ(client.social_links,{})||{}))},industry:client.industry||"",status:client.status||"active",platforms:client.platforms||[],portal_password:client.portal_password||"",account_manager_ids:getAccountManagerIds(client),logo_url:client.logo_url||"",allowed_task_types:client.allowed_task_types?.length?client.allowed_task_types:TASK_TYPES.map(t=>t.id),has_sectors:!!client.has_sectors,sectors:Array.isArray(client.sectors)?client.sectors:parseJ(client.sectors||"[]")});
+  const [sectorInput,setSectorInput] = useState("");
+  const addSector = () => {
+    const v = sectorInput.trim();
+    if(!v || f.sectors.includes(v)) { setSectorInput(""); return; }
+    setF(x=>({...x,sectors:[...x.sectors,v]}));
+    setSectorInput("");
+  };
+  const removeSector = (s) => setF(x=>({...x,sectors:x.sectors.filter(v=>v!==s)}));
   const sSocial = (k,v) => setF(x=>({...x,social:{...x.social,[k]:v}}));
   const toggleTaskType = id => setF(x=>({...x,allowed_task_types:x.allowed_task_types.includes(id)?x.allowed_task_types.filter(v=>v!==id):[...x.allowed_task_types,id]}));
   const [showPw,setShowPw] = useState(false);
@@ -11601,6 +11659,31 @@ function EditClientPage({client,onBack,onSave,canDelete,onRequestDelete,team=[]}
               </button>
             ))}
           </div>
+        </Field>
+        <Field label="Sectors" hint="For clients that operate across multiple business lines (e.g. an industrial group with Logistics, Hospitality, Security divisions) — lets each post/task be labeled by sector, and Sara can target one sector or all of them when generating content">
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:f.has_sectors?10:0}}>
+            <button type="button" onClick={()=>setF(x=>({...x,has_sectors:!x.has_sectors}))}
+              style={{width:38,height:22,borderRadius:20,border:"none",cursor:"pointer",position:"relative",background:f.has_sectors?"var(--accent)":"var(--border2)",transition:"background 0.15s",flexShrink:0}}>
+              <span style={{position:"absolute",top:2,left:f.has_sectors?18:2,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left 0.15s"}}/>
+            </button>
+            <span style={{fontSize:13,color:"var(--text2)"}}>{f.has_sectors?"This client has sectors":"This client has a single, unified brand"}</span>
+          </div>
+          {f.has_sectors && (
+            <div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:f.sectors.length?10:0}}>
+                {f.sectors.map(s=>(
+                  <span key={s} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 6px 4px 12px",borderRadius:20,fontSize:12,fontWeight:600,background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)"}}>
+                    {s}
+                    <button type="button" onClick={()=>removeSector(s)} style={{width:16,height:16,borderRadius:"50%",border:"none",background:"var(--border2)",color:"var(--text2)",cursor:"pointer",fontSize:11,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                  </span>
+                ))}
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <input value={sectorInput} onChange={e=>setSectorInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addSector();}}} placeholder="e.g. Logistics, Hospitality…" style={{...inputSt,flex:1}}/>
+                <Btn variant="secondary" onClick={addSector}>Add</Btn>
+              </div>
+            </div>
+          )}
         </Field>
         <div style={{display:"flex",gap:8,alignItems:"center",paddingTop:6,borderTop:"1px solid var(--border)"}}>
           {canDelete&&(
@@ -17557,6 +17640,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                     </div>
                     <span style={{fontSize:12,color:"var(--text3)"}}>{assignee.name}</span>
                   </div>}
+                  {post.sector&&<span style={{background:"#f59e0b22",color:"#f59e0b",borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600,flexShrink:0}}>{post.sector}</span>}
                   <span style={{background:stageInfo.color+"22",color:stageInfo.color,borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600,flexShrink:0}}>{stageInfo.label}</span>
                 </div>
               );
@@ -35309,6 +35393,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
                     {!groupByClient && post.client_name && <Badge label={post.client_name} color="#8b5cf6"/>}
+                    {post.sector && <Badge label={post.sector} color="#f59e0b"/>}
                     <Badge label={post.platform} color={PLT_COLOR[post.platform]}/>
                     <Badge label={stage.label} color={stage.color}/>
                     <Badge label={post.priority} color={PRI_COLOR[post.priority]} xs/>
@@ -47037,7 +47122,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     // silently dropped the moment the task was saved — every calendar-plan
     // task landed with no brief visible at all, regardless of what was
     // typed into the wizard.
-    const postPayloads = localPosts.map(t=>({title:t.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:t.platform,platforms:t.platforms||[t.platform],post_type:t.post_type,task_type:t.task_type||"",stage:planForm.start_stage||"content_creation",priority:t.priority,description:t.description||t._sourceBrief||"",caption:t.caption,hashtags:t.hashtags,text_on_visual:t.text_on_visual||"",reel_hook:t.reel_hook||"",notes:t.notes||"",estimated_minutes:t.estimated_minutes,scheduled_date:t.scheduled_date,scheduled_time:t.scheduled_time,due_date:t.due_date||"",due_time:t.due_time||"",assigned_to:t.assigned_to||""}));
+    const postPayloads = localPosts.map(t=>({title:t.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:t.platform,platforms:t.platforms||[t.platform],post_type:t.post_type,task_type:t.task_type||"",stage:planForm.start_stage||"content_creation",priority:t.priority,description:t.description||t._sourceBrief||"",caption:t.caption,hashtags:t.hashtags,text_on_visual:t.text_on_visual||"",reel_hook:t.reel_hook||"",notes:t.notes||"",estimated_minutes:t.estimated_minutes,scheduled_date:t.scheduled_date,scheduled_time:t.scheduled_time,due_date:t.due_date||"",due_time:t.due_time||"",assigned_to:t.assigned_to||"",sector:t.sector||""}));
     ce("Post",postPayloads).then(res=>{
       const reals = res.entities||[];
       setData(d=>{
