@@ -48833,6 +48833,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
       const _clientIntelligence = (data.clientIntelligence||[]).find(i=>i.client_id===_clientId);
       const _client = data.clients.find(c=>c.id===_clientId);
       return <PostDetail
+        key={selectedPost.id}
         post={selectedPost}
         project={_proj}
         projects={data.projects}
