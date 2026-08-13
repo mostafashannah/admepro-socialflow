@@ -7179,7 +7179,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
                         <span style={{fontSize:12,fontWeight:600}}>{c.author_name||"System"}</span>
                         {c.type==="ai_reply"?<Badge label="AI" color="#10b981" xs/>:c.type!=="comment"&&<Badge label={c.type} color={c.type==="rejection"?"#ef4444":c.type==="approval"?"#10b981":"#6b7280"} xs/>}
-                        <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date)}</span>
+                        <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date||c.created_at)}</span>
                       </div>
                       {c.type==="ai_reply"
                         ? <div style={{fontSize:13,lineHeight:1.6}}>{renderChatMd(c.content)}</div>
@@ -7267,7 +7267,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                     <div style={{flex:1,background:"var(--surface2)",borderRadius:"var(--rs)",padding:"9px 12px",border:"1px solid var(--border)"}}>
                       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
                         <span style={{fontSize:12,fontWeight:600}}>{c.author_name||"System"}</span>
-                        <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date)}</span>
+                        <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date||c.created_at)}</span>
                       </div>
                       <p style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content, team)}</p>
                       {c.file_url&&(
@@ -21642,7 +21642,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                           <div style={{flex:1,background:"var(--surface2)",borderRadius:"var(--rs)",padding:"8px 11px",border:"1px solid var(--border)"}}>
                             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
                               <span style={{fontSize:12,fontWeight:600}}>{c.author_name||"Agency"}</span>
-                              <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date)}</span>
+                              <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date||c.created_at)}</span>
                             </div>
                             <p style={{fontSize:13,lineHeight:1.5}}>{c.content}</p>
                           </div>
