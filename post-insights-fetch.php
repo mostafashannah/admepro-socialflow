@@ -28,7 +28,7 @@ $pdo = new PDO(
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]
 );
 
-$stmt = $pdo->prepare("SELECT id, client_id, platform, stage, post_type, external_post_id FROM posts WHERE id = :id LIMIT 1");
+$stmt = $pdo->prepare("SELECT id, client_id, platform, stage, post_type, external_post_id, platform_post_ids FROM posts WHERE id = :id LIMIT 1");
 $stmt->execute([':id' => $post_id]);
 $post = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$post) { http_response_code(404); echo json_encode(["error"=>"Post not found"]); exit; }
@@ -69,7 +69,14 @@ if ($post['platform'] === 'tiktok') {
 }
 if (!$access_token) { http_response_code(400); echo json_encode(["error"=>"Integration has no access token"]); exit; }
 
-$postId = $post['external_post_id'];
+// A multi-platform post (e.g. Instagram + Facebook) only ever had ONE
+// external_post_id — whichever platform published last overwrote it — so
+// this could end up querying (say) Instagram's Graph API with a Facebook
+// video-node id, surfacing as "Unsupported get request... Object does not
+// exist". platform_post_ids (keyed by platform) holds each platform's own
+// real id now; fall back to the legacy single column for older posts.
+$platformPostIds = json_decode($post['platform_post_ids'] ?? '{}', true) ?: [];
+$postId = $platformPostIds[$post['platform']] ?? $post['external_post_id'];
 $likes = $comments = $shares = $reach = null;
 $reachUnavailable = false;
 

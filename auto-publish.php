@@ -98,6 +98,14 @@ foreach ($due as $post) {
     $anyAttempted = false;
     $lastExtId = null;
     $errorsByPlatform = [];
+    // Multi-platform posts used to only keep the LAST successful platform's
+    // id in external_post_id — whichever ran last in the loop below silently
+    // overwrote every other platform's id, so a post's Insights fetch (which
+    // queries by the post's own `platform` column) could end up looking up a
+    // totally different platform's Graph object, surfacing as "Unsupported
+    // get request... Object does not exist". Keyed per-platform so each
+    // platform's real id survives regardless of publish order.
+    $platformPostIds = json_decode($post['platform_post_ids'] ?? '{}', true) ?: [];
 
     foreach ($targetPlatforms as $platform) {
 
@@ -189,6 +197,7 @@ foreach ($due as $post) {
         // insights API — video_id (only present once TikTok finishes
         // processing) is what post-insights-cron.php needs stored instead.
         $lastExtId = $resp['video_id'] ?? $resp['id'] ?? $resp['post_id'] ?? $lastExtId;
+        if ($lastExtId) $platformPostIds[$platform] = $lastExtId;
         sara_learn_from_publish($pdo, $post, $platform);
     } else {
         $errorsByPlatform[$platform] = $resp;
@@ -230,20 +239,22 @@ foreach ($due as $post) {
     // moves out of Content/Scheduled).
     $stillMissing = array_diff($allPlatforms, $alreadyDone);
     if (!$stillMissing) {
-        $upd = $pdo->prepare("UPDATE posts SET stage = 'published', published_at = :now, external_post_id = :ext, published_platforms = :pp, publish_error = NULL WHERE id = :id");
+        $upd = $pdo->prepare("UPDATE posts SET stage = 'published', published_at = :now, external_post_id = :ext, published_platforms = :pp, platform_post_ids = :ppi, publish_error = NULL WHERE id = :id");
         $upd->execute([
             ':now' => $now->format('Y-m-d H:i:s'), ':ext' => $lastExtId,
-            ':pp' => json_encode(array_values(array_unique($alreadyDone))), ':id' => $post['id'],
+            ':pp' => json_encode(array_values(array_unique($alreadyDone))),
+            ':ppi' => json_encode($platformPostIds), ':id' => $post['id'],
         ]);
     } else {
         // Partial progress (e.g. Instagram went out, Facebook failed) is
         // saved either way so a retry never re-posts to a platform that
         // already succeeded — only the attempt counter advances toward the
         // 3-try cutoff, and only for the platform(s) still failing.
-        $upd = $pdo->prepare("UPDATE posts SET publish_attempts = :att, publish_error = :err, published_platforms = :pp WHERE id = :id");
+        $upd = $pdo->prepare("UPDATE posts SET publish_attempts = :att, publish_error = :err, published_platforms = :pp, platform_post_ids = :ppi WHERE id = :id");
         $upd->execute([
             ':att' => $attempts + 1, ':err' => json_encode($errorsByPlatform),
-            ':pp' => json_encode(array_values(array_unique($alreadyDone))), ':id' => $post['id'],
+            ':pp' => json_encode(array_values(array_unique($alreadyDone))),
+            ':ppi' => json_encode($platformPostIds), ':id' => $post['id'],
         ]);
     }
 }

@@ -946,7 +946,7 @@ function sbTable(entityName) {
 // Known columns per table — used to strip unknown fields before POST/PATCH
 const SB_SCHEMA = {
   projects: ["title","description","client_id","client_name","status","start_date","end_date","platforms","team_members","project_type","posting_start","posting_end"],
-  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","text_on_visual","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","assigned_to_extra","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","estimated_minutes","content_assigned_to","due_date","due_time","task_type","revision_count","was_rejected"],
+  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","text_on_visual","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","assigned_to_extra","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","published_platforms","platform_post_ids","estimated_minutes","content_assigned_to","due_date","due_time","task_type","revision_count","was_rejected"],
   // address/website/contact_person were never real columns on the clients
   // table (mysql-schema.sql only has name/email/phone/logo_url/industry/
   // status/account_manager_id/notes/platforms/portal_password/username) —
@@ -6011,6 +6011,14 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
     const newlyOk = results.filter(r=>r.ok).map(r=>r.platform);
     const anyOk = newlyOk.length>0;
     const firstOkId = results.find(r=>r.ok)?.postId;
+    // Multi-platform posts used to only keep whichever platform succeeded
+    // LAST in external_post_id, overwriting every other platform's real id
+    // — so the Insights "Refresh Now" fetch (which queries by the post's own
+    // `platform` column) could end up looking up a totally different
+    // platform's Graph object and fail with "Object does not exist". Keyed
+    // per-platform so every platform's own id survives regardless of order.
+    const platformPostIds = {...(post.platform_post_ids ? (typeof post.platform_post_ids==="string"?JSON.parse(post.platform_post_ids):post.platform_post_ids) : {})};
+    results.forEach(r=>{ if(r.ok && r.postId) platformPostIds[r.platform] = r.postId; });
     // Every platform this post carries (not just the ones this click
     // attempted — a prior click may have already gotten some of them live)
     // has to have succeeded before the post itself counts as Published.
@@ -6023,7 +6031,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
       msg: results.map(r=>`${platformLabel(r.platform)}: ${r.ok?"✓ published":"✗ "+(r.msg||"failed")}`).join("  ·  ")
         + (stillMissing.length ? `  ·  Still needs: ${stillMissing.map(platformLabel).join(", ")} — click Publish again once fixed.` : ""),
     });
-    if(nowPublished.length) await ue("Post", post.id, {published_platforms: JSON.stringify(nowPublished), ...(firstOkId?{external_post_id:firstOkId}:{})}).catch(()=>{});
+    if(nowPublished.length) await ue("Post", post.id, {published_platforms: JSON.stringify(nowPublished), platform_post_ids: JSON.stringify(platformPostIds), ...(firstOkId?{external_post_id:firstOkId}:{})}).catch(()=>{});
     if(!stillMissing.length) onStageChange(post, "published");
     setPublishing(false);
   };

@@ -40,7 +40,7 @@ $v = defined('META_GRAPH_VERSION') ? META_GRAPH_VERSION : 'v23.0';
 $since = date('Y-m-d H:i:s', strtotime('-30 days'));
 
 $posts = $pdo->prepare(
-    "SELECT id, client_id, platform, post_type, external_post_id FROM posts
+    "SELECT id, client_id, platform, post_type, external_post_id, platform_post_ids FROM posts
      WHERE stage = 'published' AND external_post_id IS NOT NULL AND external_post_id <> ''
        AND (published_at IS NULL OR published_at >= :since)"
 );
@@ -70,7 +70,11 @@ foreach ($rows as $post) {
     }
     if (!$access_token) continue;
 
-    $postId = $post['external_post_id'];
+    // Same platform_post_ids preference as post-insights-fetch.php — see
+    // that file's comment for why external_post_id alone isn't reliable for
+    // a post published to more than one platform.
+    $platformPostIds = json_decode($post['platform_post_ids'] ?? '{}', true) ?: [];
+    $postId = $platformPostIds[$post['platform']] ?? $post['external_post_id'];
     $likes = $comments = $shares = $reach = null;
 
     if ($post['platform'] === 'tiktok') {
