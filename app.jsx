@@ -11083,10 +11083,29 @@ Based on ALL of the above, return ONLY valid JSON with these exact keys:
       // which the regex below correctly refuses to treat as valid JSON
       // (an incomplete object isn't one) — surfacing as an opaque "No
       // JSON returned" that was actually "JSON never finished".
-      const raw = await ai(prompt, 3000);
+      const raw = await ai(prompt, 4096);
       const m = raw.match(/\{[\s\S]*\}/);
-      if(!m) throw new Error("No JSON returned — AI said: " + (raw.slice(0,200)||"(empty response)"));
-      const parsed = JSON.parse(m[0]);
+      let parsed;
+      if (m) {
+        parsed = JSON.parse(m[0]);
+      } else {
+        // Still no closing brace even at the raised token budget — rather
+        // than hard-fail and lose everything the model already wrote,
+        // salvage whatever complete "key": value pairs came through before
+        // the cutoff by trimming back to the last complete field and
+        // closing the object there. Partial-but-real beats nothing.
+        const start = raw.indexOf("{");
+        if (start < 0) throw new Error("No JSON returned — AI said: " + (raw.slice(0,400)||"(empty response)"));
+        let repaired = null;
+        const body = raw.slice(start);
+        for (let i = body.length - 1; i > 0 && !repaired; i--) {
+          if (body[i] === ",") {
+            try { repaired = JSON.parse(body.slice(0, i) + "}"); } catch(e) {}
+          }
+        }
+        if (!repaired) throw new Error("AI response was cut off before any complete field — AI said: " + (raw.slice(0,400)||"(empty response)"));
+        parsed = repaired;
+      }
       await onSaveKnowledge({
         ...(knowledge||{}), client_id:client.id, client_name:client.name,
         summary: parsed.summary||"",
