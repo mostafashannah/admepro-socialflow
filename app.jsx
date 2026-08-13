@@ -47521,13 +47521,20 @@ Return ONLY valid JSON (no markdown, no explanation):
     }
 
     try {
-      await ue("Post", post.id, {stage:newStage, assigned_to:updatedPost.assigned_to,
-        due_date:updatedPost.due_date, due_time:updatedPost.due_time,
-        estimated_minutes:updatedPost.estimated_minutes, content_assigned_to:updatedPost.content_assigned_to,
-        design_assigned_to:updatedPost.design_assigned_to,
-        content_completed_at:updatedPost.content_completed_at, design_completed_at:updatedPost.design_completed_at,
-        project_id:updatedPost.project_id, revision_count:updatedPost.revision_count, was_rejected:updatedPost.was_rejected,
-        published_at:updatedPost.published_at});
+      // This used to hand-list every field to persist — and kept missing
+      // ones, silently. design_assets was the latest casualty: removing an
+      // attachment (handleRemoveDesignAsset) goes through onStageChange with
+      // the same stage, updates local state fine, logs the "Removed
+      // attachment" comment fine, but this call never actually wrote the
+      // trimmed design_assets array to the database, so the "removed" file
+      // reappeared on the very next reload. Same root cause as the earlier
+      // project_id and published_platforms bugs. Passing the whole updated
+      // post through instead — ue()'s sbSanitize already strips anything
+      // not in SB_SCHEMA.posts, so this can't write fields the DB doesn't
+      // have — closes off this entire class of bug instead of patching it
+      // field by field every time something new falls through.
+      const {id, created_at, created_date, ...persistable} = updatedPost;
+      await ue("Post", post.id, {...persistable, stage:newStage});
       await ce("Comment",[{post_id:post.id,author_name:comment.author_name,type:"stage_change",content:comment.content}]);
     } catch(e){ logActivity("Post Stage Change Failed","tasks",`"${post.title}" → ${stageLabel}`,"error",String(e),currentUser?.email||"admin"); }
   };
