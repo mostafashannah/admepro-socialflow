@@ -17320,7 +17320,15 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
     if (!a.scheduled_date && !b.scheduled_date) return 0;
     if (!a.scheduled_date) return -1;
     if (!b.scheduled_date) return 1;
-    return b.scheduled_date.localeCompare(a.scheduled_date);
+    // Same-day posts used to fall back to whatever order they happened to
+    // already be in (arbitrary/whatever a prior drag left them at) — reading
+    // newest-first by date but oldest-first by time within a day felt
+    // inconsistent. Comparing the full date+time together keeps one
+    // direction throughout: latest date first, and within a tied date,
+    // latest time first too.
+    const bKey = `${b.scheduled_date}T${b.scheduled_time||"00:00"}`;
+    const aKey = `${a.scheduled_date}T${a.scheduled_time||"00:00"}`;
+    return bKey.localeCompare(aKey);
   };
   const projType = PROJECT_TYPES.find(t=>t.id===project.project_type)||PROJECT_TYPES[0];
   const stageOrder = ["planning","content","design","review","approval","scheduled","published"];
