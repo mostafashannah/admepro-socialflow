@@ -47564,6 +47564,15 @@ Return ONLY valid JSON (no markdown, no explanation):
     ue("Post", updatedPost.id, {
       title: updatedPost.title,
       description: updatedPost.description,
+      // Edit form's "Move to Project" selector (same-client projects, see
+      // sameClientProjects in PostDetail) updated project_id/client_id/
+      // client_name in local state fine, but this save call never actually
+      // wrote any of the three to the database — the move looked like it
+      // worked until the next reload silently reverted it back to the
+      // original project.
+      project_id: updatedPost.project_id,
+      client_id: updatedPost.client_id,
+      client_name: updatedPost.client_name,
       platform: updatedPost.platform,
       platforms: updatedPost.platforms,
       post_type: updatedPost.post_type,
