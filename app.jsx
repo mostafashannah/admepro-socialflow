@@ -11032,8 +11032,16 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
     }).join("\n\n---\n\n");
     // Was capped at 2000 chars — harmless when docs were themselves capped
     // at 8000, but now that full documents (500K+ chars) are stored, this
-    // silently fed the AI almost nothing from a real upload.
-    const docFacts = (documents||[]).map(d=>d.content||"").filter(Boolean).slice(0,3).join("\n\n").slice(0,700000);
+    // silently fed the AI almost nothing from a real upload. But 700,000
+    // chars (~150K+ tokens) went too far the other way: stuffing that much
+    // into the prompt left almost no room in the context window for the
+    // actual JSON response, so it got cut off a sentence into "summary"
+    // every time, regardless of the max_tokens value passed to ai(). This
+    // only needs enough of each document for a brand profile, not the
+    // entire raw file — 60K chars (~15K tokens) per doc is generous for
+    // that while leaving the model plenty of room to actually finish
+    // writing the response.
+    const docFacts = (documents||[]).map(d=>(d.content||"").slice(0,60000)).filter(Boolean).slice(0,3).join("\n\n");
     // With genuinely nothing to work from, Claude tends to deviate from
     // the "return ONLY JSON" instruction and explain it can't do this
     // instead — which the regex below can't parse, surfacing as an opaque
@@ -11075,7 +11083,7 @@ Based on ALL of the above, return ONLY valid JSON with these exact keys:
       // which the regex below correctly refuses to treat as valid JSON
       // (an incomplete object isn't one) — surfacing as an opaque "No
       // JSON returned" that was actually "JSON never finished".
-      const raw = await ai(prompt, 1800);
+      const raw = await ai(prompt, 3000);
       const m = raw.match(/\{[\s\S]*\}/);
       if(!m) throw new Error("No JSON returned — AI said: " + (raw.slice(0,200)||"(empty response)"));
       const parsed = JSON.parse(m[0]);
