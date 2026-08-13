@@ -17559,7 +17559,14 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                           // column would reflect after a manual date edit.
                           const fromPost = base[fromIdx];
                           const toPost = post;
-                          if(fromPost && toPost && fromPost.scheduled_date!==toPost.scheduled_date) {
+                          // Comparing scheduled_date alone missed same-day
+                          // posts that only differ by scheduled_time (e.g.
+                          // 13:00 vs 12:30 on the same date) — dragging those
+                          // to reorder them silently did nothing, since the
+                          // dates already matched. Compare the full
+                          // date+time pair instead so a same-day time-only
+                          // reorder actually swaps too.
+                          if(fromPost && toPost && `${fromPost.scheduled_date}|${fromPost.scheduled_time||""}`!==`${toPost.scheduled_date}|${toPost.scheduled_time||""}`) {
                             const fromDate = fromPost.scheduled_date, fromTime = fromPost.scheduled_time;
                             const toDate = toPost.scheduled_date, toTime = toPost.scheduled_time;
                             ue("Post", fromPost.id, {scheduled_date: toDate, scheduled_time: toTime}).catch(()=>{});
@@ -17582,7 +17589,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                           <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text3)",fontSize:11,textAlign:"center",padding:8}}>{post.title}</div>
                         )}
                         <div style={{position:"absolute",top:0,left:0,right:0,padding:"8px 8px 24px",background:"linear-gradient(to bottom, rgba(0,0,0,.75), transparent)",display:"flex",flexDirection:"column",alignItems:"flex-start",gap:4,pointerEvents:"none"}}>
-                          <span style={{fontSize:14,fontWeight:700,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,.7)"}}>{post.scheduled_date||"No date"}</span>
+                          <span style={{fontSize:14,fontWeight:700,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,.7)"}}>{post.scheduled_date||"No date"}{post.scheduled_date&&post.scheduled_time?` · ${post.scheduled_time}`:""}</span>
                           <span className="sf-grid-status-badge" style={{fontSize:12,fontWeight:700,lineHeight:1,color:"#fff",padding:"5px 9px 4px",borderRadius:20,background:post.stage==="published"?"#10b981":"rgba(255,255,255,.28)",whiteSpace:"nowrap",display:"inline-block"}}>{post.stage==="published"?"Published":"Unpublished"}</span>
                         </div>
                         <div style={{position:"absolute",top:8,right:8,display:"flex",flexWrap:"wrap",justifyContent:"flex-end",gap:4,pointerEvents:"none"}}>
