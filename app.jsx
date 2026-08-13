@@ -5730,7 +5730,7 @@ function ClientApprovalLinkCard({post, client, currentUser}) {
 
 // POST DETAIL MODAL
 // ════════════════════════════════════════════════════════════════
-function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onAddComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,onInsightsRefreshed,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[],allPosts=[]}) {
+function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onAddComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,onInsightsRefreshed,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[],allPosts=[],contactReports=[]}) {
   const {isMobile} = useResponsive();
   const [comment,setComment] = useState("");
   const [sending,setSending] = useState(false);
@@ -6150,10 +6150,58 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   };
   const internalComments = postComments.filter(c=>c.audience!=="client");
   const clientComments = postComments.filter(c=>c.audience==="client");
-  const [activityTab, setActivityTab] = useState("internal"); // "internal" | "client" | "insights"
+  const [activityTab, setActivityTab] = useState("internal"); // "internal" | "client" | "insights" | "mai"
   const [insightsRefreshing, setInsightsRefreshing] = useState(false);
   const [insightsError, setInsightsError] = useState("");
   const canShowInsights = post.stage==="published" && ["facebook","instagram","tiktok"].includes(post.platform);
+
+  // ── Mai's Recommendation — the AI Account Executive's take on this
+  // specific post, grounded in two real signals: how this client's
+  // publishing has actually been going (published count/cadence) and
+  // whatever the client themselves have said in real meetings/calls
+  // (contact reports) that's actually relevant to THIS post's subject —
+  // not a generic "post more!" platitude.
+  const [maiRec, setMaiRec] = useState(null);
+  const [maiLoading, setMaiLoading] = useState(false);
+  const getMaiRecommendation = async () => {
+    setMaiLoading(true); setMaiRec(null);
+    try {
+      const clientPosts = allClientPosts||[];
+      const publishedPosts = clientPosts.filter(p=>p.stage==="published");
+      const publishedCount = publishedPosts.length;
+      const samePlatformPublished = publishedPosts.filter(p=>p.platform===post.platform).length;
+      const lastPublishedDate = publishedPosts.map(p=>p.published_at||p.scheduled_date).filter(Boolean).sort().slice(-1)[0];
+      // Keyword-match this post's title/caption/description against contact
+      // report text — only pull in reports that actually relate to THIS
+      // post's subject, not the client's entire meeting history.
+      const postWords = `${post.title||""} ${post.description||""} ${post.caption||""}`.toLowerCase().match(/[a-z0-9]{4,}/g) || [];
+      const relevantReports = (contactReports||[]).filter(r=>{
+        const text = `${r.summary||""} ${r.key_points||""} ${r.action_items||""}`.toLowerCase();
+        return postWords.some(w=>text.includes(w));
+      }).slice(0,5);
+      const reportsBlock = relevantReports.length
+        ? relevantReports.map(r=>`- ${(r.meeting_date||r.created_at||"").slice(0,10)}: ${r.summary||""}${r.key_points?` | Key points: ${r.key_points}`:""}${r.action_items?` | Action items: ${r.action_items}`:""}`).join("\n")
+        : "None of the client's contact reports mention anything related to this specific post's subject.";
+      const raw = await agentAI("account_executive", `Recommendation: ${post.title}`, `You are Mai, the agency's AI Account Executive. Give the team a short, concrete recommendation about this ONE task/post — grounded ONLY in the real data below, not generic social media advice.
+
+POST: "${post.title}" (${post.platform||"—"}, ${post.post_type||"post"})
+${post.description?`Brief: ${post.description}`:""}
+${post.caption?`Caption so far: ${post.caption.slice(0,300)}`:""}
+
+CLIENT PUBLISHING HISTORY:
+- ${publishedCount} total published posts for this client${post.platform?`, ${samePlatformPublished} of them on ${post.platform}`:""}.
+- Last published post: ${lastPublishedDate||"none yet"}.
+
+RELEVANT CONTACT REPORTS (real client meetings/calls that mention something related to this post's topic):
+${reportsBlock}
+
+Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in mind or do differently for THIS post, based specifically on the publishing numbers and/or contact report content above. If neither the numbers nor the reports give you anything specific to say, say so plainly instead of inventing generic advice.`, 400);
+      setMaiRec(raw.trim());
+    } catch(e) {
+      setMaiRec("Mai couldn't put together a recommendation right now — try again in a moment.");
+    }
+    setMaiLoading(false);
+  };
   const handleRefreshInsights = async () => {
     setInsightsRefreshing(true); setInsightsError("");
     try {
@@ -7048,9 +7096,27 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 Insights
               </button>
             )}
+            {isManager&&(
+              <button onClick={()=>setActivityTab("mai")} style={{padding:"6px 14px",borderRadius:99,background:activityTab==="mai"?"var(--accent)":"none",color:activityTab==="mai"?"#fff":"var(--text2)",border:"none",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                Mai
+              </button>
+            )}
           </div>
 
-          {activityTab==="insights" ? (
+          {activityTab==="mai" ? (
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <p style={{fontSize:12,color:"var(--text3)"}}>Mai's take on this task — grounded in this client's actual published-post count and any real contact reports that mention something related to it.</p>
+              {maiRec && (
+                <div style={{padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",display:"flex",gap:10,alignItems:"flex-start"}}>
+                  <div style={{width:28,height:28,borderRadius:"50%",background:"#a855f7",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,flexShrink:0}}>M</div>
+                  <p style={{fontSize:13,color:"var(--text1)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{maiRec}</p>
+                </div>
+              )}
+              <Btn variant="secondary" onClick={getMaiRecommendation} disabled={maiLoading}>
+                {maiLoading?<><Spinner size={13}/> Mai is thinking…</>:(maiRec?"Regenerate":"Get Mai's Recommendation")}
+              </Btn>
+            </div>
+          ) : activityTab==="insights" ? (
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                 <div style={{padding:"14px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",textAlign:"center"}}>
@@ -48760,6 +48826,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         onAddAsset={addAsset}
         assets={data.assets||[]}
         allPosts={data.posts||[]}
+        contactReports={(data.contactReports||[]).filter(r=>r.client_id===_client?.id)}
       />;
     })()}
 
