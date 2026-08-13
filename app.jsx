@@ -5766,7 +5766,11 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   if(!post) return null;
   const stage = STAGE_MAP[post.stage]||STAGES[0];
   const next = nextStageFor(post);
-  const postComments = comments.filter(c=>c.post_id===post.id);
+  // Comments now fetch newest-first (see the Comment qe() call — sorting
+  // ascending with a row cap silently dropped brand-new comments once the
+  // total across the whole system passed the limit), so this thread needs
+  // its own explicit oldest-first sort rather than relying on fetch order.
+  const postComments = comments.filter(c=>c.post_id===post.id).sort((a,b)=>new Date(a.created_date||a.created_at||0)-new Date(b.created_date||b.created_at||0));
   const assignee = team?.find(t=>t.email===post.assigned_to);
 
   const openEdit = () => {
@@ -21627,7 +21631,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                   under the "Client" tab on their side; the client can read
                   and reply here. */}
               {(()=>{
-                const selComments = (comments||[]).filter(c=>c.post_id===sel.id&&c.audience==="client");
+                const selComments = (comments||[]).filter(c=>c.post_id===sel.id&&c.audience==="client").sort((a,b)=>new Date(a.created_date||a.created_at||0)-new Date(b.created_date||b.created_at||0));
                 return (
                   <div style={{display:"flex",flexDirection:"column",gap:10,paddingTop:8,borderTop:"1px solid var(--border)"}}>
                     <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Comments · {selComments.length}</p>
@@ -45051,7 +45055,15 @@ function App() {
 
       // ── Wave 2: secondary data (background, all parallel) ──
       const wave2 = await Promise.allSettled([
-        qe("Comment",{},"created_at"), // 0
+        // Sorted ascending with the default 500-row cap used to silently
+        // drop every comment past the oldest 500 across the WHOLE system —
+        // once total comment count grew past that, brand-new comments
+        // (including whatever just @mentioned someone) never made it into
+        // the fetch at all, so opening the task from the notification
+        // showed no comment/attachment there even right after a hard
+        // refresh. Sorted descending (newest first) instead, same fix
+        // pattern as Leads below.
+        qe("Comment",{},"-created_at",5000), // 0
         qe("Asset"), // 1
         qe("TimeLog"), // 2
         qe("Template"), // 3
