@@ -134,11 +134,22 @@ foreach ($clients as $client) {
         $intel->execute([':cid' => $clientId]);
         $expectedPerWeek = (float) ($intel->fetchColumn() ?: 3);
 
-        $recent = $pdo->prepare("SELECT COUNT(*) FROM posts WHERE client_id = :cid AND stage = 'published' AND published_at >= (NOW() - INTERVAL 7 DAY)");
+        // published_at is only stamped by the app's own publish flow
+        // (auto-publish cron, the manual Publish button, or a stage change
+        // that lands on Published) — a post marked published_at some other
+        // way (direct DB edit, an older code path, demo/import data) can
+        // sit at stage='published' with published_at still NULL. Filtering
+        // on published_at alone then makes a client with real, recent
+        // published content look like "0 published, nothing posted" —
+        // exactly the false "behind schedule" flag this cron exists to
+        // avoid. COALESCE to scheduled_date (when it's already passed) or
+        // created_at as the best available stand-in for when it actually
+        // went out.
+        $recent = $pdo->prepare("SELECT COUNT(*) FROM posts WHERE client_id = :cid AND stage = 'published' AND COALESCE(published_at, scheduled_date, created_at) >= (NOW() - INTERVAL 7 DAY)");
         $recent->execute([':cid' => $clientId]);
         $actualLast7 = (int) $recent->fetchColumn();
 
-        $lastPub = $pdo->prepare("SELECT MAX(published_at) FROM posts WHERE client_id = :cid AND stage = 'published'");
+        $lastPub = $pdo->prepare("SELECT MAX(COALESCE(published_at, scheduled_date, created_at)) FROM posts WHERE client_id = :cid AND stage = 'published'");
         $lastPub->execute([':cid' => $clientId]);
         $lastPublishedAt = $lastPub->fetchColumn();
 
@@ -193,8 +204,8 @@ foreach ($clients as $client) {
         // ── 2. Daily performance analysis ─────────────────────────
         $posts = $pdo->prepare(
             "SELECT title, platform, post_type, published_at, insight_likes, insight_comments, insight_shares, insight_reach
-             FROM posts WHERE client_id = :cid AND stage = 'published' AND published_at >= (NOW() - INTERVAL 14 DAY)
-             ORDER BY published_at DESC LIMIT 30"
+             FROM posts WHERE client_id = :cid AND stage = 'published' AND COALESCE(published_at, scheduled_date, created_at) >= (NOW() - INTERVAL 14 DAY)
+             ORDER BY COALESCE(published_at, scheduled_date, created_at) DESC LIMIT 30"
         );
         $posts->execute([':cid' => $clientId]);
         $postRows = $posts->fetchAll(PDO::FETCH_ASSOC);
