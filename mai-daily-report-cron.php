@@ -456,8 +456,13 @@ foreach ($recipientFindings as $email => $entry) {
     $msg = trim($msg);
     $greeting = "Good morning" . ($firstName !== '' ? " {$firstName}" : '') . ",";
     // Belt-and-suspenders: never trust the model's compliance with either
-    // the greeting or the length limit completely.
-    if ($msg !== '' && !preg_match('/good\s*morning|صباح\s*الخير/iu', mb_substr($msg, 0, 60))) {
+    // the greeting or the length limit completely. The system prompt
+    // explicitly allows "Good morning" / "Morning" / "Morning!" as natural
+    // variants — this check only ever looked for "good morning", so a
+    // message that opened with the equally-valid bare "Morning {name},"
+    // wasn't recognized as already having a greeting, and got a SECOND
+    // "Good morning {name}," prepended on top of it.
+    if ($msg !== '' && !preg_match('/\bmorning\b|صباح\s*الخير/iu', mb_substr($msg, 0, 60))) {
         $msg = $greeting . "\n" . $msg;
     }
     // The system prompt asks for under 550 characters (greeting included),
