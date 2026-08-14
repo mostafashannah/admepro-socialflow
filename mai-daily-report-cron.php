@@ -188,6 +188,15 @@ foreach ($clients as $client) {
         $today = new DateTime('today');
         $runwayDays = $lastScheduledDate ? workingDaysBetween($today, new DateTime($lastScheduledDate)) : 0;
 
+        $scheduledCountStmt = $pdo->prepare("SELECT COUNT(*) FROM posts WHERE client_id = :cid AND stage = 'scheduled'");
+        $scheduledCountStmt->execute([':cid' => $clientId]);
+        $scheduledCount = (int) $scheduledCountStmt->fetchColumn();
+        // Recorded for every client, healthy or not — same reasoning as
+        // 'stats' above: the WhatsApp writer needs the raw scheduled count
+        // on hand for every account to build the two-line Published/
+        // Scheduled format, not just the ones flagged as low.
+        addFinding($recipientFindings, $pdo, $client, $admins, $clientName, 'scheduled_count', "{$scheduledCount} scheduled");
+
         $pipelineLow = $runwayDays < 10;
         if ($pipelineLow) {
             $msg = $lastScheduledDate
@@ -406,25 +415,33 @@ foreach ($clients as $client) {
 // writeup. Always short, always closes by pointing to SocialFlow
 // notifications for the full detail and offering to elaborate if asked —
 // never a fixed template, so the wording genuinely varies run to run.
+// Friday/Saturday, same weekend convention as workingDaysBetween() above —
+// a report that opens with "Good morning" on a day nobody's actually
+// working reads oddly. Computed once, used both in the greeting rule below
+// and in the belt-and-suspenders fallback further down.
+$todayDow = (int) date('w'); // 0=Sun .. 6=Sat
+$isWeekend = $todayDow === 5 || $todayDow === 6;
+
 $maiWaSystem = "You are Mai, the agency's AI Account Executive, sending a WhatsApp update to a teammate. Your character: "
     . "analytical and decisive, warm but not chatty, no corporate filler.\n\n"
     . "HARD RULES — these are not suggestions, a long message defeats the entire point:\n"
-    . "- ALWAYS start the message with a morning greeting addressed to them by first name, e.g. \"Good morning {NAME},\" on its own — "
-    . "vary the exact phrasing naturally (Good morning / Morning / Morning!) so it doesn't read as a fixed template, but it must always "
-    . "include \"good morning\" (or a clear variant of it) plus their first name, every single time.\n"
-    . "- STRICT LENGTH LIMIT: the ENTIRE message (including the greeting) must be under 550 characters total, no exceptions. If you have many clients, that means "
-    . "one short clause each, not a paragraph — group the fine ones into a single line rather than listing each individually.\n"
+    . ($isWeekend
+        ? "- Today is a WEEKEND day (Friday/Saturday) — do NOT say \"good morning\". Open with a brief weekend-appropriate line addressed to them by "
+          . "first name instead, e.g. \"Happy Friday {NAME},\" or \"Hope you're having a good weekend, {NAME} —\", naturally varied, every single time.\n"
+        : "- ALWAYS start the message with a morning greeting addressed to them by first name, e.g. \"Good morning {NAME},\" on its own — "
+          . "vary the exact phrasing naturally (Good morning / Morning / Morning!) so it doesn't read as a fixed template, but it must always "
+          . "include \"good morning\" (or a clear variant of it) plus their first name, every single time.\n")
+    . "- STRICT LENGTH LIMIT: the ENTIRE message (including the greeting) must be under 900 characters total, no exceptions — the two-line-per-client "
+    . "format below already takes more room than a one-liner, so keep every individual line itself short and punchy rather than dropping the format.\n"
     . "- ONE message only. This is a WhatsApp ping, not an email or a report — nobody will read a wall of text, so being readable matters "
     . "more than being complete.\n"
-    . "- Use ⚠️ ONLY for a client with a REAL problem below (cadence behind schedule, or pipeline low/empty). Never use it for a client that's fine.\n"
-    . "- Every client below has a \"stats\" figure (posts this week / target, days since last post) — always work the actual number into that "
-    . "client's line, even a healthy one, e.g. \"Bino ✅ 3/3 this week, last post 1d ago\" — never just \"on track\" with no number, that's not "
-    . "actually useful to check against. You may still group several healthy clients onto one shared line if it keeps things short, but keep "
-    . "each one's own number attached to its name within that line.\n"
-    . "- NEVER repeat/paste full report text or multiple sentences per client — one short clause (with its number) per client, max.\n"
-    . "- FORMAT: one account per line, starting with the account name, so it reads as a clear per-account list, not a flowing paragraph — "
-    . "e.g. \"Bino ⚠️ — cadence behind, 1/3 this week\" on its own line, next account on the next line. Healthy accounts can still be grouped "
-    . "onto one shared line together, but never blend an account with a real issue into the same line as one that's fine.\n"
+    . "- Use ⚠️ ONLY for a client with a REAL problem below (cadence behind schedule, or pipeline low/empty). Use ✅ for a client that's fine.\n"
+    . "- FORMAT: exactly TWO lines per client, every client, no exceptions and no grouping several clients onto one shared line:\n"
+    . "  Line 1: \"{ClientName} {emoji}\" — just the name and status emoji, nothing else.\n"
+    . "  Line 2: \"Published: X/Y this week · Scheduled: N in pipeline\" using that client's real numbers below — append a short clause after it "
+    . "ONLY if there's an actual cadence or pipeline problem to flag (e.g. \" — last post 6d ago\" or \" — runway low\"), otherwise leave Line 2 at just the two numbers.\n"
+    . "  A blank line between each client's two-line block. Never merge a client's two lines into one, never blend two clients together.\n"
+    . "- NEVER repeat/paste full report text or add extra sentences per client beyond the two lines above.\n"
     . "- End with ONE short line pointing to SocialFlow notifications for full details and inviting them to ask you for more — not a full sentence per client repeating this.\n"
     . "- Never use markdown headers, '#', or bullet-point '-' lists — write like a real WhatsApp text (short lines/emoji are fine, formal lists/headers are not).";
 
@@ -438,6 +455,7 @@ foreach ($recipientFindings as $email => $entry) {
         // content-free "on track" and gives the AM something concrete to
         // spot-check against reality.
         if (!empty($facts['stats'])) $parts[] = $facts['stats'];
+        if (!empty($facts['scheduled_count'])) $parts[] = $facts['scheduled_count'];
         if (!empty($facts['cadence'])) $parts[] = "cadence: " . $facts['cadence'];
         if (!empty($facts['pipeline'])) $parts[] = "pipeline: " . $facts['pipeline'];
         if (!empty($facts['report'])) $parts[] = "today's read: " . $facts['report'];
@@ -447,30 +465,39 @@ foreach ($recipientFindings as $email => $entry) {
     $nameParts = explode(' ', trim($entry['name'] ?? ''));
     $firstName = trim($nameParts[0] ?? '');
     $nameHint = $firstName !== '' ? $firstName : '(unknown — just say Good morning, with no name)';
-    $userMsg = "Recipient's first name: {$nameHint}\n\nToday's findings across your accounts:\n" . implode("\n", $lines) . "\n\nWrite the one WhatsApp message now, starting with the morning greeting.";
-    [$status, $data] = callClaude(['model' => 'claude-sonnet-4-6', 'max_tokens' => 400, 'system' => $maiWaSystem, 'messages' => [['role' => 'user', 'content' => $userMsg]]]);
+    $userMsg = "Recipient's first name: {$nameHint}\n\nToday's findings across your accounts:\n" . implode("\n", $lines) . "\n\nWrite the one WhatsApp message now, starting with the greeting, two lines per client as instructed.";
+    [$status, $data] = callClaude(['model' => 'claude-sonnet-4-6', 'max_tokens' => 700, 'system' => $maiWaSystem, 'messages' => [['role' => 'user', 'content' => $userMsg]]]);
     $msg = '';
     if ($status >= 200 && $status < 300) {
         foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $msg .= $block['text']; }
     }
     $msg = trim($msg);
-    $greeting = "Good morning" . ($firstName !== '' ? " {$firstName}" : '') . ",";
+    $greeting = $isWeekend
+        ? "Happy weekend" . ($firstName !== '' ? " {$firstName}" : '') . ","
+        : "Good morning" . ($firstName !== '' ? " {$firstName}" : '') . ",";
     // Belt-and-suspenders: never trust the model's compliance with either
     // the greeting or the length limit completely. The system prompt
     // explicitly allows "Good morning" / "Morning" / "Morning!" as natural
-    // variants — this check only ever looked for "good morning", so a
-    // message that opened with the equally-valid bare "Morning {name},"
-    // wasn't recognized as already having a greeting, and got a SECOND
-    // "Good morning {name}," prepended on top of it.
-    if ($msg !== '' && !preg_match('/\bmorning\b|صباح\s*الخير/iu', mb_substr($msg, 0, 60))) {
+    // variants on a weekday — this check only ever looked for "good
+    // morning", so a message that opened with the equally-valid bare
+    // "Morning {name}," wasn't recognized as already having a greeting,
+    // and got a SECOND "Good morning {name}," prepended on top of it. On a
+    // weekend day, "morning" is never expected at all — check for weekend-
+    // style phrasing instead so a message that already opened with
+    // "Happy Friday" etc. doesn't get a redundant greeting stapled on too.
+    $hasGreeting = $isWeekend
+        ? preg_match('/\b(happy|weekend|friday|saturday)\b|صباح\s*الخير|عطل/iu', mb_substr($msg, 0, 60))
+        : preg_match('/\bmorning\b|صباح\s*الخير/iu', mb_substr($msg, 0, 60));
+    if ($msg !== '' && !$hasGreeting) {
         $msg = $greeting . "\n" . $msg;
     }
-    // The system prompt asks for under 550 characters (greeting included),
-    // but a message nobody will actually read defeats the entire point of
-    // this rewrite. Cut at the last whole word before the limit rather than
-    // mid-word.
-    if (mb_strlen($msg) > 600) {
-        $cut = mb_substr($msg, 0, 550);
+    // The system prompt asks for under 900 characters (greeting included) —
+    // raised from 550 now that the format is two lines per client instead
+    // of one, but a message nobody will actually read still defeats the
+    // point, so still hard-capped. Cut at the last whole word before the
+    // limit rather than mid-word.
+    if (mb_strlen($msg) > 950) {
+        $cut = mb_substr($msg, 0, 900);
         $lastSpace = mb_strrpos($cut, ' ');
         if ($lastSpace !== false) $cut = mb_substr($cut, 0, $lastSpace);
         $msg = $cut . "… full details in SocialFlow notifications.";
