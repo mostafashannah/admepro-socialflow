@@ -36140,11 +36140,15 @@ function AssignExistingTaskModal({open, onClose, slot, posts, team, clients, onA
   );
 }
 
-function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onStartTimer, onPauseTimer, onResumeTimer, schedules, scheduleOverrides, onOverrideSchedule, onShiftOverdue, initialJump, onJumpConsumed, onBackToCalendar, activityLogs=[], appSettings, onQuickAdd}) {
+function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onStartTimer, onPauseTimer, onResumeTimer, schedules, scheduleOverrides, onOverrideSchedule, onShiftOverdue, initialJump, onJumpConsumed, onBackToCalendar, activityLogs=[], appSettings, onQuickAdd, onMoveTask}) {
   // Which free-slot "+" button currently has its Task/Post/Calendar Plan
   // picker open — holds the slot payload (assignee/date/time) it was
   // opened with, so picking an option knows what to prefill.
   const [addMenuSlot,setAddMenuSlot] = useState(null);
+  // Task bar currently being dragged on the Combined Timeline — a ref
+  // (not state) since drag events fire far more often than a re-render
+  // needs to happen for.
+  const dragTaskRef = React.useRef(null);
   const {isMobile} = useResponsive();
   const [viewDate, setViewDate] = useState(()=>initialJump?.date ? new Date(initialJump.date+"T00:00:00") : new Date());
   const [tick, setTick] = useState(0);
@@ -36389,6 +36393,17 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                       scheduled_date: dateStr, scheduled_time: `${String(hour).padStart(2,'0')}:00`,
                       due_date: dateStr, due_time: `${String(hour).padStart(2,'0')}:00`,
                     });
+                  }:undefined}
+                  onDragOver={(isAM&&onMoveTask)?(e)=>{e.preventDefault();e.dataTransfer.dropEffect="move";}:undefined}
+                  onDrop={(isAM&&onMoveTask)?(e)=>{
+                    e.preventDefault();
+                    const dragged = dragTaskRef.current;
+                    if(!dragged) return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const relX = Math.min(0.999,Math.max(0,(e.clientX-rect.left)/rect.width));
+                    const hour = Math.min(WORKING_END-1, WORKING_START + Math.floor(relX*(WORKING_END-WORKING_START)));
+                    onMoveTask(dragged.postId, {assigned_to: member.email, due_date: dateStr, due_time: `${String(hour).padStart(2,'0')}:00`});
+                    dragTaskRef.current = null;
                   }:undefined}>
                   {memberSlots.length===0 && <span style={{position:"absolute",top:"50%",left:8,transform:"translateY(-50%)",fontSize:10,color:"var(--text3)",pointerEvents:"none"}}>No tasks scheduled</span>}
                   {memberSlots.map(slot=>{
@@ -36397,9 +36412,12 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     const widthPct = Math.max(2,(slot.end_mins-slot.start_mins)/WORKING_MINS*100);
                     const stage = post ? (STAGE_MAP[post.stage]||STAGES[0]) : null;
                     return (
-                      <div key={slot.post_id} title={`${post?.title||""} (${slot.start_time}–${slot.end_time})${slot.overdue?" — OVERDUE":""}`}
+                      <div key={slot.post_id} title={`${post?.title||""} (${slot.start_time}–${slot.end_time})${slot.overdue?" — OVERDUE":""}${isAM&&onMoveTask?" — drag to move":""}`}
                         onClick={(e)=>{e.stopPropagation();onPostClick&&post&&onPostClick(post);}}
-                        style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:3,bottom:3,background:slot.overdue?"#ef4444":(stage?.color||"var(--accent)"),borderRadius:5,cursor:post?"pointer":"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 6px",...(slot.overdue?{boxShadow:"0 0 0 1px #b91c1c inset"}:{})}}>
+                        draggable={!!(isAM&&onMoveTask&&post)}
+                        onDragStart={(isAM&&onMoveTask&&post)?(e)=>{e.stopPropagation();dragTaskRef.current={postId:post.id};e.dataTransfer.effectAllowed="move";e.currentTarget.style.opacity="0.4";}:undefined}
+                        onDragEnd={(e)=>{e.currentTarget.style.opacity="1";}}
+                        style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:3,bottom:3,background:slot.overdue?"#ef4444":(stage?.color||"var(--accent)"),borderRadius:5,cursor:post?(isAM&&onMoveTask?"grab":"pointer"):"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 6px",...(slot.overdue?{boxShadow:"0 0 0 1px #b91c1c inset"}:{})}}>
                         <span style={{fontSize:10,color:"#fff",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span>
                         {widthPct>8&&<span style={{fontSize:8.5,color:"#fff",opacity:0.85,whiteSpace:"nowrap"}}>{slot.start_time}–{slot.end_time}</span>}
                       </div>
@@ -49246,7 +49264,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
           else if(type==="task"){ setAddTaskPresetSlot(slot); setShowAddTask(true); }
           else if(type==="calendar"){ setCalendarPreselectedClient(null); setShowFABCalendar(true); }
           else if(type==="existing"){ setAssignExistingSlot(slot); }
-        }}/>}
+        }} onMoveTask={assignExistingTaskToSlot}/>}
         {(page==="my_performance"||page==="reports")&&<MyPerformancePage currentUser={currentUser} posts={data.posts} timeEntries={data.timeEntries||[]} perfLogs={data.perfLogs||[]} aiInsights={data.aiInsights||[]}/>}
         {page==="account"&&(
           <AccountPage
