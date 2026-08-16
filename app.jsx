@@ -27077,7 +27077,18 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
   };
 
   const selectedApp = APP_MAP[f.app_key];
-  const selectedTrigger = TRIGGER_MAP[f.trigger];
+  // Stored as a comma-separated list in the same `trigger` TEXT column —
+  // no schema change needed, and nothing else in the app reads this as a
+  // single exact key (the automation-runner side isn't wired up yet), so
+  // widening it to multiple values here is safe.
+  const triggerKeys = (f.trigger||"").split(",").filter(Boolean);
+  const toggleTrigger = (key) => setF(p=>{
+    const keys = (p.trigger||"").split(",").filter(Boolean);
+    const next = keys.includes(key) ? keys.filter(k=>k!==key) : [...keys,key];
+    return {...p, trigger: next.join(",")};
+  });
+  const selectedTriggers = triggerKeys.map(k=>TRIGGER_MAP[k]).filter(Boolean);
+  const selectedTrigger = selectedTriggers[0]; // back-compat for the icon shown in Review
   const categoryActions = INTEGRATION_ACTIONS[selectedApp?.category||"social"]||INTEGRATION_ACTIONS.social;
   const selectedAction = categoryActions.find(a=>a.key===f.action);
   const isWhatsApp = f.app_key==="whatsapp";
@@ -27112,7 +27123,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
   const handleSave = async (active=false) => {
     if(!f.app_key||!f.trigger||!f.action) return;
     setSaving(true);
-    const autoName = f.name || `${selectedTrigger?.label||f.trigger} → ${selectedApp?.label||f.app_key}`;
+    const autoName = f.name || `${selectedTriggers.length ? selectedTriggers.map(t=>t.label).join(" + ") : f.trigger} → ${selectedApp?.label||f.app_key}`;
     await onSave({
       name: autoName,
       app_key: f.app_key,
@@ -27419,14 +27430,14 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
           {step===3&&(
             <div style={{display:"flex",flexDirection:"column",gap:14}}>
               <div>
-                <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:17,fontWeight:800,marginBottom:4}}>Choose Trigger</h3>
-                <p style={{fontSize:13,color:"var(--text2)"}}>What event in SocialFlow should activate this integration?</p>
+                <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:17,fontWeight:800,marginBottom:4}}>Choose Trigger(s)</h3>
+                <p style={{fontSize:13,color:"var(--text2)"}}>Which event(s) in SocialFlow should activate this integration? Pick as many as you need.</p>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {INTEGRATION_TRIGGERS.map(t=>{
-                  const active=f.trigger===t.key;
+                  const active=triggerKeys.includes(t.key);
                   return (
-                    <button key={t.key} onClick={()=>sf("trigger",t.key)} style={{
+                    <button key={t.key} onClick={()=>toggleTrigger(t.key)} style={{
                       display:"flex",alignItems:"center",gap:14,padding:"14px 18px",
                       background:active?"var(--accentbg)":"var(--surface2)",
                       border:`1.5px solid ${active?"var(--accent)":"var(--border)"}`,
@@ -27542,7 +27553,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                 <div style={{textAlign:"center",padding:14,background:"var(--surface)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
                   <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>When This Happens</p>
                   <div style={{fontSize:24,marginBottom:6}}>{selectedTrigger?.icon||""}</div>
-                  <p style={{fontWeight:700,fontSize:13}}>{selectedTrigger?.label||f.trigger}</p>
+                  <p style={{fontWeight:700,fontSize:13}}>{selectedTriggers.length ? selectedTriggers.map(t=>t.label).join(", ") : f.trigger}</p>
                   <p style={{fontSize:11,color:"var(--text3)",marginTop:3}}>in SocialFlow</p>
                 </div>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
