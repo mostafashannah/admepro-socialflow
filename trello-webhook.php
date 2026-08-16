@@ -29,6 +29,7 @@
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/trello-lib.php';
+require_once __DIR__ . '/pro-lib.php'; // sendWhatsAppReply()
 header("Content-Type: application/json");
 
 http_response_code(200); // ack immediately — Trello disables the webhook after repeated slow/non-2xx responses
@@ -99,16 +100,41 @@ if ($actionType === 'createCard') {
 
     $title = trim($action['data']['card']['name'] ?? '') ?: '(untitled)';
     $desc = $action['data']['card']['desc'] ?? '';
+
+    // Same auto-assign-to-the-account-manager behavior as a client
+    // submitting a request through the Client Portal (see addPost() in
+    // app.jsx) — lands straight on their plate instead of sitting unowned,
+    // and gives someone real to WhatsApp below.
+    $assignedTo = null;
+    $amRecipients = [];
+    $clientRow = $pdo->prepare("SELECT account_manager_id FROM clients WHERE id = :cid LIMIT 1");
+    $clientRow->execute([':cid' => $integ['client_id']]);
+    $amIds = json_decode($clientRow->fetchColumn() ?: '[]', true) ?: [];
+    foreach ($amIds as $amId) {
+        $am = $pdo->prepare("SELECT email, name, whatsapp_number FROM team_members WHERE id = :id AND status = 'active' LIMIT 1");
+        $am->execute([':id' => $amId]);
+        if ($row = $am->fetch(PDO::FETCH_ASSOC)) {
+            if (!$assignedTo) $assignedTo = $row['email'];
+            $amRecipients[] = $row;
+        }
+    }
+
     // post_type left as a generic, non-social value on purpose — the app
     // treats any post with no platform AND a post_type outside
     // SOCIAL_POST_TYPES as a Task rather than a social Post (see
     // KanbanView's isTask logic in app.jsx). A Trello card carries no
     // platform info, so it should always land as a Task, not a Post.
     $ins = $pdo->prepare(
-        "INSERT INTO posts (id, client_id, client_name, title, description, post_type, stage, trello_card_id) VALUES (UUID(), :cid, :cname, :title, :desc, 'general', 'client_request', :card)"
+        "INSERT INTO posts (id, client_id, client_name, title, description, post_type, stage, assigned_to, trello_card_id) VALUES (UUID(), :cid, :cname, :title, :desc, 'general', 'client_request', :assigned, :card)"
     );
-    $ins->execute([':cid' => $integ['client_id'], ':cname' => $integ['client_name'], ':title' => $title, ':desc' => $desc, ':card' => $cardId]);
-    echo json_encode(["ok" => true, "action" => "created", "stage" => "client_request"]);
+    $ins->execute([':cid' => $integ['client_id'], ':cname' => $integ['client_name'], ':title' => $title, ':desc' => $desc, ':assigned' => $assignedTo, ':card' => $cardId]);
+
+    foreach ($amRecipients as $am) {
+        if (empty($am['whatsapp_number'])) continue;
+        sendWhatsAppReply($am['whatsapp_number'], "📥 New client request for {$integ['client_name']} (via Trello): \"{$title}\"" . ($desc ? "\n\n{$desc}" : ""));
+    }
+
+    echo json_encode(["ok" => true, "action" => "created", "stage" => "client_request", "assigned_to" => $assignedTo]);
     exit;
 }
 
