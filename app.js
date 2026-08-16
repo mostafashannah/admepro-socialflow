@@ -146,14 +146,17 @@ var aliasType=function aliasType(t){return t==="static"?"image":t;};if(method===
 }var postTypes=cfg.postTypes||POST_TYPE_DURATIONS;var priorityMult=cfg.priorityMult||DEFAULT_PRIORITY_MULT;var base=postTypes[aliasType(post.post_type)]||postTypes[aliasType(post.task_type)]||60;return Math.round(base*(priorityMult[post.priority]||1.0));}function priorityScore(post){var pri={urgent:4,high:3,medium:2,low:1};var score=(pri[post.priority]||1)*10;var deadline=post.scheduled_date?Math.max(0,7-Math.floor((new Date(post.scheduled_date)-Date.now())/86400000)):0;return score+deadline;}function minsToAmPm(mins){var h24=Math.floor(mins/60);var m=mins%60;var ampm=h24<12?"AM":"PM";var h12=h24===0?12:h24>12?h24-12:h24;return"".concat(h12,":").concat(String(m).padStart(2,'0')," ").concat(ampm);}function generateDailySchedule(posts,userEmail,date,userRole){// Show tasks whose due_date matches the selected day; fall back to
 // tasks with no due_date only for "today" so the schedule makes sense
 // when navigating forward/backward.
-var today=new Date().toISOString().split("T")[0];var myPosts=posts.filter(function(p){// wasOwnerOf (not just live assigned_to) so a content creator's/
-// designer's own work still shows on THEIR day even after the stage
-// moves on to a reviewer — otherwise the exact time slot they spent
-// on it that day just vanishes from their own timeline once it's
-// handed off. (userRole is optional — omitting it falls back to the
-// plain current-assignee check, e.g. the double-booking conflict
-// check in the assign modal, which cares who holds it right now.)
-if(!wasOwnerOf(p,userEmail,userRole))return false;// This timeline's whole purpose is capacity planning — seeing what's
+var today=new Date().toISOString().split("T")[0];var ownedStage=ROLE_OWNED_STAGE[userRole];var myPosts=posts.filter(function(p){// wasOwnerOf (not just live assigned_to) so a content creator's/
+// designer's own work is still findable for them (My Tasks, etc.) even
+// after the stage moves on to a reviewer. This timeline specifically is
+// meant to show only their ACTIVE workload though — a task sitting in
+// Design Review or Client Approval isn't taking up any of the
+// designer's own time slots anymore, it's on whoever's reviewing it
+// now, so it shouldn't occupy a block on the designer's day. (userRole
+// is optional — omitting it falls back to the plain current-assignee
+// check, e.g. the double-booking conflict check in the assign modal,
+// which cares who holds it right now.)
+if(!wasOwnerOf(p,userEmail,userRole))return false;if(ownedStage&&p.stage!==ownedStage)return false;// This timeline's whole purpose is capacity planning — seeing what's
 // already on someone's plate to find real empty slots before assigning
 // them something new — so it needs to show EVERY task still in the
 // pipeline, not just the earlier stages. Only Published (truly done)

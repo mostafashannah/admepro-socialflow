@@ -536,15 +536,20 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
   // tasks with no due_date only for "today" so the schedule makes sense
   // when navigating forward/backward.
   const today = new Date().toISOString().split("T")[0];
+  const ownedStage = ROLE_OWNED_STAGE[userRole];
   const myPosts = posts.filter(p => {
     // wasOwnerOf (not just live assigned_to) so a content creator's/
-    // designer's own work still shows on THEIR day even after the stage
-    // moves on to a reviewer — otherwise the exact time slot they spent
-    // on it that day just vanishes from their own timeline once it's
-    // handed off. (userRole is optional — omitting it falls back to the
-    // plain current-assignee check, e.g. the double-booking conflict
-    // check in the assign modal, which cares who holds it right now.)
+    // designer's own work is still findable for them (My Tasks, etc.) even
+    // after the stage moves on to a reviewer. This timeline specifically is
+    // meant to show only their ACTIVE workload though — a task sitting in
+    // Design Review or Client Approval isn't taking up any of the
+    // designer's own time slots anymore, it's on whoever's reviewing it
+    // now, so it shouldn't occupy a block on the designer's day. (userRole
+    // is optional — omitting it falls back to the plain current-assignee
+    // check, e.g. the double-booking conflict check in the assign modal,
+    // which cares who holds it right now.)
     if (!wasOwnerOf(p, userEmail, userRole)) return false;
+    if (ownedStage && p.stage !== ownedStage) return false;
     // This timeline's whole purpose is capacity planning — seeing what's
     // already on someone's plate to find real empty slots before assigning
     // them something new — so it needs to show EVERY task still in the
