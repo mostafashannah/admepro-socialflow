@@ -92,7 +92,28 @@ function maiBuildClientContext(PDO $pdo, $accountManagerId) {
             $postingLine = "  No posts scheduled for today on file for this client.";
         }
 
-        $blocks[] = "Client \"{$c['name']}\":\n{$memLines}\n{$postingLine}" . ($actionLine ? "\n{$actionLine}" : '');
+        // EVERY task currently running for this client, not just today's —
+        // so Mai actually knows the full pipeline (what's in Brief, Content,
+        // Design, Review, Client Approval, and what's scheduled ahead) and
+        // can speak to any of it, not just what happens to land today.
+        $openStmt = $pdo->prepare(
+            "SELECT title, stage, assigned_to, due_date, scheduled_date FROM posts
+             WHERE client_id = :cid AND stage NOT IN ('published','rejected','on_hold')
+             ORDER BY FIELD(stage,'client_request','planning','content_creation','internal_review','design','design_review','client_approval','approved','scheduled'), due_date IS NULL, due_date ASC
+             LIMIT 30"
+        );
+        $openStmt->execute([':cid' => $c['id']]);
+        $openTasks = $openStmt->fetchAll(PDO::FETCH_ASSOC);
+        if ($openTasks) {
+            $taskLines = implode('; ', array_map(fn($p) =>
+                "\"{$p['title']}\" [{$p['stage']}" . ($p['assigned_to'] ? ", {$p['assigned_to']}" : '') . ($p['due_date'] ? ", due {$p['due_date']}" : '') . ($p['scheduled_date'] ? ", posts {$p['scheduled_date']}" : '') . "]"
+            , $openTasks));
+            $runningLine = "  All running tasks (" . count($openTasks) . "): {$taskLines}.";
+        } else {
+            $runningLine = "  No tasks currently in the pipeline for this client.";
+        }
+
+        $blocks[] = "Client \"{$c['name']}\":\n{$memLines}\n{$postingLine}\n{$runningLine}" . ($actionLine ? "\n{$actionLine}" : '');
     }
     return ['names' => $names, 'context' => implode("\n\n", $blocks)];
 }

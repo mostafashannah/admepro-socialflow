@@ -1764,6 +1764,20 @@ function askAiTeammate(PDO $pdo, string $agent, string $question, ?string $clien
             $postRows = $posts->fetchAll(PDO::FETCH_ASSOC);
             if ($postRows) $clientBlock .= "Recent published posts:\n" . implode("\n", array_map(fn($r) => "- [{$r['platform']}/{$r['post_type']}] \"{$r['title']}\" — likes:" . ($r['insight_likes'] ?? '?') . " comments:" . ($r['insight_comments'] ?? '?'), $postRows)) . "\n";
 
+            // Every task currently running for this client (not just
+            // published history) — so a teammate can be asked "what's
+            // still open for X" and get the real pipeline, not just what
+            // already went out.
+            $open = $pdo->prepare(
+                "SELECT title, stage, assigned_to, due_date FROM posts
+                 WHERE client_id = :cid AND stage NOT IN ('published','rejected','on_hold')
+                 ORDER BY FIELD(stage,'client_request','planning','content_creation','internal_review','design','design_review','client_approval','approved','scheduled'), due_date IS NULL, due_date ASC
+                 LIMIT 30"
+            );
+            $open->execute([':cid' => $client['id']]);
+            $openRows = $open->fetchAll(PDO::FETCH_ASSOC);
+            if ($openRows) $clientBlock .= "All running tasks (" . count($openRows) . "):\n" . implode("\n", array_map(fn($r) => "- \"{$r['title']}\" [{$r['stage']}" . ($r['assigned_to'] ? ", {$r['assigned_to']}" : '') . ($r['due_date'] ? ", due {$r['due_date']}" : '') . "]", $openRows)) . "\n";
+
             // Automatic full-document search — the "Known facts" summary
             // above only ever covers a slice of a long uploaded document
             // (e.g. a 500K-char ChatGPT export). Pull real search terms out
