@@ -319,6 +319,18 @@ function proTools() {
                 'required' => [],
             ],
         ],
+        [
+            'name' => 'get_member_timeline',
+            'description' => 'Get a team member\'s schedule/timeline — what tasks they have open and when, around a given date (defaults to today). Use this whenever asked "what does X have on their plate", "what is X working on today/this week", "is X free/busy", or anything about a specific person\'s workload or schedule. Only shows tasks currently sitting in the stage that person actually owns (e.g. a designer only sees Design-stage tasks, not ones already handed off to review/approval) — same rule the in-app My Timeline page uses.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'member_name' => ['type' => 'string', 'description' => 'The team member\'s name (partial match ok), e.g. "Sherif" or "Eyad"'],
+                    'date'        => ['type' => 'string', 'description' => 'YYYY-MM-DD. Omit to default to today.'],
+                ],
+                'required' => ['member_name'],
+            ],
+        ],
     ];
 }
 
@@ -1620,6 +1632,49 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    if ($name === 'get_member_timeline') {
+        $memberName = trim($input['member_name'] ?? '');
+        if ($memberName === '') return ['error' => 'member_name is required.'];
+        $date = trim($input['date'] ?? '') ?: date('Y-m-d');
+
+        $tm = $pdo->prepare("SELECT id, name, email, role FROM team_members WHERE status = 'active' AND name LIKE :n LIMIT 1");
+        $tm->execute([':n' => '%' . $memberName . '%']);
+        $member = $tm->fetch(PDO::FETCH_ASSOC);
+        if (!$member) return ['error' => "No active team member found matching \"{$memberName}\"."];
+        $email = $member['email'];
+
+        // Same stage-ownership rule as the app's My Timeline page (JS
+        // ROLE_OWNED_STAGE): a designer's timeline should only show tasks
+        // still actually IN the design stage, not ones they finished and
+        // handed off that are just sitting in review/approval waiting on
+        // someone else — otherwise it looks like they're still busy with
+        // work that isn't theirs anymore.
+        $ownedStage = ['content_creator' => 'content_creation', 'graphic_designer' => 'design'][$member['role']] ?? null;
+
+        $sql = "SELECT id, title, stage, post_type, priority, client_name,
+                       due_date, due_time, scheduled_date, scheduled_time
+                FROM posts
+                WHERE (assigned_to = :e1 OR content_assigned_to = :e2 OR design_assigned_to = :e3
+                       OR JSON_CONTAINS(COALESCE(assigned_to_extra, '[]'), JSON_QUOTE(:e4)))
+                  AND stage NOT IN ('published', 'approved', 'rejected', 'cancelled')";
+        $params = [':e1' => $email, ':e2' => $email, ':e3' => $email, ':e4' => $email];
+        if ($ownedStage) { $sql .= " AND stage = :st"; $params[':st'] = $ownedStage; }
+        $sql .= " AND (due_date = :d OR due_date IS NULL OR due_date = '')";
+        $params[':d'] = $date;
+        $sql .= " ORDER BY (due_date IS NULL OR due_date = '') ASC, due_time ASC, priority = 'urgent' DESC, priority = 'high' DESC LIMIT 30";
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $tasks = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        return [
+            'member' => $member['name'],
+            'role' => $member['role'],
+            'date' => $date,
+            'task_count' => count($tasks),
+            'tasks' => $tasks,
+        ];
     }
     return ['error' => 'Unknown tool: ' . $name];
 }

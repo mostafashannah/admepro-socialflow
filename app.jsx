@@ -39740,6 +39740,19 @@ const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId, userMessage) => 
   const myTasks = allPosts.filter(p=>p.assigned_to===user?.email&&!["published","rejected"].includes(p.stage));
   const activeProj= allProj.filter(p=>p.status==="active");
 
+  // Per-member timeline so Pro can answer "what does X have on their plate" —
+  // same ownership rule the in-app My Timeline page and the WhatsApp bot's
+  // get_member_timeline tool use: a designer/content-creator's timeline only
+  // counts tasks still actually IN the stage they own (design/content
+  // creation), not ones they finished and handed off that are just sitting
+  // in review/approval waiting on someone else.
+  const teamTimelineBlock = allTeam.filter(m=>m.status==="active").map(m=>{
+    const ownedStage = ROLE_OWNED_STAGE[m.role];
+    const tasks = allPosts.filter(p=>wasOwnerOf(p, m.email, m.role) && !["published","approved","rejected","cancelled"].includes(p.stage) && (!ownedStage || p.stage===ownedStage));
+    if (!tasks.length) return `- ${m.name} (${m.role}): nothing open right now`;
+    return `- ${m.name} (${m.role}): ${tasks.slice(0,8).map(p=>`"${p.title}" [${p.stage}${p.client_name?`, ${p.client_name}`:""}${p.due_date?`, due ${p.due_date}${p.due_time?" "+p.due_time:""}`:""}]`).join(" ; ")}`;
+  }).join("\n");
+
   // ── Per-client blocks ───────────────────────────────────────────
   const clientsToShow = focusClientId
     ? allClients.filter(c=>c.id===focusClientId)
@@ -39964,6 +39977,9 @@ ${allClientNames||"No clients yet."}
 
 TEAM MEMBERS:
 ${teamList||"No team yet."}
+
+TEAM TIMELINE (each person's currently open tasks — use this to answer any "what does X have on their plate/today/this week", "is X free/busy" question. Only counts tasks still in the stage that person owns, so a designer's finished-and-handed-off work won't appear as still on their plate):
+${teamTimelineBlock||"No team yet."}
 
 AI TEAM (agents that work alongside the human team, under your supervision — you know these exist, never say you don't):
 ${AI_AGENT_DEFS.filter(a=>a.id!=="pro").map(a=>`- ${a.name}: ${a.description}`).join("\n")}
