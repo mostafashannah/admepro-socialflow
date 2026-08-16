@@ -36029,7 +36029,42 @@ function TimelineAddPicker({slot, onPick, onClose, inline=false}) {
       <button onClick={()=>onPick("task",slot)} style={menuBtnSt}><Ico d={Icons.check||Icons.tasks} size={13} stroke="var(--text2)"/> Task</button>
       <button onClick={()=>onPick("post",slot)} style={{...menuBtnSt,borderTop:"1px solid var(--border)"}}><Ico d={Icons.tasks} size={13} stroke="var(--text2)"/> Post</button>
       <button onClick={()=>onPick("calendar",slot)} style={{...menuBtnSt,borderTop:"1px solid var(--border)"}}><Ico d={Icons.calPlus} size={13} stroke="var(--text2)"/> Calendar Plan</button>
+      <button onClick={()=>onPick("existing",slot)} style={{...menuBtnSt,borderTop:"1px solid var(--border)"}}><Ico d={Icons.link||Icons.plug} size={13} stroke="var(--text2)"/> Existing Task</button>
     </div>
+  );
+}
+
+// Picks an already-existing task/post (by client, then task) and attaches
+// it to a free Timeline slot — reassigns it to that person and sets its
+// due date/time to the slot, instead of creating something new.
+function AssignExistingTaskModal({open, onClose, slot, posts, clients, onAssign}) {
+  const [clientId, setClientId] = useState("");
+  const [taskId, setTaskId] = useState("");
+  const openTasksForClient = clientId
+    ? posts.filter(p => p.client_id === clientId && !["published","rejected","cancelled"].includes(p.stage))
+    : [];
+  if (!open) return null;
+  return (
+    <Modal open onClose={onClose} title="Add Existing Task" width={440}>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <Field label="Client">
+          <select value={clientId} onChange={e=>{setClientId(e.target.value);setTaskId("");}} style={inputSt}>
+            <option value="">— Select client —</option>
+            {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Task">
+          <select value={taskId} onChange={e=>setTaskId(e.target.value)} style={inputSt} disabled={!clientId}>
+            <option value="">{clientId ? (openTasksForClient.length ? "— Select task —" : "No open tasks for this client") : "Pick a client first"}</option>
+            {openTasksForClient.map(p=><option key={p.id} value={p.id}>{p.title} ({STAGE_MAP[p.stage]?.label||p.stage})</option>)}
+          </select>
+        </Field>
+        <div style={{display:"flex",gap:10,paddingTop:4}}>
+          <Btn variant="secondary" onClick={onClose} style={{flex:1}}>Cancel</Btn>
+          <Btn onClick={()=>{onAssign(taskId, slot);onClose();}} disabled={!taskId} style={{flex:2}}>Add to Slot</Btn>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -45199,6 +45234,7 @@ function App() {
   const [showAddPost,setShowAddPost] = useState(false);
   const [addPostPresetSlot,setAddPostPresetSlot] = useState(null);
   const [addTaskPresetSlot,setAddTaskPresetSlot] = useState(null);
+  const [assignExistingSlot,setAssignExistingSlot] = useState(null);
   const [showAddProject,setShowAddProject] = useState(false);
   const [addProjectForClient,setAddProjectForClient] = useState(null);
   const [showCreateBrief,setShowCreateBrief] = useState(false);
@@ -45591,6 +45627,15 @@ function App() {
   };
 
   // Handlers
+  // Attaches an already-existing task/post onto a free Timeline slot —
+  // reassigns it to that person and sets its due date/time to the slot
+  // clicked, instead of creating a brand-new task.
+  const assignExistingTaskToSlot = (taskId, slot) => {
+    const updates = {assigned_to: slot.assigned_to, due_date: slot.due_date, due_time: slot.due_time};
+    setData(d=>({...d, posts: d.posts.map(p=>p.id===taskId ? {...p, ...updates} : p)}));
+    ue("Post", taskId, updates).catch(()=>{});
+  };
+
   const addPost = async (postData) => {
     // Client Requests are the one exception — the client submits a request
     // with no project attached yet; the account manager picks the project
@@ -49101,6 +49146,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
           if(type==="post"){ setAddPostPresetSlot(slot); setShowAddPost(true); }
           else if(type==="task"){ setAddTaskPresetSlot(slot); setShowAddTask(true); }
           else if(type==="calendar"){ setCalendarPreselectedClient(null); setShowFABCalendar(true); }
+          else if(type==="existing"){ setAssignExistingSlot(slot); }
         }}/>}
         {(page==="my_performance"||page==="reports")&&<MyPerformancePage currentUser={currentUser} posts={data.posts} timeEntries={data.timeEntries||[]} perfLogs={data.perfLogs||[]} aiInsights={data.aiInsights||[]}/>}
         {page==="account"&&(
@@ -49282,6 +49328,8 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
     {showAddPost&&<AddPostModal open onClose={()=>{setShowAddPost(false);setAddPostForClient(null);setAddPostPresetSlot(null);}} projects={data.projects} team={data.team} onAdd={addPost} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} presetClient={addPostForClient} presetSlot={addPostPresetSlot} assets={data.assets||[]} currentUser={currentUser}/>}
 
     {showAddTask&&<AddGenericTaskModal open onClose={()=>{setShowAddTask(false);setAddTaskForClient(null);setAddTaskPresetSlot(null);}} projects={data.projects} team={data.team} onAdd={addPost} onCreateProject={addProjectQuick} presetClient={addTaskForClient} presetSlot={addTaskPresetSlot} clients={data.clients} currentUser={currentUser}/>}
+
+    {assignExistingSlot&&<AssignExistingTaskModal open onClose={()=>setAssignExistingSlot(null)} slot={assignExistingSlot} posts={data.posts} clients={data.clients} onAssign={assignExistingTaskToSlot}/>}
 
     {/* New Project Wizard — used by FAB, Dashboard, Projects page */}
     {(showFABProject||showAddProject)&&<ProjectWizard
