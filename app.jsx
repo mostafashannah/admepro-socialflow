@@ -460,7 +460,7 @@ const PRI_COLOR = { low:"#6b7280", medium:"#3b82f6", high:"#f59e0b", urgent:"#ef
 const STAGE_MAP = Object.fromEntries(STAGES.map(s=>[s.key,s]));
 
 const POST_TYPE_DURATIONS = {
-  image: 30, video: 180, carousel: 120, story: 30, reel: 150,
+  image: 30, static: 45, video: 180, carousel: 120, story: 30, reel: 150,
   social_post: 30, story_reel: 120, caption_copy: 30, graphic_design: 180,
   campaign: 240, ad_creative: 120, blog: 240,
 };
@@ -541,11 +541,11 @@ function estimateDuration(post) {
   const cfg = getDurationCfg();
   const method = cfg.method || "table"; // "table" (fixed lookup) | "manual" | "historical"
   if(method==="manual") return 60; // no guessing — flat neutral fallback until someone sets one
-  // "static" (single-image captions) is a distinct, commonly-used post_type
-  // value across the app but was never given its own row in the settings
-  // table — treat it as the same duration as "image" rather than silently
-  // falling through to the flat 60 min default.
-  const aliasType = (t) => t==="static" ? "image" : t;
+  // "static" (single-image captions) now has its own row in the settings
+  // table (see POST_TYPE_DURATIONS/POST_TYPE_LABELS) instead of being
+  // silently aliased to "image" — the two are commonly given different
+  // real durations by agencies.
+  const aliasType = (t) => t;
   if(method==="historical"){
     let hist = {}; try{ hist = window.__SF_DURATION_HIST||{}; }catch(e){}
     const type = aliasType(post.post_type || post.task_type);
@@ -29137,7 +29137,7 @@ function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh, te
 // TASK DURATION ESTIMATE SETTINGS (admin-adjustable estimateDuration() overrides)
 // ════════════════════════════════════════════════════════════════
 const POST_TYPE_LABELS = {
-  image:"Image", video:"Video", carousel:"Carousel", story:"Story", reel:"Reel",
+  image:"Image", static:"Static", video:"Video", carousel:"Carousel", story:"Story", reel:"Reel",
   social_post:"Social Post", story_reel:"Story/Reel", caption_copy:"Caption Copy",
   graphic_design:"Graphic Design", campaign:"Campaign", ad_creative:"Ad Creative", blog:"Blog",
 };
