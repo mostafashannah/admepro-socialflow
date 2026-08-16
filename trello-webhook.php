@@ -83,25 +83,24 @@ if ($actionType === 'deleteCard' || $archived) {
 }
 
 if ($actionType === 'createCard') {
-    // A card added directly on Trello (not pushed there by SocialFlow) —
-    // only act if it landed in a list that's actually mapped to a stage,
-    // and only if we don't already know this card (re-delivered webhook,
-    // or it was in fact created by trello-sync.php a moment ago and this
-    // is just Trello echoing it back).
-    $listId = $action['data']['list']['id'] ?? null;
-    $stage = $listId ? array_search($listId, $listMap, true) : false;
-    if ($stage === false) { echo json_encode(["ok" => true]); exit; }
-
+    // A brand-new card dropped directly onto the board — ALWAYS lands as a
+    // Client Request here, regardless of which list it was created in
+    // (that's what "someone added a new task on the board" means: a new
+    // ask coming in). It only follows the list→stage mapping once it gets
+    // MOVED between lists afterward (see the updateCard handling below) —
+    // e.g. dragged into "Doing" moves it to whatever stage "Doing" maps to.
+    // Only guard here is not re-creating a card SocialFlow itself just
+    // pushed to Trello a moment ago (Trello echoing our own create back).
     $existsStmt = $pdo->prepare("SELECT id FROM posts WHERE trello_card_id = :cid LIMIT 1");
     $existsStmt->execute([':cid' => $cardId]);
     if ($existsStmt->fetch()) { echo json_encode(["ok" => true]); exit; }
 
     $title = trim($action['data']['card']['name'] ?? '') ?: '(untitled)';
     $ins = $pdo->prepare(
-        "INSERT INTO posts (id, client_id, client_name, title, stage, trello_card_id) VALUES (UUID(), :cid, :cname, :title, :stage, :card)"
+        "INSERT INTO posts (id, client_id, client_name, title, stage, trello_card_id) VALUES (UUID(), :cid, :cname, :title, 'client_request', :card)"
     );
-    $ins->execute([':cid' => $integ['client_id'], ':cname' => $integ['client_name'], ':title' => $title, ':stage' => $stage, ':card' => $cardId]);
-    echo json_encode(["ok" => true, "action" => "created", "stage" => $stage]);
+    $ins->execute([':cid' => $integ['client_id'], ':cname' => $integ['client_name'], ':title' => $title, ':card' => $cardId]);
+    echo json_encode(["ok" => true, "action" => "created", "stage" => "client_request"]);
     exit;
 }
 
