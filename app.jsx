@@ -7603,7 +7603,7 @@ function AddGenericTaskModal({open,onClose,projects,team,onAdd,onCreateProject,p
   );
 }
 
-function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,onUpdateAsset,presetClient,assets=[],allowClientRequest=false,clients=[],clientIntelligenceList=[],currentUser}) {
+function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,onUpdateAsset,presetClient,presetSlot=null,assets=[],allowClientRequest=false,clients=[],clientIntelligenceList=[],currentUser}) {
   const [step,setStep] = useState(1);
   // When opened from a client's profile, only that client's projects should be
   // selectable/defaulted — otherwise this silently defaults to projects[0],
@@ -7615,7 +7615,9 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
   const selectableProjects = activeClientId ? projects.filter(p=>p.client_id===activeClientId) : projects;
   const defaultAssignee = eligibleAssignees("planning",team).some(m=>m.email===currentUser?.email) ? currentUser.email : "";
   const blankForm = {project_id:selectableProjects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:defaultAssignee,scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",due_date:"",due_time:"",content_mode:"new",platforms:["instagram"],platform_types:{},media:[],cover:null,publish_mode:"schedule",postStory:false,storyImage:null,estimated_minutes:"",sector:""};
-  const [f,setF] = useState({...blankForm});
+  // Opened by clicking a free slot on someone's Timeline (admin/AM only) —
+  // prefill who it's for and when, instead of making them re-pick both.
+  const [f,setF] = useState({...blankForm, ...(presetSlot||{})});
   // Which pipeline phase this post starts at — controls who's eligible to
   // be assigned it (Brief -> AM, Content -> Content team, Design -> Design team).
   const eligibleTeam = eligibleAssignees(f.stage,team);
@@ -35795,7 +35797,7 @@ function MyCalendarPage({posts,currentUser,team,onDayClick}) {
 // ════════════════════════════════════════════════════════════════
 // MY TIMELINE PAGE - Daily schedule view 9am-6pm
 // ════════════════════════════════════════════════════════════════
-function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onStartTimer, onPauseTimer, onResumeTimer, schedules, scheduleOverrides, onOverrideSchedule, onShiftOverdue, initialJump, onJumpConsumed, onBackToCalendar, activityLogs=[], appSettings}) {
+function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onStartTimer, onPauseTimer, onResumeTimer, schedules, scheduleOverrides, onOverrideSchedule, onShiftOverdue, initialJump, onJumpConsumed, onBackToCalendar, activityLogs=[], appSettings, onQuickAddSlot}) {
   const {isMobile} = useResponsive();
   const [viewDate, setViewDate] = useState(()=>initialJump?.date ? new Date(initialJump.date+"T00:00:00") : new Date());
   const [tick, setTick] = useState(0);
@@ -36140,7 +36142,20 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                 {/* Slot content */}
                 <div style={{flex:1,padding:6,display:"flex",flexDirection:"column",gap:4}}>
                   {hourSlots.length===0 && (
-                    <span style={{fontSize:11,color:"var(--border2)",alignSelf:"center",marginTop:16}}>—</span>
+                    isAM && onQuickAddSlot ? (
+                      <button
+                        onClick={()=>onQuickAddSlot({
+                          assigned_to: effectiveUser?.email||"",
+                          scheduled_date: dateStr, scheduled_time: `${String(hour).padStart(2,'0')}:00`,
+                          due_date: dateStr, due_time: `${String(hour).padStart(2,'0')}:00`,
+                        })}
+                        style={{flex:1,minHeight:32,marginTop:16,border:"1px dashed var(--border2)",borderRadius:"var(--rs)",background:"transparent",color:"var(--text3)",fontSize:11,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:4,transition:"all 0.15s"}}
+                        onMouseEnter={e=>{e.currentTarget.style.background="var(--accent)11";e.currentTarget.style.borderColor="var(--accent)";e.currentTarget.style.color="var(--accent)";}}
+                        onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.borderColor="var(--border2)";e.currentTarget.style.color="var(--text3)";}}
+                      >+ Add task</button>
+                    ) : (
+                      <span style={{fontSize:11,color:"var(--border2)",alignSelf:"center",marginTop:16}}>—</span>
+                    )
                   )}
                   {hourSlots.map(slot => {
                     const post = posts.find(p=>p.id===slot.post_id);
@@ -44914,6 +44929,7 @@ function App() {
     if(id) { try{ window.history.pushState({sfPage:"projects", sfDetail:id},"","#projects"); }catch(e){} }
   };
   const [showAddPost,setShowAddPost] = useState(false);
+  const [addPostPresetSlot,setAddPostPresetSlot] = useState(null);
   const [showAddProject,setShowAddProject] = useState(false);
   const [addProjectForClient,setAddProjectForClient] = useState(null);
   const [showCreateBrief,setShowCreateBrief] = useState(false);
@@ -48809,7 +48825,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             onDayClick={(jump)=>{ setTimelineJump(jump); setPage("my_timeline"); }}
           />
         )}
-        {page==="my_timeline"&&<MyTimelinePage posts={data.posts} team={data.team} currentUser={currentUser} timeEntries={data.timeEntries||[]} onPostClick={setSelectedPost} onStartTimer={startTimer} onPauseTimer={pauseTimer} onResumeTimer={resumeTimer} schedules={data.schedules||[]} scheduleOverrides={data.scheduleOverrides||[]} onOverrideSchedule={overrideSchedule} onShiftOverdue={shiftOverdueDueDate} initialJump={timelineJump} onJumpConsumed={()=>setTimelineJump(null)} onBackToCalendar={()=>setPage("my_calendar")} activityLogs={data.activityLogs||[]} appSettings={appSettings}/>}
+        {page==="my_timeline"&&<MyTimelinePage posts={data.posts} team={data.team} currentUser={currentUser} timeEntries={data.timeEntries||[]} onPostClick={setSelectedPost} onStartTimer={startTimer} onPauseTimer={pauseTimer} onResumeTimer={resumeTimer} schedules={data.schedules||[]} scheduleOverrides={data.scheduleOverrides||[]} onOverrideSchedule={overrideSchedule} onShiftOverdue={shiftOverdueDueDate} initialJump={timelineJump} onJumpConsumed={()=>setTimelineJump(null)} onBackToCalendar={()=>setPage("my_calendar")} activityLogs={data.activityLogs||[]} appSettings={appSettings} onQuickAddSlot={(slot)=>{setAddPostPresetSlot(slot);setShowAddPost(true);}}/>}
         {(page==="my_performance"||page==="reports")&&<MyPerformancePage currentUser={currentUser} posts={data.posts} timeEntries={data.timeEntries||[]} perfLogs={data.perfLogs||[]} aiInsights={data.aiInsights||[]}/>}
         {page==="account"&&(
           <AccountPage
@@ -48987,7 +49003,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
     )}
 
     {/* Add Post */}
-    {showAddPost&&<AddPostModal open onClose={()=>{setShowAddPost(false);setAddPostForClient(null);}} projects={data.projects} team={data.team} onAdd={addPost} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} presetClient={addPostForClient} assets={data.assets||[]} currentUser={currentUser}/>}
+    {showAddPost&&<AddPostModal open onClose={()=>{setShowAddPost(false);setAddPostForClient(null);setAddPostPresetSlot(null);}} projects={data.projects} team={data.team} onAdd={addPost} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} presetClient={addPostForClient} presetSlot={addPostPresetSlot} assets={data.assets||[]} currentUser={currentUser}/>}
 
     {showAddTask&&<AddGenericTaskModal open onClose={()=>{setShowAddTask(false);setAddTaskForClient(null);}} projects={data.projects} team={data.team} onAdd={addPost} onCreateProject={addProjectQuick} presetClient={addTaskForClient} clients={data.clients} currentUser={currentUser}/>}
 
