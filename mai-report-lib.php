@@ -22,6 +22,18 @@
 
 require_once __DIR__ . '/pro-lib.php'; // callClaude(), sendWhatsAppReply(), generateProUuid()
 
+// Best-effort visibility into the Activity Log (admin-viewable in-app)
+// whenever a report turn falls back to the generic "Got it, thanks..."
+// message instead of a real Claude reply — previously totally silent, so
+// a broken conversation just looked like Mai being unhelpful with no way
+// to tell why from the app.
+function maiLogReportError(PDO $pdo, string $details) {
+    try {
+        $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), 'Mai check-in reply failed', 'ai_agent', :details, 'error', 'cron')")
+            ->execute([':details' => '[agent:account_executive] ' . $details]);
+    } catch (Throwable $e) { /* best-effort */ }
+}
+
 const MAI_MORNING_CHECKLIST = [
     'checked_platforms'   => 'Checked social platforms for all assigned clients',
     'checked_ad_accounts' => 'Checked ad accounts for all assigned clients',
@@ -282,9 +294,14 @@ function maiContinueReportSession(PDO $pdo, array $session, $incomingText) {
     $raw = '';
     if ($status >= 200 && $status < 300) {
         foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $raw .= $block['text']; }
+    } else {
+        maiLogReportError($pdo, "Claude call failed for {$session['account_manager_name']} — HTTP {$status}: " . mb_substr(json_encode($data), 0, 500));
     }
     $parsed = null;
     if (preg_match('/\{[\s\S]*\}/', $raw, $m)) $parsed = json_decode($m[0], true);
+    if ($parsed === null && $status >= 200 && $status < 300) {
+        maiLogReportError($pdo, "Couldn't parse Claude's reply as JSON for {$session['account_manager_name']} — raw: " . mb_substr($raw, 0, 500));
+    }
 
     $reply = trim($parsed['reply'] ?? '') ?: "Got it, thanks! Let me know if there's anything else.";
     $complete = !empty($parsed['complete']);
