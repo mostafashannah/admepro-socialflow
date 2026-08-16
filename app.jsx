@@ -36054,15 +36054,22 @@ function TimelineAddPicker({slot, onPick, onClose, inline=false}) {
 function AssignExistingTaskModal({open, onClose, slot, posts, team, clients, onAssign, onPushAndAssign}) {
   const [clientId, setClientId] = useState("");
   const [taskId, setTaskId] = useState("");
+  const [manualTime, setManualTime] = useState(false);
+  const [manualHours, setManualHours] = useState("1");
   const openTasksForClient = clientId
     ? posts.filter(p => p.client_id === clientId && !["published","rejected","cancelled"].includes(p.stage))
     : [];
   const selectedTask = posts.find(p=>p.id===taskId);
   const member = team.find(m=>m.email===slot.assigned_to);
 
+  // Pre-fill the manual field with the system's own estimate the moment a
+  // task is picked, so overriding it means adjusting a real number instead
+  // of typing one in from scratch.
+  React.useEffect(()=>{ if(selectedTask) setManualHours((estimateDuration(selectedTask)/60).toFixed(1)); },[taskId]);
+
   const check = React.useMemo(() => {
     if (!selectedTask) return null;
-    const durationMins = estimateDuration(selectedTask);
+    const durationMins = manualTime ? Math.max(1,Math.round((Number(manualHours)||0)*60)) : estimateDuration(selectedTask);
     const startMins = timeToMins(slot.due_time) ?? WORKING_START*60;
     const endMins = startMins + durationMins;
     const daySlots = generateDailySchedule(posts, slot.assigned_to, slot.due_date, member?.role).filter(s=>s.post_id!==taskId);
@@ -36073,7 +36080,9 @@ function AssignExistingTaskModal({open, onClose, slot, posts, team, clients, onA
       return {fits:false, durationMins, reason:"busy", freeMins: blocker.start_mins-startMins, blocker, blockerTitle: blockerPost?.title||"another task", daySlots};
     }
     return {fits:true, durationMins};
-  }, [taskId, slot]);
+  }, [taskId, slot, manualTime, manualHours]);
+
+  const manualMinutesForSave = manualTime ? Math.max(1,Math.round((Number(manualHours)||0)*60)) : null;
 
   if (!open) return null;
   return (
@@ -36092,6 +36101,21 @@ function AssignExistingTaskModal({open, onClose, slot, posts, team, clients, onA
           </select>
         </Field>
 
+        {selectedTask&&(
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+              <input type="checkbox" checked={manualTime} onChange={e=>setManualTime(e.target.checked)}/>
+              <span style={{fontSize:12,fontWeight:600}}>Set expected time manually{!manualTime?` (currently ${(estimateDuration(selectedTask)/60).toFixed(1)}h, system estimate)`:""}</span>
+            </label>
+            {manualTime&&(
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <input type="number" min="0.25" step="0.25" value={manualHours} onChange={e=>setManualHours(e.target.value)} style={{...inputSt,width:90}}/>
+                <span style={{fontSize:12,color:"var(--text3)"}}>hours</span>
+              </div>
+            )}
+          </div>
+        )}
+
         {check&&check.fits&&(
           <p style={{fontSize:12,color:"#10b981",fontWeight:600}}>✓ Fits — needs {(check.durationMins/60).toFixed(1)}h, there's enough free time here.</p>
         )}
@@ -36101,7 +36125,7 @@ function AssignExistingTaskModal({open, onClose, slot, posts, team, clients, onA
         {check&&!check.fits&&check.reason==="busy"&&(
           <div style={{padding:10,background:"#ef444411",border:"1px solid #ef444444",borderRadius:"var(--rs)",display:"flex",flexDirection:"column",gap:8}}>
             <p style={{fontSize:12,color:"#ef4444"}}>{member?.name||"This member"} only has {(check.freeMins/60).toFixed(1)}h free from this slot before "{check.blockerTitle}" starts — this task needs {(check.durationMins/60).toFixed(1)}h.</p>
-            <Btn variant="secondary" onClick={()=>{onPushAndAssign(taskId, slot, check.daySlots, check.durationMins);onClose();}} style={{fontSize:12}}>
+            <Btn variant="secondary" onClick={()=>{onPushAndAssign(taskId, slot, check.daySlots, check.durationMins, manualMinutesForSave);onClose();}} style={{fontSize:12}}>
               Push "{check.blockerTitle}" (and anything after it) later, then add this
             </Btn>
           </div>
@@ -36109,7 +36133,7 @@ function AssignExistingTaskModal({open, onClose, slot, posts, team, clients, onA
 
         <div style={{display:"flex",gap:10,paddingTop:4}}>
           <Btn variant="secondary" onClick={onClose} style={{flex:1}}>Cancel</Btn>
-          <Btn onClick={()=>{onAssign(taskId, slot);onClose();}} disabled={!taskId||!check?.fits} style={{flex:2}}>Add to Slot</Btn>
+          <Btn onClick={()=>{onAssign(taskId, slot, manualMinutesForSave);onClose();}} disabled={!taskId||!check?.fits} style={{flex:2}}>Add to Slot</Btn>
         </div>
       </div>
     </Modal>
@@ -45678,8 +45702,9 @@ function App() {
   // Attaches an already-existing task/post onto a free Timeline slot —
   // reassigns it to that person and sets its due date/time to the slot
   // clicked, instead of creating a brand-new task.
-  const assignExistingTaskToSlot = (taskId, slot) => {
+  const assignExistingTaskToSlot = (taskId, slot, estimatedMinutes=null) => {
     const updates = {assigned_to: slot.assigned_to, due_date: slot.due_date, due_time: slot.due_time};
+    if (estimatedMinutes) updates.estimated_minutes = estimatedMinutes; // manual override from the Existing Task picker
     setData(d=>({...d, posts: d.posts.map(p=>p.id===taskId ? {...p, ...updates} : p)}));
     ue("Post", taskId, updates).catch(()=>{});
   };
@@ -45690,7 +45715,7 @@ function App() {
   // there's still room, otherwise rolled to the next working day (cleared
   // due_time so it re-packs naturally there, same convention as the
   // capacity-overflow handling on My Timeline). Then assigns the task.
-  const pushConflictAndAssignTask = (taskId, slot, daySlots, durationMins) => {
+  const pushConflictAndAssignTask = (taskId, slot, daySlots, durationMins, estimatedMinutes=null) => {
     const newStart = timeToMins(slot.due_time) ?? WORKING_START*60;
     let cursor = newStart + durationMins;
     const nextDayStr = addWorkingDays(new Date(slot.due_date+"T00:00:00"), 1).toISOString().split("T")[0];
@@ -45707,7 +45732,7 @@ function App() {
         ue("Post", s.post_id, {due_date:nextDayStr, due_time:null}).catch(()=>{});
       }
     });
-    assignExistingTaskToSlot(taskId, slot);
+    assignExistingTaskToSlot(taskId, slot, estimatedMinutes);
   };
 
   const addPost = async (postData) => {
