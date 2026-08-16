@@ -1,22 +1,26 @@
 <?php
 /**
- * trello-webhook.php — public callback Trello posts to whenever a card
- * moves between lists on a connected board. This is the Trello →
- * SocialFlow half of the sync: a card dragged into the list mapped to
- * "Client Approval" (say) moves that post to client_approval here too.
+ * trello-webhook.php — public callback Trello posts to whenever a card is
+ * added or moved on a connected board. This is the Trello → SocialFlow
+ * half of the sync:
+ *   - createCard: a brand-new card dropped straight onto the board (not
+ *     created from SocialFlow) becomes a new post/task here, in whatever
+ *     stage that list is mapped to — e.g. a card added to "To Do" shows up
+ *     as a Client Request if that's what "To Do" is mapped to.
+ *   - updateCard (list changed): a card dragged to a different list moves
+ *     that post to the matching stage here.
  *
  * Trello requires the callback URL to answer ANY request (including a
  * bare HEAD with no body) with 2xx during webhook registration, so every
  * method just falls through to a 200 — only a POST with a real
- * updateCard action body does anything.
+ * create/updateCard action body does anything.
  *
  * No signature verification here (Trello supports an HMAC header, but it
  * needs the exact raw callback URL registered — order-of-operations makes
  * that awkward to thread through from trello-webhook-register.php right
- * now). The blast radius of a forged call is bounded: at most it can move
- * one specific post to a stage that's already reachable through the
- * normal pipeline, on a card id that has to already match a real
- * trello_card_id in the DB.
+ * now). The blast radius of a forged call is bounded: at most it can
+ * create/move one post, into a stage that's already reachable through the
+ * normal pipeline, on a board this integration is already connected to.
  */
 
 require_once __DIR__ . '/config.php';
@@ -29,12 +33,12 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") { echo json_encode(["ok" => true]); e
 
 $body = json_decode(file_get_contents("php://input"), true);
 $action = $body['action'] ?? null;
-if (!$action || ($action['type'] ?? '') !== 'updateCard') { echo json_encode(["ok" => true]); exit; }
+$actionType = $action['type'] ?? '';
+if (!$action || !in_array($actionType, ['createCard', 'updateCard'], true)) { echo json_encode(["ok" => true]); exit; }
 
-$cardId = $action['data']['card']['id'] ?? null;
-$newListId = $action['data']['listAfter']['id'] ?? null;
 $boardId = $action['data']['board']['id'] ?? null;
-if (!$cardId || !$newListId || !$boardId) { echo json_encode(["ok" => true]); exit; }
+$cardId = $action['data']['card']['id'] ?? null;
+if (!$boardId || !$cardId) { echo json_encode(["ok" => true]); exit; }
 
 $pdo = new PDO(
     'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4',
@@ -46,11 +50,11 @@ $pdo = new PDO(
 // field, not a real column, so this has to scan active Trello integrations
 // rather than an indexed lookup. Fine at agency scale (a handful of
 // connected boards, not thousands).
-$integs = $pdo->query("SELECT id, config FROM integrations WHERE app_key = 'trello' AND status = 'active'")->fetchAll(PDO::FETCH_ASSOC);
+$integs = $pdo->query("SELECT id, client_id, client_name, config FROM integrations WHERE app_key = 'trello' AND status = 'active'")->fetchAll(PDO::FETCH_ASSOC);
 $integ = null;
 foreach ($integs as $row) {
     $cfg = json_decode($row['config'] ?? '{}', true) ?: [];
-    if (($cfg['board_id'] ?? null) === $boardId) { $integ = ['id' => $row['id'], 'config' => $cfg]; break; }
+    if (($cfg['board_id'] ?? null) === $boardId) { $integ = ['id' => $row['id'], 'client_id' => $row['client_id'], 'client_name' => $row['client_name'], 'config' => $cfg]; break; }
 }
 if (!$integ) { echo json_encode(["ok" => true]); exit; }
 
@@ -58,6 +62,33 @@ $direction = $integ['config']['sync_direction'] ?? 'both';
 if ($direction === 'to_trello') { echo json_encode(["ok" => true]); exit; }
 
 $listMap = $integ['config']['list_map'] ?? [];
+
+if ($actionType === 'createCard') {
+    // A card added directly on Trello (not pushed there by SocialFlow) —
+    // only act if it landed in a list that's actually mapped to a stage,
+    // and only if we don't already know this card (re-delivered webhook,
+    // or it was in fact created by trello-sync.php a moment ago and this
+    // is just Trello echoing it back).
+    $listId = $action['data']['list']['id'] ?? null;
+    $stage = $listId ? array_search($listId, $listMap, true) : false;
+    if ($stage === false) { echo json_encode(["ok" => true]); exit; }
+
+    $existsStmt = $pdo->prepare("SELECT id FROM posts WHERE trello_card_id = :cid LIMIT 1");
+    $existsStmt->execute([':cid' => $cardId]);
+    if ($existsStmt->fetch()) { echo json_encode(["ok" => true]); exit; }
+
+    $title = trim($action['data']['card']['name'] ?? '') ?: '(untitled)';
+    $ins = $pdo->prepare(
+        "INSERT INTO posts (id, client_id, client_name, title, stage, trello_card_id) VALUES (UUID(), :cid, :cname, :title, :stage, :card)"
+    );
+    $ins->execute([':cid' => $integ['client_id'], ':cname' => $integ['client_name'], ':title' => $title, ':stage' => $stage, ':card' => $cardId]);
+    echo json_encode(["ok" => true, "action" => "created", "stage" => $stage]);
+    exit;
+}
+
+// updateCard — only relevant here when it's a list change.
+$newListId = $action['data']['listAfter']['id'] ?? null;
+if (!$newListId) { echo json_encode(["ok" => true]); exit; }
 $newStage = array_search($newListId, $listMap, true);
 if ($newStage === false) { echo json_encode(["ok" => true]); exit; } // list not mapped to any stage — nothing to do
 
@@ -67,4 +98,4 @@ $post = $postStmt->fetch(PDO::FETCH_ASSOC);
 if (!$post || $post['stage'] === $newStage) { echo json_encode(["ok" => true]); exit; }
 
 $pdo->prepare("UPDATE posts SET stage = :stage WHERE id = :id")->execute([':stage' => $newStage, ':id' => $post['id']]);
-echo json_encode(["ok" => true, "updated" => $post['id'], "stage" => $newStage]);
+echo json_encode(["ok" => true, "action" => "moved", "updated" => $post['id'], "stage" => $newStage]);
