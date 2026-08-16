@@ -5786,6 +5786,48 @@ function ClientApprovalLinkCard({post, client, currentUser}) {
   );
 }
 
+// Renders **bold** markdown segments as real <strong> instead of leaving
+// the literal asterisks on screen.
+function renderBoldSegments(text, keyPrefix="") {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+      return <strong key={keyPrefix+i}>{part.slice(2, -2)}</strong>;
+    }
+    return part;
+  });
+}
+
+// Splits a brief/description into real paragraphs so it reads as
+// structured text, not one dense wall — used for content that already
+// has \n breaks (written in SocialFlow) AND for content pasted/synced in
+// from elsewhere (e.g. a Trello card description) that's just one giant
+// unbroken line: falls back to grouping sentences into short paragraphs
+// so that case doesn't just print as a single block either.
+function briefParagraphs(text) {
+  if (!text) return [];
+  let paras = text.split(/\n{2,}/).map(p=>p.trim()).filter(Boolean);
+  if (paras.length <= 1) paras = text.split(/\n/).map(p=>p.trim()).filter(Boolean);
+  if (paras.length <= 1) {
+    const sentences = text.match(/[^.!?]+[.!?]+(?:\*\*)?\s*|[^.!?]+$/g) || [text];
+    paras = [];
+    let buf = [];
+    sentences.forEach(s => {
+      buf.push(s.trim());
+      if (buf.length >= 2) { paras.push(buf.join(" ")); buf = []; }
+    });
+    if (buf.length) paras.push(buf.join(" "));
+  }
+  return paras;
+}
+
+function BriefText({text, style}) {
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:8,...style}}>
+      {briefParagraphs(text).map((para,i) => <p key={i} style={{margin:0}}>{renderBoldSegments(para,`p${i}-`)}</p>)}
+    </div>
+  );
+}
+
 // POST DETAIL MODAL
 // ════════════════════════════════════════════════════════════════
 function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onAddComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,onInsightsRefreshed,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[],allPosts=[],contactReports=[]}) {
@@ -6591,7 +6633,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
         {!editing&&(post.description
           ? <div style={{padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
               <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Brief</p>
-              <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6}}>{post.description}</p>
+              <BriefText text={post.description} style={{fontSize:13,color:"var(--text2)",lineHeight:1.6}}/>
             </div>
           : <div style={{padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px dashed var(--border2)"}}>
               <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>Brief</p>

@@ -99,8 +99,13 @@ if ($actionType === 'createCard') {
 
     $title = trim($action['data']['card']['name'] ?? '') ?: '(untitled)';
     $desc = $action['data']['card']['desc'] ?? '';
+    // post_type left as a generic, non-social value on purpose — the app
+    // treats any post with no platform AND a post_type outside
+    // SOCIAL_POST_TYPES as a Task rather than a social Post (see
+    // KanbanView's isTask logic in app.jsx). A Trello card carries no
+    // platform info, so it should always land as a Task, not a Post.
     $ins = $pdo->prepare(
-        "INSERT INTO posts (id, client_id, client_name, title, description, stage, trello_card_id) VALUES (UUID(), :cid, :cname, :title, :desc, 'client_request', :card)"
+        "INSERT INTO posts (id, client_id, client_name, title, description, post_type, stage, trello_card_id) VALUES (UUID(), :cid, :cname, :title, :desc, 'general', 'client_request', :card)"
     );
     $ins->execute([':cid' => $integ['client_id'], ':cname' => $integ['client_name'], ':title' => $title, ':desc' => $desc, ':card' => $cardId]);
     echo json_encode(["ok" => true, "action" => "created", "stage" => "client_request"]);
