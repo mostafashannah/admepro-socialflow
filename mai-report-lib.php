@@ -301,6 +301,8 @@ function maiContinueReportSession(PDO $pdo, array $session, $incomingText) {
     if (preg_match('/\{[\s\S]*\}/', $raw, $m)) $parsed = json_decode($m[0], true);
     if ($parsed === null && $status >= 200 && $status < 300) {
         maiLogReportError($pdo, "Couldn't parse Claude's reply as JSON for {$session['account_manager_name']} — raw: " . mb_substr($raw, 0, 500));
+    } elseif ($parsed !== null && trim($parsed['reply'] ?? '') === '') {
+        maiLogReportError($pdo, "Claude's JSON parsed fine but had no/empty \"reply\" field for {$session['account_manager_name']} — raw: " . mb_substr($raw, 0, 500));
     }
 
     $reply = trim($parsed['reply'] ?? '') ?: "Got it, thanks! Let me know if there's anything else.";
