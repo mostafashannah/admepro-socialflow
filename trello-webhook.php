@@ -9,6 +9,8 @@
  *     as a Client Request if that's what "To Do" is mapped to.
  *   - updateCard (list changed): a card dragged to a different list moves
  *     that post to the matching stage here.
+ *   - updateCard (title/description/due date edited): mirrors the same
+ *     edit onto the matching post's title/description/due_date/due_time.
  *   - updateCard (archived) / deleteCard: archiving or permanently
  *     deleting the card on Trello deletes the matching post here too.
  *
@@ -96,24 +98,49 @@ if ($actionType === 'createCard') {
     if ($existsStmt->fetch()) { echo json_encode(["ok" => true]); exit; }
 
     $title = trim($action['data']['card']['name'] ?? '') ?: '(untitled)';
+    $desc = $action['data']['card']['desc'] ?? '';
     $ins = $pdo->prepare(
-        "INSERT INTO posts (id, client_id, client_name, title, stage, trello_card_id) VALUES (UUID(), :cid, :cname, :title, 'client_request', :card)"
+        "INSERT INTO posts (id, client_id, client_name, title, description, stage, trello_card_id) VALUES (UUID(), :cid, :cname, :title, :desc, 'client_request', :card)"
     );
-    $ins->execute([':cid' => $integ['client_id'], ':cname' => $integ['client_name'], ':title' => $title, ':card' => $cardId]);
+    $ins->execute([':cid' => $integ['client_id'], ':cname' => $integ['client_name'], ':title' => $title, ':desc' => $desc, ':card' => $cardId]);
     echo json_encode(["ok" => true, "action" => "created", "stage" => "client_request"]);
     exit;
 }
 
-// updateCard — only relevant here when it's a list change.
-$newListId = $action['data']['listAfter']['id'] ?? null;
-if (!$newListId) { echo json_encode(["ok" => true]); exit; }
-$newStage = array_search($newListId, $listMap, true);
-if ($newStage === false) { echo json_encode(["ok" => true]); exit; } // list not mapped to any stage — nothing to do
-
+// updateCard — a list move, and/or a plain field edit (title, description,
+// due date) on the card itself. Trello's action.data.old only contains the
+// fields that actually changed on this event, so each one is only touched
+// if it's genuinely present there — never overwrites a field with a stale
+// unchanged value.
 $postStmt = $pdo->prepare("SELECT id, stage FROM posts WHERE trello_card_id = :cid LIMIT 1");
 $postStmt->execute([':cid' => $cardId]);
 $post = $postStmt->fetch(PDO::FETCH_ASSOC);
-if (!$post || $post['stage'] === $newStage) { echo json_encode(["ok" => true]); exit; }
+if (!$post) { echo json_encode(["ok" => true]); exit; }
 
-$pdo->prepare("UPDATE posts SET stage = :stage WHERE id = :id")->execute([':stage' => $newStage, ':id' => $post['id']]);
-echo json_encode(["ok" => true, "action" => "moved", "updated" => $post['id'], "stage" => $newStage]);
+$old = $action['data']['old'] ?? [];
+$card = $action['data']['card'] ?? [];
+$set = [];
+$params = [':id' => $post['id']];
+
+$newListId = $action['data']['listAfter']['id'] ?? null;
+if ($newListId) {
+    $newStage = array_search($newListId, $listMap, true);
+    if ($newStage !== false && $newStage !== $post['stage']) { $set[] = "stage = :stage"; $params[':stage'] = $newStage; }
+}
+if (array_key_exists('name', $old)) { $set[] = "title = :title"; $params[':title'] = trim($card['name'] ?? '') ?: '(untitled)'; }
+if (array_key_exists('desc', $old)) { $set[] = "description = :desc"; $params[':desc'] = $card['desc'] ?? ''; }
+if (array_key_exists('due', $old)) {
+    $due = $card['due'] ?? null;
+    if ($due) {
+        $dt = new DateTime($due);
+        $set[] = "due_date = :dd"; $params[':dd'] = $dt->format('Y-m-d');
+        $set[] = "due_time = :dt"; $params[':dt'] = $dt->format('H:i');
+    } else {
+        $set[] = "due_date = NULL"; $set[] = "due_time = NULL"; // due date removed on the card
+    }
+}
+
+if (!$set) { echo json_encode(["ok" => true]); exit; }
+
+$pdo->prepare("UPDATE posts SET " . implode(', ', $set) . " WHERE id = :id")->execute($params);
+echo json_encode(["ok" => true, "action" => "updated", "updated" => $post['id'], "fields" => array_keys($params)]);
