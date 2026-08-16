@@ -565,6 +565,14 @@ function priorityScore(post) {
   return score + deadline;
 }
 
+function timeToMins(hhmm) {
+  if(!hhmm) return null;
+  const [h,m] = hhmm.split(":").map(Number);
+  return h*60 + (m||0);
+}
+function minsToHHMM(mins) {
+  return `${String(Math.floor(mins/60)).padStart(2,'0')}:${String(mins%60).padStart(2,'0')}`;
+}
 function minsToAmPm(mins) {
   const h24 = Math.floor(mins / 60);
   const m = mins % 60;
@@ -36036,13 +36044,37 @@ function TimelineAddPicker({slot, onPick, onClose, inline=false}) {
 
 // Picks an already-existing task/post (by client, then task) and attaches
 // it to a free Timeline slot — reassigns it to that person and sets its
-// due date/time to the slot, instead of creating something new.
-function AssignExistingTaskModal({open, onClose, slot, posts, clients, onAssign}) {
+// due date/time to the slot, instead of creating something new. Checks the
+// task's expected (estimated) duration against how much real free time
+// that person actually has starting at the clicked slot — a 3h task needs
+// 3 free hour-slots from there to the end of the day, not just "the slot
+// itself" being free. If it doesn't fit, offers to push the task(s) in the
+// way later (same day if there's room, otherwise to the next working day)
+// instead of just refusing.
+function AssignExistingTaskModal({open, onClose, slot, posts, team, clients, onAssign, onPushAndAssign}) {
   const [clientId, setClientId] = useState("");
   const [taskId, setTaskId] = useState("");
   const openTasksForClient = clientId
     ? posts.filter(p => p.client_id === clientId && !["published","rejected","cancelled"].includes(p.stage))
     : [];
+  const selectedTask = posts.find(p=>p.id===taskId);
+  const member = team.find(m=>m.email===slot.assigned_to);
+
+  const check = React.useMemo(() => {
+    if (!selectedTask) return null;
+    const durationMins = estimateDuration(selectedTask);
+    const startMins = timeToMins(slot.due_time) ?? WORKING_START*60;
+    const endMins = startMins + durationMins;
+    const daySlots = generateDailySchedule(posts, slot.assigned_to, slot.due_date, member?.role).filter(s=>s.post_id!==taskId);
+    if (endMins > WORKING_END*60) return {fits:false, durationMins, reason:"day-end", freeMins: WORKING_END*60-startMins};
+    const blocker = daySlots.filter(s=>s.start_mins<endMins && s.end_mins>startMins).sort((a,b)=>a.start_mins-b.start_mins)[0];
+    if (blocker) {
+      const blockerPost = posts.find(p=>p.id===blocker.post_id);
+      return {fits:false, durationMins, reason:"busy", freeMins: blocker.start_mins-startMins, blocker, blockerTitle: blockerPost?.title||"another task", daySlots};
+    }
+    return {fits:true, durationMins};
+  }, [taskId, slot]);
+
   if (!open) return null;
   return (
     <Modal open onClose={onClose} title="Add Existing Task" width={440}>
@@ -36059,9 +36091,25 @@ function AssignExistingTaskModal({open, onClose, slot, posts, clients, onAssign}
             {openTasksForClient.map(p=><option key={p.id} value={p.id}>{p.title} ({STAGE_MAP[p.stage]?.label||p.stage})</option>)}
           </select>
         </Field>
+
+        {check&&check.fits&&(
+          <p style={{fontSize:12,color:"#10b981",fontWeight:600}}>✓ Fits — needs {(check.durationMins/60).toFixed(1)}h, there's enough free time here.</p>
+        )}
+        {check&&!check.fits&&check.reason==="day-end"&&(
+          <p style={{fontSize:12,color:"#ef4444"}}>{member?.name||"This member"} only has {(check.freeMins/60).toFixed(1)}h left today from this slot, but this task needs {(check.durationMins/60).toFixed(1)}h — not enough room before end of day. Pick an earlier slot, or a different day.</p>
+        )}
+        {check&&!check.fits&&check.reason==="busy"&&(
+          <div style={{padding:10,background:"#ef444411",border:"1px solid #ef444444",borderRadius:"var(--rs)",display:"flex",flexDirection:"column",gap:8}}>
+            <p style={{fontSize:12,color:"#ef4444"}}>{member?.name||"This member"} only has {(check.freeMins/60).toFixed(1)}h free from this slot before "{check.blockerTitle}" starts — this task needs {(check.durationMins/60).toFixed(1)}h.</p>
+            <Btn variant="secondary" onClick={()=>{onPushAndAssign(taskId, slot, check.daySlots, check.durationMins);onClose();}} style={{fontSize:12}}>
+              Push "{check.blockerTitle}" (and anything after it) later, then add this
+            </Btn>
+          </div>
+        )}
+
         <div style={{display:"flex",gap:10,paddingTop:4}}>
           <Btn variant="secondary" onClick={onClose} style={{flex:1}}>Cancel</Btn>
-          <Btn onClick={()=>{onAssign(taskId, slot);onClose();}} disabled={!taskId} style={{flex:2}}>Add to Slot</Btn>
+          <Btn onClick={()=>{onAssign(taskId, slot);onClose();}} disabled={!taskId||!check?.fits} style={{flex:2}}>Add to Slot</Btn>
         </div>
       </div>
     </Modal>
@@ -45636,6 +45684,32 @@ function App() {
     ue("Post", taskId, updates).catch(()=>{});
   };
 
+  // Makes room for a task that doesn't fit at the clicked slot as-is: every
+  // already-scheduled task from that slot's start time onward gets pushed
+  // back-to-back starting right after the new task's end — same day if
+  // there's still room, otherwise rolled to the next working day (cleared
+  // due_time so it re-packs naturally there, same convention as the
+  // capacity-overflow handling on My Timeline). Then assigns the task.
+  const pushConflictAndAssignTask = (taskId, slot, daySlots, durationMins) => {
+    const newStart = timeToMins(slot.due_time) ?? WORKING_START*60;
+    let cursor = newStart + durationMins;
+    const nextDayStr = addWorkingDays(new Date(slot.due_date+"T00:00:00"), 1).toISOString().split("T")[0];
+    const affected = daySlots.filter(s=>s.start_mins>=newStart).sort((a,b)=>a.start_mins-b.start_mins);
+    affected.forEach(s=>{
+      const dur = s.end_mins - s.start_mins;
+      if (cursor + dur <= WORKING_END*60) {
+        const newTime = minsToHHMM(cursor);
+        setData(d=>({...d, posts: d.posts.map(p=>p.id===s.post_id ? {...p, due_time:newTime} : p)}));
+        ue("Post", s.post_id, {due_time:newTime}).catch(()=>{});
+        cursor += dur;
+      } else {
+        setData(d=>({...d, posts: d.posts.map(p=>p.id===s.post_id ? {...p, due_date:nextDayStr, due_time:null} : p)}));
+        ue("Post", s.post_id, {due_date:nextDayStr, due_time:null}).catch(()=>{});
+      }
+    });
+    assignExistingTaskToSlot(taskId, slot);
+  };
+
   const addPost = async (postData) => {
     // Client Requests are the one exception — the client submits a request
     // with no project attached yet; the account manager picks the project
@@ -49329,7 +49403,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
 
     {showAddTask&&<AddGenericTaskModal open onClose={()=>{setShowAddTask(false);setAddTaskForClient(null);setAddTaskPresetSlot(null);}} projects={data.projects} team={data.team} onAdd={addPost} onCreateProject={addProjectQuick} presetClient={addTaskForClient} presetSlot={addTaskPresetSlot} clients={data.clients} currentUser={currentUser}/>}
 
-    {assignExistingSlot&&<AssignExistingTaskModal open onClose={()=>setAssignExistingSlot(null)} slot={assignExistingSlot} posts={data.posts} clients={data.clients} onAssign={assignExistingTaskToSlot}/>}
+    {assignExistingSlot&&<AssignExistingTaskModal open onClose={()=>setAssignExistingSlot(null)} slot={assignExistingSlot} posts={data.posts} team={data.team} clients={data.clients} onAssign={assignExistingTaskToSlot} onPushAndAssign={pushConflictAndAssignTask}/>}
 
     {/* New Project Wizard — used by FAB, Dashboard, Projects page */}
     {(showFABProject||showAddProject)&&<ProjectWizard
