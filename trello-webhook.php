@@ -9,6 +9,8 @@
  *     as a Client Request if that's what "To Do" is mapped to.
  *   - updateCard (list changed): a card dragged to a different list moves
  *     that post to the matching stage here.
+ *   - updateCard (archived) / deleteCard: archiving or permanently
+ *     deleting the card on Trello deletes the matching post here too.
  *
  * Trello requires the callback URL to answer ANY request (including a
  * bare HEAD with no body) with 2xx during webhook registration, so every
@@ -34,7 +36,7 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") { echo json_encode(["ok" => true]); e
 $body = json_decode(file_get_contents("php://input"), true);
 $action = $body['action'] ?? null;
 $actionType = $action['type'] ?? '';
-if (!$action || !in_array($actionType, ['createCard', 'updateCard'], true)) { echo json_encode(["ok" => true]); exit; }
+if (!$action || !in_array($actionType, ['createCard', 'updateCard', 'deleteCard'], true)) { echo json_encode(["ok" => true]); exit; }
 
 $boardId = $action['data']['board']['id'] ?? null;
 $cardId = $action['data']['card']['id'] ?? null;
@@ -62,6 +64,23 @@ $direction = $integ['config']['sync_direction'] ?? 'both';
 if ($direction === 'to_trello') { echo json_encode(["ok" => true]); exit; }
 
 $listMap = $integ['config']['list_map'] ?? [];
+
+// Archived (closed:true) or permanently deleted on Trello — remove the
+// matching post/task here too, including its comment thread so nothing
+// orphaned is left behind.
+$archived = $actionType === 'updateCard' && ($action['data']['card']['closed'] ?? null) === true && ($action['data']['old']['closed'] ?? null) !== true;
+if ($actionType === 'deleteCard' || $archived) {
+    $postStmt = $pdo->prepare("SELECT id FROM posts WHERE trello_card_id = :cid LIMIT 1");
+    $postStmt->execute([':cid' => $cardId]);
+    $post = $postStmt->fetch(PDO::FETCH_ASSOC);
+    if ($post) {
+        $pdo->prepare("DELETE FROM comments WHERE post_id = :pid")->execute([':pid' => $post['id']]);
+        $pdo->prepare("DELETE FROM posts WHERE id = :id")->execute([':id' => $post['id']]);
+        echo json_encode(["ok" => true, "action" => "deleted", "post_id" => $post['id']]);
+        exit;
+    }
+    echo json_encode(["ok" => true]); exit;
+}
 
 if ($actionType === 'createCard') {
     // A card added directly on Trello (not pushed there by SocialFlow) —
