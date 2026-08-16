@@ -2133,6 +2133,17 @@ async function sendWhatsApp(to, body) {
   } catch(e) { return false; }
 }
 
+// ── Trello sync: fire-and-forget push of a post's current stage to its
+// client's connected Trello board (creates the card the first time, moves
+// it on every stage change after). A no-op server-side if the client has
+// no active Trello integration or that stage isn't mapped to a list —
+// safe to call unconditionally after every create/stage-change. ──
+async function syncPostToTrello(postId) {
+  if(!postId) return;
+  try { await fetch("/trello-sync.php", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({post_id:postId})}); }
+  catch(e) { /* best-effort — Trello being unreachable shouldn't block the real save */ }
+}
+
 // ── Web Push: send a push notification to a user's stored subscription(s) ──
 async function sendPushNotification(toEmail, title, body, url) {
   try {
@@ -16892,9 +16903,132 @@ const CLIENT_PORTAL_TOGGLEABLE_FEATURES = [
 // Integrations page. Account managers can add but not edit/delete/retry —
 // only admins get the full management controls, per the same
 // isAdmin-vs-account_manager split used throughout the rest of the app.
+// ── Connect Trello — dedicated setup flow (board + list mapping + sync
+// direction), separate from the generic trigger/action IntegrationWizard
+// since this is project-management board sync, not an automation rule. ──
+const TRELLO_STAGE_LABELS = STAGES.filter(s=>!["approved"].includes(s.key));
+function TrelloConnectModal({open, onClose, client, existingIntegration, onSave}) {
+  const existingCreds = (()=>{ try{ return JSON.parse(existingIntegration?.credentials||"{}"); }catch(e){ return {}; } })();
+  const existingConfig = (()=>{ try{ return JSON.parse(existingIntegration?.config||"{}"); }catch(e){ return {}; } })();
+  const [apiKey,setApiKey] = useState(existingCreds.api_key||"");
+  const [token,setToken] = useState(existingCreds.token||"");
+  const [boardInput,setBoardInput] = useState(existingConfig.board_url||"");
+  const [board,setBoard] = useState(existingConfig.board_id ? {id:existingConfig.board_id, name:existingConfig.board_name} : null);
+  const [lists,setLists] = useState(null);
+  const [listMap,setListMap] = useState(existingConfig.list_map||{});
+  const [direction,setDirection] = useState(existingConfig.sync_direction||"both");
+  const [fetching,setFetching] = useState(false);
+  const [saving,setSaving] = useState(false);
+  const [error,setError] = useState("");
+
+  const fetchLists = async () => {
+    if(!apiKey.trim()||!token.trim()||!boardInput.trim()){ setError("API key, token, and a board URL/ID are all required."); return; }
+    setFetching(true); setError("");
+    try {
+      const r = await fetch("/trello-lists.php",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({api_key:apiKey.trim(),token:token.trim(),board:boardInput.trim()})});
+      const d = await r.json();
+      if(!r.ok||d.error){ setError(d.error||"Could not load that board."); setLists(null); return; }
+      setBoard({id:d.board_id,name:d.board_name});
+      setLists(d.lists||[]);
+    } catch(e){ setError("Network error reaching Trello."); }
+    setFetching(false);
+  };
+
+  const save = async () => {
+    if(!board?.id){ setError("Fetch the board's lists before saving."); return; }
+    setSaving(true); setError("");
+    let webhookId = existingConfig.webhook_id || "";
+    const needsWebhook = direction==="both"||direction==="from_trello";
+    try {
+      if(needsWebhook || webhookId){
+        const r = await fetch("/trello-webhook-register.php",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+          api_key:apiKey.trim(), token:token.trim(),
+          board_id: needsWebhook ? board.id : "",
+          existing_webhook_id: webhookId,
+        })});
+        const d = await r.json();
+        if(!r.ok||d.error){ setError(d.error||"Couldn't register the Trello webhook — check your API key/token have access to this board, and that this site is reachable over HTTPS."); setSaving(false); return; }
+        webhookId = needsWebhook ? (d.webhook_id||"") : "";
+      }
+      await onSave({
+        name: `Trello — ${board.name}`,
+        app_key: "trello",
+        status: "active",
+        credentials: JSON.stringify({api_key:apiKey.trim(), token:token.trim()}),
+        config: JSON.stringify({board_id:board.id, board_name:board.name, board_url:boardInput.trim(), sync_direction:direction, list_map:listMap, webhook_id:webhookId}),
+      });
+      onClose();
+    } catch(e){ setError("Save failed: "+e.message); }
+    setSaving(false);
+  };
+
+  if(!open) return null;
+  return (
+    <Modal open onClose={onClose} title={`Connect Trello — ${client.name}`} width={560}>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <p style={{fontSize:12,color:"var(--text3)"}}>
+          Adding a task/post here (a Client Request, or any stage move) mirrors it as a card on this client's Trello board. Get an API key + token at{" "}
+          <a href="https://trello.com/power-ups/admin" target="_blank" rel="noreferrer" style={{color:"var(--accent)"}}>trello.com/power-ups/admin</a> (create a Power-Up, then generate a token from its API key page).
+        </p>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <Field label="API Key" required><input value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="Trello API key" style={inputSt}/></Field>
+          <Field label="Token" required><input value={token} onChange={e=>setToken(e.target.value)} placeholder="Trello token" style={inputSt}/></Field>
+        </div>
+        <Field label="Board URL or ID" required>
+          <div style={{display:"flex",gap:8}}>
+            <input value={boardInput} onChange={e=>setBoardInput(e.target.value)} placeholder="https://trello.com/b/XXXXXXXX/board-name" style={{...inputSt,flex:1}}/>
+            <Btn variant="secondary" onClick={fetchLists} disabled={fetching}>{fetching?<Spinner size={13}/>:"Fetch Lists"}</Btn>
+          </div>
+        </Field>
+        {error&&<p style={{fontSize:12,color:"#ef4444"}}>{error}</p>}
+        {board&&<p style={{fontSize:12,color:"#10b981",fontWeight:700}}> Connected to board "{board.name}"</p>}
+
+        {lists&&(
+          <>
+            <Field label="Sync direction">
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {[
+                  {key:"both",label:"Both ways",desc:"Adding/moving a task here moves the Trello card; dragging the card on Trello moves the task's stage here."},
+                  {key:"to_trello",label:"SocialFlow → Trello only",desc:"Pushes card creation/moves to Trello; changes made on Trello aren't pulled back."},
+                  {key:"from_trello",label:"Trello → SocialFlow only",desc:"Card moves on Trello update the task's stage here; SocialFlow changes aren't pushed to Trello."},
+                ].map(opt=>(
+                  <label key={opt.key} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"8px 10px",border:`1.5px solid ${direction===opt.key?"var(--accent)":"var(--border)"}`,borderRadius:"var(--rs)",cursor:"pointer",background:direction===opt.key?"var(--accentbg)":"transparent"}}>
+                    <input type="radio" checked={direction===opt.key} onChange={()=>setDirection(opt.key)} style={{marginTop:2}}/>
+                    <div><p style={{fontSize:12,fontWeight:700}}>{opt.label}</p><p style={{fontSize:11,color:"var(--text3)"}}>{opt.desc}</p></div>
+                  </label>
+                ))}
+              </div>
+            </Field>
+            <Field label="Which SocialFlow stage maps to which Trello list?">
+              <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:260,overflowY:"auto"}}>
+                {TRELLO_STAGE_LABELS.map(st=>(
+                  <div key={st.key} style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{width:130,flexShrink:0,fontSize:12,fontWeight:700}}>{st.label}</span>
+                    <select value={listMap[st.key]||""} onChange={e=>setListMap(m=>({...m,[st.key]:e.target.value||undefined}))} style={{...inputSt,flex:1}}>
+                      <option value="">— not synced —</option>
+                      {lists.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </Field>
+          </>
+        )}
+
+        <div style={{display:"flex",gap:10,paddingTop:4}}>
+          <Btn variant="secondary" onClick={onClose} style={{flex:1}}>Cancel</Btn>
+          <Btn onClick={save} disabled={saving||!board} style={{flex:2}}>{saving?<><Spinner size={14}/> Saving…</>:"Save Connection"}</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function ClientIntegrationsSubTab({client, integrations, integrationLogs, currentUser, onAdd, onUpdate, onDelete, onRetry}) {
   const [showWizard, setShowWizard] = useState(false);
   const [editIntegration, setEditIntegration] = useState(null);
+  const [showTrello, setShowTrello] = useState(false);
+  const [editTrello, setEditTrello] = useState(null);
   const isAdmin = currentUser?.role==="admin";
   const canAdd = isAdmin || currentUser?.role==="account_manager";
   const clientIntegrations = (integrations||[]).filter(i=>i.client_id===client.id);
@@ -16906,7 +17040,12 @@ function ClientIntegrationsSubTab({client, integrations, integrationLogs, curren
           <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:16}}>Integrations</h3>
           <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Apps connected specifically for {client.name}</p>
         </div>
-        {canAdd&&<Btn onClick={()=>{setEditIntegration(null);setShowWizard(true);}}><Ico d={Icons.plus} size={14}/> New Integration</Btn>}
+        {canAdd&&(
+          <div style={{display:"flex",gap:8}}>
+            <Btn variant="secondary" onClick={()=>{setEditTrello(null);setShowTrello(true);}}><Ico d={Icons.plug} size={14}/> Connect Trello</Btn>
+            <Btn onClick={()=>{setEditIntegration(null);setShowWizard(true);}}><Ico d={Icons.plus} size={14}/> New Integration</Btn>
+          </div>
+        )}
       </div>
 
       {clientIntegrations.length===0&&(
@@ -16941,7 +17080,7 @@ function ClientIntegrationsSubTab({client, integrations, integrationLogs, curren
                 </button>
                 {isAdmin&&(
                   <>
-                    <button onClick={()=>{setEditIntegration(integ);setShowWizard(true);}} title="Edit" style={{width:30,height:30,borderRadius:8,border:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                    <button onClick={()=>{ if(integ.app_key==="trello"){ setEditTrello(integ); setShowTrello(true); } else { setEditIntegration(integ); setShowWizard(true); } }} title="Edit" style={{width:30,height:30,borderRadius:8,border:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
                       <Ico d={Icons.edit} size={13} stroke="var(--text2)"/>
                     </button>
                     {integ.status==="error"&&onRetry&&(
@@ -16970,6 +17109,20 @@ function ClientIntegrationsSubTab({client, integrations, integrationLogs, curren
           onSave={async(d)=>{
             const payload = {...d, client_id: client.id, client_name: client.name};
             if(editIntegration) await onUpdate({...editIntegration,...payload});
+            else await onAdd(payload);
+          }}
+        />
+      )}
+
+      {showTrello&&(
+        <TrelloConnectModal
+          open
+          onClose={()=>{setShowTrello(false);setEditTrello(null);}}
+          client={client}
+          existingIntegration={editTrello}
+          onSave={async(d)=>{
+            const payload = {...d, client_id: client.id, client_name: client.name};
+            if(editTrello) await onUpdate({...editTrello,...payload});
             else await onAdd(payload);
           }}
         />
@@ -26753,6 +26906,8 @@ const INTEGRATION_APPS = [
   {key:"google_sheets",label:"Google Sheets", category:"spreadsheet", color:"#0F9D58", icon:Icons.sheetsBrand, description:"Add rows to Google Sheets"},
   // Ecommerce
   {key:"shopify", label:"Shopify", category:"ecommerce", color:"#95BF47", icon:Icons.shopifyBrand, brand:true, description:"Sync orders and products with your Shopify store"},
+  // Project management
+  {key:"trello", label:"Trello", category:"pm", color:"#0079BF", icon:Icons.plug, description:"Two-way board sync — client requests, stage moves, and approvals mirrored on a Trello board"},
 ];
 const APP_MAP = Object.fromEntries(INTEGRATION_APPS.map(a=>[a.key,a]));
 
@@ -35804,15 +35959,24 @@ function MyCalendarPage({posts,currentUser,team,onDayClick}) {
 // menu's three options, just pre-filled with who the slot is for and when.
 function TimelineAddPicker({slot, onPick, onClose, inline=false}) {
   const menuBtnSt = {display:"flex",alignItems:"center",gap:8,width:"100%",padding:"9px 14px",fontSize:12,fontWeight:600,color:"var(--text)",background:"none",border:"none",cursor:"pointer",textAlign:"left",whiteSpace:"nowrap"};
+  const ref = React.useRef(null);
+  // No full-screen click-catcher div here on purpose — that used to sit on
+  // top of the whole page, so the FIRST click anywhere else (e.g. a
+  // sidebar link) just closed the menu instead of ever reaching its real
+  // target, forcing a second click to actually navigate. A plain
+  // document-level listener closes the menu without blocking anything —
+  // the real target still gets its own click normally.
+  React.useEffect(()=>{
+    const onDocMouseDown = (e) => { if(ref.current && !ref.current.contains(e.target)) onClose(); };
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  },[]);
   return (
-    <>
-      <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:19}}/>
-      <div className="fade-in" onClick={e=>e.stopPropagation()} style={{position:inline?"static":"absolute",top:"calc(100% + 4px)",left:inline?undefined:"50%",transform:inline?undefined:"translateX(-50%)",zIndex:20,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--rs)",boxShadow:"0 10px 30px rgba(0,0,0,0.15)",overflow:"hidden",minWidth:150}}>
-        <button onClick={()=>onPick("task",slot)} style={menuBtnSt}><Ico d={Icons.check||Icons.tasks} size={13} stroke="var(--text2)"/> Task</button>
-        <button onClick={()=>onPick("post",slot)} style={{...menuBtnSt,borderTop:"1px solid var(--border)"}}><Ico d={Icons.tasks} size={13} stroke="var(--text2)"/> Post</button>
-        <button onClick={()=>onPick("calendar",slot)} style={{...menuBtnSt,borderTop:"1px solid var(--border)"}}><Ico d={Icons.calPlus} size={13} stroke="var(--text2)"/> Calendar Plan</button>
-      </div>
-    </>
+    <div ref={ref} className="fade-in" style={{position:inline?"static":"absolute",top:"calc(100% + 4px)",left:inline?undefined:"50%",transform:inline?undefined:"translateX(-50%)",zIndex:20,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--rs)",boxShadow:"0 10px 30px rgba(0,0,0,0.15)",overflow:"hidden",minWidth:150}}>
+      <button onClick={()=>onPick("task",slot)} style={menuBtnSt}><Ico d={Icons.check||Icons.tasks} size={13} stroke="var(--text2)"/> Task</button>
+      <button onClick={()=>onPick("post",slot)} style={{...menuBtnSt,borderTop:"1px solid var(--border)"}}><Ico d={Icons.tasks} size={13} stroke="var(--text2)"/> Post</button>
+      <button onClick={()=>onPick("calendar",slot)} style={{...menuBtnSt,borderTop:"1px solid var(--border)"}}><Ico d={Icons.calPlus} size={13} stroke="var(--text2)"/> Calendar Plan</button>
+    </div>
   );
 }
 
@@ -45428,7 +45592,9 @@ function App() {
       }
     }
     logActivity("Task Created","tasks",`"${postData.title}" created${postData.client_name?` for ${postData.client_name}`:""}`,"success","",currentUser?.email||"admin");
-    return b44Create("Post","posts", local, postData);
+    const saved = await b44Create("Post","posts", local, postData);
+    if(saved?.id) syncPostToTrello(saved.id);
+    return saved;
   };
 
   const markNotifRead = (notifId) => {
@@ -47702,6 +47868,7 @@ Return ONLY valid JSON (no markdown, no explanation):
       const {id, created_at, created_date, ...persistable} = updatedPost;
       await ue("Post", post.id, {...persistable, stage:newStage});
       await ce("Comment",[{post_id:post.id,author_name:comment.author_name,type:"stage_change",content:comment.content}]);
+      syncPostToTrello(post.id);
     } catch(e){ logActivity("Post Stage Change Failed","tasks",`"${post.title}" → ${stageLabel}`,"error",String(e),currentUser?.email||"admin"); }
   };
 
