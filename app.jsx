@@ -491,6 +491,48 @@ function autoDueDateByPriority(priority) {
     time: "17:00",
   };
 }
+// "Auto (by priority)" used to just apply a flat offset (urgent=today,
+// high=+1 workday, etc.) with zero regard for whether that person actually
+// has room that day — landing a suggestion on top of an already-packed
+// schedule doesn't make sense as a suggestion. This scans forward day by
+// day starting from the priority's earliest allowed date, skipping
+// weekends, for the first day this person has enough free capacity for the
+// task's estimated duration, then finds the actual first free minute slot
+// that day (same packing model as generateDailySchedule: sequentially
+// after whatever's already anchored there, within working hours) — same
+// idea as scheduleItemDates (used by the Calendar Plan wizard's bulk auto-
+// scheduling) but for a single task and returning a real time, not just a
+// date. Falls back to WORK_DAYS_DEFAULT since this is called from a spot
+// with no appSettings/attendance-rules threaded in.
+function firstFreeSlot(allPosts, userEmail, estMins, earliestDate) {
+  const days = WORK_DAYS_DEFAULT;
+  let day = new Date(earliestDate);
+  for(let guard=0; guard<60; guard++) {
+    const dateStr = day.toISOString().split("T")[0];
+    if(days.includes(day.getDay())) {
+      const free = freeCapacityOnDate(allPosts, userEmail, dateStr);
+      if(free >= estMins) {
+        const dayPosts = allPosts.filter(p=>p.assigned_to===userEmail && p.due_date===dateStr && !["published","rejected"].includes(p.stage));
+        let cursor = WORKING_START * 60;
+        dayPosts.forEach(p=>{
+          const t = p.due_time ? p.due_time.split(":").map(Number) : null;
+          const start = t ? Math.max(WORKING_START*60, t[0]*60+(t[1]||0)) : cursor;
+          const end = start + estimateDuration(p);
+          if(end > cursor) cursor = end;
+        });
+        if(cursor + estMins <= WORKING_END * 60) {
+          const pad = n => String(n).padStart(2,"0");
+          return {date: dateStr, time: `${pad(Math.floor(cursor/60))}:${pad(cursor%60)}`};
+        }
+      }
+    }
+    day = new Date(day.getTime()+86400000);
+  }
+  // Nothing free in the scan window — fall back to the flat priority date
+  // at end-of-day rather than leaving the field empty.
+  const pad = n => String(n).padStart(2,"0");
+  return {date: earliestDate.toISOString().split("T")[0], time: "17:00"};
+}
 function estimateDuration(post) {
   // An explicit estimate set on the task always wins — the guess below (by
   // whichever of the three methods is configured) is only a fallback for
@@ -5851,6 +5893,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   // chosen slot also drives that member's timeline via estimated_minutes.
   const [assignStage, setAssignStage] = useState(null); // "content_creation" | "design" | null
   const [assignForm, setAssignForm] = useState({assigned_to:"", mode:"due", scheduled_date:"", scheduled_time:"", start_time:"", end_time:""});
+  const [autoSlotNote, setAutoSlotNote] = useState("");
   const openAssignModal = (stageKey) => {
     setAssignForm({
       assigned_to: (stageKey==="content_creation" ? (post.content_assigned_to||post.assigned_to) : post.assigned_to) || "",
@@ -7379,16 +7422,25 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
           <div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
               <label style={{fontSize:12,fontWeight:600,color:"var(--text3)"}}>Date</label>
-              <button type="button" onClick={()=>{
-                const auto = autoDueDateByPriority(post.priority);
-                setAssignForm(f=>({...f, mode:"due", scheduled_date:auto.date, scheduled_time:auto.time}));
-              }} title={`Suggests a due date based on this task's "${post.priority||"medium"}" priority`}
-                style={{display:"flex",alignItems:"center",gap:4,padding:"2px 8px",borderRadius:99,border:"1px solid var(--accent)44",background:"var(--accent)11",color:"var(--accent)",fontSize:10,fontWeight:700,cursor:"pointer"}}>
-                <Ico d={Icons.sparkle} size={10} stroke="var(--accent)"/> Auto (by priority)
+              <button type="button" disabled={!assignForm.assigned_to} title={!assignForm.assigned_to ? "Pick who this is assigned to first" : `Finds this person's first actually-free slot, no earlier than what this task's "${post.priority||"medium"}" priority allows`} onClick={()=>{
+                // The priority offset is still the EARLIEST this can land
+                // (urgent still can't get pushed later just because today's
+                // full) — from there, scan their real timeline for the
+                // first slot that actually has room, instead of blindly
+                // dropping it on the priority date regardless of workload.
+                const floor = autoDueDateByPriority(post.priority);
+                const slot = firstFreeSlot(allPosts, assignForm.assigned_to, estimateDuration(post), new Date(floor.date));
+                setAssignForm(f=>({...f, mode:"due", scheduled_date:slot.date, scheduled_time:slot.time}));
+                const assigneeName = team?.find(m=>m.email===assignForm.assigned_to)?.name || "them";
+                setAutoSlotNote(`First free slot for ${assigneeName}: ${fmtDate(slot.date)} at ${slot.time}`);
+              }}
+                style={{display:"flex",alignItems:"center",gap:4,padding:"2px 8px",borderRadius:99,border:"1px solid var(--accent)44",background:"var(--accent)11",color:"var(--accent)",fontSize:10,fontWeight:700,cursor:assignForm.assigned_to?"pointer":"default",opacity:assignForm.assigned_to?1:0.5}}>
+                <Ico d={Icons.sparkle} size={10} stroke="var(--accent)"/> Auto (first free slot)
               </button>
             </div>
-            <input type="date" value={assignForm.scheduled_date} onChange={e=>setAssignForm(f=>({...f,scheduled_date:e.target.value}))}
+            <input type="date" value={assignForm.scheduled_date} onChange={e=>{setAssignForm(f=>({...f,scheduled_date:e.target.value}));setAutoSlotNote("");}}
               style={{width:"100%",padding:"9px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontSize:13}}/>
+            {autoSlotNote && <p style={{fontSize:11,color:"var(--accent)",marginTop:6}}>{autoSlotNote}</p>}
           </div>
           {assignForm.mode==="due"?(
             <div>
