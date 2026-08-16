@@ -13,6 +13,11 @@
 //
 // Never touches a post that already has an explicit estimated_minutes —
 // only fills in the ones currently falling back to the flat placeholder.
+//
+// Also catches posts titled "Static ..." (the Add Calendar Plan wizard's
+// naming convention for single-image posts) that ended up stored with
+// post_type='image' rather than 'static' — same real content, just
+// inconsistently categorized, so they get the same 45min treatment.
 // ================================================================
 require_once __DIR__ . '/config.php';
 
@@ -23,7 +28,9 @@ $pdo = new PDO(
 );
 
 $stmt = $pdo->prepare(
-    "UPDATE posts SET estimated_minutes = 45 WHERE post_type = 'static' AND (estimated_minutes IS NULL OR estimated_minutes = 0)"
+    "UPDATE posts SET estimated_minutes = 45
+     WHERE (estimated_minutes IS NULL OR estimated_minutes = 0)
+       AND (post_type = 'static' OR (post_type = 'image' AND title LIKE 'Static%'))"
 );
 $stmt->execute();
 
