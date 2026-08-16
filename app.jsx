@@ -7491,7 +7491,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
 // table needed) — post_type carries the task category, platform stays empty
 // since it isn't going out to any social platform.
 const TASK_CATEGORIES = [["design","Design"],["video_editing","Video Editing"],["resizing","Resizing"],["report","Report"],["copywriting","Copywriting"],["other","Other"]];
-function AddGenericTaskModal({open,onClose,projects,team,onAdd,onCreateProject,presetClient,clients=[],currentUser}) {
+function AddGenericTaskModal({open,onClose,projects,team,onAdd,onCreateProject,presetClient,presetSlot=null,clients=[],currentUser}) {
   const [pickedClientId,setPickedClientId] = useState("");
   const activeClientId = presetClient?.id || pickedClientId;
   const activeClient = presetClient || clients.find(c=>c.id===pickedClientId) || null;
@@ -7500,7 +7500,9 @@ function AddGenericTaskModal({open,onClose,projects,team,onAdd,onCreateProject,p
   // eligible for the Brief/planning stage (Account Managers/admins).
   const defaultAssignee = eligibleAssignees("planning",team).some(m=>m.email===currentUser?.email) ? currentUser.email : "";
   const blank = {title:"",project_id:selectableProjects[0]?.id||"",task_category:"design",other_category:"",description:"",assigned_to:defaultAssignee,due_date:"",priority:"medium",stage:"planning"};
-  const [f,setF] = useState({...blank});
+  // Opened by clicking a free slot on someone's Timeline (admin/AM only) —
+  // prefill who it's for and when.
+  const [f,setF] = useState({...blank, ...(presetSlot?{assigned_to:presetSlot.assigned_to,due_date:presetSlot.due_date}:{})});
   // Which pipeline phase this task starts at — controls who's eligible to be assigned.
   const eligibleTeam = eligibleAssignees(f.stage,team);
   const [saving,setSaving] = useState(false);
@@ -35797,7 +35799,28 @@ function MyCalendarPage({posts,currentUser,team,onDayClick}) {
 // ════════════════════════════════════════════════════════════════
 // MY TIMELINE PAGE - Daily schedule view 9am-6pm
 // ════════════════════════════════════════════════════════════════
-function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onStartTimer, onPauseTimer, onResumeTimer, schedules, scheduleOverrides, onOverrideSchedule, onShiftOverdue, initialJump, onJumpConsumed, onBackToCalendar, activityLogs=[], appSettings, onQuickAddSlot}) {
+// Small "+ Task / + Post / + Calendar Plan" popup shown when an admin/AM
+// clicks a free slot on someone's Timeline — mirrors the client-page Add
+// menu's three options, just pre-filled with who the slot is for and when.
+function TimelineAddPicker({slot, onPick, onClose, inline=false}) {
+  const menuBtnSt = {display:"flex",alignItems:"center",gap:8,width:"100%",padding:"9px 14px",fontSize:12,fontWeight:600,color:"var(--text)",background:"none",border:"none",cursor:"pointer",textAlign:"left",whiteSpace:"nowrap"};
+  return (
+    <>
+      <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:19}}/>
+      <div className="fade-in" onClick={e=>e.stopPropagation()} style={{position:inline?"static":"absolute",top:"calc(100% + 4px)",left:inline?undefined:"50%",transform:inline?undefined:"translateX(-50%)",zIndex:20,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--rs)",boxShadow:"0 10px 30px rgba(0,0,0,0.15)",overflow:"hidden",minWidth:150}}>
+        <button onClick={()=>onPick("task",slot)} style={menuBtnSt}><Ico d={Icons.check||Icons.tasks} size={13} stroke="var(--text2)"/> Task</button>
+        <button onClick={()=>onPick("post",slot)} style={{...menuBtnSt,borderTop:"1px solid var(--border)"}}><Ico d={Icons.tasks} size={13} stroke="var(--text2)"/> Post</button>
+        <button onClick={()=>onPick("calendar",slot)} style={{...menuBtnSt,borderTop:"1px solid var(--border)"}}><Ico d={Icons.calPlus} size={13} stroke="var(--text2)"/> Calendar Plan</button>
+      </div>
+    </>
+  );
+}
+
+function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onStartTimer, onPauseTimer, onResumeTimer, schedules, scheduleOverrides, onOverrideSchedule, onShiftOverdue, initialJump, onJumpConsumed, onBackToCalendar, activityLogs=[], appSettings, onQuickAdd}) {
+  // Which free-slot "+" button currently has its Task/Post/Calendar Plan
+  // picker open — holds the slot payload (assignee/date/time) it was
+  // opened with, so picking an option knows what to prefill.
+  const [addMenuSlot,setAddMenuSlot] = useState(null);
   const {isMobile} = useResponsive();
   const [viewDate, setViewDate] = useState(()=>initialJump?.date ? new Date(initialJump.date+"T00:00:00") : new Date());
   const [tick, setTick] = useState(0);
@@ -36028,9 +36051,22 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                   <Avatar name={member.name} size={16} role={member.role} photoUrl={member.avatar_url}/>
                   <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{member.name}{member.email===currentUser?.email?" (You)":""}</span>
                 </div>
-                <div style={{position:"relative",flex:1,height:30,background:"var(--surface2)",borderRadius:6,
-                  backgroundImage:`repeating-linear-gradient(to right, var(--border) 0, var(--border) 1px, transparent 1px, transparent ${100/(WORKING_END-WORKING_START)}%)`}}>
-                  {memberSlots.length===0 && <span style={{position:"absolute",top:"50%",left:8,transform:"translateY(-50%)",fontSize:10,color:"var(--text3)"}}>No tasks scheduled</span>}
+                <div style={{position:"relative",flex:1,height:30,background:"var(--surface2)",borderRadius:6,cursor:(isAM&&onQuickAdd)?"copy":"default",
+                  backgroundImage:`repeating-linear-gradient(to right, var(--border) 0, var(--border) 1px, transparent 1px, transparent ${100/(WORKING_END-WORKING_START)}%)`}}
+                  onClick={(isAM&&onQuickAdd)?(e)=>{
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const relX = Math.min(0.999,Math.max(0,(e.clientX-rect.left)/rect.width));
+                    const hour = Math.min(WORKING_END-1, WORKING_START + Math.floor(relX*(WORKING_END-WORKING_START)));
+                    const slotKey = `c-${member.email}-${hour}`;
+                    const leftPct = (hour-WORKING_START)/(WORKING_END-WORKING_START)*100;
+                    setAddMenuSlot(prev=>prev?.key===slotKey?null:{
+                      key:slotKey, leftPct,
+                      assigned_to: member.email,
+                      scheduled_date: dateStr, scheduled_time: `${String(hour).padStart(2,'0')}:00`,
+                      due_date: dateStr, due_time: `${String(hour).padStart(2,'0')}:00`,
+                    });
+                  }:undefined}>
+                  {memberSlots.length===0 && <span style={{position:"absolute",top:"50%",left:8,transform:"translateY(-50%)",fontSize:10,color:"var(--text3)",pointerEvents:"none"}}>No tasks scheduled</span>}
                   {memberSlots.map(slot=>{
                     const post = posts.find(p=>p.id===slot.post_id);
                     const leftPct = Math.max(0,(slot.start_mins - WORKING_START*60)/WORKING_MINS*100);
@@ -36038,13 +36074,18 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     const stage = post ? (STAGE_MAP[post.stage]||STAGES[0]) : null;
                     return (
                       <div key={slot.post_id} title={`${post?.title||""} (${slot.start_time}–${slot.end_time})${slot.overdue?" — OVERDUE":""}`}
-                        onClick={()=>onPostClick&&post&&onPostClick(post)}
+                        onClick={(e)=>{e.stopPropagation();onPostClick&&post&&onPostClick(post);}}
                         style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:3,bottom:3,background:slot.overdue?"#ef4444":(stage?.color||"var(--accent)"),borderRadius:5,cursor:post?"pointer":"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 6px",...(slot.overdue?{boxShadow:"0 0 0 1px #b91c1c inset"}:{})}}>
                         <span style={{fontSize:10,color:"#fff",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span>
                         {widthPct>8&&<span style={{fontSize:8.5,color:"#fff",opacity:0.85,whiteSpace:"nowrap"}}>{slot.start_time}–{slot.end_time}</span>}
                       </div>
                     );
                   })}
+                  {addMenuSlot?.key?.startsWith(`c-${member.email}-`) && (
+                    <div style={{position:"absolute",left:`${addMenuSlot.leftPct}%`,top:"100%",zIndex:20}}>
+                      <TimelineAddPicker slot={addMenuSlot} inline onPick={(type,s)=>{setAddMenuSlot(null);onQuickAdd(type,s);}} onClose={()=>setAddMenuSlot(null)}/>
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -36142,18 +36183,28 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                 {/* Slot content */}
                 <div style={{flex:1,padding:6,display:"flex",flexDirection:"column",gap:4}}>
                   {hourSlots.length===0 && (
-                    isAM && onQuickAddSlot ? (
-                      <button
-                        onClick={()=>onQuickAddSlot({
-                          assigned_to: effectiveUser?.email||"",
-                          scheduled_date: dateStr, scheduled_time: `${String(hour).padStart(2,'0')}:00`,
-                          due_date: dateStr, due_time: `${String(hour).padStart(2,'0')}:00`,
-                        })}
-                        style={{flex:1,minHeight:32,marginTop:16,border:"1px dashed var(--border2)",borderRadius:"var(--rs)",background:"transparent",color:"var(--text3)",fontSize:11,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:4,transition:"all 0.15s"}}
-                        onMouseEnter={e=>{e.currentTarget.style.background="var(--accent)11";e.currentTarget.style.borderColor="var(--accent)";e.currentTarget.style.color="var(--accent)";}}
-                        onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.borderColor="var(--border2)";e.currentTarget.style.color="var(--text3)";}}
-                      >+ Add task</button>
-                    ) : (
+                    isAM && onQuickAdd ? (()=>{
+                      const slotKey = `s-${hour}`;
+                      const slot = {
+                        key: slotKey,
+                        assigned_to: effectiveUser?.email||"",
+                        scheduled_date: dateStr, scheduled_time: `${String(hour).padStart(2,'0')}:00`,
+                        due_date: dateStr, due_time: `${String(hour).padStart(2,'0')}:00`,
+                      };
+                      return (
+                        <div style={{position:"relative",flex:1,marginTop:16}}>
+                          <button
+                            onClick={()=>setAddMenuSlot(prev=>prev?.key===slotKey?null:slot)}
+                            style={{width:"100%",minHeight:32,border:"1px dashed var(--border2)",borderRadius:"var(--rs)",background:"transparent",color:"var(--text3)",fontSize:11,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:4,transition:"all 0.15s"}}
+                            onMouseEnter={e=>{e.currentTarget.style.background="var(--accent)11";e.currentTarget.style.borderColor="var(--accent)";e.currentTarget.style.color="var(--accent)";}}
+                            onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.borderColor="var(--border2)";e.currentTarget.style.color="var(--text3)";}}
+                          >+ Add task</button>
+                          {addMenuSlot?.key===slotKey && (
+                            <TimelineAddPicker slot={slot} onPick={(type,s)=>{setAddMenuSlot(null);onQuickAdd(type,s);}} onClose={()=>setAddMenuSlot(null)}/>
+                          )}
+                        </div>
+                      );
+                    })() : (
                       <span style={{fontSize:11,color:"var(--border2)",alignSelf:"center",marginTop:16}}>—</span>
                     )
                   )}
@@ -44930,6 +44981,7 @@ function App() {
   };
   const [showAddPost,setShowAddPost] = useState(false);
   const [addPostPresetSlot,setAddPostPresetSlot] = useState(null);
+  const [addTaskPresetSlot,setAddTaskPresetSlot] = useState(null);
   const [showAddProject,setShowAddProject] = useState(false);
   const [addProjectForClient,setAddProjectForClient] = useState(null);
   const [showCreateBrief,setShowCreateBrief] = useState(false);
@@ -48825,7 +48877,11 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             onDayClick={(jump)=>{ setTimelineJump(jump); setPage("my_timeline"); }}
           />
         )}
-        {page==="my_timeline"&&<MyTimelinePage posts={data.posts} team={data.team} currentUser={currentUser} timeEntries={data.timeEntries||[]} onPostClick={setSelectedPost} onStartTimer={startTimer} onPauseTimer={pauseTimer} onResumeTimer={resumeTimer} schedules={data.schedules||[]} scheduleOverrides={data.scheduleOverrides||[]} onOverrideSchedule={overrideSchedule} onShiftOverdue={shiftOverdueDueDate} initialJump={timelineJump} onJumpConsumed={()=>setTimelineJump(null)} onBackToCalendar={()=>setPage("my_calendar")} activityLogs={data.activityLogs||[]} appSettings={appSettings} onQuickAddSlot={(slot)=>{setAddPostPresetSlot(slot);setShowAddPost(true);}}/>}
+        {page==="my_timeline"&&<MyTimelinePage posts={data.posts} team={data.team} currentUser={currentUser} timeEntries={data.timeEntries||[]} onPostClick={setSelectedPost} onStartTimer={startTimer} onPauseTimer={pauseTimer} onResumeTimer={resumeTimer} schedules={data.schedules||[]} scheduleOverrides={data.scheduleOverrides||[]} onOverrideSchedule={overrideSchedule} onShiftOverdue={shiftOverdueDueDate} initialJump={timelineJump} onJumpConsumed={()=>setTimelineJump(null)} onBackToCalendar={()=>setPage("my_calendar")} activityLogs={data.activityLogs||[]} appSettings={appSettings} onQuickAdd={(type,slot)=>{
+          if(type==="post"){ setAddPostPresetSlot(slot); setShowAddPost(true); }
+          else if(type==="task"){ setAddTaskPresetSlot(slot); setShowAddTask(true); }
+          else if(type==="calendar"){ setCalendarPreselectedClient(null); setShowFABCalendar(true); }
+        }}/>}
         {(page==="my_performance"||page==="reports")&&<MyPerformancePage currentUser={currentUser} posts={data.posts} timeEntries={data.timeEntries||[]} perfLogs={data.perfLogs||[]} aiInsights={data.aiInsights||[]}/>}
         {page==="account"&&(
           <AccountPage
@@ -49005,7 +49061,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
     {/* Add Post */}
     {showAddPost&&<AddPostModal open onClose={()=>{setShowAddPost(false);setAddPostForClient(null);setAddPostPresetSlot(null);}} projects={data.projects} team={data.team} onAdd={addPost} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} presetClient={addPostForClient} presetSlot={addPostPresetSlot} assets={data.assets||[]} currentUser={currentUser}/>}
 
-    {showAddTask&&<AddGenericTaskModal open onClose={()=>{setShowAddTask(false);setAddTaskForClient(null);}} projects={data.projects} team={data.team} onAdd={addPost} onCreateProject={addProjectQuick} presetClient={addTaskForClient} clients={data.clients} currentUser={currentUser}/>}
+    {showAddTask&&<AddGenericTaskModal open onClose={()=>{setShowAddTask(false);setAddTaskForClient(null);setAddTaskPresetSlot(null);}} projects={data.projects} team={data.team} onAdd={addPost} onCreateProject={addProjectQuick} presetClient={addTaskForClient} presetSlot={addTaskPresetSlot} clients={data.clients} currentUser={currentUser}/>}
 
     {/* New Project Wizard — used by FAB, Dashboard, Projects page */}
     {(showFABProject||showAddProject)&&<ProjectWizard
