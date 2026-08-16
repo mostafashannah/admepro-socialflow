@@ -6216,8 +6216,9 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
       const j = await res.json();
       if(!res.ok || j.error) { setInsightsError(j.error||"Refresh failed"); }
       else {
-        if(j.partial_error) setInsightsError(`Reach unavailable: ${j.partial_error}`);
-        onInsightsRefreshed && onInsightsRefreshed({...post, insight_likes:j.likes, insight_comments:j.comments, insight_shares:j.shares, insight_reach:j.reach, insight_fetched_at:j.fetched_at});
+        const errEntries = Object.entries(j.errors||{});
+        if(errEntries.length) setInsightsError(errEntries.map(([p,e])=>`${p}: ${e}`).join(" · "));
+        onInsightsRefreshed && onInsightsRefreshed({...post, insight_likes:j.likes, insight_comments:j.comments, insight_shares:j.shares, insight_reach:j.reach, insight_fetched_at:j.fetched_at, insights_by_platform:j.by_platform||{}});
       }
     } catch(e) { setInsightsError("Refresh failed — check connection"); }
     setInsightsRefreshing(false);
@@ -15424,14 +15425,38 @@ function PlatformCompareBar({label, rows, valueKey}) {
 // platform's own full-detail sub-tab.
 function AllPlatformsSummaryTab({posts, connectedPlatforms, onSelectPlatform}) {
   const {isMobile} = useResponsive();
+  // A post going out to more than one platform at once (Instagram + Facebook,
+  // say) used to only ever count under whichever platform happened to sit in
+  // the legacy singular `platform` column — so a Facebook card could show
+  // "1 published post" while 20+ posts actually went out to Facebook too,
+  // just with `platform` recorded as "instagram". Attribute the post to
+  // EVERY platform in its `platforms` array instead, and prefer that
+  // platform's own numbers from insights_by_platform (populated by the
+  // fixed post-insights-fetch.php/cron.php) over the legacy single-set
+  // columns, which only ever reflected one platform's numbers anyway.
   const rows = connectedPlatforms.map(pf=>{
-    const pPosts = (posts||[]).filter(p=>p.platform===pf && p.stage==="published");
-    const withData = pPosts.filter(p=>p.insight_likes!=null||p.insight_comments!=null||p.insight_shares!=null||p.insight_reach!=null);
+    const pPosts = (posts||[]).filter(p=>{
+      if(p.stage!=="published") return false;
+      const plts = Array.isArray(p.platforms) ? p.platforms : parseJ(p.platforms||"[]");
+      return (plts.length ? plts : [p.platform]).includes(pf);
+    });
+    const perPost = pPosts.map(p=>{
+      const byPlt = (p.insights_by_platform && typeof p.insights_by_platform==="object") ? p.insights_by_platform : parseJ(p.insights_by_platform||"{}");
+      const own = byPlt?.[pf];
+      if(own) return {likes:own.likes, comments:own.comments, shares:own.shares, reach:own.reach};
+      // No per-platform breakdown yet (post predates this fix, or hasn't
+      // been refreshed since) — only trust the legacy single-set columns
+      // when this post's ONE recorded platform actually matches this
+      // card, otherwise there's no reliable number for this platform at all.
+      if(p.platform===pf) return {likes:p.insight_likes, comments:p.insight_comments, shares:p.insight_shares, reach:p.insight_reach};
+      return {likes:null, comments:null, shares:null, reach:null};
+    });
+    const withData = perPost.filter(p=>p.likes!=null||p.comments!=null||p.shares!=null||p.reach!=null);
     const sum = key => withData.reduce((a,p)=>a+(p[key]||0),0);
-    const hasShares = withData.some(p=>p.insight_shares!=null);
-    const hasReach = withData.some(p=>p.insight_reach!=null);
-    const likes = sum("insight_likes"), comments = sum("insight_comments");
-    const shares = hasShares?sum("insight_shares"):null, reach = hasReach?sum("insight_reach"):null;
+    const hasShares = withData.some(p=>p.shares!=null);
+    const hasReach = withData.some(p=>p.reach!=null);
+    const likes = sum("likes"), comments = sum("comments");
+    const shares = hasShares?sum("shares"):null, reach = hasReach?sum("reach"):null;
     const engagement = likes + comments*2 + (shares||0)*3;
     return {
       platform:pf, total:pPosts.length, tracked:withData.length,
