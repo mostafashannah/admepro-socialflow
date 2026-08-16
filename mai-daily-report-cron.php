@@ -197,6 +197,16 @@ foreach ($clients as $client) {
         // Scheduled format, not just the ones flagged as low.
         addFinding($recipientFindings, $pdo, $client, $admins, $clientName, 'scheduled_count', "{$scheduledCount} scheduled");
 
+        // How many tasks are currently sitting stuck waiting on a human
+        // (internal review, design review, or client approval) rather than
+        // actually moving through the pipeline — a real bottleneck signal
+        // distinct from cadence/pipeline-runway, and one the report never
+        // surfaced before.
+        $pendingReviewStmt = $pdo->prepare("SELECT COUNT(*) FROM posts WHERE client_id = :cid AND stage IN ('internal_review','design_review','client_approval')");
+        $pendingReviewStmt->execute([':cid' => $clientId]);
+        $pendingReviewCount = (int) $pendingReviewStmt->fetchColumn();
+        addFinding($recipientFindings, $pdo, $client, $admins, $clientName, 'pending_review_count', $pendingReviewCount > 0 ? "{$pendingReviewCount} pending review/approval" : '');
+
         $pipelineLow = $runwayDays < 10;
         if ($pipelineLow) {
             $msg = $lastScheduledDate
@@ -438,8 +448,11 @@ $maiWaSystem = "You are Mai, the agency's AI Account Executive, sending a WhatsA
     . "- Use ⚠️ ONLY for a client with a REAL problem below (cadence behind schedule, or pipeline low/empty). Use ✅ for a client that's fine.\n"
     . "- FORMAT: exactly TWO lines per client, every client, no exceptions and no grouping several clients onto one shared line:\n"
     . "  Line 1: \"{ClientName} {emoji}\" — just the name and status emoji, nothing else.\n"
-    . "  Line 2: \"Published: X/Y this week · Scheduled: N in pipeline\" using that client's real numbers below — append a short clause after it "
-    . "ONLY if there's an actual cadence or pipeline problem to flag (e.g. \" — last post 6d ago\" or \" — runway low\"), otherwise leave Line 2 at just the two numbers.\n"
+    . "  Line 2: \"Published: X/Y this week · Scheduled: N in pipeline\" using that client's real numbers below — if that client also has a "
+    . "\"pending review/approval\" figure below, add \" · Pending review: N\" to this same line too (a task sitting in internal review, design "
+    . "review, or client approval is a real bottleneck worth surfacing, not something to bury). Append a short clause after all that ONLY if "
+    . "there's an actual cadence or pipeline problem to flag (e.g. \" — last post 6d ago\" or \" — runway low\"), otherwise leave Line 2 at just "
+    . "the numbers that apply.\n"
     . "  A blank line between each client's two-line block. Never merge a client's two lines into one, never blend two clients together.\n"
     . "- NEVER repeat/paste full report text or add extra sentences per client beyond the two lines above.\n"
     . "- End with ONE short line pointing to SocialFlow notifications for full details and inviting them to ask you for more — not a full sentence per client repeating this.\n"
@@ -456,6 +469,7 @@ foreach ($recipientFindings as $email => $entry) {
         // spot-check against reality.
         if (!empty($facts['stats'])) $parts[] = $facts['stats'];
         if (!empty($facts['scheduled_count'])) $parts[] = $facts['scheduled_count'];
+        if (!empty($facts['pending_review_count'])) $parts[] = $facts['pending_review_count'];
         if (!empty($facts['cadence'])) $parts[] = "cadence: " . $facts['cadence'];
         if (!empty($facts['pipeline'])) $parts[] = "pipeline: " . $facts['pipeline'];
         if (!empty($facts['report'])) $parts[] = "today's read: " . $facts['report'];
