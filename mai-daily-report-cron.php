@@ -466,10 +466,23 @@ foreach ($recipientFindings as $email => $entry) {
     $firstName = trim($nameParts[0] ?? '');
     $nameHint = $firstName !== '' ? $firstName : '(unknown — just say Good morning, with no name)';
     $userMsg = "Recipient's first name: {$nameHint}\n\nToday's findings across your accounts:\n" . implode("\n", $lines) . "\n\nWrite the one WhatsApp message now, starting with the greeting, two lines per client as instructed.";
-    [$status, $data] = callClaude(['model' => 'claude-sonnet-4-6', 'max_tokens' => 700, 'system' => $maiWaSystem, 'messages' => [['role' => 'user', 'content' => $userMsg]]]);
+    // A transient failure here (rate limit, timeout, brief API hiccup) used
+    // to silently fall back to the generic "quick account check: X ⚠️; Y
+    // ⚠️" one-liner with zero record of WHY it happened — one retry gives a
+    // real API blip a second chance before giving up, and logging the
+    // actual status/error means a persistent failure is diagnosable instead
+    // of just "the report looked ugly today" with no trail.
+    $claudeArgs = ['model' => 'claude-sonnet-4-6', 'max_tokens' => 700, 'system' => $maiWaSystem, 'messages' => [['role' => 'user', 'content' => $userMsg]]];
+    [$status, $data, $raw] = callClaude($claudeArgs);
+    if ($status < 200 || $status >= 300) {
+        logMaiActivity($pdo, "WhatsApp report generation failed (attempt 1) — {$email}", "HTTP {$status}: " . mb_substr((string) $raw, 0, 500), 'error');
+        [$status, $data, $raw] = callClaude($claudeArgs);
+    }
     $msg = '';
     if ($status >= 200 && $status < 300) {
         foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $msg .= $block['text']; }
+    } else {
+        logMaiActivity($pdo, "WhatsApp report generation failed (attempt 2) — {$email}", "HTTP {$status}: " . mb_substr((string) $raw, 0, 500), 'error');
     }
     $msg = trim($msg);
     $greeting = $isWeekend
@@ -503,12 +516,14 @@ foreach ($recipientFindings as $email => $entry) {
         $msg = $cut . "… full details in SocialFlow notifications.";
     }
     if ($msg === '') {
-        // Fallback if the AI call itself fails — still one message, still
-        // short, just without her usual phrasing variety.
-        $msg = "{$greeting} quick account check: " . implode("; ", array_map(
+        // Fallback if the AI call itself fails even after a retry — still
+        // one message, still short, just without her usual phrasing
+        // variety. Real line breaks instead of a semicolon-separated wall,
+        // so it's at least readable even in this degraded path.
+        $msg = "{$greeting} quick account check (AI writer unavailable right now):\n\n" . implode("\n", array_map(
             fn($n, $f) => $n . (!empty($f['cadence']) || !empty($f['pipeline']) ? " ⚠️" : " ✅"),
             array_keys($entry['clients']), array_values($entry['clients'])
-        )) . ". Full details in SocialFlow notifications — ask me for more on any account.";
+        )) . "\n\nFull details in SocialFlow notifications — ask me for more on any account.";
     }
     $prefStmt = $pdo->prepare("SELECT all_disabled, wa_daily_finance_report FROM notification_prefs WHERE user_email = :email LIMIT 1");
     $prefStmt->execute([':email' => $email]);
