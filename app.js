@@ -122,7 +122,7 @@ function commissionMultiplierForScore(score){if(score<=60)return 0;if(score<=80)
 // both spellings need to count or the classification is inconsistent
 // depending on which code path created the post.
 var SOCIAL_POST_TYPES=new Set([].concat(POST_TYPES,["social_post","story_reel","static","campaign","article","blog"]));var PRIORITIES=["low","medium","high","urgent"];var PLT_COLOR={instagram:"#e1306c",facebook:"#1877f2",linkedin:"#0a66c2",tiktok:"#69c9d0",twitter:"#1da1f2"};var PLT_ABBR={instagram:"IG",facebook:"FB",linkedin:"IN",tiktok:"TT",twitter:"X"};var PLT_ICON={instagram:"IG",facebook:"FB",linkedin:"IN",tiktok:"TK",twitter:"X"};var PRI_COLOR={low:"#6b7280",medium:"#3b82f6",high:"#f59e0b",urgent:"#ef4444"};var STAGE_MAP=Object.fromEntries(STAGES.map(function(s){return[s.key,s];}));var POST_TYPE_DURATIONS={image:30,"static":45,video:180,carousel:120,story:30,reel:150,social_post:30,story_reel:120,caption_copy:30,graphic_design:180,campaign:240,ad_creative:120,blog:240};var WORKING_START=10;// 10am
-var WORKING_END=20;// 8pm
+var WORKING_END=21;// 9pm
 var WORKING_MINS=(WORKING_END-WORKING_START)*60;// 540 mins
 // ── Smart Schedule Engine ──────────────────────────────────────
 var DEFAULT_PRIORITY_MULT={urgent:1.5,high:1.2,medium:1.0,low:0.8};// Admin-adjustable overrides (Settings → Task Estimates), mirrored from
