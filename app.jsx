@@ -465,7 +465,7 @@ const POST_TYPE_DURATIONS = {
   campaign: 240, ad_creative: 120, blog: 240,
 };
 const WORKING_START = 10; // 10am
-const WORKING_END = 19; // 7pm
+const WORKING_END = 20; // 8pm
 const WORKING_MINS = (WORKING_END - WORKING_START) * 60; // 540 mins
 
 // ── Smart Schedule Engine ──────────────────────────────────────
@@ -45719,6 +45719,14 @@ function App() {
     }
     loadAllDataRef.current = load;
     load(false);
+    // Auto-refresh so anything created outside this browser tab (Trello
+    // sync, a client-portal submission, another teammate's change, a cron
+    // job) shows up on its own instead of requiring a manual page reload.
+    // Silent (no loading spinner), only while the tab is actually visible
+    // — same pattern already used for the smaller per-page pollers
+    // elsewhere in the app, just on the full dataset here.
+    const autoRefresh = setInterval(() => { if(document.visibilityState==="visible") load(true); }, 60000);
+    return () => clearInterval(autoRefresh);
   },[]);
 
   // ── Helpers ──────────────────────────────────────────────────
