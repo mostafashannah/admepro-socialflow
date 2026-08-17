@@ -507,6 +507,17 @@ function notifyLeadCategorySubscriber(PDO $pdo, string $clientId, string $catego
 // client's own business. Returns null for "other" (spam/support/small talk —
 // not worth capturing) or on any API failure.
 function classifyClientContact(string $clientName, string $combinedText) {
+    // admepro's own inbox is a special case worth spelling out explicitly —
+    // a company asking to HIRE admepro as their marketing/social media
+    // agency ("looking for a marketing partner", "send us your portfolio",
+    // "interested in collaborating with your agency") is a real LEAD, even
+    // though the wording ("partner"/"collaborate") sounds two-way and was
+    // getting misread as the opposite: them pitching THEIR OWN service to
+    // admepro (service_provider). Only an actual freelancer/vendor/supplier
+    // offering a service TO admepro is service_provider here.
+    $ownInboxNote = strcasecmp($clientName, 'admepro') === 0
+        ? "\n\nSpecial case for admepro's own inbox: someone asking to hire admepro as their marketing/social media agency — including phrasing like \"looking for a marketing partner\", \"interested in collaborating\", or \"send us your portfolio/profile\" — is a LEAD (they want to buy admepro's services), NOT a service_provider, even though that wording sounds two-way. Only classify as service_provider if they're clearly offering THEIR OWN distinct service/product TO admepro (a freelancer, supplier, or another agency pitching admepro)."
+        : "";
     $payload = [
         'model' => 'claude-sonnet-4-6',
         'max_tokens' => 200,
@@ -517,7 +528,8 @@ function classifyClientContact(string $clientName, string $combinedText) {
                   . "lead = a potential customer interested in {$clientName}'s own products/services (asking prices, availability, how to order/book).\n"
                   . "service_provider = someone offering THEIR OWN service/product/collaboration TO {$clientName} (a supplier, freelancer, agency, influencer pitching).\n"
                   . "hiring = someone applying for a job or asking about employment/vacancies at {$clientName}.\n"
-                  . "other = anything else not worth capturing as a contact (spam, random chat, an existing customer's support issue, etc).",
+                  . "other = anything else not worth capturing as a contact (spam, random chat, an existing customer's support issue, etc)."
+                  . $ownInboxNote,
         'messages' => [['role' => 'user', 'content' => $combinedText]],
     ];
     [$status, $data] = callClaude($payload);
