@@ -175,13 +175,12 @@ var nowFloorMins=date===today?new Date().getHours()*60+new Date().getMinutes():n
 // is optional — omitting it falls back to the plain current-assignee
 // check, e.g. the double-booking conflict check in the assign modal,
 // which cares who holds it right now.)
-if(!wasOwnerOf(p,userEmail,userRole))return false;if(ownedStage&&p.stage!==ownedStage)return false;// This timeline's whole purpose is capacity planning — seeing what's
-// already on someone's plate to find real empty slots before assigning
-// them something new — so it needs to show EVERY task still in the
-// pipeline, not just the earlier stages. Only Published (truly done)
-// and Rejected (dead) actually free up a slot; Scheduled still has a
-// real publish step to do and used to silently disappear from here.
-if(["published","approved","rejected"].includes(p.stage))return false;if(p.due_date){if(p.due_date===date)return true;// Still not done AND still sitting in their own stage (not handed
+if(!wasOwnerOf(p,userEmail,userRole))return false;if(ownedStage&&p.stage!==ownedStage)return false;// This timeline is for capacity planning on work still actually IN
+// PROGRESS — Published and Scheduled are both done from the team's
+// side (content/design work is finished; Scheduled is just waiting on
+// the auto-publish date, not sitting on anyone's plate), so neither
+// should occupy a block here, same as Approved/Rejected.
+if(["published","scheduled","approved","rejected"].includes(p.stage))return false;if(p.due_date){if(p.due_date===date)return true;// Still not done AND still sitting in their own stage (not handed
 // off to someone else, e.g. Client Approval) with its due date
 // already passed — roll it forward onto today's view instead of
 // letting it silently vanish once its original day is over. Once
