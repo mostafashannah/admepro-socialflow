@@ -35,4 +35,22 @@ $content = $pdo->exec(
        AND (content_assigned_to IS NULL OR content_assigned_to = '')"
 );
 
-echo json_encode(['ok' => true, 'design_backfilled' => $design, 'content_backfilled' => $content]) . "\n";
+// Same root cause, one step further down the pipeline: posts that already
+// LEFT design/content_creation for review under the old (pre-fix) app.js
+// never got design_completed_at/content_completed_at stamped at all —
+// confirmed live on 3 real posts (Mouled Greeting, DarkAds 2, FLYER Design
+// Amendments), all sitting in design_review with design_completed_at NULL,
+// which is exactly why they vanished off the Timeline instead of showing
+// green. Backfilling to NOW() makes them show correctly for TODAY's view;
+// past-dated ones stay off today's timeline either way, same as any
+// genuinely old finished work.
+$designReview = $pdo->exec(
+    "UPDATE posts SET design_completed_at = NOW()
+     WHERE stage = 'design_review' AND design_completed_at IS NULL"
+);
+$internalReview = $pdo->exec(
+    "UPDATE posts SET content_completed_at = NOW()
+     WHERE stage = 'internal_review' AND content_completed_at IS NULL"
+);
+
+echo json_encode(['ok' => true, 'design_backfilled' => $design, 'content_backfilled' => $content, 'design_review_completed_backfilled' => $designReview, 'internal_review_completed_backfilled' => $internalReview]) . "\n";
