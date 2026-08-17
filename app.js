@@ -161,7 +161,11 @@ var aliasType=function aliasType(t){return t;};if(method==="historical"){var his
 }var postTypes=cfg.postTypes||POST_TYPE_DURATIONS;var priorityMult=cfg.priorityMult||DEFAULT_PRIORITY_MULT;var base=postTypes[aliasType(post.post_type)]||postTypes[aliasType(post.task_type)]||60;return Math.round(base*(priorityMult[post.priority]||1.0));}function priorityScore(post){var pri={urgent:4,high:3,medium:2,low:1};var score=(pri[post.priority]||1)*10;var deadline=post.scheduled_date?Math.max(0,7-Math.floor((new Date(post.scheduled_date)-Date.now())/86400000)):0;return score+deadline;}function timeToMins(hhmm){if(!hhmm)return null;var _hhmm$split$map=hhmm.split(":").map(Number),_hhmm$split$map2=_slicedToArray(_hhmm$split$map,2),h=_hhmm$split$map2[0],m=_hhmm$split$map2[1];return h*60+(m||0);}function minsToHHMM(mins){return"".concat(String(Math.floor(mins/60)).padStart(2,'0'),":").concat(String(mins%60).padStart(2,'0'));}function minsToAmPm(mins){var h24=Math.floor(mins/60);var m=mins%60;var ampm=h24<12?"AM":"PM";var h12=h24===0?12:h24>12?h24-12:h24;return"".concat(h12,":").concat(String(m).padStart(2,'0')," ").concat(ampm);}function generateDailySchedule(posts,userEmail,date,userRole){// Show tasks whose due_date matches the selected day; fall back to
 // tasks with no due_date only for "today" so the schedule makes sense
 // when navigating forward/backward.
-var today=new Date().toISOString().split("T")[0];var ownedStage=ROLE_OWNED_STAGE[userRole];var myPosts=posts.filter(function(p){// wasOwnerOf (not just live assigned_to) so a content creator's/
+var today=new Date().toISOString().split("T")[0];// Nothing should ever render starting before the actual current moment
+// on TODAY's schedule — a task auto-packed (or even anchored) at 10am
+// makes no sense to show as "upcoming" once it's already past noon.
+// null on any other day (past/future dates aren't bounded by "now").
+var nowFloorMins=date===today?new Date().getHours()*60+new Date().getMinutes():null;var ownedStage=ROLE_OWNED_STAGE[userRole];var myPosts=posts.filter(function(p){// wasOwnerOf (not just live assigned_to) so a content creator's/
 // designer's own work is still findable for them (My Tasks, etc.) even
 // after the stage moves on to a reviewer. This timeline specifically is
 // meant to show only their ACTIVE workload though — a task sitting in
@@ -197,8 +201,8 @@ var slots=[];var usedSlots=new Set();var _iterator=_createForOfIteratorHelper(my
 // sequentially from the front of the day instead, same as a task with
 // no due_time — this is what actually pushes the rest of the day's
 // tasks later instead of overlapping them.
-if(post.due_time&&!isOverduePost(post)){var _post$due_time$split$=post.due_time.split(":").map(Number),_post$due_time$split$2=_slicedToArray(_post$due_time$split$,2),hh=_post$due_time$split$2[0],mm=_post$due_time$split$2[1];var startMins=hh*60+(mm||0);// Clamp within working hours
-cursor=Math.max(WORKING_START*60,Math.min(startMins,WORKING_END*60-est));// Two tasks can end up anchored to the exact same due_time (a Calendar
+if(post.due_time&&!isOverduePost(post)){var _post$due_time$split$=post.due_time.split(":").map(Number),_post$due_time$split$2=_slicedToArray(_post$due_time$split$,2),hh=_post$due_time$split$2[0],mm=_post$due_time$split$2[1];var startMins=hh*60+(mm||0);// Clamp within working hours, and never before right now (today only)
+cursor=Math.max(WORKING_START*60,Math.min(startMins,WORKING_END*60-est));if(nowFloorMins!==null)cursor=Math.max(cursor,Math.min(nowFloorMins,WORKING_END*60-est));// Two tasks can end up anchored to the exact same due_time (a Calendar
 // Plan defaulting every post to the same slot, both set manually,
 // etc.) — rather than showing them stacked on top of each other,
 // treat the SECOND one to land here as effectively un-anchored and
@@ -214,7 +218,7 @@ var collision=slots.find(function(s){return s.start_mins<cursor+est&&s.end_mins>
 // back on top of the very first task). Running past the nominal end
 // of day is a more honest signal that this person is overbooked than
 // a corrupted, overlapping layout.
-cursor=WORKING_START*60;var sortedSlots=slots.map(function(s){return s.end_mins;}).sort(function(a,b){return a-b;});var _iterator2=_createForOfIteratorHelper(sortedSlots),_step2;try{for(_iterator2.s();!(_step2=_iterator2.n()).done;){var end=_step2.value;if(end>=cursor)cursor=end;}}catch(err){_iterator2.e(err);}finally{_iterator2.f();}}// If they actually pushed their own work forward (content_completed_at/
+cursor=nowFloorMins!==null?Math.max(WORKING_START*60,nowFloorMins):WORKING_START*60;var sortedSlots=slots.map(function(s){return s.end_mins;}).sort(function(a,b){return a-b;});var _iterator2=_createForOfIteratorHelper(sortedSlots),_step2;try{for(_iterator2.s();!(_step2=_iterator2.n()).done;){var end=_step2.value;if(end>=cursor)cursor=end;}}catch(err){_iterator2.e(err);}finally{_iterator2.f();}}// If they actually pushed their own work forward (content_completed_at/
 // design_completed_at, stamped in handleStageChange when it leaves
 // their stage — e.g. a designer's task moving to Design Review), show
 // how long it REALLY took instead of always rendering the full

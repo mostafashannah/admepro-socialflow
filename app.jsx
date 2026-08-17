@@ -586,6 +586,11 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
   // tasks with no due_date only for "today" so the schedule makes sense
   // when navigating forward/backward.
   const today = new Date().toISOString().split("T")[0];
+  // Nothing should ever render starting before the actual current moment
+  // on TODAY's schedule — a task auto-packed (or even anchored) at 10am
+  // makes no sense to show as "upcoming" once it's already past noon.
+  // null on any other day (past/future dates aren't bounded by "now").
+  const nowFloorMins = date === today ? (new Date().getHours()*60 + new Date().getMinutes()) : null;
   const ownedStage = ROLE_OWNED_STAGE[userRole];
   const myPosts = posts.filter(p => {
     // wasOwnerOf (not just live assigned_to) so a content creator's/
@@ -647,8 +652,9 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     if(post.due_time && !isOverduePost(post)) {
       const [hh, mm] = post.due_time.split(":").map(Number);
       const startMins = hh * 60 + (mm || 0);
-      // Clamp within working hours
+      // Clamp within working hours, and never before right now (today only)
       cursor = Math.max(WORKING_START * 60, Math.min(startMins, WORKING_END * 60 - est));
+      if(nowFloorMins !== null) cursor = Math.max(cursor, Math.min(nowFloorMins, WORKING_END*60-est));
       // Two tasks can end up anchored to the exact same due_time (a Calendar
       // Plan defaulting every post to the same slot, both set manually,
       // etc.) — rather than showing them stacked on top of each other,
@@ -672,7 +678,7 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
       // back on top of the very first task). Running past the nominal end
       // of day is a more honest signal that this person is overbooked than
       // a corrupted, overlapping layout.
-      cursor = WORKING_START * 60;
+      cursor = nowFloorMins !== null ? Math.max(WORKING_START * 60, nowFloorMins) : WORKING_START * 60;
       const sortedSlots = slots.map(s => s.end_mins).sort((a,b) => a-b);
       for(const end of sortedSlots) { if(end >= cursor) cursor = end; }
     }
