@@ -36725,12 +36725,12 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     const widthPct = Math.max(2,(slot.end_mins-slot.start_mins)/WORKING_MINS*100);
                     const stage = post ? (STAGE_MAP[post.stage]||STAGES[0]) : null;
                     return (
-                      <div key={slot.post_id} title={`${post?.title||""} (${slot.start_time}–${slot.end_time})${slot.overdue?" — OVERDUE":""}${isAM&&onMoveTask?" — drag to move":""}`}
+                      <div key={slot.post_id} title={`${post?.title||""} (${slot.start_time}–${slot.end_time})${slot.overdue?" — OVERDUE":""}${slot.completed_today?" — Done, moved to review":""}${isAM&&onMoveTask?" — drag to move":""}`}
                         onClick={(e)=>{e.stopPropagation();onPostClick&&post&&onPostClick(post);}}
                         draggable={!!(isAM&&onMoveTask&&post)}
                         onDragStart={(isAM&&onMoveTask&&post)?(e)=>{e.stopPropagation();dragTaskRef.current={postId:post.id,durationMins:slot.end_mins-slot.start_mins};e.dataTransfer.effectAllowed="move";e.currentTarget.style.opacity="0.4";}:undefined}
                         onDragEnd={(e)=>{e.currentTarget.style.opacity="1";}}
-                        style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:slot.lane*(laneH+3)+3,height:laneH-6,background:slot.overdue?"#ef4444":(stage?.color||"var(--accent)"),borderRadius:5,cursor:post?(isAM&&onMoveTask?"grab":"pointer"):"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 6px",...(slot.overdue?{boxShadow:"0 0 0 1px #b91c1c inset"}:{})}}>
+                        style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:slot.lane*(laneH+3)+3,height:laneH-6,background:slot.overdue?"#ef4444":slot.completed_today?"#22c55e":(stage?.color||"var(--accent)"),borderRadius:5,cursor:post?(isAM&&onMoveTask?"grab":"pointer"):"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 6px",...(slot.overdue?{boxShadow:"0 0 0 1px #b91c1c inset"}:{})}}>
                         <span style={{fontSize:10,color:"#fff",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span>
                         {widthPct>8&&<span style={{fontSize:8.5,color:"#fff",opacity:0.85,whiteSpace:"nowrap"}}>{slot.start_time}–{slot.end_time}</span>}
                       </div>
@@ -36872,7 +36872,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     const post = posts.find(p=>p.id===slot.post_id);
                     if(!post) return null;
                     const stage = STAGE_MAP[post.stage]||STAGES[0];
-                    const stageColor = slot.overdue ? "#ef4444" : stage.color;
+                    const stageColor = slot.overdue ? "#ef4444" : slot.completed_today ? "#22c55e" : stage.color;
                     const isActive = (timeEntries||[]).some(t=>t.post_id===post.id&&t.user_email===currentUser?.email&&t.status==='active');
                     const trackedSecs = getPostTrackedSecs(post.id);
                     const durMins = slot.end_mins - slot.start_mins;
