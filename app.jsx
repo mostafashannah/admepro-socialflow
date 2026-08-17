@@ -36422,7 +36422,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   const [cameFromCalendar] = useState(()=>!!initialJump);
   const isAM = currentUser?.role==="account_manager" || currentUser?.role==="admin";
   const [viewUser, setViewUser] = useState(()=>initialJump?.viewUser||null); // null = self
-  const [combinedView, setCombinedView] = useState(()=>!!initialJump?.combined);
+  const [combinedView, setCombinedView] = useState(()=>initialJump ? !!initialJump.combined : true);
   const [zoom, setZoom] = useState(1); // 1x–4x horizontal stretch on the combined timeline
   const [overrideTarget, setOverrideTarget] = useState(null); // {slot, post}
   const [overrideTime, setOverrideTime] = useState("09:00");
