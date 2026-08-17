@@ -36425,6 +36425,11 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   // (not state) since drag events fire far more often than a re-render
   // needs to happen for.
   const dragTaskRef = React.useRef(null);
+  // Right-click "copy" / right-click-empty-slot "paste" — a keyboard/
+  // mouse-only alternative to dragging, and (unlike drag) survives
+  // navigating to a different day via Prev/Next before pasting, so a task
+  // can be moved across days this way, not just within the same one.
+  const [copiedTask, setCopiedTask] = useState(null); // {postId, durationMins}
   const {isMobile} = useResponsive();
   const [viewDate, setViewDate] = useState(()=>initialJump?.date ? new Date(initialJump.date+"T00:00:00") : new Date());
   const [tick, setTick] = useState(0);
@@ -36741,6 +36746,26 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     }
                     onMoveTask(dragged.postId, {assigned_to: member.email, due_date: dateStr, due_time: minsToHHMM(Math.min(startMins, (WORKING_END*60)-15))});
                     dragTaskRef.current = null;
+                  }:undefined}
+                  onContextMenu={(isAM&&onMoveTask&&copiedTask)?(e)=>{
+                    e.preventDefault();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const relX = Math.min(0.999,Math.max(0,(e.clientX-rect.left)/rect.width));
+                    const dropHourFloor = dateStr===new Date().toISOString().split("T")[0] ? Math.max(WORKING_START, new Date().getHours()) : WORKING_START;
+                    const hour = Math.max(dropHourFloor, Math.min(WORKING_END-1, WORKING_START + Math.floor(relX*(WORKING_END-WORKING_START))));
+                    const targetSlots = generateDailySchedule(posts, member.email, dateStr, member.role).filter(s=>s.post_id!==copiedTask.postId);
+                    let startMins = hour*60;
+                    const durMins = copiedTask.durationMins || 60;
+                    let guard = 0;
+                    while(guard++ < 50) {
+                      const endMins = startMins + durMins;
+                      const blocker = targetSlots.filter(s=>s.start_mins<endMins && s.end_mins>startMins).sort((a,b)=>a.end_mins-b.end_mins)[0];
+                      if(!blocker) break;
+                      startMins = blocker.end_mins;
+                    }
+                    onMoveTask(copiedTask.postId, {assigned_to: member.email, due_date: dateStr, due_time: minsToHHMM(Math.min(startMins, (WORKING_END*60)-15))});
+                    setCopiedTask(null);
+                    setToast(" Task moved");
                   }:undefined}>
                   {memberSlots.length===0 && <span style={{position:"absolute",top:"50%",left:8,transform:"translateY(-50%)",fontSize:10,color:"var(--text3)",pointerEvents:"none"}}>No tasks scheduled</span>}
                   {lanedSlots.map(slot=>{
@@ -36749,11 +36774,16 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     const widthPct = Math.max(2,(slot.end_mins-slot.start_mins)/WORKING_MINS*100);
                     const stage = post ? (STAGE_MAP[post.stage]||STAGES[0]) : null;
                     return (
-                      <div key={slot.post_id} title={`${post?.title||""} (${slot.start_time}–${slot.end_time})${slot.overdue?" — OVERDUE":""}${slot.completed_today?" — Done, moved to review":""}${isAM&&onMoveTask?" — drag to move":""}`}
+                      <div key={slot.post_id} title={`${post?.title||""} (${slot.start_time}–${slot.end_time})${slot.overdue?" — OVERDUE":""}${slot.completed_today?" — Done, moved to review":""}${isAM&&onMoveTask?" — drag, or right-click to move (works across days too)":""}`}
                         onClick={(e)=>{e.stopPropagation();onPostClick&&post&&onPostClick(post);}}
                         draggable={!!(isAM&&onMoveTask&&post)}
                         onDragStart={(isAM&&onMoveTask&&post)?(e)=>{e.stopPropagation();dragTaskRef.current={postId:post.id,durationMins:slot.end_mins-slot.start_mins};e.dataTransfer.effectAllowed="move";e.currentTarget.style.opacity="0.4";}:undefined}
                         onDragEnd={(e)=>{e.currentTarget.style.opacity="1";}}
+                        onContextMenu={(isAM&&onMoveTask&&post)?(e)=>{
+                          e.preventDefault(); e.stopPropagation();
+                          setCopiedTask({postId:post.id, durationMins: slot.end_mins-slot.start_mins});
+                          setToast(` "${post.title}" copied — right-click a free slot (any day) to move it there`);
+                        }:undefined}
                         style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:slot.lane*(laneH+3)+3,height:laneH-6,background:slot.overdue?"#ef4444":slot.completed_today?"#22c55e":(stage?.color||"var(--accent)"),borderRadius:5,cursor:post?(isAM&&onMoveTask?"grab":"pointer"):"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 6px",...(slot.overdue?{boxShadow:"0 0 0 1px #b91c1c inset"}:{})}}>
                         <span style={{fontSize:10,color:"#fff",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span>
                         {widthPct>8&&<span style={{fontSize:8.5,color:"#fff",opacity:0.85,whiteSpace:"nowrap"}}>{slot.start_time}–{slot.end_time}</span>}
