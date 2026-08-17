@@ -1902,8 +1902,10 @@ const EMAIL_TEMPLATES = {
       terminate: (() => {
         const base = terminationLetterCopy(event.previous_value, firstName, event.effective_date?fmtDate(event.effective_date):null);
         const payroll = terminationPayrollEstimate(event.payrollMember, event.effective_date, event.salaryRaises);
-        if(!payroll) return base;
-        return {...base, body: `${base.body} Your final salary of EGP ${payroll.amount.toLocaleString()} (prorated through your last working day) will be payable in the next payroll round, on the ${payroll.payoutWindowLabel}.`};
+        const contact = event.payrollContact;
+        const contactLine = contact ? ` For any payroll follow-up, please reach out to ${contact.name}${contact.email?` at ${contact.email}`:""}${contact.whatsapp_number?` (WhatsApp: ${contact.whatsapp_number})`:""}.` : "";
+        if(!payroll) return {...base, body: `${base.body}${contactLine}`};
+        return {...base, body: `${base.body} Your final salary of EGP ${payroll.amount.toLocaleString()} (prorated through your last working day) will be payable in the next payroll round, on the ${payroll.payoutWindowLabel}.${contactLine}`};
       })(),
       other: {
         hero:event.title||"An update regarding your employment", sub:firstName?`Hi ${firstName},`:"",
@@ -1922,6 +1924,7 @@ const EMAIL_TEMPLATES = {
       offerRow("Last Working Day", event.effective_date?fmtDate(event.effective_date):""),
       offerRow("Final Payroll Amount", terminatePayroll?`EGP ${terminatePayroll.amount.toLocaleString()}`:null),
       offerRow("Payable On", terminatePayroll?terminatePayroll.payoutWindowLabel:null),
+      offerRow("Payroll Contact", event.payrollContact?`${event.payrollContact.name}${event.payrollContact.email?` (${event.payrollContact.email})`:""}`:null),
     ].join("") : [
       offerRow("Previous", event.previous_value),
       offerRow("New", event.new_value),
@@ -19019,6 +19022,12 @@ function TeamMemberHistoryTab({member, team=[], canEdit, currentUser, onUpdateTe
     setSaving(false);
   };
 
+  // Payroll follow-up point of contact for termination letters — Mohamed
+  // Shams handles payroll, looked up by name off the live team roster
+  // rather than hardcoded so it stays correct if his contact info changes
+  // or the role moves to someone else.
+  const payrollContact = team.find(m=>(m.name||"").trim().toLowerCase()==="mohamed shams");
+
   const sendEventEmail = async (e) => {
     if(!member.email) { alert("This team member has no email on file."); return; }
     setEmailingId(e.id);
@@ -19031,7 +19040,7 @@ function TeamMemberHistoryTab({member, team=[], canEdit, currentUser, onUpdateTe
         terminate: terminationLetterCopy(e.previous_value, (member.name||"").split(" ")[0]).hero,
       };
       const subject = `[SocialFlow] ${subjects[e.event_type]||e.title||t.label}`;
-      const html = EMAIL_TEMPLATES.careerEvent(member.name, e.event_type==="terminate" ? {...e, payrollMember: member, salaryRaises: events.filter(ev=>ev.event_type==="salary_raise")} : e);
+      const html = EMAIL_TEMPLATES.careerEvent(member.name, e.event_type==="terminate" ? {...e, payrollMember: member, salaryRaises: events.filter(ev=>ev.event_type==="salary_raise"), payrollContact} : e);
       const ok = await sendEmail(member.email, subject, html);
       if(ok) setEmailedIds(s=>new Set([...s, e.id]));
       else alert("Email failed to send.");
@@ -19208,6 +19217,7 @@ function TeamMemberHistoryTab({member, team=[], canEdit, currentUser, onUpdateTe
                   notes: form.event_type==="deduction"&&form.deduction_mode==="days"?`${form.deduction_days} day(s) deducted${form.notes?" — "+form.notes:""}`:(form.notes||""),
                   payrollMember: form.event_type==="terminate" ? member : undefined,
                   salaryRaises: form.event_type==="terminate" ? events.filter(ev=>ev.event_type==="salary_raise") : undefined,
+                  payrollContact: form.event_type==="terminate" ? payrollContact : undefined,
                 })}
                 style={{width:"100%",height:"100%",border:"none"}} title="Email Preview" sandbox="allow-same-origin"
               />
