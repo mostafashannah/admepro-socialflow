@@ -36276,16 +36276,17 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   // stayed scoped to `effectiveUser` (a single person) even in Combined
   // view, so it read all-zero whenever the viewer themself had no tasks
   // that day despite the timeline clearly showing other members' tasks.
-  // Admin (viewer's own account) and a few named non-production roles
-  // don't belong on a content-production timeline — excluded outright
-  // rather than just showing an always-empty row. Whoever's left is
-  // grouped by role (content creators together, designers together, etc.)
-  // instead of whatever raw order the team list happens to be in.
+  // The non-production-role/named-member exclusion is specifically an AM
+  // view thing — an admin still needs to see literally everyone. Whoever's
+  // left (after exclusion, for non-admins) is grouped by role (content
+  // creators together, designers together, etc.) instead of whatever raw
+  // order the team list happens to be in.
+  const isAdminViewer = currentUser?.role==="admin";
   const TIMELINE_EXCLUDED_NAMES = ["mohamed", "shady", "somaia"];
   const ROLE_SORT_ORDER = ["content_creator","graphic_designer","account_manager","business_development"];
   const timelineMembers = (team||[])
-    .filter(m=>!["hr","accountant","office_boy","admin"].includes(m.role))
-    .filter(m=>!TIMELINE_EXCLUDED_NAMES.some(n=>(m.name||"").toLowerCase().includes(n)))
+    .filter(m=>isAdminViewer || !["hr","accountant","office_boy","admin"].includes(m.role))
+    .filter(m=>isAdminViewer || !TIMELINE_EXCLUDED_NAMES.some(n=>(m.name||"").toLowerCase().includes(n)))
     .sort((a,b)=>{
       const ai = ROLE_SORT_ORDER.indexOf(a.role), bi = ROLE_SORT_ORDER.indexOf(b.role);
       return (ai===-1?99:ai) - (bi===-1?99:bi) || (a.name||"").localeCompare(b.name||"");
