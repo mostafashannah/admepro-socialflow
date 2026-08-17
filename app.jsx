@@ -1899,7 +1899,12 @@ const EMAIL_TEMPLATES = {
         hero:"Notice of role change", sub:`This is to inform you of a change to your role, ${firstName}.`,
         body:`Please reach out to your manager or HR if you have any questions.`,
       },
-      terminate: terminationLetterCopy(event.previous_value, firstName, event.effective_date?fmtDate(event.effective_date):null),
+      terminate: (() => {
+        const base = terminationLetterCopy(event.previous_value, firstName, event.effective_date?fmtDate(event.effective_date):null);
+        const payroll = terminationPayrollEstimate(event.salary, event.effective_date);
+        if(!payroll) return base;
+        return {...base, body: `${base.body} Your final salary of EGP ${payroll.amount.toLocaleString()} (prorated through your last working day) will be payable in the next payroll round, on the ${payroll.payoutWindowLabel}.`};
+      })(),
       other: {
         hero:event.title||"An update regarding your employment", sub:firstName?`Hi ${firstName},`:"",
         body:`Please reach out to your manager or HR if you have any questions.`,
@@ -1911,9 +1916,12 @@ const EMAIL_TEMPLATES = {
         <td style="padding:12px 16px;border-bottom:1px solid #f1f1f3;font-size:13px;color:#6b7280">${label}</td>
         <td style="padding:12px 16px;border-bottom:1px solid #f1f1f3;font-size:14px;font-weight:800;color:#111827;text-align:right">${value}</td>
       </tr>`;
+    const terminatePayroll = t==="terminate" ? terminationPayrollEstimate(event.salary, event.effective_date) : null;
     const rowsHtml = t==="terminate" ? [
       offerRow("Reason", TERMINATION_REASON_MAP[event.previous_value]?.label || "Not specified"),
       offerRow("Last Working Day", event.effective_date?fmtDate(event.effective_date):""),
+      offerRow("Final Payroll Amount", terminatePayroll?`EGP ${terminatePayroll.amount.toLocaleString()}`:null),
+      offerRow("Payable On", terminatePayroll?terminatePayroll.payoutWindowLabel:null),
     ].join("") : [
       offerRow("Previous", event.previous_value),
       offerRow("New", event.new_value),
@@ -18839,6 +18847,24 @@ function terminationLetterCopy(reasonKey, firstName, lastDayLabel) {
   return variants[reasonKey] || variants.end_of_contract;
 }
 
+// Final-month payroll estimate for the termination letter: salary prorated
+// from day 1 of the last-day's month through the last working day itself
+// (which IS paid — see monthly-payroll-cron.php's identical day-inclusive
+// logic), plus the payable window this actually lands in — the payroll
+// cron runs on the 5th of the month AFTER the termination month and pays
+// out on the existing 5th–10th cycle, same as everyone else's salary.
+function terminationPayrollEstimate(salary, lastDayISO) {
+  const amt = Number(salary)||0;
+  if(!lastDayISO || !amt) return null;
+  const d = new Date(lastDayISO+"T00:00:00");
+  const year = d.getFullYear(), month = d.getMonth();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const lastDay = d.getDate();
+  const amount = Math.round((amt/daysInMonth)*lastDay*100)/100;
+  const payoutMonthLabel = new Date(year, month+1, 1).toLocaleDateString("en-US",{month:"long",year:"numeric"});
+  return { amount, payoutWindowLabel: `5th–10th of ${payoutMonthLabel}` };
+}
+
 // A salary raise partway through a month means the member actually earned
 // the old rate for part of the month and the new rate for the rest — this
 // prorates day-by-day across any salary_raise events that landed in the
@@ -18958,7 +18984,7 @@ function TeamMemberHistoryTab({member, team=[], canEdit, currentUser, onUpdateTe
         terminate: terminationLetterCopy(e.previous_value, (member.name||"").split(" ")[0]).hero,
       };
       const subject = `[SocialFlow] ${subjects[e.event_type]||e.title||t.label}`;
-      const html = EMAIL_TEMPLATES.careerEvent(member.name, e);
+      const html = EMAIL_TEMPLATES.careerEvent(member.name, e.event_type==="terminate" ? {...e, salary: member.salary} : e);
       const ok = await sendEmail(member.email, subject, html);
       if(ok) setEmailedIds(s=>new Set([...s, e.id]));
       else alert("Email failed to send.");
@@ -19133,6 +19159,7 @@ function TeamMemberHistoryTab({member, team=[], canEdit, currentUser, onUpdateTe
                   amount: form.event_type==="deduction" ? deductionAmount() : (form.amount?Number(form.amount):null),
                   effective_date: form.effective_date||"",
                   notes: form.event_type==="deduction"&&form.deduction_mode==="days"?`${form.deduction_days} day(s) deducted${form.notes?" — "+form.notes:""}`:(form.notes||""),
+                  salary: form.event_type==="terminate" ? member.salary : undefined,
                 })}
                 style={{width:"100%",height:"100%",border:"none"}} title="Email Preview" sandbox="allow-same-origin"
               />
