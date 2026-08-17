@@ -42,9 +42,20 @@ $dayRate = 30; // salary / 30 as the per-day deduction rate
 // system) whenever start_date was never explicitly set — for most hires
 // that's the same day they really joined, so this avoids requiring an
 // extra manual step for every new team member just to get correct payroll.
-$members = $pdo->query(
-    "SELECT id, name, salary, vacation_days_used, vacation_days_total, COALESCE(start_date, DATE(created_at)) AS start_date FROM team_members WHERE status != 'inactive' AND salary IS NOT NULL AND salary > 0"
-)->fetchAll(PDO::FETCH_ASSOC);
+//
+// Also includes members who are ALREADY inactive if their termination_date
+// falls inside last month — terminate-members-cron.php flips them
+// inactive the day after that date, which (by the time this runs on the
+// 5th) is always before this cron sees them, so the plain
+// `status != 'inactive'` filter alone would silently skip their final,
+// real partial-month payroll entirely.
+$members = $pdo->prepare(
+    "SELECT id, name, salary, vacation_days_used, vacation_days_total, termination_date, COALESCE(start_date, DATE(created_at)) AS start_date FROM team_members
+     WHERE salary IS NOT NULL AND salary > 0
+       AND (status != 'inactive' OR (termination_date IS NOT NULL AND termination_date >= :monthStartForTerm))"
+);
+$members->execute([':monthStartForTerm' => $lastMonth . '-01']);
+$members = $members->fetchAll(PDO::FETCH_ASSOC);
 
 $exists = $pdo->prepare("SELECT 1 FROM payroll_runs WHERE team_member_id = ? AND salary_month = ? LIMIT 1");
 $insert = $pdo->prepare(
@@ -66,9 +77,9 @@ $monthEnd = $lastMonth . '-' . str_pad($daysInMonth, 2, '0', STR_PAD_LEFT);
 // was actually earned at the old rate and part at the new one, instead
 // of the whole month being paid at whatever the salary is right now.
 $parseNum = function($v) { return (float)preg_replace('/[^0-9.]/', '', (string)$v); };
-function proratedMonthlySalary($currentSalary, $events, $year, $month, $startDay, $daysInMonth) {
+function proratedMonthlySalary($currentSalary, $events, $year, $month, $startDay, $endDay, $daysInMonth) {
     $total = 0.0;
-    for ($d = $startDay; $d <= $daysInMonth; $d++) {
+    for ($d = $startDay; $d <= $endDay; $d++) {
         $dateStr = sprintf('%04d-%02d-%02d', $year, $month, $d);
         $rate = $currentSalary;
         $applicable = null;
@@ -99,12 +110,22 @@ foreach ($members as $m) {
         $startDay = (int)date('j', strtotime($startDate));
     }
 
+    // Left partway through this month — only count days up through their
+    // real last working day, not the full month (the "add the last day to
+    // be counted on payroll" behavior — their termination day itself IS
+    // paid, everything after it isn't).
+    $endDay = $daysInMonth;
+    $termDate = $m['termination_date'] ?: null;
+    if ($termDate && $termDate >= $monthStart && $termDate <= $monthEnd) {
+        $endDay = (int)date('j', strtotime($termDate));
+    }
+
     $raiseEventsStmt->execute([$m['id']]);
     $events = array_map(function($r) use ($parseNum) {
         return ['date' => $r['effective_date'], 'rate' => $parseNum($r['new_value']), 'prevRate' => $parseNum($r['previous_value'])];
     }, $raiseEventsStmt->fetchAll(PDO::FETCH_ASSOC));
 
-    $baseSalary = proratedMonthlySalary($fullSalary, $events, $year, $month, $startDay, $daysInMonth);
+    $baseSalary = proratedMonthlySalary($fullSalary, $events, $year, $month, $startDay, $endDay, $daysInMonth);
 
     $used = floatval($m['vacation_days_used'] ?? 0);
     $total = floatval($m['vacation_days_total'] ?? 30);

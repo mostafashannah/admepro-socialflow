@@ -1899,6 +1899,7 @@ const EMAIL_TEMPLATES = {
         hero:"Notice of role change", sub:`This is to inform you of a change to your role, ${firstName}.`,
         body:`Please reach out to your manager or HR if you have any questions.`,
       },
+      terminate: terminationLetterCopy(event.previous_value, firstName, event.effective_date?fmtDate(event.effective_date):null),
       other: {
         hero:event.title||"An update regarding your employment", sub:firstName?`Hi ${firstName},`:"",
         body:`Please reach out to your manager or HR if you have any questions.`,
@@ -1910,7 +1911,10 @@ const EMAIL_TEMPLATES = {
         <td style="padding:12px 16px;border-bottom:1px solid #f1f1f3;font-size:13px;color:#6b7280">${label}</td>
         <td style="padding:12px 16px;border-bottom:1px solid #f1f1f3;font-size:14px;font-weight:800;color:#111827;text-align:right">${value}</td>
       </tr>`;
-    const rowsHtml = [
+    const rowsHtml = t==="terminate" ? [
+      offerRow("Reason", TERMINATION_REASON_MAP[event.previous_value]?.label || "Not specified"),
+      offerRow("Last Working Day", event.effective_date?fmtDate(event.effective_date):""),
+    ].join("") : [
       offerRow("Previous", event.previous_value),
       offerRow("New", event.new_value),
       offerRow("Amount", amt),
@@ -18329,6 +18333,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   rolePerms, onUpdateTeamMember, onRemoveMember, onToggleRolePermission, onAddExpense, leaveRequests, onDecideLeaveRequest, attendanceRecords,
   posts, onImpersonate, appSettings, brandingAssets, onSaveSettings, expenses, onDeclareCompanyDayOff, invoices, payments, subscriptionPayments, activityLogs=[], perfLogs=[], maiReportSessions=[], leaveCreditEvents=[], payrollRuns=[], onDecidePayrollRun}) {
   const [tab, setTab] = usePersistentState("sf_tab_users","team");
+  const [memberStatusFilter, setMemberStatusFilter] = useState("active");
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showClientUserModal, setShowClientUserModal] = useState(false);
   const [editingClientUser, setEditingClientUser] = useState(null);
@@ -18485,8 +18490,17 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
 
       {tab==="team"&&(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:-2}}>Human Team</p>
-          {(team||[]).map(m=>(
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:-2}}>
+            <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Human Team</p>
+            <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)"}}>
+              {[["active","Active"],["inactive","Inactive"]].map(([v,l])=>(
+                <button key={v} onClick={()=>setMemberStatusFilter(v)} style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,border:"none",cursor:"pointer",background:memberStatusFilter===v?"var(--accent)":"none",color:memberStatusFilter===v?"#fff":"var(--text2)"}}>
+                  {l} ({(team||[]).filter(m=>(m.status||"active")===v).length})
+                </button>
+              ))}
+            </div>
+          </div>
+          {(team||[]).filter(m=>(m.status||"active")===memberStatusFilter).map(m=>(
             <div key={m.id} onClick={()=>setViewingMember(m)} data-clickable style={{background:"var(--surface)",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:14,border:"1px solid var(--border)",cursor:"pointer"}}>
               <div style={{width:40,height:40,borderRadius:"50%",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:15,flexShrink:0,overflow:"hidden"}}>
                 {m.avatar_url?<img src={m.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:m.name?.[0]?.toUpperCase()||"?"}
@@ -18504,10 +18518,10 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
                 </span>
               )}
               <span style={{
-                background:m.status==="active"?"#10b98122":"#f59e0b22",
-                color:m.status==="active"?"#10b981":"#f59e0b",
+                background:m.status==="active"?"#10b98122":m.termination_date?"#ef444422":"#f59e0b22",
+                color:m.status==="active"?"#10b981":m.termination_date?"#ef4444":"#f59e0b",
                 borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600
-              }}>{m.status||"active"}</span>
+              }}>{m.status==="active"?"active":m.termination_date?"Terminated":(m.status||"active")}</span>
               {hasPerm(currentUser,rolePerms,"hr.edit_team")&&<button onClick={(e)=>{e.stopPropagation();setEditingMember(m);}} style={{background:"var(--surface2)",border:"none",borderRadius:6,padding:"6px 12px",cursor:"pointer",fontSize:12,color:"var(--text)",fontWeight:600}}>Edit</button>}
             </div>
           ))}
@@ -18764,9 +18778,66 @@ const TEAM_EVENT_TYPES = [
   {key:"deduction", label:"Deduction", color:"#ef4444"},
   {key:"warning", label:"Warning", color:"#ef4444"},
   {key:"demotion", label:"Demotion", color:"#ef4444", prevLabel:"Previous Title", newLabel:"New Title"},
+  {key:"terminate", label:"Termination", color:"#ef4444"},
   {key:"other", label:"Other", color:"#6b7280"},
 ];
 const TEAM_EVENT_MAP = Object.fromEntries(TEAM_EVENT_TYPES.map(t=>[t.key,t]));
+
+// Different terminations need genuinely different letters — a redundancy
+// letter that reads like a misconduct dismissal (or vice versa) is a real
+// legal/relationship problem, not just a tone issue. Keyed so the Add
+// Career Event form can offer a reason dropdown and generate the right
+// one automatically.
+const TERMINATION_REASONS = [
+  {key:"performance", label:"Performance"},
+  {key:"redundancy", label:"Redundancy / Restructuring"},
+  {key:"misconduct", label:"Misconduct"},
+  {key:"end_of_contract", label:"End of Contract"},
+  {key:"resignation_accepted", label:"Resignation Accepted"},
+  {key:"mutual_agreement", label:"Mutual Agreement"},
+];
+const TERMINATION_REASON_MAP = Object.fromEntries(TERMINATION_REASONS.map(r=>[r.key,r]));
+
+// Distinct copy per situation — a redundancy letter reading like a
+// misconduct dismissal (or the reverse) is a real problem, not just a
+// tone mismatch. Falls back to the neutral end_of_contract wording for
+// anything unrecognized rather than guessing.
+function terminationLetterCopy(reasonKey, firstName, lastDayLabel) {
+  const day = lastDayLabel || "the date noted above";
+  const variants = {
+    performance: {
+      hero: "Notice of Termination",
+      sub: `This letter confirms the end of your employment with us, ${firstName}.`,
+      body: `Following ongoing performance discussions, we've made the difficult decision to end your employment, effective ${day}. We appreciate the effort you've put in during your time here and wish you well in your next steps. Please reach out to HR regarding your final settlement and any outstanding matters.`,
+    },
+    redundancy: {
+      hero: "Notice of Termination — Redundancy",
+      sub: `This letter confirms the end of your role due to organizational restructuring, ${firstName}.`,
+      body: `This decision reflects changes in our business needs and is in no way a reflection of your performance or contribution, which we've genuinely valued. Your last working day will be ${day}. HR will be in touch regarding your final settlement and any applicable severance.`,
+    },
+    misconduct: {
+      hero: "Notice of Termination",
+      sub: `This letter confirms the termination of your employment, effective ${day}.`,
+      body: `Following an internal review, we've made the decision to end your employment effective ${day}. Please contact HR regarding the return of any company property and your final settlement.`,
+    },
+    end_of_contract: {
+      hero: "End of Contract",
+      sub: `This letter confirms that your contract with us concludes as scheduled, ${firstName}.`,
+      body: `Thank you for your contribution during your time with us. Your last working day will be ${day}. HR will follow up regarding your final settlement.`,
+    },
+    resignation_accepted: {
+      hero: "Resignation Accepted",
+      sub: `This letter confirms we've accepted your resignation, ${firstName}.`,
+      body: `Thank you for your notice and for everything you've contributed during your time with us. Your last working day will be ${day}. We wish you every success ahead, and HR will follow up regarding your final settlement.`,
+    },
+    mutual_agreement: {
+      hero: "Notice of Separation",
+      sub: `This letter confirms our mutual agreement to end your employment, ${firstName}.`,
+      body: `We appreciate the conversations we've had and your contribution during your time here. Your last working day will be ${day}. HR will follow up regarding your final settlement.`,
+    },
+  };
+  return variants[reasonKey] || variants.end_of_contract;
+}
 
 // A salary raise partway through a month means the member actually earned
 // the old rate for part of the month and the new rate for the rest — this
@@ -18846,6 +18917,14 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
         if(cleanSalary>0) await onUpdateTeamMember(member.id, {salary: cleanSalary});
         else alert(`Event saved, but "${form.new_value}" isn't a valid salary number — the team member's salary was NOT updated. Edit their profile directly if needed.`);
       }
+      // Termination doesn't flip them to inactive right away — they're
+      // still meant to be working (and have system access) through their
+      // last working day. terminate-members-cron.php flips status the day
+      // AFTER termination_date; this just records the date/reason so that
+      // cron, the payroll proration, and the letter template all have it.
+      if(form.event_type==="terminate" && form.effective_date && onUpdateTeamMember) {
+        await onUpdateTeamMember(member.id, {termination_date: form.effective_date, termination_reason: form.previous_value||"end_of_contract"});
+      }
       // Bonus/Commission are real money paid out — record as a Salaries &
       // Payroll expense linked to this member so it counts toward this
       // month's payroll total (Finance page + this profile's Payroll tab).
@@ -18875,6 +18954,7 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
         salary_raise:"Your salary has been updated", promotion:"Congratulations on your promotion!",
         bonus:"You've received a bonus", commission:"You've earned a commission",
         deduction:"Salary deduction notice", warning:"Formal notice", demotion:"Notice of role change",
+        terminate: terminationLetterCopy(e.previous_value, (member.name||"").split(" ")[0]).hero,
       };
       const ok = await sendEmail(member.email, `[SocialFlow] ${subjects[e.event_type]||e.title||t.label}`, EMAIL_TEMPLATES.careerEvent(member.name, e));
       if(ok) setEmailedIds(s=>new Set([...s, e.id]));
@@ -18937,7 +19017,10 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           <div>
             <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Event Type</label>
-            <select value={form.event_type} onChange={e=>setForm(f=>({...f,event_type:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)"}}>
+            <select value={form.event_type} onChange={e=>setForm(f=>({...f,event_type:e.target.value,
+              previous_value: e.target.value==="terminate"?"end_of_contract":f.previous_value,
+              title: e.target.value==="terminate"&&!f.title.trim()?`Termination — ${new Date().getFullYear()}`:f.title,
+            }))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)"}}>
               {TEAM_EVENT_TYPES.map(t=><option key={t.key} value={t.key}>{t.label}</option>)}
             </select>
           </div>
@@ -18955,6 +19038,15 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>{cfg.newLabel}</label>
                 <input type={form.event_type==="salary_raise"?"number":"text"} value={form.new_value} onChange={e=>setForm(f=>({...f,new_value:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)"}}/>
               </div>
+            </div>
+          )}
+          {form.event_type==="terminate"&&(
+            <div>
+              <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Termination Reason</label>
+              <select value={form.previous_value} onChange={e=>setForm(f=>({...f,previous_value:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)"}}>
+                {TERMINATION_REASONS.map(r=><option key={r.key} value={r.key}>{r.label}</option>)}
+              </select>
+              <p style={{fontSize:11,color:"var(--text3)",marginTop:5,lineHeight:1.5}}>Controls which termination letter gets generated when you send the email below. Their account switches to inactive (login blocked, off the Timeline) the day AFTER the last working day set below — not immediately.</p>
             </div>
           )}
           {(form.event_type==="bonus"||form.event_type==="commission")&&(
@@ -18988,7 +19080,7 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
             </div>
           )}
           <div>
-            <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Effective Date</label>
+            <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>{form.event_type==="terminate"?"Last Working Day":"Effective Date"}</label>
             <input type="date" value={form.effective_date} onChange={e=>setForm(f=>({...f,effective_date:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)"}}/>
           </div>
           <div>
@@ -24579,6 +24671,7 @@ function LoginScreen({onLogin,clients}) {
         if(res.entities.length) {
           const u = res.entities[0];
           if(u.status==="blocked") { setErr("Your account has been blocked. Contact your admin."); setLoading(false); return; }
+          if(u.status==="inactive") { setErr("This account is inactive. Contact your admin if you believe this is a mistake."); setLoading(false); return; }
           if(u.status==="invited"||u.status==="pending") { setErr("Your account is pending setup. Check your invitation email."); setLoading(false); return; }
           // Password check (for real users set via invitation)
           if(u.password && u.password !== password) { setErr("Incorrect password."); setLoading(false); return; }
@@ -36295,6 +36388,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   const TIMELINE_EXCLUDED_NAMES = ["mohamed", "shady", "somaia"];
   const ROLE_SORT_ORDER = ["content_creator","graphic_designer","account_manager","business_development"];
   const timelineMembers = (team||[])
+    .filter(m=>m.status!=="inactive")
     .filter(m=>isAdminViewer || !["hr","accountant","office_boy","admin"].includes(m.role))
     .filter(m=>isAdminViewer || !TIMELINE_EXCLUDED_NAMES.some(n=>(m.name||"").toLowerCase().includes(n)))
     .sort((a,b)=>{
