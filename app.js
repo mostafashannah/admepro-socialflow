@@ -4262,7 +4262,13 @@ priorStageOwnerEmail=newStage==="content_creation"?post.content_assigned_to||pos
 // (e.g. a 2-3pm block finished at 2:15 shows as a 15-min task) instead
 // of always rendering the full originally-planned block regardless of
 // how long it actually took (see generateDailySchedule).
-content_completed_at:post.stage==="content_creation"&&newStage!=="content_creation"?new Date().toISOString():post.content_completed_at,design_completed_at:post.stage==="design"&&newStage!=="design"?new Date().toISOString():post.design_completed_at,project_id:overrides.project_id||post.project_id,revision_count:revisionCount,was_rejected:wasRejected,// Manually moving a post to Published never stamped this — every date-
+// Cleared the moment a task comes BACK into Content/Design (e.g. sent
+// back for revision from Design Review) — otherwise it would keep
+// showing green/"done" off the stale timestamp from before it was
+// returned, even though it's genuinely active work again now. Gets
+// re-stamped fresh the next time it actually leaves the stage for
+// real (see the condition just above each of these).
+content_completed_at:post.stage==="content_creation"&&newStage!=="content_creation"?new Date().toISOString():newStage==="content_creation"?null:post.content_completed_at,design_completed_at:post.stage==="design"&&newStage!=="design"?new Date().toISOString():newStage==="design"?null:post.design_completed_at,project_id:overrides.project_id||post.project_id,revision_count:revisionCount,was_rejected:wasRejected,// Manually moving a post to Published never stamped this — every date-
 // filtered query downstream (Mai's cadence/report crons, post-insights-
 // cron, "last published post" everywhere in the app) silently saw
 // nothing for posts published this way, only ones sent by the real
