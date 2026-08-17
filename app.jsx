@@ -36277,7 +36277,20 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   // stayed scoped to `effectiveUser` (a single person) even in Combined
   // view, so it read all-zero whenever the viewer themself had no tasks
   // that day despite the timeline clearly showing other members' tasks.
-  const timelineMembers = [currentUser, ...(team||[]).filter(m=>m.email!==currentUser?.email)].filter(m=>!["hr","accountant","office_boy"].includes(m.role));
+  // Admin (viewer's own account) and a few named non-production roles
+  // don't belong on a content-production timeline — excluded outright
+  // rather than just showing an always-empty row. Whoever's left is
+  // grouped by role (content creators together, designers together, etc.)
+  // instead of whatever raw order the team list happens to be in.
+  const TIMELINE_EXCLUDED_NAMES = ["mohamed", "shady", "somaia"];
+  const ROLE_SORT_ORDER = ["content_creator","graphic_designer","account_manager","business_development"];
+  const timelineMembers = (team||[])
+    .filter(m=>!["hr","accountant","office_boy","admin"].includes(m.role))
+    .filter(m=>!TIMELINE_EXCLUDED_NAMES.some(n=>(m.name||"").toLowerCase().includes(n)))
+    .sort((a,b)=>{
+      const ai = ROLE_SORT_ORDER.indexOf(a.role), bi = ROLE_SORT_ORDER.indexOf(b.role);
+      return (ai===-1?99:ai) - (bi===-1?99:bi) || (a.name||"").localeCompare(b.name||"");
+    });
   const combinedSlots = combinedView ? timelineMembers.flatMap(m=>generateDailySchedule(posts, m.email, dateStr, m.role)) : null;
   const combinedTrackedSecs = combinedView ? timelineMembers.reduce((sum,m)=>sum + (timeEntries||[]).filter(t=>t.user_email===m.email && t.date===dateStr).reduce((acc,t)=>{
     if(t.status==='active') return acc + (t.total_seconds||0) + Math.floor((Date.now()-parseSqlUtc(t.started_at).getTime())/1000);
@@ -36325,7 +36338,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
               <button onClick={()=>{setCombinedView(false);setViewUser(null);}} style={{padding:"4px 10px",borderRadius:"var(--rs)",border:`1px solid ${!combinedView&&!viewUser?"var(--accent)":"var(--border)"}`,background:!combinedView&&!viewUser?"var(--accent)22":"var(--surface)",color:!combinedView&&!viewUser?"var(--accent)":"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>
                 My Schedule
               </button>
-              {(team||[]).filter(m=>m.email!==currentUser?.email).map(m=>(
+              {timelineMembers.map(m=>(
                 <button key={m.email} onClick={()=>{setCombinedView(false);setViewUser(m);}} style={{padding:"4px 10px",borderRadius:"var(--rs)",border:`1px solid ${!combinedView&&viewUser?.email===m.email?"var(--accent)":"var(--border)"}`,background:!combinedView&&viewUser?.email===m.email?"var(--accent)22":"var(--surface)",color:!combinedView&&viewUser?.email===m.email?"var(--accent)":"var(--text2)",fontSize:11,fontWeight:600,cursor:"pointer"}}>
                   {m.name.split(" ")[0]}
                 </button>
