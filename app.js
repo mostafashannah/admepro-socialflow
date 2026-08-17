@@ -241,12 +241,15 @@ cursor=nowFloorMins!==null?Math.max(WORKING_START*60,nowFloorMins):WORKING_START
 // finished. A real duration shrinking or growing here naturally shifts
 // every task after it too, since their own cursor search reads this
 // task's real end_mins, not the estimate.
-var dur=est;var completedAtField=userRole==="graphic_designer"?"design_completed_at":userRole==="content_creator"?"content_completed_at":null;var completedAt=completedAtField?post[completedAtField]:null;var completedToday=!!(completedAt&&parseSqlUtc(completedAt).toISOString().split("T")[0]===date);if(completedToday){var compDate=parseSqlUtc(completedAt);var actual=compDate.getHours()*60+compDate.getMinutes()-cursor;// Sanity-capped at 3x the estimate — a genuinely-late finish still
-// shows honestly longer than planned, but a wildly stale/bad
-// timestamp (e.g. a backfilled record, or someone forgetting to move
-// a task for hours) can't balloon the block into swallowing the rest
-// of the day's view.
-if(actual>0)dur=Math.min(actual,est*3);}slots.push({post_id:post.id,start_mins:cursor,end_mins:cursor+dur,start_time:minsToAmPm(cursor),end_time:minsToAmPm(cursor+dur),duration_mins:dur,completed_today:completedToday,// Only flag it red/overdue while it's still sitting in THEIR own
+var dur=est;var completedAtField=userRole==="graphic_designer"?"design_completed_at":userRole==="content_creator"?"content_completed_at":null;var completedAt=completedAtField?post[completedAtField]:null;var completedToday=!!(completedAt&&parseSqlUtc(completedAt).toISOString().split("T")[0]===date);// The real-elapsed-time override only kicks in when the move actually
+// just happened (within the last 2 hours) — a fresh completion is
+// trustworthy live data worth showing honestly (e.g. a 1hr block
+// finished in 15min). A completedAt from hours ago (backfilled,
+// day-old, whatever) is NOT reliable enough to trust for sizing the
+// block — it still keeps the task visible/green via completedToday
+// above, just rendered at its normal estimated size instead of
+// stretching or shrinking based on a stale number.
+if(completedToday){var compDate=parseSqlUtc(completedAt);var minsSinceCompletion=(Date.now()-compDate.getTime())/60000;if(minsSinceCompletion>=0&&minsSinceCompletion<=120){var actual=compDate.getHours()*60+compDate.getMinutes()-cursor;if(actual>0)dur=Math.min(actual,est*3);}}slots.push({post_id:post.id,start_mins:cursor,end_mins:cursor+dur,start_time:minsToAmPm(cursor),end_time:minsToAmPm(cursor+dur),duration_mins:dur,completed_today:completedToday,// Only flag it red/overdue while it's still sitting in THEIR own
 // stage, unfinished — once they've actually moved it forward (e.g.
 // to Client Approval, waiting on someone else entirely), it's no
 // longer their unfinished work and shouldn't read as if they're
