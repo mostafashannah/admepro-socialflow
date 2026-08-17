@@ -36373,13 +36373,28 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
               const newEnd = ov.start_mins + dur;
               return {...slot, start_mins:ov.start_mins, end_mins:newEnd};
             });
+            // Two tasks can end up overlapping in time (e.g. both anchored to
+            // an explicit due_time that happens to collide) — instead of
+            // drawing them on top of each other, stack overlapping ones into
+            // separate lanes, greedy-interval-scheduling style, and grow the
+            // row to fit however many lanes deep it gets.
+            const lanesEnd = [];
+            const lanedSlots = [...memberSlots].sort((a,b)=>a.start_mins-b.start_mins).map(slot=>{
+              let lane = lanesEnd.findIndex(end=>end<=slot.start_mins);
+              if(lane===-1){ lane = lanesEnd.length; lanesEnd.push(slot.end_mins); }
+              else lanesEnd[lane] = slot.end_mins;
+              return {...slot, lane};
+            });
+            const laneCount = Math.max(1, lanesEnd.length);
+            const laneH = 30;
+            const rowH = laneCount*laneH + (laneCount-1)*3;
             return (
               <div key={member.email} style={{display:"flex",alignItems:"center",padding:"10px 16px",borderBottom:"1px solid var(--border)",gap:10}}>
                 <div style={{width:120,flexShrink:0,position:"sticky",left:16,fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:6,background:"var(--surface)"}}>
                   <Avatar name={member.name} size={16} role={member.role} photoUrl={member.avatar_url}/>
                   <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{member.name}{member.email===currentUser?.email?" (You)":""}</span>
                 </div>
-                <div style={{position:"relative",flex:1,height:30,background:"var(--surface2)",borderRadius:6,cursor:(isAM&&onQuickAdd)?"copy":"default",
+                <div style={{position:"relative",flex:1,height:rowH,background:"var(--surface2)",borderRadius:6,cursor:(isAM&&onQuickAdd)?"copy":"default",
                   backgroundImage:`repeating-linear-gradient(to right, var(--border) 0, var(--border) 1px, transparent 1px, transparent ${100/(WORKING_END-WORKING_START)}%)`}}
                   onClick={(isAM&&onQuickAdd)?(e)=>{
                     const rect = e.currentTarget.getBoundingClientRect();
@@ -36402,11 +36417,25 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     const rect = e.currentTarget.getBoundingClientRect();
                     const relX = Math.min(0.999,Math.max(0,(e.clientX-rect.left)/rect.width));
                     const hour = Math.min(WORKING_END-1, WORKING_START + Math.floor(relX*(WORKING_END-WORKING_START)));
-                    onMoveTask(dragged.postId, {assigned_to: member.email, due_date: dateStr, due_time: `${String(hour).padStart(2,'0')}:00`});
+                    // Don't just drop it wherever it lands if that overlaps
+                    // another of this person's tasks — slide forward to the
+                    // next real gap of at least its own duration instead, so
+                    // dragging never creates a new time collision.
+                    const targetSlots = generateDailySchedule(posts, member.email, dateStr, member.role).filter(s=>s.post_id!==dragged.postId);
+                    let startMins = hour*60;
+                    const durMins = dragged.durationMins || 60;
+                    let guard = 0;
+                    while(guard++ < 50) {
+                      const endMins = startMins + durMins;
+                      const blocker = targetSlots.filter(s=>s.start_mins<endMins && s.end_mins>startMins).sort((a,b)=>a.end_mins-b.end_mins)[0];
+                      if(!blocker) break;
+                      startMins = blocker.end_mins;
+                    }
+                    onMoveTask(dragged.postId, {assigned_to: member.email, due_date: dateStr, due_time: minsToHHMM(Math.min(startMins, (WORKING_END*60)-15))});
                     dragTaskRef.current = null;
                   }:undefined}>
                   {memberSlots.length===0 && <span style={{position:"absolute",top:"50%",left:8,transform:"translateY(-50%)",fontSize:10,color:"var(--text3)",pointerEvents:"none"}}>No tasks scheduled</span>}
-                  {memberSlots.map(slot=>{
+                  {lanedSlots.map(slot=>{
                     const post = posts.find(p=>p.id===slot.post_id);
                     const leftPct = Math.max(0,(slot.start_mins - WORKING_START*60)/WORKING_MINS*100);
                     const widthPct = Math.max(2,(slot.end_mins-slot.start_mins)/WORKING_MINS*100);
@@ -36415,9 +36444,9 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                       <div key={slot.post_id} title={`${post?.title||""} (${slot.start_time}–${slot.end_time})${slot.overdue?" — OVERDUE":""}${isAM&&onMoveTask?" — drag to move":""}`}
                         onClick={(e)=>{e.stopPropagation();onPostClick&&post&&onPostClick(post);}}
                         draggable={!!(isAM&&onMoveTask&&post)}
-                        onDragStart={(isAM&&onMoveTask&&post)?(e)=>{e.stopPropagation();dragTaskRef.current={postId:post.id};e.dataTransfer.effectAllowed="move";e.currentTarget.style.opacity="0.4";}:undefined}
+                        onDragStart={(isAM&&onMoveTask&&post)?(e)=>{e.stopPropagation();dragTaskRef.current={postId:post.id,durationMins:slot.end_mins-slot.start_mins};e.dataTransfer.effectAllowed="move";e.currentTarget.style.opacity="0.4";}:undefined}
                         onDragEnd={(e)=>{e.currentTarget.style.opacity="1";}}
-                        style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:3,bottom:3,background:slot.overdue?"#ef4444":(stage?.color||"var(--accent)"),borderRadius:5,cursor:post?(isAM&&onMoveTask?"grab":"pointer"):"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 6px",...(slot.overdue?{boxShadow:"0 0 0 1px #b91c1c inset"}:{})}}>
+                        style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:slot.lane*(laneH+3)+3,height:laneH-6,background:slot.overdue?"#ef4444":(stage?.color||"var(--accent)"),borderRadius:5,cursor:post?(isAM&&onMoveTask?"grab":"pointer"):"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 6px",...(slot.overdue?{boxShadow:"0 0 0 1px #b91c1c inset"}:{})}}>
                         <span style={{fontSize:10,color:"#fff",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span>
                         {widthPct>8&&<span style={{fontSize:8.5,color:"#fff",opacity:0.85,whiteSpace:"nowrap"}}>{slot.start_time}–{slot.end_time}</span>}
                       </div>
