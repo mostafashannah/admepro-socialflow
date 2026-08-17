@@ -2398,4 +2398,5 @@ function sendWhatsAppReply($to, $body) {
         $logPdo->prepare("INSERT INTO whatsapp_send_log (to_number, body_preview, status, http_status, error_message) VALUES (:to, :body, :status, :http, :err)")
             ->execute([':to' => $to, ':body' => mb_substr($body, 0, 300), ':status' => $ok ? 'sent' : 'failed', ':http' => $status, ':err' => $ok ? null : mb_substr((string)($err ?: $res), 0, 500)]);
     } catch (Throwable $e) { /* logging is best-effort only */ }
+    return $ok;
 }
