@@ -36213,7 +36213,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   });
 
   // Capacity overflow — today's real workload doesn't fit inside working
-  // hours (10am-7pm) even after overdue work jumped the queue — pushes
+  // hours even after overdue work jumped the queue — pushes
   // whatever runs past end-of-day forward onto the next working day's real
   // due_date, instead of just letting it silently run late on today's
   // view forever. Deliberately does NOT touch due_date for tasks merely
@@ -36234,12 +36234,18 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
     if(!onShiftOverdue || !frozenPostsForOverflow || !frozenPostsForOverflow.length) return;
     const today = new Date().toISOString().split("T")[0];
     if(dateStr!==today) return;
-    const frozenSlots = generateDailySchedule(frozenPostsForOverflow, effectiveUser?.email, dateStr, effectiveUser?.role);
-    const overflow = frozenSlots.filter(s=>s.start_mins >= WORKING_END*60);
-    if(!overflow.length) return;
+    // Combined Timeline needs this checked for EVERY member shown, not
+    // just whoever's individually selected — a fully-booked day for any
+    // of them should roll their overflow forward the same way.
+    const membersToCheck = combinedView
+      ? [currentUser, ...(team||[]).filter(m=>m.email!==currentUser?.email)].filter(Boolean)
+      : [effectiveUser].filter(Boolean);
     const nextDay = addWorkingDays(new Date(), 1).toISOString().split("T")[0];
-    overflow.forEach(s=>onShiftOverdue(s.post_id, nextDay));
-  },[]);
+    membersToCheck.forEach(m=>{
+      const frozenSlots = generateDailySchedule(frozenPostsForOverflow, m.email, dateStr, m.role);
+      frozenSlots.filter(s=>s.start_mins >= WORKING_END*60).forEach(s=>onShiftOverdue(s.post_id, nextDay));
+    });
+  },[combinedView]);
 
   const fmtSecs = (s) => {
     // A fractional/garbage value (e.g. total_seconds picking up a stray
@@ -36425,9 +36431,12 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
             const rowH = laneCount*laneH + (laneCount-1)*3;
             return (
               <div key={member.email} style={{display:"flex",alignItems:"center",padding:"10px 16px",borderBottom:"1px solid var(--border)",gap:10}}>
-                <div style={{width:120,flexShrink:0,position:"sticky",left:16,fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:6,background:"var(--surface)"}}>
+                <div style={{width:120,flexShrink:0,position:"sticky",left:16,display:"flex",alignItems:"center",gap:6,background:"var(--surface)"}}>
                   <Avatar name={member.name} size={16} role={member.role} photoUrl={member.avatar_url}/>
-                  <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{member.name}{member.email===currentUser?.email?" (You)":""}</span>
+                  <div style={{overflow:"hidden"}}>
+                    <p style={{fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{member.name}{member.email===currentUser?.email?" (You)":""}</p>
+                    <p style={{fontSize:9,fontWeight:600,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{member.title||ROLES[member.role]?.label||""}</p>
+                  </div>
                 </div>
                 <div style={{position:"relative",flex:1,height:rowH,background:"var(--surface2)",borderRadius:6,cursor:(isAM&&onQuickAdd)?"copy":"default",
                   backgroundImage:`repeating-linear-gradient(to right, var(--border) 0, var(--border) 1px, transparent 1px, transparent ${100/(WORKING_END-WORKING_START)}%)`}}
