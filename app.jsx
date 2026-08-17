@@ -36744,7 +36744,14 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                       if(!blocker) break;
                       startMins = blocker.end_mins;
                     }
-                    onMoveTask(dragged.postId, {assigned_to: member.email, due_date: dateStr, due_time: minsToHHMM(Math.min(startMins, (WORKING_END*60)-15))});
+                    // Sliding forward past collisions can push the task's real
+                    // end time past the working day even though the drop
+                    // POINT itself was inside working hours — reject instead
+                    // of silently clamping it into a slot too small to hold
+                    // it (that used to make the block accepted at 15min or
+                    // even negative-width).
+                    if(startMins + durMins > WORKING_END*60) { setToast(` No room for this task on ${member.name.split(" ")[0]}'s day — it would run past ${WORKING_END>12?WORKING_END-12:WORKING_END}${WORKING_END>=12?"pm":"am"}.`); dragTaskRef.current = null; return; }
+                    onMoveTask(dragged.postId, {assigned_to: member.email, due_date: dateStr, due_time: minsToHHMM(startMins)});
                     dragTaskRef.current = null;
                   }:undefined}
                   onContextMenu={(isAM&&onMoveTask&&copiedTask)?(e)=>{
@@ -36763,7 +36770,8 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                       if(!blocker) break;
                       startMins = blocker.end_mins;
                     }
-                    onMoveTask(copiedTask.postId, {assigned_to: member.email, due_date: dateStr, due_time: minsToHHMM(Math.min(startMins, (WORKING_END*60)-15))});
+                    if(startMins + durMins > WORKING_END*60) { setToast(` No room for this task on ${member.name.split(" ")[0]}'s day — it would run past ${WORKING_END>12?WORKING_END-12:WORKING_END}${WORKING_END>=12?"pm":"am"}.`); return; }
+                    onMoveTask(copiedTask.postId, {assigned_to: member.email, due_date: dateStr, due_time: minsToHHMM(startMins)});
                     setCopiedTask(null);
                     setToast(" Task moved");
                   }:undefined}>
