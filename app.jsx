@@ -649,6 +649,18 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
       const startMins = hh * 60 + (mm || 0);
       // Clamp within working hours
       cursor = Math.max(WORKING_START * 60, Math.min(startMins, WORKING_END * 60 - est));
+      // Two tasks can end up anchored to the exact same due_time (a Calendar
+      // Plan defaulting every post to the same slot, both set manually,
+      // etc.) — rather than showing them stacked on top of each other,
+      // treat the SECOND one to land here as effectively un-anchored and
+      // push it to start right after whatever's already occupying that
+      // time, same as an un-timed task would pack in.
+      let collision = slots.find(s => s.start_mins < cursor+est && s.end_mins > cursor);
+      let guard = 0;
+      while(collision && guard++ < 50) {
+        cursor = collision.end_mins;
+        collision = slots.find(s => s.start_mins < cursor+est && s.end_mins > cursor);
+      }
     } else {
       // Find next free slot after the last used one. Deliberately does NOT
       // reset back to WORKING_START when a task doesn't fit before end of
