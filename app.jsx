@@ -38872,6 +38872,12 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
     await ue("JobApplication", app.id, patch).catch(()=>{});
     const slotLabel = fmtDateOrText(slot);
     logActivity(app.id, `Interview confirmed — ${slotLabel}`);
+    // The public candidate-facing scheduling page notifies staff on
+    // confirmation, but this internal "Confirm" button (used when a
+    // candidate responds some other way — WhatsApp, phone, email — and
+    // staff finalize it here) never did, so a confirmed interview could
+    // sit unnoticed until someone happened to check the Recruitment page.
+    notifyRecruitmentUpdate(`📅 *Interview confirmed*: ${app.candidate_name||"A candidate"} (${app.job_title||"role"}) — ${slotLabel}`);
 
     if(app.candidate_email) {
       const jobTitle = openings.find(o=>o.id===app.job_opening_id)?.title || app.job_title || "the role";
