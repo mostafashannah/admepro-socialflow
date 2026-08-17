@@ -18879,7 +18879,12 @@ function terminationPayrollEstimate(member, lastDayISO, raiseEvents) {
   const lastDay = d.getDate();
 
   const monthStart = new Date(year, month, 1);
-  const startDate = member.start_date ? new Date(member.start_date+"T00:00:00") : null;
+  // Falls back to created_at (when their record was actually added) the
+  // same way monthly-payroll-cron.php and the "Joined" field on their
+  // profile do, whenever start_date was never explicitly set — for most
+  // hires that's the same day they really joined.
+  const startDateRaw = member.start_date || (member.created_at ? String(member.created_at).slice(0,10) : null);
+  const startDate = startDateRaw ? new Date(startDateRaw+"T00:00:00") : null;
   const startDay = (startDate && startDate > monthStart) ? startDate.getDate() : 1;
   if(startDay > lastDay) return null; // hadn't joined yet by their own last working day — shouldn't happen, but don't show nonsense
 
