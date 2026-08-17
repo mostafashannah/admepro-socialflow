@@ -604,6 +604,18 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     // check, e.g. the double-booking conflict check in the assign modal,
     // which cares who holds it right now.)
     if (!wasOwnerOf(p, userEmail, userRole)) return false;
+    // Work THEY finished and moved forward earlier TODAY still shows in its
+    // own slot (rendered green, see completed_today below) instead of
+    // vanishing the instant it leaves their stage/due_date — otherwise a
+    // task moved to Design Review at 2pm just disappears from the
+    // timeline, which reads as if it never happened rather than as
+    // finished work. Bypasses the stage/excluded-stage/due_date checks
+    // below entirely, since none of those are meaningful anymore for
+    // something that's already done.
+    const completedAtField = userRole==="graphic_designer" ? "design_completed_at" : userRole==="content_creator" ? "content_completed_at" : null;
+    const completedAt = completedAtField ? p[completedAtField] : null;
+    const completedToday = !!(completedAt && date===today && parseSqlUtc(completedAt).toISOString().split("T")[0] === today);
+    if (completedToday) return true;
     if (ownedStage && p.stage !== ownedStage) return false;
     // This timeline is for capacity planning on work still actually IN
     // PROGRESS — Published and Scheduled are both done from the team's
