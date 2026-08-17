@@ -715,7 +715,12 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     if(completedToday) {
       const compDate = parseSqlUtc(completedAt);
       const actual = (compDate.getHours()*60 + compDate.getMinutes()) - cursor;
-      if(actual > 0) dur = actual;
+      // Sanity-capped at 3x the estimate — a genuinely-late finish still
+      // shows honestly longer than planned, but a wildly stale/bad
+      // timestamp (e.g. a backfilled record, or someone forgetting to move
+      // a task for hours) can't balloon the block into swallowing the rest
+      // of the day's view.
+      if(actual > 0) dur = Math.min(actual, est*3);
     }
     slots.push({
       post_id: post.id,
