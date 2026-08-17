@@ -13,6 +13,10 @@
  *     edit onto the matching post's title/description/due_date/due_time.
  *   - updateCard (archived) / deleteCard: archiving or permanently
  *     deleting the card on Trello deletes the matching post here too.
+ *   - commentCard: a comment left on the Trello card becomes a
+ *     client-audience comment on the matching post here.
+ *   - addAttachmentToCard: an attachment added on Trello becomes a
+ *     comment here carrying that file, so it shows up in the thread.
  *
  * Trello requires the callback URL to answer ANY request (including a
  * bare HEAD with no body) with 2xx during webhook registration, so every
@@ -39,7 +43,7 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") { echo json_encode(["ok" => true]); e
 $body = json_decode(file_get_contents("php://input"), true);
 $action = $body['action'] ?? null;
 $actionType = $action['type'] ?? '';
-if (!$action || !in_array($actionType, ['createCard', 'updateCard', 'deleteCard'], true)) { echo json_encode(["ok" => true]); exit; }
+if (!$action || !in_array($actionType, ['createCard', 'updateCard', 'deleteCard', 'commentCard', 'addAttachmentToCard'], true)) { echo json_encode(["ok" => true]); exit; }
 
 $boardId = $action['data']['board']['id'] ?? null;
 $cardId = $action['data']['card']['id'] ?? null;
@@ -83,6 +87,35 @@ if ($actionType === 'deleteCard' || $archived) {
         exit;
     }
     echo json_encode(["ok" => true]); exit;
+}
+
+if ($actionType === 'commentCard' || $actionType === 'addAttachmentToCard') {
+    $postStmt = $pdo->prepare("SELECT id FROM posts WHERE trello_card_id = :cid LIMIT 1");
+    $postStmt->execute([':cid' => $cardId]);
+    $post = $postStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$post) { echo json_encode(["ok" => true]); exit; }
+    $authorName = $action['memberCreator']['fullName'] ?? 'Trello';
+
+    if ($actionType === 'commentCard') {
+        $text = trim($action['data']['text'] ?? '');
+        if ($text === '') { echo json_encode(["ok" => true]); exit; }
+        $pdo->prepare("INSERT INTO comments (id, post_id, content, author_name, type, audience) VALUES (UUID(), :pid, :content, :author, 'comment', 'client')")
+            ->execute([':pid' => $post['id'], ':content' => $text, ':author' => $authorName]);
+        echo json_encode(["ok" => true, "action" => "comment_synced"]);
+        exit;
+    }
+
+    // addAttachmentToCard
+    $att = $action['data']['attachment'] ?? [];
+    $url = trim($att['url'] ?? '');
+    if ($url === '') { echo json_encode(["ok" => true]); exit; }
+    $name = trim($att['name'] ?? '') ?: 'Attachment';
+    $ext = strtolower(pathinfo(parse_url($url, PHP_URL_PATH) ?: '', PATHINFO_EXTENSION));
+    $fileType = in_array($ext, ['jpg','jpeg','png','gif','webp'], true) ? 'image' : (in_array($ext, ['mp4','mov','webm'], true) ? 'video' : 'file');
+    $pdo->prepare("INSERT INTO comments (id, post_id, content, author_name, type, audience, file_url, file_name, file_type) VALUES (UUID(), :pid, :content, :author, 'comment', 'client', :url, :name, :ftype)")
+        ->execute([':pid' => $post['id'], ':content' => "Attached: {$name}", ':author' => $authorName, ':url' => $url, ':name' => $name, ':ftype' => $fileType]);
+    echo json_encode(["ok" => true, "action" => "attachment_synced"]);
+    exit;
 }
 
 if ($actionType === 'createCard') {

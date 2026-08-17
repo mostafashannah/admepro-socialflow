@@ -48234,6 +48234,13 @@ Return ONLY valid JSON (no markdown, no explanation):
     ce("Comment",[payload]).then(res=>{
       const real=res.entities?.[0]; if(real?.id) setData(d=>({...d,comments:d.comments.map(c=>c.id===local.id?{...c,...real}:c)}));
     }).catch(()=>{});
+    // Mirror this comment (and its attachment, if any) onto the client's
+    // Trello card, if one's connected — best-effort, never blocks the
+    // real comment from saving.
+    fetch("/trello-comment-sync.php", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({
+      post_id: postId, text: content, author_name: user?.name||"User",
+      file_url: attachment?.file_url||"", file_name: attachment?.file_name||"",
+    })}).catch(()=>{});
     // Detect @mentions — in-app + email notifications
     const post = data.posts.find(p=>p.id===postId);
     const project = post ? data.projects.find(p=>p.id===post.project_id) : null;

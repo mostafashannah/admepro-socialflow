@@ -87,3 +87,20 @@ function trello_create_webhook(string $apiKey, string $token, string $callbackUr
 function trello_delete_webhook(string $apiKey, string $token, string $webhookId): void {
     trello_request('DELETE', "/webhooks/{$webhookId}", $apiKey, $token);
 }
+
+function trello_add_comment(string $apiKey, string $token, string $cardId, string $text): array {
+    [$code, $resp] = trello_request('POST', "/cards/{$cardId}/actions/comments", $apiKey, $token, ['text' => $text]);
+    if ($code !== 200) return ['ok' => false, 'error' => $resp['error'] ?? 'Trello comment failed.'];
+    return ['ok' => true, 'comment_id' => $resp['id'] ?? null];
+}
+
+// Attaches by URL (not a raw file upload) — the file already lives in
+// SocialFlow's own storage with a public URL, so Trello just needs to link
+// to it rather than receiving a re-upload of the bytes.
+function trello_add_attachment_url(string $apiKey, string $token, string $cardId, string $url, string $name = ''): array {
+    $params = ['url' => $url];
+    if ($name !== '') $params['name'] = $name;
+    [$code, $resp] = trello_request('POST', "/cards/{$cardId}/attachments", $apiKey, $token, $params);
+    if ($code !== 200) return ['ok' => false, 'error' => $resp['error'] ?? 'Trello attachment failed.'];
+    return ['ok' => true, 'attachment_id' => $resp['id'] ?? null];
+}
