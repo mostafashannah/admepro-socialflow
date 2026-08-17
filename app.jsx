@@ -36712,8 +36712,15 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     const hour = Math.max(hourFloor, Math.min(WORKING_END-1, WORKING_START + Math.floor(relX*(WORKING_END-WORKING_START))));
                     const slotKey = `c-${member.email}-${hour}`;
                     const leftPct = (hour-WORKING_START)/(WORKING_END-WORKING_START)*100;
+                    // clientX/clientY (viewport coordinates at the moment of
+                    // the click) anchor the menu instead of leftPct% of the
+                    // row's own box — leftPct was landing the popup at the
+                    // wrong spot whenever the row's rendered width/position
+                    // didn't line up 1:1 with where the click actually
+                    // happened (long member-row tables, horizontal scroll,
+                    // etc.). Fixed viewport coords can't drift like that.
                     setAddMenuSlot(prev=>prev?.key===slotKey?null:{
-                      key:slotKey, leftPct,
+                      key:slotKey, leftPct, clientX:e.clientX, clientY:e.clientY,
                       assigned_to: member.email,
                       scheduled_date: dateStr, scheduled_time: `${String(hour).padStart(2,'0')}:00`,
                       due_date: dateStr, due_time: `${String(hour).padStart(2,'0')}:00`,
@@ -36798,15 +36805,15 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                       </div>
                     );
                   })}
-                  {addMenuSlot?.key?.startsWith(`c-${member.email}-`) && (
-                    <div style={{position:"absolute",left:`${addMenuSlot.leftPct}%`,top:"100%",zIndex:20}}>
-                      <TimelineAddPicker slot={addMenuSlot} inline onPick={(type,s)=>{setAddMenuSlot(null);onQuickAdd(type,s);}} onClose={()=>setAddMenuSlot(null)}/>
-                    </div>
-                  )}
                 </div>
               </div>
             );
           })}
+          {addMenuSlot?.key?.startsWith("c-") && addMenuSlot.clientX!=null && (
+            <div style={{position:"fixed",left:addMenuSlot.clientX,top:addMenuSlot.clientY+8,zIndex:200}}>
+              <TimelineAddPicker slot={addMenuSlot} inline onPick={(type,s)=>{setAddMenuSlot(null);onQuickAdd(type,s);}} onClose={()=>setAddMenuSlot(null)}/>
+            </div>
+          )}
           {(()=>{
             // Sara's real start/end time per action (parsed from the timing
             // suffix agentAI() now logs) drawn as actual positioned bars on
