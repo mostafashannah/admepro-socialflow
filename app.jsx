@@ -651,9 +651,13 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     if(post.due_time && !isOverduePost(post)) {
       const [hh, mm] = post.due_time.split(":").map(Number);
       const startMins = hh * 60 + (mm || 0);
-      // Clamp within working hours, and never before right now (today only)
+      // Clamp within working hours — a task already given a real due_time
+      // keeps showing at that real time even if it's now in the past
+      // (that's honest information: this was due at 10am and still isn't
+      // done). The "don't show things before now" rule only applies to
+      // where NEW work gets auto-packed, not to moving something that's
+      // already sitting on the schedule.
       cursor = Math.max(WORKING_START * 60, Math.min(startMins, WORKING_END * 60 - est));
-      if(nowFloorMins !== null) cursor = Math.max(cursor, Math.min(nowFloorMins, WORKING_END*60-est));
       // Two tasks can end up anchored to the exact same due_time (a Calendar
       // Plan defaulting every post to the same slot, both set manually,
       // etc.) — rather than showing them stacked on top of each other,
@@ -36430,7 +36434,12 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                   onClick={(isAM&&onQuickAdd)?(e)=>{
                     const rect = e.currentTarget.getBoundingClientRect();
                     const relX = Math.min(0.999,Math.max(0,(e.clientX-rect.left)/rect.width));
-                    const hour = Math.min(WORKING_END-1, WORKING_START + Math.floor(relX*(WORKING_END-WORKING_START)));
+                    // A new task can't be placed before right now, today —
+                    // an already-scheduled task sitting at a past time is
+                    // untouched by this (see generateDailySchedule), this
+                    // only stops NEW placements from landing in the past.
+                    const hourFloor = dateStr===new Date().toISOString().split("T")[0] ? Math.max(WORKING_START, new Date().getHours()) : WORKING_START;
+                    const hour = Math.max(hourFloor, Math.min(WORKING_END-1, WORKING_START + Math.floor(relX*(WORKING_END-WORKING_START))));
                     const slotKey = `c-${member.email}-${hour}`;
                     const leftPct = (hour-WORKING_START)/(WORKING_END-WORKING_START)*100;
                     setAddMenuSlot(prev=>prev?.key===slotKey?null:{
@@ -36447,7 +36456,10 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     if(!dragged) return;
                     const rect = e.currentTarget.getBoundingClientRect();
                     const relX = Math.min(0.999,Math.max(0,(e.clientX-rect.left)/rect.width));
-                    const hour = Math.min(WORKING_END-1, WORKING_START + Math.floor(relX*(WORKING_END-WORKING_START)));
+                    // Dropping a task onto a past hour today doesn't move it
+                    // into the past — clamp to right now instead.
+                    const dropHourFloor = dateStr===new Date().toISOString().split("T")[0] ? Math.max(WORKING_START, new Date().getHours()) : WORKING_START;
+                    const hour = Math.max(dropHourFloor, Math.min(WORKING_END-1, WORKING_START + Math.floor(relX*(WORKING_END-WORKING_START))));
                     // Don't just drop it wherever it lands if that overlaps
                     // another of this person's tasks — slide forward to the
                     // next real gap of at least its own duration instead, so
@@ -36573,6 +36585,11 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
             const hourSlots = getSlotForHour(hour);
             const timeLabel = `${hour===0?12:hour>12?hour-12:hour}:00 ${hour<12?"AM":"PM"}`;
             const isCurrentHour = new Date().getHours()===hour && viewDate.toDateString()===new Date().toDateString();
+            // An hour that's already fully elapsed today isn't a real free
+            // slot to offer for a NEW task — only applies going forward from
+            // here; a task already sitting at a past time stays exactly
+            // where it is (see generateDailySchedule).
+            const isPastHour = viewDate.toDateString()===new Date().toDateString() && hour < new Date().getHours();
             // height: 64px base per hour, taller if a long task starts here
             const maxDurMins = hourSlots.reduce((mx, s) => Math.max(mx, s.end_mins - s.start_mins), 0);
             const rowH = Math.max(64, Math.ceil(maxDurMins / 60) * 64);
@@ -36585,7 +36602,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                 {/* Slot content */}
                 <div style={{flex:1,padding:6,display:"flex",flexDirection:"column",gap:4}}>
                   {hourSlots.length===0 && (
-                    isAM && onQuickAdd ? (()=>{
+                    isAM && onQuickAdd && !isPastHour ? (()=>{
                       const slotKey = `s-${hour}`;
                       const slot = {
                         key: slotKey,
