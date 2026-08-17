@@ -48206,18 +48206,28 @@ Return ONLY valid JSON (no markdown, no explanation):
       setToast(` Assign a team member before moving to ${stageLabel}. Open the post and set 'Assign To'.`);
       return;
     }
+    // The caller can be holding a stale copy of this post (e.g. a Kanban
+    // board's own local posts list a beat behind the last update) — reading
+    // .stage off THAT instead of the live record is exactly what silently
+    // skipped stamping design_completed_at/content_completed_at for a task
+    // whose real prior stage genuinely was "design", making it vanish off
+    // the Timeline instead of showing green. Every stage-TRANSITION check
+    // below reads this instead of post.stage; everything else (assigned_to,
+    // due_date, etc.) still legitimately comes from whatever the caller
+    // passed in.
+    const priorStage = data.posts.find(p=>p.id===post.id)?.stage ?? post.stage;
     // Track revisions (moved backward to an earlier stage in the pipeline)
     // and any rejection ever hit, so a real PerformanceLog can be written once
     // the task actually completes — Performance/My Performance's Review Score
     // was reading only seeded demo rows until this, since nothing ever wrote
     // a real one.
-    const oldIdx = STAGES.findIndex(s=>s.key===post.stage);
+    const oldIdx = STAGES.findIndex(s=>s.key===priorStage);
     const newIdx = STAGES.findIndex(s=>s.key===newStage);
     // "Rejected" sits near the end of STAGES array-wise (so its own array
     // index looks like a forward move), but it's always a returned task in
     // practice — a real "sent back, redo this" event, same as any actual
     // backward stage move.
-    const wentBackward = (oldIdx>-1 && newIdx>-1 && newIdx<oldIdx && !["on_hold"].includes(post.stage) && !["on_hold"].includes(newStage)) || newStage==="rejected";
+    const wentBackward = (oldIdx>-1 && newIdx>-1 && newIdx<oldIdx && !["on_hold"].includes(priorStage) && !["on_hold"].includes(newStage)) || newStage==="rejected";
     const revisionCount = (post.revision_count||0) + (wentBackward?1:0);
     const wasRejected = post.was_rejected || newStage==="rejected";
 
@@ -48260,8 +48270,8 @@ Return ONLY valid JSON (no markdown, no explanation):
       // returned, even though it's genuinely active work again now. Gets
       // re-stamped fresh the next time it actually leaves the stage for
       // real (see the condition just above each of these).
-      content_completed_at: (post.stage==="content_creation" && newStage!=="content_creation") ? new Date().toISOString() : (newStage==="content_creation" ? null : post.content_completed_at),
-      design_completed_at: (post.stage==="design" && newStage!=="design") ? new Date().toISOString() : (newStage==="design" ? null : post.design_completed_at),
+      content_completed_at: (priorStage==="content_creation" && newStage!=="content_creation") ? new Date().toISOString() : (newStage==="content_creation" ? null : post.content_completed_at),
+      design_completed_at: (priorStage==="design" && newStage!=="design") ? new Date().toISOString() : (newStage==="design" ? null : post.design_completed_at),
       project_id: overrides.project_id || post.project_id,
       revision_count: revisionCount,
       was_rejected: wasRejected,
@@ -48340,7 +48350,7 @@ Return ONLY valid JSON (no markdown, no explanation):
     const priorAssigneeEmail = post.assigned_to;
     const priorAssigneeRole = (data.team.find(m=>m.email===priorAssigneeEmail)?.role)||"";
     const ownedStage = ROLE_OWNED_STAGE[priorAssigneeRole];
-    const leftOwnedStageForward = ownedStage && post.stage===ownedStage && newIdx>oldIdx && newStage!=="rejected" && newStage!=="on_hold";
+    const leftOwnedStageForward = ownedStage && priorStage===ownedStage && newIdx>oldIdx && newStage!=="rejected" && newStage!=="on_hold";
     const reachedFinalStage = newStage==="published"||newStage==="scheduled";
     // One real completion log per (post, person) — not per post — so a
     // content creator, then a designer, then an account manager can each
