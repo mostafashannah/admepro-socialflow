@@ -48958,8 +48958,13 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
   // stale original date. Best-effort/silent — a failed write here should
   // never disrupt the page just rendering the Timeline.
   const shiftOverdueDueDate = (postId, newDate) => {
-    setData(d=>({...d, posts:d.posts.map(p=>p.id===postId?{...p,due_date:newDate}:p)}));
-    ue("Post", postId, {due_date:newDate}).catch(()=>{});
+    // Also clears due_time — keeping the old anchor would just plant the
+    // task at that same time on the new day (possibly colliding with
+    // whatever's already there), instead of what "shifted because the day
+    // was full" actually means: pack into the first slot the new day
+    // genuinely has open, same as any other un-timed task.
+    setData(d=>({...d, posts:d.posts.map(p=>p.id===postId?{...p,due_date:newDate,due_time:null}:p)}));
+    ue("Post", postId, {due_date:newDate, due_time:null}).catch(()=>{});
   };
 
   const handleClientAction = async (post,action,reason) => {
