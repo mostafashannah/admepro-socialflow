@@ -18866,12 +18866,13 @@ function computeProratedMonthlySalary(currentSalary, raiseEvents, year, month) {
 // Lazy-fetched per profile (same pattern as the Hiring tab's application
 // activity log) rather than pulled into the app-wide data load, since it's
 // only ever looked at one member at a time.
-function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember, onAddExpense}) {
+function TeamMemberHistoryTab({member, team=[], canEdit, currentUser, onUpdateTeamMember, onAddExpense}) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [emailingId, setEmailingId] = useState(null);
   const [emailedIds, setEmailedIds] = useState(new Set());
+  const [showFormPreview, setShowFormPreview] = useState(false);
   const blankForm = () => ({event_type:"salary_raise", title:"", previous_value:member.salary?String(member.salary):"", new_value:"", amount:"", deduction_mode:"fixed", deduction_days:"", effective_date:new Date().toISOString().slice(0,10), notes:""});
   const [form, setForm] = useState(blankForm);
   const [saving, setSaving] = useState(false);
@@ -18956,9 +18957,28 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
         deduction:"Salary deduction notice", warning:"Formal notice", demotion:"Notice of role change",
         terminate: terminationLetterCopy(e.previous_value, (member.name||"").split(" ")[0]).hero,
       };
-      const ok = await sendEmail(member.email, `[SocialFlow] ${subjects[e.event_type]||e.title||t.label}`, EMAIL_TEMPLATES.careerEvent(member.name, e));
+      const subject = `[SocialFlow] ${subjects[e.event_type]||e.title||t.label}`;
+      const html = EMAIL_TEMPLATES.careerEvent(member.name, e);
+      const ok = await sendEmail(member.email, subject, html);
       if(ok) setEmailedIds(s=>new Set([...s, e.id]));
       else alert("Email failed to send.");
+
+      // Termination is significant enough to also loop in the member's
+      // manager and HR, so they have the letter on record too — not just
+      // the terminated person.
+      if(e.event_type==="terminate") {
+        const manager = team.find(m=>m.id===member.manager_id);
+        const hrMembers = team.filter(m=>m.role==="hr" && (m.status||"active")==="active");
+        const seen = new Set([member.email]);
+        const ccList = [...(manager?[manager]:[]), ...hrMembers].filter(m=>{
+          if(!m.email || seen.has(m.email)) return false;
+          seen.add(m.email);
+          return true;
+        });
+        for(const rec of ccList) {
+          await sendEmail(rec.email, `[SocialFlow] Termination notice — ${member.name}`, html);
+        }
+      }
     } catch(err){ alert("Email failed to send."); }
     setEmailingId(null);
   };
@@ -19088,11 +19108,39 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
             <textarea value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} rows={3} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)",resize:"vertical",fontFamily:"inherit"}}/>
           </div>
           <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+            <button onClick={()=>setShowFormPreview(true)} disabled={!form.title.trim()} style={{padding:"7px 16px",borderRadius:7,fontSize:12,fontWeight:600,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text2)",display:"flex",alignItems:"center",gap:6,opacity:form.title.trim()?1:0.5}}>
+              <Ico d={Icons.eye} size={13}/> Preview Email
+            </button>
             <button onClick={()=>setShowAdd(false)} style={{padding:"7px 16px",borderRadius:7,fontSize:12,fontWeight:600,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text2)"}}>Cancel</button>
             <Btn onClick={save} disabled={saving||!form.title.trim()}>{saving?<Spinner size={13}/>:<><Ico d={Icons.check} size={13}/> Save Event</>}</Btn>
           </div>
         </div>
       </Modal>
+
+      {/* Lets you check the exact letter/notification wording BEFORE saving —
+          especially important for Termination, where picking the wrong
+          reason generates a genuinely different letter (see
+          terminationLetterCopy). Renders off the live form state, not a
+          saved event, so it always reflects whatever's currently filled in. */}
+      {showFormPreview&&(
+        <Modal open onClose={()=>setShowFormPreview(false)} title="Email Preview" width={560}>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <div style={{height:520,border:"1px solid var(--border2)",borderRadius:8,overflow:"hidden"}}>
+              <iframe
+                srcDoc={EMAIL_TEMPLATES.careerEvent(member.name, {
+                  event_type: form.event_type, title: form.title,
+                  previous_value: form.previous_value||"", new_value: form.new_value||"",
+                  amount: form.event_type==="deduction" ? deductionAmount() : (form.amount?Number(form.amount):null),
+                  effective_date: form.effective_date||"",
+                  notes: form.event_type==="deduction"&&form.deduction_mode==="days"?`${form.deduction_days} day(s) deducted${form.notes?" — "+form.notes:""}`:(form.notes||""),
+                })}
+                style={{width:"100%",height:"100%",border:"none"}} title="Email Preview" sandbox="allow-same-origin"
+              />
+            </div>
+            <Btn variant="secondary" onClick={()=>setShowFormPreview(false)} style={{alignSelf:"flex-end"}}>Close</Btn>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -19956,7 +20004,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
         ))}
       </div>
 
-      {tab==="history"&&<TeamMemberHistoryTab member={member} canEdit={canEdit} currentUser={currentUser} onUpdateTeamMember={onUpdateTeamMember} onAddExpense={onAddExpense}/>}
+      {tab==="history"&&<TeamMemberHistoryTab member={member} team={team} canEdit={canEdit} currentUser={currentUser} onUpdateTeamMember={onUpdateTeamMember} onAddExpense={onAddExpense}/>}
 
       {tab==="tasks"&&(
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
