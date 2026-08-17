@@ -425,7 +425,13 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
         // Only skip capture on a CONFIRMED "other" classification — a null
         // classification means the AI call itself failed, which shouldn't
         // silently drop a real contact who did share a phone number.
-        if ($classification && $classification['category'] === 'other') return;
+        if ($classification && $classification['category'] === 'other') {
+            try {
+                $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), 'Lead capture skipped (classified as other)', 'leads', :details, 'success', 'system')")
+                    ->execute([':details' => "channel={$channel} customer={$customerId} ({$customerName}), phone={$phone}"]);
+            } catch (\Throwable $e2) { /* best-effort */ }
+            return;
+        }
         $category = $classification['category'] ?? 'lead';
         $rotationAM = $category === 'lead' ? assignLeadRotation($pdo) : null;
 
@@ -454,6 +460,15 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
         }
     } catch (\Throwable $e) {
         error_log('maybeCreateLeadFromMessage EXCEPTION: ' . $e->getMessage());
+        // Also written to the Activity Log (DB, admin-viewable in-app) —
+        // error_log() alone turned out to be effectively invisible: no
+        // error_log path is configured on this server, so failures here
+        // were only ever findable by locating and grepping the web
+        // server's own error log manually.
+        try {
+            $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), 'Lead capture failed', 'leads', :details, 'error', 'system')")
+                ->execute([':details' => "channel={$channel} customer={$customerId} ({$customerName}): " . $e->getMessage()]);
+        } catch (\Throwable $e2) { /* best-effort */ }
     }
 }
 
