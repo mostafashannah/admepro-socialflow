@@ -604,19 +604,22 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     // check, e.g. the double-booking conflict check in the assign modal,
     // which cares who holds it right now.)
     if (!wasOwnerOf(p, userEmail, userRole)) return false;
-    // Work THEY finished and moved forward earlier TODAY still shows in its
-    // own slot (rendered green, see completed_today below) instead of
-    // vanishing the instant it leaves their stage — otherwise a task moved
-    // to Design Review at 2pm just disappears from the timeline, which
-    // reads as if it never happened rather than as finished work. Only
-    // bypasses the stage/excluded-stage check below, NOT due_date — a task
-    // that's genuinely due some other day has no business showing on
-    // TODAY's timeline just because it happened to get finished today; it
-    // belongs on its own due date's view.
+    // Work THEY finished and moved forward earlier ON THE DAY BEING VIEWED
+    // still shows in its own slot (rendered green, see completed_today
+    // below) instead of vanishing the instant it leaves their stage —
+    // otherwise a task moved to Design Review at 2pm just disappears from
+    // that day's timeline, which reads as if it never happened rather than
+    // as finished work. Keyed off `date` (the viewed day), NOT the real
+    // "today" — a task completed yesterday should still show on
+    // YESTERDAY's timeline even after the calendar has since rolled over;
+    // it doesn't stop being true just because today is no longer that day.
+    // Only bypasses the stage/excluded-stage check below, NOT due_date — a
+    // task genuinely due some other day has no business showing here just
+    // because it happened to get finished on this one.
     const completedAtField = userRole==="graphic_designer" ? "design_completed_at" : userRole==="content_creator" ? "content_completed_at" : null;
     const completedAt = completedAtField ? p[completedAtField] : null;
-    const completedToday = !!(completedAt && date===today && parseSqlUtc(completedAt).toISOString().split("T")[0] === today);
-    if (completedToday && (!p.due_date || p.due_date === date)) return true;
+    const completedOnViewedDay = !!(completedAt && parseSqlUtc(completedAt).toISOString().split("T")[0] === date);
+    if (completedOnViewedDay && (!p.due_date || p.due_date === date)) return true;
     if (ownedStage && p.stage !== ownedStage) return false;
     // This timeline is for capacity planning on work still actually IN
     // PROGRESS — Published and Scheduled are both done from the team's
