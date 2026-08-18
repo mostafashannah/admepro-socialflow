@@ -195,7 +195,7 @@ var completedAtField=userRole==="graphic_designer"?"design_completed_at":userRol
 // Request hasn't even been turned into real, scheduled work yet either
 // (no brief, no plan) — it only starts occupying a real time slot once
 // an AM actually moves it forward to Brief (planning).
-if(["published","scheduled","approved","rejected","client_request"].includes(p.stage))return false;if(p.due_date){// Deliberately does NOT roll an unfinished past-due task onto TODAY's
+if(["published","scheduled","approved","rejected","client_request","on_hold"].includes(p.stage))return false;if(p.due_date){// Deliberately does NOT roll an unfinished past-due task onto TODAY's
 // view anymore — it stays visible on its own original due_date's
 // page, in its own normal slot, just rendered red (see isOverduePost)
 // to signal it's overdue. Requested explicitly: "not done to not be

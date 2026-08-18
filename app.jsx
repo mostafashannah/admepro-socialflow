@@ -629,7 +629,7 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     // Request hasn't even been turned into real, scheduled work yet either
     // (no brief, no plan) — it only starts occupying a real time slot once
     // an AM actually moves it forward to Brief (planning).
-    if (["published","scheduled","approved","rejected","client_request"].includes(p.stage)) return false;
+    if (["published","scheduled","approved","rejected","client_request","on_hold"].includes(p.stage)) return false;
     if (p.due_date) {
       // Deliberately does NOT roll an unfinished past-due task onto TODAY's
       // view anymore — it stays visible on its own original due_date's
