@@ -625,31 +625,22 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     // should occupy a block here, same as Approved/Rejected.
     if (["published","scheduled","approved","rejected"].includes(p.stage)) return false;
     if (p.due_date) {
-      if (p.due_date === date) return true;
-      // Still not done AND still sitting in their own stage (not handed
-      // off to someone else, e.g. Client Approval) with its due date
-      // already passed — roll it forward onto today's view instead of
-      // letting it silently vanish once its original day is over. Once
-      // it's left their stage it's no longer unfinished work ON THEM, so
-      // it shouldn't keep reappearing on their daily view either.
-      if (date === today && p.due_date < today && p.stage === ROLE_OWNED_STAGE[userRole]) return true;
-      return false;
+      // Deliberately does NOT roll an unfinished past-due task onto TODAY's
+      // view anymore — it stays visible on its own original due_date's
+      // page, in its own normal slot, just rendered red (see isOverduePost)
+      // to signal it's overdue. Requested explicitly: "not done to not be
+      // shifted... to be also on its slot but colored red as overdue."
+      return p.due_date === date;
     }
     // Tasks without a due_date only appear on today's view
     return date === today;
   });
-  const isOverduePost = (p) => !!(p.due_date && date === today && p.due_date < today && p.stage === ROLE_OWNED_STAGE[userRole]);
-  // Overdue work jumps the queue — it's already late, so it gets packed
-  // first (from the start of the day) instead of waiting for whatever
-  // due_time it was originally given, which used to just collide head-on
-  // with whatever else was already anchored to that same time. Within the
-  // overdue group itself, the OLDEST due_date goes first (something due
-  // Aug 5 is more overdue than something due Aug 9, and shouldn't just
-  // fall wherever a priority tie-break happens to leave it) — only once
-  // that's settled does priority break further ties.
-  myPosts.sort((a,b) => (isOverduePost(b) - isOverduePost(a))
-    || ((isOverduePost(a) && isOverduePost(b)) ? (a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : 0) : 0)
-    || (priorityScore(b) - priorityScore(a)));
+  // A task reads as overdue on whatever day it's being viewed, the moment
+  // its own due_date has passed relative to right now — not tied to
+  // date===today anymore, since it no longer gets moved onto today's view;
+  // it shows red on its own original day instead.
+  const isOverduePost = (p) => !!(p.due_date && p.due_date < today && p.stage === ROLE_OWNED_STAGE[userRole]);
+  myPosts.sort((a,b) => priorityScore(b) - priorityScore(a));
 
   // Use due_time as the anchor when available, otherwise pack sequentially
   const slots = [];
@@ -657,11 +648,10 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
   for(const post of myPosts) {
     const est = estimateDuration(post);
     let cursor;
-    // Overdue tasks ignore their old due_time entirely and pack
-    // sequentially from the front of the day instead, same as a task with
-    // no due_time — this is what actually pushes the rest of the day's
-    // tasks later instead of overlapping them.
-    if(post.due_time && !isOverduePost(post)) {
+    // Overdue tasks keep their real due_time anchor same as anything else
+    // now — they stay on their own original day/slot instead of jumping
+    // the queue on today's view, so there's no reason to ignore it anymore.
+    if(post.due_time) {
       const [hh, mm] = post.due_time.split(":").map(Number);
       const startMins = hh * 60 + (mm || 0);
       // Clamp within working hours — a task already given a real due_time
