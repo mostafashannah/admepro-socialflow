@@ -625,8 +625,11 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     // PROGRESS — Published and Scheduled are both done from the team's
     // side (content/design work is finished; Scheduled is just waiting on
     // the auto-publish date, not sitting on anyone's plate), so neither
-    // should occupy a block here, same as Approved/Rejected.
-    if (["published","scheduled","approved","rejected"].includes(p.stage)) return false;
+    // should occupy a block here, same as Approved/Rejected. A raw Client
+    // Request hasn't even been turned into real, scheduled work yet either
+    // (no brief, no plan) — it only starts occupying a real time slot once
+    // an AM actually moves it forward to Brief (planning).
+    if (["published","scheduled","approved","rejected","client_request"].includes(p.stage)) return false;
     if (p.due_date) {
       // Deliberately does NOT roll an unfinished past-due task onto TODAY's
       // view anymore — it stays visible on its own original due_date's
