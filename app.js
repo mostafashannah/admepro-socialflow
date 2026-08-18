@@ -3042,7 +3042,13 @@ var slots=rawSlots.map(function(slot){var ov=(scheduleOverrides||[]).find(functi
 var _useState1637=useState(function(){return posts;}),_useState1638=_slicedToArray(_useState1637,1),frozenPostsForOverflow=_useState1638[0];useEffect(function(){if(!onShiftOverdue||!frozenPostsForOverflow||!frozenPostsForOverflow.length)return;var today=new Date().toISOString().split("T")[0];if(dateStr!==today)return;// Combined Timeline needs this checked for EVERY member shown, not
 // just whoever's individually selected — a fully-booked day for any
 // of them should roll their overflow forward the same way.
-var membersToCheck=combinedView?[currentUser].concat(_toConsumableArray((team||[]).filter(function(m){return m.email!==(currentUser===null||currentUser===void 0?void 0:currentUser.email);}))).filter(Boolean):[effectiveUser].filter(Boolean);var nextDay=addWorkingDays(new Date(),1).toISOString().split("T")[0];membersToCheck.forEach(function(m){var frozenSlots=generateDailySchedule(frozenPostsForOverflow,m.email,dateStr,m.role);frozenSlots.filter(function(s){return s.start_mins>=WORKING_END*60;}).forEach(function(s){return onShiftOverdue(s.post_id,nextDay);});});},[combinedView]);var fmtSecs=function fmtSecs(s){// A fractional/garbage value (e.g. total_seconds picking up a stray
+var membersToCheck=combinedView?[currentUser].concat(_toConsumableArray((team||[]).filter(function(m){return m.email!==(currentUser===null||currentUser===void 0?void 0:currentUser.email);}))).filter(Boolean):[effectiveUser].filter(Boolean);var nextDay=addWorkingDays(new Date(),1).toISOString().split("T")[0];membersToCheck.forEach(function(m){var frozenSlots=generateDailySchedule(frozenPostsForOverflow,m.email,dateStr,m.role);// Already-finished work (completed_today, rendered green) is
+// deliberately excluded here — it's DONE, so it has no "capacity"
+// left to roll forward regardless of how long its rendered block
+// looks. Only genuinely pending work that doesn't fit gets pushed to
+// tomorrow; a real completion timestamp that happens to land late in
+// the day is just honest information, not overflow.
+frozenSlots.filter(function(s){return s.start_mins>=WORKING_END*60&&!s.completed_today;}).forEach(function(s){return onShiftOverdue(s.post_id,nextDay);});});},[combinedView]);var fmtSecs=function fmtSecs(s){// A fractional/garbage value (e.g. total_seconds picking up a stray
 // decimal from some other write path) used to render straight through
 // as-is — "00:00:0.0011705" instead of "00:00:00" — since only h/m were
 // floored, not the raw seconds remainder. Floors the whole input up

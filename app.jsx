@@ -36503,7 +36503,13 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
     const nextDay = addWorkingDays(new Date(), 1).toISOString().split("T")[0];
     membersToCheck.forEach(m=>{
       const frozenSlots = generateDailySchedule(frozenPostsForOverflow, m.email, dateStr, m.role);
-      frozenSlots.filter(s=>s.start_mins >= WORKING_END*60).forEach(s=>onShiftOverdue(s.post_id, nextDay));
+      // Already-finished work (completed_today, rendered green) is
+      // deliberately excluded here — it's DONE, so it has no "capacity"
+      // left to roll forward regardless of how long its rendered block
+      // looks. Only genuinely pending work that doesn't fit gets pushed to
+      // tomorrow; a real completion timestamp that happens to land late in
+      // the day is just honest information, not overflow.
+      frozenSlots.filter(s=>s.start_mins >= WORKING_END*60 && !s.completed_today).forEach(s=>onShiftOverdue(s.post_id, nextDay));
     });
   },[combinedView]);
 
