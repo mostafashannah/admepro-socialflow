@@ -3039,7 +3039,8 @@ var slots=rawSlots.map(function(slot){var ov=(scheduleOverrides||[]).find(functi
 // earlier round of shifts, compounding into shifting far more tasks
 // than actually overflow (seen shifting 6 when only 4 truly didn't fit).
 // A one-time calculation off a fixed snapshot can't cascade like that.
-var _useState1637=useState(function(){return posts;}),_useState1638=_slicedToArray(_useState1637,1),frozenPostsForOverflow=_useState1638[0];useEffect(function(){if(!onShiftOverdue||!frozenPostsForOverflow||!frozenPostsForOverflow.length)return;var today=new Date().toISOString().split("T")[0];if(dateStr!==today)return;// Combined Timeline needs this checked for EVERY member shown, not
+var _useState1637=useState(function(){return posts;}),_useState1638=_slicedToArray(_useState1637,1),frozenPostsForOverflow=_useState1638[0];var AUTO_SHIFT_OVERFLOW_ENABLED=false;// switched off per request — was rolling tasks to tomorrow in surprising ways while capacity was being worked out. Flip back to true to re-enable.
+useEffect(function(){if(!AUTO_SHIFT_OVERFLOW_ENABLED||!onShiftOverdue||!frozenPostsForOverflow||!frozenPostsForOverflow.length)return;var today=new Date().toISOString().split("T")[0];if(dateStr!==today)return;// Combined Timeline needs this checked for EVERY member shown, not
 // just whoever's individually selected — a fully-booked day for any
 // of them should roll their overflow forward the same way.
 var membersToCheck=combinedView?[currentUser].concat(_toConsumableArray((team||[]).filter(function(m){return m.email!==(currentUser===null||currentUser===void 0?void 0:currentUser.email);}))).filter(Boolean):[effectiveUser].filter(Boolean);var nextDay=addWorkingDays(new Date(),1).toISOString().split("T")[0];membersToCheck.forEach(function(m){var frozenSlots=generateDailySchedule(frozenPostsForOverflow,m.email,dateStr,m.role);// Already-finished work (completed_today, rendered green) is

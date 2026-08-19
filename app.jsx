@@ -36486,8 +36486,9 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   // than actually overflow (seen shifting 6 when only 4 truly didn't fit).
   // A one-time calculation off a fixed snapshot can't cascade like that.
   const [frozenPostsForOverflow] = useState(()=>posts);
+  const AUTO_SHIFT_OVERFLOW_ENABLED = false; // switched off per request — was rolling tasks to tomorrow in surprising ways while capacity was being worked out. Flip back to true to re-enable.
   useEffect(()=>{
-    if(!onShiftOverdue || !frozenPostsForOverflow || !frozenPostsForOverflow.length) return;
+    if(!AUTO_SHIFT_OVERFLOW_ENABLED || !onShiftOverdue || !frozenPostsForOverflow || !frozenPostsForOverflow.length) return;
     const today = new Date().toISOString().split("T")[0];
     if(dateStr!==today) return;
     // Combined Timeline needs this checked for EVERY member shown, not
