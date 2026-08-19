@@ -12602,7 +12602,7 @@ function ClientLoginsTab({client,onUpdateClient,canAdd=false,canEdit=false}) {
   );
 }
 
-function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,onAddCalendar,onAddTask,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],onSaveContactReport,onDeleteContactReport,leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient,integrationLogs=[],onAddIntegration,onUpdateIntegration,onDeleteIntegration,onRetryIntegration,brandingAssets,deepLinkContactReportId,contactReportActivity=[],clientUsers=[]}) {
+function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,onAddCalendar,onAddTask,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],onSaveContactReport,onDeleteContactReport,leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient,integrationLogs=[],onAddIntegration,onUpdateIntegration,onDeleteIntegration,onRetryIntegration,brandingAssets,deepLinkContactReportId,contactReportActivity=[],clientUsers=[],onStageChange}) {
   const {isMobile} = useResponsive();
   // Plain state, not persisted — opening any client should always start on
   // Overview, not silently reopen to whatever tab was last viewed for them —
@@ -12778,7 +12778,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
           {cProjects.length===0&&<p style={{color:"var(--text3)"}}>No projects yet. <button onClick={onAddProject} style={{color:"var(--accent)",fontWeight:700}}>+ Add Project</button></p>}
         </div>
       )}
-      {tab==="tasks"&&<KanbanView posts={cPosts} project={cProjects[0]} team={[]} onPostClick={onPostClick}/>}
+      {tab==="tasks"&&<KanbanView posts={cPosts} project={cProjects[0]} team={[]} onPostClick={onPostClick} onStageChange={onStageChange}/>}
       {tab==="community"&&(
         <CommunityTab
           cMessagesNeedReplyCount={cMessagesNeedReplyCount} clientLeadsCount={clientLeads.length}
@@ -13589,7 +13589,7 @@ function ProjectsPage({projects, posts, comments, clients, team, assets, clientI
 // ════════════════════════════════════════════════════════════════
 // ALL TASKS PAGE (Posts)
 // ════════════════════════════════════════════════════════════════
-function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdateTask,onAddReady,onAddAsset,onUpdateAsset,currentUser,clients=[],clientIntelligenceList=[]}) {
+function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdateTask,onAddReady,onAddAsset,onUpdateAsset,currentUser,clients=[],clientIntelligenceList=[],onStageChange}) {
   const [view,setView] = usePersistentState("sf_tasks_view","kanban");
   const [stageF,setStageF] = useState("all");
   const [platF,setPlatF] = useState("all");
@@ -13703,7 +13703,7 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
           )}
         </div>
       )}
-      {view==="kanban"&&<KanbanView posts={filtered} project={null} team={team} onPostClick={onPostClick}/>}
+      {view==="kanban"&&<KanbanView posts={filtered} project={null} team={team} onPostClick={onPostClick} onStageChange={onStageChange}/>}
       {view==="list"&&<ListView posts={filtered} projects={projects} team={team} onPostClick={onPostClick}/>}
       {view==="calendar"&&<CalendarView posts={filtered} onPostClick={onPostClick}/>}
       {showAdd&&<AddPostModal open onClose={()=>setShowAdd(false)} projects={projects} team={team} onAdd={async d=>{onAdd(d);setShowAdd(false);}} onAddReady={onAddReady ? async (list,opts)=>{await onAddReady(list,opts);setShowAdd(false);} : undefined} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset} allowClientRequest={isAdminUser} clients={clients} clientIntelligenceList={clientIntelligenceList} currentUser={currentUser}/>}
@@ -35953,7 +35953,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
 
         {myView==="kanban" && (
           <div style={{padding:"0 16px 16px"}}>
-            <KanbanView posts={filteredPosts} project={null} team={team} onPostClick={onPostClick}/>
+            <KanbanView posts={filteredPosts} project={null} team={team} onPostClick={onPostClick} onStageChange={onStageChange}/>
           </div>
         )}
         {myView==="calendar" && (
@@ -36046,7 +36046,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
       </div>
 
       {/* Kanban / Calendar / List */}
-      {myView==="kanban" && <KanbanView posts={filteredPosts} project={null} team={team} onPostClick={onPostClick}/>}
+      {myView==="kanban" && <KanbanView posts={filteredPosts} project={null} team={team} onPostClick={onPostClick} onStageChange={onStageChange}/>}
       {myView==="calendar" && <CalendarView posts={filteredPosts} onPostClick={onPostClick}/>}
       {myView==="list" && (filteredPosts.length === 0 ? (
         <div style={{textAlign:"center",padding:"60px 20px",color:"var(--text3)"}}>
@@ -49489,7 +49489,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
               currentUser={currentUser} onToggleHide={toggleHideClient}/>
           );
           return (
-            <ClientDetailPage key={selectedClient.id} client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} onAddAsset={addAsset} currentUser={currentUser} onImpersonateClient={impersonateClient}
+            <ClientDetailPage key={selectedClient.id} client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} onAddAsset={addAsset} currentUser={currentUser} onImpersonateClient={impersonateClient} onStageChange={handleStageChange}
               clientUsers={data.clientUsers||[]}
               deepLinkContactReportId={contactReportDeepLink?.clientId===selectedClient.id ? contactReportDeepLink.reportId : null}
               contactReportActivity={data.contactReportActivity||[]}
@@ -49560,7 +49560,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
   onClearInitialProject={()=>setSelectedProjectId(null)}
   brandingAssets={data.brandingAssets}
 />}
-        {page==="tasks"&&<TasksPage posts={data.posts} projects={data.projects} team={data.team} onPostClick={setSelectedPost} onAdd={addPost} clientTasks={(data.tasks||[])} onUpdateTask={updateClientTask} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} currentUser={currentUser} clients={data.clients} clientIntelligenceList={data.clientIntelligence||[]}/>}
+        {page==="tasks"&&<TasksPage posts={data.posts} projects={data.projects} team={data.team} onPostClick={setSelectedPost} onAdd={addPost} clientTasks={(data.tasks||[])} onUpdateTask={updateClientTask} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} currentUser={currentUser} clients={data.clients} clientIntelligenceList={data.clientIntelligence||[]} onStageChange={handleStageChange}/>}
         {page==="calendar"&&<div className="fade-in"><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800,marginBottom:24}}>Content Calendar</h2><CalendarView posts={data.posts} onPostClick={setSelectedPost}/></div>}
         {page==="assets"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"assets.manage"))&&<AssetsPage assets={data.assets} projects={data.projects} clients={data.clients} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} currentUser={currentUser}/>}
         {page==="image_generator"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"assets.manage"))&&<ImageGeneratorPage clients={data.clients} projects={data.projects} onAddAsset={addAsset}/>}
