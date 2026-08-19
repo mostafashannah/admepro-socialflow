@@ -6822,14 +6822,13 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                   {media.map((asset,i)=>{
                     const url = asset.url||asset.file_url||asset.data||"";
                     const isVideo = (asset.type||"").startsWith("video")||url.match(/\.(mp4|mov|webm|m4v)/i);
-                    // Images open the in-app Lightbox (which has its own
-                    // Download button) instead of just a plain new-tab
-                    // link — that link alone gave no way to actually save
-                    // the file short of a manual right-click. Videos still
-                    // open in a new tab (Lightbox only renders <img>).
-                    const Wrapper = isVideo ? "a" : "div";
+                    // Both open the in-app Lightbox (which has its own
+                    // Download button, and handles video same as images)
+                    // instead of a plain new-tab link — that link alone
+                    // gave no way to actually save the file short of a
+                    // manual right-click.
                     return (
-                      <Wrapper key={i} {...(isVideo ? {href:url, target:"_blank", rel:"noreferrer"} : {onClick:()=>setLightboxImage({url, name:asset.name||post.title}), role:"button", tabIndex:0})}
+                      <div key={i} onClick={()=>setLightboxImage({url, name:asset.name||post.title})} role="button" tabIndex={0}
                         style={{position:"relative",aspectRatio:aspect,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",overflow:"hidden",display:"block",cursor:"pointer"}}>
                         {isVideo
                           ? <video src={url+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
@@ -6848,7 +6847,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                         {asset.kind==="story"&&(
                           <span style={{position:"absolute",top:6,left:6,background:"rgba(0,0,0,0.65)",color:"#fff",fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:99}}>Story</span>
                         )}
-                      </Wrapper>
+                      </div>
                     );
                   })}
                 </div>
