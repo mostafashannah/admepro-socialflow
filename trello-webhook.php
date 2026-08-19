@@ -176,10 +176,30 @@ if ($actionType === 'createCard') {
 // fields that actually changed on this event, so each one is only touched
 // if it's genuinely present there — never overwrites a field with a stale
 // unchanged value.
-$postStmt = $pdo->prepare("SELECT id, stage FROM posts WHERE trello_card_id = :cid LIMIT 1");
+$postStmt = $pdo->prepare("SELECT id, stage, pre_approval_stage FROM posts WHERE trello_card_id = :cid LIMIT 1");
 $postStmt->execute([':cid' => $cardId]);
 $post = $postStmt->fetch(PDO::FETCH_ASSOC);
 if (!$post) { echo json_encode(["ok" => true]); exit; }
+
+// "Comments only" mode ignores everything from Trello EXCEPT one specific
+// bounce-back: a card sent back out of the Client Approval list (e.g.
+// rejected, moved back to "Doing") returns the task here to whatever
+// stage it was ACTUALLY in before it reached Client Approval — not just
+// whatever stage happens to be array_search()'s first match for that
+// Trello list, since several SocialFlow stages usually share one "Doing"
+// list on the board and that would otherwise be a coin flip.
+if ($direction === 'to_trello_comments_only') {
+    if (empty($integ['config']['push_client_approval_move'])) { echo json_encode(["ok" => true, "skipped" => "comments-only, approval bounce-back not enabled"]); exit; }
+    $newListId = $action['data']['listAfter']['id'] ?? null;
+    $approvalListId = $listMap['client_approval'] ?? null;
+    if (!$newListId || !$approvalListId || $newListId === $approvalListId || $post['stage'] !== 'client_approval' || !$post['pre_approval_stage']) {
+        echo json_encode(["ok" => true, "skipped" => "not an approval bounce-back"]); exit;
+    }
+    $pdo->prepare("UPDATE posts SET stage = :stage, pre_approval_stage = NULL WHERE id = :id")
+        ->execute([':stage' => $post['pre_approval_stage'], ':id' => $post['id']]);
+    echo json_encode(["ok" => true, "action" => "bounced_back", "stage" => $post['pre_approval_stage']]);
+    exit;
+}
 
 $old = $action['data']['old'] ?? [];
 $card = $action['data']['card'] ?? [];

@@ -1069,7 +1069,7 @@ function sbTable(entityName) {
 // Known columns per table — used to strip unknown fields before POST/PATCH
 const SB_SCHEMA = {
   projects: ["title","description","client_id","client_name","status","start_date","end_date","platforms","team_members","project_type","posting_start","posting_end"],
-  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","text_on_visual","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","assigned_to_extra","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","published_platforms","platform_post_ids","estimated_minutes","content_assigned_to","due_date","due_time","task_type","revision_count","was_rejected","sector","content_completed_at","design_completed_at","design_assigned_to","published_at"],
+  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","text_on_visual","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","assigned_to_extra","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","published_platforms","platform_post_ids","estimated_minutes","content_assigned_to","due_date","due_time","task_type","revision_count","was_rejected","sector","content_completed_at","design_completed_at","design_assigned_to","published_at","pre_approval_stage"],
   // address/website/contact_person were never real columns on the clients
   // table (mysql-schema.sql only has name/email/phone/logo_url/industry/
   // status/account_manager_id/notes/platforms/portal_password/username) —
@@ -17134,6 +17134,7 @@ function TrelloConnectModal({open, onClose, client, existingIntegration, onSave}
   const [lists,setLists] = useState(null);
   const [listMap,setListMap] = useState(existingConfig.list_map||{});
   const [direction,setDirection] = useState(existingConfig.sync_direction||"both");
+  const [pushApprovalMove,setPushApprovalMove] = useState(!!existingConfig.push_client_approval_move);
   const [fetching,setFetching] = useState(false);
   const [saving,setSaving] = useState(false);
   const [error,setError] = useState("");
@@ -17155,7 +17156,7 @@ function TrelloConnectModal({open, onClose, client, existingIntegration, onSave}
     if(!board?.id){ setError("Fetch the board's lists before saving."); return; }
     setSaving(true); setError("");
     let webhookId = existingConfig.webhook_id || "";
-    const needsWebhook = direction==="both"||direction==="from_trello";
+    const needsWebhook = direction==="both"||direction==="from_trello"||(direction==="to_trello_comments_only"&&pushApprovalMove);
     try {
       if(needsWebhook || webhookId){
         const r = await fetch("/trello-webhook-register.php",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
@@ -17172,7 +17173,7 @@ function TrelloConnectModal({open, onClose, client, existingIntegration, onSave}
         app_key: "trello",
         status: "active",
         credentials: JSON.stringify({api_key:apiKey.trim(), token:token.trim()}),
-        config: JSON.stringify({board_id:board.id, board_name:board.name, board_url:boardInput.trim(), sync_direction:direction, list_map:listMap, webhook_id:webhookId}),
+        config: JSON.stringify({board_id:board.id, board_name:board.name, board_url:boardInput.trim(), sync_direction:direction, list_map:listMap, webhook_id:webhookId, push_client_approval_move:direction==="to_trello_comments_only"&&pushApprovalMove}),
       });
       onClose();
     } catch(e){ setError("Save failed: "+e.message); }
@@ -17217,6 +17218,15 @@ function TrelloConnectModal({open, onClose, client, existingIntegration, onSave}
                 ))}
               </div>
             </Field>
+            {direction==="to_trello_comments_only" && (
+              <label style={{display:"flex",gap:8,alignItems:"flex-start",padding:"8px 10px",border:`1.5px solid ${pushApprovalMove?"var(--accent)":"var(--border)"}`,borderRadius:"var(--rs)",cursor:"pointer",background:pushApprovalMove?"var(--accentbg)":"transparent"}}>
+                <input type="checkbox" checked={pushApprovalMove} onChange={e=>setPushApprovalMove(e.target.checked)} style={{marginTop:2}}/>
+                <div>
+                  <p style={{fontSize:12,fontWeight:700}}>Also sync Client Approval moves</p>
+                  <p style={{fontSize:11,color:"var(--text3)"}}>When a task here reaches Client Approval, moves its Trello card to whatever list that stage maps to below. If someone moves the card back off that list on Trello (e.g. rejected), the task here returns to whatever stage it was actually in right before Client Approval.</p>
+                </div>
+              </label>
+            )}
             <Field label="Which SocialFlow stage maps to which Trello list?">
               <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:260,overflowY:"auto"}}>
                 {TRELLO_STAGE_LABELS.map(st=>(
@@ -48413,6 +48423,13 @@ Return ONLY valid JSON (no markdown, no explanation):
       // real (see the condition just above each of these).
       content_completed_at: (priorStage==="content_creation" && newStage!=="content_creation") ? new Date().toISOString() : (newStage==="content_creation" ? null : post.content_completed_at),
       design_completed_at: (priorStage==="design" && newStage!=="design") ? new Date().toISOString() : (newStage==="design" ? null : post.design_completed_at),
+      // Remembers whatever stage this was ACTUALLY in right before landing
+      // on Client Approval — used by trello-webhook.php's "comments only +
+      // sync approval moves" mode to send a rejected/bounced-back card to
+      // the correct real prior stage, since several stages usually share
+      // one Trello list and a plain list→stage lookup can't tell them
+      // apart. Cleared once consumed (or once the task moves on normally).
+      pre_approval_stage: (newStage==="client_approval" && priorStage!=="client_approval") ? priorStage : (newStage==="client_approval" ? post.pre_approval_stage : null),
       project_id: overrides.project_id || post.project_id,
       revision_count: revisionCount,
       was_rejected: wasRejected,
