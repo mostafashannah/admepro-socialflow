@@ -6296,20 +6296,30 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   const commentFileRef = useRef(null);
 
   // Comments only ever carry ONE attachment each at the DB level
-  // (Comment.file_url is a single column, not an array) — rather than a
-  // schema change, any number of picked files get uploaded here and later
-  // sent as separate comments in sendComment, one attachment each.
+  // (Comment.file_url is a single column, not an array) — any number of
+  // picked files get uploaded here, each posted as its own comment the
+  // MOMENT its own upload finishes (not staged waiting for a manual Send).
+  // That's deliberate: onAddComment/onEdit are stable App-level functions,
+  // not tied to this modal's lifecycle, so a file picked here keeps
+  // uploading and correctly attaches itself to the task even if you close
+  // this task and open another one before it finishes — closing the modal
+  // only unmounts the UI, it doesn't cancel the in-flight upload fetch.
   const handleCommentFile = async (fileList) => {
     const files = Array.from(fileList||[]);
     if(!files.length) return;
     setAttaching(true);
-    try {
-      const uploaded = await Promise.all(files.map(async file => {
+    const postId = post.id, postForAssets = post;
+    await Promise.all(files.map(async file => {
+      try {
         const url = await uploadToStorage(file, "comments");
-        return {file_url:url, file_name:file.name, file_type:file.type.startsWith("video")?"video":file.type.startsWith("image")?"image":"file"};
-      }));
-      setCommentAttachments(prev=>[...prev, ...uploaded]);
-    } catch(e){ alert(e?.message || "File upload failed"); }
+        const att = {file_url:url, file_name:file.name, file_type:file.type.startsWith("video")?"video":file.type.startsWith("image")?"image":"file"};
+        await onAddComment(postId, "📎 Attachment", currentUser, att, "internal");
+        // Mirrors handleRemoveDesignAsset's counterpart — puts the file in
+        // the persistent Attachments section too, not just buried in the
+        // Activity feed, same as the old stage-then-Send flow did.
+        onEdit&&onEdit({...postForAssets, design_assets:[...(postForAssets.design_assets||[]), {url:att.file_url, name:att.file_name, type:att.file_type}]});
+      } catch(e){ alert(`"${file.name}" failed to upload: ${e?.message || "unknown error"}`); }
+    }));
     setAttaching(false);
   };
   const removeCommentAttachment = (i) => setCommentAttachments(prev=>prev.filter((_,idx)=>idx!==i));
