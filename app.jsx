@@ -7427,6 +7427,17 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                         <span style={{fontSize:12,fontWeight:600}}>{c.author_name||"System"}</span>
                         {c.type==="ai_reply"?<Badge label="AI" color="#10b981" xs/>:c.type!=="comment"&&<Badge label={c.type} color={c.type==="rejection"?"#ef4444":c.type==="approval"?"#10b981":"#6b7280"} xs/>}
                         <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date||c.created_at)}</span>
+                        {/* Admin/AM only — moves an internal attachment into
+                            the client-facing thread, e.g. sharing a finished
+                            design that was only ever posted internally.
+                            Posts a fresh comment in the Client tab rather
+                            than mutating this one, so the internal record
+                            (who attached it, when) stays intact. */}
+                        {c.file_url && onAddComment && (currentUser?.role==="admin" || currentUser?.role==="account_manager") && (
+                          <button onClick={()=>onAddComment(post.id, "📎 Attachment (forwarded)", currentUser, {file_url:c.file_url, file_name:c.file_name, file_type:c.file_type}, "client")} title="Forward attachment to client" style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",padding:2,display:"flex"}}>
+                            <Ico d={Icons.forward||Icons.share||Icons.arrow} size={12} stroke="var(--text3)"/>
+                          </button>
+                        )}
                         {onDeleteComment && (currentUser?.email===c.author_email || currentUser?.role==="admin" || currentUser?.role==="account_manager") && (
                           <button onClick={()=>{ if(confirm(c.file_url?"Delete this comment? Its attachment will be deleted too.":"Delete this comment?")) onDeleteComment(c); }} title="Delete comment" style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",padding:2,display:"flex"}}>
                             <Ico d={Icons.trash||Icons.x} size={12} stroke="var(--text3)"/>
