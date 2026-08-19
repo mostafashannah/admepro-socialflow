@@ -13,7 +13,7 @@ const SB_BUCKET = "socialflow-media";
 // client_max_body_size / PHP post_max_size to allow it too — this setting
 // can only ever be a cap *within* whatever the server infra already permits,
 // not a way to exceed it.
-const DEFAULT_MAX_UPLOAD_MB = 100;
+const DEFAULT_MAX_UPLOAD_MB = 60; // matches the server's PHP post_max_size/upload_max_filesize — keep these in sync
 
 // iPhones save photos as .heic/.heif by default — the format loads as
 // bytes just fine over HTTP (not a network error) but essentially no

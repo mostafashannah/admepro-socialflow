@@ -7,7 +7,8 @@ var SB_URL=window.location.origin+"/api";var SB_KEY="f5b3d0e0023471b5376d2da87ed
 // client_max_body_size / PHP post_max_size to allow it too — this setting
 // can only ever be a cap *within* whatever the server infra already permits,
 // not a way to exceed it.
-var DEFAULT_MAX_UPLOAD_MB=100;// iPhones save photos as .heic/.heif by default — the format loads as
+var DEFAULT_MAX_UPLOAD_MB=60;// matches the server's PHP post_max_size/upload_max_filesize — keep these in sync
+// iPhones save photos as .heic/.heif by default — the format loads as
 // bytes just fine over HTTP (not a network error) but essentially no
 // desktop browser can actually DECODE it in an <img> tag, so a photo
 // uploaded straight from an iPhone (profile photo, ID docs, design
