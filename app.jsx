@@ -5966,11 +5966,17 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
 
   const openEdit = () => {
     const existingPlatforms = Array.isArray(post.platforms) ? post.platforms : parseJ(post.platforms||"[]");
+    // Falls back to the legacy singular `platform` field only when THAT is
+    // actually set (an old post saved before `platforms` existed) — never
+    // defaults to "instagram" out of nowhere. A real Task has both fields
+    // genuinely empty, and this used to silently re-fill platforms with
+    // ["instagram"] every time its Edit form was reopened, undoing the
+    // Task/Post toggle the moment you looked at it again.
     setEditForm({
       title: post.title||"",
       description: post.description||"",
       platform: post.platform||"instagram",
-      platforms: existingPlatforms.length ? existingPlatforms : [post.platform||"instagram"],
+      platforms: existingPlatforms.length ? existingPlatforms : (post.platform ? [post.platform] : []),
       post_type: post.post_type||"image",
       priority: post.priority||"medium",
       assigned_to: post.assigned_to||"",
