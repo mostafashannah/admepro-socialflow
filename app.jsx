@@ -34938,9 +34938,21 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
   // alongside the original contact), and all of them should be pickable
   // as attendees, not just whichever one happens to be on the Client
   // record itself.
+  // Falling back to client.name (the COMPANY name) here used to read as if
+  // the company itself were a person attending the meeting — confusing
+  // once a real name (Ahmed Morad) is what's actually behind that email.
+  // A readable name guessed from the email's local part ("ahmed.morad" →
+  // "Ahmed Morad") is a far more honest fallback than the company name
+  // when no dedicated contact name (client.username) is on file.
+  const guessNameFromEmail = (email) => (email||"").split("@")[0].replace(/[._-]+/g," ").trim().replace(/\b\w/g, c=>c.toUpperCase());
   const clientContactSuggestions = (clientUsers||[]).length
-    ? (clientUsers||[]).map(u=>({name:u.name||u.email, title:u.title||"Client Contact", email:u.email||"", kind:"client"}))
-    : (client?.name ? [{name:client.username||client.name, title:client.contact_title||"Client Contact", email:client.email||"", kind:"client"}] : []);
+    // A ClientUser row saved with its name accidentally set to the company
+    // name (a common mistake when the invite form defaults to it) reads as
+    // if the company itself attended the meeting — guessing a name from
+    // the email is a more honest fallback than trusting that stored value
+    // blindly whenever it happens to match the client's own company name.
+    ? (clientUsers||[]).map(u=>({name:(u.name && u.name!==client?.name) ? u.name : (guessNameFromEmail(u.email) || u.name || u.email), title:u.title||"Client Contact", email:u.email||"", kind:"client"}))
+    : (client?.name ? [{name:client.username || guessNameFromEmail(client.email) || client.name, title:client.contact_title||"Client Contact", email:client.email||"", kind:"client"}] : []);
   const attendeeSuggestions = [
     ...(team||[]).filter(t=>t.status==="active").map(t=>{
       const isMe = currentUser && (t.id===currentUser.id || t.email===currentUser.email);
