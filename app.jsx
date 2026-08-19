@@ -6295,6 +6295,15 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   const [dragOverComment, setDragOverComment] = useState(false);
   const commentFileRef = useRef(null);
 
+  // Forcing file_type to "file" (regardless of what it actually is) makes
+  // the client-side renderer treat it as a plain link/button instead of
+  // embedding a full inline image/video — a lighter-weight "here's the
+  // file, open it on SocialFlow" hand-off rather than re-embedding heavy
+  // media straight into the client thread.
+  const forwardAttachmentToClient = (c) => {
+    onAddComment(post.id, "📎 Attachment (forwarded)", currentUser, {file_url:c.file_url, file_name:c.file_name, file_type:"file"}, "client");
+  };
+
   // Comments only ever carry ONE attachment each at the DB level
   // (Comment.file_url is a single column, not an array) — any number of
   // picked files get uploaded here, each posted as its own comment the
@@ -7434,7 +7443,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                             than mutating this one, so the internal record
                             (who attached it, when) stays intact. */}
                         {c.file_url && onAddComment && (currentUser?.role==="admin" || currentUser?.role==="account_manager") && (
-                          <button onClick={()=>onAddComment(post.id, "📎 Attachment (forwarded)", currentUser, {file_url:c.file_url, file_name:c.file_name, file_type:c.file_type}, "client")} title="Forward attachment to client" style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",padding:2,display:"flex"}}>
+                          <button onClick={()=>forwardAttachmentToClient(c)} title="Forward attachment to client" style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",padding:2,display:"flex"}}>
                             <Ico d={Icons.forward||Icons.share||Icons.arrow} size={12} stroke="var(--text3)"/>
                           </button>
                         )}
