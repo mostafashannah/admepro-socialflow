@@ -5921,7 +5921,7 @@ function BriefText({text, style}) {
 
 // POST DETAIL MODAL
 // ════════════════════════════════════════════════════════════════
-function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onAddComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,onInsightsRefreshed,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[],allPosts=[],contactReports=[]}) {
+function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onAddComment,onDeleteComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,onInsightsRefreshed,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[],allPosts=[],contactReports=[]}) {
   const {isMobile} = useResponsive();
   const [comment,setComment] = useState("");
   const [sending,setSending] = useState(false);
@@ -6012,7 +6012,19 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
     // columns, calendar icons, filters) as the first picked platform, while
     // `platforms` carries the full set for showing every badge here.
     const newProject = projects.find(p=>p.id===editForm.project_id);
-    onEdit&&onEdit({...post, ...editForm, platform: editForm.platforms[0],
+    // Switching between Task and Post is a real change to what this item
+    // IS, not just a field edit — worth its own record in Activity so
+    // there's a trace of when/why/by whom, same as a stage change.
+    const wasTask = !post.platform, isNowTask = editForm.platforms.length===0;
+    if(wasTask !== isNowTask && onAddComment) {
+      onAddComment(post.id, `Changed type: ${wasTask?"Task → Post":"Post → Task"}`, currentUser, null, "internal");
+    }
+    // Explicit null (not undefined) when clearing platforms — JSON.stringify
+    // silently drops an undefined key entirely, so the PATCH request never
+    // actually told the server to clear it, and the old platform value
+    // stayed in the DB forever (confirmed: reverted back to Post on a hard
+    // refresh even though the UI showed Task correctly until then).
+    onEdit&&onEdit({...post, ...editForm, platform: editForm.platforms[0]||null,
       assigned_to_extra: JSON.stringify((editForm.assigned_to_extra||[]).filter(e=>e&&e!==editForm.assigned_to)),
       // Keep client_id/client_name in sync with whichever project this got
       // moved to (same client only — see sameClientProjects above — so
@@ -7399,6 +7411,11 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                         <span style={{fontSize:12,fontWeight:600}}>{c.author_name||"System"}</span>
                         {c.type==="ai_reply"?<Badge label="AI" color="#10b981" xs/>:c.type!=="comment"&&<Badge label={c.type} color={c.type==="rejection"?"#ef4444":c.type==="approval"?"#10b981":"#6b7280"} xs/>}
                         <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date||c.created_at)}</span>
+                        {onDeleteComment && (currentUser?.email===c.author_email || currentUser?.role==="admin" || currentUser?.role==="account_manager") && (
+                          <button onClick={()=>{ if(confirm(c.file_url?"Delete this comment? Its attachment will be deleted too.":"Delete this comment?")) onDeleteComment(c); }} title="Delete comment" style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",padding:2,display:"flex"}}>
+                            <Ico d={Icons.trash||Icons.x} size={12} stroke="var(--text3)"/>
+                          </button>
+                        )}
                       </div>
                       {c.type==="ai_reply"
                         ? <div style={{fontSize:13,lineHeight:1.6}}>{renderChatMd(c.content)}</div>
@@ -7487,6 +7504,11 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
                         <span style={{fontSize:12,fontWeight:600}}>{c.author_name||"System"}</span>
                         <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date||c.created_at)}</span>
+                        {onDeleteComment && (currentUser?.email===c.author_email || currentUser?.role==="admin" || currentUser?.role==="account_manager") && (
+                          <button onClick={()=>{ if(confirm(c.file_url?"Delete this comment? Its attachment will be deleted too.":"Delete this comment?")) onDeleteComment(c); }} title="Delete comment" style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",padding:2,display:"flex"}}>
+                            <Ico d={Icons.trash||Icons.x} size={12} stroke="var(--text3)"/>
+                          </button>
+                        )}
                       </div>
                       <div style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content, team)}</div>
                       {c.file_url&&(
@@ -48761,6 +48783,17 @@ Return ONLY valid JSON (no markdown, no explanation):
     }
   };
 
+  // Deleting a comment that carried an attachment also deletes the actual
+  // uploaded file from storage — otherwise it just sits there orphaned
+  // forever (nothing else ever references it once the comment's gone).
+  // Best-effort: the storage delete failing silently never blocks the
+  // comment itself from being removed.
+  const handleDeleteComment = async (comment) => {
+    setData(d=>({...d, comments:d.comments.filter(c=>c.id!==comment.id)}));
+    if(comment.file_url) deleteFromStorage(comment.file_url).catch(()=>{});
+    de("Comment", comment.id).catch(()=>{});
+  };
+
   // Comment thread on a job application (reuses the generic `comments`
   // table via post_id, same as Post comments — there's no real FK
   // constraint, just a shared id column). A mentioned team member who
@@ -49907,6 +49940,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         onClose={()=>setSelectedPost(null)}
         onStageChange={handleStageChange}
         onAddComment={handleAddComment}
+        onDeleteComment={handleDeleteComment}
         onEdit={handleEditPost}
         onDelete={handleDeletePost}
         onInsightsRefreshed={(updated)=>setData(d=>({...d, posts:d.posts.map(p=>p.id===updated.id?{...p,...updated}:p)}))}
