@@ -50,7 +50,17 @@ $direction = $config['sync_direction'] ?? 'both';
 $listMap = $config['list_map'] ?? [];
 
 if (!$apiKey || !$token) { echo json_encode(["ok" => true, "skipped" => "Trello integration missing credentials"]); exit; }
-if ($direction === 'from_trello' || $direction === 'to_trello_comments_only') { echo json_encode(["ok" => true, "skipped" => "This integration doesn't push card creation/stage moves to Trello"]); exit; }
+// "Comments only" mode still moves an ALREADY-linked card the one time it
+// reaches Client Approval, if that's turned on — the one stage move an AM
+// actually cares about seeing reflected on the board (e.g. into a
+// "Pending Approval" list) even when nothing else pushes either way.
+$isApprovalException = $direction === 'to_trello_comments_only'
+    && !empty($config['push_client_approval_move'])
+    && $post['stage'] === 'client_approval'
+    && $post['trello_card_id'];
+if (($direction === 'from_trello' || $direction === 'to_trello_comments_only') && !$isApprovalException) {
+    echo json_encode(["ok" => true, "skipped" => "This integration doesn't push card creation/stage moves to Trello"]); exit;
+}
 
 $targetListId = $listMap[$post['stage']] ?? null;
 if (!$targetListId) { echo json_encode(["ok" => true, "skipped" => "Stage \"{$post['stage']}\" isn't mapped to a Trello list"]); exit; }
