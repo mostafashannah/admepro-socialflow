@@ -50,13 +50,16 @@ $direction = $config['sync_direction'] ?? 'both';
 if (!$apiKey || !$token) { echo json_encode(["ok" => true, "skipped" => "Trello integration missing credentials"]); exit; }
 if ($direction === 'from_trello') { echo json_encode(["ok" => true, "skipped" => "This integration is set to Trello → SocialFlow only"]); exit; }
 
+// An attachment rides along as a plain link inside the comment text
+// itself (not a separate native Trello card attachment) — a client
+// scanning the comment thread sees "here's the file" right there instead
+// of having to notice a new item appeared in the card's Attachments
+// section separately.
 $results = [];
-if ($text !== '') {
+if ($text !== '' || $fileUrl !== '') {
     $body = ($authorName ? "{$authorName}: " : '') . $text;
+    if ($fileUrl !== '') $body = trim($body . "\n" . ($fileName ?: 'Attachment') . ": {$fileUrl}");
     $results['comment'] = trello_add_comment($apiKey, $token, $post['trello_card_id'], $body);
-}
-if ($fileUrl !== '') {
-    $results['attachment'] = trello_add_attachment_url($apiKey, $token, $post['trello_card_id'], $fileUrl, $fileName ?: 'attachment');
 }
 
 echo json_encode(["ok" => true, "results" => $results]);
