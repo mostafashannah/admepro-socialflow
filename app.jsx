@@ -752,7 +752,29 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
 // ── @mention helper ────────────────────────────────────────────
 const URL_RE = /((?:https?:\/\/|www\.)[^\s<>"']+)/gi;
 
-function renderCommentText(text, team) {
+// Feedback pasted in or synced from elsewhere (Trello, a client's WhatsApp
+// message, etc.) very often arrives as one dense unbroken line — "1.
+// Location... 2. Sequence... **Client's suggested direction:** ..." — with
+// no real newlines between points. Inserts a paragraph break before each
+// numbered list item and before a bold "**Heading:**"-style marker used
+// mid-text as a new section, so it reads as actual structured points
+// instead of a wall of text.
+function insertCommentBreaks(text) {
+  if(!text) return text;
+  return text
+    .replace(/(?<!^)(?<!\n)\s+((?:[1-9]|1\d|20)\.\s)(?=[A-Z(])/g, "\n\n$1")
+    .replace(/(?<!^)(?<!\n)\s+(\*\*[^*\n]+:\*\*)/g, "\n\n$1");
+}
+
+function commentParagraphs(text) {
+  if(!text) return [];
+  const withBreaks = insertCommentBreaks(text);
+  let paras = withBreaks.split(/\n{2,}/).map(p=>p.trim()).filter(Boolean);
+  if(paras.length<=1) paras = withBreaks.split(/\n/).map(p=>p.trim()).filter(Boolean);
+  return paras.length ? paras : [text];
+}
+
+function renderCommentTextInline(text, team) {
   if(!text) return null;
   // Match against real team-member full names first (longest first, so
   // "Monay Khalid" matches whole instead of the generic word-boundary
@@ -784,6 +806,11 @@ function renderCommentText(text, team) {
       );
     });
   });
+}
+
+function renderCommentText(text, team) {
+  if(!text) return null;
+  return commentParagraphs(text).map((para,i) => <p key={i} style={{margin:i===0?0:"8px 0 0"}}>{renderCommentTextInline(para, team)}</p>);
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -7349,7 +7376,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                       </div>
                       {c.type==="ai_reply"
                         ? <div style={{fontSize:13,lineHeight:1.6}}>{renderChatMd(c.content)}</div>
-                        : <p style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content, team)}</p>}
+                        : <div style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content, team)}</div>}
                       {c.file_url&&(
                         c.file_type==="image" ? (
                           <div onClick={()=>setLightboxImage({url:c.file_url, name:c.file_name})} style={{display:"block",marginTop:8,maxWidth:220,borderRadius:8,overflow:"hidden",border:"1px solid var(--border)",cursor:"zoom-in"}}>
@@ -7435,7 +7462,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                         <span style={{fontSize:12,fontWeight:600}}>{c.author_name||"System"}</span>
                         <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date||c.created_at)}</span>
                       </div>
-                      <p style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content, team)}</p>
+                      <div style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content, team)}</div>
                       {c.file_url&&(
                         c.file_type==="image" ? (
                           <div onClick={()=>setLightboxImage({url:c.file_url, name:c.file_name})} style={{display:"block",marginTop:8,maxWidth:220,borderRadius:8,overflow:"hidden",border:"1px solid var(--border)",cursor:"zoom-in"}}>
@@ -37923,7 +37950,7 @@ function ApplicationCommentsSection({application, comments, team, currentUser, o
               <span style={{fontSize:12,fontWeight:700}}>{c.author_name||"Someone"}</span>
               <span style={{fontSize:11,color:"var(--text3)"}}>{fmtDateTime(c.created_date||c.created_at)}</span>
             </div>
-            <p style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content, team)}</p>
+            <div style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content, team)}</div>
           </div>
         ))}
         {thread.length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>No comments yet.</p>}
