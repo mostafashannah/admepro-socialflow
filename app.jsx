@@ -6948,7 +6948,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
             could ever be confirmed as actually there, and it was invisible
             for exactly those posts. Required-before-advancing warning only
             applies while still in Design — see the "Move to" button's guard. */}
-        {post.post_type==="reel" && post.platform==="instagram" && (post.stage==="design" || post.carousel_cover) && (
+        {post.post_type==="reel" && post.platform==="instagram" && (["design","design_review"].includes(post.stage) || post.carousel_cover) && (
           <div style={{display:"flex",flexDirection:"column",gap:8,padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:`1px solid ${post.carousel_cover?"var(--border)":"#f59e0b55"}`}}>
             <p style={{fontSize:12,fontWeight:700,color:post.carousel_cover?"var(--text2)":"#f59e0b"}}>
               Instagram Cover {post.carousel_cover?"":"(required before this can move to review)"}
