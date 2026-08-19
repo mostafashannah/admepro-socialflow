@@ -17259,6 +17259,7 @@ function ClientIntegrationsSubTab({client, integrations, integrationLogs, curren
   const [editTrello, setEditTrello] = useState(null);
   const isAdmin = currentUser?.role==="admin";
   const canAdd = isAdmin || currentUser?.role==="account_manager";
+  const canEdit = canAdd; // AMs manage their own clients' integrations day-to-day; Delete/Retry stay admin-only below.
   const clientIntegrations = (integrations||[]).filter(i=>i.client_id===client.id);
 
   return (
@@ -17306,11 +17307,13 @@ function ClientIntegrationsSubTab({client, integrations, integrationLogs, curren
                 <button onClick={()=>onUpdate({...integ, status: integ.status==="active"?"inactive":"active"})} disabled={!isAdmin} style={{padding:"5px 12px",borderRadius:99,fontSize:11,fontWeight:700,border:"1px solid var(--border)",background:"var(--surface2)",color:"var(--text2)",cursor:isAdmin?"pointer":"not-allowed",opacity:isAdmin?1:0.5}}>
                   {integ.status==="active"?"Disable":"Enable"}
                 </button>
+                {canEdit&&(
+                  <button onClick={()=>{ if(integ.app_key==="trello"){ setEditTrello(integ); setShowTrello(true); } else { setEditIntegration(integ); setShowWizard(true); } }} title="Edit" style={{width:30,height:30,borderRadius:8,border:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                    <Ico d={Icons.edit} size={13} stroke="var(--text2)"/>
+                  </button>
+                )}
                 {isAdmin&&(
                   <>
-                    <button onClick={()=>{ if(integ.app_key==="trello"){ setEditTrello(integ); setShowTrello(true); } else { setEditIntegration(integ); setShowWizard(true); } }} title="Edit" style={{width:30,height:30,borderRadius:8,border:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
-                      <Ico d={Icons.edit} size={13} stroke="var(--text2)"/>
-                    </button>
                     {integ.status==="error"&&onRetry&&(
                       <button onClick={()=>onRetry(integ)} title="Retry" style={{width:30,height:30,borderRadius:8,border:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
                         <Ico d={Icons.refresh} size={13} stroke="var(--text2)"/>
