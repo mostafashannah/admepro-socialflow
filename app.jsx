@@ -6636,6 +6636,30 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                 <textarea value={editForm.description} onChange={e=>setEditForm(f=>({...f,description:e.target.value}))} rows={3} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)",resize:"vertical",fontFamily:"inherit"}}/>
               </div>
               <div style={{gridColumn:"1/-1"}}>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Type</label>
+                <div style={{display:"flex",gap:6}}>
+                  {[["task","Task"],["post","Post"]].map(([k,label])=>{
+                    // A Post needs at least one platform and a real social
+                    // post_type; a Task has neither (see isTask===!post.platform
+                    // everywhere else in the app) — switching modes here
+                    // clears/restores those together so they can't end up
+                    // half-and-half (e.g. platforms picked but post_type
+                    // still a Task type, which is what silently broke this
+                    // exact "Dark Ads 3" task).
+                    const active = (k==="post") === (editForm.platforms.length>0);
+                    return (
+                      <button key={k} type="button" onClick={()=>{
+                        if(k==="task") setEditForm(f=>({...f,platforms:[],post_type:"general"}));
+                        else setEditForm(f=>({...f,platforms:f.platforms.length?f.platforms:["instagram"],post_type:SOCIAL_POST_TYPES.has(f.post_type)?f.post_type:"image"}));
+                      }} style={{padding:"6px 14px",borderRadius:99,border:`1px solid ${active?"var(--accent)":"var(--border2)"}`,background:active?"var(--accent)22":"var(--surface)",color:active?"var(--accent)":"var(--text2)",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {editForm.platforms.length>0 && (
+              <div style={{gridColumn:"1/-1"}}>
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Platforms (pick more than one if it's cross-posted)</label>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                   {PLATFORMS.map(p=>{
@@ -6648,12 +6672,15 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                   })}
                 </div>
               </div>
+              )}
+              {editForm.platforms.length>0 && (
               <div>
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Post Type</label>
                 <select value={editForm.post_type} onChange={e=>setEditForm(f=>({...f,post_type:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}>
                   {POST_TYPES.map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
                 </select>
               </div>
+              )}
               <div>
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Priority</label>
                 <select value={editForm.priority} onChange={e=>setEditForm(f=>({...f,priority:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}>
