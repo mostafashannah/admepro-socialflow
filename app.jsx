@@ -17208,6 +17208,7 @@ function TrelloConnectModal({open, onClose, client, existingIntegration, onSave}
                   {key:"both",label:"Both ways",desc:"Adding/moving a task here moves the Trello card; dragging the card on Trello moves the task's stage here."},
                   {key:"to_trello",label:"SocialFlow → Trello only",desc:"Pushes card creation/moves to Trello; changes made on Trello aren't pulled back."},
                   {key:"from_trello",label:"Trello → SocialFlow only",desc:"Card moves on Trello update the task's stage here; SocialFlow changes aren't pushed to Trello."},
+                  {key:"to_trello_comments_only",label:"SocialFlow → Trello, comments only",desc:"Comments (and forwarded attachments) added here post onto the Trello card — card creation/stage moves aren't pushed either way."},
                 ].map(opt=>(
                   <label key={opt.key} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"8px 10px",border:`1.5px solid ${direction===opt.key?"var(--accent)":"var(--border)"}`,borderRadius:"var(--rs)",cursor:"pointer",background:direction===opt.key?"var(--accentbg)":"transparent"}}>
                     <input type="radio" checked={direction===opt.key} onChange={()=>setDirection(opt.key)} style={{marginTop:2}}/>

@@ -50,7 +50,7 @@ $direction = $config['sync_direction'] ?? 'both';
 $listMap = $config['list_map'] ?? [];
 
 if (!$apiKey || !$token) { echo json_encode(["ok" => true, "skipped" => "Trello integration missing credentials"]); exit; }
-if ($direction === 'from_trello') { echo json_encode(["ok" => true, "skipped" => "This integration is set to Trello → SocialFlow only"]); exit; }
+if ($direction === 'from_trello' || $direction === 'to_trello_comments_only') { echo json_encode(["ok" => true, "skipped" => "This integration doesn't push card creation/stage moves to Trello"]); exit; }
 
 $targetListId = $listMap[$post['stage']] ?? null;
 if (!$targetListId) { echo json_encode(["ok" => true, "skipped" => "Stage \"{$post['stage']}\" isn't mapped to a Trello list"]); exit; }
