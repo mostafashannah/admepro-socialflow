@@ -6291,7 +6291,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
         return {file_url:url, file_name:file.name, file_type:file.type.startsWith("video")?"video":file.type.startsWith("image")?"image":"file"};
       }));
       setCommentAttachments(prev=>[...prev, ...uploaded]);
-    } catch(e){ alert("File upload failed"); }
+    } catch(e){ alert(e?.message || "File upload failed"); }
     setAttaching(false);
   };
   const removeCommentAttachment = (i) => setCommentAttachments(prev=>prev.filter((_,idx)=>idx!==i));
@@ -6335,7 +6335,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
     try {
       const url = await uploadToStorage(file, "comments");
       setClientCommentAttachment({file_url:url, file_name:file.name, file_type:file.type.startsWith("video")?"video":file.type.startsWith("image")?"image":"file"});
-    } catch(e){ alert("File upload failed"); }
+    } catch(e){ alert(e?.message || "File upload failed"); }
     setClientAttaching(false);
   };
   const sendClientComment = async () => {
