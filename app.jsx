@@ -46126,6 +46126,20 @@ function App() {
   const assignExistingTaskToSlot = (taskId, slot, estimatedMinutes=null) => {
     const updates = {assigned_to: slot.assigned_to, due_date: slot.due_date, due_time: slot.due_time};
     if (estimatedMinutes) updates.estimated_minutes = estimatedMinutes; // manual override from the Existing Task picker
+    // Dropping a task onto a designer's/content creator's free slot only
+    // actually occupies that slot if the task's STAGE matches what that
+    // person owns (see ROLE_OWNED_STAGE/generateDailySchedule) — a task
+    // still sitting in Planning or Design Review assigned to a designer's
+    // Design column won't show up there at all otherwise. Moving it
+    // forward OR backward into their owned stage here is what makes "add
+    // existing task to this slot" actually mean something for real.
+    const member = data.team.find(m=>m.email===slot.assigned_to);
+    const ownedStage = member ? ROLE_OWNED_STAGE[member.role] : null;
+    if (ownedStage) {
+      updates.stage = ownedStage;
+      if (ownedStage === "design") { updates.design_assigned_to = slot.assigned_to; updates.design_completed_at = null; }
+      if (ownedStage === "content_creation") { updates.content_assigned_to = slot.assigned_to; updates.content_completed_at = null; }
+    }
     setData(d=>({...d, posts: d.posts.map(p=>p.id===taskId ? {...p, ...updates} : p)}));
     ue("Post", taskId, updates).catch(()=>{});
   };

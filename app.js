@@ -4021,7 +4021,14 @@ console.error("[Save] ".concat(entity," returned no id \u2014 response:"),res);s
 // reassigns it to that person and sets its due date/time to the slot
 // clicked, instead of creating a brand-new task.
 var assignExistingTaskToSlot=function assignExistingTaskToSlot(taskId,slot){var estimatedMinutes=arguments.length>2&&arguments[2]!==undefined?arguments[2]:null;var updates={assigned_to:slot.assigned_to,due_date:slot.due_date,due_time:slot.due_time};if(estimatedMinutes)updates.estimated_minutes=estimatedMinutes;// manual override from the Existing Task picker
-setData(function(d){return _objectSpread(_objectSpread({},d),{},{posts:d.posts.map(function(p){return p.id===taskId?_objectSpread(_objectSpread({},p),updates):p;})});});ue("Post",taskId,updates)["catch"](function(){});};// Makes room for a task that doesn't fit at the clicked slot as-is: every
+// Dropping a task onto a designer's/content creator's free slot only
+// actually occupies that slot if the task's STAGE matches what that
+// person owns (see ROLE_OWNED_STAGE/generateDailySchedule) — a task
+// still sitting in Planning or Design Review assigned to a designer's
+// Design column won't show up there at all otherwise. Moving it
+// forward OR backward into their owned stage here is what makes "add
+// existing task to this slot" actually mean something for real.
+var member=data.team.find(function(m){return m.email===slot.assigned_to;});var ownedStage=member?ROLE_OWNED_STAGE[member.role]:null;if(ownedStage){updates.stage=ownedStage;if(ownedStage==="design"){updates.design_assigned_to=slot.assigned_to;updates.design_completed_at=null;}if(ownedStage==="content_creation"){updates.content_assigned_to=slot.assigned_to;updates.content_completed_at=null;}}setData(function(d){return _objectSpread(_objectSpread({},d),{},{posts:d.posts.map(function(p){return p.id===taskId?_objectSpread(_objectSpread({},p),updates):p;})});});ue("Post",taskId,updates)["catch"](function(){});};// Makes room for a task that doesn't fit at the clicked slot as-is: every
 // already-scheduled task from that slot's start time onward gets pushed
 // back-to-back starting right after the new task's end — same day if
 // there's still room, otherwise rolled to the next working day (cleared
