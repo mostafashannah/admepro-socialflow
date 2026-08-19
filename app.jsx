@@ -7443,7 +7443,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                             than mutating this one, so the internal record
                             (who attached it, when) stays intact. */}
                         {c.file_url && onAddComment && (currentUser?.role==="admin" || currentUser?.role==="account_manager") && (
-                          <button onClick={()=>forwardAttachmentToClient(c)} title="Forward attachment to client" style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",padding:2,display:"flex"}}>
+                          <button onClick={()=>{ if(confirm(`Forward "${c.file_name||"this attachment"}" to the client-facing comments?`)) forwardAttachmentToClient(c); }} title="Forward attachment to client" style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",padding:2,display:"flex"}}>
                             <Ico d={Icons.forward||Icons.share||Icons.arrow} size={12} stroke="var(--text3)"/>
                           </button>
                         )}
