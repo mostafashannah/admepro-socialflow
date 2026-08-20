@@ -1652,10 +1652,10 @@ async function sendCareersEmail(to, subject, html, fromName="Admepro Careers") {
 
 // ── Pro AI preferences (model + speed), set from Settings → AI & Tokens ──
 function getAIPrefs() {
-  // Sonnet is the default brain for Pro — noticeably smarter than Haiku on
+  // Opus is the default brain for Pro — noticeably smarter than Sonnet on
   // multi-step reasoning, document understanding, and long conversations,
   // still switchable from Settings → AI & Tokens.
-  let model = "claude-sonnet-4-6", speed = "medium", fallbackModel = "";
+  let model = "claude-opus-4-8", speed = "medium", fallbackModel = "";
   try {
     model = localStorage.getItem("sf_ai_model") || model;
     speed = localStorage.getItem("sf_ai_speed") || speed;
@@ -30846,7 +30846,7 @@ function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfill
                 <p style={{fontWeight:700,fontSize:13,color:"var(--text)"}}>{m.name}</p>
                 <p style={{fontSize:11,color:"var(--text3)"}}>{m.tier} · {m.ctx} context · ${m.input}/M in · ${m.output}/M out</p>
               </div>
-              {m.id==="claude-haiku-4-5-20251001"&&<span style={{padding:"2px 8px",borderRadius:99,background:"#10b98122",color:"#10b981",fontSize:10,fontWeight:700}}>Default</span>}
+              {m.id==="claude-opus-4-8"&&<span style={{padding:"2px 8px",borderRadius:99,background:"#10b98122",color:"#10b981",fontSize:10,fontWeight:700}}>Default</span>}
               {m.id==="claude-sonnet-4-6"&&<span style={{padding:"2px 8px",borderRadius:99,background:"#6366f122",color:"#6366f1",fontSize:10,fontWeight:700}}>Recommended</span>}
             </div>
           ))}
