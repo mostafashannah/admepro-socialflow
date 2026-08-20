@@ -48575,9 +48575,20 @@ Return ONLY valid JSON (no markdown, no explanation):
     const assigneeName = assignee?.name || "Unassigned";
     const assigneeEmail = overrides.assigned_to || assignee?.email || "";
 
+    // A task sent backward (rejected/returned) into Content or Design is
+    // active work again as of RIGHT NOW — if its due_date is a past day,
+    // leaving it there parks it on that old day's page (shown overdue,
+    // easy to miss) instead of showing up on today's timeline where the
+    // person now has to actually pick it back up. Rolls due_date to today
+    // and clears due_time so it re-packs naturally; a manually-picked
+    // date/time from the Move-to modal (overrides) always wins regardless.
+    const todayStr = new Date().toISOString().split("T")[0];
+    const needsDueDateBump = wentBackward && ["content_creation","design"].includes(newStage)
+      && !overrides.due_date && post.due_date && post.due_date < todayStr;
+
     const updatedPost = {...post, stage:newStage, assigned_to:assigneeEmail||post.assigned_to,
-      due_date: overrides.due_date || post.due_date,
-      due_time: overrides.due_time || post.due_time,
+      due_date: overrides.due_date || (needsDueDateBump ? todayStr : post.due_date),
+      due_time: overrides.due_time || (needsDueDateBump ? null : post.due_time),
       estimated_minutes: overrides.estimated_minutes || post.estimated_minutes,
       content_assigned_to: newStage==="content_creation" ? (assigneeEmail||post.assigned_to) : post.content_assigned_to,
       design_assigned_to: newStage==="design" ? (assigneeEmail||post.assigned_to) : post.design_assigned_to,
