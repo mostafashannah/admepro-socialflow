@@ -55,7 +55,7 @@ const uploadToStorage = async (rawFile, folder="uploads") => {
     // routinely takes longer than that to actually finish uploading on a
     // normal connection, well before anything is actually wrong — scale the
     // allowance with file size instead of failing large-but-healthy uploads.
-    const uploadTimeoutMs = Math.max(90000, Math.round(file.size / (300*1024)) * 1000);
+    const uploadTimeoutMs = Math.max(120000, Math.round(file.size / (150*1024)) * 1000);
     res = await fetchWithTimeout(`${SB_STORAGE_URL}/object/${SB_BUCKET}/${path}`, {
       method: "POST",
       headers: {
