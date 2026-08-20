@@ -17766,6 +17766,20 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
       // shaping/RTL layout, then gets embedded as an image, sidestepping
       // jsPDF's font limitation entirely.
       const hasArabic = (s) => /[؀-ۿݐ-ݿ]/.test(String(s||""));
+      // 'Segoe UI' (Windows-only) has no real Arabic glyph coverage on Mac/
+      // Linux — the browser silently falls back to whatever generic
+      // sans-serif is installed, which routinely botches Arabic letter
+      // joining (disconnected letterforms, stray floating dots). Loading a
+      // real Arabic webfont once and waiting for it guarantees correct
+      // shaping regardless of the machine generating the PDF.
+      if (!document.getElementById("sf-arabic-pdf-font")) {
+        const link = document.createElement("link");
+        link.id = "sf-arabic-pdf-font";
+        link.rel = "stylesheet";
+        link.href = "https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;700&display=swap";
+        document.head.appendChild(link);
+      }
+      try { await document.fonts.load("400 16px 'Noto Naskh Arabic'"); await document.fonts.load("700 16px 'Noto Naskh Arabic'"); await document.fonts.ready; } catch(e) {}
       const addWrapped = async (x, y, maxWidth, text, fontSize, opts={}) => {
         const str = String(text||"—");
         if (hasArabic(str) && window.html2canvas) {
@@ -17779,7 +17793,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
           // html2canvas has had bugs capturing fixed/negative-offset
           // elements at the wrong size, which produced the height
           // mismatches (overlap into the next field) seen last round.
-          div.style.cssText = `position:absolute;left:0;top:-99999px;width:${maxWidth}px;box-sizing:border-box;font-size:${fontSize}px;font-family:'Segoe UI',Tahoma,Arial,sans-serif;font-weight:${opts.bold?700:400};color:${opts.color||"#111827"};unicode-bidi:plaintext;text-align:${opts.align||"start"};white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;line-height:1.85;`;
+          div.style.cssText = `position:absolute;left:0;top:-99999px;width:${maxWidth}px;box-sizing:border-box;font-size:${fontSize}px;font-family:'Noto Naskh Arabic','Segoe UI',Tahoma,Arial,sans-serif;font-weight:${opts.bold?700:400};color:${opts.color||"#111827"};unicode-bidi:plaintext;text-align:${opts.align||"start"};white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;line-height:1.85;`;
           div.textContent = str;
           document.body.appendChild(div);
           let h = fontSize * 1.85;
