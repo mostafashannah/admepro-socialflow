@@ -17125,8 +17125,18 @@ const CLIENT_PORTAL_TOGGLEABLE_FEATURES = [
 // since this is project-management board sync, not an automation rule. ──
 const TRELLO_STAGE_LABELS = STAGES.filter(s=>!["approved"].includes(s.key));
 function TrelloConnectModal({open, onClose, client, existingIntegration, onSave}) {
-  const existingCreds = (()=>{ try{ return JSON.parse(existingIntegration?.credentials||"{}"); }catch(e){ return {}; } })();
-  const existingConfig = (()=>{ try{ return JSON.parse(existingIntegration?.config||"{}"); }catch(e){ return {}; } })();
+  // api.php's castRow() auto-decodes any string column that LOOKS like
+  // JSON (starts with { or [) — meant for array/object columns like
+  // design_assets, but it also catches credentials/config on
+  // integrations, which arrive as real objects here even though they're
+  // saved via JSON.stringify(). Calling JSON.parse() on an already-decoded
+  // object coerces it to the string "[object Object]" first, which throws
+  // and silently falls back to {} — exactly what made the Edit button
+  // open a blank form (all the API key/token/board fields empty) despite
+  // a real saved connection existing. parseMaybeJson (defined elsewhere)
+  // already handles both shapes correctly.
+  const existingCreds = parseMaybeJson(existingIntegration?.credentials, {});
+  const existingConfig = parseMaybeJson(existingIntegration?.config, {});
   const [apiKey,setApiKey] = useState(existingCreds.api_key||"");
   const [token,setToken] = useState(existingCreds.token||"");
   const [boardInput,setBoardInput] = useState(existingConfig.board_url||"");
@@ -27442,8 +27452,8 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
     app_key: existingIntegration.app_key,
     trigger: existingIntegration.trigger||"",
     action: existingIntegration.action||"",
-    credentials: (() => { try { return JSON.parse(existingIntegration.credentials||"{}"); } catch { return {}; } })(),
-    config: (() => { try { return JSON.parse(existingIntegration.config||"{}"); } catch { return {}; } })(),
+    credentials: parseMaybeJson(existingIntegration.credentials, {}),
+    config: parseMaybeJson(existingIntegration.config, {}),
     webhook_url: existingIntegration.webhook_url||"",
     client_id: existingIntegration.client_id||"",
     client_name: existingIntegration.client_name||"",
