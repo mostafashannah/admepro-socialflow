@@ -629,9 +629,17 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     // still needs to show on TODAY's timeline as completed work, not
     // vanish because its due_date doesn't match. Whichever day someone
     // genuinely did the work is the day it should show as done on.
+    // Checks the accumulated _completed_dates HISTORY, not just the latest
+    // _completed_at timestamp — a task finished yesterday, sent back for
+    // revision (which clears _completed_at for the new cycle), and
+    // finished again today shows as completed work on BOTH days, since
+    // both were genuinely worked and finished, not just the most recent one.
     const completedAtField = userRole==="graphic_designer" ? "design_completed_at" : userRole==="content_creator" ? "content_completed_at" : null;
+    const completedDatesField = userRole==="graphic_designer" ? "design_completed_dates" : userRole==="content_creator" ? "content_completed_dates" : null;
     const completedAt = completedAtField ? p[completedAtField] : null;
-    const completedOnViewedDay = !!(completedAt && parseSqlUtc(completedAt).toISOString().split("T")[0] === date);
+    let completedHistory = [];
+    try { const raw = completedDatesField ? p[completedDatesField] : null; completedHistory = raw ? (Array.isArray(raw) ? raw : JSON.parse(raw)) : []; } catch(e) { completedHistory = []; }
+    const completedOnViewedDay = completedHistory.includes(date) || !!(completedAt && parseSqlUtc(completedAt).toISOString().split("T")[0] === date);
     if (completedOnViewedDay) return true;
     if (ownedStage && p.stage !== ownedStage) return false;
     // This timeline is for capacity planning on work still actually IN
@@ -1082,7 +1090,7 @@ function sbTable(entityName) {
 // Known columns per table — used to strip unknown fields before POST/PATCH
 const SB_SCHEMA = {
   projects: ["title","description","client_id","client_name","status","start_date","end_date","platforms","team_members","project_type","posting_start","posting_end"],
-  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","text_on_visual","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","assigned_to_extra","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","published_platforms","platform_post_ids","estimated_minutes","content_assigned_to","due_date","due_time","task_type","revision_count","was_rejected","sector","content_completed_at","design_completed_at","design_assigned_to","published_at","pre_approval_stage"],
+  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","text_on_visual","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","assigned_to_extra","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","published_platforms","platform_post_ids","estimated_minutes","content_assigned_to","due_date","due_time","task_type","revision_count","was_rejected","sector","content_completed_at","design_completed_at","design_assigned_to","published_at","pre_approval_stage","design_completed_dates","content_completed_dates"],
   // address/website/contact_person were never real columns on the clients
   // table (mysql-schema.sql only has name/email/phone/logo_url/industry/
   // status/account_manager_id/notes/platforms/portal_password/username) —
@@ -48520,6 +48528,17 @@ Return ONLY valid JSON (no markdown, no explanation):
     setToast(` ${tasks.length} posts created for ${planForm.campaign}`);
   };
 
+  // Adds today's date to a task's design_completed_dates/content_completed_dates
+  // JSON-array history (deduped) — see the fields' own comments in
+  // handleStageChange for why this exists separately from the single
+  // _completed_at timestamp.
+  const appendCompletedDate = (existing) => {
+    let dates = [];
+    try { dates = existing ? (Array.isArray(existing) ? existing : JSON.parse(existing)) : []; } catch(e) { dates = []; }
+    const today = new Date().toISOString().split("T")[0];
+    if (!dates.includes(today)) dates = [...dates, today];
+    return JSON.stringify(dates);
+  };
   const handleStageChange = async (post,newStage,overrides={}) => {
     // Block transition if no assignee for stages that require one, unless the
     // caller (the assign+schedule modal) is supplying one right now via overrides.
@@ -48605,6 +48624,14 @@ Return ONLY valid JSON (no markdown, no explanation):
       // real (see the condition just above each of these).
       content_completed_at: (priorStage==="content_creation" && newStage!=="content_creation") ? new Date().toISOString() : (newStage==="content_creation" ? null : post.content_completed_at),
       design_completed_at: (priorStage==="design" && newStage!=="design") ? new Date().toISOString() : (newStage==="design" ? null : post.design_completed_at),
+      // Accumulates EVERY distinct day this task was actually finished —
+      // unlike the single _completed_at timestamp above (which gets
+      // overwritten/cleared each time the task cycles through the stage
+      // again), this never gets cleared, so a task finished yesterday, sent
+      // back, and finished again today shows as completed work on BOTH
+      // days on the Timeline (see generateDailySchedule), not just today.
+      content_completed_dates: (priorStage==="content_creation" && newStage!=="content_creation") ? appendCompletedDate(post.content_completed_dates) : post.content_completed_dates,
+      design_completed_dates: (priorStage==="design" && newStage!=="design") ? appendCompletedDate(post.design_completed_dates) : post.design_completed_dates,
       // Remembers whatever stage this was ACTUALLY in right before landing
       // on Client Approval — used by trello-webhook.php's "comments only +
       // sync approval moves" mode to send a rejected/bounced-back card to
