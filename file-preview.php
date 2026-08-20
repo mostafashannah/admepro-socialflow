@@ -26,7 +26,13 @@ $name = trim($_GET['n'] ?? '') ?: 'Attachment';
 $selfHost = $_SERVER['HTTP_HOST'] ?? '';
 $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
 
+$token = $_GET['t'] ?? '';
 $path = $_GET['p'] ?? '';
+if ($token !== '') {
+    $padded = $token . str_repeat('=', (4 - strlen($token) % 4) % 4);
+    $path = base64_decode(strtr($padded, '-_', '+/')) ?: '';
+}
+
 if ($path !== '') {
     $isOwnStorage = strpos($path, '/storage/') === 0;
     $url = $isOwnStorage ? "{$scheme}://{$selfHost}{$path}" : '';

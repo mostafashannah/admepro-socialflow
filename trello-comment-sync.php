@@ -64,14 +64,19 @@ $results = [];
 if ($text !== '' || $fileUrl !== '') {
     $body = ($authorName ? "{$authorName}: " : '') . $text;
     if ($fileUrl !== '') {
-        // Pass only the storage-relative path (?p=), not a full nested URL
-        // (?u=<encoded https://...>) — Trello's link-safety interstitial
-        // ("Check this link") triggers on a query string that embeds
-        // another full URL inside it, even when it's the same domain.
+        // A base64url token (no "/" or "%" characters) instead of a plain
+        // urlencoded path — Trello's link-safety interstitial ("Check this
+        // link") still triggered on a query string full of repeated %2F
+        // sequences (reads like a URL nested inside a URL), even after
+        // dropping the scheme+host. An opaque token sidesteps that.
+        // Posted as a Markdown link so only the file name is clickable,
+        // not the raw URL.
         $relPath = preg_replace('#^https?://[^/]+#', '', $fileUrl);
         $host = $_SERVER['HTTP_HOST'] ?? 'socialflow.admepro.com';
-        $previewUrl = "https://{$host}/file-preview.php?p=" . urlencode($relPath) . "&n=" . urlencode($fileName ?: 'Attachment');
-        $body = trim($body . "\n" . ($fileName ?: 'Attachment') . ": {$previewUrl}");
+        $token = rtrim(strtr(base64_encode($relPath), '+/', '-_'), '=');
+        $previewUrl = "https://{$host}/file-preview.php?t={$token}&n=" . urlencode($fileName ?: 'Attachment');
+        $label = $fileName ?: 'Attachment';
+        $body = trim($body . "\n[{$label}]({$previewUrl})");
     }
     $results['comment'] = trello_add_comment($apiKey, $token, $post['trello_card_id'], $body);
 }
