@@ -17717,18 +17717,34 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
         const str = String(text||"—");
         if (hasArabic(str) && window.html2canvas) {
           const div = document.createElement("div");
-          div.style.cssText = `position:fixed;left:-9999px;top:0;width:${maxWidth}px;font-size:${fontSize}px;font-family:'Segoe UI',Tahoma,Arial,sans-serif;font-weight:${opts.bold?700:400};color:${opts.color||"#111827"};direction:rtl;text-align:right;white-space:pre-wrap;line-height:1.35;`;
+          // unicode-bidi:plaintext (not a forced whole-block direction:rtl)
+          // lets the browser resolve each line's base direction from its
+          // own first strong character — correct for pure Arabic prose AND
+          // for mixed Arabic/English keyword lists, where forcing rtl on
+          // the whole block was reordering the English tokens oddly.
+          // position:absolute (not fixed) at a huge but positive offset —
+          // html2canvas has had bugs capturing fixed/negative-offset
+          // elements at the wrong size, which produced the height
+          // mismatches (overlap into the next field) seen last round.
+          div.style.cssText = `position:absolute;left:0;top:-99999px;width:${maxWidth}px;box-sizing:border-box;font-size:${fontSize}px;font-family:'Segoe UI',Tahoma,Arial,sans-serif;font-weight:${opts.bold?700:400};color:${opts.color||"#111827"};unicode-bidi:plaintext;text-align:${opts.align||"start"};white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;line-height:1.4;`;
           div.textContent = str;
           document.body.appendChild(div);
-          let h = fontSize * 1.35;
+          let h = fontSize * 1.4;
           try {
-            const canvas = await window.html2canvas(div, {backgroundColor:null, scale:3});
-            const imgH = canvas.height / (canvas.width / maxWidth);
-            pdf.addImage(canvas.toDataURL("image/png"), "PNG", x, y - fontSize, maxWidth, imgH);
-            h = imgH;
+            // Actual laid-out CSS pixel size, measured post-render — far
+            // more reliable than back-computing from the html2canvas
+            // output's raw pixel dimensions (which vary with device pixel
+            // ratio and the `scale` option), which is what produced both
+            // the vertical overlap AND the horizontal misplacement before.
+            const rect = div.getBoundingClientRect();
+            const measuredW = Math.max(1, Math.ceil(rect.width));
+            const measuredH = Math.max(1, Math.ceil(rect.height));
+            const canvas = await window.html2canvas(div, {backgroundColor:null, scale:3, width:measuredW, height:measuredH});
+            pdf.addImage(canvas.toDataURL("image/png"), "PNG", x, y - fontSize, measuredW, measuredH);
+            h = measuredH;
           } catch(e) { /* falls through — nothing drawn for this block, rest of the PDF still generates */ }
           document.body.removeChild(div);
-          return y + h;
+          return y + h + 6;
         }
         pdf.setFontSize(fontSize);
         pdf.setFont(undefined, opts.bold ? "bold" : "normal");
@@ -17797,23 +17813,19 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
         } catch(e) {}
       };
 
-      // ── Slide 1: cover, uploaded agency logo centered on white ──
+      // ── Slide 1: cover, full brand-red background, logo only (no title) ──
       const [brandR,brandG,brandB] = hexToRgb(brandingAssets?.primary_color||"#d90b2c");
-      pdf.setFillColor("#ffffff");
+      pdf.setFillColor(brandR,brandG,brandB);
       pdf.rect(0,0,W,H,"F");
-      const coverLogoData = await imgToDataURL(brandingAssets?.secondary_logo || brandingAssets?.primary_logo || "/icon-512.png");
+      // The light/white logo variant reads correctly on this red fill —
+      // the colored square logo used before would blend straight into a
+      // same-colored background.
+      const coverLogoData = await imgToDataURL(brandingAssets?.light_logo || brandingAssets?.secondary_logo || brandingAssets?.primary_logo || "/icon-512.png");
       if (coverLogoData) {
         const dims = await new Promise((resolve,reject)=>{ const im=new Image(); im.onload=()=>resolve({w:im.width,h:im.height}); im.onerror=reject; im.src=coverLogoData; }).catch(()=>({w:512,h:512}));
         const box = fitBox(dims.w, dims.h, 320, 160);
-        pdf.addImage(coverLogoData, (coverLogoData.match(/^data:image\/(\w+)/)||[])[1]==="png"?"PNG":"JPEG", (W-box.w)/2, (H-box.h)/2-30, box.w, box.h);
+        pdf.addImage(coverLogoData, (coverLogoData.match(/^data:image\/(\w+)/)||[])[1]==="png"?"PNG":"JPEG", (W-box.w)/2, (H-box.h)/2, box.w, box.h);
       }
-      // Brand-red accent rule under the logo, in the same red used
-      // throughout the rest of the app (Settings → Branding primary color).
-      pdf.setFillColor(brandR,brandG,brandB);
-      pdf.rect(W/2-40, H/2+80, 80, 4, "F");
-      pdf.setFontSize(22); pdf.setFont(undefined,"bold"); pdf.setTextColor("#111827");
-      pdf.text(project.title||"Content Calendar", W/2, H/2+130, {align:"center"});
-      await stampFooterLogo();
 
       // ── Slide 2: project title alone, on a dark-gray background ──
       pdf.addPage([W,H],"l");
