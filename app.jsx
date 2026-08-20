@@ -17704,11 +17704,36 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
         const ratio = Math.min(maxW/imgW, maxH/imgH);
         return {w: imgW*ratio, h: imgH*ratio};
       };
-      const addWrapped = (x, y, maxWidth, text, fontSize, opts={}) => {
+      // jsPDF's built-in fonts (Helvetica etc.) only cover Latin/WinAnsi
+      // glyphs — any Arabic text drawn through pdf.text() comes out as
+      // garbled mojibake, not actual Arabic characters. For Arabic content
+      // (keywords, objective, brief, captions — all commonly Arabic for
+      // this agency's clients), render it via a hidden DOM node snapshotted
+      // with html2canvas instead: that uses the browser's own real text
+      // shaping/RTL layout, then gets embedded as an image, sidestepping
+      // jsPDF's font limitation entirely.
+      const hasArabic = (s) => /[؀-ۿݐ-ݿ]/.test(String(s||""));
+      const addWrapped = async (x, y, maxWidth, text, fontSize, opts={}) => {
+        const str = String(text||"—");
+        if (hasArabic(str) && window.html2canvas) {
+          const div = document.createElement("div");
+          div.style.cssText = `position:fixed;left:-9999px;top:0;width:${maxWidth}px;font-size:${fontSize}px;font-family:'Segoe UI',Tahoma,Arial,sans-serif;font-weight:${opts.bold?700:400};color:${opts.color||"#111827"};direction:rtl;text-align:right;white-space:pre-wrap;line-height:1.35;`;
+          div.textContent = str;
+          document.body.appendChild(div);
+          let h = fontSize * 1.35;
+          try {
+            const canvas = await window.html2canvas(div, {backgroundColor:null, scale:3});
+            const imgH = canvas.height / (canvas.width / maxWidth);
+            pdf.addImage(canvas.toDataURL("image/png"), "PNG", x, y - fontSize, maxWidth, imgH);
+            h = imgH;
+          } catch(e) { /* falls through — nothing drawn for this block, rest of the PDF still generates */ }
+          document.body.removeChild(div);
+          return y + h;
+        }
         pdf.setFontSize(fontSize);
         pdf.setFont(undefined, opts.bold ? "bold" : "normal");
         pdf.setTextColor(opts.color || "#111827");
-        const lines = pdf.splitTextToSize(String(text||"—"), maxWidth);
+        const lines = pdf.splitTextToSize(str, maxWidth);
         pdf.text(lines, x, y);
         return y + lines.length * fontSize * 1.35;
       };
@@ -17773,6 +17798,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
       };
 
       // ── Slide 1: cover, uploaded agency logo centered on white ──
+      const [brandR,brandG,brandB] = hexToRgb(brandingAssets?.primary_color||"#d90b2c");
       pdf.setFillColor("#ffffff");
       pdf.rect(0,0,W,H,"F");
       const coverLogoData = await imgToDataURL(brandingAssets?.secondary_logo || brandingAssets?.primary_logo || "/icon-512.png");
@@ -17781,15 +17807,28 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
         const box = fitBox(dims.w, dims.h, 320, 160);
         pdf.addImage(coverLogoData, (coverLogoData.match(/^data:image\/(\w+)/)||[])[1]==="png"?"PNG":"JPEG", (W-box.w)/2, (H-box.h)/2-30, box.w, box.h);
       }
+      // Brand-red accent rule under the logo, in the same red used
+      // throughout the rest of the app (Settings → Branding primary color).
+      pdf.setFillColor(brandR,brandG,brandB);
+      pdf.rect(W/2-40, H/2+80, 80, 4, "F");
       pdf.setFontSize(22); pdf.setFont(undefined,"bold"); pdf.setTextColor("#111827");
       pdf.text(project.title||"Content Calendar", W/2, H/2+130, {align:"center"});
       await stampFooterLogo();
 
-      // ── Slide 2: client + calendar details ──
+      // ── Slide 2: project title alone, on a dark-gray background ──
+      pdf.addPage([W,H],"l");
+      pdf.setFillColor("#1f2937"); pdf.rect(0,0,W,H,"F");
+      pdf.setFontSize(52); pdf.setFont(undefined,"bold"); pdf.setTextColor("#ffffff");
+      pdf.text(project.title||"Content Calendar", W/2, H/2, {align:"center"});
+      pdf.setFillColor(brandR,brandG,brandB);
+      pdf.rect(W/2-50, H/2+34, 100, 5, "F");
+      await stampFooterLogo();
+
+      // ── Slide 3: client + calendar details ──
       pdf.addPage([W,H],"l");
       pdf.setFillColor("#ffffff"); pdf.rect(0,0,W,H,"F");
       let y = M;
-      y = addWrapped(M, y, W-M*2, client?.name||project.client_name||"Client", 26, {bold:true}) + 10;
+      y = await addWrapped(M, y, W-M*2, client?.name||project.client_name||"Client", 26, {bold:true}) + 10;
       const fields = [
         ["Month", monthLabel],
         ["Start Date", startDate || "—"],
@@ -17800,14 +17839,14 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
         ["Objective", objective],
         ["Brief", brief],
       ];
-      fields.forEach(([label,val])=>{
+      for (const [label,val] of fields) {
         pdf.setFontSize(11); pdf.setFont(undefined,"bold"); pdf.setTextColor("#6b7280");
         pdf.text(label.toUpperCase(), M, y);
-        y = addWrapped(M, y+18, W-M*2, val, 14) + 14;
-      });
+        y = await addWrapped(M, y+18, W-M*2, val, 14) + 14;
+      }
       await stampFooterLogo();
 
-      // ── Slide 3: full grid screenshot ──
+      // ── Slide 4: full grid screenshot ──
       pdf.addPage([W,H],"l");
       pdf.setFillColor("#ffffff"); pdf.rect(0,0,W,H,"F");
       const statusBadges = gridExportRef.current.querySelectorAll(".sf-grid-status-badge");
@@ -17851,20 +17890,20 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
 
         const tx = M + mediaBoxW + 50, tw = W - tx - M;
         let ty = M;
-        ty = addWrapped(tx, ty+10, tw, post.title||"Untitled", 20, {bold:true}) + 6;
+        ty = await addWrapped(tx, ty+10, tw, post.title||"Untitled", 20, {bold:true}) + 6;
         const plts = Array.isArray(post.platforms) ? post.platforms : parseJ(post.platforms||"[]");
         const pltLabel = (plts.length?plts:[post.platform]).filter(Boolean).join(", ");
-        ty = addWrapped(tx, ty, tw, `${pltLabel||"—"}  ·  ${post.scheduled_date||"No date"}${post.scheduled_time?` at ${post.scheduled_time}`:""}`, 12, {color:"#6b7280"}) + 16;
+        ty = await addWrapped(tx, ty, tw, `${pltLabel||"—"}  ·  ${post.scheduled_date||"No date"}${post.scheduled_time?` at ${post.scheduled_time}`:""}`, 12, {color:"#6b7280"}) + 16;
 
-        const block = (label, val) => {
+        const block = async (label, val) => {
           pdf.setFontSize(10); pdf.setFont(undefined,"bold"); pdf.setTextColor("#6b7280");
           pdf.text(label.toUpperCase(), tx, ty);
-          ty = addWrapped(tx, ty+16, tw, val, 13) + 14;
+          ty = await addWrapped(tx, ty+16, tw, val, 13) + 14;
         };
-        if (post.text_on_visual) block("Text on Visual", post.text_on_visual);
-        if (post.caption) block("Caption", post.caption);
-        if (post.hashtags) block("Hashtags", post.hashtags);
-        block("Stage", STAGE_MAP[post.stage]?.label || post.stage);
+        if (post.text_on_visual) await block("Text on Visual", post.text_on_visual);
+        if (post.caption) await block("Caption", post.caption);
+        if (post.hashtags) await block("Hashtags", post.hashtags);
+        await block("Stage", STAGE_MAP[post.stage]?.label || post.stage);
         await stampFooterLogo();
       }
 
