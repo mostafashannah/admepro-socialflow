@@ -48847,11 +48847,15 @@ Return ONLY valid JSON (no markdown, no explanation):
     }).catch(()=>{});
     // Mirror this comment (and its attachment, if any) onto the client's
     // Trello card, if one's connected — best-effort, never blocks the
-    // real comment from saving.
-    fetch("/trello-comment-sync.php", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({
-      post_id: postId, text: content, author_name: user?.name||"User",
-      file_url: attachment?.file_url||"", file_name: attachment?.file_name||"",
-    })}).catch(()=>{});
+    // real comment from saving. Only client-facing comments go out —
+    // internal-only ones (like the "Forwarded ... to client" activity log
+    // entry) must not also show up as a second Trello comment.
+    if (audience === "client") {
+      fetch("/trello-comment-sync.php", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({
+        post_id: postId, text: content, author_name: user?.name||"User",
+        file_url: attachment?.file_url||"", file_name: attachment?.file_name||"",
+      })}).catch(()=>{});
+    }
     // Detect @mentions — in-app + email notifications
     const post = data.posts.find(p=>p.id===postId);
     const project = post ? data.projects.find(p=>p.id===post.project_id) : null;
