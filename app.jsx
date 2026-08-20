@@ -10079,7 +10079,7 @@ function HRDashboard({team,perfLogs,currentUser,setPage}) {
   );
 }
 
-function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAddTask,onCreateInvoice,onAddProject,onOpenPost,onMarkNotifRead,onSaveInsights}) {
+function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAddTask,onCreateInvoice,onAddProject,onOpenPost,onMarkNotifRead,onSaveInsights,onDecideLeaveRequest}) {
   if(currentUser?.role==="hr") return <HRDashboard team={data.team} perfLogs={data.perfLogs||[]} currentUser={currentUser} setPage={setPage}/>;
   const {posts,projects,clients,team,timelogs,notifications} = data;
   const perfLogs = data.perfLogs||[];
@@ -10280,6 +10280,48 @@ No markdown, no explanation.`;
       {/* ════ OVERVIEW TAB ════ */}
       {(tab==="overview"||!isAdmin)&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
+          {/* A vacation/WFH/personal-leave request used to only ever surface
+              via the manager's WhatsApp/email/notification-bell ping and
+              Team → Leave & WFH (buried a few clicks deep) — nothing put it
+              in front of them where they actually work every day. Shows
+              only requests where THIS person is the direct manager (or all
+              of them for admin, matching the existing Team-page behavior),
+              so it isn't noise for anyone else. */}
+          {(()=>{
+            const me = (team||[]).find(m=>m.email===currentUser?.email);
+            const myPending = (data.leaveRequests||[]).filter(r=>{
+              if(r.status!=="pending") return false;
+              if(isAdmin) return true;
+              const requester = (team||[]).find(m=>m.id===r.team_member_id);
+              return !!(me && requester?.manager_id===me.id);
+            });
+            if(!myPending.length) return null;
+            const typeLabel = t => t==="vacation"?"Vacation":t==="personal_leave"?"Personal Leave":"WFH";
+            return (
+              <div style={{background:"var(--surface)",border:"1px solid #f59e0b44",borderRadius:"var(--r)",overflow:"hidden"}}>
+                <div style={{padding:"12px 16px",background:"#f59e0b11",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:16}}>🗓️</span>
+                  <p style={{fontSize:13,fontWeight:700}}>{myPending.length} leave/WFH request{myPending.length!==1?"s":""} awaiting your decision</p>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:10,padding:14}}>
+                  {myPending.map(r=>(
+                    <div key={r.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <p style={{fontSize:13,fontWeight:600}}>{r.member_name} — {typeLabel(r.type)}</p>
+                        <p style={{fontSize:12,color:"var(--text2)"}}>{r.start_date===r.end_date?r.start_date:`${r.start_date} → ${r.end_date}`} · {r.type==="personal_leave"?`${r.start_time&&r.end_time?`${r.start_time.slice(0,5)}–${r.end_time.slice(0,5)} · `:""}${r.hours}h`:`${r.days} day(s)`}</p>
+                        {r.reason&&<p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>"{r.reason}"</p>}
+                      </div>
+                      <div style={{display:"flex",gap:6,flexShrink:0}}>
+                        <button onClick={()=>onDecideLeaveRequest&&onDecideLeaveRequest(r,"approve")} style={{background:"#10b981",color:"#fff",border:"none",borderRadius:7,padding:"6px 14px",cursor:"pointer",fontWeight:600,fontSize:12}}>Approve</button>
+                        <button onClick={()=>onDecideLeaveRequest&&onDecideLeaveRequest(r,"reject")} style={{background:"#ef444422",color:"#ef4444",border:"none",borderRadius:7,padding:"6px 14px",cursor:"pointer",fontWeight:600,fontSize:12}}>Reject</button>
+                        <button onClick={()=>setPage&&setPage("team")} style={{background:"var(--surface)",color:"var(--text2)",border:"1px solid var(--border2)",borderRadius:7,padding:"6px 12px",cursor:"pointer",fontWeight:600,fontSize:12}}>View</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           {/* KPI Cards */}
           {isMobile ? (
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
@@ -49598,6 +49640,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
               }}
             />}
           {page==="dashboard"&&<DashboardPage data={data} currentUser={currentUser} setPage={setPage}
+              onDecideLeaveRequest={decideLeaveRequest}
               onAddClient={()=>setShowFABClient(true)}
               onAddCalendar={()=>{setCalendarPreselectedClient(null);setShowFABCalendar(true);}}
               onAddTask={()=>setShowFABTask(true)}
