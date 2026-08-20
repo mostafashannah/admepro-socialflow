@@ -63,7 +63,10 @@ if ($direction === 'from_trello' && empty($config['push_comments_out'])) { echo 
 $results = [];
 if ($text !== '' || $fileUrl !== '') {
     $body = ($authorName ? "{$authorName}: " : '') . $text;
-    if ($fileUrl !== '') $body = trim($body . "\n" . ($fileName ?: 'Attachment') . ": {$fileUrl}");
+    if ($fileUrl !== '') {
+        $previewUrl = "https://" . ($_SERVER['HTTP_HOST'] ?? 'socialflow.admepro.com') . "/file-preview.php?u=" . urlencode($fileUrl) . "&n=" . urlencode($fileName ?: 'Attachment');
+        $body = trim($body . "\n" . ($fileName ?: 'Attachment') . ": {$previewUrl}");
+    }
     $results['comment'] = trello_add_comment($apiKey, $token, $post['trello_card_id'], $body);
 }
 
