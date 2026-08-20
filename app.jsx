@@ -1652,13 +1652,24 @@ async function sendCareersEmail(to, subject, html, fromName="Admepro Careers") {
 
 // ── Pro AI preferences (model + speed), set from Settings → AI & Tokens ──
 function getAIPrefs() {
-  // Sonnet 5 is the default brain for Pro — Anthropic's current flagship,
-  // still switchable from Settings → AI & Tokens.
-  let model = "claude-sonnet-5", speed = "medium", fallbackModel = "";
+  // claude-sonnet-4-6 is the default brain for Pro — a known-working model
+  // id on this account (same one pro-lib.php's WhatsApp bot uses reliably).
+  // "claude-sonnet-5" was tried as the default but the API rejected it
+  // ("did not match the expected pattern" — not a valid/launched alias on
+  // this account), which broke every Pro/Sara/Mai chat send. Switchable
+  // from Settings → AI & Tokens.
+  let model = "claude-sonnet-4-6", speed = "medium", fallbackModel = "";
+  // Anyone who loaded the app during the brief window "claude-sonnet-5"/
+  // "claude-opus-5" were the default has that invalid id cached in their
+  // own browser as an explicit preference — auto-correct it back rather
+  // than leave them permanently stuck erroring on every send.
+  const KNOWN_BAD_MODEL_IDS = new Set(["claude-sonnet-5", "claude-opus-5"]);
   try {
-    model = localStorage.getItem("sf_ai_model") || model;
+    const stored = localStorage.getItem("sf_ai_model");
+    model = (stored && !KNOWN_BAD_MODEL_IDS.has(stored)) ? stored : model;
     speed = localStorage.getItem("sf_ai_speed") || speed;
     fallbackModel = localStorage.getItem("sf_ai_fallback_model") || "";
+    if (fallbackModel && KNOWN_BAD_MODEL_IDS.has(fallbackModel)) fallbackModel = "";
   } catch(e) {}
   return {model, speed, fallbackModel};
 }
@@ -30671,8 +30682,8 @@ function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfill
 
   const MODELS = [
     {id:"claude-haiku-4-5-20251001", name:"Claude Haiku 4.5", tier:"Fast & cheap", input:1.00, output:5.00, ctx:"200K"},
-    {id:"claude-sonnet-5", name:"Claude Sonnet 5", tier:"Balanced", input:3.00, output:15.00, ctx:"1M"},
-    {id:"claude-opus-5", name:"Claude Opus 5", tier:"Most capable", input:5.00, output:25.00, ctx:"1M"},
+    {id:"claude-sonnet-4-6", name:"Claude Sonnet 4.6", tier:"Balanced", input:3.00, output:15.00, ctx:"1M"},
+    {id:"claude-opus-4-8", name:"Claude Opus 4.8", tier:"Most capable", input:5.00, output:25.00, ctx:"1M"},
     {id:"claude-fable-5", name:"Claude Fable 5", tier:"Frontier", input:10.00, output:50.00, ctx:"1M"},
     {id:"gpt-5.1", name:"GPT-5.1 (OpenAI)", tier:"OpenAI flagship", input:1.25, output:10.00, ctx:"400K"},
   ];
@@ -30845,7 +30856,7 @@ function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfill
                 <p style={{fontWeight:700,fontSize:13,color:"var(--text)"}}>{m.name}</p>
                 <p style={{fontSize:11,color:"var(--text3)"}}>{m.tier} · {m.ctx} context · ${m.input}/M in · ${m.output}/M out</p>
               </div>
-              {m.id==="claude-sonnet-5"&&<span style={{padding:"2px 8px",borderRadius:99,background:"#10b98122",color:"#10b981",fontSize:10,fontWeight:700}}>Default</span>}
+              {m.id==="claude-sonnet-4-6"&&<span style={{padding:"2px 8px",borderRadius:99,background:"#10b98122",color:"#10b981",fontSize:10,fontWeight:700}}>Default</span>}
               {m.id==="claude-sonnet-4-6"&&<span style={{padding:"2px 8px",borderRadius:99,background:"#6366f122",color:"#6366f1",fontSize:10,fontWeight:700}}>Recommended</span>}
             </div>
           ))}
@@ -41484,6 +41495,14 @@ function ChatMessage({msg, isTyping, onConfirm, onReject, onExecuteAction}) {
           background:msg.type==="success"?"#dcfce7":msg.type==="error"?"#fee2e2":msg.type==="info"?"#eff6ff":isBot?"transparent":"var(--accent)",
           color:msg.type==="success"?"#166534":msg.type==="error"?"#991b1b":msg.type==="info"?"#1e40af":isBot?"var(--text)":"#fff",
           wordBreak:"break-word",unicodeBidi:"plaintext",textAlign:"start",
+          // Bot replies go through renderChatMd, which builds its own
+          // per-line block elements regardless of CSS — but a plain user
+          // message (e.g. pasted multi-line text) is dumped in as a raw
+          // string, and without this, real newlines in it silently
+          // collapse into one run-on paragraph (default CSS white-space
+          // behavior), which is exactly what made a pasted old reply look
+          // like an unbroken wall of text.
+          ...(isBot ? {} : {whiteSpace:"pre-wrap"}),
         }}>{isBot ? renderChatMd(displayText) : displayText}</div>
 
         {/* Confirmation card */}
