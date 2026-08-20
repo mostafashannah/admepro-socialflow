@@ -64,5 +64,12 @@ $err    = curl_error($ch);
 curl_close($ch);
 
 if($err){ http_response_code(500); echo json_encode(["error"=>"cURL error: $err"]); exit; }
+if($status < 200 || $status >= 300){
+  // "The string did not match the expected pattern" reports have recurred
+  // with no visibility into WHICH field Anthropic actually rejected —
+  // log the full error body server-side so it can be diagnosed instead of
+  // guessed at again.
+  error_log("[ai-proxy] Anthropic API error, HTTP $status: " . substr((string)$res, 0, 2000));
+}
 http_response_code($status >= 200 && $status < 300 ? 200 : $status);
 echo $res ?: json_encode(["error"=>"No response from Anthropic"]);
