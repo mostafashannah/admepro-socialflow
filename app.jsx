@@ -30869,7 +30869,14 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
   const [form, setForm] = useState({
     display_name: userProfile?.display_name || currentUser?.name || "",
     mobile: userProfile?.mobile || "",
-    whatsapp_number: userProfile?.whatsapp_number || "",
+    // Falls back to the Team Management record (the actual source of truth
+    // notifications read from) when the separate user_profiles row never
+    // had this set — otherwise the field loads blank even though a real
+    // number exists, and saving ANY unrelated profile change (display
+    // name, bio, wallpaper) mirrors that blank back into team_members,
+    // silently wiping a working WhatsApp number (confirmed: exactly what
+    // happened to Monay Khalid on Aug 18).
+    whatsapp_number: userProfile?.whatsapp_number || teamMember?.whatsapp_number || "",
     bio: userProfile?.bio || teamMember?.title || "",
     language: userProfile?.language || "en",
   });
