@@ -12744,13 +12744,15 @@ function ClientLoginsTab({client,onUpdateClient,canAdd=false,canEdit=false}) {
   );
 }
 
-function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,onAddCalendar,onAddTask,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],onSaveContactReport,onDeleteContactReport,leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient,integrationLogs=[],onAddIntegration,onUpdateIntegration,onDeleteIntegration,onRetryIntegration,brandingAssets,deepLinkContactReportId,contactReportActivity=[],clientUsers=[],onStageChange}) {
+function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,onAddCalendar,onAddTask,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],onSaveContactReport,onDeleteContactReport,leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient,integrationLogs=[],onAddIntegration,onUpdateIntegration,onDeleteIntegration,onRetryIntegration,brandingAssets,deepLinkContactReportId,contactReportActivity=[],clientUsers=[],onStageChange,initialTab}) {
   const {isMobile} = useResponsive();
   // Plain state, not persisted — opening any client should always start on
   // Overview, not silently reopen to whatever tab was last viewed for them —
   // except a contact-report email's internal link, which should land
-  // straight on that exact report instead.
-  const [tab,setTab] = useState(deepLinkContactReportId!==undefined && deepLinkContactReportId!==null ? "brain" : "overview");
+  // straight on that exact report instead, or coming back from a project
+  // opened from this client's own Projects tab, which should land back on
+  // Projects instead of resetting to Overview.
+  const [tab,setTab] = useState(initialTab || (deepLinkContactReportId!==undefined && deepLinkContactReportId!==null ? "brain" : "overview"));
   const [showEdit,setShowEdit] = useState(false);
   const [confirmDelete,setConfirmDelete] = useState(false);
   const [showAddMenu,setShowAddMenu] = useState(false);
@@ -45964,6 +45966,7 @@ function App() {
   // Projects list — those are two different starting points and Back
   // should honor whichever one was actually used.
   const [returnToClientId,setReturnToClientId] = useState(null);
+  const [clientInitialTab,setClientInitialTab] = useState(null);
   const [showAddPost,setShowAddPost] = useState(false);
   const [addPostPresetSlot,setAddPostPresetSlot] = useState(null);
   const [addTaskPresetSlot,setAddTaskPresetSlot] = useState(null);
@@ -49717,13 +49720,14 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
           const selectedClient = data.clients.find(c=>c.id===selectedClientId)||null;
           if(!selectedClient) return (
             <ClientsPage clients={data.clients} projects={data.projects} posts={data.posts} team={data.team}
-              onAdd={addClient} onSelect={c=>{setSelectedClientId(c.id);}}
+              onAdd={addClient} onSelect={c=>{setSelectedClientId(c.id);setClientInitialTab(null);}}
               currentUser={currentUser} onToggleHide={toggleHideClient}/>
           );
           return (
             <ClientDetailPage key={selectedClient.id} client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} onAddAsset={addAsset} currentUser={currentUser} onImpersonateClient={impersonateClient} onStageChange={handleStageChange}
               clientUsers={data.clientUsers||[]}
               deepLinkContactReportId={contactReportDeepLink?.clientId===selectedClient.id ? contactReportDeepLink.reportId : null}
+              initialTab={clientInitialTab}
               contactReportActivity={data.contactReportActivity||[]}
               contactReports={data.contactReports||[]}
               onSaveContactReport={saveContactReport}
@@ -49791,7 +49795,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
   initialProjectId={selectedProjectId}
   onClearInitialProject={()=>setSelectedProjectId(null)}
   returnToClientId={returnToClientId}
-  onBackToClient={()=>{ setPage("clients"); setSelectedClientId(returnToClientId); setReturnToClientId(null); }}
+  onBackToClient={()=>{ setPage("clients"); setSelectedClientId(returnToClientId); setClientInitialTab("projects"); setReturnToClientId(null); }}
   onClearReturnToClient={()=>setReturnToClientId(null)}
   brandingAssets={data.brandingAssets}
 />}
