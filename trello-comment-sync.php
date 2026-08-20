@@ -73,8 +73,8 @@ if ($text !== '' || $fileUrl !== '') {
         // not the raw URL.
         $relPath = preg_replace('#^https?://[^/]+#', '', $fileUrl);
         $host = $_SERVER['HTTP_HOST'] ?? 'socialflow.admepro.com';
-        $token = rtrim(strtr(base64_encode($relPath), '+/', '-_'), '=');
-        $previewUrl = "https://{$host}/file-preview.php?t={$token}&n=" . urlencode($fileName ?: 'Attachment');
+        $previewToken = rtrim(strtr(base64_encode($relPath), '+/', '-_'), '=');
+        $previewUrl = "https://{$host}/file-preview.php?t={$previewToken}&n=" . urlencode($fileName ?: 'Attachment');
         $label = $fileName ?: 'Attachment';
         $body = trim($body . "\n[{$label}]({$previewUrl})");
     }
