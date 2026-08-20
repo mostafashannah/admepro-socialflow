@@ -17204,6 +17204,16 @@ function TrelloConnectModal({open, onClose, client, existingIntegration, onSave}
     setFetching(false);
   };
 
+  // Editing an existing connection pre-fills the credentials/board fields
+  // (see the parseMaybeJson fix above) but the Sync Direction/list-mapping
+  // section only ever renders once `lists` is populated — that used to
+  // require clicking "Fetch Lists" again for literally no reason on an
+  // already-working connection, so the actual permission/direction
+  // controls the user opened Edit to reach were invisible until then.
+  useEffect(() => {
+    if(existingIntegration?.id && apiKey.trim() && token.trim() && boardInput.trim()) fetchLists();
+  }, [existingIntegration?.id]);
+
   const save = async () => {
     if(!board?.id){ setError("Fetch the board's lists before saving."); return; }
     setSaving(true); setError("");
