@@ -50,7 +50,12 @@ const uploadToStorage = async (rawFile, folder="uploads") => {
   try {
     // No timeout here would let a stalled mobile connection hang this
     // fetch forever — the caller's "Submitting…" button would never
-    // recover since neither success nor the catch block ever fires.
+    // recover since neither success nor the catch block ever fires. A flat
+    // 90s was fine for images/PDFs but a large video (e.g. a 90MB reel)
+    // routinely takes longer than that to actually finish uploading on a
+    // normal connection, well before anything is actually wrong — scale the
+    // allowance with file size instead of failing large-but-healthy uploads.
+    const uploadTimeoutMs = Math.max(90000, Math.round(file.size / (300*1024)) * 1000);
     res = await fetchWithTimeout(`${SB_STORAGE_URL}/object/${SB_BUCKET}/${path}`, {
       method: "POST",
       headers: {
@@ -60,7 +65,7 @@ const uploadToStorage = async (rawFile, folder="uploads") => {
         "x-upsert": "true",
       },
       body: file,
-    }, 90000);
+    }, uploadTimeoutMs);
   } catch(e) {
     if(e?.name==="AbortError") throw new Error("Upload timed out — your connection may be too slow or unstable. Please try again.");
     throw new Error("Upload failed: " + (e?.message||e));
