@@ -24724,7 +24724,10 @@ function CareersPage({appSettings}) {
         sendCareersEmail(form.email.trim(), es.confirmation_subject||"Thanks for applying to Admepro!", applicationReceivedEmail(form.name.trim(), selected.title, es.confirmation_message), es.confirmation_from_name||"Admepro Careers").catch(()=>{});
         if(created?.id) logApplicationActivity(created.id, "Welcome email sent", "System");
       }
-    } catch(e) { alert("Something went wrong submitting your application. Please try again."); }
+    } catch(e) {
+      console.error("[Careers] application submit failed:", e);
+      alert(`Something went wrong submitting your application. Please try again.${e?.message ? `\n\n(${e.message})` : ""}`);
+    }
     setSubmitting(false);
   };
 
