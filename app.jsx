@@ -1652,10 +1652,9 @@ async function sendCareersEmail(to, subject, html, fromName="Admepro Careers") {
 
 // ── Pro AI preferences (model + speed), set from Settings → AI & Tokens ──
 function getAIPrefs() {
-  // Opus is the default brain for Pro — noticeably smarter than Sonnet on
-  // multi-step reasoning, document understanding, and long conversations,
+  // Sonnet 5 is the default brain for Pro — Anthropic's current flagship,
   // still switchable from Settings → AI & Tokens.
-  let model = "claude-opus-4-8", speed = "medium", fallbackModel = "";
+  let model = "claude-sonnet-5", speed = "medium", fallbackModel = "";
   try {
     model = localStorage.getItem("sf_ai_model") || model;
     speed = localStorage.getItem("sf_ai_speed") || speed;
@@ -30672,8 +30671,8 @@ function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfill
 
   const MODELS = [
     {id:"claude-haiku-4-5-20251001", name:"Claude Haiku 4.5", tier:"Fast & cheap", input:1.00, output:5.00, ctx:"200K"},
-    {id:"claude-sonnet-4-6", name:"Claude Sonnet 4.6", tier:"Balanced", input:3.00, output:15.00, ctx:"1M"},
-    {id:"claude-opus-4-8", name:"Claude Opus 4.8", tier:"Most capable", input:5.00, output:25.00, ctx:"1M"},
+    {id:"claude-sonnet-5", name:"Claude Sonnet 5", tier:"Balanced", input:3.00, output:15.00, ctx:"1M"},
+    {id:"claude-opus-5", name:"Claude Opus 5", tier:"Most capable", input:5.00, output:25.00, ctx:"1M"},
     {id:"claude-fable-5", name:"Claude Fable 5", tier:"Frontier", input:10.00, output:50.00, ctx:"1M"},
     {id:"gpt-5.1", name:"GPT-5.1 (OpenAI)", tier:"OpenAI flagship", input:1.25, output:10.00, ctx:"400K"},
   ];
@@ -30846,7 +30845,7 @@ function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfill
                 <p style={{fontWeight:700,fontSize:13,color:"var(--text)"}}>{m.name}</p>
                 <p style={{fontSize:11,color:"var(--text3)"}}>{m.tier} · {m.ctx} context · ${m.input}/M in · ${m.output}/M out</p>
               </div>
-              {m.id==="claude-opus-4-8"&&<span style={{padding:"2px 8px",borderRadius:99,background:"#10b98122",color:"#10b981",fontSize:10,fontWeight:700}}>Default</span>}
+              {m.id==="claude-sonnet-5"&&<span style={{padding:"2px 8px",borderRadius:99,background:"#10b98122",color:"#10b981",fontSize:10,fontWeight:700}}>Default</span>}
               {m.id==="claude-sonnet-4-6"&&<span style={{padding:"2px 8px",borderRadius:99,background:"#6366f122",color:"#6366f1",fontSize:10,fontWeight:700}}>Recommended</span>}
             </div>
           ))}
