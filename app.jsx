@@ -637,9 +637,13 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     const completedAtField = userRole==="graphic_designer" ? "design_completed_at" : userRole==="content_creator" ? "content_completed_at" : null;
     const completedDatesField = userRole==="graphic_designer" ? "design_completed_dates" : userRole==="content_creator" ? "content_completed_dates" : null;
     const completedAt = completedAtField ? p[completedAtField] : null;
+    // History entries are {date, duration_mins} snapshots — each completion
+    // cycle (finished, sent back, finished again) writes its own frozen
+    // record, so re-rendering a past day never depends on whatever the
+    // task's CURRENT live duration/estimate happens to be right now.
     let completedHistory = [];
     try { const raw = completedDatesField ? p[completedDatesField] : null; completedHistory = raw ? (Array.isArray(raw) ? raw : JSON.parse(raw)) : []; } catch(e) { completedHistory = []; }
-    const completedOnViewedDay = completedHistory.includes(date) || !!(completedAt && parseSqlUtc(completedAt).toISOString().split("T")[0] === date);
+    const completedOnViewedDay = completedHistory.some(h=>h.date===date) || !!(completedAt && parseSqlUtc(completedAt).toISOString().split("T")[0] === date);
     if (completedOnViewedDay) return true;
     if (ownedStage && p.stage !== ownedStage) return false;
     // This timeline is for capacity planning on work still actually IN
@@ -737,7 +741,8 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     // finished this day — the reset only affects its CURRENT cycle.
     let completedHistoryLocal = [];
     try { const raw = completedDatesField ? post[completedDatesField] : null; completedHistoryLocal = raw ? (Array.isArray(raw) ? raw : JSON.parse(raw)) : []; } catch(e) { completedHistoryLocal = []; }
-    const completedToday = completedHistoryLocal.includes(date) || !!(completedAt && parseSqlUtc(completedAt).toISOString().split("T")[0] === date);
+    const historyEntry = completedHistoryLocal.find(h=>h.date===date);
+    const completedToday = !!historyEntry || !!(completedAt && parseSqlUtc(completedAt).toISOString().split("T")[0] === date);
     // The real-elapsed-time override only kicks in when the move actually
     // just happened (within the last 2 hours) — a fresh completion is
     // trustworthy live data worth showing honestly (e.g. a 1hr block
@@ -754,6 +759,16 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
         if(actual > 0) dur = Math.min(actual, est*3);
       }
     }
+    // A FROZEN historical snapshot wins over both the live estimate AND the
+    // real-elapsed override above, UNLESS this is that same fresh (<=2h)
+    // live completion the override just handled — leave that one alone so
+    // the real-elapsed feature above still behaves exactly as before. Any
+    // other snapshotted cycle (an older completion, or viewed on a
+    // different day) must never drift just because the task's current live
+    // estimated_minutes changed later — each cycle keeps the duration it
+    // actually had.
+    const isFreshLiveCompletion = completedAt && date===today && (()=>{ const mins=(Date.now()-parseSqlUtc(completedAt).getTime())/60000; return mins>=0 && mins<=120; })();
+    if(historyEntry && Number.isFinite(historyEntry.duration_mins) && !isFreshLiveCompletion) dur = historyEntry.duration_mins;
     slots.push({
       post_id: post.id,
       start_mins: cursor,
@@ -48545,16 +48560,31 @@ Return ONLY valid JSON (no markdown, no explanation):
     setToast(` ${tasks.length} posts created for ${planForm.campaign}`);
   };
 
-  // Adds today's date to a task's design_completed_dates/content_completed_dates
-  // JSON-array history (deduped) — see the fields' own comments in
-  // handleStageChange for why this exists separately from the single
-  // _completed_at timestamp.
-  const appendCompletedDate = (existing) => {
-    let dates = [];
-    try { dates = existing ? (Array.isArray(existing) ? existing : JSON.parse(existing)) : []; } catch(e) { dates = []; }
+  // Adds a {date, duration_mins} snapshot to a task's
+  // design_completed_dates/content_completed_dates JSON-array history — see
+  // the fields' own comments in handleStageChange for why this exists
+  // separately from the single _completed_at timestamp. duration_mins is
+  // frozen at the moment of THIS completion (via estimateDuration, reading
+  // whatever estimated_minutes/post_type/priority the task had right now)
+  // so a later edit to the task's live duration, or it cycling through
+  // again, never reaches back and changes how a past day's block rendered
+  // (see generateDailySchedule's historyEntry lookup).
+  const appendCompletedDate = (existing, post) => {
+    let entries = [];
+    try {
+      const parsed = existing ? (Array.isArray(existing) ? existing : JSON.parse(existing)) : [];
+      // Migrates old plain-string-date entries (from before duration
+      // snapshotting existed) into the {date, duration_mins} shape,
+      // backfilling a best-effort estimate since the real one wasn't
+      // captured at the time.
+      entries = parsed.map(e => typeof e === "string" ? {date:e, duration_mins:estimateDuration(post)} : e);
+    } catch(e) { entries = []; }
     const today = new Date().toISOString().split("T")[0];
-    if (!dates.includes(today)) dates = [...dates, today];
-    return JSON.stringify(dates);
+    const duration_mins = estimateDuration(post);
+    const idx = entries.findIndex(e=>e.date===today);
+    if (idx >= 0) entries[idx] = {date:today, duration_mins};
+    else entries = [...entries, {date:today, duration_mins}];
+    return JSON.stringify(entries);
   };
   const handleStageChange = async (post,newStage,overrides={}) => {
     // Block transition if no assignee for stages that require one, unless the
@@ -48647,8 +48677,8 @@ Return ONLY valid JSON (no markdown, no explanation):
       // again), this never gets cleared, so a task finished yesterday, sent
       // back, and finished again today shows as completed work on BOTH
       // days on the Timeline (see generateDailySchedule), not just today.
-      content_completed_dates: (priorStage==="content_creation" && newStage!=="content_creation") ? appendCompletedDate(post.content_completed_dates) : post.content_completed_dates,
-      design_completed_dates: (priorStage==="design" && newStage!=="design") ? appendCompletedDate(post.design_completed_dates) : post.design_completed_dates,
+      content_completed_dates: (priorStage==="content_creation" && newStage!=="content_creation") ? appendCompletedDate(post.content_completed_dates, post) : post.content_completed_dates,
+      design_completed_dates: (priorStage==="design" && newStage!=="design") ? appendCompletedDate(post.design_completed_dates, post) : post.design_completed_dates,
       // Remembers whatever stage this was ACTUALLY in right before landing
       // on Client Approval — used by trello-webhook.php's "comments only +
       // sync approval moves" mode to send a rejected/bounced-back card to
