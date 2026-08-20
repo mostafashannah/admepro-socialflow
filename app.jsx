@@ -6300,8 +6300,17 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   // embedding a full inline image/video — a lighter-weight "here's the
   // file, open it on SocialFlow" hand-off rather than re-embedding heavy
   // media straight into the client thread.
+  // Forwarded files get renamed to "<task name> <n>.<ext>" instead of
+  // keeping their raw upload filename (e.g. "1-1.png") — n is the count of
+  // attachments already forwarded to this client thread, so repeated
+  // forwards on the same task number up sequentially rather than colliding.
   const forwardAttachmentToClient = (c) => {
-    onAddComment(post.id, "📎 Attachment (forwarded)", currentUser, {file_url:c.file_url, file_name:c.file_name, file_type:"file"}, "client");
+    const forwardedCount = postComments.filter(pc=>pc.audience==="client" && pc.file_url).length;
+    const ext = (c.file_name||"").match(/\.[a-zA-Z0-9]+$/)?.[0] || "";
+    const baseName = (post.title||post.name||"Attachment").trim();
+    const forwardedName = `${baseName} ${forwardedCount+1}${ext}`;
+    onAddComment(post.id, "📎 Attachment (forwarded)", currentUser, {file_url:c.file_url, file_name:forwardedName, file_type:"file"}, "client");
+    onAddComment(post.id, `Forwarded "${forwardedName}" to client`, currentUser, null, "internal");
   };
 
   // Comments only ever carry ONE attachment each at the DB level

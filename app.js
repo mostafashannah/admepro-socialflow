@@ -1052,7 +1052,11 @@ var _useState143=useState(false),_useState144=_slicedToArray(_useState143,2),att
 // embedding a full inline image/video — a lighter-weight "here's the
 // file, open it on SocialFlow" hand-off rather than re-embedding heavy
 // media straight into the client thread.
-var forwardAttachmentToClient=function forwardAttachmentToClient(c){onAddComment(post.id,"📎 Attachment (forwarded)",currentUser,{file_url:c.file_url,file_name:c.file_name,file_type:"file"},"client");};// Comments only ever carry ONE attachment each at the DB level
+// Forwarded files get renamed to "<task name> <n>.<ext>" instead of
+// keeping their raw upload filename (e.g. "1-1.png") — n is the count of
+// attachments already forwarded to this client thread, so repeated
+// forwards on the same task number up sequentially rather than colliding.
+var forwardAttachmentToClient=function forwardAttachmentToClient(c){var _match;var forwardedCount=postComments.filter(function(pc){return pc.audience==="client"&&pc.file_url;}).length;var ext=((_match=(c.file_name||"").match(/\.[a-zA-Z0-9]+$/))===null||_match===void 0?void 0:_match[0])||"";var baseName=(post.title||post.name||"Attachment").trim();var forwardedName="".concat(baseName," ").concat(forwardedCount+1).concat(ext);onAddComment(post.id,"📎 Attachment (forwarded)",currentUser,{file_url:c.file_url,file_name:forwardedName,file_type:"file"},"client");onAddComment(post.id,"Forwarded \"".concat(forwardedName,"\" to client"),currentUser,null,"internal");};// Comments only ever carry ONE attachment each at the DB level
 // (Comment.file_url is a single column, not an array) — any number of
 // picked files get uploaded here, each posted as its own comment the
 // MOMENT its own upload finishes (not staged waiting for a manual Send).
