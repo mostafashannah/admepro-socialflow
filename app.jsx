@@ -506,6 +506,7 @@ function autoDueDateByPriority(priority) {
 // with no appSettings/attendance-rules threaded in.
 function firstFreeSlot(allPosts, userEmail, estMins, earliestDate) {
   const days = WORK_DAYS_DEFAULT;
+  const todayStr = new Date().toISOString().split("T")[0];
   let day = new Date(earliestDate);
   for(let guard=0; guard<60; guard++) {
     const dateStr = day.toISOString().split("T")[0];
@@ -513,7 +514,12 @@ function firstFreeSlot(allPosts, userEmail, estMins, earliestDate) {
       const free = freeCapacityOnDate(allPosts, userEmail, dateStr);
       if(free >= estMins) {
         const dayPosts = allPosts.filter(p=>p.assigned_to===userEmail && p.due_date===dateStr && !["published","rejected"].includes(p.stage));
-        let cursor = WORKING_START * 60;
+        // A new task can never land in an already-passed time slot on
+        // TODAY's schedule — floor the starting cursor at the current
+        // moment, same rule generateDailySchedule applies to auto-packed
+        // (un-anchored) tasks. Past/future days aren't bounded by "now".
+        const nowFloor = dateStr === todayStr ? (new Date().getHours()*60 + new Date().getMinutes()) : null;
+        let cursor = nowFloor !== null ? Math.max(WORKING_START * 60, nowFloor) : WORKING_START * 60;
         dayPosts.forEach(p=>{
           const t = p.due_time ? p.due_time.split(":").map(Number) : null;
           const start = t ? Math.max(WORKING_START*60, t[0]*60+(t[1]||0)) : cursor;
