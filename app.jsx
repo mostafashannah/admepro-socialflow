@@ -13579,7 +13579,7 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
 // ════════════════════════════════════════════════════════════════
 // PROJECTS PAGE
 // ════════════════════════════════════════════════════════════════
-function ProjectsPage({projects, posts, comments, clients, team, assets, clientIntelligence, onPostClick, onAdd, onStageChange, onUpdateProject, onDeleteProject, currentUser, onSaveIntelligence, initialProjectId, onClearInitialProject, brandingAssets}) {
+function ProjectsPage({projects, posts, comments, clients, team, assets, clientIntelligence, onPostClick, onAdd, onStageChange, onUpdateProject, onDeleteProject, currentUser, onSaveIntelligence, initialProjectId, onClearInitialProject, returnToClientId, onBackToClient, onClearReturnToClient, brandingAssets}) {
   const [showWizard, setShowWizard] = useState(false);
   const [selectedProject, setSelectedProject_] = usePersistentState("sf_selected_project", initialProjectId||null);
   // Opening a project pushes its own history entry so the physical browser
@@ -13587,6 +13587,10 @@ function ProjectsPage({projects, posts, comments, clients, team, assets, clientI
   // past it to whatever page was open before Projects.
   const setSelectedProject = (id) => {
     setSelectedProject_(id);
+    // Opened directly from this page's own list, not via a specific
+    // client's Projects tab — any leftover "return to client" context from
+    // a previous visit must not leak into this one's Back button.
+    onClearReturnToClient&&onClearReturnToClient();
     if(id) { try{ window.history.pushState({sfPage:"projects", sfProjectDetail:id},"","#projects"); }catch(e){} }
   };
   const [filter, setFilter] = useState("all");
@@ -13634,7 +13638,13 @@ function ProjectsPage({projects, posts, comments, clients, team, assets, clientI
         // history entry, so the button could silently do nothing (or
         // navigate somewhere outside the app) instead of returning to the
         // project list.
-        onBack={()=>setSelectedProject_(null)}
+        onBack={()=>{
+          // A project opened from a specific client's own Projects tab
+          // returns there instead of dropping onto the global all-clients
+          // Projects list — those are two different starting points.
+          if(returnToClientId && onBackToClient) onBackToClient();
+          else setSelectedProject_(null);
+        }}
         onPostClick={onPostClick}
         onUpdateProject={onUpdateProject}
         onDeleteProject={(id)=>{ onDeleteProject&&onDeleteProject(id); setSelectedProject_(null); }}
@@ -45948,6 +45958,12 @@ function App() {
     try{ id ? localStorage.setItem("sf_selected_project",id) : localStorage.removeItem("sf_selected_project"); }catch(e){}
     if(id) { try{ window.history.pushState({sfPage:"projects", sfDetail:id},"","#projects"); }catch(e){} }
   };
+  // Remembers which client's page a project was opened FROM (via that
+  // client's own Projects tab) so the project detail's Back button can
+  // return there instead of always dropping onto the global all-clients
+  // Projects list — those are two different starting points and Back
+  // should honor whichever one was actually used.
+  const [returnToClientId,setReturnToClientId] = useState(null);
   const [showAddPost,setShowAddPost] = useState(false);
   const [addPostPresetSlot,setAddPostPresetSlot] = useState(null);
   const [addTaskPresetSlot,setAddTaskPresetSlot] = useState(null);
@@ -49734,7 +49750,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
               clientIntelligence={data.clientIntelligence||[]}
               onSaveIntelligence={saveClientIntelligence}
               comments={data.comments||[]}
-              onProjectClick={(proj)=>{setSelectedProjectId(proj.id);setPage("projects");setSelectedClientId(null);}}
+              onProjectClick={(proj)=>{setReturnToClientId(selectedClientId);setSelectedProjectId(proj.id);setPage("projects");setSelectedClientId(null);}}
               onUpdateClient={updateClient}
               onDeleteClient={deleteClient}
               onToggleHide={toggleHideClient}
@@ -49774,6 +49790,9 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
   onSaveIntelligence={saveClientIntelligence}
   initialProjectId={selectedProjectId}
   onClearInitialProject={()=>setSelectedProjectId(null)}
+  returnToClientId={returnToClientId}
+  onBackToClient={()=>{ setPage("clients"); setSelectedClientId(returnToClientId); setReturnToClientId(null); }}
+  onClearReturnToClient={()=>setReturnToClientId(null)}
   brandingAssets={data.brandingAssets}
 />}
         {page==="tasks"&&<TasksPage posts={data.posts} projects={data.projects} team={data.team} onPostClick={setSelectedPost} onAdd={addPost} clientTasks={(data.tasks||[])} onUpdateTask={updateClientTask} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} currentUser={currentUser} clients={data.clients} clientIntelligenceList={data.clientIntelligence||[]} onStageChange={handleStageChange}/>}
