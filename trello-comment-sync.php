@@ -48,7 +48,12 @@ $apiKey = $creds['api_key'] ?? '';
 $token = $creds['token'] ?? '';
 $direction = $config['sync_direction'] ?? 'both';
 if (!$apiKey || !$token) { echo json_encode(["ok" => true, "skipped" => "Trello integration missing credentials"]); exit; }
-if ($direction === 'from_trello') { echo json_encode(["ok" => true, "skipped" => "This integration is set to Trello → SocialFlow only"]); exit; }
+// "Trello -> SocialFlow only" blocks comment sync too, UNLESS the
+// integration has explicitly opted into pushing comments out on top of
+// that (a real combination someone wants: keep incoming card-move sync,
+// also get comments flowing out) via the "Also push comments to Trello"
+// checkbox.
+if ($direction === 'from_trello' && empty($config['push_comments_out'])) { echo json_encode(["ok" => true, "skipped" => "This integration is set to Trello → SocialFlow only"]); exit; }
 
 // An attachment rides along as a plain link inside the comment text
 // itself (not a separate native Trello card attachment) — a client

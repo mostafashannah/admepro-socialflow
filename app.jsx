@@ -17187,6 +17187,7 @@ function TrelloConnectModal({open, onClose, client, existingIntegration, onSave}
   const [listMap,setListMap] = useState(existingConfig.list_map||{});
   const [direction,setDirection] = useState(existingConfig.sync_direction||"both");
   const [pushApprovalMove,setPushApprovalMove] = useState(!!existingConfig.push_client_approval_move);
+  const [pushCommentsOut,setPushCommentsOut] = useState(!!existingConfig.push_comments_out);
   const [fetching,setFetching] = useState(false);
   const [saving,setSaving] = useState(false);
   const [error,setError] = useState("");
@@ -17235,7 +17236,7 @@ function TrelloConnectModal({open, onClose, client, existingIntegration, onSave}
         app_key: "trello",
         status: "active",
         credentials: JSON.stringify({api_key:apiKey.trim(), token:token.trim()}),
-        config: JSON.stringify({board_id:board.id, board_name:board.name, board_url:boardInput.trim(), sync_direction:direction, list_map:listMap, webhook_id:webhookId, push_client_approval_move:direction==="to_trello_comments_only"&&pushApprovalMove}),
+        config: JSON.stringify({board_id:board.id, board_name:board.name, board_url:boardInput.trim(), sync_direction:direction, list_map:listMap, webhook_id:webhookId, push_client_approval_move:direction==="to_trello_comments_only"&&pushApprovalMove, push_comments_out:direction==="from_trello"&&pushCommentsOut}),
       });
       onClose();
     } catch(e){ setError("Save failed: "+e.message); }
@@ -17286,6 +17287,15 @@ function TrelloConnectModal({open, onClose, client, existingIntegration, onSave}
                 <div>
                   <p style={{fontSize:12,fontWeight:700}}>Also sync Client Approval moves</p>
                   <p style={{fontSize:11,color:"var(--text3)"}}>When a task here reaches Client Approval, moves its Trello card to whatever list that stage maps to below. If someone moves the card back off that list on Trello (e.g. rejected), the task here returns to whatever stage it was actually in right before Client Approval.</p>
+                </div>
+              </label>
+            )}
+            {direction==="from_trello" && (
+              <label style={{display:"flex",gap:8,alignItems:"flex-start",padding:"8px 10px",border:`1.5px solid ${pushCommentsOut?"var(--accent)":"var(--border)"}`,borderRadius:"var(--rs)",cursor:"pointer",background:pushCommentsOut?"var(--accentbg)":"transparent"}}>
+                <input type="checkbox" checked={pushCommentsOut} onChange={e=>setPushCommentsOut(e.target.checked)} style={{marginTop:2}}/>
+                <div>
+                  <p style={{fontSize:12,fontWeight:700}}>Also push comments to Trello</p>
+                  <p style={{fontSize:11,color:"var(--text3)"}}>Keeps card moves on Trello updating the task's stage here exactly as now, and additionally posts comments (and forwarded attachments) added here onto the Trello card.</p>
                 </div>
               </label>
             )}
