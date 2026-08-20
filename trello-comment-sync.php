@@ -64,7 +64,13 @@ $results = [];
 if ($text !== '' || $fileUrl !== '') {
     $body = ($authorName ? "{$authorName}: " : '') . $text;
     if ($fileUrl !== '') {
-        $previewUrl = "https://" . ($_SERVER['HTTP_HOST'] ?? 'socialflow.admepro.com') . "/file-preview.php?u=" . urlencode($fileUrl) . "&n=" . urlencode($fileName ?: 'Attachment');
+        // Pass only the storage-relative path (?p=), not a full nested URL
+        // (?u=<encoded https://...>) — Trello's link-safety interstitial
+        // ("Check this link") triggers on a query string that embeds
+        // another full URL inside it, even when it's the same domain.
+        $relPath = preg_replace('#^https?://[^/]+#', '', $fileUrl);
+        $host = $_SERVER['HTTP_HOST'] ?? 'socialflow.admepro.com';
+        $previewUrl = "https://{$host}/file-preview.php?p=" . urlencode($relPath) . "&n=" . urlencode($fileName ?: 'Attachment');
         $body = trim($body . "\n" . ($fileName ?: 'Attachment') . ": {$previewUrl}");
     }
     $results['comment'] = trello_add_comment($apiKey, $token, $post['trello_card_id'], $body);

@@ -17,13 +17,25 @@ require_once __DIR__ . '/config.php';
 
 function h($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
 
-$url = $_GET['u'] ?? '';
+// `p` carries only the storage-relative path (e.g. /storage/public/...),
+// never a full nested URL — a query param that embeds another "https://"
+// URL inside it trips Trello's link-safety interstitial ("Check this
+// link") even when it points at the same domain. The legacy `u` param
+// (a full URL) is still accepted for any already-posted Trello links.
 $name = trim($_GET['n'] ?? '') ?: 'Attachment';
-
 $selfHost = $_SERVER['HTTP_HOST'] ?? '';
-$parsed = parse_url($url);
-$isOwnStorage = $url && !empty($parsed['host']) && $parsed['host'] === $selfHost
-    && isset($parsed['path']) && strpos($parsed['path'], '/storage/') === 0;
+$scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+
+$path = $_GET['p'] ?? '';
+if ($path !== '') {
+    $isOwnStorage = strpos($path, '/storage/') === 0;
+    $url = $isOwnStorage ? "{$scheme}://{$selfHost}{$path}" : '';
+} else {
+    $url = $_GET['u'] ?? '';
+    $parsed = parse_url($url);
+    $isOwnStorage = $url && !empty($parsed['host']) && $parsed['host'] === $selfHost
+        && isset($parsed['path']) && strpos($parsed['path'], '/storage/') === 0;
+}
 
 if (!$isOwnStorage) {
     http_response_code(400);
