@@ -17779,10 +17779,10 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
           // html2canvas has had bugs capturing fixed/negative-offset
           // elements at the wrong size, which produced the height
           // mismatches (overlap into the next field) seen last round.
-          div.style.cssText = `position:absolute;left:0;top:-99999px;width:${maxWidth}px;box-sizing:border-box;font-size:${fontSize}px;font-family:'Segoe UI',Tahoma,Arial,sans-serif;font-weight:${opts.bold?700:400};color:${opts.color||"#111827"};unicode-bidi:plaintext;text-align:${opts.align||"start"};white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;line-height:1.4;`;
+          div.style.cssText = `position:absolute;left:0;top:-99999px;width:${maxWidth}px;box-sizing:border-box;font-size:${fontSize}px;font-family:'Segoe UI',Tahoma,Arial,sans-serif;font-weight:${opts.bold?700:400};color:${opts.color||"#111827"};unicode-bidi:plaintext;text-align:${opts.align||"start"};white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;line-height:1.85;`;
           div.textContent = str;
           document.body.appendChild(div);
-          let h = fontSize * 1.4;
+          let h = fontSize * 1.85;
           try {
             // Actual laid-out CSS pixel size, measured post-render — far
             // more reliable than back-computing from the html2canvas
@@ -17804,7 +17804,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
         pdf.setTextColor(opts.color || "#111827");
         const lines = pdf.splitTextToSize(str, maxWidth);
         pdf.text(lines, x, y);
-        return y + lines.length * fontSize * 1.35;
+        return y + lines.length * fontSize * 1.7;
       };
 
       const client = clients.find(c=>c.id===project.client_id);
@@ -17905,9 +17905,9 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
         ["Brief", brief],
       ];
       for (const [label,val] of fields) {
-        pdf.setFontSize(11); pdf.setFont(undefined,"bold"); pdf.setTextColor("#6b7280");
+        pdf.setFontSize(13); pdf.setFont(undefined,"bold"); pdf.setTextColor("#6b7280");
         pdf.text(label.toUpperCase(), M, y);
-        y = await addWrapped(M, y+18, W-M*2, val, 14) + 14;
+        y = await addWrapped(M, y+20, W-M*2, val, 14) + 18;
       }
       await stampFooterLogo();
 
@@ -17961,9 +17961,9 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
         ty = await addWrapped(tx, ty, tw, `${pltLabel||"—"}  ·  ${post.scheduled_date||"No date"}${post.scheduled_time?` at ${post.scheduled_time}`:""}`, 12, {color:"#6b7280"}) + 16;
 
         const block = async (label, val) => {
-          pdf.setFontSize(10); pdf.setFont(undefined,"bold"); pdf.setTextColor("#6b7280");
+          pdf.setFontSize(12); pdf.setFont(undefined,"bold"); pdf.setTextColor("#6b7280");
           pdf.text(label.toUpperCase(), tx, ty);
-          ty = await addWrapped(tx, ty+16, tw, val, 13) + 14;
+          ty = await addWrapped(tx, ty+18, tw, val, 13) + 18;
         };
         if (post.text_on_visual) await block("Text on Visual", post.text_on_visual);
         if (post.caption) await block("Caption", post.caption);
