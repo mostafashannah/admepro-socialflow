@@ -728,8 +728,16 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     // task's real end_mins, not the estimate.
     let dur = est;
     const completedAtField = userRole==="graphic_designer" ? "design_completed_at" : userRole==="content_creator" ? "content_completed_at" : null;
+    const completedDatesField = userRole==="graphic_designer" ? "design_completed_dates" : userRole==="content_creator" ? "content_completed_dates" : null;
     const completedAt = completedAtField ? post[completedAtField] : null;
-    const completedToday = !!(completedAt && parseSqlUtc(completedAt).toISOString().split("T")[0] === date);
+    // Checks the accumulated completed-dates HISTORY too, not just the
+    // latest _completed_at timestamp — a task finished on this day, then
+    // sent back for revision (clearing _completed_at for the new cycle),
+    // still needs to render green/DONE here, since it genuinely was
+    // finished this day — the reset only affects its CURRENT cycle.
+    let completedHistoryLocal = [];
+    try { const raw = completedDatesField ? post[completedDatesField] : null; completedHistoryLocal = raw ? (Array.isArray(raw) ? raw : JSON.parse(raw)) : []; } catch(e) { completedHistoryLocal = []; }
+    const completedToday = completedHistoryLocal.includes(date) || !!(completedAt && parseSqlUtc(completedAt).toISOString().split("T")[0] === date);
     // The real-elapsed-time override only kicks in when the move actually
     // just happened (within the last 2 hours) — a fresh completion is
     // trustworthy live data worth showing honestly (e.g. a 1hr block
@@ -738,7 +746,7 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     // block — it still keeps the task visible/green via completedToday
     // above, just rendered at its normal estimated size instead of
     // stretching or shrinking based on a stale number.
-    if(completedToday) {
+    if(completedToday && completedAt) {
       const compDate = parseSqlUtc(completedAt);
       const minsSinceCompletion = (Date.now() - compDate.getTime()) / 60000;
       if(minsSinceCompletion >= 0 && minsSinceCompletion <= 120) {

@@ -261,7 +261,12 @@ cursor=nowFloorMins!==null?Math.max(WORKING_START*60,nowFloorMins):WORKING_START
 // finished. A real duration shrinking or growing here naturally shifts
 // every task after it too, since their own cursor search reads this
 // task's real end_mins, not the estimate.
-var dur=est;var completedAtField=userRole==="graphic_designer"?"design_completed_at":userRole==="content_creator"?"content_completed_at":null;var completedAt=completedAtField?post[completedAtField]:null;var completedToday=!!(completedAt&&parseSqlUtc(completedAt).toISOString().split("T")[0]===date);// The real-elapsed-time override only kicks in when the move actually
+var dur=est;var completedAtField=userRole==="graphic_designer"?"design_completed_at":userRole==="content_creator"?"content_completed_at":null;var completedDatesField=userRole==="graphic_designer"?"design_completed_dates":userRole==="content_creator"?"content_completed_dates":null;var completedAt=completedAtField?post[completedAtField]:null;// Checks the accumulated completed-dates HISTORY too, not just the
+// latest _completed_at timestamp — a task finished on this day, then
+// sent back for revision (clearing _completed_at for the new cycle),
+// still needs to render green/DONE here, since it genuinely was
+// finished this day — the reset only affects its CURRENT cycle.
+var completedHistoryLocal=[];try{var raw=completedDatesField?post[completedDatesField]:null;completedHistoryLocal=raw?Array.isArray(raw)?raw:JSON.parse(raw):[];}catch(e){completedHistoryLocal=[];}var completedToday=completedHistoryLocal.includes(date)||!!(completedAt&&parseSqlUtc(completedAt).toISOString().split("T")[0]===date);// The real-elapsed-time override only kicks in when the move actually
 // just happened (within the last 2 hours) — a fresh completion is
 // trustworthy live data worth showing honestly (e.g. a 1hr block
 // finished in 15min). A completedAt from hours ago (backfilled,
@@ -269,7 +274,7 @@ var dur=est;var completedAtField=userRole==="graphic_designer"?"design_completed
 // block — it still keeps the task visible/green via completedToday
 // above, just rendered at its normal estimated size instead of
 // stretching or shrinking based on a stale number.
-if(completedToday){var compDate=parseSqlUtc(completedAt);var minsSinceCompletion=(Date.now()-compDate.getTime())/60000;if(minsSinceCompletion>=0&&minsSinceCompletion<=120){var actual=compDate.getHours()*60+compDate.getMinutes()-cursor;if(actual>0)dur=Math.min(actual,est*3);}}slots.push({post_id:post.id,start_mins:cursor,end_mins:cursor+dur,start_time:minsToAmPm(cursor),end_time:minsToAmPm(cursor+dur),duration_mins:dur,completed_today:completedToday,// Only flag it red/overdue while it's still sitting in THEIR own
+if(completedToday&&completedAt){var compDate=parseSqlUtc(completedAt);var minsSinceCompletion=(Date.now()-compDate.getTime())/60000;if(minsSinceCompletion>=0&&minsSinceCompletion<=120){var actual=compDate.getHours()*60+compDate.getMinutes()-cursor;if(actual>0)dur=Math.min(actual,est*3);}}slots.push({post_id:post.id,start_mins:cursor,end_mins:cursor+dur,start_time:minsToAmPm(cursor),end_time:minsToAmPm(cursor+dur),duration_mins:dur,completed_today:completedToday,// Only flag it red/overdue while it's still sitting in THEIR own
 // stage, unfinished — once they've actually moved it forward (e.g.
 // to Client Approval, waiting on someone else entirely), it's no
 // longer their unfinished work and shouldn't read as if they're
