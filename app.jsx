@@ -18268,7 +18268,13 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                         style={{position:"relative",aspectRatio:"3/4",background:"var(--surface2)",overflow:"hidden",cursor:"grab"}}>
                         {thumbUrl ? (
                           thumbIsVideo
-                            ? <video src={thumbUrl+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                            // autoPlay explicitly off, plus a hard pause the
+                            // instant any frame data loads — some browsers
+                            // will still start playing a muted <video> on
+                            // its own once metadata/frames are available
+                            // even with no autoplay attribute, especially
+                            // once several of these sit in a grid at once.
+                            ? <video src={thumbUrl+"#t=0.1"} muted autoPlay={false} playsInline preload="metadata" onLoadedData={e=>e.currentTarget.pause()} onPlay={e=>e.currentTarget.pause()} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                             : <img src={thumbUrl} alt={post.title} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                         ) : (
                           <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text3)",fontSize:11,textAlign:"center",padding:8}}>{post.title}</div>
