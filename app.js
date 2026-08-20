@@ -189,10 +189,12 @@ if(!wasOwnerOf(p,userEmail,userRole))return false;// Work THEY finished and move
 // "today" — a task completed yesterday should still show on
 // YESTERDAY's timeline even after the calendar has since rolled over;
 // it doesn't stop being true just because today is no longer that day.
-// Only bypasses the stage/excluded-stage check below, NOT due_date — a
-// task genuinely due some other day has no business showing here just
-// because it happened to get finished on this one.
-var completedAtField=userRole==="graphic_designer"?"design_completed_at":userRole==="content_creator"?"content_completed_at":null;var completedAt=completedAtField?p[completedAtField]:null;var completedOnViewedDay=!!(completedAt&&parseSqlUtc(completedAt).toISOString().split("T")[0]===date);if(completedOnViewedDay&&(!p.due_date||p.due_date===date))return true;if(ownedStage&&p.stage!==ownedStage)return false;// This timeline is for capacity planning on work still actually IN
+// Bypasses the stage/excluded-stage check below AND due_date — a task
+// due yesterday (or any other day) that actually got finished today
+// still needs to show on TODAY's timeline as completed work, not
+// vanish because its due_date doesn't match. Whichever day someone
+// genuinely did the work is the day it should show as done on.
+var completedAtField=userRole==="graphic_designer"?"design_completed_at":userRole==="content_creator"?"content_completed_at":null;var completedAt=completedAtField?p[completedAtField]:null;var completedOnViewedDay=!!(completedAt&&parseSqlUtc(completedAt).toISOString().split("T")[0]===date);if(completedOnViewedDay)return true;if(ownedStage&&p.stage!==ownedStage)return false;// This timeline is for capacity planning on work still actually IN
 // PROGRESS — Published and Scheduled are both done from the team's
 // side (content/design work is finished; Scheduled is just waiting on
 // the auto-publish date, not sitting on anyone's plate), so neither
