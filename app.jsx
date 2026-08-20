@@ -37126,18 +37126,27 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     const leftPct = Math.max(0,(slot.start_mins - WORKING_START*60)/WORKING_MINS*100);
                     const widthPct = Math.max(2,(slot.end_mins-slot.start_mins)/WORKING_MINS*100);
                     const stage = post ? (STAGE_MAP[post.stage]||STAGES[0]) : null;
+                    // A completed_today slot can appear on MULTIPLE days
+                    // (see design_completed_dates/content_completed_dates
+                    // history) — they all share the post's one real
+                    // due_date/due_time, so dragging any one of them would
+                    // silently move every other day's copy along with it.
+                    // It's finished/historical work anyway, so it's locked
+                    // from dragging entirely rather than letting a move on
+                    // one day's view surprise-relocate it on another.
+                    const canMove = !!(isAM&&onMoveTask&&post&&!slot.completed_today);
                     return (
-                      <div key={slot.post_id} title={`${post?.title||""} (${slot.start_time}–${slot.end_time})${slot.overdue?" — OVERDUE":""}${slot.completed_today?" — Done, moved to review":""}${isAM&&onMoveTask?" — drag, or right-click to move (works across days too)":""}`}
+                      <div key={slot.post_id} title={`${post?.title||""} (${slot.start_time}–${slot.end_time})${slot.overdue?" — OVERDUE":""}${slot.completed_today?" — Done, moved to review":""}${canMove?" — drag, or right-click to move (works across days too)":""}`}
                         onClick={(e)=>{e.stopPropagation();onPostClick&&post&&onPostClick(post);}}
-                        draggable={!!(isAM&&onMoveTask&&post)}
-                        onDragStart={(isAM&&onMoveTask&&post)?(e)=>{e.stopPropagation();dragTaskRef.current={postId:post.id,durationMins:slot.end_mins-slot.start_mins};e.dataTransfer.effectAllowed="move";e.currentTarget.style.opacity="0.4";}:undefined}
+                        draggable={canMove}
+                        onDragStart={canMove?(e)=>{e.stopPropagation();dragTaskRef.current={postId:post.id,durationMins:slot.end_mins-slot.start_mins};e.dataTransfer.effectAllowed="move";e.currentTarget.style.opacity="0.4";}:undefined}
                         onDragEnd={(e)=>{e.currentTarget.style.opacity="1";}}
-                        onContextMenu={(isAM&&onMoveTask&&post)?(e)=>{
+                        onContextMenu={canMove?(e)=>{
                           e.preventDefault(); e.stopPropagation();
                           setCopiedTask({postId:post.id, durationMins: slot.end_mins-slot.start_mins});
                           setToast(` "${post.title}" copied — right-click a free slot (any day) to move it there`);
                         }:undefined}
-                        style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:slot.lane*(laneH+3)+3,height:laneH-6,background:slot.overdue?"#ef4444":slot.completed_today?"#22c55e":(stage?.color||"var(--accent)"),borderRadius:5,cursor:post?(isAM&&onMoveTask?"grab":"pointer"):"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 6px",...(slot.overdue?{boxShadow:"0 0 0 1px #b91c1c inset"}:{})}}>
+                        style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:slot.lane*(laneH+3)+3,height:laneH-6,background:slot.overdue?"#ef4444":slot.completed_today?"#22c55e":(stage?.color||"var(--accent)"),borderRadius:5,cursor:post?(canMove?"grab":"pointer"):"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 6px",...(slot.overdue?{boxShadow:"0 0 0 1px #b91c1c inset"}:{})}}>
                         <span style={{fontSize:10,color:"#fff",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span>
                         {widthPct>8&&<span style={{fontSize:8.5,color:"#fff",opacity:0.85,whiteSpace:"nowrap"}}>{slot.start_time}–{slot.end_time}</span>}
                       </div>
