@@ -40825,7 +40825,18 @@ const stripActionBlocks = (text) => {
   return out.trim();
 };
 
-const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId, userMessage) => {
+// personaKey lets the SAME chat window/context/actions be voiced as Pro
+// (default), Sara (content), or Mai (accounts) — a teammate can switch who
+// they're talking to mid-conversation without losing the live workspace
+// grounding or the ability to take real actions, which a bare separate
+// "raw model, no context" chat (like the old GPT toggle) couldn't offer.
+const CHAT_PERSONAS = {
+  pro: {name:"Pro", intro:`You are Pro — a powerful AI assistant built into SocialFlow by admepro. You work like ChatGPT or Claude: you answer EVERYTHING directly in the chat. You NEVER say "go to a page" or "navigate to X" or "visit the panel". You handle every question and every action right here in the conversation.`},
+  sara: {name:"Sara", intro:`You are Sara — the team's AI Senior Content Creator, chatting directly with a teammate inside SocialFlow. You're the go-to for captions, post ideas, content calendars, copywriting, and brand voice — genuinely dedicated and specific, never generic filler, with a warm easygoing sense of humor. You work like ChatGPT or Claude: you answer EVERYTHING directly in the chat, and you have the SAME live workspace access and action abilities as Pro below — never say "go to a page" or "ask Pro instead", just do it here.`},
+  mai: {name:"Mai", intro:`You are Mai — the team's AI Account Executive, chatting directly with a teammate inside SocialFlow. You're the go-to for client status, account health, performance, and "what's going on with X" questions — grounded in the real client data below, never vague generalities. You work like ChatGPT or Claude: you answer EVERYTHING directly in the chat, and you have the SAME live workspace access and action abilities as Pro below — never say "go to a page" or "ask Pro instead", just do it here.`},
+};
+const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId, userMessage, personaKey="pro") => {
+  const persona = CHAT_PERSONAS[personaKey] || CHAT_PERSONAS.pro;
   // ── Live data summaries ─────────────────────────────────────────
   const allPosts = data?.posts||[];
   const allProj = data?.projects||[];
@@ -41068,9 +41079,9 @@ Pending leave/WFH requests: ${pendingLeaves.length} (${pendingLeaves.slice(0,10)
     hrBlock += `\nSalaries (confidential — only share with users who can see salaries): ${allTeam.filter(m=>m.salary).map(m=>`${m.name}: ${m.salary}`).join(" ; ")||"none recorded"}`;
   }
 
-  return `You are Pro — a powerful AI assistant built into SocialFlow by admepro. You work like ChatGPT or Claude: you answer EVERYTHING directly in the chat. You NEVER say "go to a page" or "navigate to X" or "visit the panel". You handle every question and every action right here in the conversation.
+  return `${persona.intro}
 
-IDENTITY: Always call yourself "Pro". Never say "chatbot", "AI assistant", "I'm an AI".
+IDENTITY: Always call yourself "${persona.name}". Never say "chatbot", "AI assistant", "I'm an AI".
 LANGUAGE: Auto-detect language from user's message. Respond in the same language (supports English and Arabic).
 
 ═══ LIVE WORKSPACE DATA ═══
@@ -44010,16 +44021,13 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
   const [brainOpen, setBrainOpen] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [dragOverComposer, setDragOverComposer] = useState(false);
-  // Raw GPT chat — totally isolated from Pro: its own message list, its own
-  // localStorage key, never reads or writes Pro's chatSessions/messages.
-  // Switching the Pro/GPT toggle just swaps which list the page renders and
-  // sends from — no shared history, no business context, no tools/actions,
-  // no client auto-lock. Admin/AM only, since it has none of Pro's guardrails.
-  const canUseGptChat = ["admin","account_manager"].includes(currentUser?.role);
-  const [gptMode, setGptMode] = useState(false);
-  const gptStorageKey = "sf_gpt_chat_v1_" + (currentUser?.email||"anon");
-  const [gptMessages, setGptMessages] = useState(()=>{ try{ return JSON.parse(localStorage.getItem(gptStorageKey)||"[]"); }catch(e){ return []; } });
-  useEffect(()=>{ try{ localStorage.setItem(gptStorageKey, JSON.stringify(gptMessages.slice(-200))); }catch(e){} },[gptMessages]);
+  // Which teammate voice is answering in THIS conversation — Sara/Mai reuse
+  // the exact same live-data context, client auto-lock, memory, and action
+  // abilities Pro has (see CHATBOT_SYSTEM_PROMPT's personaKey), just with a
+  // different identity/expertise framing. Unlike the old raw-GPT toggle,
+  // switching persona does NOT start a separate conversation — it's the
+  // same thread, just whichever teammate is "in the room" right now.
+  const [activePersona, setActivePersona] = useState("pro");
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -44527,49 +44535,12 @@ RULES:
   };
   const removeAttachment = (id) => setAttachments(a=>a.filter(x=>x.id!==id));
 
-  // Raw GPT chat send — deliberately bypasses EVERYTHING below (client
-  // auto-lock, memory, tool actions, brand context) AND Pro's shared
-  // messages/session state entirely: reads/writes ONLY gptMessages, so
-  // there's no way a Pro conversation's content (attachment blocks, action
-  // payloads) ever leaks into what gets sent to OpenAI, and no way a GPT
-  // reply ends up saved into a Pro session. Text-only — attachments aren't
-  // sent to GPT this way.
-  const sendGptMessage = async (userMsg) => {
-    const userMsgObj = {role:"user",content:userMsg,id:uid(),ts:new Date().toISOString()};
-    setGptMessages(m=>[...m,userMsgObj]);
-    setTyping(true);
-    try {
-      // Pro's own bot replies use role "bot" (see ChatMessage), not the
-      // standard "assistant" — translate that here since OpenAI only
-      // accepts user/assistant/system. gptMessages only ever contains
-      // "user"/"bot" entries (set below), never anything from Pro.
-      const history = [...gptMessages, userMsgObj]
-        .filter(m=>m.role==="user"||m.role==="bot")
-        .map(m=>({role: m.role==="bot"?"assistant":"user", content: typeof m.content==="string" ? m.content : JSON.stringify(m.content??"")}));
-      const res = await fetch(OPENAI_ENDPOINT, {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({model:"gpt-5", messages:history}),
-      });
-      const data = await res.json();
-      const reply = data?.choices?.[0]?.message?.content;
-      // role:"bot" (not "assistant") — that's what ChatMessage checks to
-      // left-align+markdown-render a reply; using "assistant" here made
-      // every GPT reply render as an unformatted, right-aligned USER bubble
-      // instead of a bot reply (no markdown, wrong side of the screen).
-      setGptMessages(m=>[...m, {role:"bot", content: reply || `Error: ${data?.error?.message||"No response from GPT"}`, id:uid(), ts:new Date().toISOString()}]);
-    } catch(e) {
-      setGptMessages(m=>[...m, {role:"bot", content:`Error: ${e.message}`, id:uid(), ts:new Date().toISOString()}]);
-    }
-    setTyping(false);
-  };
-
   const sendMessage = async (text) => {
     const userMsg = text || input.trim();
     const pendingAttachments = attachments;
     if(!userMsg && pendingAttachments.length===0) return;
     setInput("");
     setAttachments([]);
-    if(gptMode && canUseGptChat) { await sendGptMessage(userMsg); return; }
     const userMsgObj = {role:"user",content:userMsg||" Sent file(s)",id:uid(),attachments:pendingAttachments,ts:new Date().toISOString()};
     setMessages(m=>[...m,userMsgObj]);
     setTyping(true);
@@ -44694,7 +44665,7 @@ RULES:
     try {
       let sysPrompt="";
       try {
-        sysPrompt = CHATBOT_SYSTEM_PROMPT(currentUser,"home",data, activeClient?.id||null, userMsg);
+        sysPrompt = CHATBOT_SYSTEM_PROMPT(currentUser,"home",data, activeClient?.id||null, userMsg, activePersona);
         if(activeClient){
           const ck = (data?.clientKnowledge||[]).find(k=>k.client_id===activeClient.id);
           const ci = (data?.clientIntelligence||[]).find(i=>i.client_id===activeClient.id);
@@ -44828,7 +44799,7 @@ RULES:
     return h<5 ? "Working late" : h<12 ? "Morning" : h<18 ? "Afternoon" : "Evening";
   })();
 
-  const isEmpty = gptMode ? gptMessages.length===0 : messages.length<=1;
+  const isEmpty = messages.length<=1;
 
   // Composer — shared between the centered empty state and the bottom-pinned bar
   const Composer = (
@@ -44863,13 +44834,13 @@ RULES:
         </div>
       )}
 
-      {canUseGptChat && (
-        <div style={{display:"flex",alignItems:"center",gap:8,margin:"0 0 8px"}}>
-          <button onClick={()=>setGptMode(false)} style={{fontSize:11.5,fontWeight:700,padding:"4px 12px",borderRadius:20,border:"none",cursor:"pointer",background:!gptMode?"var(--accent)":"var(--surface2)",color:!gptMode?"#fff":"var(--text2)"}}>Pro</button>
-          <button onClick={()=>setGptMode(true)} style={{fontSize:11.5,fontWeight:700,padding:"4px 12px",borderRadius:20,border:"none",cursor:"pointer",background:gptMode?"var(--accent)":"var(--surface2)",color:gptMode?"#fff":"var(--text2)"}}>GPT Chat</button>
-          {gptMode && <span style={{fontSize:10.5,color:"var(--text3)"}}>Raw GPT-5 — no business context, no tools, no guardrails. Text only.</span>}
-        </div>
-      )}
+      <div style={{display:"flex",alignItems:"center",gap:8,margin:"0 0 8px"}}>
+        {[["pro","Pro"],["sara","Sara"],["mai","Mai"]].map(([key,label])=>(
+          <button key={key} onClick={()=>setActivePersona(key)} style={{fontSize:11.5,fontWeight:700,padding:"4px 12px",borderRadius:20,border:"none",cursor:"pointer",background:activePersona===key?"var(--accent)":"var(--surface2)",color:activePersona===key?"#fff":"var(--text2)"}}>{label}</button>
+        ))}
+        {activePersona==="sara" && <span style={{fontSize:10.5,color:"var(--text3)"}}>Sara — content, captions, and ideas, same live data & actions as Pro.</span>}
+        {activePersona==="mai" && <span style={{fontSize:10.5,color:"var(--text3)"}}>Mai — client status and account questions, same live data & actions as Pro.</span>}
+      </div>
 
       {attachments.length>0 && (
         <div style={{display:"flex",gap:8,flexWrap:"wrap",margin:"0 0 8px"}}>
@@ -45120,7 +45091,7 @@ RULES:
           </div>
         ) : (
           <>
-            {(gptMode?gptMessages:messages).map(msg=>(
+            {messages.map(msg=>(
               <ChatMessage key={msg.id} msg={msg}
                 onConfirm={handleConfirmHome} onReject={handleRejectHome}
                 onExecuteAction={handleActionBtnHome}/>
