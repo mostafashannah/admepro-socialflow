@@ -2207,14 +2207,19 @@ const DEFAULT_NOTIF_PREFS = {
 // ── Smart notification dispatcher ─────────────────────────────────
 // Checks user prefs before sending. Pass userPrefs = notifPrefs object for that user.
 // Pass waNumber to also deliver the notification via WhatsApp.
-async function sendNotification(eventType, toEmail, subject, html, userPrefs, waNumber=null) {
+// waBody: optional pre-built plain-text WhatsApp message for this specific
+// event (e.g. the task name + the actual comment, for a mention) — used
+// instead of the generic "<subject>\n\nView: <site homepage>" fallback,
+// which was just the bare app URL, not a link to the actual task, and
+// didn't show what was actually said.
+async function sendNotification(eventType, toEmail, subject, html, userPrefs, waNumber=null, waBody=null) {
   const prefs = {...DEFAULT_NOTIF_PREFS, ...(userPrefs||{})};
   if(prefs.all_disabled) return false;
   if(prefs.mentions_only && eventType !== "task_mention") return false;
   if(prefs[eventType] === false) return false;
   const emailOk = sendEmail(toEmail, subject, html);
   if(waNumber) {
-    sendWhatsApp(waNumber, `${subject}\n\nView: ${window.location.origin}`).catch(()=>{});
+    sendWhatsApp(waNumber, waBody || `${subject}\n\nView: ${window.location.origin}`).catch(()=>{});
   }
   return emailOk;
 }
@@ -48956,7 +48961,8 @@ Return ONLY valid JSON (no markdown, no explanation):
         sendNotification("task_mention", mentioned.email,
           `[SocialFlow] ${user?.name||"Someone"} mentioned you`,
           EMAIL_TEMPLATES.mentionNotification(mentioned.name, user?.name||"A colleague", postTitle, content.slice(0,200), project?.title||""),
-          prefs, mentioned.whatsapp_number||null
+          prefs, mentioned.whatsapp_number||null,
+          `${user?.name||"Someone"} mentioned you on "${postTitle}":\n\n"${content.slice(0,300)}"`
         ).catch(()=>{});
       }
     }
@@ -48968,7 +48974,8 @@ Return ONLY valid JSON (no markdown, no explanation):
         sendNotification("task_comment", assigneeMember.email,
           `[SocialFlow] New comment on: ${post.title}`,
           EMAIL_TEMPLATES.commentAdded(assigneeMember.name, user?.name||"A colleague", post.title, content.slice(0,200), project?.title||""),
-          prefs, assigneeMember.whatsapp_number||null
+          prefs, assigneeMember.whatsapp_number||null,
+          `${user?.name||"Someone"} commented on "${post.title}":\n\n"${content.slice(0,300)}"`
         ).catch(()=>{});
       }
     }
@@ -48989,7 +48996,8 @@ Return ONLY valid JSON (no markdown, no explanation):
         sendNotification("task_comment", participant.email,
           `[SocialFlow] New comment on: ${postTitle}`,
           EMAIL_TEMPLATES.commentAdded(participant.name, user?.name||"A colleague", postTitle, content.slice(0,200), project?.title||""),
-          prefs, participant.whatsapp_number||null
+          prefs, participant.whatsapp_number||null,
+          `${user?.name||"Someone"} commented on "${postTitle}":\n\n"${content.slice(0,300)}"`
         ).catch(()=>{});
       }
     }
