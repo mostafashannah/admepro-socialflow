@@ -422,13 +422,20 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
         // hiring) instead of always defaulting to "lead" — the brief text alone often
         // makes clear this is a job applicant or an outbound pitch, not a real lead.
         $classification = classifyClientContact($clientName ?: 'admepro', $combinedText);
-        // Only skip capture on a CONFIRMED "other" classification — a null
-        // classification means the AI call itself failed, which shouldn't
-        // silently drop a real contact who did share a phone number.
-        if ($classification && $classification['category'] === 'other') {
+        // Only skip capture on a CONFIRMED "other" or "hiring" classification
+        // — a null classification means the AI call itself failed, which
+        // shouldn't silently drop a real contact who did share a phone
+        // number. "hiring" (someone asking about a job/vacancy) is never a
+        // sales lead — capturing it here just pollutes the CRM pipeline and
+        // fires a misleading "New Lead" WhatsApp alert to an AM for
+        // something that belongs in Recruitment, not Leads.
+        if ($classification && in_array($classification['category'], ['other', 'hiring'], true)) {
             try {
-                $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), 'Lead capture skipped (classified as other)', 'leads', :details, 'success', 'system')")
-                    ->execute([':details' => "channel={$channel} customer={$customerId} ({$customerName}), phone={$phone}"]);
+                $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), :action, 'leads', :details, 'success', 'system')")
+                    ->execute([
+                        ':action' => "Lead capture skipped (classified as {$classification['category']})",
+                        ':details' => "channel={$channel} customer={$customerId} ({$customerName}), phone={$phone}",
+                    ]);
             } catch (\Throwable $e2) { /* best-effort */ }
             return;
         }
