@@ -17,6 +17,7 @@ if($_SERVER['REQUEST_METHOD']!=='POST'){http_response_code(405);echo json_encode
 set_time_limit(300);
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/ai-outage-notify.php';
 $ANTHROPIC_KEY = ANTHROPIC_API_KEY;
 
 $rawInput = file_get_contents("php://input");
@@ -70,6 +71,7 @@ if($status < 200 || $status >= 300){
   // log the full error body server-side so it can be diagnosed instead of
   // guessed at again.
   error_log("[ai-proxy] Anthropic API error, HTTP $status: " . substr((string)$res, 0, 2000));
+  notifyAdminOfAiOutage('Anthropic', (string)$res);
 }
 http_response_code($status >= 200 && $status < 300 ? 200 : $status);
 echo $res ?: json_encode(["error"=>"No response from Anthropic"]);

@@ -1,6 +1,7 @@
 <?php
 // Shared "Pro" assistant logic used by wa-webhook.php and CLI test scripts.
 require_once __DIR__ . '/recruitment-mail-lib.php';
+require_once __DIR__ . '/ai-outage-notify.php';
 
 // Lightweight HTML email wrapper for recruitment action emails triggered
 // from WhatsApp — deliberately simple (not the full branded template used
@@ -1826,6 +1827,7 @@ function callClaude(array $payload) {
     $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $err = curl_error($ch);
     curl_close($ch);
+    if ($status < 200 || $status >= 300) notifyAdminOfAiOutage('Anthropic', (string)$res);
     return [$status, json_decode($res, true), $res];
 }
 
