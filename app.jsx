@@ -8943,12 +8943,11 @@ const CALENDAR_KIND_DEFS = [
   ["carousel","Carousels","Multi-slide captions"],
   ["article","Articles","Long-form, e.g. LinkedIn articles"],
   ["story","Stories","Ephemeral, one punchy line each"],
-  ["grid_layout","Full Grid Layout","Design-only — always included once, no caption needed"],
 ];
 // Each kind block becomes exactly ONE task regardless of count — this maps
 // it to the post_type estimateDuration()/POST_TYPE_DURATIONS already knows
 // how to estimate, so "12 carousels" costs 12x a single carousel's estimate.
-const CALENDAR_KIND_POST_TYPE = {static:"image", reel:"reel", carousel:"carousel", article:"blog", story:"story", grid_layout:"carousel"};
+const CALENDAR_KIND_POST_TYPE = {static:"image", reel:"reel", carousel:"carousel", article:"blog", story:"story"};
 
 // Egypt work week default (Sun-Thu, same convention used everywhere else —
 // interview-slot templates, calendar-plan scheduling): getDay() 0=Sun..6=Sat.
@@ -9052,9 +9051,7 @@ function AddCalendarPlanModal({open,onClose,clients,team,posts,projects,preselec
   const companyWorkDays = [0,1,2,3,4,5,6].filter(d=>!(attendanceRules.weekendDays??[5,6]).map(n=>n%7).includes(d));
   const companyHolidays = new Set((attendanceRules.holidays||[]).map(h=>h.date));
   const [step,setStep] = useState("form"); // form | generating | preview | done
-  // Full Grid Layout is Instagram-only, always — never follows whatever
-  // platforms the client happens to have connected, unlike every other kind.
-  const platformsForKind = (kind, clientPlatforms) => kind==="grid_layout" ? ["instagram"] : (clientPlatforms||[]);
+  const platformsForKind = (kind, clientPlatforms) => (clientPlatforms||[]);
   // briefBatches lets one content type be split into separate groups, each
   // with its own count + brief (e.g. 6 static posts as two groups of 3, each
   // pushing a different message) instead of forcing one brief onto all of
@@ -9076,9 +9073,6 @@ function AddCalendarPlanModal({open,onClose,clients,team,posts,projects,preselec
       carousel: makeKindDefaults(0,"carousel"),
       article: makeKindDefaults(0,"article"),
       story: makeKindDefaults(0,"story"),
-      // Always exactly 1, every plan — not user-adjustable (see the "Number
-      // of..." selector being skipped for this kind below).
-      grid_layout: makeKindDefaults(1,"grid_layout"),
     },
   });
   const [generated,setGenerated] = useState([]);
@@ -9214,13 +9208,6 @@ Return ONLY the brief text — no markdown, no labels, no quotes.`, 300);
     const ideasByKind = {};
     for(const kind of activeKinds){
       const cfg = f.kinds[kind];
-      // Full Grid Layout is design-only — no caption/hashtag content to
-      // write, so skip the AI call entirely and synthesize its one fixed
-      // idea locally (count is always 1 for this kind).
-      if(kind==="grid_layout") {
-        ideasByKind[kind] = [{title:`Full Grid Layout — ${f.campaign}`, caption:"", hashtags:"", text_on_visual:"", _assignedTo:cfg.briefBatches[0]?.assigned_to||"", _dueMode:cfg.briefBatches[0]?.due_mode||"auto", _manualDueDate:cfg.briefBatches[0]?.manual_due_date||"", _manualDueTime:cfg.briefBatches[0]?.manual_due_time||""}];
-        continue;
-      }
       if(skipAI) {
         ideasByKind[kind] = cfg.briefBatches.flatMap(batch=>Array.from({length:Number(batch.count)||0},(_,i)=>({
           title:`${kind.charAt(0).toUpperCase()+kind.slice(1)} ${i+1} — ${f.campaign}`,
@@ -9332,12 +9319,7 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
           platform: primaryPlatform,
           platforms: plats,
           post_type: CALENDAR_KIND_POST_TYPE[kind],
-          // Marks this as a design-only deliverable — never actually
-          // published to a platform (see auto-publish.php's WHERE clause
-          // and PostDetail's Publish Now button, both skip task_type
-          // 'grid_layout'). Reuses the existing task_type column rather
-          // than adding a new one.
-          task_type: kind==="grid_layout" ? "grid_layout" : "",
+          task_type: "",
           priority: "medium",
           client_id: f.client_id,
           client_name: selectedClient?.name||"",
@@ -9588,47 +9570,10 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                 </div>
                 {isOpen && (<>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(180px,100%),1fr))",gap:10}}>
-                  {kind==="grid_layout" ? (<>
-                    <Field label="Number of Full Grid Layout">
-                      <div style={{...inputSt,display:"flex",alignItems:"center",color:"var(--text3)"}}>1 — always included</div>
-                    </Field>
-                    <Field label="Assign To">
-                      <select value={cfg.briefBatches[0]?.assigned_to||""} onChange={e=>skBatch(kind,0,"assigned_to",e.target.value)} style={inputSt}>
-                        <option value="">— Unassigned —</option>
-                        {eligibleAssignees(startStage,team).map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
-                      </select>
-                    </Field>
-                  </>) : (
-                    <Field label={`Total ${label}`} hint="Sum of the group(s) below">
-                      <div style={{...inputSt,display:"flex",alignItems:"center",fontWeight:700}}>{cfg.count} {label.toLowerCase()}</div>
-                    </Field>
-                  )}
-                  {kind==="grid_layout" && (()=>{ const b0 = cfg.briefBatches[0]; return (<>
-                    <Field label="Due Date">
-                      <div style={{display:"flex",gap:6}}>
-                        <button type="button" onClick={()=>skBatch(kind,0,"due_mode","auto")} style={{flex:1,padding:"8px 6px",borderRadius:8,border:`1.5px solid ${b0.due_mode!=="manual"?"var(--accent)":"var(--border2)"}`,background:b0.due_mode!=="manual"?"var(--accent)18":"var(--surface)",fontWeight:700,fontSize:11.5,color:b0.due_mode!=="manual"?"var(--accent)":"var(--text2)",cursor:"pointer"}}>Auto</button>
-                        <button type="button" onClick={()=>skBatch(kind,0,"due_mode","manual")} style={{flex:1,padding:"8px 6px",borderRadius:8,border:`1.5px solid ${b0.due_mode==="manual"?"var(--accent)":"var(--border2)"}`,background:b0.due_mode==="manual"?"var(--accent)18":"var(--surface)",fontWeight:700,fontSize:11.5,color:b0.due_mode==="manual"?"var(--accent)":"var(--text2)",cursor:"pointer"}}>Pick date</button>
-                      </div>
-                    </Field>
-                    {b0.due_mode==="manual" && (
-                      <Field label="Due Date">
-                        <input type="date" value={b0.manual_due_date} onChange={e=>skBatch(kind,0,"manual_due_date",e.target.value)} style={inputSt}/>
-                      </Field>
-                    )}
-                    {b0.due_mode==="manual" && (
-                      <Field label="Due Time">
-                        <input type="time" value={b0.manual_due_time} onChange={e=>skBatch(kind,0,"manual_due_time",e.target.value)} style={inputSt}/>
-                      </Field>
-                    )}
-                  </>); })()}
-                </div>
-                {kind==="grid_layout" ? (
-                  <Field label="Platforms">
-                    <div style={{display:"flex",alignItems:"center",gap:5,padding:"6px 12px",borderRadius:99,fontSize:11.5,fontWeight:700,border:`1.5px solid ${PLT_COLOR.instagram}`,background:PLT_COLOR.instagram+"22",color:PLT_COLOR.instagram,width:"fit-content"}}>
-                      <Ico d={Icons.check} size={10} stroke={PLT_COLOR.instagram}/> Instagram — always, not togglable
-                    </div>
+                  <Field label={`Total ${label}`} hint="Sum of the group(s) below">
+                    <div style={{...inputSt,display:"flex",alignItems:"center",fontWeight:700}}>{cfg.count} {label.toLowerCase()}</div>
                   </Field>
-                ) : (
+                </div>
                 <Field label="Platforms" required={cfg.count>0}>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                     {PLATFORMS.map(p=>(
@@ -9646,8 +9591,6 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                     ))}
                   </div>
                 </Field>
-                )}
-                {kind!=="grid_layout" && (
                 <div style={{display:"flex",flexDirection:"column",gap:10}}>
                   <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>
                     {label} Groups <span style={{fontWeight:400,textTransform:"none"}}>— split into more than one if different posts need different briefs</span>
@@ -9736,7 +9679,6 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                     + Add another brief group
                   </button>
                 </div>
-                )}
                 </>)}
               </div>
             );
