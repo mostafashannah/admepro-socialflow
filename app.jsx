@@ -1987,6 +1987,11 @@ const EMAIL_TEMPLATES = {
         // it used to also get reused up here, reading as "promoted to
         // 25000.00" (a raw salary number) instead of naming the new role.
         hero:`Congratulations, ${memberName||"there"}!`, sub:`Your dedication has earned you a well-deserved promotion${event.title?` to <strong>${event.title}</strong>`:""}.`,
+        // Shown right before the Previous/New salary table — thanks them
+        // and names the new role BEFORE they hit a bare table of numbers,
+        // so the promotion itself (not just the raise) is the first thing
+        // they read about.
+        intro:`Thank you, ${firstName}, for everything you've put into this role — your effort hasn't gone unnoticed. We're excited to share that you've been promoted${event.title?` to <strong>${event.title}</strong>`:""}, effective ${event.effective_date?fmtDate(event.effective_date):"immediately"}.`,
         body:`We've watched you grow, take on more, and consistently raise the bar — this promotion is a reflection of the trust we have in you and the impact you've made. We're excited to see where you take it from here. Congratulations, and thank you for everything.`,
       },
       bonus: {
@@ -2053,6 +2058,7 @@ const EMAIL_TEMPLATES = {
       <p style="margin:0;font-size:14px;color:#ffe0e5">${copy.sub}</p>
     </div>
     ${event.title?`<p style="margin:0 0 16px;font-size:15px;font-weight:800;color:#111827">${event.title}</p>`:""}
+    ${copy.intro?`<p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563">${copy.intro}</p>`:""}
     ${rowsHtml?`<table width="100%" style="border-collapse:collapse;margin:0 0 20px;border:1px solid #f1f1f3;border-radius:12px;overflow:hidden">${rowsHtml}</table>`:""}
     ${event.notes?`<p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563">${event.notes.replace(/</g,"&lt;")}</p>`:""}
     <p style="margin:0 0 4px;font-size:14px;line-height:1.6;color:#4b5563">${copy.body}</p>
