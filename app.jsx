@@ -5492,9 +5492,7 @@ function DesignFilePicker({post, assets, onAddAsset, project, onStageChange}) {
 // Design assets grid — its own component (rather than inline JSX in
 // PostDetail) purely so it can hold its own per-asset "upscaling" state
 // without adding more hooks to PostDetail's own hook list.
-function DesignAssetGrid({post, onStageChange, onView, onRemove}) {
-  const [upscalingIdx, setUpscalingIdx] = useState(null);
-  const [err, setErr] = useState("");
+function DesignAssetGrid({post, onStageChange, onView, onRemove, onForward, canForward}) {
   const [dragIdx, setDragIdx] = useState(null);
   if(!post.design_assets || post.design_assets.length===0) return null;
 
@@ -5505,25 +5503,6 @@ function DesignAssetGrid({post, onStageChange, onView, onRemove}) {
     const [moved] = next.splice(from,1);
     next.splice(to,0,moved);
     onStageChange({...post, design_assets:next}, post.stage);
-  };
-
-  const handleUpscale = async (asset, i, scaleFactor) => {
-    setUpscalingIdx(i); setErr("");
-    try {
-      const res = await fetch(asset.url||asset.data);
-      const blob = await res.blob();
-      const b64 = await new Promise((resolve,reject)=>{
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(",")[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-      const resultUrl = await freepikGenerate("image-upscaler", {image:b64, scale_factor:scaleFactor});
-      if(!resultUrl) throw new Error("Upscale timed out — please try again");
-      const newAssets = post.design_assets.map((a,idx)=>idx===i?{...a, url:resultUrl, data:undefined, upscaledTo:scaleFactor}:a);
-      onStageChange({...post, design_assets:newAssets}, post.stage);
-    } catch(e) { setErr("Upscale failed: "+e.message); }
-    setUpscalingIdx(null);
   };
 
   return (
@@ -5562,25 +5541,23 @@ function DesignAssetGrid({post, onStageChange, onView, onRemove}) {
               }} style={{position:"absolute",top:3,right:3,width:20,height:20,borderRadius:99,background:"#ef4444",border:"none",color:"#fff",cursor:"pointer",fontSize:12,fontWeight:700,padding:0,lineHeight:"20px"}}>×</button>
               {asset.upscaledTo&&<span style={{position:"absolute",bottom:3,left:3,padding:"1px 6px",borderRadius:99,background:"rgba(16,185,129,0.9)",color:"#fff",fontSize:9,fontWeight:700}}>{asset.upscaledTo}</span>}
             </div>
+            {/* Admin/AM only — sends this media straight into the
+                client-facing comment thread as a link, same hand-off as
+                forwarding a comment attachment. Always confirms first. */}
+            {canForward && onForward && (asset.url||asset.data) && (
+              <button onClick={()=>{ if(confirm(`Forward "${asset.name||"this file"}" to the client-facing comments?`)) onForward(asset); }} style={{height:20,borderRadius:5,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",fontSize:9,fontWeight:700,cursor:"pointer"}}>
+                Forward to Client
+              </button>
+            )}
             {isCarousel&&(
               <div style={{display:"flex",gap:3}}>
                 <button onClick={()=>moveAsset(i,i-1)} disabled={i===0} style={{flex:1,height:20,borderRadius:5,border:"1px solid var(--border2)",background:"var(--surface)",color:i===0?"var(--text3)":"var(--text2)",fontSize:10,fontWeight:700,cursor:i===0?"default":"pointer",opacity:i===0?0.4:1}}>← Slide</button>
                 <button onClick={()=>moveAsset(i,i+1)} disabled={i===post.design_assets.length-1} style={{flex:1,height:20,borderRadius:5,border:"1px solid var(--border2)",background:"var(--surface)",color:i===post.design_assets.length-1?"var(--text3)":"var(--text2)",fontSize:10,fontWeight:700,cursor:i===post.design_assets.length-1?"default":"pointer",opacity:i===post.design_assets.length-1?0.4:1}}>Slide →</button>
               </div>
             )}
-            {isImage&&!asset.upscaledTo&&(
-              <div style={{display:"flex",gap:3}}>
-                {["2x","4x"].map(sf=>(
-                  <button key={sf} onClick={()=>handleUpscale(asset,i,sf)} disabled={upscalingIdx===i} style={{flex:1,height:20,borderRadius:5,border:"1px solid var(--accent)44",background:"var(--accent)11",color:"var(--accent)",fontSize:9,fontWeight:700,cursor:upscalingIdx===i?"default":"pointer"}}>
-                    {upscalingIdx===i?"…":`Upscale ${sf}`}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         );})}
       </div>
-      {err&&<p style={{fontSize:11,color:"#ef4444"}}>{err}</p>}
     </div>
   );
 }
@@ -6376,6 +6353,21 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
     onAddComment(post.id, `Forwarded "${forwardedName}" to client`, currentUser, null, "internal");
   };
 
+  // Same forward-to-client hand-off as forwardAttachmentToClient above, but
+  // for a design/media asset from the Media/Attachments grid (design_assets)
+  // instead of a comment attachment — same rename-with-sequence-number
+  // convention and internal activity log entry.
+  const forwardDesignAssetToClient = (asset) => {
+    const url = asset.url || asset.data;
+    if (!url) return;
+    const forwardedCount = postComments.filter(pc=>pc.audience==="client" && pc.file_url).length;
+    const ext = (asset.name||url||"").match(/\.[a-zA-Z0-9]+$/)?.[0] || "";
+    const baseName = (post.title||post.name||"Attachment").trim();
+    const forwardedName = `${baseName} ${forwardedCount+1}${ext}`;
+    onAddComment(post.id, "📎 Attachment (forwarded)", currentUser, {file_url:url, file_name:forwardedName, file_type:"file"}, "client");
+    onAddComment(post.id, `Forwarded "${forwardedName}" to client`, currentUser, null, "internal");
+  };
+
   // Comments only ever carry ONE attachment each at the DB level
   // (Comment.file_url is a single column, not an array) — any number of
   // picked files get uploaded here, each posted as its own comment the
@@ -7011,7 +7003,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
         {(post.stage==="content_creation" || isManager || (post.design_assets||[]).length>0)&&(
           <div style={{display:"flex",flexDirection:"column",gap:12,padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
             <h4 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:14}}>Attachments</h4>
-            <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage} onRemove={handleRemoveDesignAsset}/>
+            <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage} onRemove={handleRemoveDesignAsset} onForward={forwardDesignAssetToClient} canForward={currentUser?.role==="admin"||currentUser?.role==="account_manager"}/>
             {(post.stage==="content_creation"||isManager)&&(
               <>
                 <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>
@@ -7128,7 +7120,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
             </div>
 
             {/* Display existing assets */}
-            <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage} onRemove={handleRemoveDesignAsset}/>
+            <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage} onRemove={handleRemoveDesignAsset} onForward={forwardDesignAssetToClient} canForward={currentUser?.role==="admin"||currentUser?.role==="account_manager"}/>
 
             {/* File picker — choose from assets or upload new */}
             <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>
