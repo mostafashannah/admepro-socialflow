@@ -1981,7 +1981,12 @@ const EMAIL_TEMPLATES = {
         body:`Every project you've delivered and every extra mile you've gone this past period has been seen and genuinely appreciated. This raise is our way of recognizing that — thank you for everything you bring to the team.`,
       },
       promotion: {
-        hero:`Congratulations, ${memberName||"there"}!`, sub:`Your dedication has earned you a well-deserved promotion${event.new_value?` to <strong>${event.new_value}</strong>`:""}.`,
+        // The headline highlights the NEW TITLE (event.title) — that's the
+        // actual promotion. event.new_value is the new salary figure, which
+        // already has its own "Previous / New / Amount" row further down;
+        // it used to also get reused up here, reading as "promoted to
+        // 25000.00" (a raw salary number) instead of naming the new role.
+        hero:`Congratulations, ${memberName||"there"}!`, sub:`Your dedication has earned you a well-deserved promotion${event.title?` to <strong>${event.title}</strong>`:""}.`,
         body:`We've watched you grow, take on more, and consistently raise the bar — this promotion is a reflection of the trust we have in you and the impact you've made. We're excited to see where you take it from here. Congratulations, and thank you for everything.`,
       },
       bonus: {
