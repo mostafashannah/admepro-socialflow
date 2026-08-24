@@ -684,14 +684,18 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     // the queue on today's view, so there's no reason to ignore it anymore.
     if(post.due_time) {
       const [hh, mm] = post.due_time.split(":").map(Number);
-      const startMins = hh * 60 + (mm || 0);
+      // due_time is the DEADLINE the task must be finished by, not when
+      // work on it starts — a 180-min task due at 3:30 needs to occupy
+      // 12:30–3:30, ending AT the due time, not starting there and running
+      // 3:30–6:30 past it.
+      const dueMins = hh * 60 + (mm || 0);
       // Clamp within working hours — a task already given a real due_time
       // keeps showing at that real time even if it's now in the past
       // (that's honest information: this was due at 10am and still isn't
       // done). The "don't show things before now" rule only applies to
       // where NEW work gets auto-packed, not to moving something that's
       // already sitting on the schedule.
-      cursor = Math.max(WORKING_START * 60, Math.min(startMins, WORKING_END * 60 - est));
+      cursor = Math.max(WORKING_START * 60, Math.min(dueMins - est, WORKING_END * 60 - est));
       // Two tasks can end up anchored to the exact same due_time (a Calendar
       // Plan defaulting every post to the same slot, both set manually,
       // etc.) — rather than showing them stacked on top of each other,

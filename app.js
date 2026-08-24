@@ -232,13 +232,17 @@ var isOverduePost=function isOverduePost(p){return!!(p.due_date&&p.due_date<toda
 var slots=[];var usedSlots=new Set();var _iterator=_createForOfIteratorHelper(myPosts),_step;try{var _loop2=function _loop2(){var post=_step.value;var est=estimateDuration(post);var cursor;// Overdue tasks keep their real due_time anchor same as anything else
 // now — they stay on their own original day/slot instead of jumping
 // the queue on today's view, so there's no reason to ignore it anymore.
-if(post.due_time){var _post$due_time$split$=post.due_time.split(":").map(Number),_post$due_time$split$2=_slicedToArray(_post$due_time$split$,2),hh=_post$due_time$split$2[0],mm=_post$due_time$split$2[1];var startMins=hh*60+(mm||0);// Clamp within working hours — a task already given a real due_time
+if(post.due_time){var _post$due_time$split$=post.due_time.split(":").map(Number),_post$due_time$split$2=_slicedToArray(_post$due_time$split$,2),hh=_post$due_time$split$2[0],mm=_post$due_time$split$2[1];// due_time is the DEADLINE the task must be finished by, not when
+// work on it starts — a 180-min task due at 3:30 needs to occupy
+// 12:30–3:30, ending AT the due time, not starting there and running
+// 3:30–6:30 past it.
+var dueMins=hh*60+(mm||0);// Clamp within working hours — a task already given a real due_time
 // keeps showing at that real time even if it's now in the past
 // (that's honest information: this was due at 10am and still isn't
 // done). The "don't show things before now" rule only applies to
 // where NEW work gets auto-packed, not to moving something that's
 // already sitting on the schedule.
-cursor=Math.max(WORKING_START*60,Math.min(startMins,WORKING_END*60-est));// Two tasks can end up anchored to the exact same due_time (a Calendar
+cursor=Math.max(WORKING_START*60,Math.min(dueMins-est,WORKING_END*60-est));// Two tasks can end up anchored to the exact same due_time (a Calendar
 // Plan defaulting every post to the same slot, both set manually,
 // etc.) — rather than showing them stacked on top of each other,
 // treat the SECOND one to land here as effectively un-anchored and
