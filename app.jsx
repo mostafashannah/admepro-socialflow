@@ -6594,7 +6594,12 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
               ) : post.due_date ? (
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <Ico d={Icons.calendar} size={13}/>
-                  <span style={{fontSize:13,fontWeight:600}}>{fmtDate(post.due_date)}{post.due_time?` · ${post.due_time}`:""}</span>
+                  {/* Raw 24-hour "03:30" with no AM/PM marker reads as
+                      ambiguous — someone picking a time via the native
+                      <input type="time"> can easily land on 3:30 AM while
+                      meaning 3:30 PM and never notice, since both display
+                      identically here otherwise. */}
+                  <span style={{fontSize:13,fontWeight:600}}>{fmtDate(post.due_date)}{post.due_time?` · ${minsToAmPm(timeToMins(post.due_time))}`:""}</span>
                 </div>
               ) : <span style={{fontSize:12,color:"var(--text3)"}}>Not set</span>}
             </div>
