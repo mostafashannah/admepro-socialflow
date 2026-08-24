@@ -9550,7 +9550,7 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
           {/* Per-content-type: count, platforms, assignee, brief — each independent */}
           {CALENDAR_KIND_DEFS.map(([kind,label,hint])=>{
             const cfg = f.kinds[kind];
-            const countOptions = kind==="article" ? [0,1,2,3,4,5,6,8,10] : [0,2,4,6,8,10,12,15,20,24,30];
+            const countOptions = kind==="article" ? [0,1,2,3,4,5,6,8,10] : [0,1,2,4,6,8,10,12,15,20,24,30];
             const isOpen = !!expandedKinds[kind];
             return (
               <div key={kind} style={{border:"1px solid var(--border)",borderRadius:"var(--rs)",padding:isOpen?14:"10px 14px",display:"flex",flexDirection:"column",gap:isOpen?10:0,background:cfg.count>0?"var(--surface2)":"transparent"}}>
