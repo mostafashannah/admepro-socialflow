@@ -10126,6 +10126,16 @@ function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAdd
   // team rows here instead, same pattern used on System Log's Live Now.
   const [liveTeam,setLiveTeam] = useState(team);
   const [liveClock,setLiveClock] = useState(Date.now());
+  // Same paid-so-far convention as Finance > Overview's ledger — an
+  // unsettled outstanding expense (Fawry installment, pending payroll, etc.)
+  // should still count whatever's actually been paid against it toward the
+  // Balance/This-Month-Out figures here, instead of being excluded entirely,
+  // which used to make this widget's numbers disagree with Finance's.
+  const [outstandingPayments,setOutstandingPayments] = useState([]);
+  useEffect(()=>{
+    if(!isAdmin) return;
+    qe("OutstandingPayment", {}, "-date", 2000).then(res=>setOutstandingPayments(res.entities||[])).catch(()=>{});
+  },[isAdmin]);
   useEffect(()=>{
     if(!isAdmin) return;
     let cancelled = false;
@@ -10385,10 +10395,17 @@ No markdown, no explanation.`;
           {isAdmin&&(invoices.length>0||payments.length>0||(data.expenses||[]).length>0||subscriptions.length>0)&&(()=>{
             const num = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
             const expenses = data.expenses||[];
+            const paidSoFarByExpense = {};
+            outstandingPayments.forEach(p=>{ paidSoFarByExpense[p.expense_id] = (paidSoFarByExpense[p.expense_id]||0) + Number(p.amount||0); });
+            const countableAmount = e => {
+              if(!isUnsettledOutstanding(e)) return num(e.amount);
+              const total = Number(e.outstanding_total_payable ?? e.amount);
+              return Math.min(paidSoFarByExpense[e.id]||0, total);
+            };
             const totalIn = payments.reduce((a,p)=>a+num(p.amount),0)
               + subscriptionPayments.reduce((a,p)=>a+num(p.amount),0)
-              + expenses.filter(e=>(e.type||"out")!=="out"&&!isUnsettledOutstanding(e)).reduce((a,e)=>a+num(e.amount),0);
-            const totalOut = expenses.filter(e=>(e.type||"out")==="out"&&!isUnsettledOutstanding(e)).reduce((a,e)=>a+num(e.amount),0);
+              + expenses.filter(e=>(e.type||"out")!=="out").reduce((a,e)=>a+countableAmount(e),0);
+            const totalOut = expenses.filter(e=>(e.type||"out")==="out").reduce((a,e)=>a+countableAmount(e),0);
             const balance = totalIn-totalOut;
             const unpaidInvoices=invoices.filter(i=>i.status!=="paid");
             const invoicesOutstanding=unpaidInvoices.reduce((a,i)=>a+(i.balance_due||0),0);
@@ -10412,10 +10429,20 @@ No markdown, no explanation.`;
             const now=new Date();
             const monthStart=new Date(now.getFullYear(),now.getMonth(),1);
             const inMonth=d=>{ const dt=new Date(d); return dt>=monthStart&&dt<=now; };
+            // An outstanding payment counts toward the month it was actually
+            // PAID, not the month the original transaction was dated —
+            // otherwise settling an old installment this month wouldn't show
+            // up here at all. Matches Finance > Overview's logic exactly.
+            const outstandingTypeById = {};
+            expenses.forEach(e=>{ if(e.outstanding_kind) outstandingTypeById[e.id] = e.type||"out"; });
+            const monthOutstandingIn = outstandingPayments.filter(p=>inMonth(p.date)&&outstandingTypeById[p.expense_id]==="in").reduce((a,p)=>a+num(p.amount),0);
+            const monthOutstandingOut = outstandingPayments.filter(p=>inMonth(p.date)&&outstandingTypeById[p.expense_id]==="out").reduce((a,p)=>a+num(p.amount),0);
             const monthIn = payments.filter(p=>inMonth(p.payment_date)).reduce((a,p)=>a+num(p.amount),0)
               + subscriptionPayments.filter(p=>inMonth(p.payment_date)).reduce((a,p)=>a+num(p.amount),0)
-              + expenses.filter(e=>(e.type||"out")!=="out"&&!isUnsettledOutstanding(e)&&inMonth(e.date)).reduce((a,e)=>a+num(e.amount),0);
-            const monthOut = expenses.filter(e=>(e.type||"out")==="out"&&!isUnsettledOutstanding(e)&&inMonth(e.date)).reduce((a,e)=>a+num(e.amount),0);
+              + expenses.filter(e=>(e.type||"out")!=="out"&&!e.outstanding_kind&&inMonth(e.date)).reduce((a,e)=>a+num(e.amount),0)
+              + monthOutstandingIn;
+            const monthOut = expenses.filter(e=>(e.type||"out")==="out"&&!e.outstanding_kind&&inMonth(e.date)).reduce((a,e)=>a+num(e.amount),0)
+              + monthOutstandingOut;
             return (
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
