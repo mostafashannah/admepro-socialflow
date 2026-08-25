@@ -33886,7 +33886,14 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         label:catMap[e.category]?.l||e.category, sub:e.description, raw:e,
         source: isOut?"Manual expense":"Manual income", channelSource: e.source||"app", category:e.category, createdBy:e.created_by,
         checkNo:e.check_no, ref:e.ref, attachments:parseJ(e.attachments,[]), method:e.method,
-        clientName: (!isOut&&e.category==="client_payment") ? e.description : null,
+        // e.client_name is the real, structured field for who paid — the
+        // raw e.description text used to be used instead, which varies per
+        // entry ("Al Mousa Trading" / "Client payment — Al Mousa Trading" /
+        // "Bank transfer — Bino") and fractured what should be one client
+        // into several fake duplicates in the "By Client" breakdown below.
+        // Only falls back to description for old rows that predate the
+        // client_name field ever being set.
+        clientName: (!isOut&&e.category==="client_payment") ? (e.client_name||e.description) : null,
         isUnsettledOutstanding: unsettled,
         outstandingPaidSoFar: paidSoFar,
         outstandingRemaining: Math.max(0, total-paidSoFar),
