@@ -10173,7 +10173,7 @@ function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAdd
   // dashboard scoped to their own work instead of whole-agency aggregates —
   // admin and account managers still see everything.
   const isManager = ["admin","account_manager"].includes(currentUser?.role);
-  const visibleTeam = (team||[]).filter(m=>!["hr","accountant","office_boy"].includes(m.role));
+  const visibleTeam = (team||[]).filter(m=>!["hr","accountant","office_boy"].includes(m.role) && m.status==="active");
   const myPosts = filteredPosts.filter(p=>wasOwnerOf(p, currentUser?.email, currentUser?.role));
   const myPerf = perf.find(p=>p.email===currentUser?.email) || {};
 
