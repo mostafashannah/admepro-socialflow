@@ -615,6 +615,11 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
     // check, e.g. the double-booking conflict check in the assign modal,
     // which cares who holds it right now.)
     if (!wasOwnerOf(p, userEmail, userRole)) return false;
+    // A Calendar Plan parent card isn't a single time-boxed piece of work —
+    // it's a container the team edits sub-items inside of (see plan_items),
+    // each of which only becomes a real, schedulable Post once it splits
+    // off. The parent itself never belongs on the time-blocked Timeline.
+    if (p.is_plan_parent) return false;
     // Work THEY finished and moved forward earlier ON THE DAY BEING VIEWED
     // still shows in its own slot (rendered green, see completed_today
     // below) instead of vanishing the instant it leaves their stage —
@@ -1117,7 +1122,7 @@ function sbTable(entityName) {
 // Known columns per table — used to strip unknown fields before POST/PATCH
 const SB_SCHEMA = {
   projects: ["title","description","client_id","client_name","status","start_date","end_date","platforms","team_members","project_type","posting_start","posting_end"],
-  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","text_on_visual","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","assigned_to_extra","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","published_platforms","platform_post_ids","estimated_minutes","content_assigned_to","due_date","due_time","task_type","revision_count","was_rejected","sector","content_completed_at","design_completed_at","design_assigned_to","published_at","pre_approval_stage","design_completed_dates","content_completed_dates"],
+  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","text_on_visual","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","assigned_to_extra","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","published_platforms","platform_post_ids","estimated_minutes","content_assigned_to","due_date","due_time","task_type","revision_count","was_rejected","sector","content_completed_at","design_completed_at","design_assigned_to","published_at","pre_approval_stage","design_completed_dates","content_completed_dates","is_plan_parent","plan_items"],
   // address/website/contact_person were never real columns on the clients
   // table (mysql-schema.sql only has name/email/phone/logo_url/industry/
   // status/account_manager_id/notes/platforms/portal_password/username) —
@@ -5970,9 +5975,177 @@ function BriefText({text, style}) {
   );
 }
 
+// ════════════════════════════════════════════════════════════════
+// PLAN ITEM CARD — one sub-item inside a Calendar Plan parent task.
+// Holds its own kind-appropriate media (image / reel+cover / ordered
+// carousel / story) plus platform + publish date/time, and its own mini
+// stage — it only becomes an independent, movable Post once it splits off
+// via "Split to Scheduled Post" (only enabled once it's Approved and every
+// required field is filled).
+// ════════════════════════════════════════════════════════════════
+const PLAN_ITEM_STAGE_KEYS = ["content_creation","design","internal_review","client_approval","approved","rejected","on_hold"];
+function PlanItemCard({item,team,onUpdate,onSplit}) {
+  const [uploading,setUploading] = useState(false);
+  const media = item.media||{};
+  const assignee = team?.find(t=>t.email===item.assigned_to);
+  const isSplit = !!item.split_post_id;
+  const togglePlatform = (p) => {
+    const cur = item.platforms||[item.platform].filter(Boolean);
+    const has = cur.includes(p);
+    const next = has ? cur.filter(x=>x!==p) : [...cur,p];
+    onUpdate({platforms: next.length?next:[p], platform: (next.length?next:[p])[0]});
+  };
+  const doUpload = async (file, folder) => {
+    setUploading(true);
+    try { return await uploadToStorage(file, folder); }
+    catch(e) { alert(e?.message||"Upload failed"); return null; }
+    finally { setUploading(false); }
+  };
+  const missing = [];
+  if(!item.platform) missing.push("platform");
+  if(!item.scheduled_date) missing.push("date");
+  if(!item.scheduled_time) missing.push("time");
+  if(item.kind==="static" && !media.image) missing.push("image");
+  if(item.kind==="reel" && !media.video) missing.push("reel video");
+  if(item.kind==="reel" && !media.cover) missing.push("cover");
+  if(item.kind==="carousel" && !(media.items||[]).length) missing.push("carousel media");
+  if(item.kind==="story" && !media.media) missing.push("story media");
+  const canSplit = item.stage==="approved" && missing.length===0 && !isSplit;
+
+  return (
+    <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",padding:14,background:"var(--surface)",opacity:isSplit?0.7:1}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,gap:8}}>
+        <input value={item.title||""} onChange={e=>onUpdate({title:e.target.value})} disabled={isSplit}
+          style={{fontWeight:700,fontSize:14,border:"none",background:"transparent",flex:1,color:"var(--text1)"}}/>
+        <span style={{fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.05em",padding:"3px 8px",borderRadius:6,background:"var(--bg2)",color:"var(--text3)"}}>{item.kind}</span>
+        {isSplit ? (
+          <span style={{fontSize:11,fontWeight:700,color:"#10b981",display:"flex",alignItems:"center",gap:4}}>✓ Split off</span>
+        ) : (
+          <select value={item.stage} onChange={e=>onUpdate({stage:e.target.value})} style={{fontSize:11,fontWeight:700,padding:"4px 8px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",color:STAGE_MAP[item.stage]?.color||"var(--text2)"}}>
+            {PLAN_ITEM_STAGE_KEYS.map(k=><option key={k} value={k}>{STAGE_MAP[k]?.label||k}</option>)}
+          </select>
+        )}
+      </div>
+
+      {!isSplit && <>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+          {PLATFORMS.map(p=>{
+            const active = (item.platforms||[item.platform]).includes(p);
+            return <button key={p} onClick={()=>togglePlatform(p)} style={{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:20,border:`1px solid ${active?"var(--accent)":"var(--border)"}`,background:active?"var(--accent)":"transparent",color:active?"#fff":"var(--text2)",textTransform:"capitalize"}}>{p}</button>;
+          })}
+        </div>
+        <div style={{display:"flex",gap:8,marginBottom:10}}>
+          <input type="date" value={item.scheduled_date||""} onChange={e=>onUpdate({scheduled_date:e.target.value})} style={{flex:1,fontSize:12,padding:"6px 8px",borderRadius:8,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)"}}/>
+          <input type="time" value={item.scheduled_time||""} onChange={e=>onUpdate({scheduled_time:e.target.value})} style={{flex:1,fontSize:12,padding:"6px 8px",borderRadius:8,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)"}}/>
+        </div>
+
+        {/* Media — shape depends on kind */}
+        {item.kind==="static" && (
+          media.image ? (
+            <div style={{position:"relative",marginBottom:10}}>
+              <img src={media.image} style={{width:"100%",maxHeight:220,objectFit:"cover",borderRadius:8}}/>
+              <button onClick={()=>onUpdate({media:{...media,image:null}})} style={{position:"absolute",top:6,right:6,background:"#000000aa",color:"#fff",border:"none",borderRadius:6,padding:"2px 8px",fontSize:11}}>Remove</button>
+            </div>
+          ) : (
+            <label style={{display:"block",textAlign:"center",padding:16,border:"1px dashed var(--border2)",borderRadius:8,fontSize:12,color:"var(--text3)",cursor:"pointer",marginBottom:10}}>
+              {uploading?"Uploading…":"+ Upload image"}
+              <input type="file" accept="image/*" hidden disabled={uploading} onChange={async e=>{ const f=e.target.files[0]; if(!f) return; const url=await doUpload(f,"plan-items"); if(url) onUpdate({media:{...media,image:url}}); }}/>
+            </label>
+          )
+        )}
+        {item.kind==="reel" && (
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+            {[["video","Reel video","video/*"],["cover","Cover image","image/*"]].map(([k,label,accept])=>(
+              <div key={k}>
+                {media[k] ? (
+                  <div style={{position:"relative"}}>
+                    {k==="video" ? <video src={media[k]} style={{width:"100%",height:120,objectFit:"cover",borderRadius:8}}/> : <img src={media[k]} style={{width:"100%",height:120,objectFit:"cover",borderRadius:8}}/>}
+                    <button onClick={()=>onUpdate({media:{...media,[k]:null}})} style={{position:"absolute",top:4,right:4,background:"#000000aa",color:"#fff",border:"none",borderRadius:6,padding:"1px 6px",fontSize:10}}>✕</button>
+                  </div>
+                ) : (
+                  <label style={{display:"block",textAlign:"center",padding:"20px 6px",border:"1px dashed var(--border2)",borderRadius:8,fontSize:11,color:"var(--text3)",cursor:"pointer"}}>
+                    {uploading?"…":`+ ${label}`}
+                    <input type="file" accept={accept} hidden disabled={uploading} onChange={async e=>{ const f=e.target.files[0]; if(!f) return; const url=await doUpload(f,"plan-items"); if(url) onUpdate({media:{...media,[k]:url}}); }}/>
+                  </label>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {item.kind==="carousel" && (
+          <div style={{marginBottom:10}}>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:6}}>
+              {(media.items||[]).map((url,i)=>(
+                <div key={i} style={{position:"relative"}}>
+                  <img src={url} style={{width:70,height:70,objectFit:"cover",borderRadius:6}}/>
+                  <span style={{position:"absolute",bottom:2,left:2,background:"#000000aa",color:"#fff",fontSize:9,fontWeight:700,borderRadius:4,padding:"0 4px"}}>{i+1}</span>
+                  <button onClick={()=>onUpdate({media:{...media,items:media.items.filter((_,idx)=>idx!==i)}})} style={{position:"absolute",top:2,right:2,background:"#000000aa",color:"#fff",border:"none",borderRadius:4,padding:"0 4px",fontSize:10}}>✕</button>
+                </div>
+              ))}
+            </div>
+            <label style={{display:"block",textAlign:"center",padding:10,border:"1px dashed var(--border2)",borderRadius:8,fontSize:12,color:"var(--text3)",cursor:"pointer"}}>
+              {uploading?"Uploading…":"+ Add slide (in order)"}
+              <input type="file" accept="image/*" hidden disabled={uploading} onChange={async e=>{ const f=e.target.files[0]; if(!f) return; const url=await doUpload(f,"plan-items"); if(url) onUpdate({media:{...media,items:[...(media.items||[]),url]}}); }}/>
+            </label>
+          </div>
+        )}
+        {item.kind==="story" && (
+          media.media ? (
+            <div style={{position:"relative",marginBottom:10,width:110}}>
+              {media.media_type==="video" ? <video src={media.media} style={{width:110,height:196,objectFit:"cover",borderRadius:8}}/> : <img src={media.media} style={{width:110,height:196,objectFit:"cover",borderRadius:8}}/>}
+              <button onClick={()=>onUpdate({media:{}})} style={{position:"absolute",top:4,right:4,background:"#000000aa",color:"#fff",border:"none",borderRadius:6,padding:"1px 6px",fontSize:10}}>✕</button>
+            </div>
+          ) : (
+            <label style={{display:"block",textAlign:"center",padding:16,border:"1px dashed var(--border2)",borderRadius:8,fontSize:12,color:"var(--text3)",cursor:"pointer",marginBottom:10}}>
+              {uploading?"Uploading…":"+ Upload story media (9:16)"}
+              <input type="file" accept="image/*,video/*" hidden disabled={uploading} onChange={async e=>{ const f=e.target.files[0]; if(!f) return; const url=await doUpload(f,"plan-items"); if(url) onUpdate({media:{media:url, media_type:f.type.startsWith("video")?"video":"image"}}); }}/>
+            </label>
+          )
+        )}
+
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+          <span style={{fontSize:11,color:"var(--text3)"}}>{assignee?.name||"Unassigned"}</span>
+          {item.stage==="approved" && (
+            <button onClick={()=>onSplit()} disabled={!canSplit} title={missing.length?`Missing: ${missing.join(", ")}`:""}
+              style={{fontSize:12,fontWeight:700,padding:"6px 12px",borderRadius:8,border:"none",background:canSplit?"#10b981":"var(--bg2)",color:canSplit?"#fff":"var(--text3)",cursor:canSplit?"pointer":"not-allowed"}}>
+              Split to Scheduled Post
+            </button>
+          )}
+        </div>
+        {item.stage==="approved" && missing.length>0 && <p style={{fontSize:11,color:"#f59e0b",marginTop:6}}>Missing: {missing.join(", ")}</p>}
+      </>}
+    </div>
+  );
+}
+
+function PlanItemsEditor({post,team,onUpdateItem,onSplitItem}) {
+  const items = Array.isArray(post.plan_items) ? post.plan_items : parseJ(post.plan_items||"[]");
+  const splitCount = items.filter(it=>it.split_post_id).length;
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <h4 style={{fontSize:13,fontWeight:700,color:"var(--text2)"}}>Posts in this plan</h4>
+        <span style={{fontSize:12,color:"var(--text3)"}}>{splitCount}/{items.length} split off</span>
+      </div>
+      {items.map(item=>(
+        <PlanItemCard key={item.id} item={item} team={team}
+          onUpdate={patch=>onUpdateItem(item.id,patch)}
+          onSplit={()=>onSplitItem(item.id)}/>
+      ))}
+    </div>
+  );
+}
+
 // POST DETAIL MODAL
 // ════════════════════════════════════════════════════════════════
-function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onAddComment,onDeleteComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,onInsightsRefreshed,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[],allPosts=[],contactReports=[]}) {
+function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onAddComment,onDeleteComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,onInsightsRefreshed,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[],allPosts=[],contactReports=[],onUpdatePlanItem,onSplitPlanItem}) {
+  if(post?.is_plan_parent) {
+    return (
+      <Modal open onClose={onClose} title={post.title} subtitle={`${client?.name||post.client_name||""} · Calendar plan`} width={640}>
+        <PlanItemsEditor post={post} team={team} onUpdateItem={onUpdatePlanItem} onSplitItem={onSplitPlanItem}/>
+      </Modal>
+    );
+  }
   const {isMobile} = useResponsive();
   const [comment,setComment] = useState("");
   const [sending,setSending] = useState(false);
@@ -48523,30 +48696,43 @@ Return ONLY valid JSON (no markdown, no explanation):
         }
       } catch(e){}
     }
-    // Create all task posts with ID-swap
-    const localPosts = tasks.map(t=>({...t,project_id:projectId,id:uid()}));
-    setData(d=>({...d,posts:[...localPosts,...d.posts]}));
+    // A calendar plan no longer creates one independent Post per idea —
+    // every approved idea instead becomes a "plan item" living inside ONE
+    // parent task card (post.is_plan_parent). The team fills in each item's
+    // own platform/date/time/media and advances its own mini-stage from
+    // inside that one card; an item only splits off into its own real,
+    // independently-movable Post once IT reaches Approved (see
+    // splitPlanItem) — not waiting on any of its siblings. This keeps a
+    // whole batch of posts from a single calendar plan from flooding every
+    // board as separate cards up front.
     const calClient = data.clients.find(c=>c.id===planForm.client_id);
-    // description was being computed correctly per idea (from that content
-    // type's own brief — statics get the static brief, reels get the reel
-    // brief, etc.) but never actually included in this payload, so it got
-    // silently dropped the moment the task was saved — every calendar-plan
-    // task landed with no brief visible at all, regardless of what was
-    // typed into the wizard.
-    const postPayloads = localPosts.map(t=>({title:t.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:t.platform,platforms:t.platforms||[t.platform],post_type:t.post_type,task_type:t.task_type||"",stage:planForm.start_stage||"content_creation",priority:t.priority,description:t.description||t._sourceBrief||"",caption:t.caption,hashtags:t.hashtags,text_on_visual:t.text_on_visual||"",reel_hook:t.reel_hook||"",notes:t.notes||"",estimated_minutes:t.estimated_minutes,scheduled_date:t.scheduled_date,scheduled_time:t.scheduled_time,due_date:t.due_date||"",due_time:t.due_time||"",assigned_to:t.assigned_to||"",sector:t.sector||""}));
-    ce("Post",postPayloads).then(res=>{
-      const reals = res.entities||[];
-      setData(d=>{
-        let posts = [...d.posts];
-        localPosts.forEach((lp,i)=>{ if(reals[i]?.id) posts=posts.map(p=>p.id===lp.id?{...p,...reals[i]}:p); });
-        return {...d,posts};
-      });
+    const startStage = planForm.start_stage||"content_creation";
+    const items = tasks.map(t=>({
+      id: uid(), kind: t.kind, title: t.title, platform: t.platform, platforms: t.platforms||[t.platform],
+      post_type: t.post_type, task_type: t.task_type||"", priority: t.priority,
+      description: t.description||t._sourceBrief||"", caption: t.caption, hashtags: t.hashtags,
+      text_on_visual: t.text_on_visual||"", reel_hook: t.reel_hook||"", notes: t.notes||"",
+      estimated_minutes: t.estimated_minutes, scheduled_date: t.due_date||t.scheduled_date||"",
+      scheduled_time: t.due_time||t.scheduled_time||"", assigned_to: t.assigned_to||"", sector: t.sector||"",
+      stage: startStage, media: {}, split_post_id: null,
+    }));
+    const parentId = uid();
+    const localParent = {
+      id: parentId, title: planForm.campaign, project_id: projectId, client_id: planForm.client_id,
+      client_name: calClient?.name||"", platform: combinedPlatforms[0]||"", platforms: combinedPlatforms,
+      post_type: "plan", stage: startStage, priority: "medium", notes: combinedBrief,
+      is_plan_parent: true, plan_items: items, created_date: new Date().toISOString(),
+    };
+    setData(d=>({...d,posts:[localParent,...d.posts]}));
+    ce("Post",[{title:localParent.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:localParent.platform,platforms:combinedPlatforms,post_type:"plan",stage:startStage,priority:"medium",notes:combinedBrief,is_plan_parent:true,plan_items:items}]).then(res=>{
+      const real = res.entities?.[0];
+      if(real?.id) setData(d=>({...d,posts:d.posts.map(p=>p.id===parentId?{...p,...real,plan_items:items}:p)}));
     }).catch(()=>{});
-    // Notify each unique assignee once per batch (not once per task —
-    // creating 18 tasks would flood their inbox if we sent 18 individual
-    // emails). Group tasks by assignee email, one notification per person.
+    // Notify each unique assignee once per batch (not once per item —
+    // creating 18 items would flood their inbox if we sent 18 individual
+    // emails). Group items by assignee email, one notification per person.
     const assigneeGroups = {};
-    localPosts.forEach(t=>{ if(t.assigned_to) (assigneeGroups[t.assigned_to]=assigneeGroups[t.assigned_to]||[]).push(t); });
+    items.forEach(t=>{ if(t.assigned_to) (assigneeGroups[t.assigned_to]=assigneeGroups[t.assigned_to]||[]).push(t); });
     Object.entries(assigneeGroups).forEach(([email, assignedTasks])=>{
       if(email===currentUser?.email) return;
       const assignee = data.team.find(m=>m.email===email);
@@ -48565,7 +48751,78 @@ Return ONLY valid JSON (no markdown, no explanation):
         ).catch(()=>{});
       }
     });
-    setToast(` ${tasks.length} posts created for ${planForm.campaign}`);
+    setToast(` "${planForm.campaign}" created with ${tasks.length} post${tasks.length>1?"s":""} inside — open it to work on each one.`);
+  };
+
+  // Persists an in-place edit to one plan item (media, platform, date/time,
+  // stage, etc.) without touching the others — called from PlanItemsEditor
+  // on every field change so nothing is lost if the tab closes mid-edit.
+  const updatePlanItem = (parentPost, itemId, patch) => {
+    const nextItems = (parentPost.plan_items||[]).map(it=>it.id===itemId?{...it,...patch}:it);
+    setData(d=>({...d,posts:d.posts.map(p=>p.id===parentPost.id?{...p,plan_items:nextItems}:p)}));
+    ue("Post", parentPost.id, {plan_items: nextItems}).catch(()=>{});
+  };
+
+  // Splits one ready plan item off the parent card into its own real,
+  // independently-movable Post — the moment it individually reaches
+  // Approved, not waiting on any of its siblings. Everything downstream
+  // (Timeline, publishing, client forwarding) works on the new Post
+  // completely normally from here since it's a real Post row with normal
+  // design_assets/carousel_cover, same shape a single AddPostModal post has.
+  const splitPlanItem = async (parentPost, itemId) => {
+    const items = parentPost.plan_items||[];
+    const item = items.find(it=>it.id===itemId);
+    if(!item) return;
+    const media = item.media||{};
+    const missing = [];
+    if(!item.platform) missing.push("platform");
+    if(!item.scheduled_date) missing.push("publish date");
+    if(!item.scheduled_time) missing.push("publish time");
+    if(item.kind==="static" && !media.image) missing.push("image");
+    if(item.kind==="reel" && (!media.video||!media.cover)) missing.push(!media.video?"reel video":"reel cover");
+    if(item.kind==="carousel" && !(media.items||[]).length) missing.push("carousel media");
+    if(item.kind==="story" && !media.media) missing.push("story media");
+    if(missing.length) { setToast(` Fill in ${missing.join(", ")} before splitting this post off.`); return; }
+
+    const now = new Date().toISOString();
+    let design_assets = [], carousel_cover = "";
+    if(item.kind==="static") design_assets = [{name:item.title||"image", type:"image", url:media.image, uploaded_at:now}];
+    else if(item.kind==="reel") { design_assets = [{name:item.title||"reel", type:"video", url:media.video, uploaded_at:now}]; carousel_cover = media.cover; }
+    else if(item.kind==="carousel") design_assets = media.items.map((url,i)=>({name:`slide-${i+1}`, type:"image", url, uploaded_at:now}));
+    else if(item.kind==="story") design_assets = [{name:item.title||"story", type:media.media_type||"image", url:media.media, kind:"story", uploaded_at:now}];
+
+    const payload = {
+      title:item.title, project_id:parentPost.project_id, client_id:parentPost.client_id, client_name:parentPost.client_name,
+      platform:item.platform, platforms:item.platforms||[item.platform], post_type:item.post_type, task_type:item.task_type||"",
+      stage:"scheduled", priority:item.priority, description:item.description||"", caption:item.caption, hashtags:item.hashtags,
+      text_on_visual:item.text_on_visual||"", reel_hook:item.reel_hook||"", notes:item.notes||"", sector:item.sector||"",
+      estimated_minutes:item.estimated_minutes, scheduled_date:item.scheduled_date, scheduled_time:item.scheduled_time,
+      due_date:item.scheduled_date, due_time:item.scheduled_time, assigned_to:item.assigned_to||"",
+      design_assets, carousel_cover,
+    };
+    const localId = uid();
+    setData(d=>({...d,posts:[{...payload,id:localId},...d.posts]}));
+    const nextItems = items.map(it=>it.id===itemId?{...it,split_post_id:localId,stage:"scheduled"}:it);
+    setData(d=>({...d,posts:d.posts.map(p=>p.id===parentPost.id?{...p,plan_items:nextItems}:p)}));
+    ue("Post", parentPost.id, {plan_items: nextItems}).catch(()=>{});
+    try {
+      const res = await ce("Post",[payload]);
+      const real = res.entities?.[0];
+      if(real?.id) {
+        setData(d=>({...d,posts:d.posts.map(p=>p.id===localId?{...p,...real}:p)}));
+        const realItems = nextItems.map(it=>it.id===itemId?{...it,split_post_id:real.id}:it);
+        ue("Post", parentPost.id, {plan_items: realItems}).catch(()=>{});
+        setData(d=>({...d,posts:d.posts.map(p=>p.id===parentPost.id?{...p,plan_items:realItems}:p)}));
+      }
+    } catch(e) {}
+    // Once every item in the plan has split off into its own Post, the
+    // parent card has nothing left to do — move it to Published so it drops
+    // off active boards instead of sitting around as an empty shell.
+    if(nextItems.every(it=>it.split_post_id)) {
+      ue("Post", parentPost.id, {stage:"published"}).catch(()=>{});
+      setData(d=>({...d,posts:d.posts.map(p=>p.id===parentPost.id?{...p,stage:"published"}:p)}));
+    }
+    setToast(` "${item.title}" split off as its own scheduled post.`);
   };
 
   // Adds a {date, duration_mins} snapshot to a task's
@@ -50254,14 +50511,21 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
 
     {/* Post Detail */}
     {selectedPost&&(()=>{
-      const _proj = data.projects.find(p=>p.id===selectedPost.project_id);
-      const _clientId = _proj?.client_id || selectedPost.client_id;
+      // Plan-item edits (updatePlanItem/splitPlanItem) update data.posts
+      // directly without necessarily also calling setSelectedPost — read the
+      // live row so the editor always reflects the latest plan_items instead
+      // of a stale snapshot from the moment the card was opened.
+      const _livePost = data.posts.find(p=>p.id===selectedPost.id) || selectedPost;
+      const _proj = data.projects.find(p=>p.id===_livePost.project_id);
+      const _clientId = _proj?.client_id || _livePost.client_id;
       const _clientKnowledge = (data.clientKnowledge||[]).find(k=>k.client_id===_clientId);
       const _clientIntelligence = (data.clientIntelligence||[]).find(i=>i.client_id===_clientId);
       const _client = data.clients.find(c=>c.id===_clientId);
       return <PostDetail
         key={selectedPost.id}
-        post={selectedPost}
+        post={_livePost}
+        onUpdatePlanItem={(itemId,patch)=>updatePlanItem(_livePost,itemId,patch)}
+        onSplitPlanItem={(itemId)=>splitPlanItem(_livePost,itemId)}
         project={_proj}
         projects={data.projects}
         team={data.team}
