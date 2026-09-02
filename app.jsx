@@ -10274,7 +10274,7 @@ function HRDashboard({team,perfLogs,currentUser,setPage}) {
   );
 }
 
-function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAddTask,onCreateInvoice,onAddProject,onOpenPost,onMarkNotifRead,onSaveInsights,onDecideLeaveRequest}) {
+function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAddTask,onCreateInvoice,onAddProject,onOpenPost,onMarkNotifRead,onSaveInsights,onDecideLeaveRequest,appSettings}) {
   if(currentUser?.role==="hr") return <HRDashboard team={data.team} perfLogs={data.perfLogs||[]} currentUser={currentUser} setPage={setPage}/>;
   const {posts,projects,clients,team,timelogs,notifications} = data;
   const perfLogs = data.perfLogs||[];
@@ -10309,6 +10309,33 @@ function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAdd
     if(!isAdmin) return;
     qe("OutstandingPayment", {}, "-date", 2000).then(res=>setOutstandingPayments(res.entities||[])).catch(()=>{});
   },[isAdmin]);
+  // ai-outage-notify.php sets app_settings.ai_outage_status the moment an
+  // Anthropic/OpenAI call fails for a billing/quota reason, and clears it
+  // the moment that provider next succeeds — poll it here (admin only) so
+  // this banner reflects the CURRENT state instead of whatever appSettings
+  // happened to be at page load, minutes or hours before an outage started
+  // or got resolved.
+  const [aiOutageStatus,setAiOutageStatus] = useState(()=>{
+    const raw = appSettings?.ai_outage_status;
+    return (raw && typeof raw==="object") ? raw : parseJ(raw||"{}");
+  });
+  useEffect(()=>{
+    if(!isAdmin) return;
+    let cancelled = false;
+    const poll = async () => {
+      if(document.visibilityState!=="visible") return;
+      const res = await qe("AppSettings",{},null,1).catch(()=>null);
+      const row = res?.entities?.[0];
+      if(!row || cancelled) return;
+      const raw = row.ai_outage_status;
+      setAiOutageStatus((raw && typeof raw==="object") ? raw : parseJ(raw||"{}"));
+    };
+    poll();
+    const t = setInterval(poll, 60000);
+    return ()=>{ cancelled=true; clearInterval(t); };
+  },[isAdmin]);
+  const aiOutageProviders = Object.keys(aiOutageStatus||{});
+  const AI_BILLING_LINKS = { Anthropic: "https://console.anthropic.com/settings/billing", OpenAI: "https://platform.openai.com/settings/organization/billing/overview" };
   useEffect(()=>{
     if(!isAdmin) return;
     let cancelled = false;
@@ -10442,6 +10469,32 @@ No markdown, no explanation.`;
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
+
+      {/* ── AI OUTAGE WARNING — set by ai-outage-notify.php the moment an
+          Anthropic/OpenAI call fails for a billing/quota reason, cleared
+          automatically the next time that provider succeeds. ── */}
+      {isAdmin && aiOutageProviders.length>0 && (
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {aiOutageProviders.map(provider=>{
+            const info = aiOutageStatus[provider]||{};
+            return (
+              <div key={provider} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",padding:"12px 16px",background:"#ef444414",border:"1px solid #ef444444",borderRadius:"var(--r)"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
+                  <span style={{fontSize:18}}>⚠️</span>
+                  <div style={{minWidth:0}}>
+                    <p style={{fontSize:13,fontWeight:700,color:"#ef4444"}}>{provider} is out of credit — AI features are down</p>
+                    <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{info.message||"Billing/quota error"}{info.detected_at?` · since ${new Date(info.detected_at).toLocaleString()}`:""}</p>
+                  </div>
+                </div>
+                <a href={AI_BILLING_LINKS[provider]||"#"} target="_blank" rel="noopener noreferrer"
+                  style={{flexShrink:0,fontSize:12,fontWeight:700,padding:"8px 14px",borderRadius:8,background:"#ef4444",color:"#fff",whiteSpace:"nowrap"}}>
+                  Add Credit →
+                </a>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* ── HEADER ── */}
       <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -50105,7 +50158,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
                 else if(type==="update_reply_bot_settings") await saveReplyBotSettings(payload.clientId, payload.clientName, payload.patch);
               }}
             />}
-          {page==="dashboard"&&<DashboardPage data={data} currentUser={currentUser} setPage={setPage}
+          {page==="dashboard"&&<DashboardPage data={data} currentUser={currentUser} setPage={setPage} appSettings={appSettings}
               onDecideLeaveRequest={decideLeaveRequest}
               onAddClient={()=>setShowFABClient(true)}
               onAddCalendar={()=>{setCalendarPreselectedClient(null);setShowFABCalendar(true);}}

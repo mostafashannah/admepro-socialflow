@@ -38,7 +38,7 @@ function openai_curl($url, $headers, $body, $isMultipart=false) {
   $err    = curl_error($ch);
   curl_close($ch);
   if($err){ return [500, json_encode(["error"=>"cURL error: $err"])]; }
-  if($status < 200 || $status >= 300) notifyAdminOfAiOutage('OpenAI', (string)$res);
+  recordAiCallResult('OpenAI', $status, (string)$res);
   return [$status, $res ?: json_encode(["error"=>"No response from OpenAI"])];
 }
 

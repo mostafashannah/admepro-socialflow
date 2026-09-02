@@ -71,7 +71,7 @@ if($status < 200 || $status >= 300){
   // log the full error body server-side so it can be diagnosed instead of
   // guessed at again.
   error_log("[ai-proxy] Anthropic API error, HTTP $status: " . substr((string)$res, 0, 2000));
-  notifyAdminOfAiOutage('Anthropic', (string)$res);
 }
+recordAiCallResult('Anthropic', $status, (string)$res);
 http_response_code($status >= 200 && $status < 300 ? 200 : $status);
 echo $res ?: json_encode(["error"=>"No response from Anthropic"]);

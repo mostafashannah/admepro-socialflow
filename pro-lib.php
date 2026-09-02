@@ -1827,7 +1827,7 @@ function callClaude(array $payload) {
     $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $err = curl_error($ch);
     curl_close($ch);
-    if ($status < 200 || $status >= 300) notifyAdminOfAiOutage('Anthropic', (string)$res);
+    recordAiCallResult('Anthropic', $status, (string)$res);
     return [$status, json_decode($res, true), $res];
 }
 
