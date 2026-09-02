@@ -10639,8 +10639,16 @@ No markdown, no explanation.`;
             // (to team members, Fawry installments, etc.) — an expense with
             // outstanding_kind set that isn't settled yet — not unpaid client
             // invoices. Match that definition here so the two numbers agree.
+            // Also match Finance's outstandingRemainingFor: the REMAINING
+            // unpaid portion, not the full original total — a Fawry plan
+            // with 2 of 3 installments already paid should only count the
+            // last installment here, same as Finance > Overview does.
             const owedExpenses=expenses.filter(isUnsettledOutstanding);
-            const owedOutstanding=owedExpenses.reduce((a,e)=>a+num(e.outstanding_total_payable??e.amount),0);
+            const owedOutstanding=owedExpenses.reduce((a,e)=>{
+              const total = Number(e.outstanding_total_payable??e.amount);
+              const paid = Math.min(paidSoFarByExpense[e.id]||0, total);
+              return a+Math.max(0, total-paid);
+            },0);
             const outstanding=invoicesOutstanding+owedOutstanding;
             const overdueCount=invoices.filter(i=>isOverdueInvoice(i)&&i.status!=="paid").length;
             const activeSubs=subscriptions.filter(s=>s.status==="active");
