@@ -6474,6 +6474,39 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
     setPublishing(false);
   };
 
+  // Once a post is already Published, the platforms it originally carried
+  // are locked in — but a client can still ask "also put this one on
+  // LinkedIn" after the fact. This lets an admin/AM pick any OTHER
+  // connected, not-yet-published platform and send this same post there
+  // too, without touching the platforms it already went out on.
+  const [extraPlatform,setExtraPlatform] = useState("");
+  const [publishingExtra,setPublishingExtra] = useState(false);
+  const extraPlatformCandidates = PLATFORMS.filter(pl=>pl!=="tiktok" && !alreadyPublishedPlatforms.includes(pl) && findIntegrationForPlatform(pl));
+  const handlePublishExtra = async () => {
+    if(!extraPlatform) return;
+    if(!post.caption && !post.hashtags) {
+      setPublishResult({ok:false, msg:"This post has no caption yet — add one (Edit, or the Content phase) before publishing."});
+      return;
+    }
+    setPublishingExtra(true); setPublishResult(null);
+    const integ = findIntegrationForPlatform(extraPlatform);
+    try {
+      const res = await publishPost(post, integ, null);
+      const postId = res.video_id || res.id || res.post_id || res.creation_id;
+      const nowPublished = [...new Set([...alreadyPublishedPlatforms, extraPlatform])];
+      const nowPlatforms = [...new Set([...allPostPlatforms, extraPlatform])];
+      const platformPostIds = {...(post.platform_post_ids ? (typeof post.platform_post_ids==="string"?JSON.parse(post.platform_post_ids):post.platform_post_ids) : {})};
+      if(postId) platformPostIds[extraPlatform] = postId;
+      await ue("Post", post.id, {platforms: JSON.stringify(nowPlatforms), published_platforms: JSON.stringify(nowPublished), platform_post_ids: JSON.stringify(platformPostIds)}).catch(()=>{});
+      onEdit&&onEdit({...post, platforms:nowPlatforms, published_platforms:nowPublished, platform_post_ids:platformPostIds});
+      setPublishResult({ok:true, msg:`${({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",twitter:"Twitter/X"})[extraPlatform]||extraPlatform}: ✓ published`});
+      setExtraPlatform("");
+    } catch(e) {
+      setPublishResult({ok:false, msg:e.message||"Publish failed"});
+    }
+    setPublishingExtra(false);
+  };
+
   const handlePublishTikTok = async () => {
     if(!socialIntegration || socialIntegration.app_key!=="tiktok" || !tkCanPublish) return;
     setPublishing(true); setPublishResult(null);
@@ -7582,6 +7615,37 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
               {publishResult&&(
                 <div className="fade-in" style={{padding:"8px 12px",background:publishResult.ok?"#10b98111":"#ef444411",border:`1px solid ${publishResult.ok?"#10b98133":"#ef444433"}`,borderRadius:"var(--rs)",fontSize:12,color:publishResult.ok?"#10b981":"#ef4444",fontWeight:600}}>
                   {publishResult.ok?"":""} {publishResult.msg}
+                </div>
+              )}
+            </div>
+          )}
+          {/* Publish to another platform — a Published post's original platforms
+              are locked in, but the client can still ask for it to also go out
+              somewhere else afterward. Only offers connected platforms this
+              post hasn't already been published to. */}
+          {FEATURE_FLAGS.social_publishing&&isManager&&post.stage==="published"&&post.task_type!=="grid_layout"&&extraPlatformCandidates.length>0&&(
+            <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:8,padding:12,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
+              <label style={{fontSize:11,fontWeight:700,color:"var(--text3)"}}>Also publish this post to another platform</label>
+              <div style={{display:"flex",gap:8}}>
+                <select value={extraPlatform} onChange={e=>setExtraPlatform(e.target.value)} style={{...inputSt,flex:1}}>
+                  <option value="">Select platform…</option>
+                  {extraPlatformCandidates.map(pl=>(
+                    <option key={pl} value={pl}>{({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",twitter:"Twitter/X"})[pl]||pl}</option>
+                  ))}
+                </select>
+                <button onClick={handlePublishExtra} disabled={!extraPlatform||publishingExtra} style={{
+                  padding:"8px 16px",borderRadius:"var(--rs)",whiteSpace:"nowrap",
+                  background:(!extraPlatform||publishingExtra)?"var(--surface)":"#1877F222",
+                  border:`1px solid ${(!extraPlatform||publishingExtra)?"var(--border)":"#1877F255"}`,
+                  color:(!extraPlatform||publishingExtra)?"var(--text3)":"#1877F2",fontSize:13,fontWeight:700,
+                  cursor:(!extraPlatform||publishingExtra)?"not-allowed":"pointer",
+                }}>
+                  {publishingExtra?<Spinner size={14}/>:"Publish"}
+                </button>
+              </div>
+              {publishResult&&(
+                <div className="fade-in" style={{padding:"8px 12px",background:publishResult.ok?"#10b98111":"#ef444411",border:`1px solid ${publishResult.ok?"#10b98133":"#ef444433"}`,borderRadius:"var(--rs)",fontSize:12,color:publishResult.ok?"#10b981":"#ef4444",fontWeight:600}}>
+                  {publishResult.msg}
                 </div>
               )}
             </div>
