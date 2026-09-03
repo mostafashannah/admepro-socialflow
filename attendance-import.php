@@ -71,9 +71,32 @@ if (($_GET['mode'] ?? '') === 'remap') {
         } else {
             $teamMemberId = trim((string)($body['team_member_id'] ?? ''));
             if ($teamMemberId === '') { http_response_code(400); echo json_encode(["error" => "Missing team_member_id"]); exit; }
-            $stmt = $pdo->prepare("UPDATE attendance_records SET team_member_id = ? WHERE member_name = ? AND team_member_id IS NULL");
-            $stmt->execute([$teamMemberId, $memberName]);
-            echo json_encode(["ok" => true, "updated" => $stmt->rowCount()]);
+            // A blind "SET team_member_id WHERE member_name=..." used to create
+            // a duplicate the moment this person ALSO already had a row for the
+            // same day under their real name (e.g. a later re-import matched
+            // them properly while this raw device label — "EYAD", "SHMS" —
+            // was still sitting there unmatched from an earlier import). Check
+            // for that first and fold the orphaned row into the existing one
+            // instead of ending up with two rows for the same person/day.
+            $rows = $pdo->prepare("SELECT id, work_date, check_in, check_out, note FROM attendance_records WHERE member_name = ? AND team_member_id IS NULL");
+            $rows->execute([$memberName]);
+            $toRemap = $rows->fetchAll(PDO::FETCH_ASSOC);
+            $updated = 0; $merged = 0;
+            foreach ($toRemap as $row) {
+                $existing = $pdo->prepare("SELECT id FROM attendance_records WHERE team_member_id = ? AND work_date = ? AND id != ? LIMIT 1");
+                $existing->execute([$teamMemberId, $row['work_date'], $row['id']]);
+                $targetId = $existing->fetchColumn();
+                if ($targetId) {
+                    $pdo->prepare("UPDATE attendance_records SET check_in = COALESCE(check_in, ?), check_out = COALESCE(check_out, ?), note = COALESCE(NULLIF(note,''), ?) WHERE id = ?")
+                        ->execute([$row['check_in'], $row['check_out'], $row['note'], $targetId]);
+                    $pdo->prepare("DELETE FROM attendance_records WHERE id = ?")->execute([$row['id']]);
+                    $merged++;
+                } else {
+                    $pdo->prepare("UPDATE attendance_records SET team_member_id = ? WHERE id = ?")->execute([$teamMemberId, $row['id']]);
+                    $updated++;
+                }
+            }
+            echo json_encode(["ok" => true, "updated" => $updated, "merged" => $merged]);
         }
     } catch (Throwable $e) {
         http_response_code(500);
