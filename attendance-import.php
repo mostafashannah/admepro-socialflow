@@ -71,7 +71,7 @@ if (($_GET['mode'] ?? '') === 'remap') {
         } else {
             $teamMemberId = trim((string)($body['team_member_id'] ?? ''));
             if ($teamMemberId === '') { http_response_code(400); echo json_encode(["error" => "Missing team_member_id"]); exit; }
-            $startDateStmt = $pdo->prepare("SELECT start_date FROM team_members WHERE id = ?");
+            $startDateStmt = $pdo->prepare("SELECT COALESCE(start_date, DATE(created_at)) FROM team_members WHERE id = ?");
             $startDateStmt->execute([$teamMemberId]);
             $startDate = $startDateStmt->fetchColumn() ?: null;
             // A blind "SET team_member_id WHERE member_name=..." used to create
@@ -334,7 +334,13 @@ $upsert = $pdo->prepare(
 function memberStartDate(PDO $pdo, string $teamMemberId): ?string {
     static $cache = null;
     if ($cache === null) {
-        $cache = $pdo->query("SELECT id, start_date FROM team_members WHERE start_date IS NOT NULL AND start_date != ''")->fetchAll(PDO::FETCH_KEY_PAIR);
+        // start_date is rarely filled in by hand — fall back to when their
+        // profile was created (same "Joined" date shown on their profile,
+        // and the same fallback monthly-payroll-cron.php already uses)
+        // rather than requiring a separate manual entry before this guard
+        // does anything at all.
+        $rows = $pdo->query("SELECT id, COALESCE(start_date, DATE(created_at)) AS effective_start FROM team_members")->fetchAll(PDO::FETCH_KEY_PAIR);
+        $cache = $rows;
     }
     return $cache[$teamMemberId] ?? null;
 }
