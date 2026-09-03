@@ -3088,9 +3088,11 @@ var partnerInKeys=new Set(PARTNERS.map(function(p){return p.inKey;}));var bySour
 // way By Client used to, and a bare "Client payment" with no name
 // attached shows up as its own fake source instead of folding into
 // whichever specific client it actually was.
-var key=l.clientName||l.sub||l.label;acc[key]=(acc[key]||0)+l.countableAmount;return acc;},{});// No cap — same as the Spending by Category card, which lists every
-// category with a nonzero total instead of an arbitrary top-N.
-var topSources=Object.entries(bySource).sort(function(a,b){return b[1]-a[1];});var maxSource=Math.max.apply(Math,_toConsumableArray(topSources.map(function(s){return s[1];})).concat([1]));// Money trend across months, one line per expense category plus one for
+var key=l.clientName||l.sub||l.label;acc[key]=(acc[key]||0)+l.countableAmount;return acc;},{});// Cap to the same row count as Spending by Category shows (a fixed list
+// of expense categories) — Top Income Sources has no such fixed list
+// (one row per client), so left uncapped it ran on far longer than the
+// card next to it.
+var topSources=Object.entries(bySource).sort(function(a,b){return b[1]-a[1];}).slice(0,byCategory.length);var maxSource=Math.max.apply(Math,_toConsumableArray(topSources.map(function(s){return s[1];})).concat([1]));// Money trend across months, one line per expense category plus one for
 // total income — last 12 calendar months that actually have data.
 var monthlyByCategory={};// { "2026-07": { salaries: 1200, ads: 300, ..., income: 5000 } }
 ledger.forEach(function(l){if(!l.date)return;var d=new Date(l.date);if(isNaN(d.getTime()))return;var key="".concat(d.getFullYear(),"-").concat(String(d.getMonth()+1).padStart(2,"0"));if(!monthlyByCategory[key])monthlyByCategory[key]={};var bucket=l.type==="in"?"income":l.category;monthlyByCategory[key][bucket]=(monthlyByCategory[key][bucket]||0)+l.countableAmount;});var monthlyKeys=Object.keys(monthlyByCategory).sort().slice(-12);var monthlyDates=monthlyKeys.map(function(k){return"".concat(k,"-01");});var activeExpenseCats=EXPENSE_CATEGORIES.filter(function(c){return monthlyKeys.some(function(k){return monthlyByCategory[k][c.k]>0;});});var moneyTrendSeries=[{name:"Income",platform:"Income",color:"#10b981",data:monthlyKeys.map(function(k,i){return{date:monthlyDates[i],value:monthlyByCategory[k].income||0};})}].concat(_toConsumableArray(activeExpenseCats.map(function(c){return{name:c.l,platform:c.l,color:c.color,data:monthlyKeys.map(function(k,i){return{date:monthlyDates[i],value:monthlyByCategory[k][c.k]||0};})};})));// Remaining unpaid balance across all outstanding (owed-to-team-member and

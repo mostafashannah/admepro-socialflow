@@ -34393,9 +34393,11 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
     acc[key] = (acc[key]||0)+l.countableAmount;
     return acc;
   },{});
-  // No cap — same as the Spending by Category card, which lists every
-  // category with a nonzero total instead of an arbitrary top-N.
-  const topSources = Object.entries(bySource).sort((a,b)=>b[1]-a[1]);
+  // Cap to the same row count as Spending by Category shows (a fixed list
+  // of expense categories) — Top Income Sources has no such fixed list
+  // (one row per client), so left uncapped it ran on far longer than the
+  // card next to it.
+  const topSources = Object.entries(bySource).sort((a,b)=>b[1]-a[1]).slice(0,byCategory.length);
   const maxSource = Math.max(...topSources.map(s=>s[1]),1);
 
   // Money trend across months, one line per expense category plus one for
