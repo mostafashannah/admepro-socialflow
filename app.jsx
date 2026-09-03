@@ -18988,7 +18988,7 @@ function AgentProfilePage({agent, avatarUrl, activityLogs=[], onBack}) {
 function UsersPage({currentUser, team, invitations, accessRequests, clientUsers, clients,
   onInviteUser, onCancelInvitation, onApproveRequest, onRejectRequest,
   onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation, onGenerateClientActivationLink, onActivateInvitation,
-  rolePerms, onUpdateTeamMember, onRemoveMember, onToggleRolePermission, onAddExpense, leaveRequests, onDecideLeaveRequest, attendanceRecords,
+  rolePerms, onUpdateTeamMember, onRemoveMember, onToggleRolePermission, onAddExpense, leaveRequests, onDecideLeaveRequest, attendanceRecords, onUpdateAttendance,
   posts, onImpersonate, appSettings, brandingAssets, onSaveSettings, expenses, onDeclareCompanyDayOff, invoices, payments, subscriptionPayments, activityLogs=[], perfLogs=[], maiReportSessions=[], leaveCreditEvents=[], payrollRuns=[], onDecidePayrollRun}) {
   const [tab, setTab] = usePersistentState("sf_tab_users","team");
   const [memberStatusFilter, setMemberStatusFilter] = useState("active");
@@ -19057,6 +19057,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
           clients={clients}
           leaveRequests={leaveRequests||[]}
           attendanceRecords={attendanceRecords||[]}
+          onUpdateAttendance={onUpdateAttendance}
           expenses={expenses}
           invoices={invoices}
           payments={payments}
@@ -20172,7 +20173,14 @@ function AccountManagerMaiReportsTab({member, onUpdateTeamMember}) {
   );
 }
 
-function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, attendanceRecords, expenses, invoices, payments, subscriptionPayments, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense, appSettings, brandingAssets, perfLogs=[], maiReportSessions=[], leaveCreditEvents=[], payrollRuns=[], onDecidePayrollRun}) {
+function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, attendanceRecords, onUpdateAttendance, expenses, invoices, payments, subscriptionPayments, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense, appSettings, brandingAssets, perfLogs=[], maiReportSessions=[], leaveCreditEvents=[], payrollRuns=[], onDecidePayrollRun}) {
+  const [editingAttendanceId,setEditingAttendanceId] = useState(null);
+  const [attendanceEditDraft,setAttendanceEditDraft] = useState({});
+  const startEditAttendance = (a) => { setEditingAttendanceId(a.id); setAttendanceEditDraft({status:a.status||"present", check_in:a.check_in||"", check_out:a.check_out||""}); };
+  const saveAttendanceEdit = (id) => {
+    onUpdateAttendance && onUpdateAttendance(id, {status:attendanceEditDraft.status, check_in:attendanceEditDraft.check_in||null, check_out:attendanceEditDraft.check_out||null});
+    setEditingAttendanceId(null);
+  };
   // Plain state, not persisted — opening any team member should always
   // start on Overview, not silently reopen to whatever tab was last viewed.
   const [tab, setTab] = useState("overview");
@@ -21056,6 +21064,20 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                     const extra = worked!=null ? Math.max(0, worked-9) : 0;
                     const shortfall = (a.status==="present" && worked!=null) ? Math.max(0, 9-worked) : 0;
                     const isDayOff = a.status==="weekend" || a.status==="holiday";
+                    const isEditingThis = editingAttendanceId===a.id;
+                    if(isEditingThis) return (
+                      <div key={a.id} style={{padding:"10px 18px",borderBottom:i<g.rows.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",background:"var(--surface2)"}}>
+                        <span style={{fontSize:13,minWidth:100}}>{a.work_date?new Date(a.work_date).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}):""}</span>
+                        <input type="time" value={attendanceEditDraft.check_in||""} onChange={e=>setAttendanceEditDraft(d=>({...d,check_in:e.target.value}))} style={{fontSize:12,padding:"5px 8px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)"}}/>
+                        <span style={{fontSize:12,color:"var(--text3)"}}>–</span>
+                        <input type="time" value={attendanceEditDraft.check_out||""} onChange={e=>setAttendanceEditDraft(d=>({...d,check_out:e.target.value}))} style={{fontSize:12,padding:"5px 8px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)"}}/>
+                        <select value={attendanceEditDraft.status} onChange={e=>setAttendanceEditDraft(d=>({...d,status:e.target.value}))} style={{fontSize:12,padding:"5px 8px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)"}}>
+                          {["present","absent","late","half_day","leave","wfh"].map(s=><option key={s} value={s}>{s}</option>)}
+                        </select>
+                        <button onClick={()=>saveAttendanceEdit(a.id)} style={{fontSize:12,fontWeight:700,padding:"5px 12px",borderRadius:6,border:"none",background:"var(--accent)",color:"#fff"}}>Save</button>
+                        <button onClick={()=>setEditingAttendanceId(null)} style={{fontSize:12,fontWeight:600,padding:"5px 12px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text2)"}}>Cancel</button>
+                      </div>
+                    );
                     return (
                       <div key={a.id} style={{padding:"10px 18px",borderBottom:i<g.rows.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12,opacity:isDayOff?0.6:1}}>
                         <span style={{fontSize:13,flex:1}}>{a.work_date?new Date(a.work_date).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}):""}</span>
@@ -21063,6 +21085,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                         {extra>0&&<span style={{fontSize:11,fontWeight:700,color:"#f59e0b"}}>+{extra.toFixed(1)}h</span>}
                         {shortfall>0&&<span style={{fontSize:11,fontWeight:700,color:"#ef4444"}}>-{shortfall.toFixed(1)}h</span>}
                         <span style={{textTransform:a.status==="wfh"?"uppercase":"capitalize",fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:6,background:isDayOff?"var(--accentbg)":(a.status==="absent"?"#ef444422":"var(--surface2)"),color:isDayOff?"var(--accent)":(a.status==="absent"?"#ef4444":"var(--text2)")}}>{a.status==="absent"?"Absent (No Request)":a.status}</span>
+                        {canEdit&&onUpdateAttendance&&<button onClick={()=>startEditAttendance(a)} title="Edit time/status" style={{fontSize:11,fontWeight:600,color:"var(--text3)",padding:"3px 6px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)"}}>Edit</button>}
                       </div>
                     );
                   })}
@@ -47199,6 +47222,16 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
     logActivity("Team Member Updated","users",`${m?.name||id} — ${Object.keys(updates).join(", ")}`,"success","",currentUser?.email||"admin");
   };
 
+  // Fixes a single already-imported attendance row (wrong clock-in/out time,
+  // or the wrong status — an import/device misread happens occasionally and
+  // otherwise required going into the DB by hand) without re-running the
+  // whole sheet.
+  const updateAttendanceRecord = async (id, updates) => {
+    setData(d=>({...d, attendanceRecords:(d.attendanceRecords||[]).map(a=>a.id===id?{...a,...updates}:a)}));
+    ue("AttendanceRecord", id, updates).catch(()=>{});
+    logActivity("Attendance Record Edited","hr",`${id} — ${Object.keys(updates).join(", ")}`,"success","",currentUser?.email||"admin");
+  };
+
   const removeTeamMember = async (id) => {
     const m = data.team.find(t=>t.id===id);
     setData(d=>({...d, team:d.team.filter(m=>m.id!==id)}));
@@ -50434,6 +50467,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             leaveRequests={data.leaveRequests||[]}
             onDecideLeaveRequest={decideLeaveRequest}
             attendanceRecords={data.attendanceRecords||[]}
+            onUpdateAttendance={updateAttendanceRecord}
             expenses={data.expenses||[]}
             invoices={data.invoices||[]}
             payments={data.payments||[]}

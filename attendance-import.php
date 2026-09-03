@@ -71,6 +71,9 @@ if (($_GET['mode'] ?? '') === 'remap') {
         } else {
             $teamMemberId = trim((string)($body['team_member_id'] ?? ''));
             if ($teamMemberId === '') { http_response_code(400); echo json_encode(["error" => "Missing team_member_id"]); exit; }
+            $startDateStmt = $pdo->prepare("SELECT start_date FROM team_members WHERE id = ?");
+            $startDateStmt->execute([$teamMemberId]);
+            $startDate = $startDateStmt->fetchColumn() ?: null;
             // A blind "SET team_member_id WHERE member_name=..." used to create
             // a duplicate the moment this person ALSO already had a row for the
             // same day under their real name (e.g. a later re-import matched
@@ -81,8 +84,17 @@ if (($_GET['mode'] ?? '') === 'remap') {
             $rows = $pdo->prepare("SELECT id, work_date, check_in, check_out, note FROM attendance_records WHERE member_name = ? AND team_member_id IS NULL");
             $rows->execute([$memberName]);
             $toRemap = $rows->fetchAll(PDO::FETCH_ASSOC);
-            $updated = 0; $merged = 0;
+            $updated = 0; $merged = 0; $skippedPreStart = 0;
             foreach ($toRemap as $row) {
+                // This device label's row predates the person's actual start
+                // date (e.g. the sheet covers the whole month but they only
+                // joined partway through) — it never happened, drop it rather
+                // than assigning it to them.
+                if ($startDate && $row['work_date'] < $startDate) {
+                    $pdo->prepare("DELETE FROM attendance_records WHERE id = ?")->execute([$row['id']]);
+                    $skippedPreStart++;
+                    continue;
+                }
                 $existing = $pdo->prepare("SELECT id FROM attendance_records WHERE team_member_id = ? AND work_date = ? AND id != ? LIMIT 1");
                 $existing->execute([$teamMemberId, $row['work_date'], $row['id']]);
                 $targetId = $existing->fetchColumn();
@@ -96,7 +108,7 @@ if (($_GET['mode'] ?? '') === 'remap') {
                     $updated++;
                 }
             }
-            echo json_encode(["ok" => true, "updated" => $updated, "merged" => $merged]);
+            echo json_encode(["ok" => true, "updated" => $updated, "merged" => $merged, "skipped_pre_start" => $skippedPreStart]);
         }
     } catch (Throwable $e) {
         http_response_code(500);
@@ -313,7 +325,25 @@ $upsert = $pdo->prepare(
 // on that (team_member_id, work_date) FIRST and update it in place instead
 // of letting a second, differently-named row slip in under the table's
 // name-based unique key.
+// A device export/sheet often covers a date range that starts before some
+// team members even joined (e.g. it's re-run for the whole month, but
+// someone started mid-month) — without this, they'd show up with
+// attendance history predating their own start date, which never happened
+// and threw off their attendance stats. Cached per script run since this
+// gets called once per imported row.
+function memberStartDate(PDO $pdo, string $teamMemberId): ?string {
+    static $cache = null;
+    if ($cache === null) {
+        $cache = $pdo->query("SELECT id, start_date FROM team_members WHERE start_date IS NOT NULL AND start_date != ''")->fetchAll(PDO::FETCH_KEY_PAIR);
+    }
+    return $cache[$teamMemberId] ?? null;
+}
+
 function upsertAttendanceRow(PDO $pdo, $upsert, ?string $teamMemberId, string $name, string $ymd, string $status, ?string $cin, ?string $cout, ?string $note) {
+    if ($teamMemberId) {
+        $startDate = memberStartDate($pdo, $teamMemberId);
+        if ($startDate && $ymd < $startDate) return; // predates this person's actual start date — never happened, skip it
+    }
     if ($teamMemberId) {
         $existing = $pdo->prepare("SELECT id FROM attendance_records WHERE team_member_id = :tid AND work_date = :wdate LIMIT 1");
         $existing->execute([':tid' => $teamMemberId, ':wdate' => $ymd]);
