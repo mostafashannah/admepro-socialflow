@@ -34382,11 +34382,20 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   // clickable into a fake client page for a name that was never a client.
   const partnerInKeys = new Set(PARTNERS.map(p=>p.inKey));
   const bySource = ledger.filter(l=>l.type==="in"&&!partnerInKeys.has(l.category)).reduce((acc,l)=>{
-    const key = l.sub || l.label;
+    // Prefer the already-cleaned client name (generic "Client payment —"/
+    // "Bank transfer —" prefixes already stripped off) over the raw
+    // description — otherwise a client paid under several differently-
+    // worded descriptions fractures into separate "sources" here the same
+    // way By Client used to, and a bare "Client payment" with no name
+    // attached shows up as its own fake source instead of folding into
+    // whichever specific client it actually was.
+    const key = l.clientName || l.sub || l.label;
     acc[key] = (acc[key]||0)+l.countableAmount;
     return acc;
   },{});
-  const topSources = Object.entries(bySource).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  // No cap — same as the Spending by Category card, which lists every
+  // category with a nonzero total instead of an arbitrary top-N.
+  const topSources = Object.entries(bySource).sort((a,b)=>b[1]-a[1]);
   const maxSource = Math.max(...topSources.map(s=>s[1]),1);
 
   // Money trend across months, one line per expense category plus one for
