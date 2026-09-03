@@ -34375,7 +34375,13 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   })).filter(c=>c.total>0).sort((a,b)=>b.total-a.total);
   const maxCat = Math.max(...byCategory.map(c=>c.total),1);
 
-  const bySource = ledger.filter(l=>l.type==="in").reduce((acc,l)=>{
+  // A partner's own capital contribution (e.g. "Admepro Acc. Finance", a
+  // 250,000 EGP injection) is money IN but it's not revenue — it already
+  // has its own dedicated Partners breakdown above. Counting it here too
+  // made it look like a client/income "source" worth a quarter million,
+  // clickable into a fake client page for a name that was never a client.
+  const partnerInKeys = new Set(PARTNERS.map(p=>p.inKey));
+  const bySource = ledger.filter(l=>l.type==="in"&&!partnerInKeys.has(l.category)).reduce((acc,l)=>{
     const key = l.sub || l.label;
     acc[key] = (acc[key]||0)+l.countableAmount;
     return acc;
