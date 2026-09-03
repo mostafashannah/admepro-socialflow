@@ -2319,13 +2319,16 @@ var toYmd=function toYmd(d){return"".concat(d.getFullYear(),"-").concat(String(d
 // means a day nobody clocked in for never got a row at all, which
 // used to just render as nothing rather than an actual absence.
 var approvedLeave=approvedLeaveDatesForFill[ymd];var dayOff=isDayOffForFill(ymd);var status=approvedLeave?approvedLeave==="wfh"?"wfh":"leave":dayOff?holidayDatesForFill.has(ymd)?"holiday":"weekend":"absent";filled.push({id:"dayoff-"+ymd,work_date:ymd,status:status,_synthetic:true});}cursor.setDate(cursor.getDate()+1);}// A REAL imported row can itself say "absent" for a day the member was
-// actually on approved WFH/vacation — the import has no idea about
-// leave requests, it only knows "no clock-in for this device that
-// day" (see attendance-import.php's absent-fill loop), so an approved
-// leave day and a genuine no-show both land as the same literal
-// status in the database. Override the DISPLAYED status here so
-// approved leave always wins over a bare "absent" row.
-var overridden=filled.map(function(a){var approvedLeave=a.status==="absent"?approvedLeaveDatesForFill[a.work_date]:null;return approvedLeave?_objectSpread(_objectSpread({},a),{},{status:approvedLeave==="wfh"?"wfh":"leave"}):a;});return overridden.sort(function(a,b){return new Date(b.work_date)-new Date(a.work_date);});}();var mySalaryRecords=(expenses||[]).filter(function(e){return e.team_member_id===member.id&&e.category==="salaries";}).sort(function(a,b){return new Date(b.date)-new Date(a.date);});// Pending monthly payroll runs awaiting approval (see monthly-payroll-cron.php)
+// actually on approved WFH/vacation, OR a day that's since been marked
+// a company holiday/weekend AFTER the sheet was already imported — the
+// import has no idea about leave requests or holidays declared later,
+// it only knows "no clock-in for this device that day" (see
+// attendance-import.php's absent-fill loop), so an approved leave day,
+// a newly-declared holiday, and a genuine no-show can all land as the
+// same literal "absent" status in the database. Override the DISPLAYED
+// status here so approved leave / a holiday always wins over a bare
+// "absent" row, without needing to re-import anything.
+var overridden=filled.map(function(a){if(a.status!=="absent")return a;var approvedLeave=approvedLeaveDatesForFill[a.work_date];if(approvedLeave)return _objectSpread(_objectSpread({},a),{},{status:approvedLeave==="wfh"?"wfh":"leave"});if(isDayOffForFill(a.work_date))return _objectSpread(_objectSpread({},a),{},{status:holidayDatesForFill.has(a.work_date)?"holiday":"weekend"});return a;});return overridden.sort(function(a,b){return new Date(b.work_date)-new Date(a.work_date);});}();var mySalaryRecords=(expenses||[]).filter(function(e){return e.team_member_id===member.id&&e.category==="salaries";}).sort(function(a,b){return new Date(b.date)-new Date(a.date);});// Pending monthly payroll runs awaiting approval (see monthly-payroll-cron.php)
 // — surfaced right here so an admin doesn't have to leave the profile and
 // go dig through Finance > Payroll just to approve/reject this person's.
 var myPendingPayroll=(payrollRuns||[]).filter(function(r){return r.team_member_id===member.id&&r.status==="pending";}).sort(function(a,b){return b.salary_month.localeCompare(a.salary_month);});// Once approved, a payroll run becomes an Outstanding-liability Expense

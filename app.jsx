@@ -20559,15 +20559,21 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
       cursor.setDate(cursor.getDate() + 1);
     }
     // A REAL imported row can itself say "absent" for a day the member was
-    // actually on approved WFH/vacation — the import has no idea about
-    // leave requests, it only knows "no clock-in for this device that
-    // day" (see attendance-import.php's absent-fill loop), so an approved
-    // leave day and a genuine no-show both land as the same literal
-    // status in the database. Override the DISPLAYED status here so
-    // approved leave always wins over a bare "absent" row.
+    // actually on approved WFH/vacation, OR a day that's since been marked
+    // a company holiday/weekend AFTER the sheet was already imported — the
+    // import has no idea about leave requests or holidays declared later,
+    // it only knows "no clock-in for this device that day" (see
+    // attendance-import.php's absent-fill loop), so an approved leave day,
+    // a newly-declared holiday, and a genuine no-show can all land as the
+    // same literal "absent" status in the database. Override the DISPLAYED
+    // status here so approved leave / a holiday always wins over a bare
+    // "absent" row, without needing to re-import anything.
     const overridden = filled.map(a => {
-      const approvedLeave = a.status === "absent" ? approvedLeaveDatesForFill[a.work_date] : null;
-      return approvedLeave ? {...a, status: approvedLeave === "wfh" ? "wfh" : "leave"} : a;
+      if (a.status !== "absent") return a;
+      const approvedLeave = approvedLeaveDatesForFill[a.work_date];
+      if (approvedLeave) return {...a, status: approvedLeave === "wfh" ? "wfh" : "leave"};
+      if (isDayOffForFill(a.work_date)) return {...a, status: holidayDatesForFill.has(a.work_date) ? "holiday" : "weekend"};
+      return a;
     });
     return overridden.sort((a, b) => new Date(b.work_date) - new Date(a.work_date));
   })();
