@@ -2301,7 +2301,12 @@ var startYmd=String(r.start_date||"").slice(0,10);var endYmd=String(r.end_date||
 // otherwise show just that one day with everything else silently
 // missing, instead of showing as absent for the rest of the period
 // everyone else has data for.
-var allDates=(attendanceRecords||[]).map(function(a){return a.work_date;}).filter(Boolean).sort();var sortedDates=allDates.length?allDates:_toConsumableArray(existingDates).sort();var cursor=new Date(sortedDates[0]+"T00:00:00");var end=new Date(sortedDates[sortedDates.length-1]+"T00:00:00");// Build the ymd from LOCAL date parts, not toISOString() — that method
+var allDates=(attendanceRecords||[]).map(function(a){return a.work_date;}).filter(Boolean).sort();var sortedDates=allDates.length?allDates:_toConsumableArray(existingDates).sort();// Filling company-wide from day one used to backfill "Absent" for every
+// day before this specific person even joined — clamp the fill's start
+// to whichever is later: the company-wide earliest date, or their own
+// start date (falling back to their profile's creation date, same as
+// attendance-import.php's own guard).
+var memberStart=member.start_date||(member.created_at?String(member.created_at).slice(0,10):null);var fillStart=memberStart&&memberStart>sortedDates[0]?memberStart:sortedDates[0];var cursor=new Date(fillStart+"T00:00:00");var end=new Date(sortedDates[sortedDates.length-1]+"T00:00:00");// Build the ymd from LOCAL date parts, not toISOString() — that method
 // converts to UTC first, which silently rolls the date back a day in
 // any timezone ahead of UTC (e.g. Cairo, UTC+3: local midnight becomes
 // 21:00 the previous day in UTC), producing a bogus extra/shifted date.
