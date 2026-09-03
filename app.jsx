@@ -20531,8 +20531,13 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
     // attendance-import.php's own guard).
     const memberStart = member.start_date || (member.created_at ? String(member.created_at).slice(0,10) : null);
     const fillStart = (memberStart && memberStart > sortedDates[0]) ? memberStart : sortedDates[0];
+    // Same idea at the other end — a terminated member shouldn't show
+    // "Absent" for every day after their actual last day just because the
+    // company-wide imported range extends past it.
+    const companyEnd = sortedDates[sortedDates.length - 1];
+    const fillEnd = (member.termination_date && member.termination_date < companyEnd) ? member.termination_date : companyEnd;
     const cursor = new Date(fillStart + "T00:00:00");
-    const end = new Date(sortedDates[sortedDates.length - 1] + "T00:00:00");
+    const end = new Date(fillEnd + "T00:00:00");
     // Build the ymd from LOCAL date parts, not toISOString() — that method
     // converts to UTC first, which silently rolls the date back a day in
     // any timezone ahead of UTC (e.g. Cairo, UTC+3: local midnight becomes

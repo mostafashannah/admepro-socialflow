@@ -71,9 +71,9 @@ if (($_GET['mode'] ?? '') === 'remap') {
         } else {
             $teamMemberId = trim((string)($body['team_member_id'] ?? ''));
             if ($teamMemberId === '') { http_response_code(400); echo json_encode(["error" => "Missing team_member_id"]); exit; }
-            $startDateStmt = $pdo->prepare("SELECT COALESCE(start_date, DATE(created_at)) FROM team_members WHERE id = ?");
+            $startDateStmt = $pdo->prepare("SELECT COALESCE(start_date, DATE(created_at)), termination_date FROM team_members WHERE id = ?");
             $startDateStmt->execute([$teamMemberId]);
-            $startDate = $startDateStmt->fetchColumn() ?: null;
+            [$startDate, $termDate] = $startDateStmt->fetch(PDO::FETCH_NUM) ?: [null, null];
             // A blind "SET team_member_id WHERE member_name=..." used to create
             // a duplicate the moment this person ALSO already had a row for the
             // same day under their real name (e.g. a later re-import matched
@@ -90,7 +90,7 @@ if (($_GET['mode'] ?? '') === 'remap') {
                 // date (e.g. the sheet covers the whole month but they only
                 // joined partway through) — it never happened, drop it rather
                 // than assigning it to them.
-                if ($startDate && $row['work_date'] < $startDate) {
+                if (($startDate && $row['work_date'] < $startDate) || ($termDate && $row['work_date'] > $termDate)) {
                     $pdo->prepare("DELETE FROM attendance_records WHERE id = ?")->execute([$row['id']]);
                     $skippedPreStart++;
                     continue;
@@ -345,10 +345,22 @@ function memberStartDate(PDO $pdo, string $teamMemberId): ?string {
     return $cache[$teamMemberId] ?? null;
 }
 
+// Same idea at the other end — a re-run/whole-month sheet shouldn't create
+// attendance rows for a terminated member past their actual last day.
+function memberTerminationDate(PDO $pdo, string $teamMemberId): ?string {
+    static $cache = null;
+    if ($cache === null) {
+        $cache = $pdo->query("SELECT id, termination_date FROM team_members WHERE termination_date IS NOT NULL")->fetchAll(PDO::FETCH_KEY_PAIR);
+    }
+    return $cache[$teamMemberId] ?? null;
+}
+
 function upsertAttendanceRow(PDO $pdo, $upsert, ?string $teamMemberId, string $name, string $ymd, string $status, ?string $cin, ?string $cout, ?string $note) {
     if ($teamMemberId) {
         $startDate = memberStartDate($pdo, $teamMemberId);
         if ($startDate && $ymd < $startDate) return; // predates this person's actual start date — never happened, skip it
+        $termDate = memberTerminationDate($pdo, $teamMemberId);
+        if ($termDate && $ymd > $termDate) return; // after their actual last day — never happened, skip it
     }
     if ($teamMemberId) {
         $existing = $pdo->prepare("SELECT id FROM attendance_records WHERE team_member_id = :tid AND work_date = :wdate LIMIT 1");

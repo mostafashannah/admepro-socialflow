@@ -2306,7 +2306,10 @@ var allDates=(attendanceRecords||[]).map(function(a){return a.work_date;}).filte
 // to whichever is later: the company-wide earliest date, or their own
 // start date (falling back to their profile's creation date, same as
 // attendance-import.php's own guard).
-var memberStart=member.start_date||(member.created_at?String(member.created_at).slice(0,10):null);var fillStart=memberStart&&memberStart>sortedDates[0]?memberStart:sortedDates[0];var cursor=new Date(fillStart+"T00:00:00");var end=new Date(sortedDates[sortedDates.length-1]+"T00:00:00");// Build the ymd from LOCAL date parts, not toISOString() — that method
+var memberStart=member.start_date||(member.created_at?String(member.created_at).slice(0,10):null);var fillStart=memberStart&&memberStart>sortedDates[0]?memberStart:sortedDates[0];// Same idea at the other end — a terminated member shouldn't show
+// "Absent" for every day after their actual last day just because the
+// company-wide imported range extends past it.
+var companyEnd=sortedDates[sortedDates.length-1];var fillEnd=member.termination_date&&member.termination_date<companyEnd?member.termination_date:companyEnd;var cursor=new Date(fillStart+"T00:00:00");var end=new Date(fillEnd+"T00:00:00");// Build the ymd from LOCAL date parts, not toISOString() — that method
 // converts to UTC first, which silently rolls the date back a day in
 // any timezone ahead of UTC (e.g. Cairo, UTC+3: local midnight becomes
 // 21:00 the previous day in UTC), producing a bogus extra/shifted date.
