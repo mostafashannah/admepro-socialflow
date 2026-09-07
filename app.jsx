@@ -18988,7 +18988,7 @@ function AgentProfilePage({agent, avatarUrl, activityLogs=[], onBack}) {
 function UsersPage({currentUser, team, invitations, accessRequests, clientUsers, clients,
   onInviteUser, onCancelInvitation, onApproveRequest, onRejectRequest,
   onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation, onGenerateClientActivationLink, onActivateInvitation,
-  rolePerms, onUpdateTeamMember, onRemoveMember, onToggleRolePermission, onAddExpense, leaveRequests, onDecideLeaveRequest, attendanceRecords, onUpdateAttendance,
+  rolePerms, onUpdateTeamMember, onRemoveMember, onToggleRolePermission, onAddExpense, leaveRequests, onDecideLeaveRequest, attendanceRecords, onUpdateAttendance, onBackfillApprovedVacation,
   posts, onImpersonate, appSettings, brandingAssets, onSaveSettings, expenses, onDeclareCompanyDayOff, invoices, payments, subscriptionPayments, activityLogs=[], perfLogs=[], maiReportSessions=[], leaveCreditEvents=[], payrollRuns=[], onDecidePayrollRun}) {
   const [tab, setTab] = usePersistentState("sf_tab_users","team");
   const [memberStatusFilter, setMemberStatusFilter] = useState("active");
@@ -19058,6 +19058,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
           leaveRequests={leaveRequests||[]}
           attendanceRecords={attendanceRecords||[]}
           onUpdateAttendance={onUpdateAttendance}
+          onBackfillApprovedVacation={onBackfillApprovedVacation}
           expenses={expenses}
           invoices={invoices}
           payments={payments}
@@ -20173,12 +20174,22 @@ function AccountManagerMaiReportsTab({member, onUpdateTeamMember}) {
   );
 }
 
-function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, attendanceRecords, onUpdateAttendance, expenses, invoices, payments, subscriptionPayments, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense, appSettings, brandingAssets, perfLogs=[], maiReportSessions=[], leaveCreditEvents=[], payrollRuns=[], onDecidePayrollRun}) {
+function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, attendanceRecords, onUpdateAttendance, onBackfillApprovedVacation, expenses, invoices, payments, subscriptionPayments, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense, appSettings, brandingAssets, perfLogs=[], maiReportSessions=[], leaveCreditEvents=[], payrollRuns=[], onDecidePayrollRun}) {
   const [editingAttendanceId,setEditingAttendanceId] = useState(null);
   const [attendanceEditDraft,setAttendanceEditDraft] = useState({});
   const startEditAttendance = (a) => { setEditingAttendanceId(a.id); setAttendanceEditDraft({status:a.status||"present", check_in:a.check_in||"", check_out:a.check_out||""}); };
-  const saveAttendanceEdit = (id) => {
-    onUpdateAttendance && onUpdateAttendance(id, {status:attendanceEditDraft.status, check_in:attendanceEditDraft.check_in||null, check_out:attendanceEditDraft.check_out||null});
+  const saveAttendanceEdit = (a) => {
+    const wasAbsent = a.status==="absent";
+    const nowApprovedVacation = attendanceEditDraft.status==="leave";
+    onUpdateAttendance && onUpdateAttendance(a.id, {status:attendanceEditDraft.status, check_in:attendanceEditDraft.check_in||null, check_out:attendanceEditDraft.check_out||null});
+    // Turning an unapproved absence into "Approved Vacation" isn't just a
+    // label change — it needs a real approved LeaveRequest behind it and
+    // the matching vacation-day accounting (refund the 2-day absence
+    // penalty, charge the normal 1-day vacation cost instead), same as
+    // approving a real vacation request that happens to cover this day.
+    if(wasAbsent && nowApprovedVacation && onBackfillApprovedVacation) {
+      onBackfillApprovedVacation(member, a.work_date);
+    }
     setEditingAttendanceId(null);
   };
   // Plain state, not persisted — opening any team member should always
@@ -21090,9 +21101,17 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                         <span style={{fontSize:12,color:"var(--text3)"}}>–</span>
                         <input type="time" value={attendanceEditDraft.check_out||""} onChange={e=>setAttendanceEditDraft(d=>({...d,check_out:e.target.value}))} style={{fontSize:12,padding:"5px 8px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)"}}/>
                         <select value={attendanceEditDraft.status} onChange={e=>setAttendanceEditDraft(d=>({...d,status:e.target.value}))} style={{fontSize:12,padding:"5px 8px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)"}}>
-                          {["present","absent","late","half_day","leave","wfh"].map(s=><option key={s} value={s}>{s}</option>)}
+                          <option value="present">present</option>
+                          <option value="absent">absent</option>
+                          <option value="late">late</option>
+                          <option value="half_day">half_day</option>
+                          <option value="leave">Approved Vacation</option>
+                          <option value="wfh">wfh</option>
                         </select>
-                        <button onClick={()=>saveAttendanceEdit(a.id)} style={{fontSize:12,fontWeight:700,padding:"5px 12px",borderRadius:6,border:"none",background:"var(--accent)",color:"#fff"}}>Save</button>
+                        {a.status==="absent"&&attendanceEditDraft.status==="leave"&&(
+                          <span style={{fontSize:11,color:"#f59e0b",width:"100%"}}>Saving will create an approved vacation day for {member.name} on this date and refund the absence penalty.</span>
+                        )}
+                        <button onClick={()=>saveAttendanceEdit(a)} style={{fontSize:12,fontWeight:700,padding:"5px 12px",borderRadius:6,border:"none",background:"var(--accent)",color:"#fff"}}>Save</button>
                         <button onClick={()=>setEditingAttendanceId(null)} style={{fontSize:12,fontWeight:600,padding:"5px 12px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text2)"}}>Cancel</button>
                       </div>
                     );
@@ -47370,6 +47389,44 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
     setToast("Request submitted");
   };
 
+  // Turns a single "Absent (No Request)" day (edited from a team member's
+  // Attendance history — see updateAttendanceRecord/TeamMemberDetailPage)
+  // into a real, already-approved vacation day: creates the LeaveRequest
+  // record itself (so it shows in their Leave & WFH History like any other
+  // approved vacation), then applies the exact same accounting
+  // decideLeaveRequest already uses for approving a vacation request that
+  // covers an already-penalized day — refund the 2-day unapproved-absence
+  // penalty, charge the normal 1-day vacation cost instead, and clear
+  // absence_deducted so a future re-import doesn't re-penalize it.
+  const backfillApprovedVacation = async (memberArg, workDate) => {
+    const member = data.team.find(t=>t.id===memberArg.id) || memberArg;
+    const reqPayload = {
+      team_member_id: member.id, member_name: member.name, type: "vacation",
+      start_date: workDate, end_date: workDate, days: 1,
+      reason: "Backfilled from attendance record edit", status: "approved",
+      manager_name: currentUser?.name||"admin", source: "app", decided_at: new Date().toISOString(),
+    };
+    const res = await ce("LeaveRequest",[reqPayload]).catch(()=>null);
+    const real = res?.entities?.[0];
+    if(real?.id) setData(d=>({...d, leaveRequests:[...(d.leaveRequests||[]), real]}));
+
+    const staleAbsences = (data.attendanceRecords||[]).filter(a=>
+      a.team_member_id===member.id && a.status==="absent" && a.absence_deducted && a.work_date===workDate
+    );
+    const refundDays = staleAbsences.length*2;
+    const newUsed = Math.max(0, Number(member.vacation_days_used||0) + 1 - refundDays);
+    await updateTeamMember(member.id, {vacation_days_used:newUsed});
+    const monthKey = workDate.slice(0,7);
+    ce("LeaveCreditEvent",[{team_member_id:member.id, member_name:member.name, credit_type:"vacation_days", amount:1, month_key:monthKey, work_date:workDate, reason:"leave_request_approved"}]).catch(()=>{});
+    if(staleAbsences.length) {
+      await Promise.all(staleAbsences.map(a=>ue("AttendanceRecord", a.id, {absence_deducted:0})));
+      setData(d=>({...d, attendanceRecords:(d.attendanceRecords||[]).map(a=>staleAbsences.some(s=>s.id===a.id)?{...a,absence_deducted:0}:a)}));
+      staleAbsences.forEach(a=>{
+        ce("LeaveCreditEvent",[{team_member_id:member.id, member_name:member.name, credit_type:"vacation_days", amount:-2, month_key:(a.work_date||"").slice(0,7), work_date:a.work_date, reason:"stale_absence_refund"}]).catch(()=>{});
+      });
+    }
+  };
+
   // Approve/reject a leave/WFH request from the web UI (mirrors the WhatsApp
   // decide_pending_request flow in pro-lib.php) — deducts credit on approval
   // and notifies the requester over WhatsApp via whatsapp.php.
@@ -50513,6 +50570,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             onDecideLeaveRequest={decideLeaveRequest}
             attendanceRecords={data.attendanceRecords||[]}
             onUpdateAttendance={updateAttendanceRecord}
+            onBackfillApprovedVacation={backfillApprovedVacation}
             expenses={data.expenses||[]}
             invoices={data.invoices||[]}
             payments={data.payments||[]}
