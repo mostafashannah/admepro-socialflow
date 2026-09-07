@@ -21131,7 +21131,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
           </> : null; })()}
           {row("Employment Type", member.employment_type==="part_time"
             ? `Part-time (${parseMaybeJson(member.work_days,WORK_DAYS_DEFAULT).map(d=>WEEKDAY_LABELS.find(w=>w.d===d)?.label).join(", ")})`
-            : "Full-time")}
+            : member.employment_type==="freelance" ? "Freelance (no attendance tracking / no vacation policy)" : "Full-time")}
           {canEditSalary&&row("Salary", member.salary?`EGP ${Number(member.salary).toLocaleString()}`:null)}
           {canEditSalary&&row("Probation Salary", member.probation_salary?`EGP ${Number(member.probation_salary).toLocaleString()}`:null)}
           {canEditSalary&&row("Probation Period", member.probation_months?`${member.probation_months} month(s)`:null)}
@@ -21580,10 +21580,11 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
               <option value="inactive">Inactive</option>
             </select>
           </Field>
-          <Field label="Employment Type" hint="Part-time lets you pick which weekdays they actually work — task allocation and due-date scheduling only count those days as available">
+          <Field label="Employment Type" hint={f.employment_type==="freelance" ? "Freelance is exempt from the attendance device/time machine entirely — no absent/late tracking and no vacation or leave day deductions apply to them at all." : "Part-time lets you pick which weekdays they actually work — task allocation and due-date scheduling only count those days as available"}>
             <select value={f.employment_type} onChange={e=>s("employment_type",e.target.value)} style={inputSt}>
               <option value="full_time">Full-time</option>
               <option value="part_time">Part-time</option>
+              <option value="freelance">Freelance (no attendance tracking / no vacation policy)</option>
             </select>
           </Field>
           {f.employment_type==="part_time" && (
