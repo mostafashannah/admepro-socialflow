@@ -33986,7 +33986,14 @@ function OutstandingTab({expenses, team, currentUser, canManage, onRecordPayment
   const [payDate, setPayDate] = useState(new Date().toISOString().split("T")[0]);
   const [payMethod, setPayMethod] = useState("Cash");
 
-  const outstandingExpenses = (expenses||[]).filter(e=>e.outstanding_kind);
+  const allOutstandingExpenses = (expenses||[]).filter(e=>e.outstanding_kind);
+  // Month filter — keyed off the expense's own date (the month the
+  // liability was recorded/purchased in, e.g. a salary's payroll month or
+  // a Fawry plan's purchase month), same field every other Finance month
+  // filter in this file uses.
+  const outstandingMonthOptions = Array.from(new Set(allOutstandingExpenses.map(e=>(e.date||"").slice(0,7)).filter(Boolean))).sort().reverse();
+  const [outstandingMonthFilter,setOutstandingMonthFilter] = useState("all");
+  const outstandingExpenses = outstandingMonthFilter==="all" ? allOutstandingExpenses : allOutstandingExpenses.filter(e=>(e.date||"").slice(0,7)===outstandingMonthFilter);
 
   const load = async () => {
     setLoading(true);
@@ -34040,14 +34047,53 @@ function OutstandingTab({expenses, team, currentUser, canManage, onRecordPayment
     (groups[key]=groups[key]||[]).push(e);
   });
 
+  // Top summary — three buckets: Salaries (a team_member liability created
+  // from approving a payroll run), Fawry (installment plans), and Team
+  // Member (any OTHER team_member liability, e.g. a manual reimbursement —
+  // outstanding_kind:"team_member" but not a salary), each remaining =
+  // total payable minus paid-so-far, same math the per-item rows use.
+  const remainingOf = (e) => Math.max(0, Number(e.outstanding_total_payable ?? e.amount ?? 0) - paidSoFar(e.id));
+  const salaryExpenses = outstandingExpenses.filter(e=>e.outstanding_kind==="team_member" && e.category==="salaries");
+  const fawryExpenses = outstandingExpenses.filter(e=>e.outstanding_kind==="installment");
+  const otherTeamMemberExpenses = outstandingExpenses.filter(e=>e.outstanding_kind==="team_member" && e.category!=="salaries");
+  const summaryCards = [
+    {label:"Outstanding Salaries", value: salaryExpenses.reduce((s,e)=>s+remainingOf(e),0), color:"#ef4444", count: salaryExpenses.length},
+    {label:"Outstanding Fawry", value: fawryExpenses.reduce((s,e)=>s+remainingOf(e),0), color:"#f59e0b", count: fawryExpenses.length},
+    {label:"Outstanding Team Member", value: otherTeamMemberExpenses.reduce((s,e)=>s+remainingOf(e),0), color:"#8b5cf6", count: otherTeamMemberExpenses.length},
+  ];
+
+  const monthFilterUi = (
+    <div style={{display:"flex",justifyContent:"flex-end"}}>
+      <select value={outstandingMonthFilter} onChange={e=>setOutstandingMonthFilter(e.target.value)} style={{...inputSt,maxWidth:180}}>
+        <option value="all">All Time</option>
+        {outstandingMonthOptions.map(m=>(
+          <option key={m} value={m}>{new Date(m+"-01T00:00:00").toLocaleDateString("en-US",{month:"long",year:"numeric"})}</option>
+        ))}
+      </select>
+    </div>
+  );
+
   if(loading) return <div style={{display:"flex",justifyContent:"center",padding:60}}><Spinner size={20}/></div>;
 
-  if(outstandingExpenses.length===0) {
+  if(allOutstandingExpenses.length===0) {
     return <EmptyState icon={Icons.wallet} title="No outstanding liabilities" sub={`Mark an expense's Payment Method as "Outstanding" to track money owed to a team member or a Fawry installment plan here.`}/>;
   }
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20}}>
+      {monthFilterUi}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12}}>
+        {summaryCards.map(c=>(
+          <div key={c.label} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"14px 18px"}}>
+            <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",letterSpacing:"0.05em",textTransform:"uppercase"}}>{c.label}</p>
+            <p style={{fontSize:22,fontWeight:800,color:c.value>0?c.color:"#10b981",marginTop:4}}>{c.value.toLocaleString(undefined,{maximumFractionDigits:2})}</p>
+            <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{c.count} item{c.count!==1?"s":""}</p>
+          </div>
+        ))}
+      </div>
+      {outstandingExpenses.length===0 && (
+        <EmptyState icon={Icons.wallet} title="Nothing outstanding this month" sub="Try a different month, or All Time."/>
+      )}
       {Object.entries(groups).map(([groupName, items])=>{
         const groupTotal = items.reduce((s,e)=>s+Number(e.outstanding_total_payable ?? e.amount ?? 0), 0);
         const groupRemaining = items.reduce((s,e)=>s+Math.max(0, Number(e.outstanding_total_payable ?? e.amount ?? 0)-paidSoFar(e.id)), 0);
