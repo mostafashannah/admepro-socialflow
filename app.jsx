@@ -21473,6 +21473,7 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
     personal_leave_hours_used:member.personal_leave_hours_used??0,
     extra_hours_banked:member.extra_hours_banked??0,
     employment_type: member.employment_type||"full_time",
+    attendance_policy_exempt: member.attendance_policy_exempt||false,
     work_days: parseMaybeJson(member.work_days, WORK_DAYS_DEFAULT),
     national_id: member.national_id||"",
     attendance_device_id: member.attendance_device_id||"",
@@ -21580,11 +21581,11 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
               <option value="inactive">Inactive</option>
             </select>
           </Field>
-          <Field label="Employment Type" hint={f.employment_type==="freelance" ? "Freelance is exempt from the attendance device/time machine entirely — no absent/late tracking and no vacation or leave day deductions apply to them at all." : "Part-time lets you pick which weekdays they actually work — task allocation and due-date scheduling only count those days as available"}>
+          <Field label="Employment Type" hint={f.employment_type==="freelance" ? "Freelance is exempt from the attendance device/time machine entirely, with no scheduled work days at all — no absent/late tracking and no vacation or leave day deductions apply to them." : "Part-time lets you pick which weekdays they actually work — task allocation and due-date scheduling only count those days as available"}>
             <select value={f.employment_type} onChange={e=>s("employment_type",e.target.value)} style={inputSt}>
               <option value="full_time">Full-time</option>
               <option value="part_time">Part-time</option>
-              <option value="freelance">Freelance (no attendance tracking / no vacation policy)</option>
+              <option value="freelance">Freelance (no schedule, no attendance tracking, no vacation policy)</option>
             </select>
           </Field>
           {f.employment_type==="part_time" && (
@@ -21599,6 +21600,14 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
                   }}>{label}</button>
                 ))}
               </div>
+            </Field>
+          )}
+          {(f.employment_type==="full_time"||f.employment_type==="part_time") && (
+            <Field label="Attendance Policy" hint="For a part-timer with real scheduled days who still shouldn't be tracked by the fingerprint device or docked vacation days for missed clock-ins — e.g. paid per-task/per-project rather than by attendance.">
+              <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer"}}>
+                <input type="checkbox" checked={f.attendance_policy_exempt} onChange={e=>s("attendance_policy_exempt",e.target.checked)}/>
+                No attendance tracking / no vacation policy for this person
+              </label>
             </Field>
           )}
           {canEditSalary&&(

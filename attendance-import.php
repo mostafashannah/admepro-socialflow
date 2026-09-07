@@ -355,14 +355,17 @@ function memberTerminationDate(PDO $pdo, string $teamMemberId): ?string {
     return $cache[$teamMemberId] ?? null;
 }
 
-// Freelance is exempt from the device/time-machine entirely — never gets
-// an attendance_records row created for them at all, even from a real
-// device row that happens to match their name (e.g. they still show up on
-// the shared office device but aren't subject to the attendance policy).
+// Freelance (no schedule at all) OR attendance_policy_exempt (a full/part
+// -time member who still has real scheduled days for task purposes, but
+// isn't tracked by the fingerprint device or docked vacation days) is
+// exempt from the device/time-machine entirely — never gets an
+// attendance_records row created for them at all, even from a real device
+// row that happens to match their name (e.g. they still show up on the
+// shared office device but aren't subject to the attendance policy).
 function memberIsFreelance(PDO $pdo, string $teamMemberId): bool {
     static $cache = null;
     if ($cache === null) {
-        $cache = $pdo->query("SELECT id, 1 FROM team_members WHERE employment_type = 'freelance'")->fetchAll(PDO::FETCH_KEY_PAIR);
+        $cache = $pdo->query("SELECT id, 1 FROM team_members WHERE employment_type = 'freelance' OR attendance_policy_exempt = 1")->fetchAll(PDO::FETCH_KEY_PAIR);
     }
     return isset($cache[$teamMemberId]);
 }
@@ -526,7 +529,7 @@ try {
         // absent/late tracking and no vacation/leave deductions apply to
         // them at all, so skip them from the company-wide reconciliation
         // fill (and, further below, the unapproved-absence/late rules).
-        $members = $pdo->query("SELECT id, name, employment_type, work_days FROM team_members WHERE status != 'inactive' AND (employment_type IS NULL OR employment_type != 'freelance')")->fetchAll(PDO::FETCH_ASSOC);
+        $members = $pdo->query("SELECT id, name, employment_type, work_days FROM team_members WHERE status != 'inactive' AND (employment_type IS NULL OR employment_type != 'freelance') AND attendance_policy_exempt = 0")->fetchAll(PDO::FETCH_ASSOC);
         $existingStmt = $pdo->prepare("SELECT 1 FROM attendance_records WHERE team_member_id = ? AND work_date = ? LIMIT 1");
         $leaveStmt = $pdo->prepare("SELECT 1 FROM leave_requests WHERE team_member_id = ? AND status = 'approved' AND start_date <= ? AND end_date >= ? LIMIT 1");
         foreach ($members as $mem) {
@@ -594,7 +597,7 @@ try {
              WHERE team_member_id IS NOT NULL AND late_deducted = 0
                AND check_in IS NOT NULL AND check_in > :thresh
                AND status NOT IN ('leave','wfh')
-               AND team_member_id NOT IN (SELECT id FROM team_members WHERE employment_type = 'freelance')
+               AND team_member_id NOT IN (SELECT id FROM team_members WHERE employment_type = 'freelance' OR attendance_policy_exempt = 1)
                AND NOT EXISTS (
                  SELECT 1 FROM leave_requests lr
                  WHERE lr.team_member_id = a.team_member_id
@@ -659,7 +662,7 @@ try {
         $absentStmt = $pdo->query(
             "SELECT id, team_member_id, work_date FROM attendance_records
              WHERE status = 'absent' AND absence_deducted = 0 AND team_member_id IS NOT NULL
-               AND team_member_id NOT IN (SELECT id FROM team_members WHERE employment_type = 'freelance')"
+               AND team_member_id NOT IN (SELECT id FROM team_members WHERE employment_type = 'freelance' OR attendance_policy_exempt = 1)"
         );
         $checkStmt = $pdo->prepare(
             "SELECT COUNT(*) FROM leave_requests

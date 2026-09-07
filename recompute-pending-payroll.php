@@ -39,7 +39,7 @@ function proratedMonthlySalary($currentSalary, $events, $year, $month, $startDay
 
 $rows = $pdo->query(
     "SELECT pr.id, pr.team_member_id, pr.member_name, pr.salary_month,
-            tm.salary, tm.probation_salary, tm.probation_months, tm.termination_date, tm.employment_type,
+            tm.salary, tm.probation_salary, tm.probation_months, tm.termination_date, tm.employment_type, tm.attendance_policy_exempt,
             tm.vacation_days_used, tm.vacation_days_total,
             COALESCE(tm.start_date, DATE(tm.created_at)) AS start_date
      FROM payroll_runs pr JOIN team_members tm ON tm.id = pr.team_member_id
@@ -84,7 +84,7 @@ foreach ($rows as $r) {
 
     $newBase = proratedMonthlySalary($fullSalary, $events, $year, $month, $startDay, $endDay, $daysInMonth, $probationEndDate, $probationSalary);
 
-    $isFreelance = ($r['employment_type'] ?? '') === 'freelance';
+    $isFreelance = ($r['employment_type'] ?? '') === 'freelance' || !empty($r['attendance_policy_exempt']);
     $used = $isFreelance ? 0 : floatval($r['vacation_days_used'] ?? 0);
     $total = floatval($r['vacation_days_total'] ?? 30);
     $overage = $isFreelance ? 0 : max(0, $used - $total);

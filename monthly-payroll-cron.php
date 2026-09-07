@@ -50,7 +50,7 @@ $dayRate = 30; // salary / 30 as the per-day deduction rate
 // `status != 'inactive'` filter alone would silently skip their final,
 // real partial-month payroll entirely.
 $members = $pdo->prepare(
-    "SELECT id, name, salary, probation_salary, probation_months, vacation_days_used, vacation_days_total, termination_date, employment_type, COALESCE(start_date, DATE(created_at)) AS start_date FROM team_members
+    "SELECT id, name, salary, probation_salary, probation_months, vacation_days_used, vacation_days_total, termination_date, employment_type, attendance_policy_exempt, COALESCE(start_date, DATE(created_at)) AS start_date FROM team_members
      WHERE salary IS NOT NULL AND salary > 0
        AND (status != 'inactive' OR (termination_date IS NOT NULL AND termination_date >= :monthStartForTerm))"
 );
@@ -143,11 +143,12 @@ foreach ($members as $m) {
 
     $baseSalary = proratedMonthlySalary($fullSalary, $events, $year, $month, $startDay, $endDay, $daysInMonth, $probationEndDate, $probationSalary);
 
-    // Freelance is exempt from the vacation/leave policy entirely — never
-    // deduct for vacation overage regardless of what vacation_days_used
-    // happens to say (they shouldn't be accruing it in the first place,
-    // see attendance-import.php, but this is the payroll-side backstop).
-    $isFreelance = ($m['employment_type'] ?? '') === 'freelance';
+    // Freelance OR attendance_policy_exempt is exempt from the vacation/
+    // leave policy entirely — never deduct for vacation overage regardless
+    // of what vacation_days_used happens to say (they shouldn't be
+    // accruing it in the first place, see attendance-import.php, but this
+    // is the payroll-side backstop).
+    $isFreelance = ($m['employment_type'] ?? '') === 'freelance' || !empty($m['attendance_policy_exempt']);
     $used = $isFreelance ? 0 : floatval($m['vacation_days_used'] ?? 0);
     $total = floatval($m['vacation_days_total'] ?? 30);
     $overage = $isFreelance ? 0 : max(0, $used - $total);
