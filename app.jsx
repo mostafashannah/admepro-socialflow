@@ -13786,7 +13786,7 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
 
             <div>
               <p style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>Reply bot brain</p>
-              <textarea defaultValue={bot.brain||""} onBlur={e=>onSaveBotSettings&&onSaveBotSettings({brain:e.target.value})}
+              <textarea key={"brain_"+(bot.id||"pending")} defaultValue={bot.brain||""} onBlur={e=>onSaveBotSettings&&onSaveBotSettings({brain:e.target.value})}
                 placeholder="Specific things this bot should know or always say for this client — e.g. pricing rules, FAQs, what to never promise, how to greet customers…"
                 style={{...inputSt,width:"100%",minHeight:90,resize:"vertical",fontFamily:"inherit"}}/>
               <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Combined with this client's Client Brain tone/voice and recent human-sent replies to match their reply pattern.</p>
@@ -13794,7 +13794,7 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
 
             <div>
               <p style={{fontSize:12,fontWeight:700,color:"#ef4444",marginBottom:6}}>Don't (hard rules)</p>
-              <textarea defaultValue={bot.dont_do||""} onBlur={e=>onSaveBotSettings&&onSaveBotSettings({dont_do:e.target.value})}
+              <textarea key={"dontdo_"+(bot.id||"pending")} defaultValue={bot.dont_do||""} onBlur={e=>onSaveBotSettings&&onSaveBotSettings({dont_do:e.target.value})}
                 placeholder="Things this bot must never do — e.g. never give refunds or discounts, never quote a price, never confirm an appointment, never mention competitors…"
                 style={{...inputSt,width:"100%",minHeight:70,resize:"vertical",fontFamily:"inherit",borderColor:"#ef444444"}}/>
               <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Treated as strict boundaries — takes priority over the brain instructions above if the two ever conflict.</p>
@@ -13802,7 +13802,7 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
 
             <div>
               <p style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:6}}>Fallback message (when the bot can't confidently answer)</p>
-              <textarea defaultValue={bot.fallback_message||""} onBlur={e=>onSaveBotSettings&&onSaveBotSettings({fallback_message:e.target.value})}
+              <textarea key={"fallback_"+(bot.id||"pending")} defaultValue={bot.fallback_message||""} onBlur={e=>onSaveBotSettings&&onSaveBotSettings({fallback_message:e.target.value})}
                 placeholder="Sent instead of staying silent whenever the bot opts out (e.g. custom pricing, service availability it doesn't know) — e.g. 'Thanks for reaching out! Please share your number or call us on 01xxxxxxxxx and our team will help you directly.'"
                 style={{...inputSt,width:"100%",minHeight:60,resize:"vertical",fontFamily:"inherit"}}/>
               <p style={{fontSize:11,color:"var(--text3)",marginTop:4}}>Leave empty to use the default generic fallback. The thread still stays flagged "needs human" either way so your team follows up.</p>
