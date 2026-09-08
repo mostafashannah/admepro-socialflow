@@ -641,7 +641,7 @@ foreach ($messages as $message) {
             if ($candidateName === '' || strcasecmp($candidateName, $candidateEmail) === 0) $missing['name'] = 'Your full name';
             $missing['expected_salary'] = 'Your expected salary';
             $missing['available_start_date'] = 'Your available start date';
-            $missing['open_to_task'] = 'Whether you\'re open to a paid test task';
+            $missing['open_to_task'] = 'Whether you\'re open to a test task';
 
             $confirmMessage = str_replace('{{job}}', $matchedOpening ? htmlspecialchars($matchedOpening['title']) : '', $confirmationMessage);
             $bodyHtml = '<h2 style="margin:0 0 8px;font-size:20px;font-weight:800;color:#111827">Thanks for applying, ' . htmlspecialchars($candidateName ?: 'there') . '!</h2>'

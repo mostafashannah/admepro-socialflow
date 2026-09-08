@@ -24263,7 +24263,7 @@ function CompleteApplicationPage({token}) {
           {missing.expected_salary&&<Field label="Expected Salary" required><input value={form.expected_salary} onChange={e=>sf("expected_salary",e.target.value)} placeholder="e.g. 20,000 EGP" style={inputSt}/></Field>}
           {missing.available_start_date&&<Field label="Available Start Date" required><input type="date" value={form.available_start_date} onChange={e=>sf("available_start_date",e.target.value)} style={inputSt}/></Field>}
           {missing.open_to_task&&(
-            <Field label="Open to a paid test task?">
+            <Field label="Open to a test task?">
               <select value={form.open_to_task} onChange={e=>sf("open_to_task",e.target.value)} style={inputSt}>
                 <option value="yes">Yes</option>
                 <option value="no">No</option>
@@ -38314,7 +38314,7 @@ function applicationMissingFields(application) {
 const MISSING_FIELD_LABELS = {
   cv: "Your CV", phone: "Your phone number", name: "Your full name",
   expected_salary: "Your expected salary", available_start_date: "Your available start date",
-  open_to_task: "Whether you're open to a paid test task",
+  open_to_task: "Whether you're open to a test task",
 };
 
 // Shared activity-log writer for job_applications — status changes,
