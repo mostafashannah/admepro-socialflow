@@ -498,7 +498,9 @@ CREATE TABLE IF NOT EXISTS client_intelligence (
   best_performing_type TEXT,
   best_performing_day TEXT,
   avg_engagement_rate DECIMAL(8,4),
-  updated_by TEXT
+  updated_by TEXT,
+  auto_schedule_enabled TINYINT(1) DEFAULT 1,
+  auto_publish_enabled TINYINT(1) DEFAULT 1
 ) ENGINE=InnoDB;
 
 -- ----------------------------------------------------------------
@@ -547,7 +549,7 @@ CREATE TABLE IF NOT EXISTS client_users (
   client_id VARCHAR(36) NOT NULL, client_name TEXT,
   email TEXT NOT NULL, name TEXT NOT NULL,
   role TEXT DEFAULT ('client_member'), status VARCHAR(50) DEFAULT 'invited',
-  photo_url MEDIUMTEXT, mobile TEXT, last_login TEXT, password TEXT
+  photo_url MEDIUMTEXT, mobile TEXT, last_login TEXT, password TEXT, title TEXT
 ) ENGINE=InnoDB;
 
 -- ----------------------------------------------------------------

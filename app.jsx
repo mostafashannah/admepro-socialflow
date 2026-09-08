@@ -13,7 +13,7 @@ const SB_BUCKET = "socialflow-media";
 // client_max_body_size / PHP post_max_size to allow it too — this setting
 // can only ever be a cap *within* whatever the server infra already permits,
 // not a way to exceed it.
-const DEFAULT_MAX_UPLOAD_MB = 100;
+const DEFAULT_MAX_UPLOAD_MB = 100; // matches the server's PHP post_max_size/upload_max_filesize — keep these in sync
 
 // iPhones save photos as .heic/.heif by default — the format loads as
 // bytes just fine over HTTP (not a network error) but essentially no
@@ -50,7 +50,12 @@ const uploadToStorage = async (rawFile, folder="uploads") => {
   try {
     // No timeout here would let a stalled mobile connection hang this
     // fetch forever — the caller's "Submitting…" button would never
-    // recover since neither success nor the catch block ever fires.
+    // recover since neither success nor the catch block ever fires. A flat
+    // 90s was fine for images/PDFs but a large video (e.g. a 90MB reel)
+    // routinely takes longer than that to actually finish uploading on a
+    // normal connection, well before anything is actually wrong — scale the
+    // allowance with file size instead of failing large-but-healthy uploads.
+    const uploadTimeoutMs = Math.max(120000, Math.round(file.size / (150*1024)) * 1000);
     res = await fetchWithTimeout(`${SB_STORAGE_URL}/object/${SB_BUCKET}/${path}`, {
       method: "POST",
       headers: {
@@ -60,7 +65,7 @@ const uploadToStorage = async (rawFile, folder="uploads") => {
         "x-upsert": "true",
       },
       body: file,
-    }, 90000);
+    }, uploadTimeoutMs);
   } catch(e) {
     if(e?.name==="AbortError") throw new Error("Upload timed out — your connection may be too slow or unstable. Please try again.");
     throw new Error("Upload failed: " + (e?.message||e));
@@ -376,16 +381,25 @@ const STAGES = [
   { key: "rejected", label: "Rejected", color: "#ef4444", icon: "✕" },
 ];
 // The single source of truth for "what comes next" from any given stage —
-// EVERYTHING (Task or Post) lands on Approved once Client Approval clears;
-// a Task is done right there (never touches Scheduled/Published at all).
-// A Post keeps going, but only ever manually from here — via "Jump to
-// stage" — never as an automatic "next" step, so nothing accidentally
-// gets scheduled/published straight off an approval. Approved therefore
-// never has an auto-advance "next" stage for either kind.
+// EVERYTHING (Task or Post) lands on Approved once Client Approval clears.
+// A Task (no platform) is done right there — it never touches Scheduled/
+// Published. A real Post keeps going: from Approved its next stage is
+// Scheduled, same "Move to X" button as every other stage, instead of
+// being buried behind the generic "Jump to stage" dropdown only.
 function nextStageFor(post) {
-  if (post.stage === "approved") return null;
+  if (post.stage === "approved") return post.platform ? STAGE_MAP.scheduled : null;
   const ci = STAGES.findIndex(s => s.key === post.stage);
   return ci === -1 ? null : STAGES[ci + 1];
+}
+// Every other stage transition (Client Approval, Scheduled, Approved,
+// skipping stages, etc.) is admin/AM-only — a non-manager team member can
+// ONLY hand their own work off to review: a content creator moving
+// Content -> Review, or a designer moving Design -> Design Review. Nothing
+// else, for any other role, ever gets a quick "Move to X" action.
+function canAdvanceStageAsNonManager(currentUser, post, nextKey) {
+  if (currentUser?.role === "content_creator") return post.stage === "content_creation" && nextKey === "internal_review";
+  if (currentUser?.role === "graphic_designer") return post.stage === "design" && nextKey === "design_review";
+  return false;
 }
 // Which pipeline stage a role is actually responsible for finishing — their
 // part of a task is done the moment it leaves that stage moving forward,
@@ -445,17 +459,18 @@ const SOCIAL_POST_TYPES = new Set([...POST_TYPES, "social_post", "story_reel", "
 const PRIORITIES = ["low","medium","high","urgent"];
 
 const PLT_COLOR = { instagram:"#e1306c", facebook:"#1877f2", linkedin:"#0a66c2", tiktok:"#69c9d0", twitter:"#1da1f2" };
+const PLT_ABBR = { instagram:"IG", facebook:"FB", linkedin:"IN", tiktok:"TT", twitter:"X" };
 const PLT_ICON = { instagram:"IG", facebook:"FB", linkedin:"IN", tiktok:"TK", twitter:"X" };
 const PRI_COLOR = { low:"#6b7280", medium:"#3b82f6", high:"#f59e0b", urgent:"#ef4444" };
 const STAGE_MAP = Object.fromEntries(STAGES.map(s=>[s.key,s]));
 
 const POST_TYPE_DURATIONS = {
-  image: 30, video: 180, carousel: 120, story: 30, reel: 150,
+  image: 30, static: 45, video: 180, carousel: 120, story: 30, reel: 150,
   social_post: 30, story_reel: 120, caption_copy: 30, graphic_design: 180,
   campaign: 240, ad_creative: 120, blog: 240,
 };
 const WORKING_START = 10; // 10am
-const WORKING_END = 19; // 7pm
+const WORKING_END = 21; // 9pm
 const WORKING_MINS = (WORKING_END - WORKING_START) * 60; // 540 mins
 
 // ── Smart Schedule Engine ──────────────────────────────────────
@@ -481,6 +496,54 @@ function autoDueDateByPriority(priority) {
     time: "17:00",
   };
 }
+// "Auto (by priority)" used to just apply a flat offset (urgent=today,
+// high=+1 workday, etc.) with zero regard for whether that person actually
+// has room that day — landing a suggestion on top of an already-packed
+// schedule doesn't make sense as a suggestion. This scans forward day by
+// day starting from the priority's earliest allowed date, skipping
+// weekends, for the first day this person has enough free capacity for the
+// task's estimated duration, then finds the actual first free minute slot
+// that day (same packing model as generateDailySchedule: sequentially
+// after whatever's already anchored there, within working hours) — same
+// idea as scheduleItemDates (used by the Calendar Plan wizard's bulk auto-
+// scheduling) but for a single task and returning a real time, not just a
+// date. Falls back to WORK_DAYS_DEFAULT since this is called from a spot
+// with no appSettings/attendance-rules threaded in.
+function firstFreeSlot(allPosts, userEmail, estMins, earliestDate) {
+  const days = WORK_DAYS_DEFAULT;
+  const todayStr = new Date().toISOString().split("T")[0];
+  let day = new Date(earliestDate);
+  for(let guard=0; guard<60; guard++) {
+    const dateStr = day.toISOString().split("T")[0];
+    if(days.includes(day.getDay())) {
+      const free = freeCapacityOnDate(allPosts, userEmail, dateStr);
+      if(free >= estMins) {
+        const dayPosts = allPosts.filter(p=>p.assigned_to===userEmail && p.due_date===dateStr && !["published","rejected"].includes(p.stage));
+        // A new task can never land in an already-passed time slot on
+        // TODAY's schedule — floor the starting cursor at the current
+        // moment, same rule generateDailySchedule applies to auto-packed
+        // (un-anchored) tasks. Past/future days aren't bounded by "now".
+        const nowFloor = dateStr === todayStr ? (new Date().getHours()*60 + new Date().getMinutes()) : null;
+        let cursor = nowFloor !== null ? Math.max(WORKING_START * 60, nowFloor) : WORKING_START * 60;
+        dayPosts.forEach(p=>{
+          const t = p.due_time ? p.due_time.split(":").map(Number) : null;
+          const start = t ? Math.max(WORKING_START*60, t[0]*60+(t[1]||0)) : cursor;
+          const end = start + estimateDuration(p);
+          if(end > cursor) cursor = end;
+        });
+        if(cursor + estMins <= WORKING_END * 60) {
+          const pad = n => String(n).padStart(2,"0");
+          return {date: dateStr, time: `${pad(Math.floor(cursor/60))}:${pad(cursor%60)}`};
+        }
+      }
+    }
+    day = new Date(day.getTime()+86400000);
+  }
+  // Nothing free in the scan window — fall back to the flat priority date
+  // at end-of-day rather than leaving the field empty.
+  const pad = n => String(n).padStart(2,"0");
+  return {date: earliestDate.toISOString().split("T")[0], time: "17:00"};
+}
 function estimateDuration(post) {
   // An explicit estimate set on the task always wins — the guess below (by
   // whichever of the three methods is configured) is only a fallback for
@@ -489,11 +552,11 @@ function estimateDuration(post) {
   const cfg = getDurationCfg();
   const method = cfg.method || "table"; // "table" (fixed lookup) | "manual" | "historical"
   if(method==="manual") return 60; // no guessing — flat neutral fallback until someone sets one
-  // "static" (single-image captions) is a distinct, commonly-used post_type
-  // value across the app but was never given its own row in the settings
-  // table — treat it as the same duration as "image" rather than silently
-  // falling through to the flat 60 min default.
-  const aliasType = (t) => t==="static" ? "image" : t;
+  // "static" (single-image captions) now has its own row in the settings
+  // table (see POST_TYPE_DURATIONS/POST_TYPE_LABELS) instead of being
+  // silently aliased to "image" — the two are commonly given different
+  // real durations by agencies.
+  const aliasType = (t) => t;
   if(method==="historical"){
     let hist = {}; try{ hist = window.__SF_DURATION_HIST||{}; }catch(e){}
     const type = aliasType(post.post_type || post.task_type);
@@ -513,6 +576,14 @@ function priorityScore(post) {
   return score + deadline;
 }
 
+function timeToMins(hhmm) {
+  if(!hhmm) return null;
+  const [h,m] = hhmm.split(":").map(Number);
+  return h*60 + (m||0);
+}
+function minsToHHMM(mins) {
+  return `${String(Math.floor(mins/60)).padStart(2,'0')}:${String(mins%60).padStart(2,'0')}`;
+}
 function minsToAmPm(mins) {
   const h24 = Math.floor(mins / 60);
   const m = mins % 60;
@@ -526,61 +597,187 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
   // tasks with no due_date only for "today" so the schedule makes sense
   // when navigating forward/backward.
   const today = new Date().toISOString().split("T")[0];
+  // Nothing should ever render starting before the actual current moment
+  // on TODAY's schedule — a task auto-packed (or even anchored) at 10am
+  // makes no sense to show as "upcoming" once it's already past noon.
+  // null on any other day (past/future dates aren't bounded by "now").
+  const nowFloorMins = date === today ? (new Date().getHours()*60 + new Date().getMinutes()) : null;
+  const ownedStage = ROLE_OWNED_STAGE[userRole];
   const myPosts = posts.filter(p => {
     // wasOwnerOf (not just live assigned_to) so a content creator's/
-    // designer's own work still shows on THEIR day even after the stage
-    // moves on to a reviewer — otherwise the exact time slot they spent
-    // on it that day just vanishes from their own timeline once it's
-    // handed off. (userRole is optional — omitting it falls back to the
-    // plain current-assignee check, e.g. the double-booking conflict
-    // check in the assign modal, which cares who holds it right now.)
+    // designer's own work is still findable for them (My Tasks, etc.) even
+    // after the stage moves on to a reviewer. This timeline specifically is
+    // meant to show only their ACTIVE workload though — a task sitting in
+    // Design Review or Client Approval isn't taking up any of the
+    // designer's own time slots anymore, it's on whoever's reviewing it
+    // now, so it shouldn't occupy a block on the designer's day. (userRole
+    // is optional — omitting it falls back to the plain current-assignee
+    // check, e.g. the double-booking conflict check in the assign modal,
+    // which cares who holds it right now.)
     if (!wasOwnerOf(p, userEmail, userRole)) return false;
-    // This timeline's whole purpose is capacity planning — seeing what's
-    // already on someone's plate to find real empty slots before assigning
-    // them something new — so it needs to show EVERY task still in the
-    // pipeline, not just the earlier stages. Only Published (truly done)
-    // and Rejected (dead) actually free up a slot; Scheduled still has a
-    // real publish step to do and used to silently disappear from here.
-    if (["published","approved","rejected"].includes(p.stage)) return false;
-    if (p.due_date) return p.due_date === date;
+    // A Calendar Plan parent card isn't a single time-boxed piece of work —
+    // it's a container the team edits sub-items inside of (see plan_items),
+    // each of which only becomes a real, schedulable Post once it splits
+    // off. The parent itself never belongs on the time-blocked Timeline.
+    if (p.is_plan_parent) return false;
+    // Work THEY finished and moved forward earlier ON THE DAY BEING VIEWED
+    // still shows in its own slot (rendered green, see completed_today
+    // below) instead of vanishing the instant it leaves their stage —
+    // otherwise a task moved to Design Review at 2pm just disappears from
+    // that day's timeline, which reads as if it never happened rather than
+    // as finished work. Keyed off `date` (the viewed day), NOT the real
+    // "today" — a task completed yesterday should still show on
+    // YESTERDAY's timeline even after the calendar has since rolled over;
+    // it doesn't stop being true just because today is no longer that day.
+    // Bypasses the stage/excluded-stage check below AND due_date — a task
+    // due yesterday (or any other day) that actually got finished today
+    // still needs to show on TODAY's timeline as completed work, not
+    // vanish because its due_date doesn't match. Whichever day someone
+    // genuinely did the work is the day it should show as done on.
+    // Checks the accumulated _completed_dates HISTORY, not just the latest
+    // _completed_at timestamp — a task finished yesterday, sent back for
+    // revision (which clears _completed_at for the new cycle), and
+    // finished again today shows as completed work on BOTH days, since
+    // both were genuinely worked and finished, not just the most recent one.
+    const completedAtField = userRole==="graphic_designer" ? "design_completed_at" : userRole==="content_creator" ? "content_completed_at" : null;
+    const completedDatesField = userRole==="graphic_designer" ? "design_completed_dates" : userRole==="content_creator" ? "content_completed_dates" : null;
+    const completedAt = completedAtField ? p[completedAtField] : null;
+    // History entries are {date, duration_mins} snapshots — each completion
+    // cycle (finished, sent back, finished again) writes its own frozen
+    // record, so re-rendering a past day never depends on whatever the
+    // task's CURRENT live duration/estimate happens to be right now.
+    let completedHistory = [];
+    try { const raw = completedDatesField ? p[completedDatesField] : null; completedHistory = raw ? (Array.isArray(raw) ? raw : JSON.parse(raw)) : []; } catch(e) { completedHistory = []; }
+    const completedOnViewedDay = completedHistory.some(h=>h.date===date) || !!(completedAt && parseSqlUtc(completedAt).toISOString().split("T")[0] === date);
+    if (completedOnViewedDay) return true;
+    if (ownedStage && p.stage !== ownedStage) return false;
+    // This timeline is for capacity planning on work still actually IN
+    // PROGRESS — Published and Scheduled are both done from the team's
+    // side (content/design work is finished; Scheduled is just waiting on
+    // the auto-publish date, not sitting on anyone's plate), so neither
+    // should occupy a block here, same as Approved/Rejected. A raw Client
+    // Request hasn't even been turned into real, scheduled work yet either
+    // (no brief, no plan) — it only starts occupying a real time slot once
+    // an AM actually moves it forward to Brief (planning).
+    if (["published","scheduled","approved","rejected","client_request","on_hold"].includes(p.stage)) return false;
+    if (p.due_date) {
+      // Deliberately does NOT roll an unfinished past-due task onto TODAY's
+      // view anymore — it stays visible on its own original due_date's
+      // page, in its own normal slot, just rendered red (see isOverduePost)
+      // to signal it's overdue. Requested explicitly: "not done to not be
+      // shifted... to be also on its slot but colored red as overdue."
+      return p.due_date === date;
+    }
     // Tasks without a due_date only appear on today's view
     return date === today;
-  }).sort((a,b) => priorityScore(b) - priorityScore(a));
+  });
+  // A task reads as overdue on whatever day it's being viewed, the moment
+  // its own due_date has passed relative to right now — not tied to
+  // date===today anymore, since it no longer gets moved onto today's view;
+  // it shows red on its own original day instead.
+  const isOverduePost = (p) => !!(p.due_date && p.due_date < today && p.stage === ROLE_OWNED_STAGE[userRole]);
+  myPosts.sort((a,b) => priorityScore(b) - priorityScore(a));
 
   // Use due_time as the anchor when available, otherwise pack sequentially
   const slots = [];
   const usedSlots = new Set();
   for(const post of myPosts) {
-    // If they actually pushed their own work forward before/after the
-    // planned block ended (content_completed_at/design_completed_at,
-    // stamped in handleStageChange), show how long it REALLY took instead
-    // of always rendering the full originally-estimated block — a 2-3pm
-    // slot finished at 2:15 shows as a real 15-minute task, not a full hour.
-    const dur = (() => {
-      const est = estimateDuration(post);
-      if (!post.due_time) return est;
-      const completedAtField = userRole==="graphic_designer" ? "design_completed_at" : userRole==="content_creator" ? "content_completed_at" : null;
-      const completedAt = completedAtField ? post[completedAtField] : null;
-      if (!completedAt) return est;
-      const compDate = new Date(completedAt);
-      if (compDate.toISOString().split("T")[0] !== date) return est; // only trust same-day completions
-      const [hh, mm] = post.due_time.split(":").map(Number);
-      const actual = (compDate.getHours()*60 + compDate.getMinutes()) - (hh*60 + (mm||0));
-      return actual > 0 ? actual : est;
-    })();
+    const est = estimateDuration(post);
     let cursor;
+    // Overdue tasks keep their real due_time anchor same as anything else
+    // now — they stay on their own original day/slot instead of jumping
+    // the queue on today's view, so there's no reason to ignore it anymore.
     if(post.due_time) {
       const [hh, mm] = post.due_time.split(":").map(Number);
-      const startMins = hh * 60 + (mm || 0);
-      // Clamp within working hours
-      cursor = Math.max(WORKING_START * 60, Math.min(startMins, WORKING_END * 60 - dur));
+      // due_time is the DEADLINE the task must be finished by, not when
+      // work on it starts — a 180-min task due at 3:30 needs to occupy
+      // 12:30–3:30, ending AT the due time, not starting there and running
+      // 3:30–6:30 past it.
+      const dueMins = hh * 60 + (mm || 0);
+      // Clamp within working hours — a task already given a real due_time
+      // keeps showing at that real time even if it's now in the past
+      // (that's honest information: this was due at 10am and still isn't
+      // done). The "don't show things before now" rule only applies to
+      // where NEW work gets auto-packed, not to moving something that's
+      // already sitting on the schedule.
+      cursor = Math.max(WORKING_START * 60, Math.min(dueMins - est, WORKING_END * 60 - est));
+      // Two tasks can end up anchored to the exact same due_time (a Calendar
+      // Plan defaulting every post to the same slot, both set manually,
+      // etc.) — rather than showing them stacked on top of each other,
+      // treat the SECOND one to land here as effectively un-anchored and
+      // push it to start right after whatever's already occupying that
+      // time, same as an un-timed task would pack in.
+      let collision = slots.find(s => s.start_mins < cursor+est && s.end_mins > cursor);
+      let guard = 0;
+      while(collision && guard++ < 50) {
+        cursor = collision.end_mins;
+        collision = slots.find(s => s.start_mins < cursor+est && s.end_mins > cursor);
+      }
     } else {
-      // Find next free slot after the last used one
-      cursor = WORKING_START * 60;
+      // Find next free slot after the last used one. Deliberately does NOT
+      // reset back to WORKING_START when a task doesn't fit before end of
+      // day — that used to guarantee a collision with whatever was already
+      // sitting at the start of the day (an overloaded day with, say, 9
+      // hours of 60-min tasks packed into a 9-hour window would push the
+      // last one or two items past 7pm, and instead of just showing an
+      // honestly overloaded day running late, it silently snapped them
+      // back on top of the very first task). Running past the nominal end
+      // of day is a more honest signal that this person is overbooked than
+      // a corrupted, overlapping layout.
+      cursor = nowFloorMins !== null ? Math.max(WORKING_START * 60, nowFloorMins) : WORKING_START * 60;
       const sortedSlots = slots.map(s => s.end_mins).sort((a,b) => a-b);
-      for(const end of sortedSlots) { if(end >= cursor) cursor = end + 10; }
-      if(cursor + dur > WORKING_END * 60) cursor = WORKING_START * 60; // fallback
+      for(const end of sortedSlots) { if(end >= cursor) cursor = end; }
     }
+    // If they actually pushed their own work forward (content_completed_at/
+    // design_completed_at, stamped in handleStageChange when it leaves
+    // their stage — e.g. a designer's task moving to Design Review), show
+    // how long it REALLY took instead of always rendering the full
+    // originally-estimated block. Anchored to `cursor` (the slot this task
+    // would have started at) rather than requiring an explicit due_time —
+    // most tasks here (e.g. anything from a Calendar Plan) never get one,
+    // so this used to never apply to them even after they were genuinely
+    // finished. A real duration shrinking or growing here naturally shifts
+    // every task after it too, since their own cursor search reads this
+    // task's real end_mins, not the estimate.
+    let dur = est;
+    const completedAtField = userRole==="graphic_designer" ? "design_completed_at" : userRole==="content_creator" ? "content_completed_at" : null;
+    const completedDatesField = userRole==="graphic_designer" ? "design_completed_dates" : userRole==="content_creator" ? "content_completed_dates" : null;
+    const completedAt = completedAtField ? post[completedAtField] : null;
+    // Checks the accumulated completed-dates HISTORY too, not just the
+    // latest _completed_at timestamp — a task finished on this day, then
+    // sent back for revision (clearing _completed_at for the new cycle),
+    // still needs to render green/DONE here, since it genuinely was
+    // finished this day — the reset only affects its CURRENT cycle.
+    let completedHistoryLocal = [];
+    try { const raw = completedDatesField ? post[completedDatesField] : null; completedHistoryLocal = raw ? (Array.isArray(raw) ? raw : JSON.parse(raw)) : []; } catch(e) { completedHistoryLocal = []; }
+    const historyEntry = completedHistoryLocal.find(h=>h.date===date);
+    const completedToday = !!historyEntry || !!(completedAt && parseSqlUtc(completedAt).toISOString().split("T")[0] === date);
+    // The real-elapsed-time override only kicks in when the move actually
+    // just happened (within the last 2 hours) — a fresh completion is
+    // trustworthy live data worth showing honestly (e.g. a 1hr block
+    // finished in 15min). A completedAt from hours ago (backfilled,
+    // day-old, whatever) is NOT reliable enough to trust for sizing the
+    // block — it still keeps the task visible/green via completedToday
+    // above, just rendered at its normal estimated size instead of
+    // stretching or shrinking based on a stale number.
+    if(completedToday && completedAt) {
+      const compDate = parseSqlUtc(completedAt);
+      const minsSinceCompletion = (Date.now() - compDate.getTime()) / 60000;
+      if(minsSinceCompletion >= 0 && minsSinceCompletion <= 120) {
+        const actual = (compDate.getHours()*60 + compDate.getMinutes()) - cursor;
+        if(actual > 0) dur = Math.min(actual, est*3);
+      }
+    }
+    // A FROZEN historical snapshot wins over both the live estimate AND the
+    // real-elapsed override above, UNLESS this is that same fresh (<=2h)
+    // live completion the override just handled — leave that one alone so
+    // the real-elapsed feature above still behaves exactly as before. Any
+    // other snapshotted cycle (an older completion, or viewed on a
+    // different day) must never drift just because the task's current live
+    // estimated_minutes changed later — each cycle keeps the duration it
+    // actually had.
+    const isFreshLiveCompletion = completedAt && date===today && (()=>{ const mins=(Date.now()-parseSqlUtc(completedAt).getTime())/60000; return mins>=0 && mins<=120; })();
+    if(historyEntry && Number.isFinite(historyEntry.duration_mins) && !isFreshLiveCompletion) dur = historyEntry.duration_mins;
     slots.push({
       post_id: post.id,
       start_mins: cursor,
@@ -588,16 +785,49 @@ function generateDailySchedule(posts, userEmail, date, userRole) {
       start_time: minsToAmPm(cursor),
       end_time: minsToAmPm(cursor + dur),
       duration_mins: dur,
+      completed_today: completedToday,
+      // Only flag it red/overdue while it's still sitting in THEIR own
+      // stage, unfinished — once they've actually moved it forward (e.g.
+      // to Client Approval, waiting on someone else entirely), it's no
+      // longer their unfinished work and shouldn't read as if they're
+      // still behind on it.
+      overdue: isOverduePost(post),
     });
   }
-  slots.sort((a,b) => a.start_mins - b.start_mins);
+  // Tasks actually finished today (moved out of Design/Content, e.g. to
+  // Design Review) show first, ahead of everything still pending —
+  // otherwise a real "what did they actually get done today" glance meant
+  // scanning the whole list for the DESIGN badge vs not.
+  slots.sort((a,b) => (b.completed_today - a.completed_today) || (a.start_mins - b.start_mins));
   return slots;
 }
 
 // ── @mention helper ────────────────────────────────────────────
 const URL_RE = /((?:https?:\/\/|www\.)[^\s<>"']+)/gi;
 
-function renderCommentText(text, team) {
+// Feedback pasted in or synced from elsewhere (Trello, a client's WhatsApp
+// message, etc.) very often arrives as one dense unbroken line — "1.
+// Location... 2. Sequence... **Client's suggested direction:** ..." — with
+// no real newlines between points. Inserts a paragraph break before each
+// numbered list item and before a bold "**Heading:**"-style marker used
+// mid-text as a new section, so it reads as actual structured points
+// instead of a wall of text.
+function insertCommentBreaks(text) {
+  if(!text) return text;
+  return text
+    .replace(/(?<!^)(?<!\n)\s+((?:[1-9]|1\d|20)\.\s)(?=[A-Z(])/g, "\n\n$1")
+    .replace(/(?<!^)(?<!\n)\s+(\*\*[^*\n]+:\*\*)/g, "\n\n$1");
+}
+
+function commentParagraphs(text) {
+  if(!text) return [];
+  const withBreaks = insertCommentBreaks(text);
+  let paras = withBreaks.split(/\n{2,}/).map(p=>p.trim()).filter(Boolean);
+  if(paras.length<=1) paras = withBreaks.split(/\n/).map(p=>p.trim()).filter(Boolean);
+  return paras.length ? paras : [text];
+}
+
+function renderCommentTextInline(text, team) {
   if(!text) return null;
   // Match against real team-member full names first (longest first, so
   // "Monay Khalid" matches whole instead of the generic word-boundary
@@ -629,6 +859,11 @@ function renderCommentText(text, team) {
       );
     });
   });
+}
+
+function renderCommentText(text, team) {
+  if(!text) return null;
+  return commentParagraphs(text).map((para,i) => <p key={i} style={{margin:i===0?0:"8px 0 0"}}>{renderCommentTextInline(para, team)}</p>);
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -863,6 +1098,7 @@ const SB_TABLE = {
   AttendanceRecord:"attendance_records",
   ContactReport:"contact_reports",
   ContactReportActivity:"contact_report_activity",
+  ClientApprovalLink:"client_approval_links",
   LeadNotifySetting:"lead_notify_settings",
   Expense:"expenses",
   FinanceClientNote:"finance_client_notes",
@@ -886,7 +1122,7 @@ function sbTable(entityName) {
 // Known columns per table — used to strip unknown fields before POST/PATCH
 const SB_SCHEMA = {
   projects: ["title","description","client_id","client_name","status","start_date","end_date","platforms","team_members","project_type","posting_start","posting_end"],
-  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","text_on_visual","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","assigned_to_extra","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","estimated_minutes","content_assigned_to","due_date","due_time","task_type","revision_count","was_rejected"],
+  posts: ["project_id","client_id","client_name","title","description","stage","platform","platforms","post_type","caption","hashtags","text_on_visual","design_urls","design_assets","scheduled_date","scheduled_time","assigned_to","assigned_to_extra","priority","rejection_reason","reel_hook","reel_script","reel_cta","carousel_cover","carousel_slides","music_direction","tov_used","content_language","brief","notes","external_post_id","published_platforms","platform_post_ids","estimated_minutes","content_assigned_to","due_date","due_time","task_type","revision_count","was_rejected","sector","content_completed_at","design_completed_at","design_assigned_to","published_at","pre_approval_stage","design_completed_dates","content_completed_dates","is_plan_parent","plan_items"],
   // address/website/contact_person were never real columns on the clients
   // table (mysql-schema.sql only has name/email/phone/logo_url/industry/
   // status/account_manager_id/notes/platforms/portal_password/username) —
@@ -896,7 +1132,8 @@ const SB_SCHEMA = {
   // and username both exist but were missing from this list, so they always
   // got stripped before the request went out (see
   // migration-client-username.sql for the added username column).
-  clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","account_manager_commissions","username","contact_title","notes","logo_url","allowed_task_types","platform_credentials","portal_features","website","social_links"],
+  clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","account_manager_commissions","username","contact_title","notes","logo_url","allowed_task_types","platform_credentials","portal_features","website","social_links","whatsapp_group_link","has_sectors","sectors"],
+  client_approval_links: ["post_id","client_id","token","expires_at","status","created_by"],
   client_tasks: ["client_id","client_name","title","description","task_type","priority","stage","assigned_to","created_by","deliverable_note"],
   team_member_events: ["team_member_id","team_member_name","event_type","title","previous_value","new_value","amount","effective_date","notes","recorded_by"],
   // DEFAULT_NOTIF_PREFS (used to build every save payload) has a
@@ -1097,28 +1334,34 @@ const AI_HEADERS = {"Content-Type":"application/json"};
 // floating Chatbot) so conversation-learning is universal and identical.
 async function proLearnFromExchange({client, userText, botText, existingKeys=[], onUpsertMemory, currentUserEmail=""}) {
   if(!client?.id || !onUpsertMemory) return [];
-  const combined = `USER: ${userText}\n\nPRO: ${botText}`.slice(0,8000);
+  // Was capped at 8000 chars — a real problem once someone pastes a
+  // substantial brief/list directly into a Pro message rather than
+  // uploading it as a document.
+  const combined = `USER: ${userText}\n\nPRO: ${botText}`.slice(0,100000);
   if(combined.length<150) return [];
   try{
-    const sys = `You silently extract DURABLE brand knowledge from a chat exchange about "${client.name}". Return ONLY JSON: {"insights":[{"key":"snake_case","value":"≤140 chars concrete directive","confidence":0.4-0.95}]}.
+    const sys = `You silently extract DURABLE brand knowledge from a chat exchange about "${client.name}". Return ONLY JSON: {"insights":[{"key":"snake_case","value":"concrete directive, no length limit — see rules below","confidence":0.4-0.95}]}.
 Rules:
 - FIRST check: is this exchange actually about "${client.name}"'s brand/business (products, audience, tone, industry, goals, preferences)? If the user/Pro is instead discussing something unrelated — system-wide CRM/leads, other clients, admin/team matters, app features, general questions with no connection to this client's brand — return {"insights":[]} immediately. Do not extract anything just because the chat happened to be locked onto this client at the time.
-- 0–4 insights only (skip if nothing durable).
+- 0–10 insights (skip if nothing durable) — don't artificially limit yourself to fewer if there's genuinely more worth saving.
 - key snake_case, ≤32 chars. Avoid these existing keys: ${existingKeys.slice(0,30).join(", ")||"(none)"}.
-- value: a stable fact about the brand/audience/tone/products/preferences. Skip ephemeral chat-specific things.
+- value: a stable fact about the brand/audience/tone/products/preferences. Skip ephemeral chat-specific things. NO length cap on value — a short fact should be short, but a genuine LIST (branch locations, product lines, contacts, full pricing table, etc.) must be captured COMPLETE and VERBATIM, never truncated or compressed into a vague generality just to keep it short.
 - Skip greetings, scheduling, one-off questions.
 - Return {"insights":[]} if nothing durable.`;
     const res = await fetch(AI_ENDPOINT,{method:"POST",headers:AI_HEADERS,
-      body: JSON.stringify({model:"claude-haiku-4-5-20251001", max_tokens:600, system:sys, messages:[{role:"user",content:combined}]})});
+      body: JSON.stringify({model:"claude-haiku-4-5-20251001", max_tokens:4000, system:sys, messages:[{role:"user",content:combined}]})});
     const d = await res.json();
     const raw = (d.content?.map(b=>b.text||"").join("")||"").trim();
     const m = raw.match(/\{[\s\S]*\}/); if(!m) return [];
     const parsed = JSON.parse(m[0]);
-    const items = (parsed.insights||[]).slice(0,4);
+    const items = (parsed.insights||[]).slice(0,10);
     const saved = [];
     for(const it of items){
       const k = (it.key||"").toLowerCase().replace(/[^a-z0-9_]/g,"_").slice(0,32);
-      const v = (it.value||"").slice(0,140);
+      // No cap here — client_memory.value is TEXT (65KB), the real ceiling.
+      // An arbitrary JS-side cap was the whole reason a real branch list
+      // got silently mangled before.
+      const v = (it.value||"").trim();
       if(!k||!v) continue;
       if(existingKeys.includes(k)) continue; // don't overwrite stronger existing memories
       await onUpsertMemory(client.id, client.name||"", k, v, "auto", {source:"conversation", confidence: typeof it.confidence==="number"?it.confidence:0.5, created_by: currentUserEmail});
@@ -1454,14 +1697,24 @@ async function sendCareersEmail(to, subject, html, fromName="Admepro Careers") {
 
 // ── Pro AI preferences (model + speed), set from Settings → AI & Tokens ──
 function getAIPrefs() {
-  // Sonnet is the default brain for Pro — noticeably smarter than Haiku on
-  // multi-step reasoning, document understanding, and long conversations,
-  // still switchable from Settings → AI & Tokens.
+  // claude-sonnet-4-6 is the default brain for Pro — a known-working model
+  // id on this account (same one pro-lib.php's WhatsApp bot uses reliably).
+  // "claude-sonnet-5" was tried as the default but the API rejected it
+  // ("did not match the expected pattern" — not a valid/launched alias on
+  // this account), which broke every Pro/Sara/Mai chat send. Switchable
+  // from Settings → AI & Tokens.
   let model = "claude-sonnet-4-6", speed = "medium", fallbackModel = "";
+  // Anyone who loaded the app during the brief window "claude-sonnet-5"/
+  // "claude-opus-5" were the default has that invalid id cached in their
+  // own browser as an explicit preference — auto-correct it back rather
+  // than leave them permanently stuck erroring on every send.
+  const KNOWN_BAD_MODEL_IDS = new Set(["claude-sonnet-5", "claude-opus-5"]);
   try {
-    model = localStorage.getItem("sf_ai_model") || model;
+    const stored = localStorage.getItem("sf_ai_model");
+    model = (stored && !KNOWN_BAD_MODEL_IDS.has(stored)) ? stored : model;
     speed = localStorage.getItem("sf_ai_speed") || speed;
     fallbackModel = localStorage.getItem("sf_ai_fallback_model") || "";
+    if (fallbackModel && KNOWN_BAD_MODEL_IDS.has(fallbackModel)) fallbackModel = "";
   } catch(e) {}
   return {model, speed, fallbackModel};
 }
@@ -1733,7 +1986,17 @@ const EMAIL_TEMPLATES = {
         body:`Every project you've delivered and every extra mile you've gone this past period has been seen and genuinely appreciated. This raise is our way of recognizing that — thank you for everything you bring to the team.`,
       },
       promotion: {
-        hero:`Congratulations, ${memberName||"there"}!`, sub:`Your dedication has earned you a well-deserved promotion${event.new_value?` to <strong>${event.new_value}</strong>`:""}.`,
+        // The headline highlights the NEW TITLE (event.title) — that's the
+        // actual promotion. event.new_value is the new salary figure, which
+        // already has its own "Previous / New / Amount" row further down;
+        // it used to also get reused up here, reading as "promoted to
+        // 25000.00" (a raw salary number) instead of naming the new role.
+        hero:`Congratulations, ${memberName||"there"}!`, sub:`Your dedication has earned you a well-deserved promotion${event.title?` to <strong>${event.title}</strong>`:""}.`,
+        // Shown right before the Previous/New salary table — thanks them
+        // and names the new role BEFORE they hit a bare table of numbers,
+        // so the promotion itself (not just the raise) is the first thing
+        // they read about.
+        intro:`Thank you, ${firstName}, for everything you've put into this role — your effort hasn't gone unnoticed. We're excited to share that you've been promoted${event.title?` to <strong>${event.title}</strong>`:""}, effective ${event.effective_date?fmtDate(event.effective_date):"immediately"}.`,
         body:`We've watched you grow, take on more, and consistently raise the bar — this promotion is a reflection of the trust we have in you and the impact you've made. We're excited to see where you take it from here. Congratulations, and thank you for everything.`,
       },
       bonus: {
@@ -1756,6 +2019,14 @@ const EMAIL_TEMPLATES = {
         hero:"Notice of role change", sub:`This is to inform you of a change to your role, ${firstName}.`,
         body:`Please reach out to your manager or HR if you have any questions.`,
       },
+      terminate: (() => {
+        const base = terminationLetterCopy(event.previous_value, firstName, event.effective_date?fmtDate(event.effective_date):null);
+        const payroll = terminationPayrollEstimate(event.payrollMember, event.effective_date, event.salaryRaises);
+        const contact = event.payrollContact;
+        const contactLine = contact ? ` For any payroll follow-up, please reach out to ${contact.name}${contact.email?` at ${contact.email}`:""}${contact.whatsapp_number?` (WhatsApp: ${contact.whatsapp_number})`:""}.` : "";
+        if(!payroll) return {...base, body: `${base.body}${contactLine}`};
+        return {...base, body: `${base.body} Your final salary of EGP ${payroll.amount.toLocaleString()} (prorated through your last working day) will be payable in the next payroll round, on the ${payroll.payoutWindowLabel}.${contactLine}`};
+      })(),
       other: {
         hero:event.title||"An update regarding your employment", sub:firstName?`Hi ${firstName},`:"",
         body:`Please reach out to your manager or HR if you have any questions.`,
@@ -1767,7 +2038,14 @@ const EMAIL_TEMPLATES = {
         <td style="padding:12px 16px;border-bottom:1px solid #f1f1f3;font-size:13px;color:#6b7280">${label}</td>
         <td style="padding:12px 16px;border-bottom:1px solid #f1f1f3;font-size:14px;font-weight:800;color:#111827;text-align:right">${value}</td>
       </tr>`;
-    const rowsHtml = [
+    const terminatePayroll = t==="terminate" ? terminationPayrollEstimate(event.payrollMember, event.effective_date, event.salaryRaises) : null;
+    const rowsHtml = t==="terminate" ? [
+      offerRow("Reason", TERMINATION_REASON_MAP[event.previous_value]?.label || "Not specified"),
+      offerRow("Last Working Day", event.effective_date?fmtDate(event.effective_date):""),
+      offerRow("Final Payroll Amount", terminatePayroll?`EGP ${terminatePayroll.amount.toLocaleString()}`:null),
+      offerRow("Payable On", terminatePayroll?terminatePayroll.payoutWindowLabel:null),
+      offerRow("Payroll Contact", event.payrollContact?`${event.payrollContact.name}${event.payrollContact.email?` (${event.payrollContact.email})`:""}`:null),
+    ].join("") : [
       offerRow("Previous", event.previous_value),
       offerRow("New", event.new_value),
       offerRow("Amount", amt),
@@ -1785,6 +2063,7 @@ const EMAIL_TEMPLATES = {
       <p style="margin:0;font-size:14px;color:#ffe0e5">${copy.sub}</p>
     </div>
     ${event.title?`<p style="margin:0 0 16px;font-size:15px;font-weight:800;color:#111827">${event.title}</p>`:""}
+    ${copy.intro?`<p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563">${copy.intro}</p>`:""}
     ${rowsHtml?`<table width="100%" style="border-collapse:collapse;margin:0 0 20px;border:1px solid #f1f1f3;border-radius:12px;overflow:hidden">${rowsHtml}</table>`:""}
     ${event.notes?`<p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563">${event.notes.replace(/</g,"&lt;")}</p>`:""}
     <p style="margin:0 0 4px;font-size:14px;line-height:1.6;color:#4b5563">${copy.body}</p>
@@ -1959,6 +2238,7 @@ const DEFAULT_NOTIF_PREFS = {
   client_approval_required: true,
   post_approved: true,
   post_rejected: true,
+  task_sent_back: true,
   // Finance events
   invoice_created: true,
   payment_received: true,
@@ -1993,14 +2273,19 @@ const DEFAULT_NOTIF_PREFS = {
 // ── Smart notification dispatcher ─────────────────────────────────
 // Checks user prefs before sending. Pass userPrefs = notifPrefs object for that user.
 // Pass waNumber to also deliver the notification via WhatsApp.
-async function sendNotification(eventType, toEmail, subject, html, userPrefs, waNumber=null) {
+// waBody: optional pre-built plain-text WhatsApp message for this specific
+// event (e.g. the task name + the actual comment, for a mention) — used
+// instead of the generic "<subject>\n\nView: <site homepage>" fallback,
+// which was just the bare app URL, not a link to the actual task, and
+// didn't show what was actually said.
+async function sendNotification(eventType, toEmail, subject, html, userPrefs, waNumber=null, waBody=null) {
   const prefs = {...DEFAULT_NOTIF_PREFS, ...(userPrefs||{})};
   if(prefs.all_disabled) return false;
   if(prefs.mentions_only && eventType !== "task_mention") return false;
   if(prefs[eventType] === false) return false;
   const emailOk = sendEmail(toEmail, subject, html);
   if(waNumber) {
-    sendWhatsApp(waNumber, `${subject}\n\nView: ${window.location.origin}`).catch(()=>{});
+    sendWhatsApp(waNumber, waBody || `${subject}\n\nView: ${window.location.origin}`).catch(()=>{});
   }
   return emailOk;
 }
@@ -2016,6 +2301,17 @@ async function sendWhatsApp(to, body) {
     if(!r.ok) console.warn("[whatsapp] failed:", d);
     return r.ok;
   } catch(e) { return false; }
+}
+
+// ── Trello sync: fire-and-forget push of a post's current stage to its
+// client's connected Trello board (creates the card the first time, moves
+// it on every stage change after). A no-op server-side if the client has
+// no active Trello integration or that stage isn't mapped to a list —
+// safe to call unconditionally after every create/stage-change. ──
+async function syncPostToTrello(postId) {
+  if(!postId) return;
+  try { await fetch("/trello-sync.php", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({post_id:postId})}); }
+  catch(e) { /* best-effort — Trello being unreachable shouldn't block the real save */ }
 }
 
 // ── Web Push: send a push notification to a user's stored subscription(s) ──
@@ -2363,7 +2659,40 @@ function parseAgentRunTiming(details){
 // Full client-brain context block for any Sara task, read from a global App()
 // keeps mirrored (same pattern as __SF_AI_AGENTS) — knowledge + intelligence +
 // learned memory, without prop-drilling three lists into every modal.
-function clientBrainBlock(clientId, clientName){
+// topicHint (optional — a post's title/brief, or any free text describing
+// what's being written) triggers a real search over the client's FULL
+// uploaded document text (not just the AI-summarized context_file, which
+// only ever covers the first ~100K chars of what can be a 500K+ char
+// ChatGPT export) — so a specific detail buried deep in a long chat (a
+// named branch, an exact spec) reaches content generation even when the
+// distilled summary missed it. Client-side and synchronous since
+// documents are already loaded in memory — no extra round-trip needed.
+function searchClientDocsForTopic(documents, clientId, topicHint) {
+  if(!topicHint) return "";
+  const stopwords = new Set(["what","which","who","when","where","why","how","does","did","the","and","for","with","about","have","has","are","is","was","were","this","that","their","they","can","you","please","content","post","caption","about","client"]);
+  const terms = [...new Set((topicHint.match(/[A-Za-z؀-ۿ]{4,}/g)||[]).filter(w=>!stopwords.has(w.toLowerCase())))].slice(0,4);
+  if(!terms.length) return "";
+  const docs = (documents||[]).filter(d=>d.client_id===clientId && d.content);
+  if(!docs.length) return "";
+  const excerpts = [];
+  for(const term of terms) {
+    for(const doc of docs) {
+      const content = doc.content||"";
+      let idx = content.toLowerCase().indexOf(term.toLowerCase());
+      let found = 0;
+      while(idx!==-1 && found<3 && excerpts.length<6) {
+        const start = Math.max(0, idx-300);
+        excerpts.push(`From "${doc.name}": ...${content.slice(start, start+700).trim()}...`);
+        found++;
+        idx = content.toLowerCase().indexOf(term.toLowerCase(), idx+term.length);
+      }
+      if(excerpts.length>=6) break;
+    }
+    if(excerpts.length>=6) break;
+  }
+  return excerpts.length ? `\nRelevant excerpts from uploaded documents (found by searching the FULL document for terms from what's being written):\n${excerpts.join("\n")}\n` : "";
+}
+function clientBrainBlock(clientId, clientName, topicHint){
   try {
     const b = window.__SF_CLIENT_BRAIN||{};
     const know = (b.knowledge||[]).find(k=>k.client_id===clientId||(clientName&&k.client_name===clientName));
@@ -2389,6 +2718,7 @@ Target Audience: ${intel?.target_audience||""}
 Keywords: ${know?.keywords ? (typeof know.keywords==="string"?know.keywords:JSON.stringify(know.keywords)) : ""}
 Do's: ${know?.dos||""}
 Don'ts: ${know?.donts||intel?.donts||""}
+${know?.general_info?`General Info (contacts/locations/branches/addresses): ${know.general_info}`:""}
 ${(()=>{
   const c = parseJ(know?.brand_colors) || {};
   const primary = ["primary_1","primary_2"].map(k=>c[k]).filter(Boolean);
@@ -2409,7 +2739,8 @@ ${know?.visual_direction?`Visual Direction (follow this for any design/image wor
 ${know?.content_language?`Copy Language: ${know.content_language}`:""}
 ${memBlock ? `LEARNED MEMORY (highest priority — always follow):\n${memBlock}` : ""}
 ${publishedBlock ? `RECENTLY PUBLISHED — ${allPublished.length} total published, showing the ${recentPublished.length} most recent (real examples — match this proven style/format, and do NOT repeat these ideas/angles):\n${publishedBlock}` : "RECENTLY PUBLISHED: none yet for this client."}
-Context: ${(know?.context_file||"").slice(0,400)}
+Context: ${(know?.context_file||"").slice(-15000)}
+${searchClientDocsForTopic(b.documents, clientId, topicHint)}
 === END CLIENT BRAIN ===`;
   } catch(e){ return ""; }
 }
@@ -3736,9 +4067,11 @@ function ImageLightbox({url, alt, onClose}) {
   // instead of trying to render a broken <img> — same modal chrome/Download
   // button either way, so "View" on any attachment (not just photos) opens
   // in-app instead of just linking out.
-  const isPdf = (url||"").toLowerCase().split("?")[0].endsWith(".pdf");
+  const cleanUrl = (url||"").toLowerCase().split("?")[0];
+  const isPdf = cleanUrl.endsWith(".pdf");
+  const isVideo = /\.(mp4|mov|webm|m4v)$/.test(cleanUrl);
   return ReactDOM.createPortal(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:1200,display:"flex",alignItems:"center",justifyContent:"center",padding:24,cursor:isPdf?"default":"zoom-out"}} className="fade-in">
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",zIndex:1200,display:"flex",alignItems:"center",justifyContent:"center",padding:24,cursor:(isPdf||isVideo)?"default":"zoom-out"}} className="fade-in">
       <a href={url} download={alt||""} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} aria-label="Download" style={{position:"absolute",top:20,right:66,width:38,height:38,borderRadius:"50%",background:"rgba(255,255,255,0.12)",border:"none",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",textDecoration:"none"}}>
         <Ico d={Icons.download||Icons.upload} size={17} stroke="#fff"/>
       </a>
@@ -3747,6 +4080,8 @@ function ImageLightbox({url, alt, onClose}) {
       </button>
       {isPdf ? (
         <iframe src={url} title={alt||"Attachment"} onClick={e=>e.stopPropagation()} style={{width:"85vw",height:"88vh",border:"none",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,0.5)",background:"#fff"}}/>
+      ) : isVideo ? (
+        <video src={url} controls autoPlay playsInline onClick={e=>e.stopPropagation()} style={{maxWidth:"90vw",maxHeight:"90vh",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,0.5)"}}/>
       ) : (
         <img src={url} alt={alt||""} onClick={e=>e.stopPropagation()} style={{maxWidth:"90vw",maxHeight:"90vh",borderRadius:12,boxShadow:"0 24px 80px rgba(0,0,0,0.5)",cursor:"default"}}/>
       )}
@@ -4183,13 +4518,20 @@ function TimeTracker({postId, userEmail, timeEntries, onStart, onPause, onResume
     .filter(t => t.post_id===postId && t.user_email===userEmail)
     .reduce((acc, t) => {
       if(t.status==='active') {
-        return acc + (t.total_seconds||0) + Math.floor((Date.now()-new Date(t.started_at).getTime())/1000);
+        return acc + (t.total_seconds||0) + Math.floor((Date.now()-parseSqlUtc(t.started_at).getTime())/1000);
       }
       return acc + (t.total_seconds||0);
     }, 0);
 
   const fmtSecs = (s) => {
-    const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+    // A fractional/garbage value (e.g. total_seconds picking up a stray
+    // decimal from some other write path) used to render straight through
+    // as-is — "00:00:0.0011705" instead of "00:00:00" — since only h/m were
+    // floored, not the raw seconds remainder. Floors the whole input up
+    // front so this always renders a clean integer HH:MM:SS no matter what
+    // comes in.
+    const total = Math.max(0, Math.floor(Number(s)||0));
+    const h = Math.floor(total/3600), m = Math.floor((total%3600)/60), sec = total%60;
     return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
   };
 
@@ -4484,7 +4826,8 @@ KEYWORDS TO USE: ${ck?.keywords?(typeof ck.keywords==="string"?ck.keywords:JSON.
 CONTENT PREFERENCES: ${ck?.content_preferences||ci?.content_preferences||"none set"}
 TARGET AUDIENCE: ${ck?.target_audience||ci?.target_audience||"general audience"}
 DO NOT USE: ${ck?.donts||ci?.donts||"nothing restricted"}
-CONTEXT FILE: ${(ck?.context_file||"").slice(0,400)||"none"}
+CONTEXT FILE: ${(ck?.context_file||"").slice(-15000)||"none"}
+${searchClientDocsForTopic(window.__SF_CLIENT_BRAIN?.documents, client?.id, `${post?.title||""} ${post?.description||""}`)}
 ${memBlock ? `\nCLIENT MEMORY (highest priority, use this):\n${memBlock}` : ""}
 
 === APPROVED & PUBLISHED CAPTIONS (LEARN FROM THESE — match their style, tone, language) ===
@@ -4995,7 +5338,7 @@ ${shapeInstr}`;
               <button onClick={()=>handleChoose(idx)} style={{display:"flex",alignItems:"center",gap:6,padding:"7px 18px",borderRadius:8,fontSize:12,fontWeight:700,background:"var(--accent)",color:"#fff",border:"none",cursor:"pointer",opacity:chosenIdx===idx?0.7:1}}
                 onMouseEnter={e=>e.currentTarget.style.opacity="0.88"} onMouseLeave={e=>e.currentTarget.style.opacity=chosenIdx===idx?"0.7":"1"}>
                 <Ico d={Icons.check} size={13} stroke="#fff"/>
-                {chosenIdx===idx?"✓ Chosen":"Choose & Push to Review"}
+                {chosenIdx===idx?"✓ Chosen":(post.stage==="content_creation"?"Choose & Push to Review":"Choose This Option")}
               </button>
             </div>
           </div>
@@ -5165,9 +5508,7 @@ function DesignFilePicker({post, assets, onAddAsset, project, onStageChange}) {
 // Design assets grid — its own component (rather than inline JSX in
 // PostDetail) purely so it can hold its own per-asset "upscaling" state
 // without adding more hooks to PostDetail's own hook list.
-function DesignAssetGrid({post, onStageChange, onView}) {
-  const [upscalingIdx, setUpscalingIdx] = useState(null);
-  const [err, setErr] = useState("");
+function DesignAssetGrid({post, onStageChange, onView, onRemove, onForward, canForward}) {
   const [dragIdx, setDragIdx] = useState(null);
   if(!post.design_assets || post.design_assets.length===0) return null;
 
@@ -5178,25 +5519,6 @@ function DesignAssetGrid({post, onStageChange, onView}) {
     const [moved] = next.splice(from,1);
     next.splice(to,0,moved);
     onStageChange({...post, design_assets:next}, post.stage);
-  };
-
-  const handleUpscale = async (asset, i, scaleFactor) => {
-    setUpscalingIdx(i); setErr("");
-    try {
-      const res = await fetch(asset.url||asset.data);
-      const blob = await res.blob();
-      const b64 = await new Promise((resolve,reject)=>{
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(",")[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-      const resultUrl = await freepikGenerate("image-upscaler", {image:b64, scale_factor:scaleFactor});
-      if(!resultUrl) throw new Error("Upscale timed out — please try again");
-      const newAssets = post.design_assets.map((a,idx)=>idx===i?{...a, url:resultUrl, data:undefined, upscaledTo:scaleFactor}:a);
-      onStageChange({...post, design_assets:newAssets}, post.stage);
-    } catch(e) { setErr("Upscale failed: "+e.message); }
-    setUpscalingIdx(null);
   };
 
   return (
@@ -5229,30 +5551,29 @@ function DesignAssetGrid({post, onStageChange, onView}) {
                   : <a href={asset.url} target="_blank" rel="noreferrer" style={{fontSize:9,color:"var(--accent)"}}>View</a>)}
               </div>}
               <button onClick={()=>{
+                if(onRemove) { onRemove(asset, i); return; }
                 const newAssets = post.design_assets.filter((_,idx)=>idx!==i);
                 onStageChange({...post,design_assets:newAssets},post.stage);
               }} style={{position:"absolute",top:3,right:3,width:20,height:20,borderRadius:99,background:"#ef4444",border:"none",color:"#fff",cursor:"pointer",fontSize:12,fontWeight:700,padding:0,lineHeight:"20px"}}>×</button>
               {asset.upscaledTo&&<span style={{position:"absolute",bottom:3,left:3,padding:"1px 6px",borderRadius:99,background:"rgba(16,185,129,0.9)",color:"#fff",fontSize:9,fontWeight:700}}>{asset.upscaledTo}</span>}
             </div>
+            {/* Admin/AM only — sends this media straight into the
+                client-facing comment thread as a link, same hand-off as
+                forwarding a comment attachment. Always confirms first. */}
+            {canForward && onForward && (asset.url||asset.data) && (
+              <button onClick={()=>{ if(confirm(`Forward "${asset.name||"this file"}" to the client-facing comments?`)) onForward(asset); }} style={{height:20,borderRadius:5,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",fontSize:9,fontWeight:700,cursor:"pointer"}}>
+                Forward to Client
+              </button>
+            )}
             {isCarousel&&(
               <div style={{display:"flex",gap:3}}>
                 <button onClick={()=>moveAsset(i,i-1)} disabled={i===0} style={{flex:1,height:20,borderRadius:5,border:"1px solid var(--border2)",background:"var(--surface)",color:i===0?"var(--text3)":"var(--text2)",fontSize:10,fontWeight:700,cursor:i===0?"default":"pointer",opacity:i===0?0.4:1}}>← Slide</button>
                 <button onClick={()=>moveAsset(i,i+1)} disabled={i===post.design_assets.length-1} style={{flex:1,height:20,borderRadius:5,border:"1px solid var(--border2)",background:"var(--surface)",color:i===post.design_assets.length-1?"var(--text3)":"var(--text2)",fontSize:10,fontWeight:700,cursor:i===post.design_assets.length-1?"default":"pointer",opacity:i===post.design_assets.length-1?0.4:1}}>Slide →</button>
               </div>
             )}
-            {isImage&&!asset.upscaledTo&&(
-              <div style={{display:"flex",gap:3}}>
-                {["2x","4x"].map(sf=>(
-                  <button key={sf} onClick={()=>handleUpscale(asset,i,sf)} disabled={upscalingIdx===i} style={{flex:1,height:20,borderRadius:5,border:"1px solid var(--accent)44",background:"var(--accent)11",color:"var(--accent)",fontSize:9,fontWeight:700,cursor:upscalingIdx===i?"default":"pointer"}}>
-                    {upscalingIdx===i?"…":`Upscale ${sf}`}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
         );})}
       </div>
-      {err&&<p style={{fontSize:11,color:"#ef4444"}}>{err}</p>}
     </div>
   );
 }
@@ -5313,7 +5634,7 @@ function DesignAIGenerator({post, project, onAddAsset, onStageChange}) {
       let finalPrompt = "";
       try {
         const brief = await agentAI("graphic_designer", `Design prompt: ${post.title}`, `You are Yahia, the team's AI Senior Graphic Designer. Write a single, detailed, ready-to-use image-generation prompt for an AI image model — grounded in this client's real brand/design history below, not a generic style. You already have everything you need from the task itself; don't wait for a separate brief.
-${clientBrainBlock(post.client_id, post.client_name)}
+${clientBrainBlock(post.client_id, post.client_name, `${post.title||""} ${post.description||""}`)}
 
 Task: "${post.title}" — ${post.platform||"social"} ${post.post_type||"post"}
 ${post.caption?`Caption: ${post.caption}`:""}
@@ -5527,9 +5848,304 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
   );
 }
 
+// Shown on a task sitting in Client Approval — generates a 24h-expiring
+// public link (see client-preview.php) + QR code the client can scan (no
+// SocialFlow login) to see the media/caption/hashtags/publish date and
+// Approve or comment, with the approve action moving the task straight to
+// Approved server-side. "Send via WhatsApp" opens the client's saved
+// WhatsApp group (Settings → Client → WhatsApp Group Link) with a
+// pre-filled share message, since a group invite link can't receive a
+// programmatically pre-filled message the way a wa.me DM link can — the AM
+// pastes the message into the chat themselves.
+function ClientApprovalLinkCard({post, client, currentUser}) {
+  const [link, setLink] = useState(null); // {token, expires_at, status, comment}
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+
+  const loadLink = async () => {
+    setLoading(true);
+    const {entities} = await qe("ClientApprovalLink", {post_id: post.id}, "-created_date", 1);
+    setLink(entities?.[0] || null);
+    setLoading(false);
+  };
+  useEffect(()=>{ loadLink(); }, [post.id]);
+
+  const isExpired = link && new Date(link.expires_at) < new Date();
+  const isActive = link && !isExpired && link.status !== "approved";
+
+  const generate = async () => {
+    setGenerating(true);
+    const token = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random())).replace(/-/g,"") + Date.now().toString(36);
+    const expiresAt = new Date(Date.now() + 24*60*60*1000).toISOString();
+    const {entities} = await ce("ClientApprovalLink", [{post_id:post.id, client_id:client?.id||post.client_id||"", token, expires_at:expiresAt, status:"pending", created_by:currentUser?.email||""}]);
+    setLink(entities?.[0] || null);
+    setGenerating(false);
+  };
+
+  const previewUrl = link ? `${window.location.origin}/client-preview.php?token=${link.token}` : null;
+  const waMessage = previewUrl ? `Hi! Please review this content for approval: ${previewUrl}\n(This link is valid for 24 hours.)` : "";
+  // A "share this text, let me pick who to send it to" link needs
+  // api.whatsapp.com/send?text= — wa.me only supports a link that's
+  // recipient-specific (wa.me/<number>), a bare "wa.me/?text=" isn't the
+  // documented/reliable form and silently fails on some WhatsApp versions.
+  // This is also what WhatsApp's OWN in-app QR scanner recognizes and opens
+  // directly in the app, unlike a plain https:// link (which just opens a
+  // browser when scanned by a generic camera app).
+  const waHref = previewUrl ? `https://api.whatsapp.com/send?text=${encodeURIComponent(waMessage)}` : null;
+  const qrUrl = waHref ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(waHref)}` : null;
+
+  if (loading) return null;
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:10,padding:14,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
+      <p style={{fontSize:12,fontWeight:700,color:"var(--text2)"}}>Client Approval Link</p>
+      {link && link.status==="approved" && (
+        <div style={{fontSize:12,color:"#10b981",fontWeight:600}}>✓ Client approved this via the link.</div>
+      )}
+      {link && link.status==="commented" && (
+        <div style={{fontSize:12,color:"#f59e0b"}}>Client left a comment via the link — see comments below.</div>
+      )}
+      {isExpired && link.status==="pending" && (
+        <div style={{fontSize:12,color:"var(--text3)"}}>The last link expired without a response — generate a new one below.</div>
+      )}
+      {isActive && (
+        <div style={{display:"flex",gap:12,alignItems:"center"}}>
+          <img src={qrUrl} alt="QR code" style={{width:100,height:100,borderRadius:8,border:"1px solid var(--border)"}}/>
+          <div style={{display:"flex",flexDirection:"column",gap:6,flex:1,minWidth:0}}>
+            <div style={{fontSize:11,color:"var(--text3)"}}>Expires {new Date(link.expires_at).toLocaleString()}</div>
+            <button onClick={()=>navigator.clipboard?.writeText(previewUrl)} style={{fontSize:11.5,fontWeight:600,padding:"5px 10px",borderRadius:6,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text2)",cursor:"pointer",textAlign:"left",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Copy link</button>
+            {waHref&&<a href={waHref} target="_blank" rel="noopener noreferrer" style={{fontSize:11.5,fontWeight:700,padding:"5px 10px",borderRadius:6,border:"none",background:"#25D36622",color:"#25D366",cursor:"pointer",textAlign:"center",textDecoration:"none"}}>Send via WhatsApp</a>}
+            {/* WhatsApp has no way to deep-link a pre-filled message directly
+                into a specific EXISTING group — the button above opens
+                WhatsApp's own contact/group picker with the message ready to
+                send, so this just gets the client's saved group chat open in
+                a second tab/app to pick from, for convenience. */}
+            {client?.whatsapp_group_link
+              ? <a href={client.whatsapp_group_link} target="_blank" rel="noopener noreferrer" style={{fontSize:10.5,color:"var(--text3)",textDecoration:"underline"}}>Open {client.name}'s WhatsApp group</a>
+              : <span style={{fontSize:10.5,color:"var(--text3)"}}>Tip: add a WhatsApp Group Link in Client → Edit Info to quickly open the right group.</span>}
+          </div>
+        </div>
+      )}
+      <button onClick={generate} disabled={generating} style={{fontSize:12,fontWeight:700,padding:"7px 12px",borderRadius:8,border:"1px solid var(--accent)44",background:"var(--accentbg,var(--surface))",color:"var(--accent)",cursor:generating?"wait":"pointer",alignSelf:"flex-start"}}>
+        {generating?<><Spinner size={11}/> Generating…</> : (isActive ? "Regenerate Link" : "Generate Approval Link")}
+      </button>
+    </div>
+  );
+}
+
+// Renders **bold** markdown segments as real <strong> instead of leaving
+// the literal asterisks on screen.
+function renderBoldSegments(text, keyPrefix="") {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) => {
+    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+      return <strong key={keyPrefix+i}>{part.slice(2, -2)}</strong>;
+    }
+    return part;
+  });
+}
+
+// Splits a brief/description into real paragraphs so it reads as
+// structured text, not one dense wall — used for content that already
+// has \n breaks (written in SocialFlow) AND for content pasted/synced in
+// from elsewhere (e.g. a Trello card description) that's just one giant
+// unbroken line: falls back to grouping sentences into short paragraphs
+// so that case doesn't just print as a single block either.
+function briefParagraphs(text) {
+  if (!text) return [];
+  let paras = text.split(/\n{2,}/).map(p=>p.trim()).filter(Boolean);
+  if (paras.length <= 1) paras = text.split(/\n/).map(p=>p.trim()).filter(Boolean);
+  if (paras.length <= 1) {
+    const sentences = text.match(/[^.!?]+[.!?]+(?:\*\*)?\s*|[^.!?]+$/g) || [text];
+    paras = [];
+    let buf = [];
+    sentences.forEach(s => {
+      buf.push(s.trim());
+      if (buf.length >= 2) { paras.push(buf.join(" ")); buf = []; }
+    });
+    if (buf.length) paras.push(buf.join(" "));
+  }
+  return paras;
+}
+
+function BriefText({text, style}) {
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:8,...style}}>
+      {briefParagraphs(text).map((para,i) => <p key={i} style={{margin:0}}>{renderBoldSegments(para,`p${i}-`)}</p>)}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// PLAN ITEM CARD — one sub-item inside a Calendar Plan parent task.
+// Holds its own kind-appropriate media (image / reel+cover / ordered
+// carousel / story) plus platform + publish date/time, and its own mini
+// stage — it only becomes an independent, movable Post once it splits off
+// via "Split to Scheduled Post" (only enabled once it's Approved and every
+// required field is filled).
+// ════════════════════════════════════════════════════════════════
+const PLAN_ITEM_STAGE_KEYS = ["content_creation","design","internal_review","client_approval","approved","rejected","on_hold"];
+function PlanItemCard({item,team,onUpdate,onSplit}) {
+  const [uploading,setUploading] = useState(false);
+  const media = item.media||{};
+  const assignee = team?.find(t=>t.email===item.assigned_to);
+  const isSplit = !!item.split_post_id;
+  const togglePlatform = (p) => {
+    const cur = item.platforms||[item.platform].filter(Boolean);
+    const has = cur.includes(p);
+    const next = has ? cur.filter(x=>x!==p) : [...cur,p];
+    onUpdate({platforms: next.length?next:[p], platform: (next.length?next:[p])[0]});
+  };
+  const doUpload = async (file, folder) => {
+    setUploading(true);
+    try { return await uploadToStorage(file, folder); }
+    catch(e) { alert(e?.message||"Upload failed"); return null; }
+    finally { setUploading(false); }
+  };
+  const missing = [];
+  if(!item.platform) missing.push("platform");
+  if(!item.scheduled_date) missing.push("date");
+  if(!item.scheduled_time) missing.push("time");
+  if(item.kind==="static" && !media.image) missing.push("image");
+  if(item.kind==="reel" && !media.video) missing.push("reel video");
+  if(item.kind==="reel" && !media.cover) missing.push("cover");
+  if(item.kind==="carousel" && !(media.items||[]).length) missing.push("carousel media");
+  if(item.kind==="story" && !media.media) missing.push("story media");
+  const canSplit = item.stage==="approved" && missing.length===0 && !isSplit;
+
+  return (
+    <div style={{border:"1px solid var(--border)",borderRadius:"var(--r)",padding:14,background:"var(--surface)",opacity:isSplit?0.7:1}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,gap:8}}>
+        <input value={item.title||""} onChange={e=>onUpdate({title:e.target.value})} disabled={isSplit}
+          style={{fontWeight:700,fontSize:14,border:"none",background:"transparent",flex:1,color:"var(--text1)"}}/>
+        <span style={{fontSize:10,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.05em",padding:"3px 8px",borderRadius:6,background:"var(--bg2)",color:"var(--text3)"}}>{item.kind}</span>
+        {isSplit ? (
+          <span style={{fontSize:11,fontWeight:700,color:"#10b981",display:"flex",alignItems:"center",gap:4}}>✓ Split off</span>
+        ) : (
+          <select value={item.stage} onChange={e=>onUpdate({stage:e.target.value})} style={{fontSize:11,fontWeight:700,padding:"4px 8px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",color:STAGE_MAP[item.stage]?.color||"var(--text2)"}}>
+            {PLAN_ITEM_STAGE_KEYS.map(k=><option key={k} value={k}>{STAGE_MAP[k]?.label||k}</option>)}
+          </select>
+        )}
+      </div>
+
+      {!isSplit && <>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+          {PLATFORMS.map(p=>{
+            const active = (item.platforms||[item.platform]).includes(p);
+            return <button key={p} onClick={()=>togglePlatform(p)} style={{fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:20,border:`1px solid ${active?"var(--accent)":"var(--border)"}`,background:active?"var(--accent)":"transparent",color:active?"#fff":"var(--text2)",textTransform:"capitalize"}}>{p}</button>;
+          })}
+        </div>
+        <div style={{display:"flex",gap:8,marginBottom:10}}>
+          <input type="date" value={item.scheduled_date||""} onChange={e=>onUpdate({scheduled_date:e.target.value})} style={{flex:1,fontSize:12,padding:"6px 8px",borderRadius:8,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)"}}/>
+          <input type="time" value={item.scheduled_time||""} onChange={e=>onUpdate({scheduled_time:e.target.value})} style={{flex:1,fontSize:12,padding:"6px 8px",borderRadius:8,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)"}}/>
+        </div>
+
+        {/* Media — shape depends on kind */}
+        {item.kind==="static" && (
+          media.image ? (
+            <div style={{position:"relative",marginBottom:10}}>
+              <img src={media.image} style={{width:"100%",maxHeight:220,objectFit:"cover",borderRadius:8}}/>
+              <button onClick={()=>onUpdate({media:{...media,image:null}})} style={{position:"absolute",top:6,right:6,background:"#000000aa",color:"#fff",border:"none",borderRadius:6,padding:"2px 8px",fontSize:11}}>Remove</button>
+            </div>
+          ) : (
+            <label style={{display:"block",textAlign:"center",padding:16,border:"1px dashed var(--border2)",borderRadius:8,fontSize:12,color:"var(--text3)",cursor:"pointer",marginBottom:10}}>
+              {uploading?"Uploading…":"+ Upload image"}
+              <input type="file" accept="image/*" hidden disabled={uploading} onChange={async e=>{ const f=e.target.files[0]; if(!f) return; const url=await doUpload(f,"plan-items"); if(url) onUpdate({media:{...media,image:url}}); }}/>
+            </label>
+          )
+        )}
+        {item.kind==="reel" && (
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+            {[["video","Reel video","video/*"],["cover","Cover image","image/*"]].map(([k,label,accept])=>(
+              <div key={k}>
+                {media[k] ? (
+                  <div style={{position:"relative"}}>
+                    {k==="video" ? <video src={media[k]} style={{width:"100%",height:120,objectFit:"cover",borderRadius:8}}/> : <img src={media[k]} style={{width:"100%",height:120,objectFit:"cover",borderRadius:8}}/>}
+                    <button onClick={()=>onUpdate({media:{...media,[k]:null}})} style={{position:"absolute",top:4,right:4,background:"#000000aa",color:"#fff",border:"none",borderRadius:6,padding:"1px 6px",fontSize:10}}>✕</button>
+                  </div>
+                ) : (
+                  <label style={{display:"block",textAlign:"center",padding:"20px 6px",border:"1px dashed var(--border2)",borderRadius:8,fontSize:11,color:"var(--text3)",cursor:"pointer"}}>
+                    {uploading?"…":`+ ${label}`}
+                    <input type="file" accept={accept} hidden disabled={uploading} onChange={async e=>{ const f=e.target.files[0]; if(!f) return; const url=await doUpload(f,"plan-items"); if(url) onUpdate({media:{...media,[k]:url}}); }}/>
+                  </label>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {item.kind==="carousel" && (
+          <div style={{marginBottom:10}}>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:6}}>
+              {(media.items||[]).map((url,i)=>(
+                <div key={i} style={{position:"relative"}}>
+                  <img src={url} style={{width:70,height:70,objectFit:"cover",borderRadius:6}}/>
+                  <span style={{position:"absolute",bottom:2,left:2,background:"#000000aa",color:"#fff",fontSize:9,fontWeight:700,borderRadius:4,padding:"0 4px"}}>{i+1}</span>
+                  <button onClick={()=>onUpdate({media:{...media,items:media.items.filter((_,idx)=>idx!==i)}})} style={{position:"absolute",top:2,right:2,background:"#000000aa",color:"#fff",border:"none",borderRadius:4,padding:"0 4px",fontSize:10}}>✕</button>
+                </div>
+              ))}
+            </div>
+            <label style={{display:"block",textAlign:"center",padding:10,border:"1px dashed var(--border2)",borderRadius:8,fontSize:12,color:"var(--text3)",cursor:"pointer"}}>
+              {uploading?"Uploading…":"+ Add slide (in order)"}
+              <input type="file" accept="image/*" hidden disabled={uploading} onChange={async e=>{ const f=e.target.files[0]; if(!f) return; const url=await doUpload(f,"plan-items"); if(url) onUpdate({media:{...media,items:[...(media.items||[]),url]}}); }}/>
+            </label>
+          </div>
+        )}
+        {item.kind==="story" && (
+          media.media ? (
+            <div style={{position:"relative",marginBottom:10,width:110}}>
+              {media.media_type==="video" ? <video src={media.media} style={{width:110,height:196,objectFit:"cover",borderRadius:8}}/> : <img src={media.media} style={{width:110,height:196,objectFit:"cover",borderRadius:8}}/>}
+              <button onClick={()=>onUpdate({media:{}})} style={{position:"absolute",top:4,right:4,background:"#000000aa",color:"#fff",border:"none",borderRadius:6,padding:"1px 6px",fontSize:10}}>✕</button>
+            </div>
+          ) : (
+            <label style={{display:"block",textAlign:"center",padding:16,border:"1px dashed var(--border2)",borderRadius:8,fontSize:12,color:"var(--text3)",cursor:"pointer",marginBottom:10}}>
+              {uploading?"Uploading…":"+ Upload story media (9:16)"}
+              <input type="file" accept="image/*,video/*" hidden disabled={uploading} onChange={async e=>{ const f=e.target.files[0]; if(!f) return; const url=await doUpload(f,"plan-items"); if(url) onUpdate({media:{media:url, media_type:f.type.startsWith("video")?"video":"image"}}); }}/>
+            </label>
+          )
+        )}
+
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+          <span style={{fontSize:11,color:"var(--text3)"}}>{assignee?.name||"Unassigned"}</span>
+          {item.stage==="approved" && (
+            <button onClick={()=>onSplit()} disabled={!canSplit} title={missing.length?`Missing: ${missing.join(", ")}`:""}
+              style={{fontSize:12,fontWeight:700,padding:"6px 12px",borderRadius:8,border:"none",background:canSplit?"#10b981":"var(--bg2)",color:canSplit?"#fff":"var(--text3)",cursor:canSplit?"pointer":"not-allowed"}}>
+              Split to Scheduled Post
+            </button>
+          )}
+        </div>
+        {item.stage==="approved" && missing.length>0 && <p style={{fontSize:11,color:"#f59e0b",marginTop:6}}>Missing: {missing.join(", ")}</p>}
+      </>}
+    </div>
+  );
+}
+
+function PlanItemsEditor({post,team,onUpdateItem,onSplitItem}) {
+  const items = Array.isArray(post.plan_items) ? post.plan_items : parseJ(post.plan_items||"[]");
+  const splitCount = items.filter(it=>it.split_post_id).length;
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <h4 style={{fontSize:13,fontWeight:700,color:"var(--text2)"}}>Posts in this plan</h4>
+        <span style={{fontSize:12,color:"var(--text3)"}}>{splitCount}/{items.length} split off</span>
+      </div>
+      {items.map(item=>(
+        <PlanItemCard key={item.id} item={item} team={team}
+          onUpdate={patch=>onUpdateItem(item.id,patch)}
+          onSplit={()=>onSplitItem(item.id)}/>
+      ))}
+    </div>
+  );
+}
+
 // POST DETAIL MODAL
 // ════════════════════════════════════════════════════════════════
-function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onAddComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,onInsightsRefreshed,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[],allPosts=[]}) {
+function PostDetail({post,project,projects=[],team,comments,onClose,onStageChange,onAddComment,onDeleteComment,currentUser,timeEntries,onStartTimer,onPauseTimer,onResumeTimer,onEdit,onDelete,onInsightsRefreshed,clientKnowledge,clientIntelligence,client,allClientPosts,onCaptionChosen,onMemoryLearn,integrations=[],onAddAsset,assets=[],allPosts=[],contactReports=[],onUpdatePlanItem,onSplitPlanItem}) {
+  if(post?.is_plan_parent) {
+    return (
+      <Modal open onClose={onClose} title={post.title} subtitle={`${client?.name||post.client_name||""} · Calendar plan`} width={640}>
+        <PlanItemsEditor post={post} team={team} onUpdateItem={onUpdatePlanItem} onSplitItem={onSplitPlanItem}/>
+      </Modal>
+    );
+  }
   const {isMobile} = useResponsive();
   const [comment,setComment] = useState("");
   const [sending,setSending] = useState(false);
@@ -5565,16 +6181,26 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   if(!post) return null;
   const stage = STAGE_MAP[post.stage]||STAGES[0];
   const next = nextStageFor(post);
-  const postComments = comments.filter(c=>c.post_id===post.id);
+  // Comments now fetch newest-first (see the Comment qe() call — sorting
+  // ascending with a row cap silently dropped brand-new comments once the
+  // total across the whole system passed the limit), so this thread needs
+  // its own explicit oldest-first sort rather than relying on fetch order.
+  const postComments = comments.filter(c=>c.post_id===post.id).sort((a,b)=>new Date(a.created_date||a.created_at||0)-new Date(b.created_date||b.created_at||0));
   const assignee = team?.find(t=>t.email===post.assigned_to);
 
   const openEdit = () => {
     const existingPlatforms = Array.isArray(post.platforms) ? post.platforms : parseJ(post.platforms||"[]");
+    // Falls back to the legacy singular `platform` field only when THAT is
+    // actually set (an old post saved before `platforms` existed) — never
+    // defaults to "instagram" out of nowhere. A real Task has both fields
+    // genuinely empty, and this used to silently re-fill platforms with
+    // ["instagram"] every time its Edit form was reopened, undoing the
+    // Task/Post toggle the moment you looked at it again.
     setEditForm({
       title: post.title||"",
       description: post.description||"",
       platform: post.platform||"instagram",
-      platforms: existingPlatforms.length ? existingPlatforms : [post.platform||"instagram"],
+      platforms: existingPlatforms.length ? existingPlatforms : (post.platform ? [post.platform] : []),
       post_type: post.post_type||"image",
       priority: post.priority||"medium",
       assigned_to: post.assigned_to||"",
@@ -5616,7 +6242,19 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
     // columns, calendar icons, filters) as the first picked platform, while
     // `platforms` carries the full set for showing every badge here.
     const newProject = projects.find(p=>p.id===editForm.project_id);
-    onEdit&&onEdit({...post, ...editForm, platform: editForm.platforms[0],
+    // Switching between Task and Post is a real change to what this item
+    // IS, not just a field edit — worth its own record in Activity so
+    // there's a trace of when/why/by whom, same as a stage change.
+    const wasTask = !post.platform, isNowTask = editForm.platforms.length===0;
+    if(wasTask !== isNowTask && onAddComment) {
+      onAddComment(post.id, `Changed type: ${wasTask?"Task → Post":"Post → Task"}`, currentUser, null, "internal");
+    }
+    // Explicit null (not undefined) when clearing platforms — JSON.stringify
+    // silently drops an undefined key entirely, so the PATCH request never
+    // actually told the server to clear it, and the old platform value
+    // stayed in the DB forever (confirmed: reverted back to Post on a hard
+    // refresh even though the UI showed Task correctly until then).
+    onEdit&&onEdit({...post, ...editForm, platform: editForm.platforms[0]||null,
       assigned_to_extra: JSON.stringify((editForm.assigned_to_extra||[]).filter(e=>e&&e!==editForm.assigned_to)),
       // Keep client_id/client_name in sync with whichever project this got
       // moved to (same client only — see sameClientProjects above — so
@@ -5641,6 +6279,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   // chosen slot also drives that member's timeline via estimated_minutes.
   const [assignStage, setAssignStage] = useState(null); // "content_creation" | "design" | null
   const [assignForm, setAssignForm] = useState({assigned_to:"", mode:"due", scheduled_date:"", scheduled_time:"", start_time:"", end_time:""});
+  const [autoSlotNote, setAutoSlotNote] = useState("");
   const openAssignModal = (stageKey) => {
     setAssignForm({
       assigned_to: (stageKey==="content_creation" ? (post.content_assigned_to||post.assigned_to) : post.assigned_to) || "",
@@ -5748,8 +6387,13 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   // so it's excluded from this simple multi-publish button.
   const allPostPlatforms = (Array.isArray(post.platforms)&&post.platforms.length ? post.platforms : [post.platform]).filter(Boolean);
   const multiPublishPlatforms = allPostPlatforms.filter(pl=>pl!=="tiktok");
-  const connectedMultiPlatforms = multiPublishPlatforms.filter(pl=>findIntegrationForPlatform(pl));
-  const disconnectedMultiPlatforms = multiPublishPlatforms.filter(pl=>!findIntegrationForPlatform(pl));
+  // Platforms already confirmed live (by an earlier click of this same
+  // button, or by the auto-publish cron) — re-publishing must never resend
+  // to these, or the client ends up with the same post live twice on the
+  // platform that already succeeded.
+  const alreadyPublishedPlatforms = Array.isArray(post.published_platforms) ? post.published_platforms : parseJ(post.published_platforms||"[]");
+  const connectedMultiPlatforms = multiPublishPlatforms.filter(pl=>findIntegrationForPlatform(pl) && !alreadyPublishedPlatforms.includes(pl));
+  const disconnectedMultiPlatforms = multiPublishPlatforms.filter(pl=>!findIntegrationForPlatform(pl) && !alreadyPublishedPlatforms.includes(pl));
 
   // TikTok only — fetches creator_info fresh (see fetchTikTokCreatorInfo's
   // comment for why this can't be cached/hardcoded) and resets every
@@ -5802,15 +6446,65 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
       }
     }
     const platformLabel = (pl) => ({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn"})[pl]||pl;
-    const anyOk = results.some(r=>r.ok);
+    const newlyOk = results.filter(r=>r.ok).map(r=>r.platform);
+    const anyOk = newlyOk.length>0;
     const firstOkId = results.find(r=>r.ok)?.postId;
+    // Multi-platform posts used to only keep whichever platform succeeded
+    // LAST in external_post_id, overwriting every other platform's real id
+    // — so the Insights "Refresh Now" fetch (which queries by the post's own
+    // `platform` column) could end up looking up a totally different
+    // platform's Graph object and fail with "Object does not exist". Keyed
+    // per-platform so every platform's own id survives regardless of order.
+    const platformPostIds = {...(post.platform_post_ids ? (typeof post.platform_post_ids==="string"?JSON.parse(post.platform_post_ids):post.platform_post_ids) : {})};
+    results.forEach(r=>{ if(r.ok && r.postId) platformPostIds[r.platform] = r.postId; });
+    // Every platform this post carries (not just the ones this click
+    // attempted — a prior click may have already gotten some of them live)
+    // has to have succeeded before the post itself counts as Published.
+    // Attempting only one platform's failure used to still flip the whole
+    // post to Published, silently leaving the other platform never sent.
+    const nowPublished = [...new Set([...alreadyPublishedPlatforms, ...newlyOk])];
+    const stillMissing = multiPublishPlatforms.filter(pl=>!nowPublished.includes(pl));
     setPublishResult({
       ok: anyOk,
-      msg: results.map(r=>`${platformLabel(r.platform)}: ${r.ok?"✓ published":"✗ "+(r.msg||"failed")}`).join("  ·  "),
+      msg: results.map(r=>`${platformLabel(r.platform)}: ${r.ok?"✓ published":"✗ "+(r.msg||"failed")}`).join("  ·  ")
+        + (stillMissing.length ? `  ·  Still needs: ${stillMissing.map(platformLabel).join(", ")} — click Publish again once fixed.` : ""),
     });
-    if(firstOkId) await ue("Post", post.id, {external_post_id: firstOkId}).catch(()=>{});
-    if(anyOk) onStageChange(post, "published");
+    if(nowPublished.length) await ue("Post", post.id, {published_platforms: JSON.stringify(nowPublished), platform_post_ids: JSON.stringify(platformPostIds), ...(firstOkId?{external_post_id:firstOkId}:{})}).catch(()=>{});
+    if(!stillMissing.length) onStageChange(post, "published");
     setPublishing(false);
+  };
+
+  // Once a post is already Published, the platforms it originally carried
+  // are locked in — but a client can still ask "also put this one on
+  // LinkedIn" after the fact. This lets an admin/AM pick any OTHER
+  // connected, not-yet-published platform and send this same post there
+  // too, without touching the platforms it already went out on.
+  const [extraPlatform,setExtraPlatform] = useState("");
+  const [publishingExtra,setPublishingExtra] = useState(false);
+  const extraPlatformCandidates = PLATFORMS.filter(pl=>pl!=="tiktok" && !alreadyPublishedPlatforms.includes(pl) && findIntegrationForPlatform(pl));
+  const handlePublishExtra = async () => {
+    if(!extraPlatform) return;
+    if(!post.caption && !post.hashtags) {
+      setPublishResult({ok:false, msg:"This post has no caption yet — add one (Edit, or the Content phase) before publishing."});
+      return;
+    }
+    setPublishingExtra(true); setPublishResult(null);
+    const integ = findIntegrationForPlatform(extraPlatform);
+    try {
+      const res = await publishPost(post, integ, null);
+      const postId = res.video_id || res.id || res.post_id || res.creation_id;
+      const nowPublished = [...new Set([...alreadyPublishedPlatforms, extraPlatform])];
+      const nowPlatforms = [...new Set([...allPostPlatforms, extraPlatform])];
+      const platformPostIds = {...(post.platform_post_ids ? (typeof post.platform_post_ids==="string"?JSON.parse(post.platform_post_ids):post.platform_post_ids) : {})};
+      if(postId) platformPostIds[extraPlatform] = postId;
+      await ue("Post", post.id, {platforms: JSON.stringify(nowPlatforms), published_platforms: JSON.stringify(nowPublished), platform_post_ids: JSON.stringify(platformPostIds)}).catch(()=>{});
+      onEdit&&onEdit({...post, platforms:nowPlatforms, published_platforms:nowPublished, platform_post_ids:platformPostIds});
+      setPublishResult({ok:true, msg:`${({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",twitter:"Twitter/X"})[extraPlatform]||extraPlatform}: ✓ published`});
+      setExtraPlatform("");
+    } catch(e) {
+      setPublishResult({ok:false, msg:e.message||"Publish failed"});
+    }
+    setPublishingExtra(false);
   };
 
   const handlePublishTikTok = async () => {
@@ -5833,35 +6527,116 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
     setPublishing(false);
   };
 
-  const [commentAttachment, setCommentAttachment] = useState(null);
-  const [attaching, setAttaching] = useState(false);
-  const commentFileRef = useRef(null);
-
-  const handleCommentFile = async (file) => {
-    if(!file) return;
-    setAttaching(true);
-    try {
-      const url = await uploadToStorage(file, "comments");
-      setCommentAttachment({file_url:url, file_name:file.name, file_type:file.type.startsWith("video")?"video":file.type.startsWith("image")?"image":"file"});
-    } catch(e){ alert("File upload failed"); }
-    setAttaching(false);
+  // Removing a design asset used to just filter it out of design_assets —
+  // a comment that had mirrored the same file in (see sendComment's
+  // "Mirroring it into design_assets" comment) kept showing it forever,
+  // since the two copies had no link back to each other, and nothing in
+  // the Activity log actually said an attachment was removed (the next
+  // real log entry, e.g. a stage change, just looked like it came right
+  // after the file was still there). Now also clears it from any comment
+  // that carried it, and posts an explicit system note.
+  const handleRemoveDesignAsset = (asset, i) => {
+    const newAssets = post.design_assets.filter((_,idx)=>idx!==i);
+    onStageChange({...post,design_assets:newAssets},post.stage);
+    const assetUrl = asset.url||asset.data;
+    if(assetUrl) {
+      (comments||[]).filter(c=>c.post_id===post.id && c.file_url===assetUrl).forEach(c=>{
+        ue("Comment", c.id, {file_url:null, file_name:null, file_type:null}).catch(()=>{});
+      });
+    }
+    if(onAddComment) onAddComment(post.id, `🗑️ Removed attachment${asset.name?`: ${asset.name}`:""}`, currentUser, null, "internal");
   };
 
+  const [commentAttachments, setCommentAttachments] = useState([]); // any number of files
+  const [attaching, setAttaching] = useState(false);
+  const [dragOverComment, setDragOverComment] = useState(false);
+  const commentFileRef = useRef(null);
+
+  // Forcing file_type to "file" (regardless of what it actually is) makes
+  // the client-side renderer treat it as a plain link/button instead of
+  // embedding a full inline image/video — a lighter-weight "here's the
+  // file, open it on SocialFlow" hand-off rather than re-embedding heavy
+  // media straight into the client thread.
+  // Forwarded files get renamed to "<task name> <n>.<ext>" instead of
+  // keeping their raw upload filename (e.g. "1-1.png") — n is the count of
+  // attachments already forwarded to this client thread, so repeated
+  // forwards on the same task number up sequentially rather than colliding.
+  const forwardAttachmentToClient = (c) => {
+    const forwardedCount = postComments.filter(pc=>pc.audience==="client" && pc.file_url).length;
+    const ext = (c.file_name||"").match(/\.[a-zA-Z0-9]+$/)?.[0] || "";
+    const baseName = (post.title||post.name||"Attachment").trim();
+    const forwardedName = `${baseName} ${forwardedCount+1}${ext}`;
+    onAddComment(post.id, "📎 Attachment (forwarded)", currentUser, {file_url:c.file_url, file_name:forwardedName, file_type:"file"}, "client");
+    onAddComment(post.id, `Forwarded "${forwardedName}" to client`, currentUser, null, "internal");
+  };
+
+  // Same forward-to-client hand-off as forwardAttachmentToClient above, but
+  // for a design/media asset from the Media/Attachments grid (design_assets)
+  // instead of a comment attachment — same rename-with-sequence-number
+  // convention and internal activity log entry.
+  const forwardDesignAssetToClient = (asset) => {
+    const url = asset.url || asset.data;
+    if (!url) return;
+    const forwardedCount = postComments.filter(pc=>pc.audience==="client" && pc.file_url).length;
+    const ext = (asset.name||url||"").match(/\.[a-zA-Z0-9]+$/)?.[0] || "";
+    const baseName = (post.title||post.name||"Attachment").trim();
+    const forwardedName = `${baseName} ${forwardedCount+1}${ext}`;
+    onAddComment(post.id, "📎 Attachment (forwarded)", currentUser, {file_url:url, file_name:forwardedName, file_type:"file"}, "client");
+    onAddComment(post.id, `Forwarded "${forwardedName}" to client`, currentUser, null, "internal");
+  };
+
+  // Comments only ever carry ONE attachment each at the DB level
+  // (Comment.file_url is a single column, not an array) — any number of
+  // picked files get uploaded here, each posted as its own comment the
+  // MOMENT its own upload finishes (not staged waiting for a manual Send).
+  // That's deliberate: onAddComment/onEdit are stable App-level functions,
+  // not tied to this modal's lifecycle, so a file picked here keeps
+  // uploading and correctly attaches itself to the task even if you close
+  // this task and open another one before it finishes — closing the modal
+  // only unmounts the UI, it doesn't cancel the in-flight upload fetch.
+  const handleCommentFile = async (fileList) => {
+    const files = Array.from(fileList||[]);
+    if(!files.length) return;
+    setAttaching(true);
+    const postId = post.id, postForAssets = post;
+    await Promise.all(files.map(async file => {
+      try {
+        const url = await uploadToStorage(file, "comments");
+        const att = {file_url:url, file_name:file.name, file_type:file.type.startsWith("video")?"video":file.type.startsWith("image")?"image":"file"};
+        await onAddComment(postId, "📎 Attachment", currentUser, att, "internal");
+        // Mirrors handleRemoveDesignAsset's counterpart — puts the file in
+        // the persistent Attachments section too, not just buried in the
+        // Activity feed, same as the old stage-then-Send flow did.
+        onEdit&&onEdit({...postForAssets, design_assets:[...(postForAssets.design_assets||[]), {url:att.file_url, name:att.file_name, type:att.file_type}]});
+      } catch(e){ alert(`"${file.name}" failed to upload: ${e?.message || "unknown error"}`); }
+    }));
+    setAttaching(false);
+  };
+  const removeCommentAttachment = (i) => setCommentAttachments(prev=>prev.filter((_,idx)=>idx!==i));
+
   const sendComment = async () => {
-    if(!comment.trim()&&!commentAttachment) return;
+    if(!comment.trim()&&!commentAttachments.length) return;
     setSending(true);
-    await onAddComment(post.id, comment.trim()||"📎 Attachment", currentUser, commentAttachment, "internal");
+    // First attachment rides along with the typed text (or a placeholder if
+    // there's no text); any extra attachments go out as their own
+    // attachment-only comments right after, same as attaching them one at a
+    // time would have.
+    const [first, ...rest] = commentAttachments;
+    await onAddComment(post.id, comment.trim()||(first?"📎 Attachment":""), currentUser, first||null, "internal");
+    for(const att of rest) {
+      await onAddComment(post.id, "📎 Attachment", currentUser, att, "internal");
+    }
     // A file attached through the comment box used to only ever show up
     // buried in the Activity feed — invisible the moment the task moved
     // past whatever stage it was attached in, since nothing else reads
     // Comment.file_url. Mirroring it into design_assets puts it in the
     // same persistent Attachments section everything else lives in, so a
     // reviewer actually sees it instead of having to scroll the activity log.
-    if(commentAttachment?.file_url) {
-      const newAssets = [...(post.design_assets||[]), {url:commentAttachment.file_url, name:commentAttachment.file_name, type:commentAttachment.file_type}];
+    if(commentAttachments.length) {
+      const newAssets = [...(post.design_assets||[]), ...commentAttachments.map(a=>({url:a.file_url, name:a.file_name, type:a.file_type}))];
       onEdit&&onEdit({...post, design_assets:newAssets});
     }
-    setComment(""); setCommentAttachment(null); setSending(false);
+    setComment(""); setCommentAttachments([]); setSending(false);
   };
 
   // ── Client-facing comments — a separate thread admin/AM can use to log
@@ -5878,7 +6653,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
     try {
       const url = await uploadToStorage(file, "comments");
       setClientCommentAttachment({file_url:url, file_name:file.name, file_type:file.type.startsWith("video")?"video":file.type.startsWith("image")?"image":"file"});
-    } catch(e){ alert("File upload failed"); }
+    } catch(e){ alert(e?.message || "File upload failed"); }
     setClientAttaching(false);
   };
   const sendClientComment = async () => {
@@ -5889,10 +6664,58 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   };
   const internalComments = postComments.filter(c=>c.audience!=="client");
   const clientComments = postComments.filter(c=>c.audience==="client");
-  const [activityTab, setActivityTab] = useState("internal"); // "internal" | "client" | "insights"
+  const [activityTab, setActivityTab] = useState("internal"); // "internal" | "client" | "insights" | "mai"
   const [insightsRefreshing, setInsightsRefreshing] = useState(false);
   const [insightsError, setInsightsError] = useState("");
   const canShowInsights = post.stage==="published" && ["facebook","instagram","tiktok"].includes(post.platform);
+
+  // ── Mai's Recommendation — the AI Account Executive's take on this
+  // specific post, grounded in two real signals: how this client's
+  // publishing has actually been going (published count/cadence) and
+  // whatever the client themselves have said in real meetings/calls
+  // (contact reports) that's actually relevant to THIS post's subject —
+  // not a generic "post more!" platitude.
+  const [maiRec, setMaiRec] = useState(null);
+  const [maiLoading, setMaiLoading] = useState(false);
+  const getMaiRecommendation = async () => {
+    setMaiLoading(true); setMaiRec(null);
+    try {
+      const clientPosts = allClientPosts||[];
+      const publishedPosts = clientPosts.filter(p=>p.stage==="published");
+      const publishedCount = publishedPosts.length;
+      const samePlatformPublished = publishedPosts.filter(p=>p.platform===post.platform).length;
+      const lastPublishedDate = publishedPosts.map(p=>p.published_at||p.scheduled_date).filter(Boolean).sort().slice(-1)[0];
+      // Keyword-match this post's title/caption/description against contact
+      // report text — only pull in reports that actually relate to THIS
+      // post's subject, not the client's entire meeting history.
+      const postWords = `${post.title||""} ${post.description||""} ${post.caption||""}`.toLowerCase().match(/[a-z0-9]{4,}/g) || [];
+      const relevantReports = (contactReports||[]).filter(r=>{
+        const text = `${r.summary||""} ${r.key_points||""} ${r.action_items||""}`.toLowerCase();
+        return postWords.some(w=>text.includes(w));
+      }).slice(0,5);
+      const reportsBlock = relevantReports.length
+        ? relevantReports.map(r=>`- ${(r.meeting_date||r.created_at||"").slice(0,10)}: ${r.summary||""}${r.key_points?` | Key points: ${r.key_points}`:""}${r.action_items?` | Action items: ${r.action_items}`:""}`).join("\n")
+        : "None of the client's contact reports mention anything related to this specific post's subject.";
+      const raw = await agentAI("account_executive", `Recommendation: ${post.title}`, `You are Mai, the agency's AI Account Executive. Give the team a short, concrete recommendation about this ONE task/post — grounded ONLY in the real data below, not generic social media advice.
+
+POST: "${post.title}" (${post.platform||"—"}, ${post.post_type||"post"})
+${post.description?`Brief: ${post.description}`:""}
+${post.caption?`Caption so far: ${post.caption.slice(0,300)}`:""}
+
+CLIENT PUBLISHING HISTORY:
+- ${publishedCount} total published posts for this client${post.platform?`, ${samePlatformPublished} of them on ${post.platform}`:""}.
+- Last published post: ${lastPublishedDate||"none yet"}.
+
+RELEVANT CONTACT REPORTS (real client meetings/calls that mention something related to this post's topic):
+${reportsBlock}
+
+Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in mind or do differently for THIS post, based specifically on the publishing numbers and/or contact report content above. If neither the numbers nor the reports give you anything specific to say, say so plainly instead of inventing generic advice.`, 400);
+      setMaiRec(raw.trim());
+    } catch(e) {
+      setMaiRec("Mai couldn't put together a recommendation right now — try again in a moment.");
+    }
+    setMaiLoading(false);
+  };
   const handleRefreshInsights = async () => {
     setInsightsRefreshing(true); setInsightsError("");
     try {
@@ -5903,8 +6726,9 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
       const j = await res.json();
       if(!res.ok || j.error) { setInsightsError(j.error||"Refresh failed"); }
       else {
-        if(j.partial_error) setInsightsError(`Reach unavailable: ${j.partial_error}`);
-        onInsightsRefreshed && onInsightsRefreshed({...post, insight_likes:j.likes, insight_comments:j.comments, insight_shares:j.shares, insight_reach:j.reach, insight_fetched_at:j.fetched_at});
+        const errEntries = Object.entries(j.errors||{});
+        if(errEntries.length) setInsightsError(errEntries.map(([p,e])=>`${p}: ${e}`).join(" · "));
+        onInsightsRefreshed && onInsightsRefreshed({...post, insight_likes:j.likes, insight_comments:j.comments, insight_shares:j.shares, insight_reach:j.reach, insight_fetched_at:j.fetched_at, insights_by_platform:j.by_platform||{}});
       }
     } catch(e) { setInsightsError("Refresh failed — check connection"); }
     setInsightsRefreshing(false);
@@ -5949,7 +6773,21 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
             })()}
             <Badge label={post.post_type} color="#6b7280"/>
             <Badge label={post.priority} color={PRI_COLOR[post.priority]}/>
+            {post.sector&&<Badge label={post.sector} color="#f59e0b"/>}
           </div>
+          {client?.has_sectors && Array.isArray(client.sectors) && client.sectors.length>0 && isManager && (
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              <span style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Sector</span>
+              <select value={post.sector||""} onChange={e=>{
+                const v = e.target.value;
+                ue("Post", post.id, {sector:v}).catch(()=>{});
+                onStageChange({...post, sector:v}, post.stage);
+              }} style={{padding:"4px 10px",borderRadius:"var(--rxs)",border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:12,color:"var(--text2)"}}>
+                <option value="">— None —</option>
+                {client.sectors.map(s=><option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          )}
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10}}>
             <div onClick={()=>{if(isManager&&!dueEdit) setDueEdit({date:post.due_date||"",time:post.due_time||""});}}
               style={{padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",cursor:isManager?"pointer":"default"}}>
@@ -5969,7 +6807,12 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
               ) : post.due_date ? (
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <Ico d={Icons.calendar} size={13}/>
-                  <span style={{fontSize:13,fontWeight:600}}>{fmtDate(post.due_date)}{post.due_time?` · ${post.due_time}`:""}</span>
+                  {/* Raw 24-hour "03:30" with no AM/PM marker reads as
+                      ambiguous — someone picking a time via the native
+                      <input type="time"> can easily land on 3:30 AM while
+                      meaning 3:30 PM and never notice, since both display
+                      identically here otherwise. */}
+                  <span style={{fontSize:13,fontWeight:600}}>{fmtDate(post.due_date)}{post.due_time?` · ${minsToAmPm(timeToMins(post.due_time))}`:""}</span>
                 </div>
               ) : <span style={{fontSize:12,color:"var(--text3)"}}>Not set</span>}
             </div>
@@ -6116,6 +6959,30 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 <textarea value={editForm.description} onChange={e=>setEditForm(f=>({...f,description:e.target.value}))} rows={3} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)",resize:"vertical",fontFamily:"inherit"}}/>
               </div>
               <div style={{gridColumn:"1/-1"}}>
+                <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Type</label>
+                <div style={{display:"flex",gap:6}}>
+                  {[["task","Task"],["post","Post"]].map(([k,label])=>{
+                    // A Post needs at least one platform and a real social
+                    // post_type; a Task has neither (see isTask===!post.platform
+                    // everywhere else in the app) — switching modes here
+                    // clears/restores those together so they can't end up
+                    // half-and-half (e.g. platforms picked but post_type
+                    // still a Task type, which is what silently broke this
+                    // exact "Dark Ads 3" task).
+                    const active = (k==="post") === (editForm.platforms.length>0);
+                    return (
+                      <button key={k} type="button" onClick={()=>{
+                        if(k==="task") setEditForm(f=>({...f,platforms:[],post_type:"general"}));
+                        else setEditForm(f=>({...f,platforms:f.platforms.length?f.platforms:["instagram"],post_type:SOCIAL_POST_TYPES.has(f.post_type)?f.post_type:"image"}));
+                      }} style={{padding:"6px 14px",borderRadius:99,border:`1px solid ${active?"var(--accent)":"var(--border2)"}`,background:active?"var(--accent)22":"var(--surface)",color:active?"var(--accent)":"var(--text2)",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {editForm.platforms.length>0 && (
+              <div style={{gridColumn:"1/-1"}}>
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Platforms (pick more than one if it's cross-posted)</label>
                 <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                   {PLATFORMS.map(p=>{
@@ -6128,12 +6995,15 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                   })}
                 </div>
               </div>
+              )}
+              {editForm.platforms.length>0 && (
               <div>
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Post Type</label>
                 <select value={editForm.post_type} onChange={e=>setEditForm(f=>({...f,post_type:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}>
                   {POST_TYPES.map(t=><option key={t} value={t}>{t.charAt(0).toUpperCase()+t.slice(1)}</option>)}
                 </select>
               </div>
+              )}
               <div>
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Priority</label>
                 <select value={editForm.priority} onChange={e=>setEditForm(f=>({...f,priority:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface)",fontSize:13,color:"var(--text)"}}>
@@ -6178,6 +7048,12 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Publish Time{editForm.scheduled_date?" *":""}</label>
                 <input type="time" value={editForm.scheduled_time} onChange={e=>setEditForm(f=>({...f,scheduled_time:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:`1px solid ${editForm.scheduled_date&&!editForm.scheduled_time?"#ef4444":"var(--border2)"}`,background:"var(--surface)",fontSize:13,color:"var(--text)"}}/>
                 {editForm.scheduled_date&&!editForm.scheduled_time&&<p style={{fontSize:10,color:"#ef4444",marginTop:3}}>A publish date needs a time too</p>}
+                {(()=>{ const bt = post.platform && editForm.scheduled_date ? bestTimeForDate(clientIntelligence, post.platform, editForm.scheduled_date) : ""; return bt && bt!==editForm.scheduled_time ? (
+                  <p style={{fontSize:10,color:"var(--accent)",marginTop:3,display:"flex",alignItems:"center",gap:4}}>
+                    <Ico d={Icons.sparkle||Icons.clock} size={10} stroke="var(--accent)"/> Best time for this date on {post.platform}: {bt}
+                    <button type="button" onClick={()=>setEditForm(f=>({...f,scheduled_time:bt}))} style={{marginLeft:2,fontWeight:700,textDecoration:"underline",background:"none",border:"none",color:"var(--accent)",cursor:"pointer",fontSize:10,padding:0}}>Use it</button>
+                  </p>
+                ) : null; })()}
               </div>
               <div>
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Est. Duration (mins, for Timeline)</label>
@@ -6191,10 +7067,20 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
           </div>
         )}
 
-        {/* Description */}
-        {!editing&&post.description&&<div style={{padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
-          <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6}}>{post.description}</p>
-        </div>}
+        {/* Description/Brief — used to fully disappear whenever a task had
+            none written (e.g. some AI-generated calendar ideas never got
+            one), leaving admin/AM with no visible place to add one short of
+            opening Edit. Now always shown, with an explicit empty state. */}
+        {!editing&&(post.description
+          ? <div style={{padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
+              <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:6}}>Brief</p>
+              <BriefText text={post.description} style={{fontSize:13,color:"var(--text2)",lineHeight:1.6}}/>
+            </div>
+          : <div style={{padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px dashed var(--border2)"}}>
+              <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:4}}>Brief</p>
+              <p style={{fontSize:12,color:"var(--text3)",fontStyle:"italic"}}>No brief written for this task yet — use Edit above to add one.</p>
+            </div>
+        )}
 
         {/* Workflow Path used to be shown here as a static row of stages — every
             move is now logged in the Activity feed instead (who moved it, to
@@ -6286,14 +7172,13 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                   {media.map((asset,i)=>{
                     const url = asset.url||asset.file_url||asset.data||"";
                     const isVideo = (asset.type||"").startsWith("video")||url.match(/\.(mp4|mov|webm|m4v)/i);
-                    // Images open the in-app Lightbox (which has its own
-                    // Download button) instead of just a plain new-tab
-                    // link — that link alone gave no way to actually save
-                    // the file short of a manual right-click. Videos still
-                    // open in a new tab (Lightbox only renders <img>).
-                    const Wrapper = isVideo ? "a" : "div";
+                    // Both open the in-app Lightbox (which has its own
+                    // Download button, and handles video same as images)
+                    // instead of a plain new-tab link — that link alone
+                    // gave no way to actually save the file short of a
+                    // manual right-click.
                     return (
-                      <Wrapper key={i} {...(isVideo ? {href:url, target:"_blank", rel:"noreferrer"} : {onClick:()=>setLightboxImage({url, name:asset.name||post.title}), role:"button", tabIndex:0})}
+                      <div key={i} onClick={()=>setLightboxImage({url, name:asset.name||post.title})} role="button" tabIndex={0}
                         style={{position:"relative",aspectRatio:aspect,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",overflow:"hidden",display:"block",cursor:"pointer"}}>
                         {isVideo
                           ? <video src={url+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
@@ -6305,7 +7190,14 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                             </div>
                           </div>
                         )}
-                      </Wrapper>
+                        {/* Confirms the "Also post as Instagram Story" upload
+                            actually attached — otherwise it sat anonymously
+                            mixed into this grid with nothing to show it was
+                            there at all. */}
+                        {asset.kind==="story"&&(
+                          <span style={{position:"absolute",top:6,left:6,background:"rgba(0,0,0,0.65)",color:"#fff",fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:99}}>Story</span>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
@@ -6325,11 +7217,11 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
             on, so a reviewer had no way to see what was attached at all,
             only a mention of it buried in the Activity feed. Only the
             add-controls (upload/link) are content-phase-only. */}
-        {(post.stage==="content_creation" || (post.design_assets||[]).length>0)&&(
+        {(post.stage==="content_creation" || isManager || (post.design_assets||[]).length>0)&&(
           <div style={{display:"flex",flexDirection:"column",gap:12,padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
             <h4 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:14}}>Attachments</h4>
-            <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage}/>
-            {post.stage==="content_creation"&&(
+            <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage} onRemove={handleRemoveDesignAsset} onForward={forwardDesignAssetToClient} canForward={currentUser?.role==="admin"||currentUser?.role==="account_manager"}/>
+            {(post.stage==="content_creation"||isManager)&&(
               <>
                 <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -6353,8 +7245,14 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
           </div>
         )}
 
-        {/* Content Phase Generator */}
-        {post.stage==="content_creation"&&(
+        {/* Content Phase Generator — always available to admin/AM on ANY
+            stage (not just Content), so they can write/edit/regenerate a
+            caption at any point without having to walk the task backward
+            through the pipeline first. Only the ORIGINAL Content stage
+            flow auto-advances to Review on Choose — an admin/AM using this
+            from any other stage is just editing in place, the task stays
+            exactly where it already was. */}
+        {(post.stage==="content_creation"||isManager)&&(
           <ContentPhaseGenerator
             post={post}
             project={project}
@@ -6365,6 +7263,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
             onCaptionChosen={onCaptionChosen}
             onMemoryLearn={onMemoryLearn}
             onChoose={(updatedPost)=>{
+              const wasContentStage = post.stage==="content_creation";
               ue("Post", post.id, {
                 caption:updatedPost.caption, hashtags:updatedPost.hashtags, text_on_visual:updatedPost.text_on_visual,
                 reel_hook:updatedPost.reel_hook, reel_script:updatedPost.reel_script,
@@ -6373,8 +7272,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 tov_used:updatedPost.tov_used, content_language:updatedPost.content_language,
               }).catch(()=>{});
               try{ localStorage.removeItem(`sf_content_${post.id}`); }catch(e){}
-              onStageChange({...post,...updatedPost}, "internal_review");
-              onClose();
+              if(wasContentStage) { onStageChange({...post,...updatedPost}, "internal_review"); onClose(); }
             }}
           />
         )}
@@ -6390,6 +7288,45 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
 
         {/* Due date is now shown in the details strip at the top of the modal. */}
 
+        {/* Instagram Reels need a separate cover thumbnail alongside the
+            video itself — lives on the same post/task (not a separate
+            card), stored in carousel_cover (already the shared "reel
+            cover" field used elsewhere in the app, e.g. NewPostModal,
+            AddPostModal's Ready Content flow). Shown at ANY stage once set
+            (not just Design) — a Ready Content reel skips Design entirely,
+            so this used to be the only place a cover attached that way
+            could ever be confirmed as actually there, and it was invisible
+            for exactly those posts. Required-before-advancing warning only
+            applies while still in Design — see the "Move to" button's guard. */}
+        {post.post_type==="reel" && post.platform==="instagram" && (["design","design_review"].includes(post.stage) || post.carousel_cover) && (
+          <div style={{display:"flex",flexDirection:"column",gap:8,padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:`1px solid ${post.carousel_cover?"var(--border)":"#f59e0b55"}`}}>
+            <p style={{fontSize:12,fontWeight:700,color:post.carousel_cover?"var(--text2)":"#f59e0b"}}>
+              Instagram Cover {post.carousel_cover?"":"(required before this can move to review)"}
+            </p>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              {post.carousel_cover && (
+                <img src={post.carousel_cover} alt="Cover" style={{width:56,height:56,objectFit:"cover",borderRadius:8,border:"1px solid var(--border)",cursor:"pointer"}} onClick={()=>setLightboxImage({url:post.carousel_cover})}/>
+              )}
+              <input type="file" accept="image/*" id={`ig-cover-${post.id}`} style={{display:"none"}}
+                onChange={async e=>{
+                  const file = e.target.files?.[0]; e.target.value="";
+                  if(!file) return;
+                  // Instagram Reel covers must be a still image — a video slipping in
+                  // here fails silently on Instagram (Facebook doesn't enforce the same
+                  // way, so it looks like only IG "didn't publish"). The accept="image/*"
+                  // hint above doesn't actually block a mismatched file, so check for real.
+                  if(!file.type.startsWith("image/")) { alert("The Instagram Cover must be an image, not a video."); return; }
+                  const url = await uploadToStorage(file, monthProjectFolder(project?.title, project?.client_name));
+                  ue("Post", post.id, {carousel_cover:url}).catch(()=>{});
+                  onStageChange({...post, carousel_cover:url}, post.stage);
+                }}/>
+              <label htmlFor={`ig-cover-${post.id}`} style={{cursor:"pointer",fontSize:12,fontWeight:700,color:"var(--accent)",padding:"7px 12px",borderRadius:8,border:"1px solid var(--accent)44",background:"var(--accentbg,var(--surface2))"}}>
+                {post.carousel_cover?"Replace Cover":"Upload Cover"}
+              </label>
+            </div>
+          </div>
+        )}
+
         {/* DESIGN PHASE - File Upload for Photos/Videos */}
         {post.stage==="design"&&(
           <div style={{display:"flex",flexDirection:"column",gap:12,padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid #8b5cf6aa"}}>
@@ -6399,38 +7336,8 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
               {assignee&&<span style={{fontSize:11,color:"var(--text3)",marginLeft:"auto"}}>Assigned to {assignee.name}</span>}
             </div>
 
-            {/* Instagram Reels need a separate cover thumbnail alongside the
-                video itself — lives on the same post/task (not a separate
-                card), stored in carousel_cover (already the shared "reel
-                cover" field used elsewhere in the app, e.g. NewPostModal).
-                Required before this task can leave Design — see the "Move
-                to" button's guard below. */}
-            {post.post_type==="reel" && post.platform==="instagram" && (
-              <div style={{display:"flex",flexDirection:"column",gap:8,padding:12,background:"var(--surface)",borderRadius:"var(--rs)",border:`1px solid ${post.carousel_cover?"var(--border)":"#f59e0b55"}`}}>
-                <p style={{fontSize:12,fontWeight:700,color:post.carousel_cover?"var(--text2)":"#f59e0b"}}>
-                  Instagram Cover {post.carousel_cover?"":"(required before this can move to review)"}
-                </p>
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  {post.carousel_cover && (
-                    <img src={post.carousel_cover} alt="Cover" style={{width:56,height:56,objectFit:"cover",borderRadius:8,border:"1px solid var(--border)"}}/>
-                  )}
-                  <input type="file" accept="image/*" id={`ig-cover-${post.id}`} style={{display:"none"}}
-                    onChange={async e=>{
-                      const file = e.target.files?.[0]; e.target.value="";
-                      if(!file) return;
-                      const url = await uploadToStorage(file, monthProjectFolder(project?.title, project?.client_name));
-                      ue("Post", post.id, {carousel_cover:url}).catch(()=>{});
-                      onStageChange({...post, carousel_cover:url}, post.stage);
-                    }}/>
-                  <label htmlFor={`ig-cover-${post.id}`} style={{cursor:"pointer",fontSize:12,fontWeight:700,color:"var(--accent)",padding:"7px 12px",borderRadius:8,border:"1px solid var(--accent)44",background:"var(--accentbg,var(--surface2))"}}>
-                    {post.carousel_cover?"Replace Cover":"Upload Cover"}
-                  </label>
-                </div>
-              </div>
-            )}
-
             {/* Display existing assets */}
-            <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage}/>
+            <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage} onRemove={handleRemoveDesignAsset} onForward={forwardDesignAssetToClient} canForward={currentUser?.role==="admin"||currentUser?.role==="account_manager"}/>
 
             {/* File picker — choose from assets or upload new */}
             <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>
@@ -6470,6 +7377,12 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 if(!post.caption) { alert("This post has no caption yet — add one before moving it forward."); return; }
                 if(post.post_type!=="story" && !post.hashtags) { alert("This post has no hashtags yet — add some before moving it forward."); return; }
               }
+              // Same IG reel cover requirement as the normal "Move to X"
+              // button — jumping straight past Design still shouldn't skip
+              // it, same reasoning as the caption/hashtags check above.
+              if(post.stage==="design" && post.post_type==="reel" && post.platform==="instagram" && !post.carousel_cover) {
+                alert("Upload the Instagram Cover before moving this reel forward."); return;
+              }
               onStageChange(post, e.target.value);
             }} style={{...inputSt,flex:1,minWidth:140,padding:"6px 10px",fontSize:12}}>
               <option value="">Choose a stage…</option>
@@ -6502,7 +7415,14 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 color:STAGE_MAP.design.color,fontSize:13,fontWeight:700,
                 display:"flex",alignItems:"center",justifyContent:"center",gap:8,
               }}>Move to Design <Ico d={Icons.arrow} size={14} stroke={STAGE_MAP.design.color}/></button>
-              <button onClick={()=>onStageChange(post,"client_approval")} style={{
+              <button onClick={()=>{
+                // Same caption/hashtags requirement as every other path into
+                // Client Approval — this "skip straight there" button had no
+                // check at all.
+                if(post.platform && !post.caption) { alert("This post has no caption yet — add one before moving it forward."); return; }
+                if(post.platform && post.post_type!=="story" && !post.hashtags) { alert("This post has no hashtags yet — add some before moving it forward."); return; }
+                onStageChange(post,"client_approval");
+              }} style={{
                 flex:"1 1 140px",padding:"10px 16px",borderRadius:"var(--rs)",
                 background:STAGE_MAP.client_approval.color+"22",border:`1px solid ${STAGE_MAP.client_approval.color}55`,
                 color:STAGE_MAP.client_approval.color,fontSize:13,fontWeight:700,
@@ -6520,7 +7440,23 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
               with edits. */}
           {post.stage==="design_review"&&isManager&&(
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              <button onClick={()=>onStageChange(post,"client_approval")} style={{
+              <button onClick={()=>{
+                // Same IG reel cover requirement as the Design->Design Review
+                // move and the admin "Jump to stage" dropdown — this button
+                // used to skip it entirely, letting a cover-less IG reel
+                // sail through Client Approval to Scheduled/Published, where
+                // Instagram's publish then fails silently (no cover_url) while
+                // Facebook goes out fine, looking like "only IG didn't post".
+                if(post.post_type==="reel" && post.platform==="instagram" && !post.carousel_cover) {
+                  alert("Upload the Instagram Cover before moving this reel forward."); return;
+                }
+                // Same caption/hashtags requirement as the "Move to X" button
+                // and the "Jump to stage" dropdown — this was the one path
+                // into Client Approval that had no caption check at all.
+                if(post.platform && !post.caption) { alert("This post has no caption yet — add one before moving it forward."); return; }
+                if(post.platform && post.post_type!=="story" && !post.hashtags) { alert("This post has no hashtags yet — add some before moving it forward."); return; }
+                onStageChange(post,"client_approval");
+              }} style={{
                 flex:"1 1 140px",padding:"10px 16px",borderRadius:"var(--rs)",
                 background:STAGE_MAP.client_approval.color+"22",border:`1px solid ${STAGE_MAP.client_approval.color}55`,
                 color:STAGE_MAP.client_approval.color,fontSize:13,fontWeight:700,
@@ -6533,7 +7469,11 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
               }}>Give Edits</button>
             </div>
           )}
-          {!["internal_review","design_review"].includes(post.stage)&&(()=>{
+          {/* Only admin/AM get a general "Move to X" — a non-manager can
+              only hand their own work off to review (content creator:
+              Content->Review, designer: Design->Design Review), nothing
+              else. Same gate the My Tasks quick-action button enforces. */}
+          {!["internal_review","design_review"].includes(post.stage)&&(isManager||canAdvanceStageAsNonManager(currentUser,post,next.key))&&(()=>{
             const needsIgCover = post.stage==="design" && post.post_type==="reel" && post.platform==="instagram" && !post.carousel_cover;
             return (
           <div style={{display:"flex",gap:8}}>
@@ -6578,6 +7518,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
           </div>
             );
           })()}
+          {post.stage==="client_approval"&&<ClientApprovalLinkCard post={post} client={client} currentUser={currentUser}/>}
           {/* Publish Now — shown when post is scheduled and a matching social integration is active */}
           {FEATURE_FLAGS.social_publishing&&post.stage==="scheduled"&&post.task_type!=="grid_layout"&&(
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -6678,6 +7619,37 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
               )}
             </div>
           )}
+          {/* Publish to another platform — a Published post's original platforms
+              are locked in, but the client can still ask for it to also go out
+              somewhere else afterward. Only offers connected platforms this
+              post hasn't already been published to. */}
+          {FEATURE_FLAGS.social_publishing&&isManager&&post.stage==="published"&&post.task_type!=="grid_layout"&&extraPlatformCandidates.length>0&&(
+            <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:8,padding:12,background:"var(--surface2)",border:"1px solid var(--border)",borderRadius:"var(--rs)"}}>
+              <label style={{fontSize:11,fontWeight:700,color:"var(--text3)"}}>Also publish this post to another platform</label>
+              <div style={{display:"flex",gap:8}}>
+                <select value={extraPlatform} onChange={e=>setExtraPlatform(e.target.value)} style={{...inputSt,flex:1}}>
+                  <option value="">Select platform…</option>
+                  {extraPlatformCandidates.map(pl=>(
+                    <option key={pl} value={pl}>{({instagram:"Instagram",facebook:"Facebook",linkedin:"LinkedIn",twitter:"Twitter/X"})[pl]||pl}</option>
+                  ))}
+                </select>
+                <button onClick={handlePublishExtra} disabled={!extraPlatform||publishingExtra} style={{
+                  padding:"8px 16px",borderRadius:"var(--rs)",whiteSpace:"nowrap",
+                  background:(!extraPlatform||publishingExtra)?"var(--surface)":"#1877F222",
+                  border:`1px solid ${(!extraPlatform||publishingExtra)?"var(--border)":"#1877F255"}`,
+                  color:(!extraPlatform||publishingExtra)?"var(--text3)":"#1877F2",fontSize:13,fontWeight:700,
+                  cursor:(!extraPlatform||publishingExtra)?"not-allowed":"pointer",
+                }}>
+                  {publishingExtra?<Spinner size={14}/>:"Publish"}
+                </button>
+              </div>
+              {publishResult&&(
+                <div className="fade-in" style={{padding:"8px 12px",background:publishResult.ok?"#10b98111":"#ef444411",border:`1px solid ${publishResult.ok?"#10b98133":"#ef444433"}`,borderRadius:"var(--rs)",fontSize:12,color:publishResult.ok?"#10b981":"#ef4444",fontWeight:600}}>
+                  {publishResult.msg}
+                </div>
+              )}
+            </div>
+          )}
           </div>
         )}
       </div>
@@ -6701,9 +7673,27 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 Insights
               </button>
             )}
+            {isManager&&(
+              <button onClick={()=>setActivityTab("mai")} style={{padding:"6px 14px",borderRadius:99,background:activityTab==="mai"?"var(--accent)":"none",color:activityTab==="mai"?"#fff":"var(--text2)",border:"none",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                Mai
+              </button>
+            )}
           </div>
 
-          {activityTab==="insights" ? (
+          {activityTab==="mai" ? (
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              <p style={{fontSize:12,color:"var(--text3)"}}>Mai's take on this task — grounded in this client's actual published-post count and any real contact reports that mention something related to it.</p>
+              {maiRec && (
+                <div style={{padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",display:"flex",gap:10,alignItems:"flex-start"}}>
+                  <div style={{width:28,height:28,borderRadius:"50%",background:"#a855f7",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,flexShrink:0}}>M</div>
+                  <p style={{fontSize:13,color:"var(--text1)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{maiRec}</p>
+                </div>
+              )}
+              <Btn variant="secondary" onClick={getMaiRecommendation} disabled={maiLoading}>
+                {maiLoading?<><Spinner size={13}/> Mai is thinking…</>:(maiRec?"Regenerate":"Get Mai's Recommendation")}
+              </Btn>
+            </div>
+          ) : activityTab==="insights" ? (
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                 <div style={{padding:"14px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)",textAlign:"center"}}>
@@ -6762,18 +7752,38 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
                         <span style={{fontSize:12,fontWeight:600}}>{c.author_name||"System"}</span>
                         {c.type==="ai_reply"?<Badge label="AI" color="#10b981" xs/>:c.type!=="comment"&&<Badge label={c.type} color={c.type==="rejection"?"#ef4444":c.type==="approval"?"#10b981":"#6b7280"} xs/>}
-                        <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date)}</span>
+                        <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date||c.created_at)}</span>
+                        {/* Admin/AM only — moves an internal attachment into
+                            the client-facing thread, e.g. sharing a finished
+                            design that was only ever posted internally.
+                            Posts a fresh comment in the Client tab rather
+                            than mutating this one, so the internal record
+                            (who attached it, when) stays intact. */}
+                        {c.file_url && onAddComment && (currentUser?.role==="admin" || currentUser?.role==="account_manager") && (
+                          <button onClick={()=>{ if(confirm(`Forward "${c.file_name||"this attachment"}" to the client-facing comments?`)) forwardAttachmentToClient(c); }} title="Forward attachment to client" style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",padding:2,display:"flex"}}>
+                            <Ico d={Icons.forward||Icons.share||Icons.arrow} size={12} stroke="var(--text3)"/>
+                          </button>
+                        )}
+                        {onDeleteComment && (currentUser?.email===c.author_email || currentUser?.role==="admin" || currentUser?.role==="account_manager") && (
+                          <button onClick={()=>{ if(confirm(c.file_url?"Delete this comment? Its attachment will be deleted too.":"Delete this comment?")) onDeleteComment(c); }} title="Delete comment" style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",padding:2,display:"flex"}}>
+                            <Ico d={Icons.trash||Icons.x} size={12} stroke="var(--text3)"/>
+                          </button>
+                        )}
                       </div>
                       {c.type==="ai_reply"
                         ? <div style={{fontSize:13,lineHeight:1.6}}>{renderChatMd(c.content)}</div>
-                        : <p style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content, team)}</p>}
+                        : <div style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content, team)}</div>}
                       {c.file_url&&(
                         c.file_type==="image" ? (
-                          <a href={c.file_url} target="_blank" rel="noreferrer" style={{display:"block",marginTop:8,maxWidth:220,borderRadius:8,overflow:"hidden",border:"1px solid var(--border)"}}>
+                          <div onClick={()=>setLightboxImage({url:c.file_url, name:c.file_name})} style={{display:"block",marginTop:8,maxWidth:220,borderRadius:8,overflow:"hidden",border:"1px solid var(--border)",cursor:"zoom-in"}}>
                             <img src={c.file_url} alt={c.file_name||""} style={{width:"100%",display:"block"}}/>
-                          </a>
+                          </div>
                         ) : c.file_type==="video" ? (
-                          <video src={c.file_url} controls playsInline preload="metadata" style={{marginTop:8,maxWidth:220,borderRadius:8,border:"1px solid var(--border)"}}/>
+                          <video src={c.file_url} controls playsInline preload="metadata" onClick={()=>setLightboxImage({url:c.file_url, name:c.file_name})} style={{marginTop:8,maxWidth:220,borderRadius:8,border:"1px solid var(--border)",cursor:"zoom-in"}}/>
+                        ) : (c.file_url||"").toLowerCase().split("?")[0].endsWith(".pdf") ? (
+                          <button onClick={()=>setLightboxImage({url:c.file_url, name:c.file_name})} style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:8,padding:"6px 10px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border)",fontSize:12,color:"var(--accent)",fontWeight:600,cursor:"pointer"}}>
+                            <Ico d={Icons.upload} size={12} stroke="var(--accent)"/> {c.file_name||"Attachment"}
+                          </button>
                         ) : (
                           <a href={c.file_url} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:8,padding:"6px 10px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border)",fontSize:12,color:"var(--accent)",fontWeight:600,textDecoration:"none"}}>
                             <Ico d={Icons.upload} size={12} stroke="var(--accent)"/> {c.file_name||"Attachment"}
@@ -6786,23 +7796,52 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                 {internalComments.length===0&&<p style={{fontSize:13,color:"var(--text3)",textAlign:"center",padding:16}}>No activity yet</p>}
                 <div ref={commentsEndRef}/>
               </div>
-              {commentAttachment&&(
-                <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"var(--surface2)",borderRadius:8,border:"1px solid var(--border)",fontSize:12}}>
-                  <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📎 {commentAttachment.file_name}</span>
-                  <button onClick={()=>setCommentAttachment(null)} style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",fontWeight:700}}>×</button>
+              {commentAttachments.length>0&&(
+                <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                  {commentAttachments.map((a,i)=>(
+                    <div key={i} style={{position:"relative",width:64,height:64,borderRadius:8,overflow:"hidden",border:"1px solid var(--border)",background:"var(--surface2)",cursor:a.file_type==="file"?"default":"pointer",flexShrink:0}}
+                      onClick={()=>a.file_type!=="file"&&setLightboxImage({url:a.file_url, name:a.file_name})}>
+                      {a.file_type==="image" ? (
+                        <img src={a.file_url} alt={a.file_name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                      ) : a.file_type==="video" ? (
+                        <>
+                          <video src={a.file_url+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                          <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,0.15)"}}>
+                            <div style={{width:22,height:22,borderRadius:"50%",background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                              <Ico d={Icons.play} size={10} stroke="#fff"/>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,padding:4}}>
+                          <Ico d={Icons.upload} size={16} stroke="var(--text3)"/>
+                          <span style={{fontSize:9,color:"var(--text3)",textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",width:"100%"}}>{a.file_name}</span>
+                        </div>
+                      )}
+                      <button onClick={e=>{e.stopPropagation(); removeCommentAttachment(i);}} style={{position:"absolute",top:2,right:2,width:18,height:18,borderRadius:"50%",background:"rgba(0,0,0,0.6)",border:"none",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:12,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                    </div>
+                  ))}
                 </div>
               )}
               {/* Composer — textarea gets its own full-width row, with attach/send
                   below it, instead of squeezing all three into one row that wraps
-                  badly once this column is only ~1/3 of the modal's width. */}
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                <MentionInput value={comment} onChange={setComment} team={team} placeholder="Add a comment… (type @ to mention)" rows={2}/>
+                  badly once this column is only ~1/3 of the modal's width. Also
+                  accepts a drag-and-drop of any number of files anywhere onto it. */}
+              <div style={{display:"flex",flexDirection:"column",gap:8,border:`1px dashed ${dragOverComment?"var(--accent)":"transparent"}`,borderRadius:8,padding:dragOverComment?6:0,transition:"border-color 0.15s"}}
+                onDragOver={e=>{ e.preventDefault(); if(e.dataTransfer.types.includes("Files")) setDragOverComment(true); }}
+                onDragLeave={e=>{ if(e.currentTarget===e.target || !e.currentTarget.contains(e.relatedTarget)) setDragOverComment(false); }}
+                onDrop={e=>{
+                  e.preventDefault();
+                  setDragOverComment(false);
+                  if(e.dataTransfer.files?.length) handleCommentFile(e.dataTransfer.files);
+                }}>
+                <MentionInput value={comment} onChange={setComment} team={team} placeholder="Add a comment… (type @ to mention, or drop files here)" rows={2}/>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                  <input ref={commentFileRef} type="file" style={{display:"none"}} onChange={e=>{handleCommentFile(e.target.files?.[0]); e.target.value="";}}/>
-                  <button onClick={()=>commentFileRef.current?.click()} disabled={attaching} title="Attach a file" style={{width:34,height:34,borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:attaching?"default":"pointer",flexShrink:0}}>
+                  <input ref={commentFileRef} type="file" multiple style={{display:"none"}} onChange={e=>{handleCommentFile(e.target.files); e.target.value="";}}/>
+                  <button onClick={()=>commentFileRef.current?.click()} disabled={attaching} title="Attach any number of files" style={{width:34,height:34,borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:attaching?"default":"pointer",flexShrink:0}}>
                     {attaching?<Spinner size={13}/>:<Ico d={Icons.upload} size={14}/>}
                   </button>
-                  <Btn onClick={sendComment} disabled={sending||(!comment.trim()&&!commentAttachment)}>
+                  <Btn onClick={sendComment} disabled={sending||(!comment.trim()&&!commentAttachments.length)}>
                     <Ico d={Icons.send} size={14}/> Send
                   </Btn>
                 </div>
@@ -6817,16 +7856,25 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
                     <div style={{flex:1,background:"var(--surface2)",borderRadius:"var(--rs)",padding:"9px 12px",border:"1px solid var(--border)"}}>
                       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
                         <span style={{fontSize:12,fontWeight:600}}>{c.author_name||"System"}</span>
-                        <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date)}</span>
+                        <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date||c.created_at)}</span>
+                        {onDeleteComment && (currentUser?.email===c.author_email || currentUser?.role==="admin" || currentUser?.role==="account_manager") && (
+                          <button onClick={()=>{ if(confirm(c.file_url?"Delete this comment? Its attachment will be deleted too.":"Delete this comment?")) onDeleteComment(c); }} title="Delete comment" style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",padding:2,display:"flex"}}>
+                            <Ico d={Icons.trash||Icons.x} size={12} stroke="var(--text3)"/>
+                          </button>
+                        )}
                       </div>
-                      <p style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content, team)}</p>
+                      <div style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content, team)}</div>
                       {c.file_url&&(
                         c.file_type==="image" ? (
-                          <a href={c.file_url} target="_blank" rel="noreferrer" style={{display:"block",marginTop:8,maxWidth:220,borderRadius:8,overflow:"hidden",border:"1px solid var(--border)"}}>
+                          <div onClick={()=>setLightboxImage({url:c.file_url, name:c.file_name})} style={{display:"block",marginTop:8,maxWidth:220,borderRadius:8,overflow:"hidden",border:"1px solid var(--border)",cursor:"zoom-in"}}>
                             <img src={c.file_url} alt={c.file_name||""} style={{width:"100%",display:"block"}}/>
-                          </a>
+                          </div>
                         ) : c.file_type==="video" ? (
-                          <video src={c.file_url} controls playsInline preload="metadata" style={{marginTop:8,maxWidth:220,borderRadius:8,border:"1px solid var(--border)"}}/>
+                          <video src={c.file_url} controls playsInline preload="metadata" onClick={()=>setLightboxImage({url:c.file_url, name:c.file_name})} style={{marginTop:8,maxWidth:220,borderRadius:8,border:"1px solid var(--border)",cursor:"zoom-in"}}/>
+                        ) : (c.file_url||"").toLowerCase().split("?")[0].endsWith(".pdf") ? (
+                          <button onClick={()=>setLightboxImage({url:c.file_url, name:c.file_name})} style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:8,padding:"6px 10px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border)",fontSize:12,color:"var(--accent)",fontWeight:600,cursor:"pointer"}}>
+                            <Ico d={Icons.upload} size={12} stroke="var(--accent)"/> {c.file_name||"Attachment"}
+                          </button>
                         ) : (
                           <a href={c.file_url} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:6,marginTop:8,padding:"6px 10px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border)",fontSize:12,color:"var(--accent)",fontWeight:600,textDecoration:"none"}}>
                             <Ico d={Icons.upload} size={12} stroke="var(--accent)"/> {c.file_name||"Attachment"}
@@ -6919,16 +7967,25 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
           <div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
               <label style={{fontSize:12,fontWeight:600,color:"var(--text3)"}}>Date</label>
-              <button type="button" onClick={()=>{
-                const auto = autoDueDateByPriority(post.priority);
-                setAssignForm(f=>({...f, mode:"due", scheduled_date:auto.date, scheduled_time:auto.time}));
-              }} title={`Suggests a due date based on this task's "${post.priority||"medium"}" priority`}
-                style={{display:"flex",alignItems:"center",gap:4,padding:"2px 8px",borderRadius:99,border:"1px solid var(--accent)44",background:"var(--accent)11",color:"var(--accent)",fontSize:10,fontWeight:700,cursor:"pointer"}}>
-                <Ico d={Icons.sparkle} size={10} stroke="var(--accent)"/> Auto (by priority)
+              <button type="button" disabled={!assignForm.assigned_to} title={!assignForm.assigned_to ? "Pick who this is assigned to first" : `Finds this person's first actually-free slot, no earlier than what this task's "${post.priority||"medium"}" priority allows`} onClick={()=>{
+                // The priority offset is still the EARLIEST this can land
+                // (urgent still can't get pushed later just because today's
+                // full) — from there, scan their real timeline for the
+                // first slot that actually has room, instead of blindly
+                // dropping it on the priority date regardless of workload.
+                const floor = autoDueDateByPriority(post.priority);
+                const slot = firstFreeSlot(allPosts, assignForm.assigned_to, estimateDuration(post), new Date(floor.date));
+                setAssignForm(f=>({...f, mode:"due", scheduled_date:slot.date, scheduled_time:slot.time}));
+                const assigneeName = team?.find(m=>m.email===assignForm.assigned_to)?.name || "them";
+                setAutoSlotNote(`First free slot for ${assigneeName}: ${fmtDate(slot.date)} at ${slot.time}`);
+              }}
+                style={{display:"flex",alignItems:"center",gap:4,padding:"2px 8px",borderRadius:99,border:"1px solid var(--accent)44",background:"var(--accent)11",color:"var(--accent)",fontSize:10,fontWeight:700,cursor:assignForm.assigned_to?"pointer":"default",opacity:assignForm.assigned_to?1:0.5}}>
+                <Ico d={Icons.sparkle} size={10} stroke="var(--accent)"/> Auto (first free slot)
               </button>
             </div>
-            <input type="date" value={assignForm.scheduled_date} onChange={e=>setAssignForm(f=>({...f,scheduled_date:e.target.value}))}
+            <input type="date" value={assignForm.scheduled_date} onChange={e=>{setAssignForm(f=>({...f,scheduled_date:e.target.value}));setAutoSlotNote("");}}
               style={{width:"100%",padding:"9px 10px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface)",color:"var(--text)",fontSize:13}}/>
+            {autoSlotNote && <p style={{fontSize:11,color:"var(--accent)",marginTop:6}}>{autoSlotNote}</p>}
           </div>
           {assignForm.mode==="due"?(
             <div>
@@ -6979,7 +8036,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
 // table needed) — post_type carries the task category, platform stays empty
 // since it isn't going out to any social platform.
 const TASK_CATEGORIES = [["design","Design"],["video_editing","Video Editing"],["resizing","Resizing"],["report","Report"],["copywriting","Copywriting"],["other","Other"]];
-function AddGenericTaskModal({open,onClose,projects,team,onAdd,onCreateProject,presetClient,clients=[],currentUser}) {
+function AddGenericTaskModal({open,onClose,projects,team,onAdd,onCreateProject,presetClient,presetSlot=null,clients=[],currentUser}) {
   const [pickedClientId,setPickedClientId] = useState("");
   const activeClientId = presetClient?.id || pickedClientId;
   const activeClient = presetClient || clients.find(c=>c.id===pickedClientId) || null;
@@ -6988,7 +8045,9 @@ function AddGenericTaskModal({open,onClose,projects,team,onAdd,onCreateProject,p
   // eligible for the Brief/planning stage (Account Managers/admins).
   const defaultAssignee = eligibleAssignees("planning",team).some(m=>m.email===currentUser?.email) ? currentUser.email : "";
   const blank = {title:"",project_id:selectableProjects[0]?.id||"",task_category:"design",other_category:"",description:"",assigned_to:defaultAssignee,due_date:"",priority:"medium",stage:"planning"};
-  const [f,setF] = useState({...blank});
+  // Opened by clicking a free slot on someone's Timeline (admin/AM only) —
+  // prefill who it's for and when.
+  const [f,setF] = useState({...blank, ...(presetSlot?{assigned_to:presetSlot.assigned_to,due_date:presetSlot.due_date}:{})});
   // Which pipeline phase this task starts at — controls who's eligible to be assigned.
   const eligibleTeam = eligibleAssignees(f.stage,team);
   const [saving,setSaving] = useState(false);
@@ -7091,7 +8150,7 @@ function AddGenericTaskModal({open,onClose,projects,team,onAdd,onCreateProject,p
   );
 }
 
-function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,onUpdateAsset,presetClient,assets=[],allowClientRequest=false,clients=[],clientIntelligenceList=[],currentUser}) {
+function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,onUpdateAsset,presetClient,presetSlot=null,assets=[],allowClientRequest=false,clients=[],clientIntelligenceList=[],currentUser}) {
   const [step,setStep] = useState(1);
   // When opened from a client's profile, only that client's projects should be
   // selectable/defaulted — otherwise this silently defaults to projects[0],
@@ -7102,8 +8161,10 @@ function AddPostModal({open,onClose,projects,team,onAdd,onAddReady,onAddAsset,on
   const activeClientId = presetClient?.id || pickedClientId;
   const selectableProjects = activeClientId ? projects.filter(p=>p.client_id===activeClientId) : projects;
   const defaultAssignee = eligibleAssignees("planning",team).some(m=>m.email===currentUser?.email) ? currentUser.email : "";
-  const blankForm = {project_id:selectableProjects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:defaultAssignee,scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",due_date:"",due_time:"",content_mode:"new",platforms:["instagram"],platform_types:{},media:[],cover:null,publish_mode:"schedule",postStory:false,storyImage:null,estimated_minutes:""};
-  const [f,setF] = useState({...blankForm});
+  const blankForm = {project_id:selectableProjects[0]?.id||"",title:"",platform:"instagram",post_type:"image",priority:"medium",stage:"planning",description:"",assigned_to:defaultAssignee,scheduled_date:"",caption:"",hashtags:"",scheduled_time:"",due_date:"",due_time:"",content_mode:"new",platforms:["instagram"],platform_types:{},media:[],cover:null,publish_mode:"schedule",postStory:false,storyImage:null,estimated_minutes:"",sector:""};
+  // Opened by clicking a free slot on someone's Timeline (admin/AM only) —
+  // prefill who it's for and when, instead of making them re-pick both.
+  const [f,setF] = useState({...blankForm, ...(presetSlot||{})});
   // Which pipeline phase this post starts at — controls who's eligible to
   // be assigned it (Brief -> AM, Content -> Content team, Design -> Design team).
   const eligibleTeam = eligibleAssignees(f.stage,team);
@@ -7150,6 +8211,7 @@ Post title: ${f.title}
 Project: ${proj?.title||"-"}
 Platform(s): ${(f.platforms.length?f.platforms:[f.platform]).join(", ")}
 Post type: ${f.post_type}
+${f.sector?`This client operates multiple business sectors — this post is specifically for their "${f.sector}" sector. Write content relevant to that sector, not the client's other lines of business.`:""}
 ${f.description?`Existing brief/notes: ${f.description}`:""}
 ${firstImage ? "An image is attached above — look at it and write a caption that actually matches what's shown in the photo, not a generic guess based on the title alone." : (f.media.length ? "A video file is attached, but you can't view video content — write the caption based on the title/brief/brand voice only." : "No media has been attached to this post yet — write the caption based on the title/brief/brand voice only.")}
 
@@ -7239,31 +8301,35 @@ Return ONLY valid JSON (no markdown):
     if(f.content_mode==="ready") {
       const proj = projects.find(p=>p.id===f.project_id);
       const design_urls = JSON.stringify(f.media.map(m=>m.url));
-      // Each platform gets its own client-configured Best Posting Time
-      // (Settings > Scheduling) when the user didn't type an explicit time
-      // for this post — whether that saved time came from the Manual or
-      // Auto (AI-predicted) toggle there doesn't matter here, it's just
-      // the number to use. An explicit time typed on this form always wins.
+      // ONE task covering every selected platform (not one task per
+      // platform, which used to leave e.g. an Instagram+Facebook post
+      // showing up as two separate duplicate cards) — platforms carries
+      // the full list, platform stays the first one selected for anything
+      // that only reads the old singular field. Publishing (addReadyContent)
+      // loops over platforms itself, same as the normal Publish Now button.
+      const primaryPl = f.platforms[0];
+      const post_type = f.platform_types[primaryPl] || defaultTypeFor();
+      const storySrc = f.storyImage || f.media[0];
+      const design_assets = f.platforms.includes("instagram") && f.postStory && storySrc
+        ? [...f.media, {...storySrc, kind:"story"}]
+        : f.media;
+      // Each platform has its own client-configured Best Posting Time
+      // (Settings > Scheduling) — the primary platform's time is used for
+      // the one scheduled_time this task carries. An explicit time typed on
+      // this form always wins.
       const ci = clientIntelligenceList.find(i=>i.client_id===proj?.client_id);
-      const list = f.platforms.map(pl=>{
-        const post_type = f.platform_types[pl] || defaultTypeFor();
-        const storySrc = f.storyImage || f.media[0];
-        const design_assets = pl==="instagram" && f.postStory && storySrc
-          ? [...f.media, {...storySrc, kind:"story"}]
-          : f.media;
-        const clientBestTime = bestTimeForDate(ci, pl, f.scheduled_date);
-        return {
-          title:f.title, client_id:proj?.client_id||"", project_id:f.project_id,
-          description:f.description, assigned_to:f.assigned_to,
-          scheduled_date: f.publish_mode==="schedule" ? f.scheduled_date : new Date().toISOString().slice(0,10),
-          scheduled_time: f.publish_mode==="schedule" ? (f.scheduled_time || clientBestTime || "") : "",
-          platform:pl, post_type, priority:f.priority, stage:"scheduled",
-          client_name: proj?.client_name||"", hashtags:"",
-          caption:f.caption, design_assets, design_urls,
-          carousel_cover: post_type==="reel" ? (f.cover?.url||"") : "",
-        };
-      });
-      await (onAddReady ? onAddReady(list,{postNow:f.publish_mode==="now"}) : Promise.all(list.map(onAdd)));
+      const clientBestTime = bestTimeForDate(ci, primaryPl, f.scheduled_date);
+      const single = {
+        title:f.title, client_id:proj?.client_id||"", project_id:f.project_id,
+        description:f.description, assigned_to:f.assigned_to,
+        scheduled_date: f.publish_mode==="schedule" ? f.scheduled_date : new Date().toISOString().slice(0,10),
+        scheduled_time: f.publish_mode==="schedule" ? (f.scheduled_time || clientBestTime || "") : "",
+        platform:primaryPl, platforms:f.platforms, post_type, priority:f.priority, stage:"scheduled",
+        client_name: proj?.client_name||"", hashtags:"", sector:f.sector||"",
+        caption:f.caption, design_assets, design_urls,
+        carousel_cover: post_type==="reel" ? (f.cover?.url||"") : "",
+      };
+      await (onAddReady ? onAddReady([single],{postNow:f.publish_mode==="now"}) : onAdd(single));
     } else {
       // Unlike the "Ready Content" branch above, this path never set
       // client_id/client_name at all — a task created this way saved fine
@@ -7331,6 +8397,19 @@ Return ONLY valid JSON (no markdown):
                 {selectableProjects.map(p=><option key={p.id} value={p.id}>{p.title} · {p.client_name}</option>)}
               </select>
             </Field>
+            {(()=>{
+              const proj = projects.find(p=>p.id===f.project_id);
+              const activeClient = clients.find(c=>c.id===(proj?.client_id||activeClientId));
+              if (!activeClient?.has_sectors || !Array.isArray(activeClient.sectors) || !activeClient.sectors.length) return null;
+              return (
+                <Field label="Sector" hint="Which of this client's sectors is this post/task for — Sara uses this to focus what she writes">
+                  <select value={f.sector} onChange={e=>s("sector",e.target.value)} style={inputSt}>
+                    <option value="">All sectors (general)</option>
+                    {activeClient.sectors.map(sec=><option key={sec} value={sec}>{sec}</option>)}
+                  </select>
+                </Field>
+              );
+            })()}
             {f.content_mode==="new"&&(
               <div>
                 <p style={{fontSize:12,fontWeight:700,color:"var(--text2)",marginBottom:8}}>Starts at Phase</p>
@@ -7440,7 +8519,13 @@ Return ONLY valid JSON (no markdown):
                       style={{display:"flex",alignItems:"center",gap:8,padding:"8px 14px",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",cursor:"pointer",fontSize:13,fontWeight:600,color:"var(--text2)",width:"100%"}}>
                       <Ico d={Icons.upload} size={14} stroke="var(--text2)"/> Choose Cover Image…
                     </button>
-                    <AssetPickerModal open={showCoverPicker} assets={assets.filter(a=>a.file_type==="image"||(a.file_url||"").match(/\.(jpg|jpeg|png|gif|webp)/i))} multiple={false} onClose={()=>setShowCoverPicker(false)}
+                    {/* A Reel cover must be a still image — Instagram's media-container
+                        call fails if it's actually a video (matches the "posted to FB but
+                        not IG" symptom). Explicitly reject anything that looks like a
+                        video, rather than only allowing what looks like an image — a
+                        video ever mistagged file_type:"image" upstream used to slip
+                        through the old OR-based filter and show up as pickable. */}
+                    <AssetPickerModal open={showCoverPicker} assets={assets.filter(a=>a.file_type!=="video"&&!(a.file_url||"").match(/\.(mp4|mov|webm|m4v)/i))} multiple={false} onClose={()=>setShowCoverPicker(false)}
                       onPick={(picked)=>{ const a=picked[0]; if(a.url&&onAddAsset) onAddAsset({name:a.name, file_url:a.url, file_type:a.file_type||"image", category:monthProjectFolder(selectableProjects.find(p=>p.id===f.project_id)?.title, selectableProjects.find(p=>p.id===f.project_id)?.client_name), project_id:f.project_id, tags:[], file_size:a.file_size}).catch(()=>{}); s("cover",a.url?a:{name:a.name,type:a.file_type,url:a.file_url}); }}/>
                     {uploadingCover&&<div style={{fontSize:12,color:"var(--text3)",marginTop:6}}><Spinner size={12}/> Uploading…</div>}
                     {f.cover&&(
@@ -7519,6 +8604,19 @@ Return ONLY valid JSON (no markdown):
                     <input type="time" value={f.scheduled_time} onChange={e=>s("scheduled_time",e.target.value)} style={{...inputSt,borderColor:f.scheduled_date&&!f.scheduled_time?"#ef4444":undefined}}/>
                   </div>
                   {f.scheduled_date&&!f.scheduled_time&&<p style={{fontSize:11,color:"#ef4444",marginTop:4}}>A scheduled date needs a time too</p>}
+                  {(()=>{
+                    if(!f.scheduled_date||!f.platform) return null;
+                    const proj = projects.find(p=>p.id===f.project_id);
+                    const ci = clientIntelligenceList.find(i=>i.client_id===proj?.client_id);
+                    const bt = bestTimeForDate(ci, f.platform, f.scheduled_date);
+                    if(!bt || bt===f.scheduled_time) return null;
+                    return (
+                      <p style={{fontSize:11,color:"var(--accent)",marginTop:6,display:"flex",alignItems:"center",gap:4}}>
+                        <Ico d={Icons.sparkle} size={11} stroke="var(--accent)"/> Best time for this date on {f.platform}: {bt}
+                        <button type="button" onClick={()=>s("scheduled_time",bt)} style={{marginLeft:2,fontWeight:700,textDecoration:"underline",background:"none",border:"none",color:"var(--accent)",cursor:"pointer",fontSize:11,padding:0}}>Use it</button>
+                      </p>
+                    );
+                  })()}
                 </Field>
                 <Field label={
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -7552,10 +8650,26 @@ Return ONLY valid JSON (no markdown):
                   ))}
                 </div>
                 {f.publish_mode==="schedule"&&(
+                  <>
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                     <input type="date" value={f.scheduled_date} onChange={e=>s("scheduled_date",e.target.value)} style={inputSt}/>
                     <input type="time" value={f.scheduled_time} onChange={e=>s("scheduled_time",e.target.value)} style={inputSt}/>
                   </div>
+                  {(()=>{
+                    const primaryPl = f.platforms[0];
+                    if(!f.scheduled_date||!primaryPl) return null;
+                    const proj = projects.find(p=>p.id===f.project_id);
+                    const ci = clientIntelligenceList.find(i=>i.client_id===proj?.client_id);
+                    const bt = bestTimeForDate(ci, primaryPl, f.scheduled_date);
+                    if(!bt || bt===f.scheduled_time) return null;
+                    return (
+                      <p style={{fontSize:11,color:"var(--accent)",marginTop:6,display:"flex",alignItems:"center",gap:4}}>
+                        <Ico d={Icons.sparkle} size={11} stroke="var(--accent)"/> Best time for this date on {primaryPl}: {bt}
+                        <button type="button" onClick={()=>s("scheduled_time",bt)} style={{marginLeft:2,fontWeight:700,textDecoration:"underline",background:"none",border:"none",color:"var(--accent)",cursor:"pointer",fontSize:11,padding:0}}>Use it</button>
+                      </p>
+                    );
+                  })()}
+                  </>
                 )}
               </Field>
             )}
@@ -8069,12 +9183,11 @@ const CALENDAR_KIND_DEFS = [
   ["carousel","Carousels","Multi-slide captions"],
   ["article","Articles","Long-form, e.g. LinkedIn articles"],
   ["story","Stories","Ephemeral, one punchy line each"],
-  ["grid_layout","Full Grid Layout","Design-only — always included once, no caption needed"],
 ];
 // Each kind block becomes exactly ONE task regardless of count — this maps
 // it to the post_type estimateDuration()/POST_TYPE_DURATIONS already knows
 // how to estimate, so "12 carousels" costs 12x a single carousel's estimate.
-const CALENDAR_KIND_POST_TYPE = {static:"image", reel:"reel", carousel:"carousel", article:"blog", story:"story", grid_layout:"carousel"};
+const CALENDAR_KIND_POST_TYPE = {static:"image", reel:"reel", carousel:"carousel", article:"blog", story:"story"};
 
 // Egypt work week default (Sun-Thu, same convention used everywhere else —
 // interview-slot templates, calendar-plan scheduling): getDay() 0=Sun..6=Sat.
@@ -8178,29 +9291,28 @@ function AddCalendarPlanModal({open,onClose,clients,team,posts,projects,preselec
   const companyWorkDays = [0,1,2,3,4,5,6].filter(d=>!(attendanceRules.weekendDays??[5,6]).map(n=>n%7).includes(d));
   const companyHolidays = new Set((attendanceRules.holidays||[]).map(h=>h.date));
   const [step,setStep] = useState("form"); // form | generating | preview | done
-  // Full Grid Layout is Instagram-only, always — never follows whatever
-  // platforms the client happens to have connected, unlike every other kind.
-  const platformsForKind = (kind, clientPlatforms) => kind==="grid_layout" ? ["instagram"] : (clientPlatforms||[]);
+  const platformsForKind = (kind, clientPlatforms) => (clientPlatforms||[]);
   // briefBatches lets one content type be split into separate groups, each
   // with its own count + brief (e.g. 6 static posts as two groups of 3, each
   // pushing a different message) instead of forcing one brief onto all of
   // them. `count` is kept in sync as the sum of all batches' counts, since
   // scheduling/due-date/token-budget logic elsewhere reads it directly.
-  const makeKindDefaults = (count, kind) => ({count, platforms:platformsForKind(kind, preselectedClient?.platforms), briefBatches:[{count, brief:""}], assigned_to:"", due_mode:"auto", manual_due_date:"", manual_due_time:"13:00"});
+  const makeKindDefaults = (count, kind) => ({count, platforms:platformsForKind(kind, preselectedClient?.platforms), briefBatches:[{count, brief:"", assigned_to:"", due_mode:"auto", manual_due_date:"", manual_due_time:"13:00"}]});
   const [f,setF] = useState({
     client_id: preselectedClient?.id||"",
     campaign: "",
     date_from: "",
     date_to: "",
+    // "" = client has no sectors / not applicable, "all" = rotate every
+    // generated post across all of the client's sectors, or a specific
+    // sector name = every generated post in this plan targets just that one.
+    sector: "",
     kinds: {
       static: makeKindDefaults(8,"static"),
       reel: makeKindDefaults(0,"reel"),
       carousel: makeKindDefaults(0,"carousel"),
       article: makeKindDefaults(0,"article"),
       story: makeKindDefaults(0,"story"),
-      // Always exactly 1, every plan — not user-adjustable (see the "Number
-      // of..." selector being skipped for this kind below).
-      grid_layout: makeKindDefaults(1,"grid_layout"),
     },
   });
   const [generated,setGenerated] = useState([]);
@@ -8229,7 +9341,7 @@ function AddCalendarPlanModal({open,onClose,clients,team,posts,projects,preselec
     const batches = p.kinds[kind].briefBatches.map((b,i)=>i===idx?{...b,[key]:val}:b);
     return {...p,kinds:{...p.kinds,[kind]:{...p.kinds[kind],briefBatches:batches,count:recount(batches)}}};
   });
-  const addBatch = (kind) => setF(p=>({...p,kinds:{...p.kinds,[kind]:{...p.kinds[kind],briefBatches:[...p.kinds[kind].briefBatches,{count:0,brief:""}]}}}));
+  const addBatch = (kind) => setF(p=>({...p,kinds:{...p.kinds,[kind]:{...p.kinds[kind],briefBatches:[...p.kinds[kind].briefBatches,{count:0,brief:"",assigned_to:"",due_mode:"auto",manual_due_date:"",manual_due_time:"13:00"}]}}}));
   const removeBatch = (kind,idx) => setF(p=>{
     const cur = p.kinds[kind].briefBatches;
     if(cur.length<=1) return p; // always keep at least one group
@@ -8301,17 +9413,21 @@ Return ONLY the brief text — no markdown, no labels, no quotes.`, 300);
   // starting from the campaign start date; "manual" checks the ONE picked
   // due date/time — if that person doesn't have room there, scheduling
   // spills onto their next free days and the UI flags that as a conflict.
-  const kindDueDate = (kind) => {
+  // Assignment (and therefore availability/due-date) is per GROUP now, not
+  // per content type — a "Reels" kind split into two groups can go to two
+  // different teammates, each scheduled against their own real calendar.
+  const batchDueDate = (kind, batchIdx) => {
     const cfg = f.kinds[kind];
-    if(!cfg.count || !cfg.assigned_to) return null;
+    const batch = cfg.briefBatches[batchIdx];
+    if(!batch?.count || !batch.assigned_to) return null;
     const perItemMins = estimateDuration({post_type: CALENDAR_KIND_POST_TYPE[kind], priority:"medium"});
-    const assignee = (team||[]).find(t=>t.email===cfg.assigned_to);
+    const assignee = (team||[]).find(t=>t.email===batch.assigned_to);
     const workDays = assignee?.employment_type==="part_time" ? parseMaybeJson(assignee.work_days, companyWorkDays) : companyWorkDays;
-    if(cfg.due_mode==="manual" && cfg.manual_due_date) {
-      const {dates, overflow} = scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, cfg.count, cfg.manual_due_date, cfg.manual_due_date, workDays, companyHolidays);
-      return {dates, conflict:overflow, requestedEnd: cfg.manual_due_date};
+    if(batch.due_mode==="manual" && batch.manual_due_date) {
+      const {dates, overflow} = scheduleItemDates(posts||[], batch.assigned_to, perItemMins, batch.count, batch.manual_due_date, batch.manual_due_date, workDays, companyHolidays);
+      return {dates, conflict:overflow, requestedEnd: batch.manual_due_date};
     }
-    const {dates} = scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, cfg.count, f.date_from||new Date(), null, workDays, companyHolidays);
+    const {dates} = scheduleItemDates(posts||[], batch.assigned_to, perItemMins, batch.count, f.date_from||new Date(), null, workDays, companyHolidays);
     return {dates, conflict:false, requestedEnd:null};
   };
 
@@ -8332,21 +9448,16 @@ Return ONLY the brief text — no markdown, no labels, no quotes.`, 300);
     const ideasByKind = {};
     for(const kind of activeKinds){
       const cfg = f.kinds[kind];
-      // Full Grid Layout is design-only — no caption/hashtag content to
-      // write, so skip the AI call entirely and synthesize its one fixed
-      // idea locally (count is always 1 for this kind).
-      if(kind==="grid_layout") {
-        ideasByKind[kind] = [{title:`Full Grid Layout — ${f.campaign}`, caption:"", hashtags:"", text_on_visual:""}];
-        continue;
-      }
       if(skipAI) {
-        const total = cfg.briefBatches.reduce((a,b)=>a+(Number(b.count)||0),0);
-        const firstBrief = cfg.briefBatches[0]?.brief||"";
-        ideasByKind[kind] = Array.from({length:total},(_,i)=>({
+        ideasByKind[kind] = cfg.briefBatches.flatMap(batch=>Array.from({length:Number(batch.count)||0},(_,i)=>({
           title:`${kind.charAt(0).toUpperCase()+kind.slice(1)} ${i+1} — ${f.campaign}`,
           caption:"", hashtags:"", text_on_visual:"", hook:"",
-          _sourceBrief: firstBrief,
-        }));
+          _sourceBrief: batch.brief||"",
+          _assignedTo: batch.assigned_to||"",
+          _dueMode: batch.due_mode||"auto",
+          _manualDueDate: batch.manual_due_date||"",
+          _manualDueTime: batch.manual_due_time||"",
+        })));
         continue;
       }
       setGenPhase(kind);
@@ -8374,6 +9485,8 @@ ${clientCtxBlock}
 Campaign: ${f.campaign}
 Brief for this content type: ${batch.brief||f.campaign}
 Platforms: ${cfg.platforms.join(", ")}
+${selectedClient?.has_sectors && f.sector && f.sector!=="all" ? `This client operates multiple business sectors — write EVERY idea specifically for their "${f.sector}" sector only, not their other lines of business.` : ""}
+${selectedClient?.has_sectors && f.sector==="all" && selectedClient.sectors?.length ? `This client operates multiple business sectors: ${selectedClient.sectors.join(", ")}. Spread the ${batch.count} ideas evenly and roughly in order across these sectors (idea 1 → first sector, idea 2 → next sector, and so on, cycling through), so each idea is specifically about ONE sector, not a generic mix.` : ""}
 
 ${kindGuide}
 
@@ -8393,7 +9506,7 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
           // fail JSON.parse and silently fall back to placeholder text.
           const match = aiRes.match(/\[[\s\S]*\]/);
           const parsedBatch = JSON.parse(match ? match[0] : aiRes);
-          kindIdeas.push(...parsedBatch.map(idea=>({...idea, _sourceBrief:batch.brief})));
+          kindIdeas.push(...parsedBatch.map(idea=>({...idea, _sourceBrief:batch.brief, _assignedTo:batch.assigned_to||"", _dueMode:batch.due_mode||"auto", _manualDueDate:batch.manual_due_date||"", _manualDueTime:batch.manual_due_time||""})));
         } catch(e) {
           kindIdeas.push(...Array.from({length:batch.count},(_,i)=>({
             title:`${kind.charAt(0).toUpperCase()+kind.slice(1)} ${i+1} — ${f.campaign}`,
@@ -8401,6 +9514,10 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
             hashtags: kind==="story" ? "" : `#${f.campaign.toLowerCase().replace(/\s+/g,"")} #socialmedia`,
             text_on_visual: kind==="article" ? "" : `${f.campaign}`,
             _sourceBrief: batch.brief,
+            _assignedTo: batch.assigned_to||"",
+            _dueMode: batch.due_mode||"auto",
+            _manualDueDate: batch.manual_due_date||"",
+            _manualDueTime: batch.manual_due_time||"",
             hook: kind==="reel" ? `Wait — you need to see this.` : "",
           })));
         }
@@ -8422,9 +9539,17 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
         ? (plats.includes("linkedin")?"linkedin":plats[0])
         : plats[0];
       return (ideasByKind[kind]||[]).map((idea,i)=>{
+        // "all" spreads posts evenly across every one of the client's
+        // sectors (round-robin) rather than every post covering every
+        // sector at once — a specific sector name applies to every post
+        // generated in this plan.
+        const sector = f.sector==="all"
+          ? (selectedClient?.sectors?.[i % (selectedClient.sectors.length||1)] || "")
+          : (f.sector||"");
         return {
           id: uid(),
           kind,
+          sector,
           title: idea?.title||`${kind} ${i+1}`,
           description: idea?._sourceBrief||"",
           caption: idea?.caption||"",
@@ -8434,16 +9559,14 @@ No markdown, no explanation, just the JSON array.`, genMaxTokens);
           platform: primaryPlatform,
           platforms: plats,
           post_type: CALENDAR_KIND_POST_TYPE[kind],
-          // Marks this as a design-only deliverable — never actually
-          // published to a platform (see auto-publish.php's WHERE clause
-          // and PostDetail's Publish Now button, both skip task_type
-          // 'grid_layout'). Reuses the existing task_type column rather
-          // than adding a new one.
-          task_type: kind==="grid_layout" ? "grid_layout" : "",
+          task_type: "",
           priority: "medium",
           client_id: f.client_id,
           client_name: selectedClient?.name||"",
-          assigned_to: cfg.assigned_to||"",
+          assigned_to: idea?._assignedTo||"",
+          due_mode: idea?._dueMode||"auto",
+          manual_due_date: idea?._manualDueDate||"",
+          manual_due_time: idea?._manualDueTime||"",
           project_name: f.campaign,
           status:"pending",
           _sourceBrief: idea?._sourceBrief||"",
@@ -8487,12 +9610,22 @@ ${note?`FEEDBACK FROM THE TEAM — apply this: ${note}`:"The team asked for a fr
 
 ${kindGuide}
 
-Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":"...","text_on_visual":"..."${kind==="reel"?`,"hook":"..."`:""}} (text_on_visual = the short headline overlaid on the design itself — MUST be genuinely catchy, not the same as the caption, empty string for articles.${kind==="reel"?` hook = the exact line spoken/shown in the FIRST 3 SECONDS of the video — it MUST be scroll-stopping and catchy, since if it doesn't grab attention in under 3 seconds the whole reel fails before anything else matters. Never a generic opener like "Hey guys".`:""})`, kind==="article"?2500:700);
+Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":"...","text_on_visual":"..."${kind==="reel"?`,"hook":"..."`:""}} (text_on_visual = the short headline overlaid on the design itself — MUST be genuinely catchy, not the same as the caption, empty string for articles.${kind==="reel"?` hook = the exact line spoken/shown in the FIRST 3 SECONDS of the video — it MUST be scroll-stopping and catchy, since if it doesn't grab attention in under 3 seconds the whole reel fails before anything else matters. Never a generic opener like "Hey guys".`:""})`,
+        // 2500 still isn't a reliable margin for "several paragraphs" of a
+        // real long-form article, especially bilingual (Arabic runs more
+        // tokens per character than English) — a response cut off before
+        // its closing brace fails JSON.parse below, and used to surface as
+        // a completely opaque "please try again" with no way to tell why.
+        kind==="article"?4000:700);
       const match = aiRes.match(/\{[\s\S]*\}/);
-      const idea = JSON.parse(match ? match[0] : aiRes);
+      if(!match) throw new Error("No JSON in Sara's response: " + aiRes.slice(0,300));
+      const idea = JSON.parse(match[0]);
       setGenerated(prev=>prev.map((t,i)=>i===idx?{...t,title:idea.title||t.title,caption:idea.caption||t.caption,hashtags:idea.hashtags??t.hashtags,text_on_visual:idea.text_on_visual??t.text_on_visual,reel_hook:kind==="reel"?(idea.hook??t.reel_hook):t.reel_hook,approved:false}:t));
       setRegenNotes(prev=>({...prev,[idx]:""}));
-    } catch(e) { alert("Sara couldn't regenerate that item — please try again."); }
+    } catch(e) {
+      console.error("Sara regenerate failed:", e);
+      alert("Sara couldn't regenerate that item: " + (e?.message||"unknown error").slice(0,200));
+    }
     setRegenIdx(null);
   };
   const toggleApprove = (idx) => setGenerated(prev=>prev.map((t,i)=>i===idx?{...t,approved:!t.approved}:t));
@@ -8505,30 +9638,46 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
     // free capacity per kind, in order, instead of every item in a kind
     // landing on the same day.
     const approved = generated.filter(t=>t.approved);
-    const byKind = {};
-    approved.forEach(t=>{ (byKind[t.kind]=byKind[t.kind]||[]).push(t); });
-    const dueDatesByKind = {};
-    Object.entries(byKind).forEach(([kind,items])=>{
-      const cfg = f.kinds[kind]||{};
+    // Grouped by (kind + assignee + due mode/date), not just kind — a kind
+    // split into groups with different assignees AND/OR different due-date
+    // policies now schedules each group independently against that group's
+    // own settings, instead of everyone in the kind sharing one shared
+    // assignee/date policy.
+    const byKindAssignee = {};
+    approved.forEach(t=>{ const key=`${t.kind}|${t.assigned_to||""}|${t.due_mode||"auto"}|${t.manual_due_date||""}`; (byKindAssignee[key]=byKindAssignee[key]||[]).push(t); });
+    // Scheduled ONE GROUP AT A TIME, feeding each group's picked dates back
+    // in as simulated posts before scheduling the next — different content
+    // kinds for the SAME assignee (e.g. Reels + Static both going to
+    // Sherif) used to each schedule independently against the same
+    // unchanged snapshot of `posts`, with no idea the other group in this
+    // exact same Generate action had already claimed that day's capacity,
+    // so two different kinds could both land on, say, 11:00 AM and
+    // visually overlap on the timeline. Object.entries().forEach runs in
+    // insertion order, so this stays deterministic.
+    const dueDatesByKey = {};
+    let simulatedPosts = [...(posts||[])];
+    Object.entries(byKindAssignee).forEach(([key,items])=>{
+      const [kind, assignedTo, dueMode, manualDueDate] = key.split("|");
       const perItemMins = estimateDuration({post_type: CALENDAR_KIND_POST_TYPE[kind], priority:"medium"});
-      if(cfg.assigned_to) {
-        const assignee = (team||[]).find(t=>t.email===cfg.assigned_to);
+      if(assignedTo) {
+        const assignee = (team||[]).find(t=>t.email===assignedTo);
         const workDays = assignee?.employment_type==="part_time" ? parseMaybeJson(assignee.work_days, companyWorkDays) : companyWorkDays;
-        const {dates} = cfg.due_mode==="manual" && cfg.manual_due_date
-          ? scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, items.length, cfg.manual_due_date, cfg.manual_due_date, workDays, companyHolidays)
-          : scheduleItemDates(posts||[], cfg.assigned_to, perItemMins, items.length, f.date_from||new Date(), null, workDays, companyHolidays);
-        dueDatesByKind[kind] = dates;
+        const {dates} = dueMode==="manual" && manualDueDate
+          ? scheduleItemDates(simulatedPosts, assignedTo, perItemMins, items.length, manualDueDate, manualDueDate, workDays, companyHolidays)
+          : scheduleItemDates(simulatedPosts, assignedTo, perItemMins, items.length, f.date_from||new Date(), null, workDays, companyHolidays);
+        dueDatesByKey[key] = dates;
+        simulatedPosts = [...simulatedPosts, ...dates.map(d=>({assigned_to:assignedTo, due_date:d, stage:"pending", post_type:CALENDAR_KIND_POST_TYPE[kind], priority:"medium"}))];
       } else {
-        dueDatesByKind[kind] = [];
+        dueDatesByKey[key] = [];
       }
     });
-    const kindCursor = {};
+    const keyCursor = {};
     const finalTasks = approved.map(t=>{
-      kindCursor[t.kind] = kindCursor[t.kind]||0;
-      const dueDate = dueDatesByKind[t.kind]?.[kindCursor[t.kind]] || "";
-      const cfg = f.kinds[t.kind]||{};
-      kindCursor[t.kind]++;
-      return {...t, due_date: dueDate, due_time: cfg.due_mode==="manual" ? (cfg.manual_due_time||"") : ""};
+      const key = `${t.kind}|${t.assigned_to||""}|${t.due_mode||"auto"}|${t.manual_due_date||""}`;
+      keyCursor[key] = keyCursor[key]||0;
+      const dueDate = dueDatesByKey[key]?.[keyCursor[key]] || "";
+      keyCursor[key]++;
+      return {...t, due_date: dueDate, due_time: t.due_mode==="manual" ? (t.manual_due_time||"") : ""};
     });
     await onGenerate({...f, start_stage: startStage}, finalTasks);
     // Sara learns from the plan she just delivered — best-effort, in the
@@ -8546,9 +9695,27 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
 
   const reset = () => { setStep("form"); setGenerated([]); setAiIdeas([]); };
 
+  // Clicking the backdrop (or the X) used to close this instantly, silently
+  // discarding a filled-out campaign name/dates/briefs with zero warning —
+  // a real loss on a form this long. Only actually prompts when there's
+  // something to lose (still on the form step, with real input typed) —
+  // the preview/done steps close straight through since nothing further
+  // would be lost there.
+  const [confirmClose, setConfirmClose] = useState(false);
+  const hasUnsavedInput = () => step==="form" && !!(
+    f.campaign.trim() || f.date_from || f.date_to ||
+    Object.values(f.kinds).some(k=>(k.briefBatches||[]).some(b=>(b.brief||"").trim()))
+  );
+  const requestClose = () => {
+    if(hasUnsavedInput()) setConfirmClose(true);
+    else { reset(); onClose(); }
+  };
+  const discardAndClose = () => { setConfirmClose(false); reset(); onClose(); };
+
   if(!open) return null;
   return (
-    <Modal open onClose={()=>{reset();onClose();}} title={
+    <>
+    <Modal open onClose={requestClose} title={
       step==="form"?"Add Calendar Plan":
       step==="generating"?"Generating…":
       step==="preview"?"Preview Calendar Plan":
@@ -8570,6 +9737,14 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                 {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </Field>
+            {selectedClient?.has_sectors && Array.isArray(selectedClient.sectors) && selectedClient.sectors.length>0 && (
+              <Field label="Sector" hint="One sector for every post in this plan, or spread posts evenly across all of them">
+                <select value={f.sector} onChange={e=>s("sector",e.target.value)} style={inputSt}>
+                  <option value="all">All sectors (spread evenly)</option>
+                  {selectedClient.sectors.map(sec=><option key={sec} value={sec}>{sec} only</option>)}
+                </select>
+              </Field>
+            )}
             <Field label="Campaign / Project Name" required>
               {clientProjects.length>0 && (
                 <select value={campaignChoice} onChange={e=>{
@@ -8615,7 +9790,7 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
           {/* Per-content-type: count, platforms, assignee, brief — each independent */}
           {CALENDAR_KIND_DEFS.map(([kind,label,hint])=>{
             const cfg = f.kinds[kind];
-            const countOptions = kind==="article" ? [0,1,2,3,4,5,6,8,10] : [0,2,4,6,8,10,12,15,20,24,30];
+            const countOptions = kind==="article" ? [0,1,2,3,4,5,6,8,10] : [0,1,2,4,6,8,10,12,15,20,24,30];
             const isOpen = !!expandedKinds[kind];
             return (
               <div key={kind} style={{border:"1px solid var(--border)",borderRadius:"var(--rs)",padding:isOpen?14:"10px 14px",display:"flex",flexDirection:"column",gap:isOpen?10:0,background:cfg.count>0?"var(--surface2)":"transparent"}}>
@@ -8624,7 +9799,7 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                     <p style={{fontWeight:700,fontSize:13,whiteSpace:"nowrap"}}>{label}</p>
                     {!isOpen && (
                       <span style={{fontSize:11.5,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                        {cfg.count>0 ? `${cfg.count} · ${cfg.assigned_to ? (team.find(t=>t.email===cfg.assigned_to)?.name||"assigned") : "unassigned"} · ${cfg.platforms.length} platform${cfg.platforms.length!==1?"s":""}` : "0 — not included"}
+                        {cfg.count>0 ? (()=>{ const assignees=[...new Set(cfg.briefBatches.map(b=>b.assigned_to).filter(Boolean))]; const who = assignees.length===0?"unassigned":assignees.length===1?(team.find(t=>t.email===assignees[0])?.name||"assigned"):`${assignees.length} assignees`; return `${cfg.count} · ${who} · ${cfg.platforms.length} platform${cfg.platforms.length!==1?"s":""}`; })() : "0 — not included"}
                       </span>
                     )}
                   </div>
@@ -8635,69 +9810,10 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                 </div>
                 {isOpen && (<>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(180px,100%),1fr))",gap:10}}>
-                  {kind==="grid_layout" ? (
-                    <Field label="Number of Full Grid Layout">
-                      <div style={{...inputSt,display:"flex",alignItems:"center",color:"var(--text3)"}}>1 — always included</div>
-                    </Field>
-                  ) : (
-                    <Field label={`Total ${label}`} hint="Sum of the group(s) below">
-                      <div style={{...inputSt,display:"flex",alignItems:"center",fontWeight:700}}>{cfg.count} {label.toLowerCase()}</div>
-                    </Field>
-                  )}
-                  <Field label="Assign To">
-                    <select value={cfg.assigned_to} onChange={e=>sk(kind,"assigned_to",e.target.value)} style={inputSt}>
-                      <option value="">— Unassigned —</option>
-                      {eligibleAssignees(startStage,team).map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
-                    </select>
+                  <Field label={`Total ${label}`} hint="Sum of the group(s) below">
+                    <div style={{...inputSt,display:"flex",alignItems:"center",fontWeight:700}}>{cfg.count} {label.toLowerCase()}</div>
                   </Field>
-                  <Field label="Due Date">
-                    <div style={{display:"flex",gap:6}}>
-                      <button type="button" onClick={()=>sk(kind,"due_mode","auto")} style={{flex:1,padding:"8px 6px",borderRadius:8,border:`1.5px solid ${cfg.due_mode!=="manual"?"var(--accent)":"var(--border2)"}`,background:cfg.due_mode!=="manual"?"var(--accent)18":"var(--surface)",fontWeight:700,fontSize:11.5,color:cfg.due_mode!=="manual"?"var(--accent)":"var(--text2)",cursor:"pointer"}}>Auto</button>
-                      <button type="button" onClick={()=>sk(kind,"due_mode","manual")} style={{flex:1,padding:"8px 6px",borderRadius:8,border:`1.5px solid ${cfg.due_mode==="manual"?"var(--accent)":"var(--border2)"}`,background:cfg.due_mode==="manual"?"var(--accent)18":"var(--surface)",fontWeight:700,fontSize:11.5,color:cfg.due_mode==="manual"?"var(--accent)":"var(--text2)",cursor:"pointer"}}>Pick date</button>
-                    </div>
-                  </Field>
-                  {cfg.due_mode==="manual" && (
-                    <Field label="Due Date">
-                      <input type="date" value={cfg.manual_due_date} onChange={e=>sk(kind,"manual_due_date",e.target.value)} style={inputSt}/>
-                    </Field>
-                  )}
-                  {cfg.due_mode==="manual" && (
-                    <Field label="Due Time">
-                      <input type="time" value={cfg.manual_due_time} onChange={e=>sk(kind,"manual_due_time",e.target.value)} style={inputSt}/>
-                    </Field>
-                  )}
                 </div>
-                {cfg.count>0 && cfg.assigned_to && (()=>{
-                  const due = kindDueDate(kind);
-                  if(!due || !due.dates?.length) return (
-                    <div style={{fontSize:11.5,padding:"8px 10px",borderRadius:8,background:"#f59e0b18",border:"1px solid #f59e0b55",color:"#b45309"}}>
-                      No free slot found for this teammate — try a different assignee.
-                    </div>
-                  );
-                  const first = due.dates[0], last = due.dates[due.dates.length-1];
-                  return (
-                    <div style={{fontSize:11.5,padding:"8px 10px",borderRadius:8,
-                      background:due.conflict?"#f59e0b18":"#10b98118",
-                      border:`1px solid ${due.conflict?"#f59e0b55":"#10b98155"}`,
-                      color:due.conflict?"#b45309":"#059669"}}>
-                      {due.conflict
-                        ? `Not free on ${fmtDate(due.requestedEnd)}${cfg.manual_due_time?` at ${cfg.manual_due_time}`:""} — pushed to this teammate's next free day(s): ${fmtDate(first)}${first!==last?` → ${fmtDate(last)}`:""}.`
-                        : first===last
-                        ? `Due ${fmtDate(first)}${cfg.due_mode==="manual"&&cfg.manual_due_time?` at ${cfg.manual_due_time}`:""} — this teammate has room for all ${cfg.count} ${label.toLowerCase()} then.`
-                        : `Spread across this teammate's free days: ${fmtDate(first)} → ${fmtDate(last)}.`}
-                    </div>
-                  );
-                })()}
-                {cfg.count>0 && !cfg.assigned_to && (
-                  <p style={{fontSize:11,color:"var(--text3)"}}>Assign someone to see their availability and due dates.</p>
-                )}
-                {kind==="grid_layout" ? (
-                  <Field label="Platforms">
-                    <div style={{display:"flex",alignItems:"center",gap:5,padding:"6px 12px",borderRadius:99,fontSize:11.5,fontWeight:700,border:`1.5px solid ${PLT_COLOR.instagram}`,background:PLT_COLOR.instagram+"22",color:PLT_COLOR.instagram,width:"fit-content"}}>
-                      <Ico d={Icons.check} size={10} stroke={PLT_COLOR.instagram}/> Instagram — always, not togglable
-                    </div>
-                  </Field>
-                ) : (
                 <Field label="Platforms" required={cfg.count>0}>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                     {PLATFORMS.map(p=>(
@@ -8715,8 +9831,6 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                     ))}
                   </div>
                 </Field>
-                )}
-                {kind!=="grid_layout" && (
                 <div style={{display:"flex",flexDirection:"column",gap:10}}>
                   <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>
                     {label} Groups <span style={{fontWeight:400,textTransform:"none"}}>— split into more than one if different posts need different briefs</span>
@@ -8750,6 +9864,54 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                             </button>
                           </div>
                         </div>
+                        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                          <Field label="Assign To">
+                            <select value={batch.assigned_to} onChange={e=>skBatch(kind,bi,"assigned_to",e.target.value)} style={inputSt}>
+                              <option value="">— Unassigned —</option>
+                              {eligibleAssignees(startStage,team).map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
+                            </select>
+                          </Field>
+                          <Field label="Due Date">
+                            <div style={{display:"flex",gap:6}}>
+                              <button type="button" onClick={()=>skBatch(kind,bi,"due_mode","auto")} style={{flex:1,padding:"8px 6px",borderRadius:8,border:`1.5px solid ${batch.due_mode!=="manual"?"var(--accent)":"var(--border2)"}`,background:batch.due_mode!=="manual"?"var(--accent)18":"var(--surface)",fontWeight:700,fontSize:11.5,color:batch.due_mode!=="manual"?"var(--accent)":"var(--text2)",cursor:"pointer"}}>Auto</button>
+                              <button type="button" onClick={()=>skBatch(kind,bi,"due_mode","manual")} style={{flex:1,padding:"8px 6px",borderRadius:8,border:`1.5px solid ${batch.due_mode==="manual"?"var(--accent)":"var(--border2)"}`,background:batch.due_mode==="manual"?"var(--accent)18":"var(--surface)",fontWeight:700,fontSize:11.5,color:batch.due_mode==="manual"?"var(--accent)":"var(--text2)",cursor:"pointer"}}>Pick date</button>
+                            </div>
+                          </Field>
+                          {batch.due_mode==="manual" && (
+                            <Field label="Due Date">
+                              <input type="date" value={batch.manual_due_date} onChange={e=>skBatch(kind,bi,"manual_due_date",e.target.value)} style={inputSt}/>
+                            </Field>
+                          )}
+                          {batch.due_mode==="manual" && (
+                            <Field label="Due Time">
+                              <input type="time" value={batch.manual_due_time} onChange={e=>skBatch(kind,bi,"manual_due_time",e.target.value)} style={inputSt}/>
+                            </Field>
+                          )}
+                        </div>
+                        {batch.count>0 && batch.assigned_to && (()=>{
+                          const due = batchDueDate(kind,bi);
+                          if(!due || !due.dates?.length) return (
+                            <div style={{fontSize:11.5,padding:"8px 10px",borderRadius:8,background:"#f59e0b18",border:"1px solid #f59e0b55",color:"#b45309"}}>
+                              No free slot found for this teammate — try a different assignee.
+                            </div>
+                          );
+                          const first = due.dates[0], last = due.dates[due.dates.length-1];
+                          return (
+                            <div style={{fontSize:11.5,padding:"8px 10px",borderRadius:8,
+                              background:due.conflict?"#f59e0b18":"#10b98118",
+                              border:`1px solid ${due.conflict?"#f59e0b55":"#10b98155"}`,
+                              color:due.conflict?"#b45309":"#059669"}}>
+                              {due.conflict
+                                ? `Not free on ${fmtDate(due.requestedEnd)}${batch.manual_due_time?` at ${batch.manual_due_time}`:""} — pushed to this teammate's next free day(s): ${fmtDate(first)}${first!==last?` → ${fmtDate(last)}`:""}.`
+                                : first===last
+                                ? `Due ${fmtDate(first)}${batch.due_mode==="manual"&&batch.manual_due_time?` at ${batch.manual_due_time}`:""} — this teammate has room for all ${batch.count} then.`
+                                : `Spread across this teammate's free days: ${fmtDate(first)} → ${fmtDate(last)}.`}
+                            </div>
+                          );
+                        })()}
+                        {batch.count>0 && !batch.assigned_to && (
+                          <p style={{fontSize:11,color:"var(--text3)"}}>Assign someone to see their availability and due dates.</p>
+                        )}
                       </div>
                     );
                   })}
@@ -8757,7 +9919,6 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                     + Add another brief group
                   </button>
                 </div>
-                )}
                 </>)}
               </div>
             );
@@ -8846,7 +10007,7 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
                       {task.caption&&<p style={{fontSize:11,color:"var(--text3)",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:340}}>{task.caption}</p>}
                     </div>
                     <span style={{display:"flex",alignItems:"center",gap:5}}>
-                      <PChip platform={task.platform} xs/>
+                      {(task.platforms?.length?task.platforms:[task.platform]).map(p=><PChip key={p} platform={p} xs/>)}
                       {(task.post_type==="article"||task.post_type==="story")&&(
                         <span style={{fontSize:9,fontWeight:800,textTransform:"uppercase",padding:"2px 6px",borderRadius:99,background:"var(--surface)",border:"1px solid var(--border2)",color:"var(--text3)"}}>{task.post_type}</span>
                       )}
@@ -8917,6 +10078,19 @@ Return ONLY valid JSON (no markdown): {"title":"...","caption":"...","hashtags":
         </div>
       )}
     </Modal>
+    {confirmClose && (
+      <div onClick={()=>setConfirmClose(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1300,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+        <div onClick={e=>e.stopPropagation()} style={{background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:"var(--r)",padding:22,width:340,display:"flex",flexDirection:"column",gap:14}}>
+          <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:15,fontWeight:800}}>Discard this calendar plan?</h3>
+          <p style={{fontSize:13,color:"var(--text2)"}}>You've started filling this out — closing now will lose the campaign name, dates, and briefs you've entered.</p>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setConfirmClose(false)} style={{flex:1,padding:"9px 0",borderRadius:8,border:"1px solid var(--border2)",background:"var(--surface2)",color:"var(--text)",fontSize:13,fontWeight:600,cursor:"pointer"}}>Keep editing</button>
+            <button onClick={discardAndClose} style={{flex:1,padding:"9px 0",borderRadius:8,border:"1px solid #ef444455",background:"#ef444422",color:"#ef4444",fontSize:13,fontWeight:700,cursor:"pointer"}}>Discard</button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
 
@@ -9164,7 +10338,7 @@ function HRDashboard({team,perfLogs,currentUser,setPage}) {
   );
 }
 
-function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAddTask,onCreateInvoice,onAddProject,onOpenPost,onMarkNotifRead,onSaveInsights}) {
+function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAddTask,onCreateInvoice,onAddProject,onOpenPost,onMarkNotifRead,onSaveInsights,onDecideLeaveRequest,appSettings}) {
   if(currentUser?.role==="hr") return <HRDashboard team={data.team} perfLogs={data.perfLogs||[]} currentUser={currentUser} setPage={setPage}/>;
   const {posts,projects,clients,team,timelogs,notifications} = data;
   const perfLogs = data.perfLogs||[];
@@ -9189,6 +10363,43 @@ function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAdd
   // team rows here instead, same pattern used on System Log's Live Now.
   const [liveTeam,setLiveTeam] = useState(team);
   const [liveClock,setLiveClock] = useState(Date.now());
+  // Same paid-so-far convention as Finance > Overview's ledger — an
+  // unsettled outstanding expense (Fawry installment, pending payroll, etc.)
+  // should still count whatever's actually been paid against it toward the
+  // Balance/This-Month-Out figures here, instead of being excluded entirely,
+  // which used to make this widget's numbers disagree with Finance's.
+  const [outstandingPayments,setOutstandingPayments] = useState([]);
+  useEffect(()=>{
+    if(!isAdmin) return;
+    qe("OutstandingPayment", {}, "-date", 2000).then(res=>setOutstandingPayments(res.entities||[])).catch(()=>{});
+  },[isAdmin]);
+  // ai-outage-notify.php sets app_settings.ai_outage_status the moment an
+  // Anthropic/OpenAI call fails for a billing/quota reason, and clears it
+  // the moment that provider next succeeds — poll it here (admin only) so
+  // this banner reflects the CURRENT state instead of whatever appSettings
+  // happened to be at page load, minutes or hours before an outage started
+  // or got resolved.
+  const [aiOutageStatus,setAiOutageStatus] = useState(()=>{
+    const raw = appSettings?.ai_outage_status;
+    return (raw && typeof raw==="object") ? raw : parseJ(raw||"{}");
+  });
+  useEffect(()=>{
+    if(!isAdmin) return;
+    let cancelled = false;
+    const poll = async () => {
+      if(document.visibilityState!=="visible") return;
+      const res = await qe("AppSettings",{},null,1).catch(()=>null);
+      const row = res?.entities?.[0];
+      if(!row || cancelled) return;
+      const raw = row.ai_outage_status;
+      setAiOutageStatus((raw && typeof raw==="object") ? raw : parseJ(raw||"{}"));
+    };
+    poll();
+    const t = setInterval(poll, 60000);
+    return ()=>{ cancelled=true; clearInterval(t); };
+  },[isAdmin]);
+  const aiOutageProviders = Object.keys(aiOutageStatus||{});
+  const AI_BILLING_LINKS = { Anthropic: "https://console.anthropic.com/settings/billing", OpenAI: "https://platform.openai.com/settings/organization/billing/overview" };
   useEffect(()=>{
     if(!isAdmin) return;
     let cancelled = false;
@@ -9236,7 +10447,7 @@ function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAdd
   // dashboard scoped to their own work instead of whole-agency aggregates —
   // admin and account managers still see everything.
   const isManager = ["admin","account_manager"].includes(currentUser?.role);
-  const visibleTeam = (team||[]).filter(m=>!["hr","accountant","office_boy"].includes(m.role));
+  const visibleTeam = (team||[]).filter(m=>!["hr","accountant","office_boy"].includes(m.role) && m.status==="active");
   const myPosts = filteredPosts.filter(p=>wasOwnerOf(p, currentUser?.email, currentUser?.role));
   const myPerf = perf.find(p=>p.email===currentUser?.email) || {};
 
@@ -9323,6 +10534,32 @@ No markdown, no explanation.`;
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20}} className="fade-in">
 
+      {/* ── AI OUTAGE WARNING — set by ai-outage-notify.php the moment an
+          Anthropic/OpenAI call fails for a billing/quota reason, cleared
+          automatically the next time that provider succeeds. ── */}
+      {isAdmin && aiOutageProviders.length>0 && (
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {aiOutageProviders.map(provider=>{
+            const info = aiOutageStatus[provider]||{};
+            return (
+              <div key={provider} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",padding:"12px 16px",background:"#ef444414",border:"1px solid #ef444444",borderRadius:"var(--r)"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
+                  <span style={{fontSize:18}}>⚠️</span>
+                  <div style={{minWidth:0}}>
+                    <p style={{fontSize:13,fontWeight:700,color:"#ef4444"}}>{provider} is out of credit — AI features are down</p>
+                    <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{info.message||"Billing/quota error"}{info.detected_at?` · since ${new Date(info.detected_at).toLocaleString()}`:""}</p>
+                  </div>
+                </div>
+                <a href={AI_BILLING_LINKS[provider]||"#"} target="_blank" rel="noopener noreferrer"
+                  style={{flexShrink:0,fontSize:12,fontWeight:700,padding:"8px 14px",borderRadius:8,background:"#ef4444",color:"#fff",whiteSpace:"nowrap"}}>
+                  Add Credit →
+                </a>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* ── HEADER ── */}
       <div style={{display:"flex",flexDirection:"column",gap:12}}>
         <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
@@ -9365,6 +10602,48 @@ No markdown, no explanation.`;
       {/* ════ OVERVIEW TAB ════ */}
       {(tab==="overview"||!isAdmin)&&(
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
+          {/* A vacation/WFH/personal-leave request used to only ever surface
+              via the manager's WhatsApp/email/notification-bell ping and
+              Team → Leave & WFH (buried a few clicks deep) — nothing put it
+              in front of them where they actually work every day. Shows
+              only requests where THIS person is the direct manager (or all
+              of them for admin, matching the existing Team-page behavior),
+              so it isn't noise for anyone else. */}
+          {(()=>{
+            const me = (team||[]).find(m=>m.email===currentUser?.email);
+            const myPending = (data.leaveRequests||[]).filter(r=>{
+              if(r.status!=="pending") return false;
+              if(isAdmin) return true;
+              const requester = (team||[]).find(m=>m.id===r.team_member_id);
+              return !!(me && requester?.manager_id===me.id);
+            });
+            if(!myPending.length) return null;
+            const typeLabel = t => t==="vacation"?"Vacation":t==="personal_leave"?"Personal Leave":"WFH";
+            return (
+              <div style={{background:"var(--surface)",border:"1px solid #f59e0b44",borderRadius:"var(--r)",overflow:"hidden"}}>
+                <div style={{padding:"12px 16px",background:"#f59e0b11",borderBottom:"1px solid var(--border)",display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:16}}>🗓️</span>
+                  <p style={{fontSize:13,fontWeight:700}}>{myPending.length} leave/WFH request{myPending.length!==1?"s":""} awaiting your decision</p>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:10,padding:14}}>
+                  {myPending.map(r=>(
+                    <div key={r.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 12px",background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <p style={{fontSize:13,fontWeight:600}}>{r.member_name} — {typeLabel(r.type)}</p>
+                        <p style={{fontSize:12,color:"var(--text2)"}}>{r.start_date===r.end_date?r.start_date:`${r.start_date} → ${r.end_date}`} · {r.type==="personal_leave"?`${r.start_time&&r.end_time?`${r.start_time.slice(0,5)}–${r.end_time.slice(0,5)} · `:""}${r.hours}h`:`${r.days} day(s)`}</p>
+                        {r.reason&&<p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>"{r.reason}"</p>}
+                      </div>
+                      <div style={{display:"flex",gap:6,flexShrink:0}}>
+                        <button onClick={()=>onDecideLeaveRequest&&onDecideLeaveRequest(r,"approve")} style={{background:"#10b981",color:"#fff",border:"none",borderRadius:7,padding:"6px 14px",cursor:"pointer",fontWeight:600,fontSize:12}}>Approve</button>
+                        <button onClick={()=>onDecideLeaveRequest&&onDecideLeaveRequest(r,"reject")} style={{background:"#ef444422",color:"#ef4444",border:"none",borderRadius:7,padding:"6px 14px",cursor:"pointer",fontWeight:600,fontSize:12}}>Reject</button>
+                        <button onClick={()=>setPage&&setPage("team")} style={{background:"var(--surface)",color:"var(--text2)",border:"1px solid var(--border2)",borderRadius:7,padding:"6px 12px",cursor:"pointer",fontWeight:600,fontSize:12}}>View</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           {/* KPI Cards */}
           {isMobile ? (
             <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6}}>
@@ -9406,10 +10685,17 @@ No markdown, no explanation.`;
           {isAdmin&&(invoices.length>0||payments.length>0||(data.expenses||[]).length>0||subscriptions.length>0)&&(()=>{
             const num = v => { const n = Number(v); return isNaN(n) ? 0 : n; };
             const expenses = data.expenses||[];
+            const paidSoFarByExpense = {};
+            outstandingPayments.forEach(p=>{ paidSoFarByExpense[p.expense_id] = (paidSoFarByExpense[p.expense_id]||0) + Number(p.amount||0); });
+            const countableAmount = e => {
+              if(!isUnsettledOutstanding(e)) return num(e.amount);
+              const total = Number(e.outstanding_total_payable ?? e.amount);
+              return Math.min(paidSoFarByExpense[e.id]||0, total);
+            };
             const totalIn = payments.reduce((a,p)=>a+num(p.amount),0)
               + subscriptionPayments.reduce((a,p)=>a+num(p.amount),0)
-              + expenses.filter(e=>(e.type||"out")!=="out"&&!isUnsettledOutstanding(e)).reduce((a,e)=>a+num(e.amount),0);
-            const totalOut = expenses.filter(e=>(e.type||"out")==="out"&&!isUnsettledOutstanding(e)).reduce((a,e)=>a+num(e.amount),0);
+              + expenses.filter(e=>(e.type||"out")!=="out").reduce((a,e)=>a+countableAmount(e),0);
+            const totalOut = expenses.filter(e=>(e.type||"out")==="out").reduce((a,e)=>a+countableAmount(e),0);
             const balance = totalIn-totalOut;
             const unpaidInvoices=invoices.filter(i=>i.status!=="paid");
             const invoicesOutstanding=unpaidInvoices.reduce((a,i)=>a+(i.balance_due||0),0);
@@ -9417,8 +10703,16 @@ No markdown, no explanation.`;
             // (to team members, Fawry installments, etc.) — an expense with
             // outstanding_kind set that isn't settled yet — not unpaid client
             // invoices. Match that definition here so the two numbers agree.
+            // Also match Finance's outstandingRemainingFor: the REMAINING
+            // unpaid portion, not the full original total — a Fawry plan
+            // with 2 of 3 installments already paid should only count the
+            // last installment here, same as Finance > Overview does.
             const owedExpenses=expenses.filter(isUnsettledOutstanding);
-            const owedOutstanding=owedExpenses.reduce((a,e)=>a+num(e.outstanding_total_payable??e.amount),0);
+            const owedOutstanding=owedExpenses.reduce((a,e)=>{
+              const total = Number(e.outstanding_total_payable??e.amount);
+              const paid = Math.min(paidSoFarByExpense[e.id]||0, total);
+              return a+Math.max(0, total-paid);
+            },0);
             const outstanding=invoicesOutstanding+owedOutstanding;
             const overdueCount=invoices.filter(i=>isOverdueInvoice(i)&&i.status!=="paid").length;
             const activeSubs=subscriptions.filter(s=>s.status==="active");
@@ -9433,10 +10727,20 @@ No markdown, no explanation.`;
             const now=new Date();
             const monthStart=new Date(now.getFullYear(),now.getMonth(),1);
             const inMonth=d=>{ const dt=new Date(d); return dt>=monthStart&&dt<=now; };
+            // An outstanding payment counts toward the month it was actually
+            // PAID, not the month the original transaction was dated —
+            // otherwise settling an old installment this month wouldn't show
+            // up here at all. Matches Finance > Overview's logic exactly.
+            const outstandingTypeById = {};
+            expenses.forEach(e=>{ if(e.outstanding_kind) outstandingTypeById[e.id] = e.type||"out"; });
+            const monthOutstandingIn = outstandingPayments.filter(p=>inMonth(p.date)&&outstandingTypeById[p.expense_id]==="in").reduce((a,p)=>a+num(p.amount),0);
+            const monthOutstandingOut = outstandingPayments.filter(p=>inMonth(p.date)&&outstandingTypeById[p.expense_id]==="out").reduce((a,p)=>a+num(p.amount),0);
             const monthIn = payments.filter(p=>inMonth(p.payment_date)).reduce((a,p)=>a+num(p.amount),0)
               + subscriptionPayments.filter(p=>inMonth(p.payment_date)).reduce((a,p)=>a+num(p.amount),0)
-              + expenses.filter(e=>(e.type||"out")!=="out"&&!isUnsettledOutstanding(e)&&inMonth(e.date)).reduce((a,e)=>a+num(e.amount),0);
-            const monthOut = expenses.filter(e=>(e.type||"out")==="out"&&!isUnsettledOutstanding(e)&&inMonth(e.date)).reduce((a,e)=>a+num(e.amount),0);
+              + expenses.filter(e=>(e.type||"out")!=="out"&&!e.outstanding_kind&&inMonth(e.date)).reduce((a,e)=>a+num(e.amount),0)
+              + monthOutstandingIn;
+            const monthOut = expenses.filter(e=>(e.type||"out")==="out"&&!e.outstanding_kind&&inMonth(e.date)).reduce((a,e)=>a+num(e.amount),0)
+              + monthOutstandingOut;
             return (
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -9996,7 +11300,7 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
         <div style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"var(--text3)"}}><Ico d={Icons.search} size={15}/></div>
         <input value={search} onChange={e=>setSearch(e.target.value)} aria-label="Search clients" placeholder="Search clients…" style={{...inputSt,paddingLeft:36}}/>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:10}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,320px))",gap:10}}>
         {filtered.map(client=>{
           const isHidden = client.status==="hidden";
           const cProjects = projects.filter(p=>p.client_id===client.id||p.client_name===client.name);
@@ -10029,7 +11333,7 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
                   </button>
                 )}
               </div>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
                   {(client.platforms||[]).slice(0,4).map(p=>(
                     <span key={p} style={{fontSize:9,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",color:"var(--text3)",background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:6,padding:"2px 6px"}}>
@@ -10037,7 +11341,7 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
                     </span>
                   ))}
                 </div>
-                <p style={{fontSize:11,color:"var(--text3)",whiteSpace:"nowrap",flexShrink:0}}>
+                <p style={{fontSize:11,color:"var(--text3)",whiteSpace:"nowrap"}}>
                   <b style={{color:"var(--text)"}}>{cProjects.length}</b> proj · <b style={{color:"var(--text)"}}>{cPosts.length}</b> posts · <b style={{color:"var(--text)"}}>{cPosts.filter(p=>p.stage==="published").length}</b> pub
                 </p>
               </div>
@@ -10090,9 +11394,9 @@ function SkillPill({skill}) {
   const conf = skill.confidence||0;
   const confColor = conf>=90?"#10b981":conf>=75?"#f59e0b":"#ef4444";
   return (
-    <div style={{padding:"10px 14px",background:cat.color+"11",border:`1px solid ${cat.color}33`,borderRadius:"var(--rs)",minWidth:150,flex:"1 1 150px"}}>
-      <div style={{display:"flex",justifyContent:"space-between",gap:6}}>
-        <span style={{fontSize:12,fontWeight:700,color:cat.color}}>{skill.name}</span>
+    <div style={{padding:"10px 14px",background:cat.color+"11",border:`1px solid ${cat.color}33`,borderRadius:"var(--rs)",minWidth:0}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:6}}>
+        <span style={{fontSize:12,fontWeight:700,color:cat.color,minWidth:0}}>{skill.name}</span>
         <span style={{fontSize:11,fontWeight:800,color:confColor,flexShrink:0}}>{conf}%</span>
       </div>
       <ConfidenceBar value={conf} color={confColor}/>
@@ -10471,6 +11775,7 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
   const [ePrefs,setEPrefs] = useState("");
   const [eKeywords,setEKeywords] = useState("");
   const [ePriorities,setEPriorities] = useState("");
+  const [eGeneralInfo,setEGeneralInfo] = useState("");
   const fileRef = useRef(null);
   const isPriv = ["admin","account_manager"].includes(currentUser?.role);
 
@@ -10486,6 +11791,7 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
       setEPrefs(knowledge.content_preferences||"");
       setEKeywords(parseJ(knowledge.keywords).join(", "));
       setEPriorities(parseJ(knowledge.priorities).join("\n"));
+      setEGeneralInfo(knowledge.general_info||"");
     }
   },[editing,knowledge]);
 
@@ -10499,7 +11805,12 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
   const handleUpload = async () => {
     if(!docText.trim()||!docName.trim()) return;
     setUploading(true);
-    await onUploadDoc({client_id:client.id,client_name:client.name,name:docName,doc_type:docType,content:docText.slice(0,8000),char_count:docText.length,uploaded_by:currentUser?.email});
+    // Used to cap stored content at 8000 chars — for a long ChatGPT export
+    // (easily 500K+ characters) that silently discarded the vast majority
+    // of the conversation forever at the moment of upload, long before any
+    // AI analysis or search could ever see it. content_documents.content
+    // is now MEDIUMTEXT (16MB cap), so store the whole thing.
+    await onUploadDoc({client_id:client.id,client_name:client.name,name:docName,doc_type:docType,content:docText,char_count:docText.length,uploaded_by:currentUser?.email});
     setDocName(""); setDocText(""); setUploading(false); setSub("profile");
   };
 
@@ -10510,6 +11821,7 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
       summary:eSummary,tone:eTone,content_preferences:ePrefs,
       keywords:JSON.stringify(eKeywords.split(",").map(s=>s.trim()).filter(Boolean)),
       priorities:JSON.stringify(ePriorities.split("\n").map(s=>s.trim()).filter(Boolean)),
+      general_info:eGeneralInfo,
     });
     setSaving(false); setEditing(false);
   };
@@ -10525,7 +11837,29 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
       if(r.action_items) parts.push(`Action items: ${r.action_items}`);
       return parts.join("\n");
     }).join("\n\n---\n\n");
-    const docFacts = (documents||[]).map(d=>d.content||"").filter(Boolean).slice(0,3).join("\n\n").slice(0,2000);
+    // Was capped at 2000 chars — harmless when docs were themselves capped
+    // at 8000, but now that full documents (500K+ chars) are stored, this
+    // silently fed the AI almost nothing from a real upload. But 700,000
+    // chars (~150K+ tokens) went too far the other way: stuffing that much
+    // into the prompt left almost no room in the context window for the
+    // actual JSON response, so it got cut off a sentence into "summary"
+    // every time, regardless of the max_tokens value passed to ai(). This
+    // only needs enough of each document for a brand profile, not the
+    // entire raw file — 60K chars (~15K tokens) per doc is generous for
+    // that while leaving the model plenty of room to actually finish
+    // writing the response.
+    const docFacts = (documents||[]).map(d=>(d.content||"").slice(0,60000)).filter(Boolean).slice(0,3).join("\n\n");
+    // With genuinely nothing to work from, Claude tends to deviate from
+    // the "return ONLY JSON" instruction and explain it can't do this
+    // instead — which the regex below can't parse, surfacing as an opaque
+    // "No JSON returned" with no clue why. Catch that case upfront with a
+    // real, actionable message instead of hitting the AI with an empty
+    // prompt and hoping.
+    if(!memFacts && !reportFacts && !pubPosts && !docFacts) {
+      alert("Nothing to generate from yet — this client has no saved memory, contact reports, published captions, or uploaded documents. Add at least one of those first (or use Upload → paste a ChatGPT chat/brief) so there's real data to build a profile from.");
+      setGenerating(false);
+      return;
+    }
     const prompt = `You are a senior brand strategist. Analyze ALL available data for the client "${client.name}" and produce a comprehensive, accurate brand knowledge profile.
 
 === MEMORY / SAVED BRAND FACTS ===
@@ -10543,16 +11877,42 @@ ${docFacts || "None uploaded"}
 Based on ALL of the above, return ONLY valid JSON with these exact keys:
 {
   "summary": "3-4 sentence brand overview covering who they are, what they sell/offer, and their positioning",
-  "tone": "comma-separated tone descriptors that define their content voice (e.g. fun, energetic, warm, professional)",
+  "tone": "detailed, actionable writing-voice guide for this client — not just adjectives. Cover: formality level, sentence length/rhythm, language mix (e.g. Arabic/English usage), emoji/punctuation habits, words or phrases they consistently use or avoid, and 1-2 short example phrases pulled directly from the data above if any real captions/copy appear. Write it as instructions a copywriter could follow.",
   "content_preferences": "describe what content formats/themes work for them — what the client likes, what gets good engagement",
   "keywords": ["5-10 brand keywords and hashtag topics"],
-  "priorities": ["3-5 strategic content priorities for this client"]
+  "priorities": ["3-5 strategic content priorities for this client"],
+  "general_info": "any contacts, locations/branches, addresses, phone numbers, hours, or other general company facts mentioned in the data above — plain text, one fact per line. Empty string if none found."
 }`;
     try {
-      const raw = await ai(prompt, 800);
+      // 800 was too tight — a full summary+tone+content_preferences+
+      // keywords+priorities response for a client with real data
+      // regularly got cut off mid-sentence before the closing brace,
+      // which the regex below correctly refuses to treat as valid JSON
+      // (an incomplete object isn't one) — surfacing as an opaque "No
+      // JSON returned" that was actually "JSON never finished".
+      const raw = await ai(prompt, 4096);
       const m = raw.match(/\{[\s\S]*\}/);
-      if(!m) throw new Error("No JSON returned");
-      const parsed = JSON.parse(m[0]);
+      let parsed;
+      if (m) {
+        parsed = JSON.parse(m[0]);
+      } else {
+        // Still no closing brace even at the raised token budget — rather
+        // than hard-fail and lose everything the model already wrote,
+        // salvage whatever complete "key": value pairs came through before
+        // the cutoff by trimming back to the last complete field and
+        // closing the object there. Partial-but-real beats nothing.
+        const start = raw.indexOf("{");
+        if (start < 0) throw new Error("No JSON returned — AI said: " + (raw.slice(0,400)||"(empty response)"));
+        let repaired = null;
+        const body = raw.slice(start);
+        for (let i = body.length - 1; i > 0 && !repaired; i--) {
+          if (body[i] === ",") {
+            try { repaired = JSON.parse(body.slice(0, i) + "}"); } catch(e) {}
+          }
+        }
+        if (!repaired) throw new Error("AI response was cut off before any complete field — AI said: " + (raw.slice(0,400)||"(empty response)"));
+        parsed = repaired;
+      }
       await onSaveKnowledge({
         ...(knowledge||{}), client_id:client.id, client_name:client.name,
         summary: parsed.summary||"",
@@ -10560,6 +11920,7 @@ Based on ALL of the above, return ONLY valid JSON with these exact keys:
         content_preferences: parsed.content_preferences||"",
         keywords: JSON.stringify(Array.isArray(parsed.keywords)?parsed.keywords:[]),
         priorities: JSON.stringify(Array.isArray(parsed.priorities)?parsed.priorities:[]),
+        general_info: parsed.general_info||"",
         last_analyzed: new Date().toISOString(),
         analyzed_by: currentUser?.email||"auto",
         version: (knowledge?.version||0)+1,
@@ -10626,9 +11987,11 @@ Based on ALL of the above, return ONLY valid JSON with these exact keys:
               {/* Skills */}
               <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:18}}>
                 <p style={{fontSize:11,fontWeight:800,color:"var(--accent)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:12}}>Extracted Skills</p>
-                <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-                  {skills.length>0?skills.map((s,i)=><SkillPill key={i} skill={s}/>):<p style={{color:"var(--text3)",fontSize:13}}>No skills extracted yet</p>}
-                </div>
+                {skills.length>0?(
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(200px,100%),1fr))",gap:10}}>
+                    {skills.map((s,i)=><SkillPill key={i} skill={s}/>)}
+                  </div>
+                ):<p style={{color:"var(--text3)",fontSize:13}}>No skills extracted yet</p>}
               </div>
 
               {/* Edit form */}
@@ -10642,6 +12005,7 @@ Based on ALL of the above, return ONLY valid JSON with these exact keys:
                   </div>
                   <Field label="Keywords (comma-separated)"><input value={eKeywords} onChange={e=>setEKeywords(e.target.value)} style={inputSt}/></Field>
                   <Field label="Priorities (one per line)"><textarea value={ePriorities} onChange={e=>setEPriorities(e.target.value)} rows={3} style={inputSt}/></Field>
+                  <Field label="General Info (contacts, locations, branches, addresses)"><textarea value={eGeneralInfo} onChange={e=>setEGeneralInfo(e.target.value)} rows={4} style={inputSt}/></Field>
                   <Btn onClick={handleSave} disabled={saving}>{saving?<><Spinner size={14}/> Saving…</>:<><Ico d={Icons.check} size={14}/> Save Changes</>}</Btn>
                 </div>
               ):(
@@ -10673,6 +12037,12 @@ Based on ALL of the above, return ONLY valid JSON with these exact keys:
                       </div>
                     ))}
                   </div>
+                  {knowledge.general_info&&(
+                    <div style={{padding:14,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)"}}>
+                      <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>General Info (contacts, locations, branches, addresses)</p>
+                      <p style={{fontSize:13,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{knowledge.general_info}</p>
+                    </div>
+                  )}
                   {knowledge.industry_context&&(
                     <div style={{gridColumn:"1/-1",padding:12,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
                       <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:5}}>Industry Context</p>
@@ -10740,7 +12110,7 @@ Based on ALL of the above, return ONLY valid JSON with these exact keys:
                     <p style={{fontWeight:600,fontSize:13}}>{doc.name}</p>
                     <p style={{fontSize:11,color:"var(--text3)"}}>{doc.doc_type} · {doc.char_count||0} chars · {fmtDate(doc.created_date)}</p>
                   </div>
-                  {doc.analyzed&&<Badge label="Analyzed" color="#10b981" xs/>}
+                  {!!doc.analyzed&&<Badge label="Analyzed" color="#10b981" xs/>}
                 </div>
               ))}
             </div>
@@ -10916,7 +12286,15 @@ function ClientMemoryTab({client, clientMemory=[], onUpsert, onDelete, currentUs
 }
 
 function EditClientPage({client,onBack,onSave,canDelete,onRequestDelete,team=[]}) {
-  const [f,setF] = useState({name:client.name||"",username:client.username||"",contact_title:client.contact_title||"",email:client.email||"",phone:client.phone||"",website:client.website||"",social:{instagram:"",facebook:"",tiktok:"",linkedin:"",...((client.social_links && typeof client.social_links==="object") ? client.social_links : (parseJ(client.social_links,{})||{}))},industry:client.industry||"",status:client.status||"active",platforms:client.platforms||[],portal_password:client.portal_password||"",account_manager_ids:getAccountManagerIds(client),logo_url:client.logo_url||"",allowed_task_types:client.allowed_task_types?.length?client.allowed_task_types:TASK_TYPES.map(t=>t.id)});
+  const [f,setF] = useState({name:client.name||"",username:client.username||"",contact_title:client.contact_title||"",email:client.email||"",phone:client.phone||"",website:client.website||"",whatsapp_group_link:client.whatsapp_group_link||"",social:{instagram:"",facebook:"",tiktok:"",linkedin:"",...((client.social_links && typeof client.social_links==="object") ? client.social_links : (parseJ(client.social_links,{})||{}))},industry:client.industry||"",status:client.status||"active",platforms:client.platforms||[],portal_password:client.portal_password||"",account_manager_ids:getAccountManagerIds(client),logo_url:client.logo_url||"",allowed_task_types:client.allowed_task_types?.length?client.allowed_task_types:TASK_TYPES.map(t=>t.id),has_sectors:!!client.has_sectors,sectors:Array.isArray(client.sectors)?client.sectors:parseJ(client.sectors||"[]")});
+  const [sectorInput,setSectorInput] = useState("");
+  const addSector = () => {
+    const v = sectorInput.trim();
+    if(!v || f.sectors.includes(v)) { setSectorInput(""); return; }
+    setF(x=>({...x,sectors:[...x.sectors,v]}));
+    setSectorInput("");
+  };
+  const removeSector = (s) => setF(x=>({...x,sectors:x.sectors.filter(v=>v!==s)}));
   const sSocial = (k,v) => setF(x=>({...x,social:{...x.social,[k]:v}}));
   const toggleTaskType = id => setF(x=>({...x,allowed_task_types:x.allowed_task_types.includes(id)?x.allowed_task_types.filter(v=>v!==id):[...x.allowed_task_types,id]}));
   const [showPw,setShowPw] = useState(false);
@@ -10965,6 +12343,16 @@ function EditClientPage({client,onBack,onSave,canDelete,onRequestDelete,team=[]}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <Field label="Email"><input value={f.email||""} onChange={e=>setF(x=>({...x,email:e.target.value}))} style={inputSt} type="email"/></Field>
           <Field label="Phone"><input value={f.phone||""} onChange={e=>setF(x=>({...x,phone:e.target.value}))} style={inputSt}/></Field>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          {/* Used by the Client Approval preview link's "Send via WhatsApp"
+              button (PostDetail) — WhatsApp invite links can't receive a
+              pre-filled message programmatically, so that button opens this
+              group chat and a share sheet with the approval message
+              pre-filled, for the AM to paste in manually. */}
+          <Field label="WhatsApp Group Link" hint="Client's WhatsApp group invite link — used to send approval-preview messages">
+            <input value={f.whatsapp_group_link||""} onChange={e=>setF(x=>({...x,whatsapp_group_link:e.target.value}))} style={inputSt} placeholder="https://chat.whatsapp.com/..."/>
+          </Field>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <Field label="Industry"><input value={f.industry||""} onChange={e=>setF(x=>({...x,industry:e.target.value}))} style={inputSt}/></Field>
@@ -11020,6 +12408,31 @@ function EditClientPage({client,onBack,onSave,canDelete,onRequestDelete,team=[]}
               </button>
             ))}
           </div>
+        </Field>
+        <Field label="Sectors" hint="For clients that operate across multiple business lines (e.g. an industrial group with Logistics, Hospitality, Security divisions) — lets each post/task be labeled by sector, and Sara can target one sector or all of them when generating content">
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:f.has_sectors?10:0}}>
+            <button type="button" onClick={()=>setF(x=>({...x,has_sectors:!x.has_sectors}))}
+              style={{width:38,height:22,borderRadius:20,border:"none",cursor:"pointer",position:"relative",background:f.has_sectors?"var(--accent)":"var(--border2)",transition:"background 0.15s",flexShrink:0}}>
+              <span style={{position:"absolute",top:2,left:f.has_sectors?18:2,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left 0.15s"}}/>
+            </button>
+            <span style={{fontSize:13,color:"var(--text2)"}}>{f.has_sectors?"This client has sectors":"This client has a single, unified brand"}</span>
+          </div>
+          {f.has_sectors && (
+            <div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:f.sectors.length?10:0}}>
+                {f.sectors.map(s=>(
+                  <span key={s} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 6px 4px 12px",borderRadius:20,fontSize:12,fontWeight:600,background:"var(--surface2)",color:"var(--text2)",border:"1px solid var(--border2)"}}>
+                    {s}
+                    <button type="button" onClick={()=>removeSector(s)} style={{width:16,height:16,borderRadius:"50%",border:"none",background:"var(--border2)",color:"var(--text2)",cursor:"pointer",fontSize:11,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                  </span>
+                ))}
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <input value={sectorInput} onChange={e=>setSectorInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addSector();}}} placeholder="e.g. Logistics, Hospitality…" style={{...inputSt,flex:1}}/>
+                <Btn variant="secondary" onClick={addSector}>Add</Btn>
+              </div>
+            </div>
+          )}
         </Field>
         <div style={{display:"flex",gap:8,alignItems:"center",paddingTop:6,borderTop:"1px solid var(--border)"}}>
           {canDelete&&(
@@ -11207,7 +12620,7 @@ CLIENT: ${client.name} | Industry: ${client.industry||"?"} | Platforms: ${(clien
 
 CONVERSATION TO ANALYZE:
 ---
-${text.slice(0, 12000)}
+${text.slice(0, 100000)}
 ---
 
 Extract ALL of the following (only include what's actually mentioned in the conversation):
@@ -11225,14 +12638,14 @@ Extract ALL of the following (only include what's actually mentioned in the conv
 - Any other insight useful for content generation
 
 Return a JSON array of insights. Each insight:
-{"key": "memory_key", "value": "specific actionable insight", "category": "brand_voice|target_audience|content_themes|content_style|approved_patterns|rejected_patterns|platform_strategy|keywords|donts|product_info|campaign_idea|other"}
+{"key": "memory_key", "value": "specific actionable insight — NO length cap; if it's a genuine LIST (branch locations, product lines, contacts, pricing), capture it COMPLETE and verbatim, never truncated or compressed", "category": "brand_voice|target_audience|content_themes|content_style|approved_patterns|rejected_patterns|platform_strategy|keywords|donts|product_info|campaign_idea|other"}
 
 Be specific. Extract as many insights as possible. Return ONLY the JSON array, no explanation.`;
 
     try {
       const res = await fetch(AI_ENDPOINT, {method:"POST", headers:AI_HEADERS, body:JSON.stringify({
         model:"claude-haiku-4-5-20251001",
-        max_tokens:3000,
+        max_tokens:5000,
         messages:[{role:"user",content:analysisPrompt}],
       })});
       const d = await res.json();
@@ -11663,13 +13076,15 @@ function ClientLoginsTab({client,onUpdateClient,canAdd=false,canEdit=false}) {
   );
 }
 
-function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,onAddCalendar,onAddTask,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],onSaveContactReport,onDeleteContactReport,leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient,integrationLogs=[],onAddIntegration,onUpdateIntegration,onDeleteIntegration,onRetryIntegration,brandingAssets,deepLinkContactReportId,contactReportActivity=[]}) {
+function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAddProject,onAddPost,onAddCalendar,onAddTask,clientKnowledge,clientDocuments,currentUser,onUploadDoc,onSaveKnowledge,clientIntelligence,onSaveIntelligence,onProjectClick,comments,onUpdateClient,onDeleteClient,onToggleHide,clientMemory,onUpsertMemory,onDeleteMemory,monthlyBriefs=[],onCreateBrief,customerMessages=[],integrations=[],onSendInboxReply,replyBotSettings=[],onSaveReplyBotSettings,onApproveDraft,onDismissDraft,invoices=[],leads=[],onUpdateAsset,onDeleteAsset,onAddAsset,contactReports=[],onSaveContactReport,onDeleteContactReport,leadNotifySettings=[],onSaveLeadNotifySetting,onDeleteLead,team=[],onImpersonateClient,integrationLogs=[],onAddIntegration,onUpdateIntegration,onDeleteIntegration,onRetryIntegration,brandingAssets,deepLinkContactReportId,contactReportActivity=[],clientUsers=[],onStageChange,initialTab}) {
   const {isMobile} = useResponsive();
   // Plain state, not persisted — opening any client should always start on
   // Overview, not silently reopen to whatever tab was last viewed for them —
   // except a contact-report email's internal link, which should land
-  // straight on that exact report instead.
-  const [tab,setTab] = useState(deepLinkContactReportId!==undefined && deepLinkContactReportId!==null ? "brain" : "overview");
+  // straight on that exact report instead, or coming back from a project
+  // opened from this client's own Projects tab, which should land back on
+  // Projects instead of resetting to Overview.
+  const [tab,setTab] = useState(initialTab || (deepLinkContactReportId!==undefined && deepLinkContactReportId!==null ? "brain" : "overview"));
   const [showEdit,setShowEdit] = useState(false);
   const [confirmDelete,setConfirmDelete] = useState(false);
   const [showAddMenu,setShowAddMenu] = useState(false);
@@ -11839,7 +13254,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
           {cProjects.length===0&&<p style={{color:"var(--text3)"}}>No projects yet. <button onClick={onAddProject} style={{color:"var(--accent)",fontWeight:700}}>+ Add Project</button></p>}
         </div>
       )}
-      {tab==="tasks"&&<KanbanView posts={cPosts} project={cProjects[0]} team={[]} onPostClick={onPostClick}/>}
+      {tab==="tasks"&&<KanbanView posts={cPosts} project={cProjects[0]} team={[]} onPostClick={onPostClick} onStageChange={onStageChange}/>}
       {tab==="community"&&(
         <CommunityTab
           cMessagesNeedReplyCount={cMessagesNeedReplyCount} clientLeadsCount={clientLeads.length}
@@ -11935,7 +13350,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
             <ClientBrandGuidelinesSubTab client={client} knowledge={knowledge} onSaveKnowledge={onSaveKnowledge}/>
           )}
           {brainSubTab==="contact_reports"&&(
-            <ContactReportsSubTab client={client} contactReports={contactReports} onSaveContactReport={onSaveContactReport} onDeleteContactReport={onDeleteContactReport} brandingAssets={brandingAssets} team={team} currentUser={currentUser} knowledge={knowledge} onSaveKnowledge={onSaveKnowledge} highlightReportId={deepLinkContactReportId} contactReportActivity={contactReportActivity}/>
+            <ContactReportsSubTab client={client} contactReports={contactReports} onSaveContactReport={onSaveContactReport} onDeleteContactReport={onDeleteContactReport} brandingAssets={brandingAssets} team={team} currentUser={currentUser} knowledge={knowledge} onSaveKnowledge={onSaveKnowledge} highlightReportId={deepLinkContactReportId} contactReportActivity={contactReportActivity} clientUsers={clientUsers}/>
           )}
           {brainSubTab==="integrations"&&(
             <ClientIntegrationsSubTab client={client} integrations={integrations} integrationLogs={integrationLogs} currentUser={currentUser}
@@ -12498,7 +13913,7 @@ function ClientInboxTab({client, messages=[], integrations=[], onSendReply, botS
 // ════════════════════════════════════════════════════════════════
 // PROJECTS PAGE
 // ════════════════════════════════════════════════════════════════
-function ProjectsPage({projects, posts, clients, team, assets, clientIntelligence, onPostClick, onAdd, onUpdateProject, onDeleteProject, currentUser, onSaveIntelligence, initialProjectId, onClearInitialProject}) {
+function ProjectsPage({projects, posts, comments, clients, team, assets, clientIntelligence, onPostClick, onAdd, onStageChange, onUpdateProject, onDeleteProject, currentUser, onSaveIntelligence, initialProjectId, onClearInitialProject, returnToClientId, onBackToClient, onClearReturnToClient, brandingAssets}) {
   const [showWizard, setShowWizard] = useState(false);
   const [selectedProject, setSelectedProject_] = usePersistentState("sf_selected_project", initialProjectId||null);
   // Opening a project pushes its own history entry so the physical browser
@@ -12506,6 +13921,10 @@ function ProjectsPage({projects, posts, clients, team, assets, clientIntelligenc
   // past it to whatever page was open before Projects.
   const setSelectedProject = (id) => {
     setSelectedProject_(id);
+    // Opened directly from this page's own list, not via a specific
+    // client's Projects tab — any leftover "return to client" context from
+    // a previous visit must not leak into this one's Back button.
+    onClearReturnToClient&&onClearReturnToClient();
     if(id) { try{ window.history.pushState({sfPage:"projects", sfProjectDetail:id},"","#projects"); }catch(e){} }
   };
   const [filter, setFilter] = useState("all");
@@ -12541,11 +13960,25 @@ function ProjectsPage({projects, posts, clients, team, assets, clientIntelligenc
         key={proj.id}
         project={proj}
         posts={posts}
+        comments={comments}
         assets={assets||[]}
         team={team}
         clients={clients}
         clientIntelligence={clientIntelligence}
-        onBack={()=>{ try{ window.history.back(); }catch(e){ setSelectedProject_(null); } }}
+        onStageChange={onStageChange}
+        brandingAssets={brandingAssets}
+        // window.history.back() used to be tried first — unreliable here
+        // since opening a project doesn't necessarily push a real browser
+        // history entry, so the button could silently do nothing (or
+        // navigate somewhere outside the app) instead of returning to the
+        // project list.
+        onBack={()=>{
+          // A project opened from a specific client's own Projects tab
+          // returns there instead of dropping onto the global all-clients
+          // Projects list — those are two different starting points.
+          if(returnToClientId && onBackToClient) onBackToClient();
+          else setSelectedProject_(null);
+        }}
         onPostClick={onPostClick}
         onUpdateProject={onUpdateProject}
         onDeleteProject={(id)=>{ onDeleteProject&&onDeleteProject(id); setSelectedProject_(null); }}
@@ -12642,7 +14075,7 @@ function ProjectsPage({projects, posts, clients, team, assets, clientIntelligenc
 // ════════════════════════════════════════════════════════════════
 // ALL TASKS PAGE (Posts)
 // ════════════════════════════════════════════════════════════════
-function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdateTask,onAddReady,onAddAsset,onUpdateAsset,currentUser,clients=[],clientIntelligenceList=[]}) {
+function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdateTask,onAddReady,onAddAsset,onUpdateAsset,currentUser,clients=[],clientIntelligenceList=[],onStageChange}) {
   const [view,setView] = usePersistentState("sf_tasks_view","kanban");
   const [stageF,setStageF] = useState("all");
   const [platF,setPlatF] = useState("all");
@@ -12756,7 +14189,7 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
           )}
         </div>
       )}
-      {view==="kanban"&&<KanbanView posts={filtered} project={null} team={team} onPostClick={onPostClick}/>}
+      {view==="kanban"&&<KanbanView posts={filtered} project={null} team={team} onPostClick={onPostClick} onStageChange={onStageChange}/>}
       {view==="list"&&<ListView posts={filtered} projects={projects} team={team} onPostClick={onPostClick}/>}
       {view==="calendar"&&<CalendarView posts={filtered} onPostClick={onPostClick}/>}
       {showAdd&&<AddPostModal open onClose={()=>setShowAdd(false)} projects={projects} team={team} onAdd={async d=>{onAdd(d);setShowAdd(false);}} onAddReady={onAddReady ? async (list,opts)=>{await onAddReady(list,opts);setShowAdd(false);} : undefined} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset} allowClientRequest={isAdminUser} clients={clients} clientIntelligenceList={clientIntelligenceList} currentUser={currentUser}/>}
@@ -13260,6 +14693,27 @@ Return ONLY the final image-generation prompt itself — no markdown, no preambl
 
   const FREEPIK_ASPECT = {"1024x1024":"square_1_1", "1024x1536":"social_story_9_16", "1536x1024":"widescreen_16_9"};
 
+  // gpt-image-1 caps input-image requests at 5/minute per org — firing all
+  // N slides at once via Promise.all (see handleGenerate below) burst past
+  // that instantly on anything with >5 slides/reference images and failed
+  // with a 429. Runs one at a time instead, and on a 429 waits out
+  // whichever cooldown OpenAI actually reports ("Please try again in Ns")
+  // rather than guessing, then retries once.
+  const sleep = (ms) => new Promise(res=>setTimeout(res, ms));
+  const generateOneWithRetry = async (finalPrompt) => {
+    try {
+      return await generateOne(finalPrompt);
+    } catch(e) {
+      const msg = e.message || "";
+      const m = msg.match(/rate limit/i) && msg.match(/try again in ([\d.]+)s/i);
+      if (m) {
+        await sleep(Math.ceil(parseFloat(m[1])*1000) + 500);
+        return await generateOne(finalPrompt);
+      }
+      throw e;
+    }
+  };
+
   const generateOne = async (finalPrompt) => {
     const modelDef = IMAGE_MODELS.find(m=>m.id===model) || IMAGE_MODELS[0];
     if(modelDef.provider==="freepik") {
@@ -13331,12 +14785,14 @@ Return ONLY a JSON array of ${count} strings, one prompt per slide, no markdown,
     setLoading(true); setError("");
     try {
       if(contentType==="image") {
-        const dataUrls = await Promise.all(Array.from({length:count}, ()=>generateOne(prompt.trim())));
+        const dataUrls = [];
+        for (let i=0;i<count;i++) dataUrls.push(await generateOneWithRetry(prompt.trim()));
         const urls = await Promise.all(dataUrls.map(persistGenerated));
         setHistory(h=>[...urls.map(url=>({id:uid(), url, prompt:prompt.trim(), scale, client:client?.name||"", contentType, saved:false})), ...h].slice(0,60));
       } else {
         const slidePrompts = await buildSequencePrompts(prompt.trim());
-        const dataUrls = await Promise.all(slidePrompts.map(p=>generateOne(p)));
+        const dataUrls = [];
+        for (const p of slidePrompts) dataUrls.push(await generateOneWithRetry(p));
         const urls = await Promise.all(dataUrls.map(persistGenerated));
         setHistory(h=>[...urls.map((url,i)=>({id:uid(), url, prompt:slidePrompts[i], scale, client:client?.name||"", contentType, slideIndex:i+1, slideCount:slidePrompts.length, saved:false})), ...h].slice(0,60));
       }
@@ -14659,14 +16115,38 @@ function PlatformCompareBar({label, rows, valueKey}) {
 // platform's own full-detail sub-tab.
 function AllPlatformsSummaryTab({posts, connectedPlatforms, onSelectPlatform}) {
   const {isMobile} = useResponsive();
+  // A post going out to more than one platform at once (Instagram + Facebook,
+  // say) used to only ever count under whichever platform happened to sit in
+  // the legacy singular `platform` column — so a Facebook card could show
+  // "1 published post" while 20+ posts actually went out to Facebook too,
+  // just with `platform` recorded as "instagram". Attribute the post to
+  // EVERY platform in its `platforms` array instead, and prefer that
+  // platform's own numbers from insights_by_platform (populated by the
+  // fixed post-insights-fetch.php/cron.php) over the legacy single-set
+  // columns, which only ever reflected one platform's numbers anyway.
   const rows = connectedPlatforms.map(pf=>{
-    const pPosts = (posts||[]).filter(p=>p.platform===pf && p.stage==="published");
-    const withData = pPosts.filter(p=>p.insight_likes!=null||p.insight_comments!=null||p.insight_shares!=null||p.insight_reach!=null);
+    const pPosts = (posts||[]).filter(p=>{
+      if(p.stage!=="published") return false;
+      const plts = Array.isArray(p.platforms) ? p.platforms : parseJ(p.platforms||"[]");
+      return (plts.length ? plts : [p.platform]).includes(pf);
+    });
+    const perPost = pPosts.map(p=>{
+      const byPlt = (p.insights_by_platform && typeof p.insights_by_platform==="object") ? p.insights_by_platform : parseJ(p.insights_by_platform||"{}");
+      const own = byPlt?.[pf];
+      if(own) return {likes:own.likes, comments:own.comments, shares:own.shares, reach:own.reach};
+      // No per-platform breakdown yet (post predates this fix, or hasn't
+      // been refreshed since) — only trust the legacy single-set columns
+      // when this post's ONE recorded platform actually matches this
+      // card, otherwise there's no reliable number for this platform at all.
+      if(p.platform===pf) return {likes:p.insight_likes, comments:p.insight_comments, shares:p.insight_shares, reach:p.insight_reach};
+      return {likes:null, comments:null, shares:null, reach:null};
+    });
+    const withData = perPost.filter(p=>p.likes!=null||p.comments!=null||p.shares!=null||p.reach!=null);
     const sum = key => withData.reduce((a,p)=>a+(p[key]||0),0);
-    const hasShares = withData.some(p=>p.insight_shares!=null);
-    const hasReach = withData.some(p=>p.insight_reach!=null);
-    const likes = sum("insight_likes"), comments = sum("insight_comments");
-    const shares = hasShares?sum("insight_shares"):null, reach = hasReach?sum("insight_reach"):null;
+    const hasShares = withData.some(p=>p.shares!=null);
+    const hasReach = withData.some(p=>p.reach!=null);
+    const likes = sum("likes"), comments = sum("comments");
+    const shares = hasShares?sum("shares"):null, reach = hasReach?sum("reach"):null;
     const engagement = likes + comments*2 + (shares||0)*3;
     return {
       platform:pf, total:pPosts.length, tracked:withData.length,
@@ -15669,6 +17149,23 @@ function ClientIntelligenceTab({client, intelligence, onSave, integrations=[], p
     best_performing_type:existing.best_performing_type||"",
     best_performing_day: existing.best_performing_day||"",
     avg_engagement_rate: existing.avg_engagement_rate||"",
+    // Auto Scheduling: whether new posts for this client get their
+    // scheduled_date/time auto-assigned (Calendar Plan's "Auto" due-date
+    // mode, Best Posting Times above) or always require someone to type
+    // a specific date/time by hand. Auto Publishing: whether
+    // auto-publish.php's cron is allowed to actually publish this
+    // client's posts once their scheduled_date/time arrives, or whether
+    // every post — however it got its date — always waits for a human to
+    // hit Publish Now. Independent of each other on purpose: e.g. auto
+    // scheduling OFF + auto publishing ON means every date/time is typed
+    // in by hand but still fires automatically once it arrives.
+    auto_schedule_enabled: existing.auto_schedule_enabled ?? true,
+    // Defaults to true (opt-out, not opt-in) — auto-publishing already
+    // works today with no per-client restriction, so defaulting this off
+    // would silently break it for every existing client the moment
+    // someone saves this form for an unrelated reason (e.g. changing
+    // Posting Frequency), since the whole form saves together.
+    auto_publish_enabled: existing.auto_publish_enabled ?? true,
   });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -15866,6 +17363,24 @@ function ClientIntelligenceTab({client, intelligence, onSave, integrations=[], p
           <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Posting Frequency (posts/week)</label>
           <input type="number" min={1} max={21} value={form.posting_frequency} onChange={e=>sf("posting_frequency",parseInt(e.target.value)||1)} style={{...inSt,width:120}}/>
         </div>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+          <div>
+            <label style={{fontSize:13,color:"var(--text1)",fontWeight:500,display:"block"}}>Auto Scheduling</label>
+            <p style={{fontSize:11,color:"var(--text3)"}}>New posts get a date/time picked automatically. Off = every post's date/time is typed in by hand.</p>
+          </div>
+          <div onClick={()=>sf("auto_schedule_enabled",!form.auto_schedule_enabled)} style={{width:40,height:22,borderRadius:99,background:form.auto_schedule_enabled?"var(--accent)":"var(--border)",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0,marginLeft:"auto"}}>
+            <div style={{width:16,height:16,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:form.auto_schedule_enabled?20:4,transition:"left 0.2s"}}/>
+          </div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
+          <div>
+            <label style={{fontSize:13,color:"var(--text1)",fontWeight:500,display:"block"}}>Auto Publishing</label>
+            <p style={{fontSize:11,color:"var(--text3)"}}>Posts in Scheduled go out automatically once their date/time arrives. Off = someone has to click Publish Now.</p>
+          </div>
+          <div onClick={()=>sf("auto_publish_enabled",!form.auto_publish_enabled)} style={{width:40,height:22,borderRadius:99,background:form.auto_publish_enabled?"var(--accent)":"var(--border)",cursor:"pointer",position:"relative",transition:"background 0.2s",flexShrink:0,marginLeft:"auto"}}>
+            <div style={{width:16,height:16,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:form.auto_publish_enabled?20:4,transition:"left 0.2s"}}/>
+          </div>
+        </div>
       </Section>
 
       <Section title=" Best Posting Times">
@@ -16006,11 +17521,176 @@ const CLIENT_PORTAL_TOGGLEABLE_FEATURES = [
 // Integrations page. Account managers can add but not edit/delete/retry —
 // only admins get the full management controls, per the same
 // isAdmin-vs-account_manager split used throughout the rest of the app.
+// ── Connect Trello — dedicated setup flow (board + list mapping + sync
+// direction), separate from the generic trigger/action IntegrationWizard
+// since this is project-management board sync, not an automation rule. ──
+const TRELLO_STAGE_LABELS = STAGES.filter(s=>!["approved"].includes(s.key));
+function TrelloConnectModal({open, onClose, client, existingIntegration, onSave}) {
+  // api.php's castRow() auto-decodes any string column that LOOKS like
+  // JSON (starts with { or [) — meant for array/object columns like
+  // design_assets, but it also catches credentials/config on
+  // integrations, which arrive as real objects here even though they're
+  // saved via JSON.stringify(). Calling JSON.parse() on an already-decoded
+  // object coerces it to the string "[object Object]" first, which throws
+  // and silently falls back to {} — exactly what made the Edit button
+  // open a blank form (all the API key/token/board fields empty) despite
+  // a real saved connection existing. parseMaybeJson (defined elsewhere)
+  // already handles both shapes correctly.
+  const existingCreds = parseMaybeJson(existingIntegration?.credentials, {});
+  const existingConfig = parseMaybeJson(existingIntegration?.config, {});
+  const [apiKey,setApiKey] = useState(existingCreds.api_key||"");
+  const [token,setToken] = useState(existingCreds.token||"");
+  const [boardInput,setBoardInput] = useState(existingConfig.board_url||"");
+  const [board,setBoard] = useState(existingConfig.board_id ? {id:existingConfig.board_id, name:existingConfig.board_name} : null);
+  const [lists,setLists] = useState(null);
+  const [listMap,setListMap] = useState(existingConfig.list_map||{});
+  const [direction,setDirection] = useState(existingConfig.sync_direction||"both");
+  const [pushApprovalMove,setPushApprovalMove] = useState(!!existingConfig.push_client_approval_move);
+  const [pushCommentsOut,setPushCommentsOut] = useState(!!existingConfig.push_comments_out);
+  const [fetching,setFetching] = useState(false);
+  const [saving,setSaving] = useState(false);
+  const [error,setError] = useState("");
+
+  const fetchLists = async () => {
+    if(!apiKey.trim()||!token.trim()||!boardInput.trim()){ setError("API key, token, and a board URL/ID are all required."); return; }
+    setFetching(true); setError("");
+    try {
+      const r = await fetch("/trello-lists.php",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({api_key:apiKey.trim(),token:token.trim(),board:boardInput.trim()})});
+      const d = await r.json();
+      if(!r.ok||d.error){ setError(d.error||"Could not load that board."); setLists(null); return; }
+      setBoard({id:d.board_id,name:d.board_name});
+      setLists(d.lists||[]);
+    } catch(e){ setError("Network error reaching Trello."); }
+    setFetching(false);
+  };
+
+  // Editing an existing connection pre-fills the credentials/board fields
+  // (see the parseMaybeJson fix above) but the Sync Direction/list-mapping
+  // section only ever renders once `lists` is populated — that used to
+  // require clicking "Fetch Lists" again for literally no reason on an
+  // already-working connection, so the actual permission/direction
+  // controls the user opened Edit to reach were invisible until then.
+  useEffect(() => {
+    if(existingIntegration?.id && apiKey.trim() && token.trim() && boardInput.trim()) fetchLists();
+  }, [existingIntegration?.id]);
+
+  const save = async () => {
+    if(!board?.id){ setError("Fetch the board's lists before saving."); return; }
+    setSaving(true); setError("");
+    let webhookId = existingConfig.webhook_id || "";
+    const needsWebhook = direction==="both"||direction==="from_trello"||(direction==="to_trello_comments_only"&&pushApprovalMove);
+    try {
+      if(needsWebhook || webhookId){
+        const r = await fetch("/trello-webhook-register.php",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+          api_key:apiKey.trim(), token:token.trim(),
+          board_id: needsWebhook ? board.id : "",
+          existing_webhook_id: webhookId,
+        })});
+        const d = await r.json();
+        if(!r.ok||d.error){ setError(d.error||"Couldn't register the Trello webhook — check your API key/token have access to this board, and that this site is reachable over HTTPS."); setSaving(false); return; }
+        webhookId = needsWebhook ? (d.webhook_id||"") : "";
+      }
+      await onSave({
+        name: `Trello — ${board.name}`,
+        app_key: "trello",
+        status: "active",
+        credentials: JSON.stringify({api_key:apiKey.trim(), token:token.trim()}),
+        config: JSON.stringify({board_id:board.id, board_name:board.name, board_url:boardInput.trim(), sync_direction:direction, list_map:listMap, webhook_id:webhookId, push_client_approval_move:direction==="to_trello_comments_only"&&pushApprovalMove, push_comments_out:direction==="from_trello"&&pushCommentsOut}),
+      });
+      onClose();
+    } catch(e){ setError("Save failed: "+e.message); }
+    setSaving(false);
+  };
+
+  if(!open) return null;
+  return (
+    <Modal open onClose={onClose} title={`Connect Trello — ${client.name}`} width={560}>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <p style={{fontSize:12,color:"var(--text3)"}}>
+          Adding a task/post here (a Client Request, or any stage move) mirrors it as a card on this client's Trello board. Get an API key + token at{" "}
+          <a href="https://trello.com/power-ups/admin" target="_blank" rel="noreferrer" style={{color:"var(--accent)"}}>trello.com/power-ups/admin</a> (create a Power-Up, then generate a token from its API key page).
+        </p>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <Field label="API Key" required><input value={apiKey} onChange={e=>setApiKey(e.target.value)} placeholder="Trello API key" style={inputSt}/></Field>
+          <Field label="Token" required><input value={token} onChange={e=>setToken(e.target.value)} placeholder="Trello token" style={inputSt}/></Field>
+        </div>
+        <Field label="Board URL or ID" required>
+          <div style={{display:"flex",gap:8}}>
+            <input value={boardInput} onChange={e=>setBoardInput(e.target.value)} placeholder="https://trello.com/b/XXXXXXXX/board-name" style={{...inputSt,flex:1}}/>
+            <Btn variant="secondary" onClick={fetchLists} disabled={fetching}>{fetching?<Spinner size={13}/>:"Fetch Lists"}</Btn>
+          </div>
+        </Field>
+        {error&&<p style={{fontSize:12,color:"#ef4444"}}>{error}</p>}
+        {board&&<p style={{fontSize:12,color:"#10b981",fontWeight:700}}> Connected to board "{board.name}"</p>}
+
+        {lists&&(
+          <>
+            <Field label="Sync direction">
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {[
+                  {key:"both",label:"Both ways",desc:"Adding/moving a task here moves the Trello card; dragging the card on Trello moves the task's stage here."},
+                  {key:"to_trello",label:"SocialFlow → Trello only",desc:"Pushes card creation/moves to Trello; changes made on Trello aren't pulled back."},
+                  {key:"from_trello",label:"Trello → SocialFlow only",desc:"Card moves on Trello update the task's stage here; SocialFlow changes aren't pushed to Trello."},
+                  {key:"to_trello_comments_only",label:"SocialFlow → Trello, comments only",desc:"Comments (and forwarded attachments) added here post onto the Trello card — card creation/stage moves aren't pushed either way."},
+                ].map(opt=>(
+                  <label key={opt.key} style={{display:"flex",gap:8,alignItems:"flex-start",padding:"8px 10px",border:`1.5px solid ${direction===opt.key?"var(--accent)":"var(--border)"}`,borderRadius:"var(--rs)",cursor:"pointer",background:direction===opt.key?"var(--accentbg)":"transparent"}}>
+                    <input type="radio" checked={direction===opt.key} onChange={()=>setDirection(opt.key)} style={{marginTop:2}}/>
+                    <div><p style={{fontSize:12,fontWeight:700}}>{opt.label}</p><p style={{fontSize:11,color:"var(--text3)"}}>{opt.desc}</p></div>
+                  </label>
+                ))}
+              </div>
+            </Field>
+            {direction==="to_trello_comments_only" && (
+              <label style={{display:"flex",gap:8,alignItems:"flex-start",padding:"8px 10px",border:`1.5px solid ${pushApprovalMove?"var(--accent)":"var(--border)"}`,borderRadius:"var(--rs)",cursor:"pointer",background:pushApprovalMove?"var(--accentbg)":"transparent"}}>
+                <input type="checkbox" checked={pushApprovalMove} onChange={e=>setPushApprovalMove(e.target.checked)} style={{marginTop:2}}/>
+                <div>
+                  <p style={{fontSize:12,fontWeight:700}}>Also sync Client Approval moves</p>
+                  <p style={{fontSize:11,color:"var(--text3)"}}>When a task here reaches Client Approval, moves its Trello card to whatever list that stage maps to below. If someone moves the card back off that list on Trello (e.g. rejected), the task here returns to whatever stage it was actually in right before Client Approval.</p>
+                </div>
+              </label>
+            )}
+            {direction==="from_trello" && (
+              <label style={{display:"flex",gap:8,alignItems:"flex-start",padding:"8px 10px",border:`1.5px solid ${pushCommentsOut?"var(--accent)":"var(--border)"}`,borderRadius:"var(--rs)",cursor:"pointer",background:pushCommentsOut?"var(--accentbg)":"transparent"}}>
+                <input type="checkbox" checked={pushCommentsOut} onChange={e=>setPushCommentsOut(e.target.checked)} style={{marginTop:2}}/>
+                <div>
+                  <p style={{fontSize:12,fontWeight:700}}>Also push comments to Trello</p>
+                  <p style={{fontSize:11,color:"var(--text3)"}}>Keeps card moves on Trello updating the task's stage here exactly as now, and additionally posts comments (and forwarded attachments) added here onto the Trello card.</p>
+                </div>
+              </label>
+            )}
+            <Field label="Which SocialFlow stage maps to which Trello list?">
+              <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:260,overflowY:"auto"}}>
+                {TRELLO_STAGE_LABELS.map(st=>(
+                  <div key={st.key} style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{width:130,flexShrink:0,fontSize:12,fontWeight:700}}>{st.label}</span>
+                    <select value={listMap[st.key]||""} onChange={e=>setListMap(m=>({...m,[st.key]:e.target.value||undefined}))} style={{...inputSt,flex:1}}>
+                      <option value="">— not synced —</option>
+                      {lists.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </Field>
+          </>
+        )}
+
+        <div style={{display:"flex",gap:10,paddingTop:4}}>
+          <Btn variant="secondary" onClick={onClose} style={{flex:1}}>Cancel</Btn>
+          <Btn onClick={save} disabled={saving||!board} style={{flex:2}}>{saving?<><Spinner size={14}/> Saving…</>:"Save Connection"}</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function ClientIntegrationsSubTab({client, integrations, integrationLogs, currentUser, onAdd, onUpdate, onDelete, onRetry}) {
   const [showWizard, setShowWizard] = useState(false);
   const [editIntegration, setEditIntegration] = useState(null);
+  const [showTrello, setShowTrello] = useState(false);
+  const [editTrello, setEditTrello] = useState(null);
   const isAdmin = currentUser?.role==="admin";
   const canAdd = isAdmin || currentUser?.role==="account_manager";
+  const canEdit = canAdd; // AMs manage their own clients' integrations day-to-day; Delete/Retry stay admin-only below.
   const clientIntegrations = (integrations||[]).filter(i=>i.client_id===client.id);
 
   return (
@@ -16020,7 +17700,12 @@ function ClientIntegrationsSubTab({client, integrations, integrationLogs, curren
           <h3 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:800,fontSize:16}}>Integrations</h3>
           <p style={{fontSize:12,color:"var(--text3)",marginTop:2}}>Apps connected specifically for {client.name}</p>
         </div>
-        {canAdd&&<Btn onClick={()=>{setEditIntegration(null);setShowWizard(true);}}><Ico d={Icons.plus} size={14}/> New Integration</Btn>}
+        {canAdd&&(
+          <div style={{display:"flex",gap:8}}>
+            <Btn variant="secondary" onClick={()=>{setEditTrello(null);setShowTrello(true);}}><Ico d={Icons.plug} size={14}/> Connect Trello</Btn>
+            <Btn onClick={()=>{setEditIntegration(null);setShowWizard(true);}}><Ico d={Icons.plus} size={14}/> New Integration</Btn>
+          </div>
+        )}
       </div>
 
       {clientIntegrations.length===0&&(
@@ -16053,11 +17738,13 @@ function ClientIntegrationsSubTab({client, integrations, integrationLogs, curren
                 <button onClick={()=>onUpdate({...integ, status: integ.status==="active"?"inactive":"active"})} disabled={!isAdmin} style={{padding:"5px 12px",borderRadius:99,fontSize:11,fontWeight:700,border:"1px solid var(--border)",background:"var(--surface2)",color:"var(--text2)",cursor:isAdmin?"pointer":"not-allowed",opacity:isAdmin?1:0.5}}>
                   {integ.status==="active"?"Disable":"Enable"}
                 </button>
+                {canEdit&&(
+                  <button onClick={()=>{ if(integ.app_key==="trello"){ setEditTrello(integ); setShowTrello(true); } else { setEditIntegration(integ); setShowWizard(true); } }} title="Edit" style={{width:30,height:30,borderRadius:8,border:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                    <Ico d={Icons.edit} size={13} stroke="var(--text2)"/>
+                  </button>
+                )}
                 {isAdmin&&(
                   <>
-                    <button onClick={()=>{setEditIntegration(integ);setShowWizard(true);}} title="Edit" style={{width:30,height:30,borderRadius:8,border:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
-                      <Ico d={Icons.edit} size={13} stroke="var(--text2)"/>
-                    </button>
                     {integ.status==="error"&&onRetry&&(
                       <button onClick={()=>onRetry(integ)} title="Retry" style={{width:30,height:30,borderRadius:8,border:"1px solid var(--border)",background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
                         <Ico d={Icons.refresh} size={13} stroke="var(--text2)"/>
@@ -16084,6 +17771,20 @@ function ClientIntegrationsSubTab({client, integrations, integrationLogs, curren
           onSave={async(d)=>{
             const payload = {...d, client_id: client.id, client_name: client.name};
             if(editIntegration) await onUpdate({...editIntegration,...payload});
+            else await onAdd(payload);
+          }}
+        />
+      )}
+
+      {showTrello&&(
+        <TrelloConnectModal
+          open
+          onClose={()=>{setShowTrello(false);setEditTrello(null);}}
+          client={client}
+          existingIntegration={editTrello}
+          onSave={async(d)=>{
+            const payload = {...d, client_id: client.id, client_name: client.name};
+            if(editTrello) await onUpdate({...editTrello,...payload});
             else await onAdd(payload);
           }}
         />
@@ -16241,7 +17942,8 @@ function EditProjectModal({project, clients, onClose, onSave}) {
 // ════════════════════════════════════════════════════════════════
 // PROJECT DETAIL PAGE — tabs: Overview, Tasks, Calendar, Assets, Reports
 // ════════════════════════════════════════════════════════════════
-function ProjectDetailPage({project, posts, comments, assets, team, clients, clientIntelligence, onBack, onPostClick, onStageChange, onUpdateProject, onDeleteProject, currentUser}) {
+function ProjectDetailPage({project, posts, comments, assets, team, clients, clientIntelligence, onBack, onPostClick, onStageChange, onUpdateProject, onDeleteProject, currentUser, brandingAssets}) {
+  const {isMobile} = useResponsive();
   const [editingProject, setEditingProject] = useState(false);
   const [confirmDeleteProject, setConfirmDeleteProject] = useState(false);
   const isAdmin = currentUser?.role==="admin";
@@ -16249,10 +17951,355 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
   // Plain state, not persisted — opening any project should always start on
   // Overview, not silently reopen to whatever tab was last viewed for it.
   const [tab, setTab] = useState("overview");
-  const [taskOrder, setTaskOrder] = React.useState(null); // null = natural order
+  // taskOrder used to double as both "which view is active" (via sentinel
+  // strings "kanban"/"cards") AND "the custom publishing order" (an array
+  // of ids) — fine for two modes, but broke down adding a third: the List
+  // branch's `taskOrder && taskOrder!=="kanban"` check would have treated
+  // the "cards"/"grid" sentinel strings as if they were an order array and
+  // tried to .map() over their characters. Split into its own state.
+  const [viewMode, setViewMode] = React.useState("grid"); // list | kanban | cards | grid
+  const [taskOrder, setTaskOrder] = React.useState(null); // null = natural order, else array of ids
   const dragTaskRef = React.useRef(null);
+  const gridExportRef = React.useRef(null);
+  const [gridExporting, setGridExporting] = useState(false);
+  const downloadGrid = async (as) => {
+    if (!gridExportRef.current || !window.html2canvas) return;
+    setGridExporting(true);
+    // Hide the Published/Unpublished badge for the exported file only — it's
+    // a live-status indicator useful while working in the app, not something
+    // that belongs on a board handed to a client. Toggled on the real DOM
+    // nodes (not React state) so the on-screen grid is completely unaffected.
+    const statusBadges = gridExportRef.current.querySelectorAll(".sf-grid-status-badge");
+    statusBadges.forEach(el => { el.style.visibility = "hidden"; });
+    try {
+      // html2canvas positions cloned nodes using their on-page coordinates —
+      // without compensating for however far the page happens to be
+      // scrolled, absolutely-positioned children (the date/status/platform
+      // label overlays) of any card outside the current viewport land in
+      // the wrong spot in the clone and simply don't render. scrollY/scrollX
+      // + explicit window size makes it capture the full off-screen element
+      // correctly regardless of scroll position.
+      const canvas = await window.html2canvas(gridExportRef.current, {
+        backgroundColor:"#ffffff", scale:2, useCORS:true,
+        scrollX:0, scrollY:-window.scrollY,
+        windowWidth: document.documentElement.scrollWidth,
+        windowHeight: document.documentElement.scrollHeight,
+      });
+      const filename = `${(project.title||"grid").replace(/[^a-z0-9]+/gi,"_")}_grid`;
+      if (as === "pdf") {
+        const jsPDFCtor = window.jspdf?.jsPDF;
+        if (!jsPDFCtor) return;
+        const imgData = canvas.toDataURL("image/jpeg", 0.92);
+        // Fit the full grid onto one page at its own aspect ratio, rather
+        // than a fixed A4 that would crop or leave dead space either way.
+        const pdf = new jsPDFCtor({orientation: canvas.width>canvas.height?"l":"p", unit:"px", format:[canvas.width, canvas.height]});
+        pdf.addImage(imgData, "JPEG", 0, 0, canvas.width, canvas.height);
+        pdf.save(`${filename}.pdf`);
+      } else {
+        const link = document.createElement("a");
+        link.href = canvas.toDataURL("image/png");
+        link.download = `${filename}.png`;
+        link.click();
+      }
+    } finally {
+      statusBadges.forEach(el => { el.style.visibility = ""; });
+      setGridExporting(false);
+    }
+  };
+
+  const [fullCalExporting, setFullCalExporting] = useState(false);
+  const downloadFullCalendarPdf = async () => {
+    const jsPDFCtor = window.jspdf?.jsPDF;
+    if (!jsPDFCtor || !gridExportRef.current || !window.html2canvas) return;
+    setFullCalExporting(true);
+    try {
+      const W = 1280, H = 720, M = 70; // 16:9 "slide" canvas, in px units
+      const pdf = new jsPDFCtor({orientation:"l", unit:"px", format:[W,H]});
+      const brand = "#0f172a";
+
+      const imgToDataURL = async (url) => {
+        if (!url) return null;
+        try {
+          const res = await fetch(url);
+          const blob = await res.blob();
+          return await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+          });
+        } catch(e) { return null; }
+      };
+      // Scales an image into a maxW×maxH box without distorting it —
+      // every media/logo placement below needs this, so computed once.
+      const fitBox = (imgW, imgH, maxW, maxH) => {
+        const ratio = Math.min(maxW/imgW, maxH/imgH);
+        return {w: imgW*ratio, h: imgH*ratio};
+      };
+      // jsPDF's built-in fonts (Helvetica etc.) only cover Latin/WinAnsi
+      // glyphs — any Arabic text drawn through pdf.text() comes out as
+      // garbled mojibake, not actual Arabic characters. For Arabic content
+      // (keywords, objective, brief, captions — all commonly Arabic for
+      // this agency's clients), render it via a hidden DOM node snapshotted
+      // with html2canvas instead: that uses the browser's own real text
+      // shaping/RTL layout, then gets embedded as an image, sidestepping
+      // jsPDF's font limitation entirely.
+      const hasArabic = (s) => /[؀-ۿݐ-ݿ]/.test(String(s||""));
+      // 'Segoe UI' (Windows-only) has no real Arabic glyph coverage on Mac/
+      // Linux — the browser silently falls back to whatever generic
+      // sans-serif is installed, which routinely botches Arabic letter
+      // joining (disconnected letterforms, stray floating dots). Loading a
+      // real Arabic webfont once and waiting for it guarantees correct
+      // shaping regardless of the machine generating the PDF.
+      if (!document.getElementById("sf-arabic-pdf-font")) {
+        const link = document.createElement("link");
+        link.id = "sf-arabic-pdf-font";
+        link.rel = "stylesheet";
+        link.href = "https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@400;700&display=swap";
+        document.head.appendChild(link);
+      }
+      try { await document.fonts.load("400 16px 'Noto Naskh Arabic'"); await document.fonts.load("700 16px 'Noto Naskh Arabic'"); await document.fonts.ready; } catch(e) {}
+      const addWrapped = async (x, y, maxWidth, text, fontSize, opts={}) => {
+        const str = String(text||"—");
+        if (hasArabic(str) && window.html2canvas) {
+          const div = document.createElement("div");
+          // unicode-bidi:plaintext (not a forced whole-block direction:rtl)
+          // lets the browser resolve each line's base direction from its
+          // own first strong character — correct for pure Arabic prose AND
+          // for mixed Arabic/English keyword lists, where forcing rtl on
+          // the whole block was reordering the English tokens oddly.
+          // position:absolute (not fixed) at a huge but positive offset —
+          // html2canvas has had bugs capturing fixed/negative-offset
+          // elements at the wrong size, which produced the height
+          // mismatches (overlap into the next field) seen last round.
+          div.style.cssText = `position:absolute;left:0;top:-99999px;width:${maxWidth}px;box-sizing:border-box;font-size:${fontSize}px;font-family:'Noto Naskh Arabic','Segoe UI',Tahoma,Arial,sans-serif;font-weight:${opts.bold?700:400};color:${opts.color||"#111827"};unicode-bidi:plaintext;text-align:${opts.align||"start"};white-space:pre-wrap;overflow-wrap:break-word;word-break:break-word;line-height:1.85;`;
+          div.textContent = str;
+          document.body.appendChild(div);
+          let h = fontSize * 1.85;
+          try {
+            // Actual laid-out CSS pixel size, measured post-render — far
+            // more reliable than back-computing from the html2canvas
+            // output's raw pixel dimensions (which vary with device pixel
+            // ratio and the `scale` option), which is what produced both
+            // the vertical overlap AND the horizontal misplacement before.
+            const rect = div.getBoundingClientRect();
+            const measuredW = Math.max(1, Math.ceil(rect.width));
+            const measuredH = Math.max(1, Math.ceil(rect.height));
+            const canvas = await window.html2canvas(div, {backgroundColor:null, scale:3, width:measuredW, height:measuredH});
+            pdf.addImage(canvas.toDataURL("image/png"), "PNG", x, y - fontSize, measuredW, measuredH);
+            h = measuredH;
+          } catch(e) { /* falls through — nothing drawn for this block, rest of the PDF still generates */ }
+          document.body.removeChild(div);
+          return y + h + 6;
+        }
+        pdf.setFontSize(fontSize);
+        pdf.setFont(undefined, opts.bold ? "bold" : "normal");
+        pdf.setTextColor(opts.color || "#111827");
+        const lines = pdf.splitTextToSize(str, maxWidth);
+        pdf.text(lines, x, y);
+        return y + lines.length * fontSize * 1.7;
+      };
+
+      const client = clients.find(c=>c.id===project.client_id);
+      const ci = (clientIntelligence||[]).find(c=>c.client_id===project.client_id);
+      const orderedPosts = taskOrder ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort(postSortCmp);
+      const dates = projectPosts.map(p=>p.scheduled_date).filter(Boolean).sort();
+      const startDate = dates[0] || project.start_date || "";
+      const endDate = dates[dates.length-1] || project.end_date || "";
+      const monthLabel = startDate ? new Date(startDate).toLocaleDateString("en-US",{month:"long",year:"numeric"}) : "—";
+      const platformSet = new Set();
+      projectPosts.forEach(p=>{
+        const plts = Array.isArray(p.platforms) ? p.platforms : parseJ(p.platforms||"[]");
+        (plts.length?plts:[p.platform]).filter(Boolean).forEach(pl=>platformSet.add(pl));
+      });
+
+      // Keywords/overview/brief pulled straight from what's actually in this
+      // calendar's posts — clientIntelligence.keywords is a nice-to-have
+      // fallback, but most projects never have it filled in, so the export
+      // shouldn't just show "—" for every field when the real content is
+      // sitting right there in the captions/hashtags.
+      const STOPWORDS = new Set(["the","and","for","with","this","that","from","your","our","are","was","were","have","has","will","you","its","it's","to","of","in","on","a","an","is","be","as","at","by","or","we","us","also","into","about","more","than","how","why","what","when","where"]);
+      const hashtagFreq = new Map(), wordFreq = new Map();
+      projectPosts.forEach(p=>{
+        (p.hashtags||"").split(/[\s,]+/).forEach(h=>{
+          const tag = h.replace(/^#/,"").trim().toLowerCase();
+          if (tag) hashtagFreq.set(tag, (hashtagFreq.get(tag)||0)+1);
+        });
+        `${p.caption||""} ${p.text_on_visual||""}`.toLowerCase().replace(/[^a-z0-9\s]/g," ").split(/\s+/).forEach(w=>{
+          if (w.length>3 && !STOPWORDS.has(w)) wordFreq.set(w, (wordFreq.get(w)||0)+1);
+        });
+      });
+      const topHashtags = [...hashtagFreq.entries()].sort((a,b)=>b[1]-a[1]).slice(0,8).map(([w])=>w);
+      const topWords = [...wordFreq.entries()].sort((a,b)=>b[1]-a[1]).slice(0,8).map(([w])=>w);
+      const extractedKeywords = [...new Set([...topHashtags, ...topWords])].slice(0,10);
+      const ciKeywords = Array.isArray(ci?.keywords) ? ci.keywords : (ci?.keywords ? [ci.keywords] : []);
+      const keywords = [...new Set([...extractedKeywords, ...ciKeywords])].join(", ") || "—";
+
+      const stageCounts = {};
+      projectPosts.forEach(p=>{ stageCounts[p.stage] = (stageCounts[p.stage]||0)+1; });
+      const publishedCount = stageCounts.published||0;
+      const overview = `This calendar covers ${projectPosts.length} post${projectPosts.length===1?"":"s"} for ${client?.name||project.client_name||"the client"}`
+        + ([...platformSet].length ? ` across ${[...platformSet].join(", ")}` : "")
+        + (startDate && endDate ? `, scheduled from ${fmtDate(startDate)} to ${fmtDate(endDate)}` : "")
+        + `. ${publishedCount} of ${projectPosts.length} post${projectPosts.length===1?"":"s"} already published.`
+        + (extractedKeywords.length ? ` Recurring themes: ${extractedKeywords.slice(0,5).join(", ")}.` : "");
+      const objective = ci?.content_preferences || ci?.summary || overview;
+      const brief = project.description || overview;
+
+      // Small brand mark bottom-right on every slide — Light Mode Logo,
+      // unconditionally, on every slide including the dark Thank You one.
+      const lightLogoData = await imgToDataURL(brandingAssets?.light_logo || brandingAssets?.primary_logo || "");
+      const stampFooterLogo = async () => {
+        const data = lightLogoData;
+        if (!data) return;
+        try {
+          const dims = await new Promise((resolve,reject)=>{ const im=new Image(); im.onload=()=>resolve({w:im.width,h:im.height}); im.onerror=reject; im.src=data; });
+          const box = fitBox(dims.w, dims.h, 90, 32);
+          pdf.addImage(data, (data.match(/^data:image\/(\w+)/)||[])[1]==="png"?"PNG":"JPEG", W-M-box.w, H-M+18, box.w, box.h);
+        } catch(e) {}
+      };
+
+      // ── Slide 1: cover, full brand-red background, logo only (no title) ──
+      const [brandR,brandG,brandB] = hexToRgb(brandingAssets?.primary_color||"#d90b2c");
+      pdf.setFillColor(brandR,brandG,brandB);
+      pdf.rect(0,0,W,H,"F");
+      // The light/white logo variant reads correctly on this red fill —
+      // the colored square logo used before would blend straight into a
+      // same-colored background.
+      const coverLogoData = await imgToDataURL(brandingAssets?.light_logo || brandingAssets?.secondary_logo || brandingAssets?.primary_logo || "/icon-512.png");
+      if (coverLogoData) {
+        const dims = await new Promise((resolve,reject)=>{ const im=new Image(); im.onload=()=>resolve({w:im.width,h:im.height}); im.onerror=reject; im.src=coverLogoData; }).catch(()=>({w:512,h:512}));
+        const box = fitBox(dims.w, dims.h, 320, 160);
+        pdf.addImage(coverLogoData, (coverLogoData.match(/^data:image\/(\w+)/)||[])[1]==="png"?"PNG":"JPEG", (W-box.w)/2, (H-box.h)/2, box.w, box.h);
+      }
+
+      // ── Slide 2: project title alone, on a dark-gray background ──
+      pdf.addPage([W,H],"l");
+      pdf.setFillColor("#1f2937"); pdf.rect(0,0,W,H,"F");
+      pdf.setFontSize(52); pdf.setFont(undefined,"bold"); pdf.setTextColor("#ffffff");
+      pdf.text(project.title||"Content Calendar", W/2, H/2, {align:"center"});
+      pdf.setFillColor(brandR,brandG,brandB);
+      pdf.rect(W/2-50, H/2+34, 100, 5, "F");
+      await stampFooterLogo();
+
+      // ── Slide 3: client + calendar details ──
+      pdf.addPage([W,H],"l");
+      pdf.setFillColor("#ffffff"); pdf.rect(0,0,W,H,"F");
+      let y = M;
+      y = await addWrapped(M, y, W-M*2, client?.name||project.client_name||"Client", 26, {bold:true}) + 10;
+      const fields = [
+        ["Month", monthLabel],
+        ["Start Date", startDate || "—"],
+        ["End Date", endDate || "—"],
+        ["Number of Posts", String(projectPosts.length)],
+        ["Platforms", [...platformSet].join(", ") || "—"],
+        ["Main Keywords", keywords],
+        ["Objective", objective],
+        ["Brief", brief],
+      ];
+      for (const [label,val] of fields) {
+        pdf.setFontSize(13); pdf.setFont(undefined,"bold"); pdf.setTextColor("#6b7280");
+        pdf.text(label.toUpperCase(), M, y);
+        y = await addWrapped(M, y+20, W-M*2, val, 14) + 18;
+      }
+      await stampFooterLogo();
+
+      // ── Slide 4: full grid screenshot ──
+      pdf.addPage([W,H],"l");
+      pdf.setFillColor("#ffffff"); pdf.rect(0,0,W,H,"F");
+      const statusBadges = gridExportRef.current.querySelectorAll(".sf-grid-status-badge");
+      statusBadges.forEach(el => { el.style.visibility = "hidden"; });
+      try {
+        const canvas = await window.html2canvas(gridExportRef.current, {
+          backgroundColor:"#ffffff", scale:2, useCORS:true,
+          scrollX:0, scrollY:-window.scrollY,
+          windowWidth: document.documentElement.scrollWidth,
+          windowHeight: document.documentElement.scrollHeight,
+        });
+        const box = fitBox(canvas.width, canvas.height, W-M*2, H-M*2);
+        pdf.addImage(canvas.toDataURL("image/jpeg",0.92), "JPEG", (W-box.w)/2, (H-box.h)/2, box.w, box.h);
+      } finally {
+        statusBadges.forEach(el => { el.style.visibility = ""; });
+      }
+      await stampFooterLogo();
+
+      // ── One slide per post ──
+      for (const post of orderedPosts) {
+        pdf.addPage([W,H],"l");
+        pdf.setFillColor("#ffffff"); pdf.rect(0,0,W,H,"F");
+        const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
+        const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
+        const isReelPost = post.post_type==="reel" || post.post_type==="video";
+        const mediaUrl = (isReelPost && post.carousel_cover) || designUrls[designUrls.length-1] || designAssets[designAssets.length-1]?.url || post.carousel_cover || "";
+        const mediaBoxW = 420, mediaBoxH = H-M*2;
+        if (mediaUrl) {
+          const dataUrl = await imgToDataURL(mediaUrl);
+          if (dataUrl) {
+            try {
+              const dims = await new Promise((resolve,reject)=>{ const im=new Image(); im.onload=()=>resolve({w:im.width,h:im.height}); im.onerror=reject; im.src=dataUrl; });
+              const box = fitBox(dims.w, dims.h, mediaBoxW, mediaBoxH);
+              pdf.setFillColor("#f3f4f6"); pdf.rect(M,M,mediaBoxW,mediaBoxH,"F");
+              pdf.addImage(dataUrl, (dataUrl.match(/^data:image\/(\w+)/)||[])[1]==="png"?"PNG":"JPEG", M+(mediaBoxW-box.w)/2, M+(mediaBoxH-box.h)/2, box.w, box.h);
+            } catch(e) {}
+          }
+        } else {
+          pdf.setFillColor("#f3f4f6"); pdf.rect(M,M,mediaBoxW,mediaBoxH,"F");
+        }
+
+        const tx = M + mediaBoxW + 50, tw = W - tx - M;
+        let ty = M;
+        ty = await addWrapped(tx, ty+10, tw, post.title||"Untitled", 20, {bold:true}) + 6;
+        const plts = Array.isArray(post.platforms) ? post.platforms : parseJ(post.platforms||"[]");
+        const pltLabel = (plts.length?plts:[post.platform]).filter(Boolean).join(", ");
+        ty = await addWrapped(tx, ty, tw, `${pltLabel||"—"}  ·  ${post.scheduled_date||"No date"}${post.scheduled_time?` at ${post.scheduled_time}`:""}`, 12, {color:"#6b7280"}) + 16;
+
+        const block = async (label, val) => {
+          pdf.setFontSize(12); pdf.setFont(undefined,"bold"); pdf.setTextColor("#6b7280");
+          pdf.text(label.toUpperCase(), tx, ty);
+          ty = await addWrapped(tx, ty+18, tw, val, 13) + 18;
+        };
+        if (post.text_on_visual) await block("Text on Visual", post.text_on_visual);
+        if (post.caption) await block("Caption", post.caption);
+        if (post.hashtags) await block("Hashtags", post.hashtags);
+        await block("Stage", STAGE_MAP[post.stage]?.label || post.stage);
+        await stampFooterLogo();
+      }
+
+      // ── Final slide: Thank You ──
+      pdf.addPage([W,H],"l");
+      pdf.setFillColor("#000000"); pdf.rect(0,0,W,H,"F");
+      pdf.setFontSize(34); pdf.setFont(undefined,"bold"); pdf.setTextColor("#ffffff");
+      pdf.text("Thank You", W/2, H/2, {align:"center"});
+      await stampFooterLogo();
+
+      pdf.save(`${(project.title||"calendar").replace(/[^a-z0-9]+/gi,"_")}_full_calendar.pdf`);
+    } finally {
+      setFullCalExporting(false);
+    }
+  };
 
   const projectPosts = posts.filter(p=>p.project_id===project.id);
+  // Natural (no custom drag order) sort: unpublished/upcoming posts first in
+  // chronological order, published posts always trail at the end (also
+  // chronological among themselves) — a post that already went out shouldn't
+  // sit ahead of what's still upcoming in the schedule.
+  // Newest publish date first, oldest last — across every post regardless
+  // of published/unpublished status. Undated posts (still need a schedule)
+  // sort to the very top, ahead of every dated post.
+  const postSortCmp = (a,b) => {
+    if (!a.scheduled_date && !b.scheduled_date) return 0;
+    if (!a.scheduled_date) return -1;
+    if (!b.scheduled_date) return 1;
+    // Same-day posts used to fall back to whatever order they happened to
+    // already be in (arbitrary/whatever a prior drag left them at) — reading
+    // newest-first by date but oldest-first by time within a day felt
+    // inconsistent. Comparing the full date+time together keeps one
+    // direction throughout: latest date first, and within a tied date,
+    // latest time first too.
+    const bKey = `${b.scheduled_date}T${b.scheduled_time||"00:00"}`;
+    const aKey = `${a.scheduled_date}T${a.scheduled_time||"00:00"}`;
+    return bKey.localeCompare(aKey);
+  };
   const projType = PROJECT_TYPES.find(t=>t.id===project.project_type)||PROJECT_TYPES[0];
   const stageOrder = ["planning","content","design","review","approval","scheduled","published"];
   const stageCounts = stageOrder.reduce((a,s)=>({...a,[s]:projectPosts.filter(p=>p.stage===s).length}),{});
@@ -16427,18 +18474,189 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
               <span style={{fontSize:12,color:"var(--text3)"}}>Drag rows to reorder publishing schedule</span>
               <div style={{display:"flex",gap:6}}>
-                <button onClick={()=>setTaskOrder(null)} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:taskOrder===null?"var(--accent)":"var(--surface2)",color:taskOrder===null?"#fff":"var(--text2)"}}>List</button>
-                <button onClick={()=>setTaskOrder("kanban")} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:taskOrder==="kanban"?"var(--accent)":"var(--surface2)",color:taskOrder==="kanban"?"#fff":"var(--text2)"}}>Kanban</button>
+                {taskOrder && (
+                  <button onClick={()=>setTaskOrder(null)} title="Clear custom order, sort chronologically by publish date" style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"1px solid var(--border)",cursor:"pointer",background:"var(--surface2)",color:"var(--text2)"}}>Sort by Date</button>
+                )}
+                <button onClick={()=>setViewMode("list")} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:viewMode==="list"?"var(--accent)":"var(--surface2)",color:viewMode==="list"?"#fff":"var(--text2)"}}>List</button>
+                <button onClick={()=>setViewMode("kanban")} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:viewMode==="kanban"?"var(--accent)":"var(--surface2)",color:viewMode==="kanban"?"#fff":"var(--text2)"}}>Kanban</button>
+                <button onClick={()=>setViewMode("cards")} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:viewMode==="cards"?"var(--accent)":"var(--surface2)",color:viewMode==="cards"?"#fff":"var(--text2)"}}>Cards</button>
+                <button onClick={()=>setViewMode("grid")} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:viewMode==="grid"?"var(--accent)":"var(--surface2)",color:viewMode==="grid"?"#fff":"var(--text2)"}}>Grid</button>
               </div>
             </div>
           )}
           {projectPosts.length===0&&<div style={{textAlign:"center",padding:40,color:"var(--text3)"}}>No tasks yet.</div>}
-          {taskOrder==="kanban" ? (
+          {viewMode==="kanban" ? (
             <KanbanView posts={projectPosts} project={project} team={team} onPostClick={onPostClick} onStageChange={onStageChange}/>
+          ) : viewMode==="grid" ? (
+            <div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,marginBottom:10}}>
+                <p style={{fontSize:12,color:"var(--text3)"}}>Drag cards to reorder the publishing schedule — same order as List view.</p>
+                <div style={{display:"flex",gap:6}}>
+                  <button disabled={gridExporting} onClick={()=>downloadGrid("png")} style={{padding:"5px 12px",borderRadius:20,fontSize:11,fontWeight:600,border:"1px solid var(--border)",cursor:gridExporting?"default":"pointer",background:"var(--surface2)",color:"var(--text2)",opacity:gridExporting?0.6:1}}>{gridExporting?"Exporting…":"Download PNG"}</button>
+                  <button disabled={gridExporting} onClick={()=>downloadGrid("pdf")} style={{padding:"5px 12px",borderRadius:20,fontSize:11,fontWeight:600,border:"1px solid var(--border)",cursor:gridExporting?"default":"pointer",background:"var(--surface2)",color:"var(--text2)",opacity:gridExporting?0.6:1}}>{gridExporting?"Exporting…":"Download PDF"}</button>
+                  <button disabled={fullCalExporting} onClick={downloadFullCalendarPdf} title="Cover, calendar details, full grid, then one slide per post" style={{padding:"5px 12px",borderRadius:20,fontSize:11,fontWeight:700,border:"none",cursor:fullCalExporting?"default":"pointer",background:"var(--accent)",color:"#fff",opacity:fullCalExporting?0.6:1}}>{fullCalExporting?"Building PDF…":"Download Full Calendar"}</button>
+                </div>
+              </div>
+              <div ref={gridExportRef} style={{display:"grid",gridTemplateColumns:"repeat(3, 1fr)",gap:3}}>
+                {(()=>{
+                  const gridOrdered = taskOrder ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort(postSortCmp);
+                  return gridOrdered.map(post=>{
+                    const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
+                    const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
+                    // Reels/videos: always show the dedicated cover image
+                    // (carousel_cover) rather than the raw video file — a
+                    // grid tile has no way to play video, so a video src
+                    // would just render a black/blank box.
+                    const isReelPost = post.post_type==="reel" || post.post_type==="video";
+                    const thumbUrl = (isReelPost && post.carousel_cover) || designUrls[designUrls.length-1] || designAssets[designAssets.length-1]?.url || post.carousel_cover || "";
+                    const thumbIsVideo = !isReelPost && ((designAssets[designAssets.length-1]?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i));
+                    return (
+                      <div key={post.id}
+                        draggable
+                        onDragStart={e=>{dragTaskRef.current=post.id;e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",post.id);}}
+                        onDragOver={e=>e.preventDefault()}
+                        onDrop={e=>{
+                          e.preventDefault();
+                          const fromId = dragTaskRef.current;
+                          if(!fromId || fromId===post.id) return;
+                          const base = taskOrder ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort(postSortCmp);
+                          const ids = base.map(p=>p.id);
+                          const fromIdx = ids.indexOf(fromId);
+                          const toIdx = ids.indexOf(post.id);
+                          if(fromIdx<0||toIdx<0) return;
+                          const newIds = [...ids];
+                          newIds.splice(fromIdx,1);
+                          newIds.splice(toIdx,0,fromId);
+                          setTaskOrder(newIds);
+                          // Dragging a card into a new slot moves everything
+                          // between the old and new position over by one —
+                          // not just the two cards you touched. A plain
+                          // two-card date/time SWAP left every card in
+                          // between still showing its pre-drag date/time,
+                          // out of sync with its new visual position (visible
+                          // once 3+ same-day posts, differing only by time,
+                          // got reordered — only the dragged card and the one
+                          // it landed on updated, the ones shifted in
+                          // between didn't). Reassign every affected slot's
+                          // date/time instead of swapping just a pair: the
+                          // post that ends up in slot i takes whatever
+                          // date/time used to belong to slot i before the
+                          // drag, for every slot between fromIdx and toIdx.
+                          const lo = Math.min(fromIdx,toIdx), hi = Math.max(fromIdx,toIdx);
+                          const slotDates = base.slice(lo,hi+1).map(p=>({date:p.scheduled_date, time:p.scheduled_time}));
+                          for(let i=lo;i<=hi;i++){
+                            const newPost = base.find(p=>p.id===newIds[i]);
+                            const slot = slotDates[i-lo];
+                            if(!newPost || !slot) continue;
+                            if(newPost.scheduled_date===slot.date && newPost.scheduled_time===slot.time) continue;
+                            ue("Post", newPost.id, {scheduled_date: slot.date, scheduled_time: slot.time}).catch(()=>{});
+                            onStageChange({...newPost, scheduled_date: slot.date, scheduled_time: slot.time}, newPost.stage);
+                          }
+                          dragTaskRef.current=null;
+                        }}
+                        onClick={()=>onPostClick&&onPostClick(post)}
+                        // 3:4 — every cell locked to that ratio, filled
+                        // edge-to-edge (cover), same as an Instagram grid
+                        // where every post crops uniformly into place.
+                        style={{position:"relative",aspectRatio:"3/4",background:"var(--surface2)",overflow:"hidden",cursor:"grab"}}>
+                        {thumbUrl ? (
+                          thumbIsVideo
+                            // autoPlay explicitly off, plus a hard pause the
+                            // instant any frame data loads — some browsers
+                            // will still start playing a muted <video> on
+                            // its own once metadata/frames are available
+                            // even with no autoplay attribute, especially
+                            // once several of these sit in a grid at once.
+                            ? <video src={thumbUrl+"#t=0.1"} muted autoPlay={false} playsInline preload="metadata" onLoadedData={e=>e.currentTarget.pause()} onPlay={e=>e.currentTarget.pause()} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                            : <img src={thumbUrl} alt={post.title} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                        ) : (
+                          <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text3)",fontSize:11,textAlign:"center",padding:8}}>{post.title}</div>
+                        )}
+                        <div style={{position:"absolute",top:0,left:0,right:0,padding:"8px 8px 24px",background:"linear-gradient(to bottom, rgba(0,0,0,.75), transparent)",display:"flex",flexDirection:"column",alignItems:"flex-start",gap:4,pointerEvents:"none"}}>
+                          <span style={{fontSize:14,fontWeight:700,color:"#fff",textShadow:"0 1px 3px rgba(0,0,0,.7)"}}>{post.scheduled_date||"No date"}{post.scheduled_date&&post.scheduled_time?` · ${post.scheduled_time}`:""}</span>
+                          <span className="sf-grid-status-badge" style={{fontSize:12,fontWeight:700,lineHeight:1,color:"#fff",padding:"5px 9px 4px",borderRadius:20,background:post.stage==="published"?"#10b981":"rgba(255,255,255,.28)",whiteSpace:"nowrap",display:"inline-block"}}>{post.stage==="published"?"Published":"Unpublished"}</span>
+                        </div>
+                        <div style={{position:"absolute",top:8,right:8,display:"flex",flexWrap:"wrap",justifyContent:"flex-end",gap:4,pointerEvents:"none"}}>
+                          {(()=>{
+                            const plts = Array.isArray(post.platforms) ? post.platforms : parseJ(post.platforms||"[]");
+                            return (plts.length ? plts : [post.platform]).filter(Boolean);
+                          })().map(plt=>(
+                            <span key={plt} style={{fontSize:10,fontWeight:800,lineHeight:1,color:"#fff",width:22,height:22,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",background:(PLT_COLOR[plt]||"#6b7280")+"e6",textShadow:"0 1px 2px rgba(0,0,0,.5)"}}>{PLT_ABBR[plt]||(plt||"").slice(0,2).toUpperCase()}</span>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          ) : viewMode==="cards" ? (
+            <div style={{display:"flex",flexDirection:"column",gap:16}}>
+              {[...projectPosts].sort(postSortCmp).map(post=>{
+                const stageInfo = STAGE_MAP[post.stage]||{label:post.stage,color:"#888"};
+                const designAssets = Array.isArray(post.design_assets) ? post.design_assets : parseJ(post.design_assets||"[]");
+                const designUrls = Array.isArray(post.design_urls) ? post.design_urls : parseJ(post.design_urls||"[]");
+                const thumbUrl = designUrls[designUrls.length-1] || designAssets[designAssets.length-1]?.url || post.carousel_cover || "";
+                const thumbIsVideo = (designAssets[designAssets.length-1]?.type||"").startsWith("video") || (thumbUrl||"").match(/\.(mp4|mov|webm|m4v)/i);
+                return (
+                  <div key={post.id} onClick={()=>onPostClick&&onPostClick(post)} style={{background:"var(--surface1)",borderRadius:14,border:"1px solid var(--border)",overflow:"hidden",cursor:"pointer",display:"flex",flexDirection:isMobile?"column":"row",width:"100%",maxHeight:isMobile?"none":760}}>
+                    {/* Media at full size — object-fit:contain (not cover)
+                        so nothing gets cropped, in a tall enough box that a
+                        full portrait/landscape image actually reads clearly
+                        instead of the old cramped 150px thumbnail strip. */}
+                    {thumbUrl ? (
+                      // No fixed height here — a forced box around an
+                      // object-fit:contain image just letterboxes into dead
+                      // space whenever the image's own aspect ratio doesn't
+                      // match it. Sizing to the image's natural aspect
+                      // ratio instead means it always fills the box exactly,
+                      // no gap, no crop.
+                      <div style={{width:isMobile?"100%":420,minWidth:isMobile?"100%":420,maxHeight:760,overflow:"hidden",flexShrink:0,display:"flex",alignItems:"center"}}>
+                        {thumbIsVideo
+                          ? <video src={thumbUrl} controls playsInline preload="metadata" style={{width:"100%",height:"auto",maxHeight:760,display:"block"}}/>
+                          : <img src={thumbUrl} alt={post.title} style={{width:"100%",height:"auto",maxHeight:760,display:"block",objectFit:"cover"}}/>}
+                      </div>
+                    ) : (
+                      <div style={{width:isMobile?"100%":420,minWidth:isMobile?"100%":420,height:isMobile?200:440,background:"var(--surface2)",display:"flex",alignItems:"center",justifyContent:"center",color:"var(--text3)",fontSize:13,flexShrink:0}}>No media yet</div>
+                    )}
+                    <div style={{padding:20,display:"flex",flexDirection:"column",gap:12,flex:1,minWidth:0,overflowY:isMobile?"visible":"auto",maxHeight:isMobile?"none":760}}>
+                      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
+                        <span style={{fontWeight:700,fontSize:17,color:"var(--text1)"}}>{post.title}</span>
+                        <span style={{background:stageInfo.color+"22",color:stageInfo.color,borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:600,flexShrink:0,whiteSpace:"nowrap"}}>{stageInfo.label}</span>
+                      </div>
+                      {post.text_on_visual&&(
+                        <div>
+                          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Text on Visual</p>
+                          <p style={{fontSize:13,color:"var(--text2)"}}>{post.text_on_visual}</p>
+                        </div>
+                      )}
+                      {post.caption&&(
+                        <div>
+                          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Caption</p>
+                          <p style={{fontSize:13,color:"var(--text2)",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{post.caption}</p>
+                        </div>
+                      )}
+                      {post.hashtags&&(
+                        <div>
+                          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Hashtags</p>
+                          <p style={{fontSize:12,color:"var(--accent)"}}>{post.hashtags}</p>
+                        </div>
+                      )}
+                      <div style={{marginTop:"auto",paddingTop:10,borderTop:"1px solid var(--border)",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+                        <span style={{fontSize:12,color:"var(--text3)"}}>{post.scheduled_date ? `${post.scheduled_date}${post.scheduled_time?` ${post.scheduled_time}`:""}` : "No publish date"}</span>
+                        <div style={{display:"flex",gap:4}}>
+                          {(Array.isArray(post.platforms)&&post.platforms.length ? post.platforms : [post.platform]).filter(Boolean).map(pl=><PChip key={pl} platform={pl} xs/>)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           ) : (
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {(()=>{
-              const ordered = taskOrder && taskOrder!=="kanban" ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort((a,b)=>(a.scheduled_date||"").localeCompare(b.scheduled_date||""));
+              const ordered = taskOrder ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort(postSortCmp);
               return ordered.map((post,idx)=>{
               const stageInfo = STAGE_MAP[post.stage]||{label:post.stage,color:"#888"};
               const assignee = team.find(m=>m.email===post.assigned_to);
@@ -16451,7 +18669,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                     e.preventDefault();
                     const fromId = dragTaskRef.current;
                     if(!fromId || fromId===post.id) return;
-                    const base = taskOrder && taskOrder!=="kanban" ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort((a,b)=>(a.scheduled_date||"").localeCompare(b.scheduled_date||""));
+                    const base = taskOrder ? taskOrder.map(id=>projectPosts.find(p=>p.id===id)).filter(Boolean) : [...projectPosts].sort(postSortCmp);
                     const ids = base.map(p=>p.id);
                     const fromIdx = ids.indexOf(fromId);
                     const toIdx = ids.indexOf(post.id);
@@ -16479,6 +18697,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
                     </div>
                     <span style={{fontSize:12,color:"var(--text3)"}}>{assignee.name}</span>
                   </div>}
+                  {post.sector&&<span style={{background:"#f59e0b22",color:"#f59e0b",borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600,flexShrink:0}}>{post.sector}</span>}
                   <span style={{background:stageInfo.color+"22",color:stageInfo.color,borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600,flexShrink:0}}>{stageInfo.label}</span>
                 </div>
               );
@@ -16768,10 +18987,11 @@ function AgentProfilePage({agent, avatarUrl, activityLogs=[], onBack}) {
 
 function UsersPage({currentUser, team, invitations, accessRequests, clientUsers, clients,
   onInviteUser, onCancelInvitation, onApproveRequest, onRejectRequest,
-  onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation,
-  rolePerms, onUpdateTeamMember, onRemoveMember, onToggleRolePermission, onAddExpense, leaveRequests, onDecideLeaveRequest, attendanceRecords,
-  posts, onImpersonate, appSettings, brandingAssets, onSaveSettings, expenses, onDeclareCompanyDayOff, invoices, payments, subscriptionPayments, activityLogs=[], perfLogs=[], maiReportSessions=[], leaveCreditEvents=[]}) {
+  onAddClientUser, onUpdateClientUser, onDeleteClientUser, onResendInvitation, onGenerateClientActivationLink, onActivateInvitation,
+  rolePerms, onUpdateTeamMember, onRemoveMember, onToggleRolePermission, onAddExpense, leaveRequests, onDecideLeaveRequest, attendanceRecords, onUpdateAttendance, onBackfillApprovedVacation, onRefundStaleAbsencePenalty,
+  posts, onImpersonate, appSettings, brandingAssets, onSaveSettings, expenses, onDeclareCompanyDayOff, invoices, payments, subscriptionPayments, activityLogs=[], perfLogs=[], maiReportSessions=[], leaveCreditEvents=[], payrollRuns=[], onDecidePayrollRun}) {
   const [tab, setTab] = usePersistentState("sf_tab_users","team");
+  const [memberStatusFilter, setMemberStatusFilter] = useState("active");
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showClientUserModal, setShowClientUserModal] = useState(false);
   const [editingClientUser, setEditingClientUser] = useState(null);
@@ -16837,6 +19057,9 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
           clients={clients}
           leaveRequests={leaveRequests||[]}
           attendanceRecords={attendanceRecords||[]}
+          onUpdateAttendance={onUpdateAttendance}
+          onBackfillApprovedVacation={onBackfillApprovedVacation}
+          onRefundStaleAbsencePenalty={onRefundStaleAbsencePenalty}
           expenses={expenses}
           invoices={invoices}
           payments={payments}
@@ -16844,6 +19067,8 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
           perfLogs={perfLogs}
           maiReportSessions={maiReportSessions}
           leaveCreditEvents={leaveCreditEvents}
+          payrollRuns={payrollRuns}
+          onDecidePayrollRun={onDecidePayrollRun}
           onUpdateTeamMember={onUpdateTeamMember}
           onAddExpense={onAddExpense}
           canEdit={!isOfficeBoy && hasPerm(currentUser,rolePerms,"hr.edit_team")}
@@ -16926,8 +19151,17 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
 
       {tab==="team"&&(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:-2}}>Human Team</p>
-          {(team||[]).map(m=>(
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:-2}}>
+            <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Human Team</p>
+            <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)"}}>
+              {[["active","Active"],["inactive","Inactive"]].map(([v,l])=>(
+                <button key={v} onClick={()=>setMemberStatusFilter(v)} style={{padding:"4px 12px",borderRadius:99,fontSize:11,fontWeight:700,border:"none",cursor:"pointer",background:memberStatusFilter===v?"var(--accent)":"none",color:memberStatusFilter===v?"#fff":"var(--text2)"}}>
+                  {l} ({(team||[]).filter(m=>(m.status||"active")===v).length})
+                </button>
+              ))}
+            </div>
+          </div>
+          {(team||[]).filter(m=>(m.status||"active")===memberStatusFilter).map(m=>(
             <div key={m.id} onClick={()=>setViewingMember(m)} data-clickable style={{background:"var(--surface)",borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:14,border:"1px solid var(--border)",cursor:"pointer"}}>
               <div style={{width:40,height:40,borderRadius:"50%",background:"var(--accent)",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700,fontSize:15,flexShrink:0,overflow:"hidden"}}>
                 {m.avatar_url?<img src={m.avatar_url} style={{width:"100%",height:"100%",objectFit:"cover"}} alt=""/>:m.name?.[0]?.toUpperCase()||"?"}
@@ -16945,10 +19179,10 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
                 </span>
               )}
               <span style={{
-                background:m.status==="active"?"#10b98122":"#f59e0b22",
-                color:m.status==="active"?"#10b981":"#f59e0b",
+                background:m.status==="active"?"#10b98122":m.termination_date?"#ef444422":"#f59e0b22",
+                color:m.status==="active"?"#10b981":m.termination_date?"#ef4444":"#f59e0b",
                 borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:600
-              }}>{m.status||"active"}</span>
+              }}>{m.status==="active"?"active":m.termination_date?"Terminated":(m.status||"active")}</span>
               {hasPerm(currentUser,rolePerms,"hr.edit_team")&&<button onClick={(e)=>{e.stopPropagation();setEditingMember(m);}} style={{background:"var(--surface2)",border:"none",borderRadius:6,padding:"6px 12px",cursor:"pointer",fontSize:12,color:"var(--text)",fontWeight:600}}>Edit</button>}
             </div>
           ))}
@@ -17019,6 +19253,9 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
                     <div style={{display:"flex",gap:6}}>
                       <button onClick={()=>{navigator.clipboard?.writeText(link);alert("Link copied!");}} style={{background:"var(--surface2)",border:"none",borderRadius:6,padding:"6px 12px",cursor:"pointer",fontSize:12,color:"var(--text)"}}>Copy Link</button>
                       <button onClick={()=>onResendInvitation&&onResendInvitation(inv)} style={{background:"var(--surface2)",border:"none",borderRadius:6,padding:"6px 12px",cursor:"pointer",fontSize:12,color:"var(--text)"}}>Resend</button>
+                      {onActivateInvitation&&(
+                        <button onClick={()=>{ if(confirm(`Activate ${inv.name||inv.email} now with a generated password, instead of waiting for them to use the invite link?`)) onActivateInvitation(inv); }} style={{background:"#10b98122",border:"none",borderRadius:6,padding:"6px 12px",cursor:"pointer",fontSize:12,color:"#10b981",fontWeight:600}}>Activate</button>
+                      )}
                       <button onClick={()=>onCancelInvitation&&onCancelInvitation(inv.id)} style={{background:"#ef444422",border:"none",borderRadius:6,padding:"6px 12px",cursor:"pointer",fontSize:12,color:"#ef4444"}}>Cancel</button>
                     </div>
                   )}
@@ -17133,8 +19370,8 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
       )}
 
       {showInviteModal&&<InviteUserModal onClose={()=>setShowInviteModal(false)} onSubmit={onInviteUser} clients={clients} team={team}/>}
-      {showClientUserModal&&<AddClientUserModal onClose={()=>setShowClientUserModal(false)} onSubmit={onAddClientUser} clients={clients}/>}
-      {editingClientUser&&<EditClientUserModal clientUser={editingClientUser} onClose={()=>setEditingClientUser(null)} onSubmit={onUpdateClientUser} clients={clients}/>}
+      {showClientUserModal&&<AddClientUserModal onClose={()=>setShowClientUserModal(false)} onSubmit={onAddClientUser} clients={clients} onGenerateActivationLink={onGenerateClientActivationLink}/>}
+      {editingClientUser&&<EditClientUserModal clientUser={editingClientUser} onClose={()=>setEditingClientUser(null)} onSubmit={onUpdateClientUser} clients={clients} onGenerateActivationLink={onGenerateClientActivationLink}/>}
       {editingMember&&(
         <EditMemberModal
           member={editingMember}
@@ -17202,9 +19439,136 @@ const TEAM_EVENT_TYPES = [
   {key:"deduction", label:"Deduction", color:"#ef4444"},
   {key:"warning", label:"Warning", color:"#ef4444"},
   {key:"demotion", label:"Demotion", color:"#ef4444", prevLabel:"Previous Title", newLabel:"New Title"},
+  {key:"terminate", label:"Termination", color:"#ef4444"},
   {key:"other", label:"Other", color:"#6b7280"},
 ];
 const TEAM_EVENT_MAP = Object.fromEntries(TEAM_EVENT_TYPES.map(t=>[t.key,t]));
+
+// Different terminations need genuinely different letters — a redundancy
+// letter that reads like a misconduct dismissal (or vice versa) is a real
+// legal/relationship problem, not just a tone issue. Keyed so the Add
+// Career Event form can offer a reason dropdown and generate the right
+// one automatically.
+const TERMINATION_REASONS = [
+  {key:"performance", label:"Performance"},
+  {key:"redundancy", label:"Redundancy / Restructuring"},
+  {key:"misconduct", label:"Misconduct"},
+  {key:"end_of_contract", label:"End of Contract"},
+  {key:"resignation_accepted", label:"Resignation Accepted"},
+  {key:"mutual_agreement", label:"Mutual Agreement"},
+];
+const TERMINATION_REASON_MAP = Object.fromEntries(TERMINATION_REASONS.map(r=>[r.key,r]));
+
+// Distinct copy per situation — a redundancy letter reading like a
+// misconduct dismissal (or the reverse) is a real problem, not just a
+// tone mismatch. Falls back to the neutral end_of_contract wording for
+// anything unrecognized rather than guessing.
+function terminationLetterCopy(reasonKey, firstName, lastDayLabel) {
+  const day = lastDayLabel || "the date noted above";
+  const variants = {
+    performance: {
+      hero: "Notice of Termination",
+      sub: `This letter confirms the end of your employment with us, ${firstName}.`,
+      body: `Following ongoing performance discussions, we've made the difficult decision to end your employment, effective ${day}. We appreciate the effort you've put in during your time here and wish you well in your next steps. Please reach out to HR regarding your final settlement and any outstanding matters.`,
+    },
+    redundancy: {
+      hero: "Notice of Termination — Redundancy",
+      sub: `This letter confirms the end of your role due to organizational restructuring, ${firstName}.`,
+      body: `This decision reflects changes in our business needs and is in no way a reflection of your performance or contribution, which we've genuinely valued. Your last working day will be ${day}. HR will be in touch regarding your final settlement and any applicable severance.`,
+    },
+    misconduct: {
+      hero: "Notice of Termination",
+      sub: `This letter confirms the termination of your employment, effective ${day}.`,
+      body: `Following an internal review, we've made the decision to end your employment effective ${day}. Please contact HR regarding the return of any company property and your final settlement.`,
+    },
+    end_of_contract: {
+      hero: "End of Contract",
+      sub: `This letter confirms that your contract with us concludes as scheduled, ${firstName}.`,
+      body: `Thank you for your contribution during your time with us. Your last working day will be ${day}. HR will follow up regarding your final settlement.`,
+    },
+    resignation_accepted: {
+      hero: "Resignation Accepted",
+      sub: `This letter confirms we've accepted your resignation, ${firstName}.`,
+      body: `Thank you for your notice and for everything you've contributed during your time with us. Your last working day will be ${day}. We wish you every success ahead, and HR will follow up regarding your final settlement.`,
+    },
+    mutual_agreement: {
+      hero: "Notice of Separation",
+      sub: `This letter confirms our mutual agreement to end your employment, ${firstName}.`,
+      body: `We appreciate the conversations we've had and your contribution during your time here. Your last working day will be ${day}. HR will follow up regarding your final settlement.`,
+    },
+  };
+  return variants[reasonKey] || variants.end_of_contract;
+}
+
+// Final-month payroll estimate for the termination letter: salary prorated
+// from day 1 of the last-day's month through the last working day itself
+// (which IS paid — see monthly-payroll-cron.php's identical day-inclusive
+// logic), plus the payable window this actually lands in — the payroll
+// cron runs on the 5th of the month AFTER the termination month and pays
+// out on the existing 5th–10th cycle, same as everyone else's salary.
+//
+// Uses whatever salary was ACTUALLY in effect on each day rather than
+// today's current salary — a member terminated mid-month who got a raise
+// partway through that same month earned the old rate for part of it and
+// the new rate for the rest (same day-by-day logic as
+// computeProratedMonthlySalary, just cut off at the last working day
+// instead of running to the end of the month). Also accounts for:
+//   - a start_date landing inside the same month (only pay from the day
+//     they actually joined, not day 1)
+//   - still being inside their probation period on a given day, in which
+//     case probation_salary applies instead of the post-probation salary —
+//     someone who joined Aug 2 with a 3-month probation is still on
+//     probation_salary the whole way through an Aug 20 termination, raise
+//     events notwithstanding.
+function terminationPayrollEstimate(member, lastDayISO, raiseEvents) {
+  const salary = Number(member?.salary)||0;
+  if(!lastDayISO || !salary) return null;
+  const d = new Date(lastDayISO+"T00:00:00");
+  const year = d.getFullYear(), month = d.getMonth();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const lastDay = d.getDate();
+
+  const monthStart = new Date(year, month, 1);
+  // Falls back to created_at (when their record was actually added) the
+  // same way monthly-payroll-cron.php and the "Joined" field on their
+  // profile do, whenever start_date was never explicitly set — for most
+  // hires that's the same day they really joined.
+  const startDateRaw = member.start_date || (member.created_at ? String(member.created_at).slice(0,10) : null);
+  const startDate = startDateRaw ? new Date(startDateRaw+"T00:00:00") : null;
+  const startDay = (startDate && startDate > monthStart) ? startDate.getDate() : 1;
+  if(startDay > lastDay) return null; // hadn't joined yet by their own last working day — shouldn't happen, but don't show nonsense
+
+  const probationSalary = Number(member.probation_salary)||0;
+  const probationMonths = Number(member.probation_months)||0;
+  let probationEndDate = null;
+  if(startDate && probationMonths > 0 && probationSalary > 0) {
+    probationEndDate = new Date(startDate);
+    probationEndDate.setMonth(probationEndDate.getMonth() + probationMonths);
+  }
+
+  const parseNum = v => Number(String(v||"").replace(/[^0-9.]/g,"")) || 0;
+  const events = (raiseEvents||[])
+    .filter(r=>r.effective_date && parseNum(r.new_value)>0)
+    .map(r=>({date:r.effective_date, rate:parseNum(r.new_value), prevRate:parseNum(r.previous_value)}))
+    .sort((a,b)=>new Date(a.date)-new Date(b.date));
+
+  let amount = 0;
+  for(let dd=startDay; dd<=lastDay; dd++){
+    const dateStr = `${year}-${String(month+1).padStart(2,"0")}-${String(dd).padStart(2,"0")}`;
+    let rate = salary;
+    if(probationEndDate && new Date(dateStr+"T00:00:00") < probationEndDate) {
+      rate = probationSalary;
+    } else {
+      const applicable = events.filter(e=>e.date<=dateStr).pop();
+      if(applicable) rate = applicable.rate;
+      else if(events.length>0 && events[0].prevRate>0) rate = events[0].prevRate;
+    }
+    amount += rate/daysInMonth;
+  }
+  amount = Math.round(amount*100)/100;
+  const payoutMonthLabel = new Date(year, month+1, 1).toLocaleDateString("en-US",{month:"long",year:"numeric"});
+  return { amount, payoutWindowLabel: `5th–10th of ${payoutMonthLabel}` };
+}
 
 // A salary raise partway through a month means the member actually earned
 // the old rate for part of the month and the new rate for the rest — this
@@ -17233,12 +19597,13 @@ function computeProratedMonthlySalary(currentSalary, raiseEvents, year, month) {
 // Lazy-fetched per profile (same pattern as the Hiring tab's application
 // activity log) rather than pulled into the app-wide data load, since it's
 // only ever looked at one member at a time.
-function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember, onAddExpense}) {
+function TeamMemberHistoryTab({member, team=[], canEdit, currentUser, onUpdateTeamMember, onAddExpense}) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [emailingId, setEmailingId] = useState(null);
   const [emailedIds, setEmailedIds] = useState(new Set());
+  const [showFormPreview, setShowFormPreview] = useState(false);
   const blankForm = () => ({event_type:"salary_raise", title:"", previous_value:member.salary?String(member.salary):"", new_value:"", amount:"", deduction_mode:"fixed", deduction_days:"", effective_date:new Date().toISOString().slice(0,10), notes:""});
   const [form, setForm] = useState(blankForm);
   const [saving, setSaving] = useState(false);
@@ -17284,6 +19649,14 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
         if(cleanSalary>0) await onUpdateTeamMember(member.id, {salary: cleanSalary});
         else alert(`Event saved, but "${form.new_value}" isn't a valid salary number — the team member's salary was NOT updated. Edit their profile directly if needed.`);
       }
+      // Termination doesn't flip them to inactive right away — they're
+      // still meant to be working (and have system access) through their
+      // last working day. terminate-members-cron.php flips status the day
+      // AFTER termination_date; this just records the date/reason so that
+      // cron, the payroll proration, and the letter template all have it.
+      if(form.event_type==="terminate" && form.effective_date && onUpdateTeamMember) {
+        await onUpdateTeamMember(member.id, {termination_date: form.effective_date, termination_reason: form.previous_value||"end_of_contract"});
+      }
       // Bonus/Commission are real money paid out — record as a Salaries &
       // Payroll expense linked to this member so it counts toward this
       // month's payroll total (Finance page + this profile's Payroll tab).
@@ -17304,6 +19677,12 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
     setSaving(false);
   };
 
+  // Payroll follow-up point of contact for termination letters — Mohamed
+  // Shams handles payroll, looked up by name off the live team roster
+  // rather than hardcoded so it stays correct if his contact info changes
+  // or the role moves to someone else.
+  const payrollContact = team.find(m=>(m.name||"").trim().toLowerCase()==="mohamed shams");
+
   const sendEventEmail = async (e) => {
     if(!member.email) { alert("This team member has no email on file."); return; }
     setEmailingId(e.id);
@@ -17313,10 +19692,30 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
         salary_raise:"Your salary has been updated", promotion:"Congratulations on your promotion!",
         bonus:"You've received a bonus", commission:"You've earned a commission",
         deduction:"Salary deduction notice", warning:"Formal notice", demotion:"Notice of role change",
+        terminate: terminationLetterCopy(e.previous_value, (member.name||"").split(" ")[0]).hero,
       };
-      const ok = await sendEmail(member.email, `[SocialFlow] ${subjects[e.event_type]||e.title||t.label}`, EMAIL_TEMPLATES.careerEvent(member.name, e));
+      const subject = `[SocialFlow] ${subjects[e.event_type]||e.title||t.label}`;
+      const html = EMAIL_TEMPLATES.careerEvent(member.name, e.event_type==="terminate" ? {...e, payrollMember: member, salaryRaises: events.filter(ev=>ev.event_type==="salary_raise"), payrollContact} : e);
+      const ok = await sendEmail(member.email, subject, html);
       if(ok) setEmailedIds(s=>new Set([...s, e.id]));
       else alert("Email failed to send.");
+
+      // Termination is significant enough to also loop in the member's
+      // manager and HR, so they have the letter on record too — not just
+      // the terminated person.
+      if(e.event_type==="terminate") {
+        const manager = team.find(m=>m.id===member.manager_id);
+        const hrMembers = team.filter(m=>m.role==="hr" && (m.status||"active")==="active");
+        const seen = new Set([member.email]);
+        const ccList = [...(manager?[manager]:[]), ...hrMembers].filter(m=>{
+          if(!m.email || seen.has(m.email)) return false;
+          seen.add(m.email);
+          return true;
+        });
+        for(const rec of ccList) {
+          await sendEmail(rec.email, `[SocialFlow] Termination notice — ${member.name}`, html);
+        }
+      }
     } catch(err){ alert("Email failed to send."); }
     setEmailingId(null);
   };
@@ -17375,7 +19774,10 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           <div>
             <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Event Type</label>
-            <select value={form.event_type} onChange={e=>setForm(f=>({...f,event_type:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)"}}>
+            <select value={form.event_type} onChange={e=>setForm(f=>({...f,event_type:e.target.value,
+              previous_value: e.target.value==="terminate"?"end_of_contract":f.previous_value,
+              title: e.target.value==="terminate"&&!f.title.trim()?`Termination — ${new Date().getFullYear()}`:f.title,
+            }))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)"}}>
               {TEAM_EVENT_TYPES.map(t=><option key={t.key} value={t.key}>{t.label}</option>)}
             </select>
           </div>
@@ -17393,6 +19795,15 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>{cfg.newLabel}</label>
                 <input type={form.event_type==="salary_raise"?"number":"text"} value={form.new_value} onChange={e=>setForm(f=>({...f,new_value:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)"}}/>
               </div>
+            </div>
+          )}
+          {form.event_type==="terminate"&&(
+            <div>
+              <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Termination Reason</label>
+              <select value={form.previous_value} onChange={e=>setForm(f=>({...f,previous_value:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)"}}>
+                {TERMINATION_REASONS.map(r=><option key={r.key} value={r.key}>{r.label}</option>)}
+              </select>
+              <p style={{fontSize:11,color:"var(--text3)",marginTop:5,lineHeight:1.5}}>Controls which termination letter gets generated when you send the email below. Their account switches to inactive (login blocked, off the Timeline) the day AFTER the last working day set below — not immediately.</p>
             </div>
           )}
           {(form.event_type==="bonus"||form.event_type==="commission")&&(
@@ -17426,7 +19837,7 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
             </div>
           )}
           <div>
-            <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>Effective Date</label>
+            <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>{form.event_type==="terminate"?"Last Working Day":"Effective Date"}</label>
             <input type="date" value={form.effective_date} onChange={e=>setForm(f=>({...f,effective_date:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)"}}/>
           </div>
           <div>
@@ -17434,11 +19845,42 @@ function TeamMemberHistoryTab({member, canEdit, currentUser, onUpdateTeamMember,
             <textarea value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} rows={3} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)",resize:"vertical",fontFamily:"inherit"}}/>
           </div>
           <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+            <button onClick={()=>setShowFormPreview(true)} disabled={!form.title.trim()} style={{padding:"7px 16px",borderRadius:7,fontSize:12,fontWeight:600,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text2)",display:"flex",alignItems:"center",gap:6,opacity:form.title.trim()?1:0.5}}>
+              <Ico d={Icons.eye} size={13}/> Preview Email
+            </button>
             <button onClick={()=>setShowAdd(false)} style={{padding:"7px 16px",borderRadius:7,fontSize:12,fontWeight:600,background:"var(--surface2)",border:"1px solid var(--border2)",color:"var(--text2)"}}>Cancel</button>
             <Btn onClick={save} disabled={saving||!form.title.trim()}>{saving?<Spinner size={13}/>:<><Ico d={Icons.check} size={13}/> Save Event</>}</Btn>
           </div>
         </div>
       </Modal>
+
+      {/* Lets you check the exact letter/notification wording BEFORE saving —
+          especially important for Termination, where picking the wrong
+          reason generates a genuinely different letter (see
+          terminationLetterCopy). Renders off the live form state, not a
+          saved event, so it always reflects whatever's currently filled in. */}
+      {showFormPreview&&(
+        <Modal open onClose={()=>setShowFormPreview(false)} title="Email Preview" width={560}>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            <div style={{height:520,border:"1px solid var(--border2)",borderRadius:8,overflow:"hidden"}}>
+              <iframe
+                srcDoc={EMAIL_TEMPLATES.careerEvent(member.name, {
+                  event_type: form.event_type, title: form.title,
+                  previous_value: form.previous_value||"", new_value: form.new_value||"",
+                  amount: form.event_type==="deduction" ? deductionAmount() : (form.amount?Number(form.amount):null),
+                  effective_date: form.effective_date||"",
+                  notes: form.event_type==="deduction"&&form.deduction_mode==="days"?`${form.deduction_days} day(s) deducted${form.notes?" — "+form.notes:""}`:(form.notes||""),
+                  payrollMember: form.event_type==="terminate" ? member : undefined,
+                  salaryRaises: form.event_type==="terminate" ? events.filter(ev=>ev.event_type==="salary_raise") : undefined,
+                  payrollContact: form.event_type==="terminate" ? payrollContact : undefined,
+                })}
+                style={{width:"100%",height:"100%",border:"none"}} title="Email Preview" sandbox="allow-same-origin"
+              />
+            </div>
+            <Btn variant="secondary" onClick={()=>setShowFormPreview(false)} style={{alignSelf:"flex-end"}}>Close</Btn>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -17733,7 +20175,31 @@ function AccountManagerMaiReportsTab({member, onUpdateTeamMember}) {
   );
 }
 
-function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, attendanceRecords, expenses, invoices, payments, subscriptionPayments, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense, appSettings, brandingAssets, perfLogs=[], maiReportSessions=[], leaveCreditEvents=[]}) {
+function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, attendanceRecords, onUpdateAttendance, onBackfillApprovedVacation, onRefundStaleAbsencePenalty, expenses, invoices, payments, subscriptionPayments, canEdit, canEditSalary, onBack, onEdit, onDelete, onSelectMember, currentUser, onImpersonate, onUpdateTeamMember, onAddExpense, appSettings, brandingAssets, perfLogs=[], maiReportSessions=[], leaveCreditEvents=[], payrollRuns=[], onDecidePayrollRun}) {
+  const [editingAttendanceId,setEditingAttendanceId] = useState(null);
+  const [attendanceEditDraft,setAttendanceEditDraft] = useState({});
+  const startEditAttendance = (a) => { setEditingAttendanceId(a.id); setAttendanceEditDraft({status:a.status||"present", check_in:a.check_in||"", check_out:a.check_out||""}); };
+  const saveAttendanceEdit = (a) => {
+    const wasAbsent = a.status==="absent";
+    const newStatus = attendanceEditDraft.status;
+    onUpdateAttendance && onUpdateAttendance(a.id, {status:newStatus, check_in:attendanceEditDraft.check_in||null, check_out:attendanceEditDraft.check_out||null});
+    if(wasAbsent && newStatus!=="absent") {
+      // Turning an unapproved absence into "Approved Vacation" isn't just a
+      // label change — it needs a real approved LeaveRequest behind it and
+      // the matching vacation-day accounting (refund the 2-day absence
+      // penalty, charge the normal 1-day vacation cost instead), same as
+      // approving a real vacation request that happens to cover this day.
+      if(newStatus==="leave" && onBackfillApprovedVacation) {
+        onBackfillApprovedVacation(member, a.work_date);
+      // Any OTHER reclassification (half_day, late, present, wfh — a
+      // device-misread correction, not a real day off) still needs the
+      // 2-day penalty refunded, just without the extra 1-day vacation charge.
+      } else if(onRefundStaleAbsencePenalty) {
+        onRefundStaleAbsencePenalty(member, a.work_date);
+      }
+    }
+    setEditingAttendanceId(null);
+  };
   // Plain state, not persisted — opening any team member should always
   // start on Overview, not silently reopen to whatever tab was last viewed.
   const [tab, setTab] = useState("overview");
@@ -18077,8 +20543,20 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
     // everyone else has data for.
     const allDates = (attendanceRecords || []).map(a => a.work_date).filter(Boolean).sort();
     const sortedDates = allDates.length ? allDates : [...existingDates].sort();
-    const cursor = new Date(sortedDates[0] + "T00:00:00");
-    const end = new Date(sortedDates[sortedDates.length - 1] + "T00:00:00");
+    // Filling company-wide from day one used to backfill "Absent" for every
+    // day before this specific person even joined — clamp the fill's start
+    // to whichever is later: the company-wide earliest date, or their own
+    // start date (falling back to their profile's creation date, same as
+    // attendance-import.php's own guard).
+    const memberStart = member.start_date || (member.created_at ? String(member.created_at).slice(0,10) : null);
+    const fillStart = (memberStart && memberStart > sortedDates[0]) ? memberStart : sortedDates[0];
+    // Same idea at the other end — a terminated member shouldn't show
+    // "Absent" for every day after their actual last day just because the
+    // company-wide imported range extends past it.
+    const companyEnd = sortedDates[sortedDates.length - 1];
+    const fillEnd = (member.termination_date && member.termination_date < companyEnd) ? member.termination_date : companyEnd;
+    const cursor = new Date(fillStart + "T00:00:00");
+    const end = new Date(fillEnd + "T00:00:00");
     // Build the ymd from LOCAL date parts, not toISOString() — that method
     // converts to UTC first, which silently rolls the date back a day in
     // any timezone ahead of UTC (e.g. Cairo, UTC+3: local midnight becomes
@@ -18100,20 +20578,45 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
       cursor.setDate(cursor.getDate() + 1);
     }
     // A REAL imported row can itself say "absent" for a day the member was
-    // actually on approved WFH/vacation — the import has no idea about
-    // leave requests, it only knows "no clock-in for this device that
-    // day" (see attendance-import.php's absent-fill loop), so an approved
-    // leave day and a genuine no-show both land as the same literal
-    // status in the database. Override the DISPLAYED status here so
-    // approved leave always wins over a bare "absent" row.
+    // actually on approved WFH/vacation, OR a day that's since been marked
+    // a company holiday/weekend AFTER the sheet was already imported — the
+    // import has no idea about leave requests or holidays declared later,
+    // it only knows "no clock-in for this device that day" (see
+    // attendance-import.php's absent-fill loop), so an approved leave day,
+    // a newly-declared holiday, and a genuine no-show can all land as the
+    // same literal "absent" status in the database. Override the DISPLAYED
+    // status here so approved leave / a holiday always wins over a bare
+    // "absent" row, without needing to re-import anything.
     const overridden = filled.map(a => {
-      const approvedLeave = a.status === "absent" ? approvedLeaveDatesForFill[a.work_date] : null;
-      return approvedLeave ? {...a, status: approvedLeave === "wfh" ? "wfh" : "leave"} : a;
+      if (a.status !== "absent") return a;
+      const approvedLeave = approvedLeaveDatesForFill[a.work_date];
+      if (approvedLeave) return {...a, status: approvedLeave === "wfh" ? "wfh" : "leave"};
+      if (isDayOffForFill(a.work_date)) return {...a, status: holidayDatesForFill.has(a.work_date) ? "holiday" : "weekend"};
+      return a;
     });
     return overridden.sort((a, b) => new Date(b.work_date) - new Date(a.work_date));
   })();
   const mySalaryRecords = (expenses||[]).filter(e=>e.team_member_id===member.id && e.category==="salaries").sort((a,b)=>new Date(b.date)-new Date(a.date));
-  const totalPaid = mySalaryRecords.reduce((sum,e)=>sum+Number(e.amount||0),0);
+  // Pending monthly payroll runs awaiting approval (see monthly-payroll-cron.php)
+  // — surfaced right here so an admin doesn't have to leave the profile and
+  // go dig through Finance > Payroll just to approve/reject this person's.
+  const myPendingPayroll = (payrollRuns||[]).filter(r=>r.team_member_id===member.id && r.status==="pending").sort((a,b)=>b.salary_month.localeCompare(a.salary_month));
+  // Once approved, a payroll run becomes an Outstanding-liability Expense
+  // (outstanding_kind:"team_member") — lazy-fetch actual payments made
+  // against those so Salary Records can show Outstanding/Partial/Paid
+  // instead of treating every linked expense as if it were already paid
+  // in full, same paid-so-far convention as the Finance > Outstanding tab.
+  const [outstandingPayments, setOutstandingPayments] = useState([]);
+  useEffect(()=>{
+    qe("OutstandingPayment", {}, "-date", 2000).then(res=>setOutstandingPayments(res.entities||[])).catch(()=>{});
+  },[member.id]);
+  const paidSoFarByExpense = {};
+  outstandingPayments.forEach(p=>{ paidSoFarByExpense[p.expense_id] = (paidSoFarByExpense[p.expense_id]||0) + Number(p.amount||0); });
+  const totalPaid = mySalaryRecords.reduce((sum,e)=>{
+    const total = Number(e.outstanding_total_payable ?? e.amount ?? 0);
+    const paid = e.outstanding_kind==="team_member" ? Math.min(paidSoFarByExpense[e.id]||0, total) : total;
+    return sum+paid;
+  },0);
   const docs = [member.id_photo_front_url&&{label:"ID Photo — Front", url:member.id_photo_front_url}, member.id_photo_back_url&&{label:"ID Photo — Back", url:member.id_photo_back_url}].filter(Boolean);
   const extraDocs = parseMaybeJson(member.extra_documents, []);
 
@@ -18283,7 +20786,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
         ))}
       </div>
 
-      {tab==="history"&&<TeamMemberHistoryTab member={member} canEdit={canEdit} currentUser={currentUser} onUpdateTeamMember={onUpdateTeamMember} onAddExpense={onAddExpense}/>}
+      {tab==="history"&&<TeamMemberHistoryTab member={member} team={team} canEdit={canEdit} currentUser={currentUser} onUpdateTeamMember={onUpdateTeamMember} onAddExpense={onAddExpense}/>}
 
       {tab==="tasks"&&(
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
@@ -18342,19 +20845,55 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
               <p style={{fontSize:22,fontWeight:800,marginTop:4}}>EGP {Math.round(totalPaid).toLocaleString()}</p>
             </div>
           </div>
+          {myPendingPayroll.length>0&&(
+            <div style={{background:"var(--surface)",border:"1px solid #f59e0b55",borderRadius:12,overflow:"hidden"}}>
+              <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}><h3 style={{fontWeight:700,fontSize:14}}>Pending Approval</h3></div>
+              {myPendingPayroll.map((r,i)=>(
+                <div key={r.id} style={{padding:"12px 18px",borderBottom:i<myPendingPayroll.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12}}>
+                  <div style={{flex:1}}>
+                    <p style={{fontWeight:600,fontSize:13}}>{new Date(r.salary_month+"-01").toLocaleDateString("en-US",{month:"long",year:"numeric"})} · Base EGP {Math.round(r.base_salary).toLocaleString()}</p>
+                    {Number(r.vacation_overage_days)>0&&<p style={{fontSize:11,color:"#ef4444"}}>−{r.vacation_overage_days}d over vacation credit (−EGP {Math.round(r.deduction_amount).toLocaleString()})</p>}
+                  </div>
+                  <span style={{fontWeight:800,fontSize:15,flexShrink:0}}>EGP {Math.round(r.net_amount).toLocaleString()}</span>
+                  {onDecidePayrollRun&&(
+                    <div style={{display:"flex",gap:6,flexShrink:0}}>
+                      <button onClick={()=>onDecidePayrollRun(r,"reject")} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:600,color:"var(--text2)"}}>Reject</button>
+                      <button onClick={()=>onDecidePayrollRun(r,"approve")} style={{background:"var(--accent)",border:"none",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:600,color:"#fff"}}>Approve</button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
           <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:12,overflow:"hidden"}}>
             <div style={{padding:"14px 18px",borderBottom:"1px solid var(--border)"}}><h3 style={{fontWeight:700,fontSize:14}}>Salary Records</h3></div>
             {mySalaryRecords.length===0?(
               <div style={{padding:20,textAlign:"center",color:"var(--text2)",fontSize:13}}>No salary payments linked to {member.name} yet — link one by picking them as "For (Team Member)" when adding a Salaries & Payroll transaction on the Finance page.</div>
-            ):mySalaryRecords.map((e,i)=>(
+            ):mySalaryRecords.map((e,i)=>{
+              // Approved payroll runs land here as an Outstanding-liability
+              // Expense (outstanding_kind:"team_member") — reflect its real
+              // paid-so-far state instead of assuming every linked expense
+              // was already paid in full. Anything without that marker is
+              // a plain manually-logged payment, which always was fully paid.
+              const isOutstanding = e.outstanding_kind==="team_member";
+              const total = Number(e.outstanding_total_payable ?? e.amount);
+              const paidSoFar = isOutstanding ? Math.min(paidSoFarByExpense[e.id]||0, total) : total;
+              const remaining = Math.max(0, total-paidSoFar);
+              const statusLabel = !isOutstanding ? null : remaining<=0 ? "Fully Transferred" : paidSoFar>0 ? "Partial Transfer" : "Outstanding";
+              const statusColor = statusLabel==="Fully Transferred" ? "#10b981" : statusLabel==="Partial Transfer" ? "#f59e0b" : "#ef4444";
+              return (
               <div key={e.id} style={{padding:"12px 18px",borderBottom:i<mySalaryRecords.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12}}>
                 <div style={{flex:1}}>
-                  <p style={{fontWeight:600,fontSize:13}}>{e.description}{e.salary_month&&<span style={{fontWeight:400,color:"var(--text3)"}}> — {new Date(e.salary_month+"-01").toLocaleDateString("en-US",{month:"long",year:"numeric"})}</span>}</p>
-                  <p style={{fontSize:11,color:"var(--text3)"}}>Paid {fmtDate(e.date)}{e.method?` · ${e.method}`:""}</p>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <p style={{fontWeight:600,fontSize:13}}>{e.description}{e.salary_month&&<span style={{fontWeight:400,color:"var(--text3)"}}> — {new Date(e.salary_month+"-01").toLocaleDateString("en-US",{month:"long",year:"numeric"})}</span>}</p>
+                    {statusLabel&&<Badge label={statusLabel} color={statusColor} xs/>}
+                  </div>
+                  <p style={{fontSize:11,color:"var(--text3)"}}>{isOutstanding ? (remaining<=0?`Fully paid`:`EGP ${Math.round(paidSoFar).toLocaleString()} of ${Math.round(total).toLocaleString()} transferred so far`) : `Paid ${fmtDate(e.date)}${e.method?` · ${e.method}`:""}`}</p>
                 </div>
-                <span style={{fontWeight:800,fontSize:14,color:"#ef4444"}}>-{e.currency||"EGP"} {Number(e.amount).toLocaleString()}</span>
+                <span style={{fontWeight:800,fontSize:14,color:"#ef4444"}}>-{e.currency||"EGP"} {Math.round(total).toLocaleString()}</span>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -18562,6 +21101,28 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                     const extra = worked!=null ? Math.max(0, worked-9) : 0;
                     const shortfall = (a.status==="present" && worked!=null) ? Math.max(0, 9-worked) : 0;
                     const isDayOff = a.status==="weekend" || a.status==="holiday";
+                    const isEditingThis = editingAttendanceId===a.id;
+                    if(isEditingThis) return (
+                      <div key={a.id} style={{padding:"10px 18px",borderBottom:i<g.rows.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",background:"var(--surface2)"}}>
+                        <span style={{fontSize:13,minWidth:100}}>{a.work_date?new Date(a.work_date).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}):""}</span>
+                        <input type="time" value={attendanceEditDraft.check_in||""} onChange={e=>setAttendanceEditDraft(d=>({...d,check_in:e.target.value}))} style={{fontSize:12,padding:"5px 8px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)"}}/>
+                        <span style={{fontSize:12,color:"var(--text3)"}}>–</span>
+                        <input type="time" value={attendanceEditDraft.check_out||""} onChange={e=>setAttendanceEditDraft(d=>({...d,check_out:e.target.value}))} style={{fontSize:12,padding:"5px 8px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)"}}/>
+                        <select value={attendanceEditDraft.status} onChange={e=>setAttendanceEditDraft(d=>({...d,status:e.target.value}))} style={{fontSize:12,padding:"5px 8px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)"}}>
+                          <option value="present">present</option>
+                          <option value="absent">absent</option>
+                          <option value="late">late</option>
+                          <option value="half_day">half_day</option>
+                          <option value="leave">Approved Vacation</option>
+                          <option value="wfh">wfh</option>
+                        </select>
+                        {a.status==="absent"&&attendanceEditDraft.status==="leave"&&(
+                          <span style={{fontSize:11,color:"#f59e0b",width:"100%"}}>Saving will create an approved vacation day for {member.name} on this date and refund the absence penalty.</span>
+                        )}
+                        <button onClick={()=>saveAttendanceEdit(a)} style={{fontSize:12,fontWeight:700,padding:"5px 12px",borderRadius:6,border:"none",background:"var(--accent)",color:"#fff"}}>Save</button>
+                        <button onClick={()=>setEditingAttendanceId(null)} style={{fontSize:12,fontWeight:600,padding:"5px 12px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text2)"}}>Cancel</button>
+                      </div>
+                    );
                     return (
                       <div key={a.id} style={{padding:"10px 18px",borderBottom:i<g.rows.length-1?"1px solid var(--border)":"none",display:"flex",alignItems:"center",gap:12,opacity:isDayOff?0.6:1}}>
                         <span style={{fontSize:13,flex:1}}>{a.work_date?new Date(a.work_date).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}):""}</span>
@@ -18569,6 +21130,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                         {extra>0&&<span style={{fontSize:11,fontWeight:700,color:"#f59e0b"}}>+{extra.toFixed(1)}h</span>}
                         {shortfall>0&&<span style={{fontSize:11,fontWeight:700,color:"#ef4444"}}>-{shortfall.toFixed(1)}h</span>}
                         <span style={{textTransform:a.status==="wfh"?"uppercase":"capitalize",fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:6,background:isDayOff?"var(--accentbg)":(a.status==="absent"?"#ef444422":"var(--surface2)"),color:isDayOff?"var(--accent)":(a.status==="absent"?"#ef4444":"var(--text2)")}}>{a.status==="absent"?"Absent (No Request)":a.status}</span>
+                        {canEdit&&onUpdateAttendance&&<button onClick={()=>startEditAttendance(a)} title="Edit time/status" style={{fontSize:11,fontWeight:600,color:"var(--text3)",padding:"3px 6px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface)"}}>Edit</button>}
                       </div>
                     );
                   })}
@@ -18596,7 +21158,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
           </> : null; })()}
           {row("Employment Type", member.employment_type==="part_time"
             ? `Part-time (${parseMaybeJson(member.work_days,WORK_DAYS_DEFAULT).map(d=>WEEKDAY_LABELS.find(w=>w.d===d)?.label).join(", ")})`
-            : "Full-time")}
+            : member.employment_type==="freelance" ? "Freelance (no attendance tracking / no vacation policy)" : "Full-time")}
           {canEditSalary&&row("Salary", member.salary?`EGP ${Number(member.salary).toLocaleString()}`:null)}
           {canEditSalary&&row("Probation Salary", member.probation_salary?`EGP ${Number(member.probation_salary).toLocaleString()}`:null)}
           {canEditSalary&&row("Probation Period", member.probation_months?`${member.probation_months} month(s)`:null)}
@@ -18930,6 +21492,7 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
   const [f,setF] = useState({
     name:member.name, email:member.email, role:member.role, department:member.department||"", title:member.title||"",
     status:member.status||"active", manager_id:member.manager_id||"", whatsapp_number:member.whatsapp_number||"",
+    start_date:member.start_date||"",
     salary:member.salary??"", probation_salary:member.probation_salary??"", probation_months:member.probation_months??"",
     vacation_days_total:member.vacation_days_total??21, wfh_days_total:member.wfh_days_total??2,
     personal_leave_hours_total:member.personal_leave_hours_total??4,
@@ -18937,6 +21500,7 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
     personal_leave_hours_used:member.personal_leave_hours_used??0,
     extra_hours_banked:member.extra_hours_banked??0,
     employment_type: member.employment_type||"full_time",
+    attendance_policy_exempt: member.attendance_policy_exempt||false,
     work_days: parseMaybeJson(member.work_days, WORK_DAYS_DEFAULT),
     national_id: member.national_id||"",
     attendance_device_id: member.attendance_device_id||"",
@@ -18976,6 +21540,7 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
     if(updates.salary==="") updates.salary = null;
     if(updates.probation_salary==="") updates.probation_salary = null;
     if(updates.probation_months==="") updates.probation_months = null;
+    if(updates.start_date==="") updates.start_date = null;
     // Full-time always means the standard Sun-Thu week (work_days only
     // matters/persists for part-timers with a custom schedule).
     updates.work_days = JSON.stringify(updates.employment_type==="part_time" ? updates.work_days : WORK_DAYS_DEFAULT);
@@ -19043,10 +21608,11 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
               <option value="inactive">Inactive</option>
             </select>
           </Field>
-          <Field label="Employment Type" hint="Part-time lets you pick which weekdays they actually work — task allocation and due-date scheduling only count those days as available">
+          <Field label="Employment Type" hint={f.employment_type==="freelance" ? "Freelance is exempt from the attendance device/time machine entirely, with no scheduled work days at all — no absent/late tracking and no vacation or leave day deductions apply to them." : "Part-time lets you pick which weekdays they actually work — task allocation and due-date scheduling only count those days as available"}>
             <select value={f.employment_type} onChange={e=>s("employment_type",e.target.value)} style={inputSt}>
               <option value="full_time">Full-time</option>
               <option value="part_time">Part-time</option>
+              <option value="freelance">Freelance (no schedule, no attendance tracking, no vacation policy)</option>
             </select>
           </Field>
           {f.employment_type==="part_time" && (
@@ -19062,6 +21628,17 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
                 ))}
               </div>
             </Field>
+          )}
+          {(f.employment_type==="full_time"||f.employment_type==="part_time") && (
+            <Field label="Attendance Policy" hint="For a part-timer with real scheduled days who still shouldn't be tracked by the fingerprint device or docked vacation days for missed clock-ins — e.g. paid per-task/per-project rather than by attendance.">
+              <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer"}}>
+                <input type="checkbox" checked={f.attendance_policy_exempt} onChange={e=>s("attendance_policy_exempt",e.target.checked)}/>
+                No attendance tracking / no vacation policy for this person
+              </label>
+            </Field>
+          )}
+          {canEditSalary&&(
+            <Field label="Start Date" hint="Used to skip/prorate payroll before their real join date"><input type="date" value={f.start_date} onChange={e=>s("start_date",e.target.value)} style={inputSt}/></Field>
           )}
           {canEditSalary&&(
             <Field label="Salary"><input type="number" value={f.salary} onChange={e=>s("salary",e.target.value)} placeholder="Monthly salary" style={inputSt}/></Field>
@@ -19668,23 +22245,69 @@ function InviteUserModal({onClose, onSubmit, clients, team, initial}) {
   );
 }
 
-function AddClientUserModal({onClose, onSubmit, clients}) {
-  const [form, setForm] = useState({name:"",email:"",role:"client_member",client_id:"",client_name:""});
+function AddClientUserModal({onClose, onSubmit, clients, onGenerateActivationLink}) {
+  const [form, setForm] = useState({name:"",email:"",role:"client_member",client_id:"",client_name:"",title:"",mobile:""});
   const [loading, setLoading] = useState(false);
+  const [createdPass, setCreatedPass] = useState(null); // set once the user's made — shows the generated password instead of closing immediately
+  const [createdLink, setCreatedLink] = useState(null); // set instead, if "Send Activation Link" was chosen
+  const [copied, setCopied] = useState(false);
   const sf = (k,v)=>setForm(p=>({...p,[k]:v}));
 
-  const handleSubmit = async ()=>{
+  const handleSubmit = async (useActivationLink)=>{
     if(!form.email||!form.client_id) return;
     setLoading(true);
     const client = (clients||[]).find(c=>c.id===form.client_id);
-    await onSubmit({...form, client_name: client?.name||""});
+    if(useActivationLink) {
+      await onSubmit({...form, client_name: client?.name||""});
+      const link = await onGenerateActivationLink({name:form.name, email:form.email, role:form.role, client_id:form.client_id, client_name:client?.name||""});
+      setLoading(false);
+      setCreatedLink(link);
+      return;
+    }
+    // Same random-temp-password convention as the "Forgot Password" flow
+    // (LoginScreen) — a client user used to be created with no password at
+    // all, meaning they couldn't actually log in until someone separately
+    // ran Forgot Password for them.
+    const tempPass = Math.random().toString(36).slice(2,10).toUpperCase();
+    await onSubmit({...form, client_name: client?.name||"", password: tempPass});
+    const html = `<div style="font-family:'Montserrat',sans-serif;max-width:500px;margin:0 auto;padding:32px;background:#fff;border-radius:12px">
+      <img src="/favicon.svg" width="44" height="44" style="border-radius:10px;display:block;margin:0 auto 20px"/>
+      <h2 style="text-align:center;font-size:20px;font-weight:800;color:#111827;margin-bottom:8px">Welcome to SocialFlow</h2>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;text-align:center">Hi ${form.name||form.email}, you've been given access to ${client?.name||"your"} account. Here's your temporary password:</p>
+      <div style="margin:24px auto;text-align:center;background:#f9fafb;border:2px dashed #d1d5db;border-radius:10px;padding:18px 24px">
+        <span style="font-size:26px;font-weight:800;letter-spacing:3px;color:#d90b2c;font-family:monospace">${tempPass}</span>
+      </div>
+      <p style="color:#6b7280;font-size:13px;text-align:center;line-height:1.6">Sign in with your email and this password, then update it in your account settings.</p>
+    </div>`;
+    await sendEmail(form.email, "Your SocialFlow client portal access", html, "SocialFlow").catch(()=>{});
     setLoading(false);
-    onClose();
+    setCreatedPass(tempPass);
   };
+
+  if(createdPass || createdLink) {
+    const value = createdPass || createdLink;
+    return (
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div style={{background:"var(--surface)",borderRadius:16,padding:28,width:480,border:"1px solid var(--border)"}}>
+          <h3 style={{fontWeight:700,fontSize:17,color:"var(--text)",marginBottom:6}}>Client User Added</h3>
+          <p style={{fontSize:13,color:"var(--text2)",marginBottom:16}}>{createdPass ? <>A temporary password was emailed to {form.email}. You can also share it directly:</> : <>An activation link was emailed to {form.email} so they can set their own password. You can also share it directly:</>}</p>
+          <div style={{display:"flex",alignItems:"center",gap:8,background:"var(--surface2)",border:"2px dashed var(--border2)",borderRadius:10,padding:"14px 18px",justifyContent:"center"}}>
+            <span style={{fontSize:createdPass?22:13,fontWeight:800,letterSpacing:createdPass?3:0,color:"var(--accent)",fontFamily:createdPass?"monospace":"inherit",wordBreak:"break-all",textAlign:"center"}}>{value}</span>
+          </div>
+          <div style={{display:"flex",gap:8,marginTop:20,justifyContent:"flex-end"}}>
+            <button onClick={()=>{navigator.clipboard?.writeText(value); setCopied(true); setTimeout(()=>setCopied(false),2000);}} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"9px 18px",cursor:"pointer",color:"var(--text)",fontWeight:600}}>
+              {copied?"Copied!":createdPass?"Copy Password":"Copy Link"}
+            </button>
+            <button onClick={onClose} style={{background:"var(--accent)",color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",cursor:"pointer",fontWeight:600}}>Done</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{background:"var(--surface)",borderRadius:16,padding:28,width:440,border:"1px solid var(--border)"}}>
+      <div style={{background:"var(--surface)",borderRadius:16,padding:28,width:440,maxHeight:"90vh",overflowY:"auto",border:"1px solid var(--border)"}}>
         <h3 style={{fontWeight:700,fontSize:17,color:"var(--text)",marginBottom:20}}>Add Client User</h3>
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           <div>
@@ -19699,8 +22322,16 @@ function AddClientUserModal({onClose, onSubmit, clients}) {
             <input value={form.name} onChange={e=>sf("name",e.target.value)} placeholder="Jane Smith" style={inputSt}/>
           </div>
           <div>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Title</label>
+            <input value={form.title} onChange={e=>sf("title",e.target.value)} placeholder="e.g. CEO, Marketing Manager" style={inputSt}/>
+          </div>
+          <div>
             <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Email *</label>
             <input type="email" value={form.email} onChange={e=>sf("email",e.target.value)} style={inputSt}/>
+          </div>
+          <div>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Phone Number</label>
+            <input value={form.mobile} onChange={e=>sf("mobile",e.target.value)} placeholder="+20 100 000 0000" style={inputSt}/>
           </div>
           <div>
             <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Role</label>
@@ -19709,11 +22340,17 @@ function AddClientUserModal({onClose, onSubmit, clients}) {
               <option value="client_member">Client Member — tasks & approvals only</option>
             </select>
           </div>
+          <p style={{fontSize:11,color:"var(--text3)"}}>Either generate a temporary password yourself, or send an activation link and let them set their own.</p>
         </div>
-        <div style={{display:"flex",gap:8,marginTop:20,justifyContent:"flex-end"}}>
+        <div style={{display:"flex",gap:8,marginTop:20,justifyContent:"flex-end",flexWrap:"wrap"}}>
           <button onClick={onClose} style={{background:"var(--surface2)",border:"none",borderRadius:8,padding:"9px 18px",cursor:"pointer",color:"var(--text)",fontWeight:500}}>Cancel</button>
-          <button onClick={handleSubmit} disabled={loading||!form.email||!form.client_id} style={{background:"var(--accent)",color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",cursor:"pointer",fontWeight:600,opacity:loading||!form.email||!form.client_id?0.6:1}}>
-            {loading?"Adding...":"Add User"}
+          {onGenerateActivationLink&&(
+            <button onClick={()=>handleSubmit(true)} disabled={loading||!form.email||!form.client_id} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"9px 16px",cursor:"pointer",color:"var(--text)",fontWeight:600,opacity:loading||!form.email||!form.client_id?0.6:1}}>
+              {loading?"Sending...":"Send Activation Link"}
+            </button>
+          )}
+          <button onClick={()=>handleSubmit(false)} disabled={loading||!form.email||!form.client_id} style={{background:"var(--accent)",color:"#fff",border:"none",borderRadius:8,padding:"9px 20px",cursor:"pointer",fontWeight:600,opacity:loading||!form.email||!form.client_id?0.6:1}}>
+            {loading?"Adding...":"Generate Password"}
           </button>
         </div>
       </div>
@@ -19721,10 +22358,13 @@ function AddClientUserModal({onClose, onSubmit, clients}) {
   );
 }
 
-function EditClientUserModal({clientUser, onClose, onSubmit, clients}) {
-  const [form, setForm] = useState({name:clientUser.name||"", email:clientUser.email||"", role:clientUser.role||"client_member", client_id:clientUser.client_id||"", status:clientUser.status||"active", password:clientUser.password||""});
+function EditClientUserModal({clientUser, onClose, onSubmit, clients, onGenerateActivationLink}) {
+  const [form, setForm] = useState({name:clientUser.name||"", email:clientUser.email||"", role:clientUser.role||"client_member", client_id:clientUser.client_id||"", status:clientUser.status||"active", password:clientUser.password||"", title:clientUser.title||"", mobile:clientUser.mobile||""});
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [linkSending, setLinkSending] = useState(false);
+  const [sentLink, setSentLink] = useState(null);
+  const [copied, setCopied] = useState(false);
   const sf = (k,v)=>setForm(p=>({...p,[k]:v}));
 
   const handleSubmit = async ()=>{
@@ -19736,9 +22376,23 @@ function EditClientUserModal({clientUser, onClose, onSubmit, clients}) {
     onClose();
   };
 
+  const handleGeneratePassword = () => {
+    sf("password", Math.random().toString(36).slice(2,10).toUpperCase());
+    setShowPassword(true);
+  };
+
+  const handleSendActivationLink = async () => {
+    if(!onGenerateActivationLink) return;
+    setLinkSending(true);
+    const client = (clients||[]).find(c=>c.id===form.client_id);
+    const link = await onGenerateActivationLink({name:form.name, email:form.email, role:form.role, client_id:form.client_id, client_name:client?.name||clientUser.client_name||""});
+    setLinkSending(false);
+    setSentLink(link);
+  };
+
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{background:"var(--surface)",borderRadius:16,padding:28,width:440,border:"1px solid var(--border)"}}>
+      <div style={{background:"var(--surface)",borderRadius:16,padding:28,width:440,maxHeight:"90vh",overflowY:"auto",border:"1px solid var(--border)"}}>
         <h3 style={{fontWeight:700,fontSize:17,color:"var(--text)",marginBottom:20}}>Edit Client User</h3>
         <div style={{display:"flex",flexDirection:"column",gap:14}}>
           <div>
@@ -19753,8 +22407,16 @@ function EditClientUserModal({clientUser, onClose, onSubmit, clients}) {
             <input value={form.name} onChange={e=>sf("name",e.target.value)} placeholder="Jane Smith" style={inputSt}/>
           </div>
           <div>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Title</label>
+            <input value={form.title} onChange={e=>sf("title",e.target.value)} placeholder="e.g. CEO, Marketing Manager" style={inputSt}/>
+          </div>
+          <div>
             <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Email *</label>
             <input type="email" value={form.email} onChange={e=>sf("email",e.target.value)} style={inputSt}/>
+          </div>
+          <div>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Phone Number</label>
+            <input value={form.mobile} onChange={e=>sf("mobile",e.target.value)} placeholder="+20 100 000 0000" style={inputSt}/>
           </div>
           <div>
             <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Role</label>
@@ -19776,8 +22438,24 @@ function EditClientUserModal({clientUser, onClose, onSubmit, clients}) {
             <div style={{display:"flex",gap:8}}>
               <input type={showPassword?"text":"password"} value={form.password} onChange={e=>sf("password",e.target.value)} placeholder="No password set" style={{...inputSt,flex:1}}/>
               <button type="button" onClick={()=>setShowPassword(p=>!p)} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"0 14px",cursor:"pointer",color:"var(--text2)",fontSize:12,fontWeight:600,flexShrink:0}}>{showPassword?"Hide":"Show"}</button>
+              <button type="button" onClick={handleGeneratePassword} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"0 14px",cursor:"pointer",color:"var(--text2)",fontSize:12,fontWeight:600,flexShrink:0}}>Generate</button>
             </div>
           </div>
+          {onGenerateActivationLink&&(
+            <div>
+              <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Activation Link</label>
+              {sentLink ? (
+                <div style={{display:"flex",alignItems:"center",gap:8,background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"8px 12px"}}>
+                  <span style={{fontSize:12,color:"var(--text2)",flex:1,wordBreak:"break-all"}}>{sentLink}</span>
+                  <button type="button" onClick={()=>{navigator.clipboard?.writeText(sentLink); setCopied(true); setTimeout(()=>setCopied(false),2000);}} style={{background:"var(--surface)",border:"1px solid var(--border2)",borderRadius:6,padding:"4px 10px",cursor:"pointer",color:"var(--text)",fontSize:11,fontWeight:600,flexShrink:0}}>{copied?"Copied!":"Copy"}</button>
+                </div>
+              ) : (
+                <button type="button" onClick={handleSendActivationLink} disabled={linkSending||!form.email} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:8,padding:"9px 14px",cursor:"pointer",color:"var(--text)",fontSize:12,fontWeight:600,width:"100%",opacity:linkSending||!form.email?0.6:1}}>
+                  {linkSending?"Sending...":"Send Activation Link (let them set their own password)"}
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <div style={{display:"flex",gap:8,marginTop:20,justifyContent:"flex-end"}}>
           <button onClick={onClose} style={{background:"var(--surface2)",border:"none",borderRadius:8,padding:"9px 18px",cursor:"pointer",color:"var(--text)",fontWeight:500}}>Cancel</button>
@@ -20218,7 +22896,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                   under the "Client" tab on their side; the client can read
                   and reply here. */}
               {(()=>{
-                const selComments = (comments||[]).filter(c=>c.post_id===sel.id&&c.audience==="client");
+                const selComments = (comments||[]).filter(c=>c.post_id===sel.id&&c.audience==="client").sort((a,b)=>new Date(a.created_date||a.created_at||0)-new Date(b.created_date||b.created_at||0));
                 return (
                   <div style={{display:"flex",flexDirection:"column",gap:10,paddingTop:8,borderTop:"1px solid var(--border)"}}>
                     <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Comments · {selComments.length}</p>
@@ -20229,7 +22907,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                           <div style={{flex:1,background:"var(--surface2)",borderRadius:"var(--rs)",padding:"8px 11px",border:"1px solid var(--border)"}}>
                             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
                               <span style={{fontSize:12,fontWeight:600}}>{c.author_name||"Agency"}</span>
-                              <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date)}</span>
+                              <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date||c.created_at)}</span>
                             </div>
                             <p style={{fontSize:13,lineHeight:1.5}}>{c.content}</p>
                           </div>
@@ -22488,7 +25166,10 @@ function CareersPage({appSettings}) {
         sendCareersEmail(form.email.trim(), es.confirmation_subject||"Thanks for applying to Admepro!", applicationReceivedEmail(form.name.trim(), selected.title, es.confirmation_message), es.confirmation_from_name||"Admepro Careers").catch(()=>{});
         if(created?.id) logApplicationActivity(created.id, "Welcome email sent", "System");
       }
-    } catch(e) { alert("Something went wrong submitting your application. Please try again."); }
+    } catch(e) {
+      console.error("[Careers] application submit failed:", e);
+      alert(`Something went wrong submitting your application. Please try again.${e?.message ? `\n\n(${e.message})` : ""}`);
+    }
     setSubmitting(false);
   };
 
@@ -22856,6 +25537,7 @@ function LoginScreen({onLogin,clients}) {
         if(res.entities.length) {
           const u = res.entities[0];
           if(u.status==="blocked") { setErr("Your account has been blocked. Contact your admin."); setLoading(false); return; }
+          if(u.status==="inactive") { setErr("This account is inactive. Contact your admin if you believe this is a mistake."); setLoading(false); return; }
           if(u.status==="invited"||u.status==="pending") { setErr("Your account is pending setup. Check your invitation email."); setLoading(false); return; }
           // Password check (for real users set via invitation)
           if(u.password && u.password !== password) { setErr("Incorrect password."); setLoading(false); return; }
@@ -25254,6 +27936,8 @@ const INTEGRATION_APPS = [
   {key:"google_sheets",label:"Google Sheets", category:"spreadsheet", color:"#0F9D58", icon:Icons.sheetsBrand, description:"Add rows to Google Sheets"},
   // Ecommerce
   {key:"shopify", label:"Shopify", category:"ecommerce", color:"#95BF47", icon:Icons.shopifyBrand, brand:true, description:"Sync orders and products with your Shopify store"},
+  // Project management
+  {key:"trello", label:"Trello", category:"pm", color:"#0079BF", icon:Icons.plug, description:"Two-way board sync — client requests, stage moves, and approvals mirrored on a Trello board"},
 ];
 const APP_MAP = Object.fromEntries(INTEGRATION_APPS.map(a=>[a.key,a]));
 
@@ -25341,8 +28025,8 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
     app_key: existingIntegration.app_key,
     trigger: existingIntegration.trigger||"",
     action: existingIntegration.action||"",
-    credentials: (() => { try { return JSON.parse(existingIntegration.credentials||"{}"); } catch { return {}; } })(),
-    config: (() => { try { return JSON.parse(existingIntegration.config||"{}"); } catch { return {}; } })(),
+    credentials: parseMaybeJson(existingIntegration.credentials, {}),
+    config: parseMaybeJson(existingIntegration.config, {}),
     webhook_url: existingIntegration.webhook_url||"",
     client_id: existingIntegration.client_id||"",
     client_name: existingIntegration.client_name||"",
@@ -25423,7 +28107,18 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
   };
 
   const selectedApp = APP_MAP[f.app_key];
-  const selectedTrigger = TRIGGER_MAP[f.trigger];
+  // Stored as a comma-separated list in the same `trigger` TEXT column —
+  // no schema change needed, and nothing else in the app reads this as a
+  // single exact key (the automation-runner side isn't wired up yet), so
+  // widening it to multiple values here is safe.
+  const triggerKeys = (f.trigger||"").split(",").filter(Boolean);
+  const toggleTrigger = (key) => setF(p=>{
+    const keys = (p.trigger||"").split(",").filter(Boolean);
+    const next = keys.includes(key) ? keys.filter(k=>k!==key) : [...keys,key];
+    return {...p, trigger: next.join(",")};
+  });
+  const selectedTriggers = triggerKeys.map(k=>TRIGGER_MAP[k]).filter(Boolean);
+  const selectedTrigger = selectedTriggers[0]; // back-compat for the icon shown in Review
   const categoryActions = INTEGRATION_ACTIONS[selectedApp?.category||"social"]||INTEGRATION_ACTIONS.social;
   const selectedAction = categoryActions.find(a=>a.key===f.action);
   const isWhatsApp = f.app_key==="whatsapp";
@@ -25458,7 +28153,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
   const handleSave = async (active=false) => {
     if(!f.app_key||!f.trigger||!f.action) return;
     setSaving(true);
-    const autoName = f.name || `${selectedTrigger?.label||f.trigger} → ${selectedApp?.label||f.app_key}`;
+    const autoName = f.name || `${selectedTriggers.length ? selectedTriggers.map(t=>t.label).join(" + ") : f.trigger} → ${selectedApp?.label||f.app_key}`;
     await onSave({
       name: autoName,
       app_key: f.app_key,
@@ -25765,14 +28460,14 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
           {step===3&&(
             <div style={{display:"flex",flexDirection:"column",gap:14}}>
               <div>
-                <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:17,fontWeight:800,marginBottom:4}}>Choose Trigger</h3>
-                <p style={{fontSize:13,color:"var(--text2)"}}>What event in SocialFlow should activate this integration?</p>
+                <h3 style={{fontFamily:"'Montserrat',sans-serif",fontSize:17,fontWeight:800,marginBottom:4}}>Choose Trigger(s)</h3>
+                <p style={{fontSize:13,color:"var(--text2)"}}>Which event(s) in SocialFlow should activate this integration? Pick as many as you need.</p>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
                 {INTEGRATION_TRIGGERS.map(t=>{
-                  const active=f.trigger===t.key;
+                  const active=triggerKeys.includes(t.key);
                   return (
-                    <button key={t.key} onClick={()=>sf("trigger",t.key)} style={{
+                    <button key={t.key} onClick={()=>toggleTrigger(t.key)} style={{
                       display:"flex",alignItems:"center",gap:14,padding:"14px 18px",
                       background:active?"var(--accentbg)":"var(--surface2)",
                       border:`1.5px solid ${active?"var(--accent)":"var(--border)"}`,
@@ -25888,7 +28583,7 @@ function IntegrationWizard({open, onClose, onSave, existingIntegration, currentU
                 <div style={{textAlign:"center",padding:14,background:"var(--surface)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
                   <p style={{fontSize:10,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:8}}>When This Happens</p>
                   <div style={{fontSize:24,marginBottom:6}}>{selectedTrigger?.icon||""}</div>
-                  <p style={{fontWeight:700,fontSize:13}}>{selectedTrigger?.label||f.trigger}</p>
+                  <p style={{fontWeight:700,fontSize:13}}>{selectedTriggers.length ? selectedTriggers.map(t=>t.label).join(", ") : f.trigger}</p>
                   <p style={{fontSize:11,color:"var(--text3)",marginTop:3}}>in SocialFlow</p>
                 </div>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -27422,7 +30117,7 @@ function SystemLogPage({activityLogs, systemSessions, currentUser, onRefresh, te
 // TASK DURATION ESTIMATE SETTINGS (admin-adjustable estimateDuration() overrides)
 // ════════════════════════════════════════════════════════════════
 const POST_TYPE_LABELS = {
-  image:"Image", video:"Video", carousel:"Carousel", story:"Story", reel:"Reel",
+  image:"Image", static:"Static", video:"Video", carousel:"Carousel", story:"Story", reel:"Reel",
   social_post:"Social Post", story_reel:"Story/Reel", caption_copy:"Caption Copy",
   graphic_design:"Graphic Design", campaign:"Campaign", ad_creative:"Ad Creative", blog:"Blog",
 };
@@ -27645,7 +30340,7 @@ function mergeContractTemplate(template, member, manager, appSettings) {
     job_title: member.title||ROLES[member.role]?.label||member.role||"",
     department: member.department||"",
     manager_name: manager?.name||"—",
-    start_date: member.created_at ? fmtDate(member.created_at) : fmtDate(new Date().toISOString()),
+    start_date: member.start_date ? fmtDate(member.start_date) : (member.created_at ? fmtDate(member.created_at) : fmtDate(new Date().toISOString())),
     salary: member.salary?`EGP ${Number(member.salary).toLocaleString()}`:"________________",
     probation_months: member.probation_months ?? "3",
     probation_salary: member.probation_salary?`EGP ${Number(member.probation_salary).toLocaleString()}`:(member.salary?`EGP ${Number(member.salary).toLocaleString()}`:"________________"),
@@ -28574,7 +31269,7 @@ function AITokensPanel({appSettings, onSaveSettings, activityLogs=[], onBackfill
                 <p style={{fontWeight:700,fontSize:13,color:"var(--text)"}}>{m.name}</p>
                 <p style={{fontSize:11,color:"var(--text3)"}}>{m.tier} · {m.ctx} context · ${m.input}/M in · ${m.output}/M out</p>
               </div>
-              {m.id==="claude-haiku-4-5-20251001"&&<span style={{padding:"2px 8px",borderRadius:99,background:"#10b98122",color:"#10b981",fontSize:10,fontWeight:700}}>Default</span>}
+              {m.id==="claude-sonnet-4-6"&&<span style={{padding:"2px 8px",borderRadius:99,background:"#10b98122",color:"#10b981",fontSize:10,fontWeight:700}}>Default</span>}
               {m.id==="claude-sonnet-4-6"&&<span style={{padding:"2px 8px",borderRadius:99,background:"#6366f122",color:"#6366f1",fontSize:10,fontWeight:700}}>Recommended</span>}
             </div>
           ))}
@@ -28747,7 +31442,14 @@ function AccountPage({currentUser, userProfile, onSaveProfile, onWallpaperChange
   const [form, setForm] = useState({
     display_name: userProfile?.display_name || currentUser?.name || "",
     mobile: userProfile?.mobile || "",
-    whatsapp_number: userProfile?.whatsapp_number || "",
+    // Falls back to the Team Management record (the actual source of truth
+    // notifications read from) when the separate user_profiles row never
+    // had this set — otherwise the field loads blank even though a real
+    // number exists, and saving ANY unrelated profile change (display
+    // name, bio, wallpaper) mirrors that blank back into team_members,
+    // silently wiping a working WhatsApp number (confirmed: exactly what
+    // happened to Monay Khalid on Aug 18).
+    whatsapp_number: userProfile?.whatsapp_number || teamMember?.whatsapp_number || "",
     bio: userProfile?.bio || teamMember?.title || "",
     language: userProfile?.language || "en",
   });
@@ -31284,7 +33986,14 @@ function OutstandingTab({expenses, team, currentUser, canManage, onRecordPayment
   const [payDate, setPayDate] = useState(new Date().toISOString().split("T")[0]);
   const [payMethod, setPayMethod] = useState("Cash");
 
-  const outstandingExpenses = (expenses||[]).filter(e=>e.outstanding_kind);
+  const allOutstandingExpenses = (expenses||[]).filter(e=>e.outstanding_kind);
+  // Month filter — keyed off the expense's own date (the month the
+  // liability was recorded/purchased in, e.g. a salary's payroll month or
+  // a Fawry plan's purchase month), same field every other Finance month
+  // filter in this file uses.
+  const outstandingMonthOptions = Array.from(new Set(allOutstandingExpenses.map(e=>(e.date||"").slice(0,7)).filter(Boolean))).sort().reverse();
+  const [outstandingMonthFilter,setOutstandingMonthFilter] = useState("all");
+  const outstandingExpenses = outstandingMonthFilter==="all" ? allOutstandingExpenses : allOutstandingExpenses.filter(e=>(e.date||"").slice(0,7)===outstandingMonthFilter);
 
   const load = async () => {
     setLoading(true);
@@ -31338,14 +34047,53 @@ function OutstandingTab({expenses, team, currentUser, canManage, onRecordPayment
     (groups[key]=groups[key]||[]).push(e);
   });
 
+  // Top summary — three buckets: Salaries (a team_member liability created
+  // from approving a payroll run), Fawry (installment plans), and Team
+  // Member (any OTHER team_member liability, e.g. a manual reimbursement —
+  // outstanding_kind:"team_member" but not a salary), each remaining =
+  // total payable minus paid-so-far, same math the per-item rows use.
+  const remainingOf = (e) => Math.max(0, Number(e.outstanding_total_payable ?? e.amount ?? 0) - paidSoFar(e.id));
+  const salaryExpenses = outstandingExpenses.filter(e=>e.outstanding_kind==="team_member" && e.category==="salaries");
+  const fawryExpenses = outstandingExpenses.filter(e=>e.outstanding_kind==="installment");
+  const otherTeamMemberExpenses = outstandingExpenses.filter(e=>e.outstanding_kind==="team_member" && e.category!=="salaries");
+  const summaryCards = [
+    {label:"Outstanding Salaries", value: salaryExpenses.reduce((s,e)=>s+remainingOf(e),0), color:"#ef4444", count: salaryExpenses.length},
+    {label:"Outstanding Fawry", value: fawryExpenses.reduce((s,e)=>s+remainingOf(e),0), color:"#f59e0b", count: fawryExpenses.length},
+    {label:"Outstanding Team Member", value: otherTeamMemberExpenses.reduce((s,e)=>s+remainingOf(e),0), color:"#8b5cf6", count: otherTeamMemberExpenses.length},
+  ];
+
+  const monthFilterUi = (
+    <div style={{display:"flex",justifyContent:"flex-end"}}>
+      <select value={outstandingMonthFilter} onChange={e=>setOutstandingMonthFilter(e.target.value)} style={{...inputSt,maxWidth:180}}>
+        <option value="all">All Time</option>
+        {outstandingMonthOptions.map(m=>(
+          <option key={m} value={m}>{new Date(m+"-01T00:00:00").toLocaleDateString("en-US",{month:"long",year:"numeric"})}</option>
+        ))}
+      </select>
+    </div>
+  );
+
   if(loading) return <div style={{display:"flex",justifyContent:"center",padding:60}}><Spinner size={20}/></div>;
 
-  if(outstandingExpenses.length===0) {
+  if(allOutstandingExpenses.length===0) {
     return <EmptyState icon={Icons.wallet} title="No outstanding liabilities" sub={`Mark an expense's Payment Method as "Outstanding" to track money owed to a team member or a Fawry installment plan here.`}/>;
   }
 
   return (
     <div style={{display:"flex",flexDirection:"column",gap:20}}>
+      {monthFilterUi}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12}}>
+        {summaryCards.map(c=>(
+          <div key={c.label} style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"14px 18px"}}>
+            <p style={{fontSize:11,fontWeight:700,color:"var(--text3)",letterSpacing:"0.05em",textTransform:"uppercase"}}>{c.label}</p>
+            <p style={{fontSize:22,fontWeight:800,color:c.value>0?c.color:"#10b981",marginTop:4}}>{c.value.toLocaleString(undefined,{maximumFractionDigits:2})}</p>
+            <p style={{fontSize:11,color:"var(--text3)",marginTop:2}}>{c.count} item{c.count!==1?"s":""}</p>
+          </div>
+        ))}
+      </div>
+      {outstandingExpenses.length===0 && (
+        <EmptyState icon={Icons.wallet} title="Nothing outstanding this month" sub="Try a different month, or All Time."/>
+      )}
       {Object.entries(groups).map(([groupName, items])=>{
         const groupTotal = items.reduce((s,e)=>s+Number(e.outstanding_total_payable ?? e.amount ?? 0), 0);
         const groupRemaining = items.reduce((s,e)=>s+Math.max(0, Number(e.outstanding_total_payable ?? e.amount ?? 0)-paidSoFar(e.id)), 0);
@@ -31587,7 +34335,14 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
         label:catMap[e.category]?.l||e.category, sub:e.description, raw:e,
         source: isOut?"Manual expense":"Manual income", channelSource: e.source||"app", category:e.category, createdBy:e.created_by,
         checkNo:e.check_no, ref:e.ref, attachments:parseJ(e.attachments,[]), method:e.method,
-        clientName: (!isOut&&e.category==="client_payment") ? e.description : null,
+        // expenses has no real structured client field — client_payment
+        // rows only ever have free-text description, and different entries
+        // for the SAME client routinely carry different prefixes ("Al Mousa
+        // Trading" / "Client payment — Al Mousa Trading" / "Bank transfer —
+        // Bino"), fracturing one client into several fake duplicates below.
+        // Strip the common generic prefixes so they group under the plain
+        // client name instead.
+        clientName: (!isOut&&e.category==="client_payment") ? (e.description||"").replace(/^\s*(client\s*payment|bank\s*transfer|cash\s*payment|wire\s*transfer)\s*[—\-:]\s*/i,"").trim()||e.description : null,
         isUnsettledOutstanding: unsettled,
         outstandingPaidSoFar: paidSoFar,
         outstandingRemaining: Math.max(0, total-paidSoFar),
@@ -31703,12 +34458,29 @@ function FinancePage({invoices,payments,subscriptions,subscriptionPayments,expen
   })).filter(c=>c.total>0).sort((a,b)=>b.total-a.total);
   const maxCat = Math.max(...byCategory.map(c=>c.total),1);
 
-  const bySource = ledger.filter(l=>l.type==="in").reduce((acc,l)=>{
-    const key = l.sub || l.label;
+  // A partner's own capital contribution (e.g. "Admepro Acc. Finance", a
+  // 250,000 EGP injection) is money IN but it's not revenue — it already
+  // has its own dedicated Partners breakdown above. Counting it here too
+  // made it look like a client/income "source" worth a quarter million,
+  // clickable into a fake client page for a name that was never a client.
+  const partnerInKeys = new Set(PARTNERS.map(p=>p.inKey));
+  const bySource = ledger.filter(l=>l.type==="in"&&!partnerInKeys.has(l.category)).reduce((acc,l)=>{
+    // Prefer the already-cleaned client name (generic "Client payment —"/
+    // "Bank transfer —" prefixes already stripped off) over the raw
+    // description — otherwise a client paid under several differently-
+    // worded descriptions fractures into separate "sources" here the same
+    // way By Client used to, and a bare "Client payment" with no name
+    // attached shows up as its own fake source instead of folding into
+    // whichever specific client it actually was.
+    const key = l.clientName || l.sub || l.label;
     acc[key] = (acc[key]||0)+l.countableAmount;
     return acc;
   },{});
-  const topSources = Object.entries(bySource).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  // Cap to the same row count as Spending by Category shows (a fixed list
+  // of expense categories) — Top Income Sources has no such fixed list
+  // (one row per client), so left uncapped it ran on far longer than the
+  // card next to it.
+  const topSources = Object.entries(bySource).sort((a,b)=>b[1]-a[1]).slice(0,byCategory.length);
   const maxSource = Math.max(...topSources.map(s=>s[1]),1);
 
   // Money trend across months, one line per expense category plus one for
@@ -32686,7 +35458,7 @@ function resolveContactReportRecipients(report, client, team=[]) {
   return [...new Set([...(client?.email?[client.email]:[]), ...resolvedEmails])];
 }
 
-function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, onDeleteContactReport, brandingAssets, team=[], currentUser, knowledge, onSaveKnowledge, highlightReportId, contactReportActivity=[]}) {
+function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, onDeleteContactReport, brandingAssets, team=[], currentUser, knowledge, onSaveKnowledge, highlightReportId, contactReportActivity=[], clientUsers=[]}) {
   const isAdmin = currentUser?.role==="admin";
   // Optimistic local additions on top of whatever was already loaded at app
   // start — every send/edit/export appends here immediately so a detailed,
@@ -32897,13 +35669,13 @@ function ContactReportsSubTab({client, contactReports=[], onSaveContactReport, o
         );
       })}
       {showModal&&(
-        <ContactReportModal open onClose={()=>setShowModal(false)} onSave={async(rData)=>{ const wasEdit=!!rData.id; await onSaveContactReport(rData); if(wasEdit) logReportActivity(rData.id, "edited", ""); }} clientId={client.id} clientName={client.name} report={editing} team={team} client={client} currentUser={currentUser}/>
+        <ContactReportModal open onClose={()=>setShowModal(false)} onSave={async(rData)=>{ const wasEdit=!!rData.id; await onSaveContactReport(rData); if(wasEdit) logReportActivity(rData.id, "edited", ""); }} clientId={client.id} clientName={client.name} report={editing} team={team} client={client} currentUser={currentUser} clientUsers={(clientUsers||[]).filter(u=>u.client_id===client.id)}/>
       )}
     </div>
   );
 }
 
-function ContactReportModal({open, onClose, onSave, clientId, clientName, report, team=[], client, currentUser}) {
+function ContactReportModal({open, onClose, onSave, clientId, clientName, report, team=[], client, currentUser, clientUsers=[]}) {
   const [f,setF] = useState(()=>({
     meeting_type: report?.meeting_type||"meeting",
     meeting_date: report?.meeting_date || (report?.created_at ? report.created_at.slice(0,10) : new Date().toISOString().slice(0,10)),
@@ -32919,13 +35691,34 @@ function ContactReportModal({open, onClose, onSave, clientId, clientName, report
   const [showAttendeeSuggestions, setShowAttendeeSuggestions] = useState(false);
   const [saving, setSaving] = useState(false);
   const formatRole = (role) => (role||"").replace(/_/g," ").replace(/\b\w/g, c=>c.toUpperCase());
+  // Every client-portal login for this client (see ClientUser), not just
+  // the client record's own single legacy "primary contact" fields — a
+  // client can have several people with portal access (e.g. Asma added
+  // alongside the original contact), and all of them should be pickable
+  // as attendees, not just whichever one happens to be on the Client
+  // record itself.
+  // Falling back to client.name (the COMPANY name) here used to read as if
+  // the company itself were a person attending the meeting — confusing
+  // once a real name (Ahmed Morad) is what's actually behind that email.
+  // A readable name guessed from the email's local part ("ahmed.morad" →
+  // "Ahmed Morad") is a far more honest fallback than the company name
+  // when no dedicated contact name (client.username) is on file.
+  const guessNameFromEmail = (email) => (email||"").split("@")[0].replace(/[._-]+/g," ").trim().replace(/\b\w/g, c=>c.toUpperCase());
+  const clientContactSuggestions = (clientUsers||[]).length
+    // A ClientUser row saved with its name accidentally set to the company
+    // name (a common mistake when the invite form defaults to it) reads as
+    // if the company itself attended the meeting — guessing a name from
+    // the email is a more honest fallback than trusting that stored value
+    // blindly whenever it happens to match the client's own company name.
+    ? (clientUsers||[]).map(u=>({name:(u.name && u.name!==client?.name) ? u.name : (guessNameFromEmail(u.email) || u.name || u.email), title:u.title||"Client Contact", email:u.email||"", kind:"client"}))
+    : (client?.name ? [{name:client.username || guessNameFromEmail(client.email) || client.name, title:client.contact_title||"Client Contact", email:client.email||"", kind:"client"}] : []);
   const attendeeSuggestions = [
     ...(team||[]).filter(t=>t.status==="active").map(t=>{
       const isMe = currentUser && (t.id===currentUser.id || t.email===currentUser.email);
       const title = (isMe ? currentUser.title?.trim() : t.title?.trim()) || t.title?.trim() || formatRole(t.role);
       return {name:t.name, title, email:t.email||"", kind:"team"};
     }),
-    ...(client?.name ? [{name:client.username||client.name, title:client.contact_title||"Client Contact", email:client.email||"", kind:"client"}] : []),
+    ...clientContactSuggestions,
   ];
   const filteredAttendeeSuggestions = attendeeSuggestions.filter(s=>
     !newAttendee.name.trim() || s.name.toLowerCase().includes(newAttendee.name.trim().toLowerCase())
@@ -33858,6 +36651,13 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
   const {isMobile} = useResponsive();
   const [filterStage, setFilterStage] = useState(null);
   const [myView, setMyView] = usePersistentState("sf_my_tasks_view","kanban");
+  const [groupByClient, setGroupByClient] = usePersistentState("sf_my_tasks_group_client", true);
+  const [collapsedClients, setCollapsedClients] = useState(new Set());
+  // Only admin/AM can send work to Client Approval or Scheduled — same
+  // gate PostDetail's stage buttons already enforce; this quick "Move to
+  // X" button on My Tasks was missing it entirely, letting anyone push
+  // straight to the client.
+  const isManager = ["admin","account_manager"].includes(currentUser?.role);
 
   // Post IDs where the current user was @mentioned in a comment — same
   // @Name-matching convention used when firing mention notifications
@@ -33912,7 +36712,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
 
         {myView==="kanban" && (
           <div style={{padding:"0 16px 16px"}}>
-            <KanbanView posts={filteredPosts} project={null} team={team} onPostClick={onPostClick}/>
+            <KanbanView posts={filteredPosts} project={null} team={team} onPostClick={onPostClick} onStageChange={onStageChange}/>
           </div>
         )}
         {myView==="calendar" && (
@@ -33973,12 +36773,19 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
           <h1 style={{fontFamily:"'Montserrat',sans-serif",fontSize:32,fontWeight:800,marginBottom:6}}>My Tasks</h1>
           <p style={{fontSize:13,color:"var(--text2)"}}>All posts assigned to you across the workflow</p>
         </div>
-        <div style={{display:"inline-flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",flexShrink:0}}>
-          {[["kanban",Icons.grid,"Kanban"],["list",Icons.list,"List"],["calendar",Icons.calendar,"Calendar"]].map(([v,ico,label])=>(
-            <button key={v} onClick={()=>setMyView(v)} title={label} style={{padding:"6px 12px",borderRadius:99,background:myView===v?"var(--accent)":"none",color:myView===v?"#fff":"var(--text2)",border:"none",display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:700,cursor:"pointer"}}>
-              <Ico d={ico} size={13}/> {label}
+        <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+          {myView==="list" && (
+            <button onClick={()=>setGroupByClient(g=>!g)} title="Group tasks by client" style={{padding:"6px 12px",borderRadius:99,background:groupByClient?"var(--accent)":"var(--surface2)",color:groupByClient?"#fff":"var(--text2)",border:"1px solid var(--border2)",display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              Group by Client
             </button>
-          ))}
+          )}
+          <div style={{display:"inline-flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)"}}>
+            {[["kanban",Icons.grid,"Kanban"],["list",Icons.list,"List"],["calendar",Icons.calendar,"Calendar"]].map(([v,ico,label])=>(
+              <button key={v} onClick={()=>setMyView(v)} title={label} style={{padding:"6px 12px",borderRadius:99,background:myView===v?"var(--accent)":"none",color:myView===v?"#fff":"var(--text2)",border:"none",display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                <Ico d={ico} size={13}/> {label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -33998,7 +36805,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
       </div>
 
       {/* Kanban / Calendar / List */}
-      {myView==="kanban" && <KanbanView posts={filteredPosts} project={null} team={team} onPostClick={onPostClick}/>}
+      {myView==="kanban" && <KanbanView posts={filteredPosts} project={null} team={team} onPostClick={onPostClick} onStageChange={onStageChange}/>}
       {myView==="calendar" && <CalendarView posts={filteredPosts} onPostClick={onPostClick}/>}
       {myView==="list" && (filteredPosts.length === 0 ? (
         <div style={{textAlign:"center",padding:"60px 20px",color:"var(--text3)"}}>
@@ -34007,8 +36814,9 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
           <p style={{fontSize:13,marginTop:4}}>{filterStage ? `No tasks in ${STAGE_MAP[filterStage].label}` : "You have no assigned tasks"}</p>
         </div>
       ) : (
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          {filteredPosts.map(post=>{
+        <div style={{display:"flex",flexDirection:"column",gap:groupByClient?16:12}}>
+          {(() => {
+            const renderCard = post => {
             const stage = STAGE_MAP[post.stage];
             const project = projects.find(p => p.id === post.project_id);
             const nextStage = nextStageFor(post);
@@ -34039,7 +36847,9 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
                 )}
                 {/* Content */}
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+                    {!groupByClient && post.client_name && <Badge label={post.client_name} color="#8b5cf6"/>}
+                    {post.sector && <Badge label={post.sector} color="#f59e0b"/>}
                     <Badge label={post.platform} color={PLT_COLOR[post.platform]}/>
                     <Badge label={stage.label} color={stage.color}/>
                     <Badge label={post.priority} color={PRI_COLOR[post.priority]} xs/>
@@ -34052,12 +36862,15 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
                 </div>
 
                 {/* Actions */}
-                {nextStage && (
+                {nextStage && (isManager || canAdvanceStageAsNonManager(currentUser,post,nextStage.key)) && (
                   <button onClick={e=>{
                     e.stopPropagation();
                     if(post.platform && ["client_approval","scheduled"].includes(nextStage.key)) {
                       if(!post.caption) { alert("This post has no caption yet — add one before moving it forward."); return; }
                       if(post.post_type!=="story" && !post.hashtags) { alert("This post has no hashtags yet — add some before moving it forward."); return; }
+                    }
+                    if(post.stage==="design" && post.post_type==="reel" && post.platform==="instagram" && !post.carousel_cover) {
+                      alert("Upload the Instagram Cover before moving this reel forward."); return;
                     }
                     onStageChange(post, nextStage.key);
                   }} style={{
@@ -34073,7 +36886,44 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
                 )}
               </div>
             );
-          })}
+            };
+
+            if (!groupByClient) return filteredPosts.map(renderCard);
+
+            const groups = new Map();
+            filteredPosts.forEach(post => {
+              const key = post.client_name || "No Client";
+              if (!groups.has(key)) groups.set(key, []);
+              groups.get(key).push(post);
+            });
+            // Most-recently-active client first — "recent" meaning whichever
+            // client has the newest task activity (falls back to created_at
+            // when a task has no scheduled_date yet), not alphabetical.
+            const mostRecentTs = posts => Math.max(...posts.map(p => new Date(p.scheduled_date || p.created_at || 0).getTime() || 0));
+            const sortedClients = [...groups.keys()].sort((a,b)=>mostRecentTs(groups.get(b)) - mostRecentTs(groups.get(a)));
+
+            return sortedClients.map(clientName => {
+              const clientPosts = groups.get(clientName);
+              const isCollapsed = collapsedClients.has(clientName);
+              return (
+                <div key={clientName} style={{background:"var(--surface2)",border:"1px solid var(--border2)",borderRadius:"var(--r)",padding:14,display:"flex",flexDirection:"column",gap:isCollapsed?0:12}}>
+                  <div onClick={()=>setCollapsedClients(s=>{const n=new Set(s); n.has(clientName)?n.delete(clientName):n.add(clientName); return n;})}
+                    style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <span style={{fontSize:14,fontWeight:800,color:"var(--text1)"}}>{clientName}</span>
+                      <span style={{fontSize:11,fontWeight:700,color:"var(--text3)",background:"var(--surface)",borderRadius:20,padding:"2px 9px"}}>{clientPosts.length}</span>
+                    </div>
+                    <Ico d={Icons.chevD} size={16} stroke="var(--text3)" style={{transform:isCollapsed?"rotate(-90deg)":"none",transition:"transform 0.15s"}}/>
+                  </div>
+                  {!isCollapsed && (
+                    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                      {clientPosts.map(renderCard)}
+                    </div>
+                  )}
+                </div>
+              );
+            });
+          })()}
         </div>
       ))}
     </div>
@@ -34234,7 +37084,145 @@ function MyCalendarPage({posts,currentUser,team,onDayClick}) {
 // ════════════════════════════════════════════════════════════════
 // MY TIMELINE PAGE - Daily schedule view 9am-6pm
 // ════════════════════════════════════════════════════════════════
-function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onStartTimer, onPauseTimer, onResumeTimer, schedules, scheduleOverrides, onOverrideSchedule, initialJump, onJumpConsumed, onBackToCalendar, activityLogs=[], appSettings}) {
+// Small "+ Task / + Post / + Calendar Plan" popup shown when an admin/AM
+// clicks a free slot on someone's Timeline — mirrors the client-page Add
+// menu's three options, just pre-filled with who the slot is for and when.
+function TimelineAddPicker({slot, onPick, onClose, inline=false}) {
+  const menuBtnSt = {display:"flex",alignItems:"center",gap:8,width:"100%",padding:"9px 14px",fontSize:12,fontWeight:600,color:"var(--text)",background:"none",border:"none",cursor:"pointer",textAlign:"left",whiteSpace:"nowrap"};
+  const ref = React.useRef(null);
+  // No full-screen click-catcher div here on purpose — that used to sit on
+  // top of the whole page, so the FIRST click anywhere else (e.g. a
+  // sidebar link) just closed the menu instead of ever reaching its real
+  // target, forcing a second click to actually navigate. A plain
+  // document-level listener closes the menu without blocking anything —
+  // the real target still gets its own click normally.
+  React.useEffect(()=>{
+    const onDocMouseDown = (e) => { if(ref.current && !ref.current.contains(e.target)) onClose(); };
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  },[]);
+  return (
+    <div ref={ref} className="fade-in" style={{position:inline?"static":"absolute",top:"calc(100% + 4px)",left:inline?undefined:"50%",transform:inline?undefined:"translateX(-50%)",zIndex:20,background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--rs)",boxShadow:"0 10px 30px rgba(0,0,0,0.15)",overflow:"hidden",minWidth:150}}>
+      <button onClick={()=>onPick("task",slot)} style={menuBtnSt}><Ico d={Icons.check||Icons.tasks} size={13} stroke="var(--text2)"/> Task</button>
+      <button onClick={()=>onPick("post",slot)} style={{...menuBtnSt,borderTop:"1px solid var(--border)"}}><Ico d={Icons.tasks} size={13} stroke="var(--text2)"/> Post</button>
+      <button onClick={()=>onPick("calendar",slot)} style={{...menuBtnSt,borderTop:"1px solid var(--border)"}}><Ico d={Icons.calPlus} size={13} stroke="var(--text2)"/> Calendar Plan</button>
+      <button onClick={()=>onPick("existing",slot)} style={{...menuBtnSt,borderTop:"1px solid var(--border)"}}><Ico d={Icons.link||Icons.plug} size={13} stroke="var(--text2)"/> Existing Task</button>
+    </div>
+  );
+}
+
+// Picks an already-existing task/post (by client, then task) and attaches
+// it to a free Timeline slot — reassigns it to that person and sets its
+// due date/time to the slot, instead of creating something new. Checks the
+// task's expected (estimated) duration against how much real free time
+// that person actually has starting at the clicked slot — a 3h task needs
+// 3 free hour-slots from there to the end of the day, not just "the slot
+// itself" being free. If it doesn't fit, offers to push the task(s) in the
+// way later (same day if there's room, otherwise to the next working day)
+// instead of just refusing.
+function AssignExistingTaskModal({open, onClose, slot, posts, team, clients, onAssign, onPushAndAssign}) {
+  const [clientId, setClientId] = useState("");
+  const [taskId, setTaskId] = useState("");
+  const [manualTime, setManualTime] = useState(false);
+  const [manualHours, setManualHours] = useState("1");
+  const openTasksForClient = clientId
+    ? posts.filter(p => p.client_id === clientId && !["published","rejected","cancelled"].includes(p.stage))
+    : [];
+  const selectedTask = posts.find(p=>p.id===taskId);
+  const member = team.find(m=>m.email===slot.assigned_to);
+
+  // Pre-fill the manual field with the system's own estimate the moment a
+  // task is picked, so overriding it means adjusting a real number instead
+  // of typing one in from scratch.
+  React.useEffect(()=>{ if(selectedTask) setManualHours((estimateDuration(selectedTask)/60).toFixed(1)); },[taskId]);
+
+  const check = React.useMemo(() => {
+    if (!selectedTask) return null;
+    const durationMins = manualTime ? Math.max(1,Math.round((Number(manualHours)||0)*60)) : estimateDuration(selectedTask);
+    const startMins = timeToMins(slot.due_time) ?? WORKING_START*60;
+    const endMins = startMins + durationMins;
+    const daySlots = generateDailySchedule(posts, slot.assigned_to, slot.due_date, member?.role).filter(s=>s.post_id!==taskId);
+    if (endMins > WORKING_END*60) return {fits:false, durationMins, reason:"day-end", freeMins: WORKING_END*60-startMins};
+    const blocker = daySlots.filter(s=>s.start_mins<endMins && s.end_mins>startMins).sort((a,b)=>a.start_mins-b.start_mins)[0];
+    if (blocker) {
+      const blockerPost = posts.find(p=>p.id===blocker.post_id);
+      return {fits:false, durationMins, reason:"busy", freeMins: blocker.start_mins-startMins, blocker, blockerTitle: blockerPost?.title||"another task", daySlots};
+    }
+    return {fits:true, durationMins};
+  }, [taskId, slot, manualTime, manualHours]);
+
+  const manualMinutesForSave = manualTime ? Math.max(1,Math.round((Number(manualHours)||0)*60)) : null;
+
+  if (!open) return null;
+  return (
+    <Modal open onClose={onClose} title="Add Existing Task" width={440}>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <Field label="Client">
+          <select value={clientId} onChange={e=>{setClientId(e.target.value);setTaskId("");}} style={inputSt}>
+            <option value="">— Select client —</option>
+            {clients.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </Field>
+        <Field label="Task">
+          <select value={taskId} onChange={e=>setTaskId(e.target.value)} style={inputSt} disabled={!clientId}>
+            <option value="">{clientId ? (openTasksForClient.length ? "— Select task —" : "No open tasks for this client") : "Pick a client first"}</option>
+            {openTasksForClient.map(p=><option key={p.id} value={p.id}>{p.title} ({STAGE_MAP[p.stage]?.label||p.stage})</option>)}
+          </select>
+        </Field>
+
+        {selectedTask&&(
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+              <input type="checkbox" checked={manualTime} onChange={e=>setManualTime(e.target.checked)}/>
+              <span style={{fontSize:12,fontWeight:600}}>Set expected time manually{!manualTime?` (currently ${(estimateDuration(selectedTask)/60).toFixed(1)}h, system estimate)`:""}</span>
+            </label>
+            {manualTime&&(
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <input type="number" min="0.25" step="0.25" value={manualHours} onChange={e=>setManualHours(e.target.value)} style={{...inputSt,width:90}}/>
+                <span style={{fontSize:12,color:"var(--text3)"}}>hours</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {check&&check.fits&&(
+          <p style={{fontSize:12,color:"#10b981",fontWeight:600}}>✓ Fits — needs {(check.durationMins/60).toFixed(1)}h, there's enough free time here.</p>
+        )}
+        {check&&!check.fits&&check.reason==="day-end"&&(
+          <p style={{fontSize:12,color:"#ef4444"}}>{member?.name||"This member"} only has {(check.freeMins/60).toFixed(1)}h left today from this slot, but this task needs {(check.durationMins/60).toFixed(1)}h — not enough room before end of day. Pick an earlier slot, or a different day.</p>
+        )}
+        {check&&!check.fits&&check.reason==="busy"&&(
+          <div style={{padding:10,background:"#ef444411",border:"1px solid #ef444444",borderRadius:"var(--rs)",display:"flex",flexDirection:"column",gap:8}}>
+            <p style={{fontSize:12,color:"#ef4444"}}>{member?.name||"This member"} only has {(check.freeMins/60).toFixed(1)}h free from this slot before "{check.blockerTitle}" starts — this task needs {(check.durationMins/60).toFixed(1)}h.</p>
+            <Btn variant="secondary" onClick={()=>{onPushAndAssign(taskId, slot, check.daySlots, check.durationMins, manualMinutesForSave);onClose();}} style={{fontSize:12}}>
+              Push "{check.blockerTitle}" (and anything after it) later, then add this
+            </Btn>
+          </div>
+        )}
+
+        <div style={{display:"flex",gap:10,paddingTop:4}}>
+          <Btn variant="secondary" onClick={onClose} style={{flex:1}}>Cancel</Btn>
+          <Btn onClick={()=>{onAssign(taskId, slot, manualMinutesForSave);onClose();}} disabled={!taskId||!check?.fits} style={{flex:2}}>Add to Slot</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onStartTimer, onPauseTimer, onResumeTimer, schedules, scheduleOverrides, onOverrideSchedule, onShiftOverdue, initialJump, onJumpConsumed, onBackToCalendar, activityLogs=[], appSettings, onQuickAdd, onMoveTask}) {
+  // Which free-slot "+" button currently has its Task/Post/Calendar Plan
+  // picker open — holds the slot payload (assignee/date/time) it was
+  // opened with, so picking an option knows what to prefill.
+  const [addMenuSlot,setAddMenuSlot] = useState(null);
+  // Task bar currently being dragged on the Combined Timeline — a ref
+  // (not state) since drag events fire far more often than a re-render
+  // needs to happen for.
+  const dragTaskRef = React.useRef(null);
+  // Right-click "copy" / right-click-empty-slot "paste" — a keyboard/
+  // mouse-only alternative to dragging, and (unlike drag) survives
+  // navigating to a different day via Prev/Next before pasting, so a task
+  // can be moved across days this way, not just within the same one.
+  const [copiedTask, setCopiedTask] = useState(null); // {postId, durationMins}
   const {isMobile} = useResponsive();
   const [viewDate, setViewDate] = useState(()=>initialJump?.date ? new Date(initialJump.date+"T00:00:00") : new Date());
   const [tick, setTick] = useState(0);
@@ -34244,7 +37232,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   const [cameFromCalendar] = useState(()=>!!initialJump);
   const isAM = currentUser?.role==="account_manager" || currentUser?.role==="admin";
   const [viewUser, setViewUser] = useState(()=>initialJump?.viewUser||null); // null = self
-  const [combinedView, setCombinedView] = useState(()=>!!initialJump?.combined);
+  const [combinedView, setCombinedView] = useState(()=>initialJump ? !!initialJump.combined : true);
   const [zoom, setZoom] = useState(1); // 1x–4x horizontal stretch on the combined timeline
   const [overrideTarget, setOverrideTarget] = useState(null); // {slot, post}
   const [overrideTime, setOverrideTime] = useState("09:00");
@@ -34261,6 +37249,11 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   }, []);
 
   const dateStr = viewDate.toISOString().split('T')[0];
+  // Shows everything still on their plate (capacity planning needs that),
+  // but generateDailySchedule already sorts genuinely-finished-today work
+  // (moved out of Design/Content) to the top — filtering pending work out
+  // entirely left the Timeline completely empty on any day nothing had
+  // been marked done yet, which isn't useful for anyone.
   const rawSlots = generateDailySchedule(posts, effectiveUser?.email, dateStr, effectiveUser?.role);
   // Apply schedule overrides
   const slots = rawSlots.map(slot => {
@@ -34272,8 +37265,57 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
     return {...slot, start_mins:ov.start_mins, end_mins:newEnd, start_time:pad(ov.start_mins), end_time:pad(newEnd)};
   });
 
+  // Capacity overflow — today's real workload doesn't fit inside working
+  // hours even after overdue work jumped the queue — pushes
+  // whatever runs past end-of-day forward onto the next working day's real
+  // due_date, instead of just letting it silently run late on today's
+  // view forever. Deliberately does NOT touch due_date for tasks merely
+  // flagged OVERDUE (still due_date < today but fits fine once repacked) —
+  // that flag stays purely a live, original-due_date comparison so the red
+  // label and queue-jump stay stable instead of disappearing the moment
+  // it's acted on.
+  // Computed from a FROZEN snapshot of posts taken at mount, and run
+  // exactly once ([] deps) — never recomputed reactively off the live
+  // `posts` prop. This page re-renders every second (the live-timer tick
+  // below), and a reactive version of this check kept re-evaluating
+  // against a `posts` reference that could still be mid-update from an
+  // earlier round of shifts, compounding into shifting far more tasks
+  // than actually overflow (seen shifting 6 when only 4 truly didn't fit).
+  // A one-time calculation off a fixed snapshot can't cascade like that.
+  const [frozenPostsForOverflow] = useState(()=>posts);
+  const AUTO_SHIFT_OVERFLOW_ENABLED = false; // switched off per request — was rolling tasks to tomorrow in surprising ways while capacity was being worked out. Flip back to true to re-enable.
+  useEffect(()=>{
+    if(!AUTO_SHIFT_OVERFLOW_ENABLED || !onShiftOverdue || !frozenPostsForOverflow || !frozenPostsForOverflow.length) return;
+    const today = new Date().toISOString().split("T")[0];
+    if(dateStr!==today) return;
+    // Combined Timeline needs this checked for EVERY member shown, not
+    // just whoever's individually selected — a fully-booked day for any
+    // of them should roll their overflow forward the same way.
+    const membersToCheck = combinedView
+      ? [currentUser, ...(team||[]).filter(m=>m.email!==currentUser?.email)].filter(Boolean)
+      : [effectiveUser].filter(Boolean);
+    const nextDay = addWorkingDays(new Date(), 1).toISOString().split("T")[0];
+    membersToCheck.forEach(m=>{
+      const frozenSlots = generateDailySchedule(frozenPostsForOverflow, m.email, dateStr, m.role);
+      // Already-finished work (completed_today, rendered green) is
+      // deliberately excluded here — it's DONE, so it has no "capacity"
+      // left to roll forward regardless of how long its rendered block
+      // looks. Only genuinely pending work that doesn't fit gets pushed to
+      // tomorrow; a real completion timestamp that happens to land late in
+      // the day is just honest information, not overflow.
+      frozenSlots.filter(s=>s.start_mins >= WORKING_END*60 && !s.completed_today).forEach(s=>onShiftOverdue(s.post_id, nextDay));
+    });
+  },[combinedView]);
+
   const fmtSecs = (s) => {
-    const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+    // A fractional/garbage value (e.g. total_seconds picking up a stray
+    // decimal from some other write path) used to render straight through
+    // as-is — "00:00:0.0011705" instead of "00:00:00" — since only h/m were
+    // floored, not the raw seconds remainder. Floors the whole input up
+    // front so this always renders a clean integer HH:MM:SS no matter what
+    // comes in.
+    const total = Math.max(0, Math.floor(Number(s)||0));
+    const h = Math.floor(total/3600), m = Math.floor((total%3600)/60), sec = total%60;
     return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
   };
 
@@ -34281,7 +37323,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
     return (timeEntries||[])
       .filter(t => t.post_id===postId && t.user_email===effectiveUser?.email)
       .reduce((acc, t) => {
-        if(t.status==='active') return acc + (t.total_seconds||0) + Math.floor((Date.now()-new Date(t.started_at).getTime())/1000);
+        if(t.status==='active') return acc + (t.total_seconds||0) + Math.floor((Date.now()-parseSqlUtc(t.started_at).getTime())/1000);
         return acc + (t.total_seconds||0);
       }, 0);
   };
@@ -34289,7 +37331,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   const todayTrackedSecs = (timeEntries||[])
     .filter(t => t.user_email===effectiveUser?.email && t.date===dateStr)
     .reduce((acc, t) => {
-      if(t.status==='active') return acc + (t.total_seconds||0) + Math.floor((Date.now()-new Date(t.started_at).getTime())/1000);
+      if(t.status==='active') return acc + (t.total_seconds||0) + Math.floor((Date.now()-parseSqlUtc(t.started_at).getTime())/1000);
       return acc + (t.total_seconds||0);
     }, 0);
 
@@ -34304,10 +37346,25 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   // stayed scoped to `effectiveUser` (a single person) even in Combined
   // view, so it read all-zero whenever the viewer themself had no tasks
   // that day despite the timeline clearly showing other members' tasks.
-  const timelineMembers = [currentUser, ...(team||[]).filter(m=>m.email!==currentUser?.email)].filter(m=>!["hr","accountant","office_boy"].includes(m.role));
+  // The non-production-role/named-member exclusion is specifically an AM
+  // view thing — an admin still needs to see literally everyone. Whoever's
+  // left (after exclusion, for non-admins) is grouped by role (content
+  // creators together, designers together, etc.) instead of whatever raw
+  // order the team list happens to be in.
+  const isAdminViewer = currentUser?.role==="admin";
+  const TIMELINE_EXCLUDED_NAMES = ["mohamed", "shady", "somaia"];
+  const ROLE_SORT_ORDER = ["content_creator","graphic_designer","account_manager","business_development"];
+  const timelineMembers = (team||[])
+    .filter(m=>m.status!=="inactive")
+    .filter(m=>isAdminViewer || !["hr","accountant","office_boy","admin"].includes(m.role))
+    .filter(m=>isAdminViewer || !TIMELINE_EXCLUDED_NAMES.some(n=>(m.name||"").toLowerCase().includes(n)))
+    .sort((a,b)=>{
+      const ai = ROLE_SORT_ORDER.indexOf(a.role), bi = ROLE_SORT_ORDER.indexOf(b.role);
+      return (ai===-1?99:ai) - (bi===-1?99:bi) || (a.name||"").localeCompare(b.name||"");
+    });
   const combinedSlots = combinedView ? timelineMembers.flatMap(m=>generateDailySchedule(posts, m.email, dateStr, m.role)) : null;
   const combinedTrackedSecs = combinedView ? timelineMembers.reduce((sum,m)=>sum + (timeEntries||[]).filter(t=>t.user_email===m.email && t.date===dateStr).reduce((acc,t)=>{
-    if(t.status==='active') return acc + (t.total_seconds||0) + Math.floor((Date.now()-new Date(t.started_at).getTime())/1000);
+    if(t.status==='active') return acc + (t.total_seconds||0) + Math.floor((Date.now()-parseSqlUtc(t.started_at).getTime())/1000);
     return acc + (t.total_seconds||0);
   },0), 0) : null;
   const combinedActiveTimers = combinedView ? timelineMembers.flatMap(m=>(timeEntries||[]).filter(t=>t.user_email===m.email && t.status==='active')) : null;
@@ -34352,7 +37409,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
               <button onClick={()=>{setCombinedView(false);setViewUser(null);}} style={{padding:"4px 10px",borderRadius:"var(--rs)",border:`1px solid ${!combinedView&&!viewUser?"var(--accent)":"var(--border)"}`,background:!combinedView&&!viewUser?"var(--accent)22":"var(--surface)",color:!combinedView&&!viewUser?"var(--accent)":"var(--text2)",fontSize:11,fontWeight:700,cursor:"pointer"}}>
                 My Schedule
               </button>
-              {(team||[]).filter(m=>m.email!==currentUser?.email).map(m=>(
+              {timelineMembers.map(m=>(
                 <button key={m.email} onClick={()=>{setCombinedView(false);setViewUser(m);}} style={{padding:"4px 10px",borderRadius:"var(--rs)",border:`1px solid ${!combinedView&&viewUser?.email===m.email?"var(--accent)":"var(--border)"}`,background:!combinedView&&viewUser?.email===m.email?"var(--accent)22":"var(--surface)",color:!combinedView&&viewUser?.email===m.email?"var(--accent)":"var(--text2)",fontSize:11,fontWeight:600,cursor:"pointer"}}>
                   {m.name.split(" ")[0]}
                 </button>
@@ -34418,24 +37475,140 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
               const newEnd = ov.start_mins + dur;
               return {...slot, start_mins:ov.start_mins, end_mins:newEnd};
             });
+            // Two tasks can end up overlapping in time (e.g. both anchored to
+            // an explicit due_time that happens to collide) — instead of
+            // drawing them on top of each other, stack overlapping ones into
+            // separate lanes, greedy-interval-scheduling style, and grow the
+            // row to fit however many lanes deep it gets.
+            const lanesEnd = [];
+            const lanedSlots = [...memberSlots].sort((a,b)=>a.start_mins-b.start_mins).map(slot=>{
+              let lane = lanesEnd.findIndex(end=>end<=slot.start_mins);
+              if(lane===-1){ lane = lanesEnd.length; lanesEnd.push(slot.end_mins); }
+              else lanesEnd[lane] = slot.end_mins;
+              return {...slot, lane};
+            });
+            const laneCount = Math.max(1, lanesEnd.length);
+            const laneH = 30;
+            const rowH = laneCount*laneH + (laneCount-1)*3;
             return (
               <div key={member.email} style={{display:"flex",alignItems:"center",padding:"10px 16px",borderBottom:"1px solid var(--border)",gap:10}}>
-                <div style={{width:120,flexShrink:0,position:"sticky",left:16,fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:6,background:"var(--surface)"}}>
+                <div style={{width:120,flexShrink:0,position:"sticky",left:16,display:"flex",alignItems:"center",gap:6,background:"var(--surface)"}}>
                   <Avatar name={member.name} size={16} role={member.role} photoUrl={member.avatar_url}/>
-                  <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{member.name}{member.email===currentUser?.email?" (You)":""}</span>
+                  <div style={{overflow:"hidden"}}>
+                    <p style={{fontSize:12,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{member.name}{member.email===currentUser?.email?" (You)":""}</p>
+                    <p style={{fontSize:9,fontWeight:600,color:"var(--text3)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{member.title||ROLES[member.role]?.label||""}</p>
+                  </div>
                 </div>
-                <div style={{position:"relative",flex:1,height:30,background:"var(--surface2)",borderRadius:6,
-                  backgroundImage:`repeating-linear-gradient(to right, var(--border) 0, var(--border) 1px, transparent 1px, transparent ${100/(WORKING_END-WORKING_START)}%)`}}>
-                  {memberSlots.length===0 && <span style={{position:"absolute",top:"50%",left:8,transform:"translateY(-50%)",fontSize:10,color:"var(--text3)"}}>No tasks scheduled</span>}
-                  {memberSlots.map(slot=>{
+                <div style={{position:"relative",flex:1,height:rowH,background:"var(--surface2)",borderRadius:6,cursor:(isAM&&onQuickAdd)?"copy":"default",
+                  backgroundImage:`repeating-linear-gradient(to right, var(--border) 0, var(--border) 1px, transparent 1px, transparent ${100/(WORKING_END-WORKING_START)}%)`}}
+                  onClick={(isAM&&onQuickAdd)?(e)=>{
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const relX = Math.min(0.999,Math.max(0,(e.clientX-rect.left)/rect.width));
+                    // A new task can't be placed before right now, today —
+                    // an already-scheduled task sitting at a past time is
+                    // untouched by this (see generateDailySchedule), this
+                    // only stops NEW placements from landing in the past.
+                    const hourFloor = dateStr===new Date().toISOString().split("T")[0] ? Math.max(WORKING_START, new Date().getHours()) : WORKING_START;
+                    const hour = Math.max(hourFloor, Math.min(WORKING_END-1, WORKING_START + Math.floor(relX*(WORKING_END-WORKING_START))));
+                    const slotKey = `c-${member.email}-${hour}`;
+                    const leftPct = (hour-WORKING_START)/(WORKING_END-WORKING_START)*100;
+                    // clientX/clientY (viewport coordinates at the moment of
+                    // the click) anchor the menu instead of leftPct% of the
+                    // row's own box — leftPct was landing the popup at the
+                    // wrong spot whenever the row's rendered width/position
+                    // didn't line up 1:1 with where the click actually
+                    // happened (long member-row tables, horizontal scroll,
+                    // etc.). Fixed viewport coords can't drift like that.
+                    setAddMenuSlot(prev=>prev?.key===slotKey?null:{
+                      key:slotKey, leftPct, clientX:e.clientX, clientY:e.clientY,
+                      assigned_to: member.email,
+                      scheduled_date: dateStr, scheduled_time: `${String(hour).padStart(2,'0')}:00`,
+                      due_date: dateStr, due_time: `${String(hour).padStart(2,'0')}:00`,
+                    });
+                  }:undefined}
+                  onDragOver={(isAM&&onMoveTask)?(e)=>{e.preventDefault();e.dataTransfer.dropEffect="move";}:undefined}
+                  onDrop={(isAM&&onMoveTask)?(e)=>{
+                    e.preventDefault();
+                    const dragged = dragTaskRef.current;
+                    if(!dragged) return;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const relX = Math.min(0.999,Math.max(0,(e.clientX-rect.left)/rect.width));
+                    // Dropping a task onto a past hour today doesn't move it
+                    // into the past — clamp to right now instead.
+                    const dropHourFloor = dateStr===new Date().toISOString().split("T")[0] ? Math.max(WORKING_START, new Date().getHours()) : WORKING_START;
+                    const hour = Math.max(dropHourFloor, Math.min(WORKING_END-1, WORKING_START + Math.floor(relX*(WORKING_END-WORKING_START))));
+                    // Don't just drop it wherever it lands if that overlaps
+                    // another of this person's tasks — slide forward to the
+                    // next real gap of at least its own duration instead, so
+                    // dragging never creates a new time collision.
+                    const targetSlots = generateDailySchedule(posts, member.email, dateStr, member.role).filter(s=>s.post_id!==dragged.postId);
+                    let startMins = hour*60;
+                    const durMins = dragged.durationMins || 60;
+                    let guard = 0;
+                    while(guard++ < 50) {
+                      const endMins = startMins + durMins;
+                      const blocker = targetSlots.filter(s=>s.start_mins<endMins && s.end_mins>startMins).sort((a,b)=>a.end_mins-b.end_mins)[0];
+                      if(!blocker) break;
+                      startMins = blocker.end_mins;
+                    }
+                    // Sliding forward past collisions can push the task's real
+                    // end time past the working day even though the drop
+                    // POINT itself was inside working hours — reject instead
+                    // of silently clamping it into a slot too small to hold
+                    // it (that used to make the block accepted at 15min or
+                    // even negative-width).
+                    if(startMins + durMins > WORKING_END*60) { setToast(` No room for this task on ${member.name.split(" ")[0]}'s day — it would run past ${WORKING_END>12?WORKING_END-12:WORKING_END}${WORKING_END>=12?"pm":"am"}.`); dragTaskRef.current = null; return; }
+                    onMoveTask(dragged.postId, {assigned_to: member.email, due_date: dateStr, due_time: minsToHHMM(startMins)});
+                    dragTaskRef.current = null;
+                  }:undefined}
+                  onContextMenu={(isAM&&onMoveTask&&copiedTask)?(e)=>{
+                    e.preventDefault();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const relX = Math.min(0.999,Math.max(0,(e.clientX-rect.left)/rect.width));
+                    const dropHourFloor = dateStr===new Date().toISOString().split("T")[0] ? Math.max(WORKING_START, new Date().getHours()) : WORKING_START;
+                    const hour = Math.max(dropHourFloor, Math.min(WORKING_END-1, WORKING_START + Math.floor(relX*(WORKING_END-WORKING_START))));
+                    const targetSlots = generateDailySchedule(posts, member.email, dateStr, member.role).filter(s=>s.post_id!==copiedTask.postId);
+                    let startMins = hour*60;
+                    const durMins = copiedTask.durationMins || 60;
+                    let guard = 0;
+                    while(guard++ < 50) {
+                      const endMins = startMins + durMins;
+                      const blocker = targetSlots.filter(s=>s.start_mins<endMins && s.end_mins>startMins).sort((a,b)=>a.end_mins-b.end_mins)[0];
+                      if(!blocker) break;
+                      startMins = blocker.end_mins;
+                    }
+                    if(startMins + durMins > WORKING_END*60) { setToast(` No room for this task on ${member.name.split(" ")[0]}'s day — it would run past ${WORKING_END>12?WORKING_END-12:WORKING_END}${WORKING_END>=12?"pm":"am"}.`); return; }
+                    onMoveTask(copiedTask.postId, {assigned_to: member.email, due_date: dateStr, due_time: minsToHHMM(startMins)});
+                    setCopiedTask(null);
+                    setToast(" Task moved");
+                  }:undefined}>
+                  {memberSlots.length===0 && <span style={{position:"absolute",top:"50%",left:8,transform:"translateY(-50%)",fontSize:10,color:"var(--text3)",pointerEvents:"none"}}>No tasks scheduled</span>}
+                  {lanedSlots.map(slot=>{
                     const post = posts.find(p=>p.id===slot.post_id);
                     const leftPct = Math.max(0,(slot.start_mins - WORKING_START*60)/WORKING_MINS*100);
                     const widthPct = Math.max(2,(slot.end_mins-slot.start_mins)/WORKING_MINS*100);
                     const stage = post ? (STAGE_MAP[post.stage]||STAGES[0]) : null;
+                    // A completed_today slot can appear on MULTIPLE days
+                    // (see design_completed_dates/content_completed_dates
+                    // history) — they all share the post's one real
+                    // due_date/due_time, so dragging any one of them would
+                    // silently move every other day's copy along with it.
+                    // It's finished/historical work anyway, so it's locked
+                    // from dragging entirely rather than letting a move on
+                    // one day's view surprise-relocate it on another.
+                    const canMove = !!(isAM&&onMoveTask&&post&&!slot.completed_today);
                     return (
-                      <div key={slot.post_id} title={`${post?.title||""} (${slot.start_time}–${slot.end_time})`}
-                        onClick={()=>onPostClick&&post&&onPostClick(post)}
-                        style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:3,bottom:3,background:stage?.color||"var(--accent)",borderRadius:5,cursor:post?"pointer":"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 6px"}}>
+                      <div key={slot.post_id} title={`${post?.title||""} (${slot.start_time}–${slot.end_time})${slot.overdue?" — OVERDUE":""}${slot.completed_today?" — Done, moved to review":""}${canMove?" — drag, or right-click to move (works across days too)":""}`}
+                        onClick={(e)=>{e.stopPropagation();onPostClick&&post&&onPostClick(post);}}
+                        draggable={canMove}
+                        onDragStart={canMove?(e)=>{e.stopPropagation();dragTaskRef.current={postId:post.id,durationMins:slot.end_mins-slot.start_mins};e.dataTransfer.effectAllowed="move";e.currentTarget.style.opacity="0.4";}:undefined}
+                        onDragEnd={(e)=>{e.currentTarget.style.opacity="1";}}
+                        onContextMenu={canMove?(e)=>{
+                          e.preventDefault(); e.stopPropagation();
+                          setCopiedTask({postId:post.id, durationMins: slot.end_mins-slot.start_mins});
+                          setToast(` "${post.title}" copied — right-click a free slot (any day) to move it there`);
+                        }:undefined}
+                        style={{position:"absolute",left:`${leftPct}%`,width:`${widthPct}%`,top:slot.lane*(laneH+3)+3,height:laneH-6,background:slot.overdue?"#ef4444":slot.completed_today?"#22c55e":(stage?.color||"var(--accent)"),borderRadius:5,cursor:post?(canMove?"grab":"pointer"):"default",display:"flex",flexDirection:"column",justifyContent:"center",overflow:"hidden",padding:"0 6px",...(slot.overdue?{boxShadow:"0 0 0 1px #b91c1c inset"}:{})}}>
                         <span style={{fontSize:10,color:"#fff",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{post?.title}</span>
                         {widthPct>8&&<span style={{fontSize:8.5,color:"#fff",opacity:0.85,whiteSpace:"nowrap"}}>{slot.start_time}–{slot.end_time}</span>}
                       </div>
@@ -34445,6 +37618,11 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
               </div>
             );
           })}
+          {addMenuSlot?.key?.startsWith("c-") && addMenuSlot.clientX!=null && (
+            <div style={{position:"fixed",left:addMenuSlot.clientX,top:addMenuSlot.clientY+8,zIndex:200}}>
+              <TimelineAddPicker slot={addMenuSlot} inline onPick={(type,s)=>{setAddMenuSlot(null);onQuickAdd(type,s);}} onClose={()=>setAddMenuSlot(null)}/>
+            </div>
+          )}
           {(()=>{
             // Sara's real start/end time per action (parsed from the timing
             // suffix agentAI() now logs) drawn as actual positioned bars on
@@ -34506,10 +37684,31 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
           <div style={{padding:"12px 16px",borderBottom:"1px solid var(--border)",background:"var(--surface2)"}}>
             <p style={{fontSize:12,fontWeight:700,color:"var(--text3)",textTransform:"uppercase",letterSpacing:"0.06em"}}>Timeline · {dateStr}</p>
           </div>
-          {hours.map(hour => {
+          {(()=>{
+            // A slot that runs past its starting hour (e.g. a 4h task at
+            // 2pm) makes that hour's row tall enough to visually contain
+            // the whole block — but the hours it already covers (3, 4, 5pm)
+            // used to still render their own separate "—" row underneath,
+            // making an already-occupied stretch look like free time.
+            // Skip rendering a row for any hour that's fully covered by a
+            // slot that started earlier, so the tall block is the only
+            // thing shown for that whole span.
+            const coveredHours = new Set();
+            slots.forEach(s => {
+              const startHour = Math.floor(s.start_mins/60);
+              const endHour = Math.ceil(s.end_mins/60);
+              for(let h=startHour+1; h<endHour; h++) coveredHours.add(h);
+            });
+            return hours.filter(h=>!coveredHours.has(h));
+          })().map(hour => {
             const hourSlots = getSlotForHour(hour);
             const timeLabel = `${hour===0?12:hour>12?hour-12:hour}:00 ${hour<12?"AM":"PM"}`;
             const isCurrentHour = new Date().getHours()===hour && viewDate.toDateString()===new Date().toDateString();
+            // An hour that's already fully elapsed today isn't a real free
+            // slot to offer for a NEW task — only applies going forward from
+            // here; a task already sitting at a past time stays exactly
+            // where it is (see generateDailySchedule).
+            const isPastHour = viewDate.toDateString()===new Date().toDateString() && hour < new Date().getHours();
             // height: 64px base per hour, taller if a long task starts here
             const maxDurMins = hourSlots.reduce((mx, s) => Math.max(mx, s.end_mins - s.start_mins), 0);
             const rowH = Math.max(64, Math.ceil(maxDurMins / 60) * 64);
@@ -34522,12 +37721,36 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                 {/* Slot content */}
                 <div style={{flex:1,padding:6,display:"flex",flexDirection:"column",gap:4}}>
                   {hourSlots.length===0 && (
-                    <span style={{fontSize:11,color:"var(--border2)",alignSelf:"center",marginTop:16}}>—</span>
+                    isAM && onQuickAdd && !isPastHour ? (()=>{
+                      const slotKey = `s-${hour}`;
+                      const slot = {
+                        key: slotKey,
+                        assigned_to: effectiveUser?.email||"",
+                        scheduled_date: dateStr, scheduled_time: `${String(hour).padStart(2,'0')}:00`,
+                        due_date: dateStr, due_time: `${String(hour).padStart(2,'0')}:00`,
+                      };
+                      return (
+                        <div style={{position:"relative",flex:1,marginTop:16}}>
+                          <button
+                            onClick={()=>setAddMenuSlot(prev=>prev?.key===slotKey?null:slot)}
+                            style={{width:"100%",minHeight:32,border:"1px dashed var(--border2)",borderRadius:"var(--rs)",background:"transparent",color:"var(--text3)",fontSize:11,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:4,transition:"all 0.15s"}}
+                            onMouseEnter={e=>{e.currentTarget.style.background="var(--accent)11";e.currentTarget.style.borderColor="var(--accent)";e.currentTarget.style.color="var(--accent)";}}
+                            onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.borderColor="var(--border2)";e.currentTarget.style.color="var(--text3)";}}
+                          >+ Add task</button>
+                          {addMenuSlot?.key===slotKey && (
+                            <TimelineAddPicker slot={slot} onPick={(type,s)=>{setAddMenuSlot(null);onQuickAdd(type,s);}} onClose={()=>setAddMenuSlot(null)}/>
+                          )}
+                        </div>
+                      );
+                    })() : (
+                      <span style={{fontSize:11,color:"var(--border2)",alignSelf:"center",marginTop:16}}>—</span>
+                    )
                   )}
                   {hourSlots.map(slot => {
                     const post = posts.find(p=>p.id===slot.post_id);
                     if(!post) return null;
                     const stage = STAGE_MAP[post.stage]||STAGES[0];
+                    const stageColor = slot.overdue ? "#ef4444" : slot.completed_today ? "#22c55e" : stage.color;
                     const isActive = (timeEntries||[]).some(t=>t.post_id===post.id&&t.user_email===currentUser?.email&&t.status==='active');
                     const trackedSecs = getPostTrackedSecs(post.id);
                     const durMins = slot.end_mins - slot.start_mins;
@@ -34535,13 +37758,13 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                     return (
                       <div key={slot.post_id} onClick={()=>onPostClick&&onPostClick(post)} style={{
                         padding:"8px 12px",borderRadius:"var(--rs)",
-                        background:stage.color+"22",border:`1px solid ${stage.color}55`,
-                        borderLeft:`3px solid ${stage.color}`,
+                        background:stageColor+"22",border:`1px solid ${stageColor}55`,
+                        borderLeft:`3px solid ${stageColor}`,
                         cursor:"pointer",display:"flex",flexDirection:"column",gap:4,
                         transition:"all 0.15s",flex:1,
                       }}
-                      onMouseEnter={e=>{e.currentTarget.style.background=stage.color+"33";}}
-                      onMouseLeave={e=>{e.currentTarget.style.background=stage.color+"22";}}>
+                      onMouseEnter={e=>{e.currentTarget.style.background=stageColor+"33";}}
+                      onMouseLeave={e=>{e.currentTarget.style.background=stageColor+"22";}}>
                         <div style={{display:"flex",alignItems:"center",gap:8}}>
                           <span style={{fontSize:12,flexShrink:0}}>{PLT_ICON[post.platform]||""}</span>
                           <span style={{fontSize:13,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1}}>{post.title}</span>
@@ -34551,7 +37774,8 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                           <span style={{fontSize:10,color:"var(--text3)"}}>{slot.start_time}–{slot.end_time}</span>
                           <span style={{fontSize:10,color:"var(--text3)"}}>·</span>
                           <span style={{fontSize:10,color:"var(--text3)"}}>{durLabel}</span>
-                          <Badge label={stage.label} color={stage.color} xs/>
+                          <Badge label={stage.label} color={stageColor} xs/>
+                          {slot.overdue && <Badge label="OVERDUE" color="#ef4444" xs/>}
                           {isActive && <span style={{fontSize:9,color:"#10b981",fontWeight:700,textTransform:"uppercase"}}>● Recording</span>}
                           {isAM && <button onClick={e=>{e.stopPropagation();setOverrideTarget({slot,post});setOverrideTime(`${String(Math.floor(slot.start_mins/60)).padStart(2,'0')}:${String(slot.start_mins%60).padStart(2,'0')}`);}} style={{marginLeft:"auto",padding:"1px 7px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface2)",color:"var(--text3)",fontSize:9,fontWeight:700,cursor:"pointer"}}> Override</button>}
                         </div>
@@ -34575,7 +37799,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                 <p style={{fontSize:12,color:"var(--text3)",textAlign:"center",padding:12}}>No active timers</p>
               ) : activeTimers.map(timer => {
                 const post = posts.find(p=>p.id===timer.post_id);
-                const secs = (timer.total_seconds||0) + Math.floor((Date.now()-new Date(timer.started_at).getTime())/1000);
+                const secs = (timer.total_seconds||0) + Math.floor((Date.now()-parseSqlUtc(timer.started_at).getTime())/1000);
                 return (
                   <div key={timer.id} style={{padding:10,background:"#10b98111",border:"1px solid #10b98133",borderRadius:"var(--rs)",display:"flex",flexDirection:"column",gap:4}}>
                     <p style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{post?.title||timer.post_id}</p>
@@ -34603,11 +37827,12 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
                 if(!post) return null;
                 const stage = STAGE_MAP[post.stage]||STAGES[0];
                 return (
-                  <div key={slot.post_id} onClick={()=>onPostClick&&onPostClick(post)} style={{padding:"6px 10px",borderRadius:"var(--rs)",background:"var(--surface2)",border:"1px solid var(--border)",cursor:"pointer",display:"flex",flexDirection:"column",gap:2}}>
+                  <div key={slot.post_id} onClick={()=>onPostClick&&onPostClick(post)} style={{padding:"6px 10px",borderRadius:"var(--rs)",background:"var(--surface2)",border:`1px solid ${slot.overdue?"#ef444455":"var(--border)"}`,cursor:"pointer",display:"flex",flexDirection:"column",gap:2}}>
                     <p style={{fontSize:11,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{post.title}</p>
                     <div style={{display:"flex",gap:6,alignItems:"center"}}>
                       <span style={{fontSize:9,color:"var(--text3)"}}>{slot.start_time}–{slot.end_time}</span>
-                      <Badge label={stage.label} color={stage.color} xs/>
+                      <Badge label={stage.label} color={slot.overdue?"#ef4444":stage.color} xs/>
+                      {slot.overdue && <Badge label="OVERDUE" color="#ef4444" xs/>}
                     </div>
                   </div>
                 );
@@ -34712,7 +37937,7 @@ Based ONLY on this person's own numbers and task history above, give 3 specific,
   };
 
   const getEntrySecs = (entry) => {
-    if(entry.status==='active') return (entry.total_seconds||0) + Math.floor((now - new Date(entry.started_at).getTime())/1000);
+    if(entry.status==='active') return (entry.total_seconds||0) + Math.floor((now - parseSqlUtc(entry.started_at).getTime())/1000);
     return entry.total_seconds||0;
   };
 
@@ -35032,16 +38257,28 @@ function sortAttendeesForDisplay(list) {
 function formatRoleLabel(role) {
   return (role||"").replace(/_/g," ").replace(/\b\w/g, c=>c.toUpperCase());
 }
+// Voice-note reports rarely capture a person's full name exactly as it's
+// stored (e.g. "Ahmed Selim" in a report vs "Ahmed Maged Selim" in the
+// client record) — an exact-string match would silently fail and leave
+// the frozen (often wrong) title from the report instead of the real one.
+// Matching first+last word instead tolerates a dropped middle name.
+function namesLooselyMatch(a, b) {
+  if (!a || !b) return false;
+  if (a===b) return true;
+  const wa = a.split(/\s+/).filter(Boolean), wb = b.split(/\s+/).filter(Boolean);
+  if (!wa.length || !wb.length) return false;
+  return wa[0]===wb[0] && wa[wa.length-1]===wb[wb.length-1];
+}
 function resolveAttendeeTitleLive(a, client, team) {
   const name = (a.name||"").trim().toLowerCase();
   if (!name) return a.title||"";
   if (a.kind==="team") {
-    const t = (team||[]).find(m=>(m.name||"").trim().toLowerCase()===name);
+    const t = (team||[]).find(m=>namesLooselyMatch((m.name||"").trim().toLowerCase(),name));
     if (t) return t.title?.trim() || formatRoleLabel(t.role) || a.title || "";
   }
   if (a.kind==="client" && client) {
     const contactName = (client.username||client.name||"").trim().toLowerCase();
-    if (contactName && contactName===name) return client.contact_title?.trim() || a.title || "";
+    if (contactName && namesLooselyMatch(contactName,name)) return client.contact_title?.trim() || a.title || "";
   }
   return a.title || "";
 }
@@ -35492,7 +38729,7 @@ function ApplicationCommentsSection({application, comments, team, currentUser, o
               <span style={{fontSize:12,fontWeight:700}}>{c.author_name||"Someone"}</span>
               <span style={{fontSize:11,color:"var(--text3)"}}>{fmtDateTime(c.created_date||c.created_at)}</span>
             </div>
-            <p style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content, team)}</p>
+            <div style={{fontSize:13,lineHeight:1.5}}>{renderCommentText(c.content, team)}</div>
           </div>
         ))}
         {thread.length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>No comments yet.</p>}
@@ -36831,6 +40068,12 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
     await ue("JobApplication", app.id, patch).catch(()=>{});
     const slotLabel = fmtDateOrText(slot);
     logActivity(app.id, `Interview confirmed — ${slotLabel}`);
+    // The public candidate-facing scheduling page notifies staff on
+    // confirmation, but this internal "Confirm" button (used when a
+    // candidate responds some other way — WhatsApp, phone, email — and
+    // staff finalize it here) never did, so a confirmed interview could
+    // sit unnoticed until someone happened to check the Recruitment page.
+    notifyRecruitmentUpdate(`📅 *Interview confirmed*: ${app.candidate_name||"A candidate"} (${app.job_title||"role"}) — ${slotLabel}`);
 
     if(app.candidate_email) {
       const jobTitle = openings.find(o=>o.id===app.job_opening_id)?.title || app.job_title || "the role";
@@ -38085,7 +41328,18 @@ const stripActionBlocks = (text) => {
   return out.trim();
 };
 
-const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId) => {
+// personaKey lets the SAME chat window/context/actions be voiced as Pro
+// (default), Sara (content), or Mai (accounts) — a teammate can switch who
+// they're talking to mid-conversation without losing the live workspace
+// grounding or the ability to take real actions, which a bare separate
+// "raw model, no context" chat (like the old GPT toggle) couldn't offer.
+const CHAT_PERSONAS = {
+  pro: {name:"Pro", intro:`You are Pro — a powerful AI assistant built into SocialFlow by admepro. You work like ChatGPT or Claude: you answer EVERYTHING directly in the chat. You NEVER say "go to a page" or "navigate to X" or "visit the panel". You handle every question and every action right here in the conversation.`},
+  sara: {name:"Sara", intro:`You are Sara — the team's AI Senior Content Creator, chatting directly with a teammate inside SocialFlow. You're the go-to for captions, post ideas, content calendars, copywriting, and brand voice — genuinely dedicated and specific, never generic filler, with a warm easygoing sense of humor. You work like ChatGPT or Claude: you answer EVERYTHING directly in the chat, and you have the SAME live workspace access and action abilities as Pro below — never say "go to a page" or "ask Pro instead", just do it here.`},
+  mai: {name:"Mai", intro:`You are Mai — the team's AI Account Executive, chatting directly with a teammate inside SocialFlow. You're the go-to for client status, account health, performance, and "what's going on with X" questions — grounded in the real client data below, never vague generalities. You work like ChatGPT or Claude: you answer EVERYTHING directly in the chat, and you have the SAME live workspace access and action abilities as Pro below — never say "go to a page" or "ask Pro instead", just do it here.`},
+};
+const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId, userMessage, personaKey="pro") => {
+  const persona = CHAT_PERSONAS[personaKey] || CHAT_PERSONAS.pro;
   // ── Live data summaries ─────────────────────────────────────────
   const allPosts = data?.posts||[];
   const allProj = data?.projects||[];
@@ -38107,6 +41361,19 @@ const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId) => {
   const myTasks = allPosts.filter(p=>p.assigned_to===user?.email&&!["published","rejected"].includes(p.stage));
   const activeProj= allProj.filter(p=>p.status==="active");
 
+  // Per-member timeline so Pro can answer "what does X have on their plate" —
+  // same ownership rule the in-app My Timeline page and the WhatsApp bot's
+  // get_member_timeline tool use: a designer/content-creator's timeline only
+  // counts tasks still actually IN the stage they own (design/content
+  // creation), not ones they finished and handed off that are just sitting
+  // in review/approval waiting on someone else.
+  const teamTimelineBlock = allTeam.filter(m=>m.status==="active").map(m=>{
+    const ownedStage = ROLE_OWNED_STAGE[m.role];
+    const tasks = allPosts.filter(p=>wasOwnerOf(p, m.email, m.role) && !["published","approved","rejected","cancelled"].includes(p.stage) && (!ownedStage || p.stage===ownedStage));
+    if (!tasks.length) return `- ${m.name} (${m.role}): nothing open right now`;
+    return `- ${m.name} (${m.role}): ${tasks.slice(0,8).map(p=>`"${p.title}" [${p.stage}${p.client_name?`, ${p.client_name}`:""}${p.due_date?`, due ${p.due_date}${p.due_time?" "+p.due_time:""}`:""}]`).join(" ; ")}`;
+  }).join("\n");
+
   // ── Per-client blocks ───────────────────────────────────────────
   const clientsToShow = focusClientId
     ? allClients.filter(c=>c.id===focusClientId)
@@ -38125,8 +41392,12 @@ const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId) => {
     const ck = (data?.clientKnowledge||[]).find(k=>k.client_id===c.id);
     const ci = (data?.clientIntelligence||[]).find(i=>i.client_id===c.id);
     const mem = formatClientMemory(c.id, data?.clientMemory||[]);
-    // When a client is focused, dump deep memory; otherwise keep brief
-    const memCap = isFocused ? 3000 : 400;
+    // When a client is focused, dump ALL of it — Client Brain is core
+    // infrastructure and nothing saved to it should become invisible again
+    // just because the memory grew past an arbitrary size (this is exactly
+    // how the branch list got lost the first time). Unfocused clients
+    // still stay brief to save tokens across up to 12 clients at once.
+    const memCap = isFocused ? Infinity : 400;
     const stageCounts = ["planning","content_creation","design","internal_review","client_approval","scheduled","published","rejected"]
       .map(s=>`${s.replace(/_/g," ")}:${cPost.filter(p=>p.stage===s).length}`)
       .filter(s=>!s.endsWith(":0")).join(", ");
@@ -38176,7 +41447,17 @@ const CHATBOT_SYSTEM_PROMPT = (user, page, data, focusClientId) => {
   • Products: ${ckProd.join(" | ")||"-"}
   • Key messages: ${ckKM.slice(0,5).join(" | ")||"-"}
   • Hashtags: ${ckHT.slice(0,8).join(" ")||"-"}
-  • Context file (deep notes): ${(ck.context_file||"").slice(0,2000)||"-"}` : "";
+  • General info (contacts/locations/branches/addresses) — when asked about any of these, relay EVERY relevant line below VERBATIM, don't summarize/pick a subset of it:
+${ck.general_info?ck.general_info.split("\n").map(l=>`    - ${l}`).join("\n"):"    - (none saved yet)"}
+  • Context file (deep notes): ${(ck.context_file||"").slice(-15000)||"-"}` : "";
+    // The knowledge profile above is only a distilled AI summary — specific
+    // granular details (e.g. "what branches/locations does this client
+    // have") can be buried in the full raw uploaded document text without
+    // ever making it into that summary. Search the actual document content
+    // for terms from what the user just asked, same mechanism
+    // clientBrainBlock/searchClientDocsForTopic already uses for content
+    // generation — this in-app chat never called it before.
+    const docSearchBlock = isFocused ? searchClientDocsForTopic(data?.clientDocuments, c.id, userMessage||"") : "";
     // ── v60: inject latest submitted brief ──
     const latestBrief = (data?.monthlyBriefs||[]).filter(b=>b.client_id===c.id&&b.status==="submitted").sort((a,b)=>new Date(b.submitted_at)-new Date(a.submitted_at))[0];
     const briefBlock = latestBrief ? `▼ LATEST MONTHLY BRIEF (submitted by client — use for content planning):
@@ -38218,7 +41499,8 @@ ${intelBlock}
 ${replyBotBlock}
 ${mem?`MEMORY (key=value):\n${mem.slice(0,memCap)}`:"MEMORY: (empty — say so honestly if asked)"}
 ${isFocused && recentPosts?`RECENT POSTS:\n${recentPosts}`:""}
-${publishedLib?`▼ PUBLISHED CONTENT LIBRARY (what actually went live — full captions; use this to review covered topics, TOV, and avoid repeating angles):\n${publishedLib}`:""}`.trim();
+${publishedLib?`▼ PUBLISHED CONTENT LIBRARY (what actually went live — full captions; use this to review covered topics, TOV, and avoid repeating angles):\n${publishedLib}`:""}
+${docSearchBlock}`.trim();
   }).join("\n\n");
 
   const teamList = allTeam.slice(0,20).map(m=>`- ${m.name} <${m.email}> [${m.role}]`).join("\n");
@@ -38300,9 +41582,9 @@ Pending leave/WFH requests: ${pendingLeaves.length} (${pendingLeaves.slice(0,10)
     hrBlock += `\nSalaries (confidential — only share with users who can see salaries): ${allTeam.filter(m=>m.salary).map(m=>`${m.name}: ${m.salary}`).join(" ; ")||"none recorded"}`;
   }
 
-  return `You are Pro — a powerful AI assistant built into SocialFlow by admepro. You work like ChatGPT or Claude: you answer EVERYTHING directly in the chat. You NEVER say "go to a page" or "navigate to X" or "visit the panel". You handle every question and every action right here in the conversation.
+  return `${persona.intro}
 
-IDENTITY: Always call yourself "Pro". Never say "chatbot", "AI assistant", "I'm an AI".
+IDENTITY: Always call yourself "${persona.name}". Never say "chatbot", "AI assistant", "I'm an AI".
 LANGUAGE: Auto-detect language from user's message. Respond in the same language (supports English and Arabic).
 
 ═══ LIVE WORKSPACE DATA ═══
@@ -38316,6 +41598,9 @@ ${allClientNames||"No clients yet."}
 
 TEAM MEMBERS:
 ${teamList||"No team yet."}
+
+TEAM TIMELINE (each person's currently open tasks — use this to answer any "what does X have on their plate/today/this week", "is X free/busy" question. Only counts tasks still in the stage that person owns, so a designer's finished-and-handed-off work won't appear as still on their plate):
+${teamTimelineBlock||"No team yet."}
 
 AI TEAM (agents that work alongside the human team, under your supervision — you know these exist, never say you don't):
 ${AI_AGENT_DEFS.filter(a=>a.id!=="pro").map(a=>`- ${a.name}: ${a.description}`).join("\n")}
@@ -38702,6 +41987,14 @@ function ChatMessage({msg, isTyping, onConfirm, onReject, onExecuteAction}) {
           background:msg.type==="success"?"#dcfce7":msg.type==="error"?"#fee2e2":msg.type==="info"?"#eff6ff":isBot?"transparent":"var(--accent)",
           color:msg.type==="success"?"#166534":msg.type==="error"?"#991b1b":msg.type==="info"?"#1e40af":isBot?"var(--text)":"#fff",
           wordBreak:"break-word",unicodeBidi:"plaintext",textAlign:"start",
+          // Bot replies go through renderChatMd, which builds its own
+          // per-line block elements regardless of CSS — but a plain user
+          // message (e.g. pasted multi-line text) is dumped in as a raw
+          // string, and without this, real newlines in it silently
+          // collapse into one run-on paragraph (default CSS white-space
+          // behavior), which is exactly what made a pasted old reply look
+          // like an unbroken wall of text.
+          ...(isBot ? {} : {whiteSpace:"pre-wrap"}),
         }}>{isBot ? renderChatMd(displayText) : displayText}</div>
 
         {/* Confirmation card */}
@@ -38785,7 +42078,7 @@ OUTPUT: return ONLY a JSON object of the form:
 {"insights":[{"key":"snake_case_key","value":"short concrete value","confidence":0.0-1.0,"evidence":"≤80-char quote/snippet from text"}]}
 Rules:
 - key must be snake_case, ≤32 chars
-- value ≤140 chars, concrete, written as a directive ("use casual tone", "reels preferred", "avoid technical jargon")
+- value: no length cap — a short fact should be short, but if the text contains a genuine LIST (branch locations, product lines, contacts, full pricing table, etc.), capture the FULL list verbatim in one insight, never truncated or compressed into a vague generality
 - confidence 0.5–0.99 based on how clearly the source supports it
 - DO NOT invent things not supported by the text
 - If text is too vague, return {"insights":[]}
@@ -38795,9 +42088,13 @@ Rules:
         method:"POST", headers:AI_HEADERS,
         body: JSON.stringify({
           model:"claude-haiku-4-5-20251001",
-          max_tokens:1500,
+          // 1500 was too tight once values can be full lists rather than
+          // one-liners — bumped alongside removing the 140-char cap below.
+          max_tokens:4000,
           system: sysPrompt,
-          messages:[{role:"user", content: `Analyze this conversation and extract memory:\n\n${text.slice(0,12000)}`}],
+          // 12000 was a real ceiling for someone pasting a genuinely long
+          // brief/chat directly into this box.
+          messages:[{role:"user", content: `Analyze this conversation and extract memory:\n\n${text.slice(0,100000)}`}],
         }),
       });
       const d = await res.json();
@@ -38810,7 +42107,7 @@ Rules:
         return {
           id: uid(),
           key: (it.key||`insight_${i+1}`).toLowerCase().replace(/[^a-z0-9_]/g,"_").slice(0,32),
-          value: (it.value||"").slice(0,140),
+          value: (it.value||"").trim(),
           confidence: typeof it.confidence==="number" ? Math.min(0.99, Math.max(0.3, it.confidence)) : 0.7,
           evidence: it.evidence||"",
           checked: true,
@@ -39648,14 +42945,14 @@ RULES:
     setMessages(m=>[...m,{role:"bot",content,id:uid(),type,actionBtn,ts:new Date().toISOString()}]);
   };
 
-  const runOneFloat = async (payload) => {
+  const runOneFloat = async (payload, session) => {
     const addBotMsg = addBotMsgFloat;
     try {
       const act = payload.action;
 
       if(act==="create_task") {
-        const client = payload.client_id ? data.clients.find(c=>c.id===payload.client_id) : resolveEntity(payload.client_name,data.clients);
-        const project = payload.project_id ? data.projects.find(p=>p.id===payload.project_id) : resolveEntity(payload.client_name,data.projects,"client_name");
+        const client = payload.client_id ? data.clients.find(c=>c.id===payload.client_id) : (resolveEntity(payload.client_name,data.clients) || resolveEntity(payload.client_name,session?.clients||[]));
+        const project = payload.project_id ? data.projects.find(p=>p.id===payload.project_id) : (resolveEntity(payload.client_name,session?.projects||[],"client_name") || resolveEntity(payload.client_name,data.projects,"client_name"));
         const taskData = {
           title: payload.title||"New Task",
           description: payload.description||"",
@@ -39677,7 +42974,7 @@ RULES:
       }
 
       else if(act==="create_project") {
-        const client = resolveEntity(payload.client_name,data.clients);
+        const client = resolveEntity(payload.client_name,data.clients) || resolveEntity(payload.client_name,session?.clients||[]);
         const projData = {
           name: payload.title,
           client_id: client?.id||"",
@@ -39691,6 +42988,12 @@ RULES:
         if(!projData.client_id){ addBotMsg(` Couldn't create project "${projData.name}" — I couldn't match a client called "${payload.client_name||""}". Every project needs a client; create or name one first.`,"error"); return; }
         const ok = onDirectAction ? await onDirectAction("add_project", projData) : true;
         if(!ok){ addBotMsg(` Couldn't create project "${projData.name}" — save failed.`,"error"); return; }
+        // data.projects won't reflect this new project until the next render —
+        // this whole multi-step run keeps executing against the SAME stale
+        // `data` closure, so later create_task steps targeting this client in
+        // the same sequence must be able to find it via the session cache
+        // instead of only via (stale) data.projects.
+        if(session && ok?.id) session.projects.push({...ok, id:ok.id});
         addBotMsg(` Project "${projData.name}" created for ${projData.client_name||"client"}!`,"success",{label:" View Projects", fn:"nav_projects"});
       }
 
@@ -39698,6 +43001,7 @@ RULES:
         const clientData = {name:payload.name,email:payload.email||"",phone:payload.phone||"",industry:payload.industry||"",platforms:payload.platforms||["instagram"],status:"active"};
         let realClient = null;
         if(onDirectAction) realClient = await onDirectAction("add_client", clientData);
+        if(session && realClient?.id) session.clients.push(realClient);
         if(payload.brief && realClient?.id && onUpsertMemory) onUpsertMemory(realClient.id, realClient.name, "brief", payload.brief, "ai");
         addBotMsg(` Client "${clientData.name}" added successfully!`,"success",{label:" View Clients", fn:"nav_clients"});
       }
@@ -39860,10 +43164,11 @@ RULES:
     setPendingActions(p=>{ const n={...p}; delete n[msgId]; return n; });
     setMessages(m=>m.map(msg=>msg.id===msgId?{...msg,pendingAction:false,confirmData:null}:msg));
     if(list.length>1) addBotMsgFloat(` Running ${list.length} steps in sequence…`);
+    const session = {projects:[],clients:[]};
     for(let i=0;i<list.length;i++){
       if(list.length>1) addBotMsgFloat(`Step ${i+1}/${list.length}: ${list[i].action.replace(/_/g," ")}…`);
       // eslint-disable-next-line no-await-in-loop
-      await runOneFloat(list[i]);
+      await runOneFloat(list[i], session);
     }
     if(list.length>1) addBotMsgFloat(` All ${list.length} steps complete!`,"success");
   };
@@ -39973,7 +43278,7 @@ RULES:
     try {
       let sysPrompt = "";
       try {
-        sysPrompt = CHATBOT_SYSTEM_PROMPT(currentUser, currentPage, data, selectedClientId);
+        sysPrompt = CHATBOT_SYSTEM_PROMPT(currentUser, currentPage, data, selectedClientId, userMsg);
         // Strong context lock so Pro never re-asks for the active client
         const focused = (data?.clients||[]).find(c=>c.id===selectedClientId);
         if(focused){
@@ -41227,6 +44532,13 @@ function ProHomePage({currentUser, data, onAction, onDirectAction, setPage, onUp
   const [brainOpen, setBrainOpen] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [dragOverComposer, setDragOverComposer] = useState(false);
+  // Which teammate voice is answering in THIS conversation — Sara/Mai reuse
+  // the exact same live-data context, client auto-lock, memory, and action
+  // abilities Pro has (see CHATBOT_SYSTEM_PROMPT's personaKey), just with a
+  // different identity/expertise framing. Unlike the old raw-GPT toggle,
+  // switching persona does NOT start a separate conversation — it's the
+  // same thread, just whichever teammate is "in the room" right now.
+  const [activePersona, setActivePersona] = useState("pro");
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -41406,12 +44718,12 @@ RULES:
   const addBotMsg = (content, type="", actionBtn=null) =>
     setMessages(m=>[...m,{role:"bot",content,id:uid(),type,actionBtn,ts:new Date().toISOString()}]);
 
-  const runOneAction = async (payload) => {
+  const runOneAction = async (payload, session) => {
     try {
       const act = payload.action;
       if(act==="create_task") {
-        const client = resolveEntity(payload.client_name, data.clients);
-        const project = resolveEntity(payload.client_name, data.projects, "client_name");
+        const client = resolveEntity(payload.client_name, data.clients) || resolveEntity(payload.client_name, session?.clients||[]);
+        const project = resolveEntity(payload.client_name, session?.projects||[], "client_name") || resolveEntity(payload.client_name, data.projects, "client_name");
         const taskData = {
           title: payload.title||"New Task",
           description: payload.description||"",
@@ -41431,16 +44743,21 @@ RULES:
         if(!ok){ addBotMsg(` Couldn't create "${taskData.title}" — save failed.`,"error"); return; }
         addBotMsg(` Done. Task **"${taskData.title}"** created${taskData.client_name?` for ${taskData.client_name}`:""}!`,"success",{label:"View Tasks →", fn:"nav_tasks"});
       } else if(act==="create_project") {
-        const client = resolveEntity(payload.client_name, data.clients);
+        const client = resolveEntity(payload.client_name, data.clients) || resolveEntity(payload.client_name, session?.clients||[]);
         const projData = {name:payload.title,client_id:client?.id||"",client_name:client?.name||payload.client_name||"",description:payload.description||"",project_type:payload.project_type||"social_media",platforms:payload.platforms||["instagram"],start_date:payload.start_date||new Date().toISOString().slice(0,10),deadline:payload.end_date||""};
         if(!projData.client_id){ addBotMsg(` Couldn't create project "${projData.name}" — I couldn't match a client called "${payload.client_name||""}". Every project needs a client; create or name one first.`,"error"); return; }
         const ok = onDirectAction ? await onDirectAction("add_project", projData) : true;
         if(!ok){ addBotMsg(` Couldn't create project "${projData.name}" — save failed.`,"error"); return; }
+        // Same stale-closure issue as create_task's client/project lookup —
+        // data.projects won't include this until next render, so later
+        // create_task steps in this same sequence need it from the session.
+        if(session && ok?.id) session.projects.push({...ok, id:ok.id});
         addBotMsg(` Project **"${projData.name}"** created for ${projData.client_name||"client"}!`,"success",{label:"View Projects →", fn:"nav_projects"});
       } else if(act==="create_client") {
         const clientData={name:payload.name,email:payload.email||"",phone:payload.phone||"",industry:payload.industry||"",platforms:payload.platforms||["instagram"],status:"active"};
         let realClient = null;
         if(onDirectAction) realClient = await onDirectAction("add_client", clientData);
+        if(session && realClient?.id) session.clients.push(realClient);
         // Migrate any temp/prospective memory saved for this client onto the real record
         const slug = slugifyName(clientData.name);
         const tempId = `temp_${slug}`;
@@ -41589,10 +44906,11 @@ RULES:
     setPendingActions(p=>{ const n={...p}; delete n[msgId]; return n; });
     setMessages(m=>m.map(msg=>msg.id===msgId?{...msg,pendingAction:false,confirmData:null}:msg));
     if(list.length>1) addBotMsg(` Running ${list.length} steps in sequence…`);
+    const session = {projects:[],clients:[]};
     for(let i=0;i<list.length;i++){
       if(list.length>1) addBotMsg(`Step ${i+1}/${list.length}: ${list[i].action.replace(/_/g," ")}…`);
       // eslint-disable-next-line no-await-in-loop
-      await runOneAction(list[i]);
+      await runOneAction(list[i], session);
     }
     if(list.length>1) addBotMsg(` All ${list.length} steps complete!`,"success");
   };
@@ -41751,10 +45069,18 @@ RULES:
       if(acronym.length>=2) cands.add(acronym);
       return [...cands];
     };
-    // word-boundary check
+    // word-boundary check — a client/project name containing a character
+    // some engines' regex compiler rejects (e.g. a stray unpaired Unicode
+    // surrogate from a bad copy-paste) used to throw here and crash the
+    // ENTIRE send before the AI was ever called, for a client completely
+    // unrelated to what the user was even asking about, since this runs
+    // against every client's name on every message. Treat an unmatchable
+    // token as simply "no match" instead of letting it kill the send.
     const tokenHit=(tok,text)=>{
-      const re=new RegExp(`(^|[^a-z0-9])${tok.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}([^a-z0-9]|$)`,"i");
-      return re.test(text);
+      try {
+        const re=new RegExp(`(^|[^a-z0-9])${tok.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}([^a-z0-9]|$)`,"i");
+        return re.test(text);
+      } catch(e) { return false; }
     };
     // Explicit mention of a DIFFERENT client in the current message always wins,
     // so saying a new client's name mid-conversation switches Pro's context even
@@ -41850,7 +45176,7 @@ RULES:
     try {
       let sysPrompt="";
       try {
-        sysPrompt = CHATBOT_SYSTEM_PROMPT(currentUser,"home",data, activeClient?.id||null);
+        sysPrompt = CHATBOT_SYSTEM_PROMPT(currentUser,"home",data, activeClient?.id||null, userMsg, activePersona);
         if(activeClient){
           const ck = (data?.clientKnowledge||[]).find(k=>k.client_id===activeClient.id);
           const ci = (data?.clientIntelligence||[]).find(i=>i.client_id===activeClient.id);
@@ -41953,6 +45279,13 @@ RULES:
         ? " — auth error. Check API key in ai-config.php."
         : "";
       addBotMsg(` AI error: ${reason}${hint}`,"error");
+      // A failed send (most often a large PDF tripping the server's request
+      // body limit) used to leave the attachment gone for good — it had
+      // already been cleared from the composer on send, with nothing to
+      // restore it, so the user's only option was to re-attach the file
+      // from scratch and hope the resend worked. Put it back in the
+      // composer instead so retrying is just hitting send again.
+      if(pendingAttachments.length) setAttachments(a=>[...pendingAttachments, ...a]);
     }
   };
 
@@ -42011,6 +45344,14 @@ RULES:
           </button>
         </div>
       )}
+
+      <div style={{display:"flex",alignItems:"center",gap:8,margin:"0 0 8px"}}>
+        {[["pro","Pro"],["sara","Sara"],["mai","Mai"]].map(([key,label])=>(
+          <button key={key} onClick={()=>setActivePersona(key)} style={{fontSize:11.5,fontWeight:700,padding:"4px 12px",borderRadius:20,border:"none",cursor:"pointer",background:activePersona===key?"var(--accent)":"var(--surface2)",color:activePersona===key?"#fff":"var(--text2)"}}>{label}</button>
+        ))}
+        {activePersona==="sara" && <span style={{fontSize:10.5,color:"var(--text3)"}}>Sara — content, captions, and ideas, same live data & actions as Pro.</span>}
+        {activePersona==="mai" && <span style={{fontSize:10.5,color:"var(--text3)"}}>Mai — client status and account questions, same live data & actions as Pro.</span>}
+      </div>
 
       {attachments.length>0 && (
         <div style={{display:"flex",gap:8,flexWrap:"wrap",margin:"0 0 8px"}}>
@@ -42645,7 +45986,7 @@ function CreateBriefModal({open, onClose, clients, onCreate}) {
   );
 }
 
-function NotificationsPage({notifications, currentUser, onMarkRead, onNavigate, onOpenPost, onOpenApplication}) {
+function NotificationsPage({notifications, currentUser, onMarkRead, onNavigate, onOpenPost, onOpenApplication, onOpenClient}) {
   const [filter, setFilter] = useState("all");
   const myNotifs = (notifications||[]).filter(n=>n.recipient_email===currentUser?.email);
   const unread = myNotifs.filter(n=>!n.is_read);
@@ -42661,6 +46002,14 @@ function NotificationsPage({notifications, currentUser, onMarkRead, onNavigate, 
       onOpenPost&&onOpenPost(n.link_id);
     } else if(n.link_type==="job_application") {
       onOpenApplication&&onOpenApplication(n.link_id);
+    } else if(n.link_type==="client") {
+      // Mai's daily-report/performance-alert notifications link to a client
+      // id, not a page — this used to fall through to the generic page
+      // fallback below, which called setPage(clientId) with a raw UUID (no
+      // matching page = blank content) AND explicitly cleared
+      // selectedClientId, so even fixing the page name alone wouldn't have
+      // opened the right client.
+      onOpenClient&&onOpenClient(n.link_id);
     } else if(n.link_type==="page") {
       onNavigate&&onNavigate(n.link_id);
     } else {
@@ -43153,7 +46502,17 @@ function App() {
     try{ id ? localStorage.setItem("sf_selected_project",id) : localStorage.removeItem("sf_selected_project"); }catch(e){}
     if(id) { try{ window.history.pushState({sfPage:"projects", sfDetail:id},"","#projects"); }catch(e){} }
   };
+  // Remembers which client's page a project was opened FROM (via that
+  // client's own Projects tab) so the project detail's Back button can
+  // return there instead of always dropping onto the global all-clients
+  // Projects list — those are two different starting points and Back
+  // should honor whichever one was actually used.
+  const [returnToClientId,setReturnToClientId] = useState(null);
+  const [clientInitialTab,setClientInitialTab] = useState(null);
   const [showAddPost,setShowAddPost] = useState(false);
+  const [addPostPresetSlot,setAddPostPresetSlot] = useState(null);
+  const [addTaskPresetSlot,setAddTaskPresetSlot] = useState(null);
+  const [assignExistingSlot,setAssignExistingSlot] = useState(null);
   const [showAddProject,setShowAddProject] = useState(false);
   const [addProjectForClient,setAddProjectForClient] = useState(null);
   const [showCreateBrief,setShowCreateBrief] = useState(false);
@@ -43272,8 +46631,9 @@ function App() {
       intelligence: data.clientIntelligence||[],
       memory: data.clientMemory||[],
       publishedPosts: (data.posts||[]).filter(p=>p.stage==="published"),
+      documents: data.clientDocuments||[],
     };
-  },[data.clientKnowledge, data.clientIntelligence, data.clientMemory, data.posts]);
+  },[data.clientKnowledge, data.clientIntelligence, data.clientMemory, data.posts, data.clientDocuments]);
   useEffect(()=>{
     const f = appSettings?.feature_flags;
     Object.assign(FEATURE_FLAGS, typeof f === "string" ? parseJ(f,{}) : (f||{}));
@@ -43392,7 +46752,15 @@ function App() {
 
       // ── Wave 2: secondary data (background, all parallel) ──
       const wave2 = await Promise.allSettled([
-        qe("Comment",{},"created_at"), // 0
+        // Sorted ascending with the default 500-row cap used to silently
+        // drop every comment past the oldest 500 across the WHOLE system —
+        // once total comment count grew past that, brand-new comments
+        // (including whatever just @mentioned someone) never made it into
+        // the fetch at all, so opening the task from the notification
+        // showed no comment/attachment there even right after a hard
+        // refresh. Sorted descending (newest first) instead, same fix
+        // pattern as Leads below.
+        qe("Comment",{},"-created_at",5000), // 0
         qe("Asset"), // 1
         qe("TimeLog"), // 2
         qe("Template"), // 3
@@ -43504,6 +46872,14 @@ function App() {
     }
     loadAllDataRef.current = load;
     load(false);
+    // Auto-refresh so anything created outside this browser tab (Trello
+    // sync, a client-portal submission, another teammate's change, a cron
+    // job) shows up on its own instead of requiring a manual page reload.
+    // Silent (no loading spinner), only while the tab is actually visible
+    // — same pattern already used for the smaller per-page pollers
+    // elsewhere in the app, just on the full dataset here.
+    const autoRefresh = setInterval(() => { if(document.visibilityState==="visible") load(true); }, 60000);
+    return () => clearInterval(autoRefresh);
   },[]);
 
   // ── Helpers ──────────────────────────────────────────────────
@@ -43537,6 +46913,56 @@ function App() {
   };
 
   // Handlers
+  // Attaches an already-existing task/post onto a free Timeline slot —
+  // reassigns it to that person and sets its due date/time to the slot
+  // clicked, instead of creating a brand-new task.
+  const assignExistingTaskToSlot = (taskId, slot, estimatedMinutes=null) => {
+    const updates = {assigned_to: slot.assigned_to, due_date: slot.due_date, due_time: slot.due_time};
+    if (estimatedMinutes) updates.estimated_minutes = estimatedMinutes; // manual override from the Existing Task picker
+    // Dropping a task onto a designer's/content creator's free slot only
+    // actually occupies that slot if the task's STAGE matches what that
+    // person owns (see ROLE_OWNED_STAGE/generateDailySchedule) — a task
+    // still sitting in Planning or Design Review assigned to a designer's
+    // Design column won't show up there at all otherwise. Moving it
+    // forward OR backward into their owned stage here is what makes "add
+    // existing task to this slot" actually mean something for real.
+    const member = data.team.find(m=>m.email===slot.assigned_to);
+    const ownedStage = member ? ROLE_OWNED_STAGE[member.role] : null;
+    if (ownedStage) {
+      updates.stage = ownedStage;
+      if (ownedStage === "design") { updates.design_assigned_to = slot.assigned_to; updates.design_completed_at = null; }
+      if (ownedStage === "content_creation") { updates.content_assigned_to = slot.assigned_to; updates.content_completed_at = null; }
+    }
+    setData(d=>({...d, posts: d.posts.map(p=>p.id===taskId ? {...p, ...updates} : p)}));
+    ue("Post", taskId, updates).catch(()=>{});
+  };
+
+  // Makes room for a task that doesn't fit at the clicked slot as-is: every
+  // already-scheduled task from that slot's start time onward gets pushed
+  // back-to-back starting right after the new task's end — same day if
+  // there's still room, otherwise rolled to the next working day (cleared
+  // due_time so it re-packs naturally there, same convention as the
+  // capacity-overflow handling on My Timeline). Then assigns the task.
+  const pushConflictAndAssignTask = (taskId, slot, daySlots, durationMins, estimatedMinutes=null) => {
+    const newStart = timeToMins(slot.due_time) ?? WORKING_START*60;
+    let cursor = newStart + durationMins;
+    const nextDayStr = addWorkingDays(new Date(slot.due_date+"T00:00:00"), 1).toISOString().split("T")[0];
+    const affected = daySlots.filter(s=>s.start_mins>=newStart).sort((a,b)=>a.start_mins-b.start_mins);
+    affected.forEach(s=>{
+      const dur = s.end_mins - s.start_mins;
+      if (cursor + dur <= WORKING_END*60) {
+        const newTime = minsToHHMM(cursor);
+        setData(d=>({...d, posts: d.posts.map(p=>p.id===s.post_id ? {...p, due_time:newTime} : p)}));
+        ue("Post", s.post_id, {due_time:newTime}).catch(()=>{});
+        cursor += dur;
+      } else {
+        setData(d=>({...d, posts: d.posts.map(p=>p.id===s.post_id ? {...p, due_date:nextDayStr, due_time:null} : p)}));
+        ue("Post", s.post_id, {due_date:nextDayStr, due_time:null}).catch(()=>{});
+      }
+    });
+    assignExistingTaskToSlot(taskId, slot, estimatedMinutes);
+  };
+
   const addPost = async (postData) => {
     // Client Requests are the one exception — the client submits a request
     // with no project attached yet; the account manager picks the project
@@ -43591,7 +47017,9 @@ function App() {
       }
     }
     logActivity("Task Created","tasks",`"${postData.title}" created${postData.client_name?` for ${postData.client_name}`:""}`,"success","",currentUser?.email||"admin");
-    return b44Create("Post","posts", local, postData);
+    const saved = await b44Create("Post","posts", local, postData);
+    if(saved?.id) syncPostToTrello(saved.id);
+    return saved;
   };
 
   const markNotifRead = (notifId) => {
@@ -43728,7 +47156,7 @@ function App() {
     });
     logActivity("Project Created","clients",`New project: ${formData.name} for ${formData.client_name} (${scheduledPosts.length} posts)`,"success","",currentUser?.email||"admin");
     setToast(` "${formData.name}" created with ${scheduledPosts.length} posts${formData.posting_start?" — smart scheduled":""}!`);
-    return true;
+    return {...projPayload, id:projectId};
   };
 
   const updateProject = async (projectId, patch) => {
@@ -43912,6 +47340,16 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
     logActivity("Team Member Updated","users",`${m?.name||id} — ${Object.keys(updates).join(", ")}`,"success","",currentUser?.email||"admin");
   };
 
+  // Fixes a single already-imported attendance row (wrong clock-in/out time,
+  // or the wrong status — an import/device misread happens occasionally and
+  // otherwise required going into the DB by hand) without re-running the
+  // whole sheet.
+  const updateAttendanceRecord = async (id, updates) => {
+    setData(d=>({...d, attendanceRecords:(d.attendanceRecords||[]).map(a=>a.id===id?{...a,...updates}:a)}));
+    ue("AttendanceRecord", id, updates).catch(()=>{});
+    logActivity("Attendance Record Edited","hr",`${id} — ${Object.keys(updates).join(", ")}`,"success","",currentUser?.email||"admin");
+  };
+
   const removeTeamMember = async (id) => {
     const m = data.team.find(t=>t.id===id);
     setData(d=>({...d, team:d.team.filter(m=>m.id!==id)}));
@@ -43955,15 +47393,114 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
       start_date, end_date, days, hours:hrs,
       start_time: isPersonal ? start_time||null : null, end_time: isPersonal ? end_time||null : null,
       reason:reason||"", status:"pending",
+      manager_id: member.manager_id||null,
       manager_name: member.manager_id ? (data.team.find(t=>t.id===member.manager_id)?.name||"") : "",
       source:"app", created_at:new Date().toISOString(),
     };
     setData(d=>({...d, leaveRequests:[local, ...(d.leaveRequests||[])]}));
-    const res = await ce("LeaveRequest",[{team_member_id:member.id, member_name:member.name, type, start_date, end_date, days, hours:hrs, start_time:local.start_time, end_time:local.end_time, reason:reason||"", status:"pending", manager_name:local.manager_name, source:"app"}]).catch(()=>null);
+    // manager_id (not just manager_name) has to be set — the WhatsApp bot's
+    // pending-request lookup (decide_pending_request in pro-lib.php) filters
+    // by manager_id, so a request missing it is invisible to "approve"/
+    // "reject" replies even though it shows up fine in the app's own UI.
+    const res = await ce("LeaveRequest",[{team_member_id:member.id, member_name:member.name, type, start_date, end_date, days, hours:hrs, start_time:local.start_time, end_time:local.end_time, reason:reason||"", status:"pending", manager_id:local.manager_id, manager_name:local.manager_name, source:"app"}]).catch(()=>null);
     const real = res?.entities?.[0];
     if(real?.id) setData(d=>({...d, leaveRequests:d.leaveRequests.map(r=>r.id===local.id?real:r)}));
     logActivity("Leave Request Submitted","users",`${member.name} — ${type} (${start_date}${isPersonal?` — ${start_time||""}–${end_time||""} (${hrs}h)`:end_date!==start_date?` → ${end_date}`:""})`,"success","",currentUser?.email||"admin");
+    // The WhatsApp "request leave" flow (pro-lib.php's request_leave tool)
+    // notifies the manager over WhatsApp + email + an in-app notification
+    // the moment a request comes in — this in-app self-service path only
+    // ever created the row itself, so a request submitted from the app
+    // (not via WhatsApp) silently never reached the manager at all until
+    // they happened to open Team → Leave & WFH. Mirror that same 3-channel
+    // notify here.
+    const manager = member.manager_id ? data.team.find(t=>t.id===member.manager_id) : null;
+    if(manager?.email) {
+      const label = type==="personal_leave" ? "personal leave" : type==="vacation" ? "vacation" : "work-from-home";
+      const range = isPersonal ? start_date : (end_date!==start_date ? `${start_date} → ${end_date}` : start_date);
+      const amount = isPersonal ? `${hrs}h` : `${days} day(s)`;
+      const msg = `${member.name} requested ${label} for ${range} (${amount}).${reason?`\nReason: ${reason}`:""}`;
+      const prefs = getNotifPrefs(manager.email);
+      ce("Notification",[{recipient_email:manager.email, title:"New leave/WFH request", message:msg, type:"info", is_read:false, link_type:"page", link_id:"team"}]).catch(()=>{});
+      // sendNotification's WhatsApp branch only ever sends "{subject}\n\nView:
+      // {link}" — a generic fallback shared by every other notification type
+      // — which reads nothing like the rich, actionable message the
+      // WhatsApp-native request_leave bot flow sends (with the reply-
+      // approve/reject instruction). Email still goes through sendNotification
+      // normally; WhatsApp is sent directly here instead, mirroring that same
+      // format (same reqId-based short id decide_pending_request expects).
+      sendNotification("wa_leave_requests", manager.email, `New request: ${member.name} — ${label}`,
+        `<div style="font-family:sans-serif;font-size:14px;color:#111827;line-height:1.6"><p>${msg.replace(/\n/g,"<br>")}</p><p>Log in to SocialFlow → Team → Leave & WFH to approve or reject it.</p></div>`,
+        prefs
+      ).catch(()=>{});
+      if(manager.whatsapp_number && !prefs.all_disabled && prefs.wa_leave_requests!==false) {
+        const shortId = String(real?.id||local.id).slice(-8);
+        sendWhatsApp(manager.whatsapp_number,
+          `🗓️ ${member.name} requested ${label} for ${range} (${amount}).\nReason: ${reason||"(none given)"}\n\n` +
+          `Reply here to approve or reject it — just tell Pro, e.g. "approve ${shortId}" or "reject ${shortId}".`
+        ).catch(()=>{});
+      }
+    }
     setToast("Request submitted");
+  };
+
+  // Turns a single "Absent (No Request)" day (edited from a team member's
+  // Attendance history — see updateAttendanceRecord/TeamMemberDetailPage)
+  // into a real, already-approved vacation day: creates the LeaveRequest
+  // record itself (so it shows in their Leave & WFH History like any other
+  // approved vacation), then applies the exact same accounting
+  // decideLeaveRequest already uses for approving a vacation request that
+  // covers an already-penalized day — refund the 2-day unapproved-absence
+  // penalty, charge the normal 1-day vacation cost instead, and clear
+  // absence_deducted so a future re-import doesn't re-penalize it.
+  const backfillApprovedVacation = async (memberArg, workDate) => {
+    const member = data.team.find(t=>t.id===memberArg.id) || memberArg;
+    const reqPayload = {
+      team_member_id: member.id, member_name: member.name, type: "vacation",
+      start_date: workDate, end_date: workDate, days: 1,
+      reason: "Backfilled from attendance record edit", status: "approved",
+      manager_name: currentUser?.name||"admin", source: "app", decided_at: new Date().toISOString(),
+    };
+    const res = await ce("LeaveRequest",[reqPayload]).catch(()=>null);
+    const real = res?.entities?.[0];
+    if(real?.id) setData(d=>({...d, leaveRequests:[...(d.leaveRequests||[]), real]}));
+
+    const staleAbsences = (data.attendanceRecords||[]).filter(a=>
+      a.team_member_id===member.id && a.status==="absent" && a.absence_deducted && a.work_date===workDate
+    );
+    const refundDays = staleAbsences.length*2;
+    const newUsed = Math.max(0, Number(member.vacation_days_used||0) + 1 - refundDays);
+    await updateTeamMember(member.id, {vacation_days_used:newUsed});
+    const monthKey = workDate.slice(0,7);
+    ce("LeaveCreditEvent",[{team_member_id:member.id, member_name:member.name, credit_type:"vacation_days", amount:1, month_key:monthKey, work_date:workDate, reason:"leave_request_approved"}]).catch(()=>{});
+    if(staleAbsences.length) {
+      await Promise.all(staleAbsences.map(a=>ue("AttendanceRecord", a.id, {absence_deducted:0})));
+      setData(d=>({...d, attendanceRecords:(d.attendanceRecords||[]).map(a=>staleAbsences.some(s=>s.id===a.id)?{...a,absence_deducted:0}:a)}));
+      staleAbsences.forEach(a=>{
+        ce("LeaveCreditEvent",[{team_member_id:member.id, member_name:member.name, credit_type:"vacation_days", amount:-2, month_key:(a.work_date||"").slice(0,7), work_date:a.work_date, reason:"stale_absence_refund"}]).catch(()=>{});
+      });
+    }
+  };
+
+  // Reclassifying an "Absent (No Request)" day to anything OTHER than
+  // Approved Vacation (half_day, late, present, wfh — an admin correcting
+  // a device misread, not recording a real day off) still needs the same
+  // 2-day unapproved-absence penalty refunded — it just doesn't add the
+  // 1-day vacation charge backfillApprovedVacation does, since this isn't
+  // a real vacation day.
+  const refundStaleAbsencePenalty = async (memberArg, workDate) => {
+    const member = data.team.find(t=>t.id===memberArg.id) || memberArg;
+    const staleAbsences = (data.attendanceRecords||[]).filter(a=>
+      a.team_member_id===member.id && a.status==="absent" && a.absence_deducted && a.work_date===workDate
+    );
+    if(!staleAbsences.length) return;
+    const refundDays = staleAbsences.length*2;
+    const newUsed = Math.max(0, Number(member.vacation_days_used||0) - refundDays);
+    await updateTeamMember(member.id, {vacation_days_used:newUsed});
+    await Promise.all(staleAbsences.map(a=>ue("AttendanceRecord", a.id, {absence_deducted:0})));
+    setData(d=>({...d, attendanceRecords:(d.attendanceRecords||[]).map(a=>staleAbsences.some(s=>s.id===a.id)?{...a,absence_deducted:0}:a)}));
+    staleAbsences.forEach(a=>{
+      ce("LeaveCreditEvent",[{team_member_id:member.id, member_name:member.name, credit_type:"vacation_days", amount:-2, month_key:(a.work_date||"").slice(0,7), work_date:a.work_date, reason:"stale_absence_refund"}]).catch(()=>{});
+    });
   };
 
   // Approve/reject a leave/WFH request from the web UI (mirrors the WhatsApp
@@ -44115,6 +47652,41 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
     setToast("Invitation cancelled");
   };
 
+  // Skips waiting for the invitee to click their link — creates the
+  // account (or reactivates a matching one) with a generated temp
+  // password right now, for when the admin wants them in immediately.
+  const activateInvitation = async (inv) => {
+    const tempPass = Math.random().toString(36).slice(2,10).toUpperCase();
+    if(inv.user_type==="client") {
+      const dupe = (data.clientUsers||[]).find(u=>u.email===inv.email && (u.client_id||"")===(inv.client_id||""));
+      if(dupe) await updateClientUser(dupe.id, {status:"active", password:tempPass});
+      else await addClientUser({name:inv.name||"", email:inv.email, role:inv.role, client_id:inv.client_id||"", client_name:inv.client_name||"", status:"active", password:tempPass});
+    } else {
+      const dupe = (data.team||[]).find(m=>m.email===inv.email);
+      if(dupe) {
+        await updateTeamMember(dupe.id, {status:"active", password:tempPass});
+      } else {
+        const res = await ce("TeamMember",[{name:inv.name||inv.email.split("@")[0], email:inv.email, role:inv.role, status:"active", password:tempPass}]).catch(()=>null);
+        const real = res?.entities?.[0];
+        if(real?.id) setData(d=>({...d, team:[real,...(d.team||[])]}));
+      }
+    }
+    setData(d=>({...d, invitations:d.invitations.map(i=>i.id===inv.id?{...i,status:"accepted"}:i)}));
+    ue("UserInvitation", inv.id, {status:"accepted"}).catch(()=>{});
+    const html = `<div style="font-family:'Montserrat',sans-serif;max-width:500px;margin:0 auto;padding:32px;background:#fff;border-radius:12px">
+      <img src="/favicon.svg" width="44" height="44" style="border-radius:10px;display:block;margin:0 auto 20px"/>
+      <h2 style="text-align:center;font-size:20px;font-weight:800;color:#111827;margin-bottom:8px">Your SocialFlow account is active</h2>
+      <p style="color:#4b5563;font-size:14px;line-height:1.6;text-align:center">Hi ${inv.name||inv.email}, your account has been activated. Here's your temporary password:</p>
+      <div style="margin:24px auto;text-align:center;background:#f9fafb;border:2px dashed #d1d5db;border-radius:10px;padding:18px 24px">
+        <span style="font-size:26px;font-weight:800;letter-spacing:3px;color:#d90b2c;font-family:monospace">${tempPass}</span>
+      </div>
+      <p style="color:#6b7280;font-size:13px;text-align:center;line-height:1.6">Sign in with this temporary password, then update it in your account settings.</p>
+    </div>`;
+    sendEmail(inv.email, "Your SocialFlow account is active", html, "SocialFlow").catch(()=>{});
+    logActivity("Invitation Activated","users",inv.email||"","success","",currentUser?.email||"admin");
+    setToast(`${inv.email} activated — temporary password emailed`);
+  };
+
   const approveRequest = async (req, role) => {
     // req.status flips to "approved" further below, but a slow network round
     // trip left a window where clicking Approve twice (or a component
@@ -44177,6 +47749,21 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
     await ue("ClientUser", cuId, patch).catch(()=>{});
     logActivity("Client User Updated","clients",patch.email||cuId,"success","",currentUser?.email||"admin");
     setToast("Client user updated");
+  };
+
+  // Lets a client set their own password instead of the admin generating
+  // one for them — reuses the same UserInvitation + AcceptInvitationPage
+  // flow team invites already go through (it already handles
+  // user_type==="client" — see AcceptInvitationPage's handleSubmit).
+  const generateClientActivationLink = async ({name, email, role, client_id, client_name}) => {
+    const token = uid().replace("local_","") + uid().replace("local_","");
+    const expiresAt = new Date(Date.now() + 7*24*60*60*1000).toISOString();
+    const payload = {name, email, role, client_id, client_name, user_type:"client", token, expires_at:expiresAt, status:"pending", invited_by:currentUser?.email};
+    ce("UserInvitation",[payload]).catch(()=>{});
+    const inviteUrl = window.location.origin + "?invite=" + token;
+    sendEmail(email, "Set up your SocialFlow client portal access", EMAIL_TEMPLATES.invitation(name||email, "Client", inviteUrl)).catch(()=>{});
+    logActivity("Client Activation Link Sent","clients",email,"success","",currentUser?.email||"admin");
+    return inviteUrl;
   };
 
   const deleteClientUser = async (cuId) => {
@@ -44506,6 +48093,14 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
           const role = ROLES[currentUser?.role]?.label || currentUser?.role || "";
           sendWhatsApp(newWaNumber, `Hi ${name}! Your WhatsApp number is now linked to your SocialFlow account.\n\nName: ${name}\nEmail: ${currentUser.email}\nRole: ${role}\n\nYou'll receive task and approval notifications here, and can message "Pro" anytime for help.`).catch(()=>{});
         }
+      }
+      // Mirror into team_members.title too — contact reports (and anywhere
+      // else that shows a person's job title, e.g. Mai's meeting logging)
+      // read team_members.title, not the user_profiles row, so a bio saved
+      // only here would never actually change what shows on those.
+      if(ok && "bio" in profileData) {
+        const member = data.team.find(m=>m.email===currentUser.email);
+        if(member) updateTeamMember(member.id, {title: profileData.bio||null});
       }
     } catch(e){ ok = false; }
     logActivity("Profile Updated","users",currentUser?.email||"",ok?"success":"error","",currentUser?.email||"admin");
@@ -44936,7 +48531,7 @@ Return ONLY the JSON array, no markdown.`;
     // Avoid duplicates — don't append the exact same note twice
     if(oldCtx.includes(note.slice(0,40))) return;
     const timestamp = new Date().toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
-    const updated = (oldCtx + `\n\n---\n_${timestamp}_\n${note}`).slice(0, 6000);
+    const updated = (oldCtx + `\n\n---\n_${timestamp}_\n${note}`).slice(0, 100000);
     const updatedKnowledge = {...existing, context_file:updated, last_analyzed:new Date().toISOString()};
     setData(d=>({...d,clientKnowledge:d.clientKnowledge.map(k=>k.client_id===clientId?updatedKnowledge:k)}));
     if(existing.id) ue("ClientKnowledge",existing.id,{context_file:updated,last_analyzed:updatedKnowledge.last_analyzed}).catch(()=>{});
@@ -45296,7 +48891,19 @@ Return ONLY the JSON array, no markdown.`;
   const uploadClientDoc = async (docData) => {
     const newDoc = {...docData,id:uid(),analyzed:false,created_date:new Date().toISOString()};
     setData(d=>({...d,clientDocuments:[newDoc,...d.clientDocuments]}));
-    try { await ce("ClientDocument",[docData]); } catch(e){}
+    // ce() strips uid()'s "local_..." id before insert (Supabase assigns
+    // its own real one) — the local optimistic id never matches the real
+    // DB row, so any later ue() targeting newDoc.id silently updates
+    // nothing. Track the real id so the "analyzed" flag set below actually
+    // persists instead of only ever living in local state (reverting to 0
+    // on every reload, which — being a falsy non-boolean — used to render
+    // as a literal "0" next to the doc instead of the Analyzed badge).
+    let realDocId = newDoc.id;
+    try {
+      const res = await ce("ClientDocument",[docData]);
+      const real = res?.entities?.[0];
+      if(real?.id) { realDocId = real.id; setData(d=>({...d,clientDocuments:d.clientDocuments.map(doc=>doc.id===newDoc.id?{...doc,id:real.id}:doc)})); }
+    } catch(e){}
     logActivity("Client Document Uploaded","clients",`${docData.name} (${docData.client_name})`,"success","",currentUser?.email||"admin");
     // AI analysis
     const allDocs = [newDoc,...data.clientDocuments.filter(d=>d.client_id===docData.client_id)];
@@ -45308,21 +48915,31 @@ Return ONLY the JSON array, no markdown.`;
 
 Client: ${docData.client_name}
 ChatGPT Conversation:
-${docData.content.slice(0,6000)}
+${docData.content.slice(0,700000)}
 
-Extract ONLY the useful client brief information from this conversation. Ignore generic ChatGPT responses. Focus on what was discussed about the client's brand, goals, audience, and content preferences.
+Extract ONLY the useful client brief information from this conversation. Ignore generic ChatGPT responses. Focus on what was discussed about the client's brand, goals, audience, and content preferences. This is only part of a longer conversation if it was truncated — extract everything genuinely useful from what's shown, including specific concrete details (e.g. named branches/locations, specific products, exact pricing) not just generic brand descriptors.
 
 Return ONLY valid JSON (no markdown, no explanation):
-{"summary":"2-3 sentences about this client based on the chat","tone":"brand voice/communication style extracted from chat","content_preferences":"what type of content they want","industry_context":"their industry and market","keywords":["kw1","kw2","kw3"],"priorities":["priority1","priority2"],"skills":[{"name":"Skill","confidence":80,"category":"Content"}],"dos":["do this","and this"],"donts":["avoid this","never this"],"target_audience":"who they're targeting"}`
-        : `Analyze these client documents and extract a knowledge profile for: ${docData.client_name}\n\nDOCUMENTS:\n${allText.slice(0,6000)}\n\nReturn ONLY valid JSON (no markdown, no explanation):\n{"summary":"2-3 sentences about this client","tone":"communication style","content_preferences":"what they like","industry_context":"their industry","keywords":["kw1","kw2"],"priorities":["p1","p2"],"skills":[{"name":"Skill","confidence":85,"category":"Content"}]}`;
+{"summary":"2-3 sentences about this client based on the chat","tone":"detailed, actionable writing-voice guide for this client — not just adjectives. Cover: formality level, sentence length/rhythm, language mix (e.g. Arabic/English usage), emoji/punctuation habits, words or phrases they consistently use or avoid, and 1-2 short example phrases pulled directly from the chat if any real captions/copy appear. Write it as instructions a copywriter could follow.","content_preferences":"what type of content they want","industry_context":"their industry and market","keywords":["kw1","kw2","kw3"],"priorities":["priority1","priority2"],"skills":[{"name":"Skill","confidence":80,"category":"Content"}],"dos":["do this","and this"],"donts":["avoid this","never this"],"target_audience":"who they're targeting","general_info":"any contacts, locations/branches, addresses, phone numbers, hours, or other general company facts mentioned — plain text, one fact per line. Empty string if none found."}`
+        : `Analyze these client documents and extract a knowledge profile for: ${docData.client_name}\n\nDOCUMENTS:\n${allText.slice(0,700000)}\n\nReturn ONLY valid JSON (no markdown, no explanation):\n{"summary":"2-3 sentences about this client","tone":"detailed, actionable writing-voice guide for this client — not just adjectives. Cover: formality level, sentence length/rhythm, language mix (e.g. Arabic/English usage), emoji/punctuation habits, words or phrases they consistently use or avoid, and 1-2 short example phrases pulled directly from the documents if any real captions/copy appear. Write it as instructions a copywriter could follow.","content_preferences":"what they like","industry_context":"their industry","keywords":["kw1","kw2"],"priorities":["p1","p2"],"skills":[{"name":"Skill","confidence":85,"category":"Content"}],"general_info":"any contacts, locations/branches, addresses, phone numbers, hours, or other general company facts mentioned — plain text, one fact per line. Empty string if none found."}`;
 
       const r = await fetch(AI_ENDPOINT,{
         method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1200,
+        // 1200 was too tight for the ChatGPT-import prompt (asks for
+        // summary+tone+content_preferences+industry_context+keywords+
+        // priorities+skills+dos+donts+target_audience) — responses
+        // regularly got cut off mid-object, and since this path parses
+        // the raw text directly (no regex-extract-then-parse fallback
+        // like the other generation paths), any leftover fence markers or
+        // truncation threw immediately, landing silently in the catch
+        // below with "analyzed" never getting set to true.
+        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:2000,
           messages:[{role:"user",content:analysisPrompt}]})
       });
       const d2 = await r.json();
-      const raw = (d2.content||[]).map(b=>b.text||"").join("").replace(/```json|```/g,"").trim();
+      const rawFull = (d2.content||[]).map(b=>b.text||"").join("");
+      const jsonMatch = rawFull.match(/\{[\s\S]*\}/);
+      const raw = (jsonMatch ? jsonMatch[0] : rawFull).replace(/```json|```/g,"").trim();
       const parsed = JSON.parse(raw);
       const kPayload = {
         client_id:docData.client_id,client_name:docData.client_name,
@@ -45333,13 +48950,15 @@ Return ONLY valid JSON (no markdown, no explanation):
         priorities:JSON.stringify(parsed.priorities||[]),
         skills:JSON.stringify(parsed.skills||[]),
         ...(isChatGPT && parsed.dos ? {dos:parsed.dos.join("\n"), donts:(parsed.donts||[]).join("\n"), target_audience:parsed.target_audience||""} : {}),
+        ...(parsed.general_info ? {general_info:parsed.general_info} : {}),
         sources_count:allDocs.length,
         last_analyzed:new Date().toISOString(),
         analyzed_by:currentUser?.email||"",
         version:(data.clientKnowledge.find(k=>k.client_id===docData.client_id)?.version||0)+1,
       };
       await saveClientKnowledge(kPayload);
-      setData(d=>({...d,clientDocuments:d.clientDocuments.map(doc=>doc.id===newDoc.id?{...doc,analyzed:true}:doc)}));
+      setData(d=>({...d,clientDocuments:d.clientDocuments.map(doc=>doc.id===realDocId?{...doc,analyzed:true}:doc)}));
+      ue("ClientDocument", realDocId, {analyzed:true}).catch(()=>{});
       // Auto-update context_file with a brief summary of new learnings
       try {
         const existingKnowledge = data.clientKnowledge.find(k=>k.client_id===docData.client_id);
@@ -45347,11 +48966,36 @@ Return ONLY valid JSON (no markdown, no explanation):
         const srcLabel = isChatGPT ? " ChatGPT Import" : ` ${docData.name}`;
         const newSummary = `## ${srcLabel}\n${parsed.summary||""}\n\n**Tone:** ${parsed.tone||""}\n**Keywords:** ${(parsed.keywords||[]).slice(0,6).join(", ")}\n**Priorities:** ${(parsed.priorities||[]).slice(0,3).join(", ")}${parsed.dos?`\n**Do's:** ${parsed.dos.slice(0,2).join(", ")}`:""}${parsed.donts?`\n**Don'ts:** ${parsed.donts.slice(0,2).join(", ")}`:""}\n**Audience:** ${parsed.target_audience||""}`;
         const mergedCtx = oldCtx ? oldCtx + "\n\n---\n\n" + newSummary : newSummary;
-        const ctxPayload = {...kPayload, context_file: mergedCtx.slice(0, 6000)};
+        const ctxPayload = {...kPayload, context_file: mergedCtx.slice(0, 100000)};
         await saveClientKnowledge(ctxPayload);
       } catch(e2) { console.log("Context file update error:", e2); }
-    } catch(err) { console.log("AI analysis error:",err); }
-    setToast("Document uploaded and analyzed!");
+      // Also save into client_memory (not just the client_knowledge profile
+      // record) — this is the ONLY data source Mai (both her daily per-client
+      // analysis and the AM check-in context) and Pro's "ask Mai" tool
+      // actually read. A ChatGPT chat full of real brand/strategy discussion
+      // used to just sit in client_knowledge, invisible to both, until now.
+      // Fixed keys (not one-per-upload) so re-uploading refreshes these
+      // instead of piling up duplicates every time.
+      try {
+        if(parsed.summary) upsertClientMemory(docData.client_id, docData.client_name, "doc_summary", parsed.summary, "document_extract", {source:docData.name, created_by:currentUser?.email});
+        if(parsed.tone) upsertClientMemory(docData.client_id, docData.client_name, "doc_tone", parsed.tone, "document_extract", {source:docData.name, created_by:currentUser?.email});
+        if(parsed.content_preferences) upsertClientMemory(docData.client_id, docData.client_name, "doc_content_preferences", parsed.content_preferences, "document_extract", {source:docData.name, created_by:currentUser?.email});
+        if((parsed.priorities||[]).length) upsertClientMemory(docData.client_id, docData.client_name, "doc_priorities", parsed.priorities.join("; "), "document_extract", {source:docData.name, created_by:currentUser?.email});
+        if((parsed.keywords||[]).length) upsertClientMemory(docData.client_id, docData.client_name, "doc_keywords", parsed.keywords.join(", "), "document_extract", {source:docData.name, created_by:currentUser?.email});
+        if(parsed.target_audience) upsertClientMemory(docData.client_id, docData.client_name, "doc_target_audience", parsed.target_audience, "document_extract", {source:docData.name, created_by:currentUser?.email});
+        if((parsed.dos||[]).length) upsertClientMemory(docData.client_id, docData.client_name, "doc_dos", parsed.dos.join("; "), "document_extract", {source:docData.name, created_by:currentUser?.email});
+        if((parsed.donts||[]).length) upsertClientMemory(docData.client_id, docData.client_name, "doc_donts", parsed.donts.join("; "), "document_extract", {source:docData.name, created_by:currentUser?.email});
+      } catch(e3) { console.log("Memory extraction error:", e3); }
+      setToast("Document uploaded and analyzed!");
+    } catch(err) {
+      console.log("AI analysis error:",err);
+      // The document itself is still saved either way — only the AI
+      // analysis step failed — but silently claiming "analyzed" when it
+      // wasn't left no way to tell without checking the DB directly (the
+      // "0" that used to render in place of the Analyzed badge, or here
+      // just no badge at all with no explanation).
+      setToast("Document uploaded, but AI analysis failed — you can retry from the document list, or check Settings → Client Brain → Profile.");
+    }
   };
 
   const generateCalendarPlan = async (planForm, tasks) => {
@@ -45360,7 +49004,15 @@ Return ONLY valid JSON (no markdown, no explanation):
     // roll them up into one description/platform list for the project record.
     const kindsCfg = planForm.kinds||{};
     const activeKindCfgs = Object.entries(kindsCfg).filter(([,v])=>v.count>0);
-    const combinedBrief = activeKindCfgs.map(([k,v])=>v.brief?`${k}: ${v.brief}`:null).filter(Boolean).join(" | ");
+    // v.brief doesn't exist (the real per-batch briefs live in
+    // v.briefBatches[].brief, a kind can have several batches with
+    // different briefs) — this always evaluated to null/empty, so the
+    // project record never actually captured any brief text either,
+    // compounding the same loss as the per-task description bug above.
+    const combinedBrief = activeKindCfgs.map(([k,v])=>{
+      const briefs = (v.briefBatches||[]).map(b=>(b.brief||"").trim()).filter(Boolean);
+      return briefs.length ? `${k}: ${briefs.join(" / ")}` : null;
+    }).filter(Boolean).join(" | ");
     const combinedPlatforms = [...new Set(activeKindCfgs.flatMap(([,v])=>v.platforms||[]))];
     // Find or create project for this campaign
     const existingProj = data.projects.find(p=>p.client_id===planForm.client_id&&p.title===planForm.campaign);
@@ -45380,24 +49032,43 @@ Return ONLY valid JSON (no markdown, no explanation):
         }
       } catch(e){}
     }
-    // Create all task posts with ID-swap
-    const localPosts = tasks.map(t=>({...t,project_id:projectId,id:uid()}));
-    setData(d=>({...d,posts:[...localPosts,...d.posts]}));
+    // A calendar plan no longer creates one independent Post per idea —
+    // every approved idea instead becomes a "plan item" living inside ONE
+    // parent task card (post.is_plan_parent). The team fills in each item's
+    // own platform/date/time/media and advances its own mini-stage from
+    // inside that one card; an item only splits off into its own real,
+    // independently-movable Post once IT reaches Approved (see
+    // splitPlanItem) — not waiting on any of its siblings. This keeps a
+    // whole batch of posts from a single calendar plan from flooding every
+    // board as separate cards up front.
     const calClient = data.clients.find(c=>c.id===planForm.client_id);
-    const postPayloads = localPosts.map(t=>({title:t.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:t.platform,platforms:t.platforms||[t.platform],post_type:t.post_type,task_type:t.task_type||"",stage:planForm.start_stage||"content_creation",priority:t.priority,caption:t.caption,hashtags:t.hashtags,text_on_visual:t.text_on_visual||"",reel_hook:t.reel_hook||"",notes:t.notes||"",estimated_minutes:t.estimated_minutes,scheduled_date:t.scheduled_date,scheduled_time:t.scheduled_time,due_date:t.due_date||"",due_time:t.due_time||"",assigned_to:t.assigned_to||""}));
-    ce("Post",postPayloads).then(res=>{
-      const reals = res.entities||[];
-      setData(d=>{
-        let posts = [...d.posts];
-        localPosts.forEach((lp,i)=>{ if(reals[i]?.id) posts=posts.map(p=>p.id===lp.id?{...p,...reals[i]}:p); });
-        return {...d,posts};
-      });
+    const startStage = planForm.start_stage||"content_creation";
+    const items = tasks.map(t=>({
+      id: uid(), kind: t.kind, title: t.title, platform: t.platform, platforms: t.platforms||[t.platform],
+      post_type: t.post_type, task_type: t.task_type||"", priority: t.priority,
+      description: t.description||t._sourceBrief||"", caption: t.caption, hashtags: t.hashtags,
+      text_on_visual: t.text_on_visual||"", reel_hook: t.reel_hook||"", notes: t.notes||"",
+      estimated_minutes: t.estimated_minutes, scheduled_date: t.due_date||t.scheduled_date||"",
+      scheduled_time: t.due_time||t.scheduled_time||"", assigned_to: t.assigned_to||"", sector: t.sector||"",
+      stage: startStage, media: {}, split_post_id: null,
+    }));
+    const parentId = uid();
+    const localParent = {
+      id: parentId, title: planForm.campaign, project_id: projectId, client_id: planForm.client_id,
+      client_name: calClient?.name||"", platform: combinedPlatforms[0]||"", platforms: combinedPlatforms,
+      post_type: "plan", stage: startStage, priority: "medium", notes: combinedBrief,
+      is_plan_parent: true, plan_items: items, created_date: new Date().toISOString(),
+    };
+    setData(d=>({...d,posts:[localParent,...d.posts]}));
+    ce("Post",[{title:localParent.title,project_id:projectId,client_id:planForm.client_id,client_name:calClient?.name||"",platform:localParent.platform,platforms:combinedPlatforms,post_type:"plan",stage:startStage,priority:"medium",notes:combinedBrief,is_plan_parent:true,plan_items:items}]).then(res=>{
+      const real = res.entities?.[0];
+      if(real?.id) setData(d=>({...d,posts:d.posts.map(p=>p.id===parentId?{...p,...real,plan_items:items}:p)}));
     }).catch(()=>{});
-    // Notify each unique assignee once per batch (not once per task —
-    // creating 18 tasks would flood their inbox if we sent 18 individual
-    // emails). Group tasks by assignee email, one notification per person.
+    // Notify each unique assignee once per batch (not once per item —
+    // creating 18 items would flood their inbox if we sent 18 individual
+    // emails). Group items by assignee email, one notification per person.
     const assigneeGroups = {};
-    localPosts.forEach(t=>{ if(t.assigned_to) (assigneeGroups[t.assigned_to]=assigneeGroups[t.assigned_to]||[]).push(t); });
+    items.forEach(t=>{ if(t.assigned_to) (assigneeGroups[t.assigned_to]=assigneeGroups[t.assigned_to]||[]).push(t); });
     Object.entries(assigneeGroups).forEach(([email, assignedTasks])=>{
       if(email===currentUser?.email) return;
       const assignee = data.team.find(m=>m.email===email);
@@ -45416,9 +49087,106 @@ Return ONLY valid JSON (no markdown, no explanation):
         ).catch(()=>{});
       }
     });
-    setToast(` ${tasks.length} posts created for ${planForm.campaign}`);
+    setToast(` "${planForm.campaign}" created with ${tasks.length} post${tasks.length>1?"s":""} inside — open it to work on each one.`);
   };
 
+  // Persists an in-place edit to one plan item (media, platform, date/time,
+  // stage, etc.) without touching the others — called from PlanItemsEditor
+  // on every field change so nothing is lost if the tab closes mid-edit.
+  const updatePlanItem = (parentPost, itemId, patch) => {
+    const nextItems = (parentPost.plan_items||[]).map(it=>it.id===itemId?{...it,...patch}:it);
+    setData(d=>({...d,posts:d.posts.map(p=>p.id===parentPost.id?{...p,plan_items:nextItems}:p)}));
+    ue("Post", parentPost.id, {plan_items: nextItems}).catch(()=>{});
+  };
+
+  // Splits one ready plan item off the parent card into its own real,
+  // independently-movable Post — the moment it individually reaches
+  // Approved, not waiting on any of its siblings. Everything downstream
+  // (Timeline, publishing, client forwarding) works on the new Post
+  // completely normally from here since it's a real Post row with normal
+  // design_assets/carousel_cover, same shape a single AddPostModal post has.
+  const splitPlanItem = async (parentPost, itemId) => {
+    const items = parentPost.plan_items||[];
+    const item = items.find(it=>it.id===itemId);
+    if(!item) return;
+    const media = item.media||{};
+    const missing = [];
+    if(!item.platform) missing.push("platform");
+    if(!item.scheduled_date) missing.push("publish date");
+    if(!item.scheduled_time) missing.push("publish time");
+    if(item.kind==="static" && !media.image) missing.push("image");
+    if(item.kind==="reel" && (!media.video||!media.cover)) missing.push(!media.video?"reel video":"reel cover");
+    if(item.kind==="carousel" && !(media.items||[]).length) missing.push("carousel media");
+    if(item.kind==="story" && !media.media) missing.push("story media");
+    if(missing.length) { setToast(` Fill in ${missing.join(", ")} before splitting this post off.`); return; }
+
+    const now = new Date().toISOString();
+    let design_assets = [], carousel_cover = "";
+    if(item.kind==="static") design_assets = [{name:item.title||"image", type:"image", url:media.image, uploaded_at:now}];
+    else if(item.kind==="reel") { design_assets = [{name:item.title||"reel", type:"video", url:media.video, uploaded_at:now}]; carousel_cover = media.cover; }
+    else if(item.kind==="carousel") design_assets = media.items.map((url,i)=>({name:`slide-${i+1}`, type:"image", url, uploaded_at:now}));
+    else if(item.kind==="story") design_assets = [{name:item.title||"story", type:media.media_type||"image", url:media.media, kind:"story", uploaded_at:now}];
+
+    const payload = {
+      title:item.title, project_id:parentPost.project_id, client_id:parentPost.client_id, client_name:parentPost.client_name,
+      platform:item.platform, platforms:item.platforms||[item.platform], post_type:item.post_type, task_type:item.task_type||"",
+      stage:"scheduled", priority:item.priority, description:item.description||"", caption:item.caption, hashtags:item.hashtags,
+      text_on_visual:item.text_on_visual||"", reel_hook:item.reel_hook||"", notes:item.notes||"", sector:item.sector||"",
+      estimated_minutes:item.estimated_minutes, scheduled_date:item.scheduled_date, scheduled_time:item.scheduled_time,
+      due_date:item.scheduled_date, due_time:item.scheduled_time, assigned_to:item.assigned_to||"",
+      design_assets, carousel_cover,
+    };
+    const localId = uid();
+    setData(d=>({...d,posts:[{...payload,id:localId},...d.posts]}));
+    const nextItems = items.map(it=>it.id===itemId?{...it,split_post_id:localId,stage:"scheduled"}:it);
+    setData(d=>({...d,posts:d.posts.map(p=>p.id===parentPost.id?{...p,plan_items:nextItems}:p)}));
+    ue("Post", parentPost.id, {plan_items: nextItems}).catch(()=>{});
+    try {
+      const res = await ce("Post",[payload]);
+      const real = res.entities?.[0];
+      if(real?.id) {
+        setData(d=>({...d,posts:d.posts.map(p=>p.id===localId?{...p,...real}:p)}));
+        const realItems = nextItems.map(it=>it.id===itemId?{...it,split_post_id:real.id}:it);
+        ue("Post", parentPost.id, {plan_items: realItems}).catch(()=>{});
+        setData(d=>({...d,posts:d.posts.map(p=>p.id===parentPost.id?{...p,plan_items:realItems}:p)}));
+      }
+    } catch(e) {}
+    // Once every item in the plan has split off into its own Post, the
+    // parent card has nothing left to do — move it to Published so it drops
+    // off active boards instead of sitting around as an empty shell.
+    if(nextItems.every(it=>it.split_post_id)) {
+      ue("Post", parentPost.id, {stage:"published"}).catch(()=>{});
+      setData(d=>({...d,posts:d.posts.map(p=>p.id===parentPost.id?{...p,stage:"published"}:p)}));
+    }
+    setToast(` "${item.title}" split off as its own scheduled post.`);
+  };
+
+  // Adds a {date, duration_mins} snapshot to a task's
+  // design_completed_dates/content_completed_dates JSON-array history — see
+  // the fields' own comments in handleStageChange for why this exists
+  // separately from the single _completed_at timestamp. duration_mins is
+  // frozen at the moment of THIS completion (via estimateDuration, reading
+  // whatever estimated_minutes/post_type/priority the task had right now)
+  // so a later edit to the task's live duration, or it cycling through
+  // again, never reaches back and changes how a past day's block rendered
+  // (see generateDailySchedule's historyEntry lookup).
+  const appendCompletedDate = (existing, post) => {
+    let entries = [];
+    try {
+      const parsed = existing ? (Array.isArray(existing) ? existing : JSON.parse(existing)) : [];
+      // Migrates old plain-string-date entries (from before duration
+      // snapshotting existed) into the {date, duration_mins} shape,
+      // backfilling a best-effort estimate since the real one wasn't
+      // captured at the time.
+      entries = parsed.map(e => typeof e === "string" ? {date:e, duration_mins:estimateDuration(post)} : e);
+    } catch(e) { entries = []; }
+    const today = new Date().toISOString().split("T")[0];
+    const duration_mins = estimateDuration(post);
+    const idx = entries.findIndex(e=>e.date===today);
+    if (idx >= 0) entries[idx] = {date:today, duration_mins};
+    else entries = [...entries, {date:today, duration_mins}];
+    return JSON.stringify(entries);
+  };
   const handleStageChange = async (post,newStage,overrides={}) => {
     // Block transition if no assignee for stages that require one, unless the
     // caller (the assign+schedule modal) is supplying one right now via overrides.
@@ -45427,18 +49195,28 @@ Return ONLY valid JSON (no markdown, no explanation):
       setToast(` Assign a team member before moving to ${stageLabel}. Open the post and set 'Assign To'.`);
       return;
     }
+    // The caller can be holding a stale copy of this post (e.g. a Kanban
+    // board's own local posts list a beat behind the last update) — reading
+    // .stage off THAT instead of the live record is exactly what silently
+    // skipped stamping design_completed_at/content_completed_at for a task
+    // whose real prior stage genuinely was "design", making it vanish off
+    // the Timeline instead of showing green. Every stage-TRANSITION check
+    // below reads this instead of post.stage; everything else (assigned_to,
+    // due_date, etc.) still legitimately comes from whatever the caller
+    // passed in.
+    const priorStage = data.posts.find(p=>p.id===post.id)?.stage ?? post.stage;
     // Track revisions (moved backward to an earlier stage in the pipeline)
     // and any rejection ever hit, so a real PerformanceLog can be written once
     // the task actually completes — Performance/My Performance's Review Score
     // was reading only seeded demo rows until this, since nothing ever wrote
     // a real one.
-    const oldIdx = STAGES.findIndex(s=>s.key===post.stage);
+    const oldIdx = STAGES.findIndex(s=>s.key===priorStage);
     const newIdx = STAGES.findIndex(s=>s.key===newStage);
     // "Rejected" sits near the end of STAGES array-wise (so its own array
     // index looks like a forward move), but it's always a returned task in
     // practice — a real "sent back, redo this" event, same as any actual
     // backward stage move.
-    const wentBackward = (oldIdx>-1 && newIdx>-1 && newIdx<oldIdx && !["on_hold"].includes(post.stage) && !["on_hold"].includes(newStage)) || newStage==="rejected";
+    const wentBackward = (oldIdx>-1 && newIdx>-1 && newIdx<oldIdx && !["on_hold"].includes(priorStage) && !["on_hold"].includes(newStage)) || newStage==="rejected";
     const revisionCount = (post.revision_count||0) + (wentBackward?1:0);
     const wasRejected = post.was_rejected || newStage==="rejected";
 
@@ -45464,9 +49242,20 @@ Return ONLY valid JSON (no markdown, no explanation):
     const assigneeName = assignee?.name || "Unassigned";
     const assigneeEmail = overrides.assigned_to || assignee?.email || "";
 
+    // A task sent backward (rejected/returned) into Content or Design is
+    // active work again as of RIGHT NOW — if its due_date is a past day,
+    // leaving it there parks it on that old day's page (shown overdue,
+    // easy to miss) instead of showing up on today's timeline where the
+    // person now has to actually pick it back up. Rolls due_date to today
+    // and clears due_time so it re-packs naturally; a manually-picked
+    // date/time from the Move-to modal (overrides) always wins regardless.
+    const todayStr = new Date().toISOString().split("T")[0];
+    const needsDueDateBump = wentBackward && ["content_creation","design"].includes(newStage)
+      && !overrides.due_date && post.due_date && post.due_date < todayStr;
+
     const updatedPost = {...post, stage:newStage, assigned_to:assigneeEmail||post.assigned_to,
-      due_date: overrides.due_date || post.due_date,
-      due_time: overrides.due_time || post.due_time,
+      due_date: overrides.due_date || (needsDueDateBump ? todayStr : post.due_date),
+      due_time: overrides.due_time || (needsDueDateBump ? null : post.due_time),
       estimated_minutes: overrides.estimated_minutes || post.estimated_minutes,
       content_assigned_to: newStage==="content_creation" ? (assigneeEmail||post.assigned_to) : post.content_assigned_to,
       design_assigned_to: newStage==="design" ? (assigneeEmail||post.assigned_to) : post.design_assigned_to,
@@ -45475,8 +49264,29 @@ Return ONLY valid JSON (no markdown, no explanation):
       // (e.g. a 2-3pm block finished at 2:15 shows as a 15-min task) instead
       // of always rendering the full originally-planned block regardless of
       // how long it actually took (see generateDailySchedule).
-      content_completed_at: (post.stage==="content_creation" && newStage!=="content_creation") ? new Date().toISOString() : post.content_completed_at,
-      design_completed_at: (post.stage==="design" && newStage!=="design") ? new Date().toISOString() : post.design_completed_at,
+      // Cleared the moment a task comes BACK into Content/Design (e.g. sent
+      // back for revision from Design Review) — otherwise it would keep
+      // showing green/"done" off the stale timestamp from before it was
+      // returned, even though it's genuinely active work again now. Gets
+      // re-stamped fresh the next time it actually leaves the stage for
+      // real (see the condition just above each of these).
+      content_completed_at: (priorStage==="content_creation" && newStage!=="content_creation") ? new Date().toISOString() : (newStage==="content_creation" ? null : post.content_completed_at),
+      design_completed_at: (priorStage==="design" && newStage!=="design") ? new Date().toISOString() : (newStage==="design" ? null : post.design_completed_at),
+      // Accumulates EVERY distinct day this task was actually finished —
+      // unlike the single _completed_at timestamp above (which gets
+      // overwritten/cleared each time the task cycles through the stage
+      // again), this never gets cleared, so a task finished yesterday, sent
+      // back, and finished again today shows as completed work on BOTH
+      // days on the Timeline (see generateDailySchedule), not just today.
+      content_completed_dates: (priorStage==="content_creation" && newStage!=="content_creation") ? appendCompletedDate(post.content_completed_dates, post) : post.content_completed_dates,
+      design_completed_dates: (priorStage==="design" && newStage!=="design") ? appendCompletedDate(post.design_completed_dates, post) : post.design_completed_dates,
+      // Remembers whatever stage this was ACTUALLY in right before landing
+      // on Client Approval — used by trello-webhook.php's "comments only +
+      // sync approval moves" mode to send a rejected/bounced-back card to
+      // the correct real prior stage, since several stages usually share
+      // one Trello list and a plain list→stage lookup can't tell them
+      // apart. Cleared once consumed (or once the task moves on normally).
+      pre_approval_stage: (newStage==="client_approval" && priorStage!=="client_approval") ? priorStage : (newStage==="client_approval" ? post.pre_approval_stage : null),
       project_id: overrides.project_id || post.project_id,
       revision_count: revisionCount,
       was_rejected: wasRejected,
@@ -45534,13 +49344,28 @@ Return ONLY valid JSON (no markdown, no explanation):
           const created = r.entities?.[0];
           if(created && !created._saveError) setData(d=>({...d, perfLogs:[...(d.perfLogs||[]), created]}));
         }).catch(()=>{});
+        // Being sent backward used to only log a performance record — the
+        // person it landed on had no actual notification telling them a
+        // task came BACK for revision, distinct from a normal "assigned to
+        // you" (which reads like brand-new work, not a return).
+        const returnee = data.team.find(m=>m.email===returnEmail);
+        if(returnee && returnEmail !== currentUser?.email) {
+          const returnPrefs = getNotifPrefs(returnEmail);
+          sendNotification("task_sent_back", returnEmail,
+            `[SocialFlow] Sent back for revision: ${post.title}`,
+            `<div style="font-family:sans-serif;font-size:14px;color:#111827;line-height:1.6">` +
+            `<p>"${post.title}"${post.client_name?` (${post.client_name})`:""} was sent back to ${STAGE_MAP[newStage]?.label||newStage} for revision${post.rejection_reason?`:</p><p style="color:#555">${post.rejection_reason}</p><p>`:"."}</p>` +
+            `<p>Log in to SocialFlow to see the details.</p></div>`,
+            returnPrefs, returnee.whatsapp_number||null
+          ).catch(()=>{});
+        }
       }
     }
 
     const priorAssigneeEmail = post.assigned_to;
     const priorAssigneeRole = (data.team.find(m=>m.email===priorAssigneeEmail)?.role)||"";
     const ownedStage = ROLE_OWNED_STAGE[priorAssigneeRole];
-    const leftOwnedStageForward = ownedStage && post.stage===ownedStage && newIdx>oldIdx && newStage!=="rejected" && newStage!=="on_hold";
+    const leftOwnedStageForward = ownedStage && priorStage===ownedStage && newIdx>oldIdx && newStage!=="rejected" && newStage!=="on_hold";
     const reachedFinalStage = newStage==="published"||newStage==="scheduled";
     // One real completion log per (post, person) — not per post — so a
     // content creator, then a designer, then an account manager can each
@@ -45675,35 +49500,54 @@ Return ONLY valid JSON (no markdown, no explanation):
     }
 
     try {
-      await ue("Post", post.id, {stage:newStage, assigned_to:updatedPost.assigned_to,
-        due_date:updatedPost.due_date, due_time:updatedPost.due_time,
-        estimated_minutes:updatedPost.estimated_minutes, content_assigned_to:updatedPost.content_assigned_to,
-        project_id:updatedPost.project_id, revision_count:updatedPost.revision_count, was_rejected:updatedPost.was_rejected,
-        published_at:updatedPost.published_at});
+      // This used to hand-list every field to persist — and kept missing
+      // ones, silently. design_assets was the latest casualty: removing an
+      // attachment (handleRemoveDesignAsset) goes through onStageChange with
+      // the same stage, updates local state fine, logs the "Removed
+      // attachment" comment fine, but this call never actually wrote the
+      // trimmed design_assets array to the database, so the "removed" file
+      // reappeared on the very next reload. Same root cause as the earlier
+      // project_id and published_platforms bugs. Passing the whole updated
+      // post through instead — ue()'s sbSanitize already strips anything
+      // not in SB_SCHEMA.posts, so this can't write fields the DB doesn't
+      // have — closes off this entire class of bug instead of patching it
+      // field by field every time something new falls through.
+      const {id, created_at, created_date, ...persistable} = updatedPost;
+      await ue("Post", post.id, {...persistable, stage:newStage});
       await ce("Comment",[{post_id:post.id,author_name:comment.author_name,type:"stage_change",content:comment.content}]);
+      syncPostToTrello(post.id);
     } catch(e){ logActivity("Post Stage Change Failed","tasks",`"${post.title}" → ${stageLabel}`,"error",String(e),currentUser?.email||"admin"); }
   };
 
   // Creates one Post per platform for "Ready Content" (already-finished caption+media), then,
   // when opts.postNow is set, immediately publishes each via its matching active Meta integration.
   const addReadyContent = async (list, opts={}) => {
+    // list now always holds exactly ONE task (see AddPostModal) — publishing
+    // loops over its platforms array itself, same as the normal Publish Now
+    // button, instead of the caller pre-splitting it into one task per
+    // platform (which used to create real duplicate Post rows).
     let publishedCount=0, failedCount=0;
     for(const pd of list) {
       const real = await addPost(pd);
       if(opts.postNow && real?.id) {
-        const integ = (data.integrations||[]).find(i=>i.status==="active" && i.app_key===pd.platform && i.client_id===pd.client_id)
-          || (data.integrations||[]).find(i=>i.status==="active" && i.app_key===pd.platform && !i.client_id);
-        if(!integ) { failedCount++; continue; }
-        try {
-          const res = await publishPost(real, integ);
-          const postId = res?.video_id || res?.id || res?.post_id || res?.creation_id;
-          if(postId) await ue("Post", real.id, {external_post_id: postId}).catch(()=>{});
-          handleStageChange(real,"published");
-          publishedCount++;
-        } catch(e) {
-          failedCount++;
-          setToast(`Publish failed for ${pd.platform}: ${e.message}`);
+        const platformsToPublish = Array.isArray(pd.platforms)&&pd.platforms.length ? pd.platforms : [pd.platform];
+        let anyOk = false;
+        for(const pl of platformsToPublish) {
+          const integ = (data.integrations||[]).find(i=>i.status==="active" && i.app_key===pl && i.client_id===pd.client_id)
+            || (data.integrations||[]).find(i=>i.status==="active" && i.app_key===pl && !i.client_id);
+          if(!integ) { failedCount++; continue; }
+          try {
+            const res = await publishPost(real, integ);
+            const postId = res?.video_id || res?.id || res?.post_id || res?.creation_id;
+            if(postId) await ue("Post", real.id, {external_post_id: postId}).catch(()=>{});
+            publishedCount++;
+            anyOk = true;
+          } catch(e) {
+            failedCount++;
+            setToast(`Publish failed for ${pl}: ${e.message}`);
+          }
         }
+        if(anyOk) handleStageChange(real,"published");
       }
     }
     if(opts.postNow) {
@@ -45719,6 +49563,15 @@ Return ONLY valid JSON (no markdown, no explanation):
     ue("Post", updatedPost.id, {
       title: updatedPost.title,
       description: updatedPost.description,
+      // Edit form's "Move to Project" selector (same-client projects, see
+      // sameClientProjects in PostDetail) updated project_id/client_id/
+      // client_name in local state fine, but this save call never actually
+      // wrote any of the three to the database — the move looked like it
+      // worked until the next reload silently reverted it back to the
+      // original project.
+      project_id: updatedPost.project_id,
+      client_id: updatedPost.client_id,
+      client_name: updatedPost.client_name,
       platform: updatedPost.platform,
       platforms: updatedPost.platforms,
       post_type: updatedPost.post_type,
@@ -45758,6 +49611,17 @@ Return ONLY valid JSON (no markdown, no explanation):
     ce("Comment",[payload]).then(res=>{
       const real=res.entities?.[0]; if(real?.id) setData(d=>({...d,comments:d.comments.map(c=>c.id===local.id?{...c,...real}:c)}));
     }).catch(()=>{});
+    // Mirror this comment (and its attachment, if any) onto the client's
+    // Trello card, if one's connected — best-effort, never blocks the
+    // real comment from saving. Only client-facing comments go out —
+    // internal-only ones (like the "Forwarded ... to client" activity log
+    // entry) must not also show up as a second Trello comment.
+    if (audience === "client") {
+      fetch("/trello-comment-sync.php", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({
+        post_id: postId, text: content, author_name: user?.name||"User",
+        file_url: attachment?.file_url||"", file_name: attachment?.file_name||"",
+      })}).catch(()=>{});
+    }
     // Detect @mentions — in-app + email notifications
     const post = data.posts.find(p=>p.id===postId);
     const project = post ? data.projects.find(p=>p.id===post.project_id) : null;
@@ -45777,7 +49641,8 @@ Return ONLY valid JSON (no markdown, no explanation):
         sendNotification("task_mention", mentioned.email,
           `[SocialFlow] ${user?.name||"Someone"} mentioned you`,
           EMAIL_TEMPLATES.mentionNotification(mentioned.name, user?.name||"A colleague", postTitle, content.slice(0,200), project?.title||""),
-          prefs
+          prefs, mentioned.whatsapp_number||null,
+          `${user?.name||"Someone"} mentioned you on "${postTitle}":\n\n"${content.slice(0,300)}"`
         ).catch(()=>{});
       }
     }
@@ -45789,7 +49654,8 @@ Return ONLY valid JSON (no markdown, no explanation):
         sendNotification("task_comment", assigneeMember.email,
           `[SocialFlow] New comment on: ${post.title}`,
           EMAIL_TEMPLATES.commentAdded(assigneeMember.name, user?.name||"A colleague", post.title, content.slice(0,200), project?.title||""),
-          prefs
+          prefs, assigneeMember.whatsapp_number||null,
+          `${user?.name||"Someone"} commented on "${post.title}":\n\n"${content.slice(0,300)}"`
         ).catch(()=>{});
       }
     }
@@ -45810,7 +49676,8 @@ Return ONLY valid JSON (no markdown, no explanation):
         sendNotification("task_comment", participant.email,
           `[SocialFlow] New comment on: ${postTitle}`,
           EMAIL_TEMPLATES.commentAdded(participant.name, user?.name||"A colleague", postTitle, content.slice(0,200), project?.title||""),
-          prefs
+          prefs, participant.whatsapp_number||null,
+          `${user?.name||"Someone"} commented on "${postTitle}":\n\n"${content.slice(0,300)}"`
         ).catch(()=>{});
       }
     }
@@ -45832,6 +49699,17 @@ Return ONLY valid JSON (no markdown, no explanation):
     if(/@mai\b/i.test(content) && post) {
       replyMaiInComment(post, project, content, user);
     }
+  };
+
+  // Deleting a comment that carried an attachment also deletes the actual
+  // uploaded file from storage — otherwise it just sits there orphaned
+  // forever (nothing else ever references it once the comment's gone).
+  // Best-effort: the storage delete failing silently never blocks the
+  // comment itself from being removed.
+  const handleDeleteComment = async (comment) => {
+    setData(d=>({...d, comments:d.comments.filter(c=>c.id!==comment.id)}));
+    if(comment.file_url) deleteFromStorage(comment.file_url).catch(()=>{});
+    de("Comment", comment.id).catch(()=>{});
   };
 
   // Comment thread on a job application (reuses the generic `comments`
@@ -45990,7 +49868,7 @@ Priority: ${post.priority||"-"}
 ${post.description?`Brief: ${post.description}`:""}
 ${post.caption?`Current caption: ${post.caption}`:""}`;
       const raw = await agentAI("content_creator", `Comment reply: ${post.title}`, `${SARA_PERSONA}
-${clientBrainBlock(post.client_id, post.client_name)}
+${clientBrainBlock(post.client_id, post.client_name, `${post.title||""} ${post.description||""}`)}
 ${taskBlock}
 
 RECENT THREAD ON THIS TASK:
@@ -46035,7 +49913,7 @@ Assigned to: ${post.assigned_to||"unassigned"} | Due: ${post.due_date||post.sche
 ${post.text_on_visual?`Text on visual: ${post.text_on_visual}`:""}
 ${post.design_assets?.length?`Existing design assets: ${post.design_assets.length} attached`:"No design assets uploaded yet"}`;
       const raw = await agentAI("graphic_designer", `Comment reply: ${post.title}`, `${YAHIA_PERSONA}
-${clientBrainBlock(post.client_id, post.client_name)}
+${clientBrainBlock(post.client_id, post.client_name, `${post.title||""} ${post.description||""}`)}
 ${taskBlock}
 
 RECENT THREAD ON THIS TASK:
@@ -46082,7 +49960,7 @@ ${post.caption?`Current caption: ${post.caption}`:""}
 ${post.text_on_visual?`Text on visual: ${post.text_on_visual}`:""}
 ${postImageUrl?"An image of this exact post/visual is attached above — look at it.":"No image attached to this task yet — judge only from what's described here."}`;
       const raw = await agentAI("account_executive", `Comment reply: ${post.title}`, `${MAI_PERSONA}
-${clientBrainBlock(post.client_id, post.client_name)}
+${clientBrainBlock(post.client_id, post.client_name, `${post.title||""} ${post.description||""}`)}
 ${maiPerformanceBlock(post.client_id)}
 ${taskBlock}
 
@@ -46121,7 +49999,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
     setData(d => {
       const updated = (d.timeEntries||[]).map(t => {
         if(t.user_email===currentUser?.email && t.status==='active') {
-          const elapsed = Math.floor((Date.now()-new Date(t.started_at).getTime())/1000);
+          const elapsed = Math.floor((Date.now()-parseSqlUtc(t.started_at).getTime())/1000);
           const paused = {...t, status:'paused', paused_at:startedAt, total_seconds:(t.total_seconds||0)+elapsed};
           ue("TimeEntry", t.id, {status:'paused', paused_at:startedAt, total_seconds:paused.total_seconds}).catch(()=>{});
           return paused;
@@ -46141,7 +50019,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
     const pausedAt = new Date().toISOString();
     setData(d => ({...d, timeEntries: (d.timeEntries||[]).map(t => {
       if(t.post_id===postId && t.user_email===currentUser?.email && t.status==='active') {
-        const elapsed = Math.floor((Date.now()-new Date(t.started_at).getTime())/1000);
+        const elapsed = Math.floor((Date.now()-parseSqlUtc(t.started_at).getTime())/1000);
         const newSecs = (t.total_seconds||0)+elapsed;
         ue("TimeEntry", t.id, {status:'paused', paused_at:pausedAt, total_seconds:newSecs}).catch(()=>{});
         return {...t, status:'paused', paused_at:pausedAt, total_seconds:newSecs};
@@ -46157,7 +50035,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
       ...d,
       timeEntries: (d.timeEntries||[]).map(t => {
         if(t.user_email===currentUser?.email && t.status==='active') {
-          const elapsed = Math.floor((Date.now()-new Date(t.started_at).getTime())/1000);
+          const elapsed = Math.floor((Date.now()-parseSqlUtc(t.started_at).getTime())/1000);
           const newSecs = (t.total_seconds||0)+elapsed;
           ue("TimeEntry", t.id, {status:'paused', paused_at:resumedAt, total_seconds:newSecs}).catch(()=>{});
           return {...t, status:'paused', paused_at:resumedAt, total_seconds:newSecs};
@@ -46188,6 +50066,23 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
       await ce("ScheduleOverride",[{post_id:postId, post_title:post?.title||"", user_email:userEmail, date, start_mins:newStartMins, overridden_by:currentUser?.email}]);
     } catch(e){}
     setToast(" Schedule updated");
+  };
+
+  // A task still sitting unfinished in its own stage past its due_date gets
+  // rolled forward to actually show as due today — not just visually
+  // flagged OVERDUE on the Timeline (computed live, only there) but the
+  // real due_date field too, so Calendar Plan and every other view agree
+  // with what the Timeline is showing instead of still pointing at the
+  // stale original date. Best-effort/silent — a failed write here should
+  // never disrupt the page just rendering the Timeline.
+  const shiftOverdueDueDate = (postId, newDate) => {
+    // Also clears due_time — keeping the old anchor would just plant the
+    // task at that same time on the new day (possibly colliding with
+    // whatever's already there), instead of what "shifted because the day
+    // was full" actually means: pack into the first slot the new day
+    // genuinely has open, same as any other un-timed task.
+    setData(d=>({...d, posts:d.posts.map(p=>p.id===postId?{...p,due_date:newDate,due_time:null}:p)}));
+    ue("Post", postId, {due_date:newDate, due_time:null}).catch(()=>{});
   };
 
   const handleClientAction = async (post,action,reason) => {
@@ -46221,7 +50116,17 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
 
   // Client portal
   if(currentUser?.isClient) {
-    const clientRecord = data.clients.find(c=>c.email===currentUser.email)||currentUser;
+    // Resolve by client_id first — a ClientUser login's own email (e.g.
+    // Asma's personal address) never matches the Client record's email
+    // field, which only the ORIGINAL single primary contact happens to
+    // share. Matching by email alone silently fell through to using the
+    // ClientUser row itself as "the client", whose .id is that person's own
+    // row id, not the real client's — every client_id-filtered list (contact
+    // reports, tasks, subscriptions, etc.) then came up empty for anyone
+    // added as a second/third portal user. client_id is set on every
+    // ClientUser login; the email match stays as a fallback for the legacy
+    // portal_password login path, where currentUser IS the client record.
+    const clientRecord = data.clients.find(c=>c.id===currentUser.client_id) || data.clients.find(c=>c.email===currentUser.email) || currentUser;
     return (<>
       <GStyle wallpaper={effectiveWallpaper} accentColor={accentColor} photoIsDark={systemPrefersDark}/>
       {impersonatorUser&&(
@@ -46471,7 +50376,15 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
                 else if(type==="add_invoice") await createInvoice(payload);
                 else if(type==="update_stage") {
                   const {postId,newStage,updates} = payload;
-                  if(newStage) await handleStageChange(postId,newStage);
+                  // handleStageChange needs the real post OBJECT (it reads
+                  // post.stage/assigned_to/due_date/etc throughout) — passing
+                  // the raw id string here silently corrupted every update:
+                  // {...post} on a string spreads its characters as numeric
+                  // keys, post.id ends up undefined, so the id===post.id
+                  // match in setData/ue() never finds the real post and
+                  // nothing actually persists (e.g. a post the AI moved to
+                  // Published this way never got published_at stamped).
+                  if(newStage) { const post = data.posts.find(p=>p.id===postId); if(post) await handleStageChange(post,newStage); }
                   if(updates) await ue("Post",postId,updates).then(()=>setData(d=>({...d,posts:d.posts.map(p=>p.id===postId?{...p,...updates}:p)})));
                 }
                 else if(type==="add_comment") {
@@ -46528,7 +50441,8 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
                 else if(type==="update_reply_bot_settings") await saveReplyBotSettings(payload.clientId, payload.clientName, payload.patch);
               }}
             />}
-          {page==="dashboard"&&<DashboardPage data={data} currentUser={currentUser} setPage={setPage}
+          {page==="dashboard"&&<DashboardPage data={data} currentUser={currentUser} setPage={setPage} appSettings={appSettings}
+              onDecideLeaveRequest={decideLeaveRequest}
               onAddClient={()=>setShowFABClient(true)}
               onAddCalendar={()=>{setCalendarPreselectedClient(null);setShowFABCalendar(true);}}
               onAddTask={()=>setShowFABTask(true)}
@@ -46550,12 +50464,14 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
           const selectedClient = data.clients.find(c=>c.id===selectedClientId)||null;
           if(!selectedClient) return (
             <ClientsPage clients={data.clients} projects={data.projects} posts={data.posts} team={data.team}
-              onAdd={addClient} onSelect={c=>{setSelectedClientId(c.id);}}
+              onAdd={addClient} onSelect={c=>{setSelectedClientId(c.id);setClientInitialTab(null);}}
               currentUser={currentUser} onToggleHide={toggleHideClient}/>
           );
           return (
-            <ClientDetailPage key={selectedClient.id} client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} onAddAsset={addAsset} currentUser={currentUser} onImpersonateClient={impersonateClient}
+            <ClientDetailPage key={selectedClient.id} client={selectedClient} projects={data.projects} posts={data.posts} assets={data.assets} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} onAddAsset={addAsset} currentUser={currentUser} onImpersonateClient={impersonateClient} onStageChange={handleStageChange}
+              clientUsers={data.clientUsers||[]}
               deepLinkContactReportId={contactReportDeepLink?.clientId===selectedClient.id ? contactReportDeepLink.reportId : null}
+              initialTab={clientInitialTab}
               contactReportActivity={data.contactReportActivity||[]}
               contactReports={data.contactReports||[]}
               onSaveContactReport={saveContactReport}
@@ -46582,7 +50498,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
               clientIntelligence={data.clientIntelligence||[]}
               onSaveIntelligence={saveClientIntelligence}
               comments={data.comments||[]}
-              onProjectClick={(proj)=>{setSelectedProjectId(proj.id);setPage("projects");setSelectedClientId(null);}}
+              onProjectClick={(proj)=>{setReturnToClientId(selectedClientId);setSelectedProjectId(proj.id);setPage("projects");setSelectedClientId(null);}}
               onUpdateClient={updateClient}
               onDeleteClient={deleteClient}
               onToggleHide={toggleHideClient}
@@ -46608,20 +50524,26 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         {page==="projects"&&<ProjectsPage
   projects={data.projects}
   posts={data.posts}
+  comments={data.comments}
   clients={data.clients}
   team={data.team}
   assets={data.assets}
   clientIntelligence={data.clientIntelligence||[]}
   onPostClick={setSelectedPost}
   onAdd={addProject}
+  onStageChange={handleStageChange}
   onUpdateProject={updateProject}
   onDeleteProject={deleteProject}
   currentUser={currentUser}
   onSaveIntelligence={saveClientIntelligence}
   initialProjectId={selectedProjectId}
   onClearInitialProject={()=>setSelectedProjectId(null)}
+  returnToClientId={returnToClientId}
+  onBackToClient={()=>{ setPage("clients"); setSelectedClientId(returnToClientId); setClientInitialTab("projects"); setReturnToClientId(null); }}
+  onClearReturnToClient={()=>setReturnToClientId(null)}
+  brandingAssets={data.brandingAssets}
 />}
-        {page==="tasks"&&<TasksPage posts={data.posts} projects={data.projects} team={data.team} onPostClick={setSelectedPost} onAdd={addPost} clientTasks={(data.tasks||[])} onUpdateTask={updateClientTask} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} currentUser={currentUser} clients={data.clients} clientIntelligenceList={data.clientIntelligence||[]}/>}
+        {page==="tasks"&&<TasksPage posts={data.posts} projects={data.projects} team={data.team} onPostClick={setSelectedPost} onAdd={addPost} clientTasks={(data.tasks||[])} onUpdateTask={updateClientTask} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} currentUser={currentUser} clients={data.clients} clientIntelligenceList={data.clientIntelligence||[]} onStageChange={handleStageChange}/>}
         {page==="calendar"&&<div className="fade-in"><h2 style={{fontFamily:"'Montserrat',sans-serif",fontSize:24,fontWeight:800,marginBottom:24}}>Content Calendar</h2><CalendarView posts={data.posts} onPostClick={setSelectedPost}/></div>}
         {page==="assets"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"assets.manage"))&&<AssetsPage assets={data.assets} projects={data.projects} clients={data.clients} onAddAsset={addAsset} onUpdateAsset={updateAsset} onDeleteAsset={deleteAsset} currentUser={currentUser}/>}
         {page==="image_generator"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"assets.manage"))&&<ImageGeneratorPage clients={data.clients} projects={data.projects} onAddAsset={addAsset}/>}
@@ -46712,6 +50634,8 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             onAddClientUser={addClientUser}
             onUpdateClientUser={updateClientUser}
             onDeleteClientUser={deleteClientUser}
+            onGenerateClientActivationLink={generateClientActivationLink}
+            onActivateInvitation={activateInvitation}
             onResendInvitation={(inv)=>setToast("Invitation link updated — copy it again")}
             rolePerms={rolePermsMap}
             onUpdateTeamMember={updateTeamMember}
@@ -46721,6 +50645,9 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             leaveRequests={data.leaveRequests||[]}
             onDecideLeaveRequest={decideLeaveRequest}
             attendanceRecords={data.attendanceRecords||[]}
+            onUpdateAttendance={updateAttendanceRecord}
+            onBackfillApprovedVacation={backfillApprovedVacation}
+            onRefundStaleAbsencePenalty={refundStaleAbsencePenalty}
             expenses={data.expenses||[]}
             invoices={data.invoices||[]}
             payments={data.payments||[]}
@@ -46735,6 +50662,8 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             perfLogs={data.perfLogs||[]}
             maiReportSessions={data.maiReportSessions||[]}
             leaveCreditEvents={data.leaveCreditEvents||[]}
+            payrollRuns={data.payrollRuns||[]}
+            onDecidePayrollRun={decidePayrollRun}
           />
         )}
         {page==="performance"&&(currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.view_performance"))&&(
@@ -46800,7 +50729,12 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             onDayClick={(jump)=>{ setTimelineJump(jump); setPage("my_timeline"); }}
           />
         )}
-        {page==="my_timeline"&&<MyTimelinePage posts={data.posts} team={data.team} currentUser={currentUser} timeEntries={data.timeEntries||[]} onPostClick={setSelectedPost} onStartTimer={startTimer} onPauseTimer={pauseTimer} onResumeTimer={resumeTimer} schedules={data.schedules||[]} scheduleOverrides={data.scheduleOverrides||[]} onOverrideSchedule={overrideSchedule} initialJump={timelineJump} onJumpConsumed={()=>setTimelineJump(null)} onBackToCalendar={()=>setPage("my_calendar")} activityLogs={data.activityLogs||[]} appSettings={appSettings}/>}
+        {page==="my_timeline"&&<MyTimelinePage posts={data.posts} team={data.team} currentUser={currentUser} timeEntries={data.timeEntries||[]} onPostClick={setSelectedPost} onStartTimer={startTimer} onPauseTimer={pauseTimer} onResumeTimer={resumeTimer} schedules={data.schedules||[]} scheduleOverrides={data.scheduleOverrides||[]} onOverrideSchedule={overrideSchedule} onShiftOverdue={shiftOverdueDueDate} initialJump={timelineJump} onJumpConsumed={()=>setTimelineJump(null)} onBackToCalendar={()=>setPage("my_calendar")} activityLogs={data.activityLogs||[]} appSettings={appSettings} onQuickAdd={(type,slot)=>{
+          if(type==="post"){ setAddPostPresetSlot(slot); setShowAddPost(true); }
+          else if(type==="task"){ setAddTaskPresetSlot(slot); setShowAddTask(true); }
+          else if(type==="calendar"){ setCalendarPreselectedClient(null); setShowFABCalendar(true); }
+          else if(type==="existing"){ setAssignExistingSlot(slot); }
+        }} onMoveTask={assignExistingTaskToSlot}/>}
         {(page==="my_performance"||page==="reports")&&<MyPerformancePage currentUser={currentUser} posts={data.posts} timeEntries={data.timeEntries||[]} perfLogs={data.perfLogs||[]} aiInsights={data.aiInsights||[]}/>}
         {page==="account"&&(
           <AccountPage
@@ -46862,6 +50796,10 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
               const found = data.posts.find(p=>p.id===post);
               if(found) setSelectedPost(found);
             }}
+            onOpenClient={clientId=>{
+              const found = data.clients.find(c=>c.id===clientId);
+              if(found) { setPage("clients"); setSelectedClientId(found.id); }
+            }}
             onOpenApplication={id=>{
               // Full-access users (admin / hr.manage_recruitment) jump straight
               // into the real Recruitment module with this application already
@@ -46912,13 +50850,21 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
 
     {/* Post Detail */}
     {selectedPost&&(()=>{
-      const _proj = data.projects.find(p=>p.id===selectedPost.project_id);
-      const _clientId = _proj?.client_id || selectedPost.client_id;
+      // Plan-item edits (updatePlanItem/splitPlanItem) update data.posts
+      // directly without necessarily also calling setSelectedPost — read the
+      // live row so the editor always reflects the latest plan_items instead
+      // of a stale snapshot from the moment the card was opened.
+      const _livePost = data.posts.find(p=>p.id===selectedPost.id) || selectedPost;
+      const _proj = data.projects.find(p=>p.id===_livePost.project_id);
+      const _clientId = _proj?.client_id || _livePost.client_id;
       const _clientKnowledge = (data.clientKnowledge||[]).find(k=>k.client_id===_clientId);
       const _clientIntelligence = (data.clientIntelligence||[]).find(i=>i.client_id===_clientId);
       const _client = data.clients.find(c=>c.id===_clientId);
       return <PostDetail
-        post={selectedPost}
+        key={selectedPost.id}
+        post={_livePost}
+        onUpdatePlanItem={(itemId,patch)=>updatePlanItem(_livePost,itemId,patch)}
+        onSplitPlanItem={(itemId)=>splitPlanItem(_livePost,itemId)}
         project={_proj}
         projects={data.projects}
         team={data.team}
@@ -46927,6 +50873,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         onClose={()=>setSelectedPost(null)}
         onStageChange={handleStageChange}
         onAddComment={handleAddComment}
+        onDeleteComment={handleDeleteComment}
         onEdit={handleEditPost}
         onDelete={handleDeletePost}
         onInsightsRefreshed={(updated)=>setData(d=>({...d, posts:d.posts.map(p=>p.id===updated.id?{...p,...updated}:p)}))}
@@ -46954,6 +50901,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
         onAddAsset={addAsset}
         assets={data.assets||[]}
         allPosts={data.posts||[]}
+        contactReports={(data.contactReports||[]).filter(r=>r.client_id===_client?.id)}
       />;
     })()}
 
@@ -46972,9 +50920,11 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
     )}
 
     {/* Add Post */}
-    {showAddPost&&<AddPostModal open onClose={()=>{setShowAddPost(false);setAddPostForClient(null);}} projects={data.projects} team={data.team} onAdd={addPost} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} presetClient={addPostForClient} assets={data.assets||[]} currentUser={currentUser}/>}
+    {showAddPost&&<AddPostModal open onClose={()=>{setShowAddPost(false);setAddPostForClient(null);setAddPostPresetSlot(null);}} projects={data.projects} team={data.team} onAdd={addPost} onAddReady={addReadyContent} onAddAsset={addAsset} onUpdateAsset={updateAsset} presetClient={addPostForClient} presetSlot={addPostPresetSlot} assets={data.assets||[]} currentUser={currentUser}/>}
 
-    {showAddTask&&<AddGenericTaskModal open onClose={()=>{setShowAddTask(false);setAddTaskForClient(null);}} projects={data.projects} team={data.team} onAdd={addPost} onCreateProject={addProjectQuick} presetClient={addTaskForClient} clients={data.clients} currentUser={currentUser}/>}
+    {showAddTask&&<AddGenericTaskModal open onClose={()=>{setShowAddTask(false);setAddTaskForClient(null);setAddTaskPresetSlot(null);}} projects={data.projects} team={data.team} onAdd={addPost} onCreateProject={addProjectQuick} presetClient={addTaskForClient} presetSlot={addTaskPresetSlot} clients={data.clients} currentUser={currentUser}/>}
+
+    {assignExistingSlot&&<AssignExistingTaskModal open onClose={()=>setAssignExistingSlot(null)} slot={assignExistingSlot} posts={data.posts} team={data.team} clients={data.clients} onAssign={assignExistingTaskToSlot} onPushAndAssign={pushConflictAndAssignTask}/>}
 
     {/* New Project Wizard — used by FAB, Dashboard, Projects page */}
     {(showFABProject||showAddProject)&&<ProjectWizard
@@ -47044,7 +50994,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
       }}
       onDirectAction={async (actionType, payload) => {
         if(actionType==="add_post") { return await addPost(payload); }
-        if(actionType==="add_client") { await addClient(payload); }
+        if(actionType==="add_client") { return await addClient(payload); }
         if(actionType==="update_client") { await updateClient(payload.clientId, payload.updates); }
         if(actionType==="add_lead") { addLead && addLead(payload); }
         if(actionType==="add_invoice") { await createInvoice(payload); }

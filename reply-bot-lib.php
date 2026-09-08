@@ -422,10 +422,23 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
         // hiring) instead of always defaulting to "lead" — the brief text alone often
         // makes clear this is a job applicant or an outbound pitch, not a real lead.
         $classification = classifyClientContact($clientName ?: 'admepro', $combinedText);
-        // Only skip capture on a CONFIRMED "other" classification — a null
-        // classification means the AI call itself failed, which shouldn't
-        // silently drop a real contact who did share a phone number.
-        if ($classification && $classification['category'] === 'other') return;
+        // Only skip capture on a CONFIRMED "other" or "hiring" classification
+        // — a null classification means the AI call itself failed, which
+        // shouldn't silently drop a real contact who did share a phone
+        // number. "hiring" (someone asking about a job/vacancy) is never a
+        // sales lead — capturing it here just pollutes the CRM pipeline and
+        // fires a misleading "New Lead" WhatsApp alert to an AM for
+        // something that belongs in Recruitment, not Leads.
+        if ($classification && in_array($classification['category'], ['other', 'hiring'], true)) {
+            try {
+                $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), :action, 'leads', :details, 'success', 'system')")
+                    ->execute([
+                        ':action' => "Lead capture skipped (classified as {$classification['category']})",
+                        ':details' => "channel={$channel} customer={$customerId} ({$customerName}), phone={$phone}",
+                    ]);
+            } catch (\Throwable $e2) { /* best-effort */ }
+            return;
+        }
         $category = $classification['category'] ?? 'lead';
         $rotationAM = $category === 'lead' ? assignLeadRotation($pdo) : null;
 
@@ -454,6 +467,15 @@ function maybeCreateLeadFromMessage(PDO $pdo, string $channel, string $customerI
         }
     } catch (\Throwable $e) {
         error_log('maybeCreateLeadFromMessage EXCEPTION: ' . $e->getMessage());
+        // Also written to the Activity Log (DB, admin-viewable in-app) —
+        // error_log() alone turned out to be effectively invisible: no
+        // error_log path is configured on this server, so failures here
+        // were only ever findable by locating and grepping the web
+        // server's own error log manually.
+        try {
+            $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), 'Lead capture failed', 'leads', :details, 'error', 'system')")
+                ->execute([':details' => "channel={$channel} customer={$customerId} ({$customerName}): " . $e->getMessage()]);
+        } catch (\Throwable $e2) { /* best-effort */ }
     }
 }
 
@@ -492,6 +514,17 @@ function notifyLeadCategorySubscriber(PDO $pdo, string $clientId, string $catego
 // client's own business. Returns null for "other" (spam/support/small talk —
 // not worth capturing) or on any API failure.
 function classifyClientContact(string $clientName, string $combinedText) {
+    // admepro's own inbox is a special case worth spelling out explicitly —
+    // a company asking to HIRE admepro as their marketing/social media
+    // agency ("looking for a marketing partner", "send us your portfolio",
+    // "interested in collaborating with your agency") is a real LEAD, even
+    // though the wording ("partner"/"collaborate") sounds two-way and was
+    // getting misread as the opposite: them pitching THEIR OWN service to
+    // admepro (service_provider). Only an actual freelancer/vendor/supplier
+    // offering a service TO admepro is service_provider here.
+    $ownInboxNote = strcasecmp($clientName, 'admepro') === 0
+        ? "\n\nSpecial case for admepro's own inbox: someone asking to hire admepro as their marketing/social media agency — including phrasing like \"looking for a marketing partner\", \"interested in collaborating\", or \"send us your portfolio/profile\" — is a LEAD (they want to buy admepro's services), NOT a service_provider, even though that wording sounds two-way. Only classify as service_provider if they're clearly offering THEIR OWN distinct service/product TO admepro (a freelancer, supplier, or another agency pitching admepro)."
+        : "";
     $payload = [
         'model' => 'claude-sonnet-4-6',
         'max_tokens' => 200,
@@ -502,7 +535,8 @@ function classifyClientContact(string $clientName, string $combinedText) {
                   . "lead = a potential customer interested in {$clientName}'s own products/services (asking prices, availability, how to order/book).\n"
                   . "service_provider = someone offering THEIR OWN service/product/collaboration TO {$clientName} (a supplier, freelancer, agency, influencer pitching).\n"
                   . "hiring = someone applying for a job or asking about employment/vacancies at {$clientName}.\n"
-                  . "other = anything else not worth capturing as a contact (spam, random chat, an existing customer's support issue, etc).",
+                  . "other = anything else not worth capturing as a contact (spam, random chat, an existing customer's support issue, etc)."
+                  . $ownInboxNote,
         'messages' => [['role' => 'user', 'content' => $combinedText]],
     ];
     [$status, $data] = callClaude($payload);

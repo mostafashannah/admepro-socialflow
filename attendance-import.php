@@ -71,9 +71,44 @@ if (($_GET['mode'] ?? '') === 'remap') {
         } else {
             $teamMemberId = trim((string)($body['team_member_id'] ?? ''));
             if ($teamMemberId === '') { http_response_code(400); echo json_encode(["error" => "Missing team_member_id"]); exit; }
-            $stmt = $pdo->prepare("UPDATE attendance_records SET team_member_id = ? WHERE member_name = ? AND team_member_id IS NULL");
-            $stmt->execute([$teamMemberId, $memberName]);
-            echo json_encode(["ok" => true, "updated" => $stmt->rowCount()]);
+            $startDateStmt = $pdo->prepare("SELECT COALESCE(start_date, DATE(created_at)), termination_date FROM team_members WHERE id = ?");
+            $startDateStmt->execute([$teamMemberId]);
+            [$startDate, $termDate] = $startDateStmt->fetch(PDO::FETCH_NUM) ?: [null, null];
+            // A blind "SET team_member_id WHERE member_name=..." used to create
+            // a duplicate the moment this person ALSO already had a row for the
+            // same day under their real name (e.g. a later re-import matched
+            // them properly while this raw device label — "EYAD", "SHMS" —
+            // was still sitting there unmatched from an earlier import). Check
+            // for that first and fold the orphaned row into the existing one
+            // instead of ending up with two rows for the same person/day.
+            $rows = $pdo->prepare("SELECT id, work_date, check_in, check_out, note FROM attendance_records WHERE member_name = ? AND team_member_id IS NULL");
+            $rows->execute([$memberName]);
+            $toRemap = $rows->fetchAll(PDO::FETCH_ASSOC);
+            $updated = 0; $merged = 0; $skippedPreStart = 0;
+            foreach ($toRemap as $row) {
+                // This device label's row predates the person's actual start
+                // date (e.g. the sheet covers the whole month but they only
+                // joined partway through) — it never happened, drop it rather
+                // than assigning it to them.
+                if (($startDate && $row['work_date'] < $startDate) || ($termDate && $row['work_date'] > $termDate)) {
+                    $pdo->prepare("DELETE FROM attendance_records WHERE id = ?")->execute([$row['id']]);
+                    $skippedPreStart++;
+                    continue;
+                }
+                $existing = $pdo->prepare("SELECT id FROM attendance_records WHERE team_member_id = ? AND work_date = ? AND id != ? LIMIT 1");
+                $existing->execute([$teamMemberId, $row['work_date'], $row['id']]);
+                $targetId = $existing->fetchColumn();
+                if ($targetId) {
+                    $pdo->prepare("UPDATE attendance_records SET check_in = COALESCE(check_in, ?), check_out = COALESCE(check_out, ?), note = COALESCE(NULLIF(note,''), ?) WHERE id = ?")
+                        ->execute([$row['check_in'], $row['check_out'], $row['note'], $targetId]);
+                    $pdo->prepare("DELETE FROM attendance_records WHERE id = ?")->execute([$row['id']]);
+                    $merged++;
+                } else {
+                    $pdo->prepare("UPDATE attendance_records SET team_member_id = ? WHERE id = ?")->execute([$teamMemberId, $row['id']]);
+                    $updated++;
+                }
+            }
+            echo json_encode(["ok" => true, "updated" => $updated, "merged" => $merged, "skipped_pre_start" => $skippedPreStart]);
         }
     } catch (Throwable $e) {
         http_response_code(500);
@@ -290,7 +325,59 @@ $upsert = $pdo->prepare(
 // on that (team_member_id, work_date) FIRST and update it in place instead
 // of letting a second, differently-named row slip in under the table's
 // name-based unique key.
+// A device export/sheet often covers a date range that starts before some
+// team members even joined (e.g. it's re-run for the whole month, but
+// someone started mid-month) — without this, they'd show up with
+// attendance history predating their own start date, which never happened
+// and threw off their attendance stats. Cached per script run since this
+// gets called once per imported row.
+function memberStartDate(PDO $pdo, string $teamMemberId): ?string {
+    static $cache = null;
+    if ($cache === null) {
+        // start_date is rarely filled in by hand — fall back to when their
+        // profile was created (same "Joined" date shown on their profile,
+        // and the same fallback monthly-payroll-cron.php already uses)
+        // rather than requiring a separate manual entry before this guard
+        // does anything at all.
+        $rows = $pdo->query("SELECT id, COALESCE(start_date, DATE(created_at)) AS effective_start FROM team_members")->fetchAll(PDO::FETCH_KEY_PAIR);
+        $cache = $rows;
+    }
+    return $cache[$teamMemberId] ?? null;
+}
+
+// Same idea at the other end — a re-run/whole-month sheet shouldn't create
+// attendance rows for a terminated member past their actual last day.
+function memberTerminationDate(PDO $pdo, string $teamMemberId): ?string {
+    static $cache = null;
+    if ($cache === null) {
+        $cache = $pdo->query("SELECT id, termination_date FROM team_members WHERE termination_date IS NOT NULL")->fetchAll(PDO::FETCH_KEY_PAIR);
+    }
+    return $cache[$teamMemberId] ?? null;
+}
+
+// Freelance (no schedule at all) OR attendance_policy_exempt (a full/part
+// -time member who still has real scheduled days for task purposes, but
+// isn't tracked by the fingerprint device or docked vacation days) is
+// exempt from the device/time-machine entirely — never gets an
+// attendance_records row created for them at all, even from a real device
+// row that happens to match their name (e.g. they still show up on the
+// shared office device but aren't subject to the attendance policy).
+function memberIsFreelance(PDO $pdo, string $teamMemberId): bool {
+    static $cache = null;
+    if ($cache === null) {
+        $cache = $pdo->query("SELECT id, 1 FROM team_members WHERE employment_type = 'freelance' OR attendance_policy_exempt = 1")->fetchAll(PDO::FETCH_KEY_PAIR);
+    }
+    return isset($cache[$teamMemberId]);
+}
+
 function upsertAttendanceRow(PDO $pdo, $upsert, ?string $teamMemberId, string $name, string $ymd, string $status, ?string $cin, ?string $cout, ?string $note) {
+    if ($teamMemberId) {
+        if (memberIsFreelance($pdo, $teamMemberId)) return;
+        $startDate = memberStartDate($pdo, $teamMemberId);
+        if ($startDate && $ymd < $startDate) return; // predates this person's actual start date — never happened, skip it
+        $termDate = memberTerminationDate($pdo, $teamMemberId);
+        if ($termDate && $ymd > $termDate) return; // after their actual last day — never happened, skip it
+    }
     if ($teamMemberId) {
         $existing = $pdo->prepare("SELECT id FROM attendance_records WHERE team_member_id = :tid AND work_date = :wdate LIMIT 1");
         $existing->execute([':tid' => $teamMemberId, ':wdate' => $ymd]);
@@ -438,7 +525,11 @@ function logLeaveCreditEvent($pdo, $teamMemberId, $creditType, $amount, $reason,
 try {
     $rangeRow = $pdo->query("SELECT MIN(work_date) AS mn, MAX(work_date) AS mx FROM attendance_records")->fetch(PDO::FETCH_ASSOC);
     if ($rangeRow && $rangeRow['mn'] && $rangeRow['mx']) {
-        $members = $pdo->query("SELECT id, name, employment_type, work_days FROM team_members WHERE status != 'inactive'")->fetchAll(PDO::FETCH_ASSOC);
+        // Freelance is exempt from the device/time-machine entirely — no
+        // absent/late tracking and no vacation/leave deductions apply to
+        // them at all, so skip them from the company-wide reconciliation
+        // fill (and, further below, the unapproved-absence/late rules).
+        $members = $pdo->query("SELECT id, name, employment_type, work_days FROM team_members WHERE status != 'inactive' AND (employment_type IS NULL OR employment_type != 'freelance') AND attendance_policy_exempt = 0")->fetchAll(PDO::FETCH_ASSOC);
         $existingStmt = $pdo->prepare("SELECT 1 FROM attendance_records WHERE team_member_id = ? AND work_date = ? LIMIT 1");
         $leaveStmt = $pdo->prepare("SELECT 1 FROM leave_requests WHERE team_member_id = ? AND status = 'approved' AND start_date <= ? AND end_date >= ? LIMIT 1");
         foreach ($members as $mem) {
@@ -502,10 +593,11 @@ try {
         // Older personal-leave rows saved before start_time/end_time
         // existed fall back to a day-level match (NULL bound = unbounded).
         $lateStmt = $pdo->prepare(
-            "SELECT id, team_member_id FROM attendance_records a
+            "SELECT id, team_member_id, work_date FROM attendance_records a
              WHERE team_member_id IS NOT NULL AND late_deducted = 0
                AND check_in IS NOT NULL AND check_in > :thresh
                AND status NOT IN ('leave','wfh')
+               AND team_member_id NOT IN (SELECT id FROM team_members WHERE employment_type = 'freelance' OR attendance_policy_exempt = 1)
                AND NOT EXISTS (
                  SELECT 1 FROM leave_requests lr
                  WHERE lr.team_member_id = a.team_member_id
@@ -517,41 +609,60 @@ try {
              ORDER BY team_member_id, work_date"
         );
         $lateStmt->execute([':thresh' => $threshold]);
-        $byMember = [];
+        // Bucketed by (member, calendar month the lateness ACTUALLY
+        // happened in) — not by whichever month this import/reconciliation
+        // pass happens to run in. Personal Leave hours are a non-shiftable
+        // monthly pool (see monthly-leave-reset-cron.php): a late check-in
+        // from a month that's already ended and reset has no live pool of
+        // its own left to draw from, so charging it against a LATER
+        // month's fresh allowance was wrong — a genuinely unrelated month
+        // getting drained by attendance data that only just got processed.
+        // Only the current calendar month draws from the live Personal
+        // Leave pool; a past month's late arrivals go straight to vacation
+        // days, same as what happens once a month's own pool runs out.
+        $currentMonthKey = date('Y-m');
+        $byMemberMonth = [];
         foreach ($lateStmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            $byMember[$row['team_member_id']][] = $row['id'];
+            $monthKey = substr((string)$row['work_date'], 0, 7);
+            $byMemberMonth[$row['team_member_id']][$monthKey][] = $row['id'];
         }
-        foreach ($byMember as $tid => $ids) {
-            $groups = intdiv(count($ids), $triggerCount);
-            if ($groups <= 0) continue;
-            $toMark = array_slice($ids, 0, $groups * $triggerCount);
-            $placeholders = implode(',', array_fill(0, count($toMark), '?'));
-            $pdo->prepare("UPDATE attendance_records SET late_deducted = 1 WHERE id IN ($placeholders)")->execute($toMark);
+        foreach ($byMemberMonth as $tid => $byMonth) {
+            foreach ($byMonth as $monthKey => $ids) {
+                $groups = intdiv(count($ids), $triggerCount);
+                if ($groups <= 0) continue;
+                $toMark = array_slice($ids, 0, $groups * $triggerCount);
+                $placeholders = implode(',', array_fill(0, count($toMark), '?'));
+                $pdo->prepare("UPDATE attendance_records SET late_deducted = 1 WHERE id IN ($placeholders)")->execute($toMark);
 
-            // Late-arrival deductions come out of this month's Personal
-            // Leave hours FIRST (4 hrs/month, non-shiftable — see
-            // monthly-leave-reset-cron.php) — only the remainder, once that
-            // pool is exhausted, spills over into an actual vacation day.
-            $totalHours = $groups * $deductHours;
-            $memberRow = $pdo->prepare("SELECT personal_leave_hours_total, personal_leave_hours_used FROM team_members WHERE id = ?");
-            $memberRow->execute([$tid]);
-            $m = $memberRow->fetch(PDO::FETCH_ASSOC) ?: [];
-            $plTotal = floatval($m['personal_leave_hours_total'] ?? 4);
-            $plUsed = floatval($m['personal_leave_hours_used'] ?? 0);
-            $plAvailable = max(0, $plTotal - $plUsed);
-            $fromPersonalLeave = min($plAvailable, $totalHours);
-            $remainingHours = $totalHours - $fromPersonalLeave;
+                $totalHours = $groups * $deductHours;
+                $isCurrentMonth = $monthKey === $currentMonthKey;
+                $fromPersonalLeave = 0;
+                $remainingHours = $totalHours;
+                if ($isCurrentMonth) {
+                    // Comes out of THIS month's live Personal Leave hours
+                    // FIRST — only the remainder, once that pool is
+                    // exhausted, spills over into an actual vacation day.
+                    $memberRow = $pdo->prepare("SELECT personal_leave_hours_total, personal_leave_hours_used FROM team_members WHERE id = ?");
+                    $memberRow->execute([$tid]);
+                    $m = $memberRow->fetch(PDO::FETCH_ASSOC) ?: [];
+                    $plTotal = floatval($m['personal_leave_hours_total'] ?? 4);
+                    $plUsed = floatval($m['personal_leave_hours_used'] ?? 0);
+                    $plAvailable = max(0, $plTotal - $plUsed);
+                    $fromPersonalLeave = min($plAvailable, $totalHours);
+                    $remainingHours = $totalHours - $fromPersonalLeave;
+                }
 
-            if ($fromPersonalLeave > 0) {
-                $pdo->prepare("UPDATE team_members SET personal_leave_hours_used = COALESCE(personal_leave_hours_used,0) + ? WHERE id = ?")->execute([$fromPersonalLeave, $tid]);
-                logLeaveCreditEvent($pdo, $tid, 'personal_leave_hours', $fromPersonalLeave, 'late_arrival');
+                if ($fromPersonalLeave > 0) {
+                    $pdo->prepare("UPDATE team_members SET personal_leave_hours_used = COALESCE(personal_leave_hours_used,0) + ? WHERE id = ?")->execute([$fromPersonalLeave, $tid]);
+                    logLeaveCreditEvent($pdo, $tid, 'personal_leave_hours', $fromPersonalLeave, 'late_arrival', $monthKey.'-01');
+                }
+                if ($remainingHours > 0) {
+                    $deductDays = $remainingHours / 8;
+                    $pdo->prepare("UPDATE team_members SET vacation_days_used = COALESCE(vacation_days_used,0) + ? WHERE id = ?")->execute([$deductDays, $tid]);
+                    logLeaveCreditEvent($pdo, $tid, 'vacation_days', $deductDays, $isCurrentMonth ? 'late_arrival_spillover' : 'late_arrival_past_month', $monthKey.'-01');
+                }
+                $rulesDeducted['late'] += $groups;
             }
-            if ($remainingHours > 0) {
-                $deductDays = $remainingHours / 8;
-                $pdo->prepare("UPDATE team_members SET vacation_days_used = COALESCE(vacation_days_used,0) + ? WHERE id = ?")->execute([$deductDays, $tid]);
-                logLeaveCreditEvent($pdo, $tid, 'vacation_days', $deductDays, 'late_arrival_spillover');
-            }
-            $rulesDeducted['late'] += $groups;
         }
     }
 
@@ -569,7 +680,8 @@ try {
         $deductDays = floatval($rules['absentDeductDays'] ?? 2);
         $absentStmt = $pdo->query(
             "SELECT id, team_member_id, work_date FROM attendance_records
-             WHERE status = 'absent' AND absence_deducted = 0 AND team_member_id IS NOT NULL"
+             WHERE status = 'absent' AND absence_deducted = 0 AND team_member_id IS NOT NULL
+               AND team_member_id NOT IN (SELECT id FROM team_members WHERE employment_type = 'freelance' OR attendance_policy_exempt = 1)"
         );
         $checkStmt = $pdo->prepare(
             "SELECT COUNT(*) FROM leave_requests

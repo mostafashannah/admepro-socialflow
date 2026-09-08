@@ -53,7 +53,7 @@ $ALLOWED_TABLES = [
     'job_openings','job_applications','deleted_email_applications','job_application_activity',
     'outstanding_liabilities','outstanding_payments','team_member_events',
     'pro_chat_sessions','contact_report_activity','mai_report_sessions',
-    'leave_credit_events','payroll_runs',
+    'leave_credit_events','payroll_runs','client_approval_links',
 ];
 
 $table = $_GET['table'] ?? '';

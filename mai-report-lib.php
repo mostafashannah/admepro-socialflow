@@ -22,6 +22,18 @@
 
 require_once __DIR__ . '/pro-lib.php'; // callClaude(), sendWhatsAppReply(), generateProUuid()
 
+// Best-effort visibility into the Activity Log (admin-viewable in-app)
+// whenever a report turn falls back to the generic "Got it, thanks..."
+// message instead of a real Claude reply — previously totally silent, so
+// a broken conversation just looked like Mai being unhelpful with no way
+// to tell why from the app.
+function maiLogReportError(PDO $pdo, string $details) {
+    try {
+        $pdo->prepare("INSERT INTO activity_logs (id, action, category, details, status, performed_by) VALUES (UUID(), 'Mai check-in reply failed', 'ai_agent', :details, 'error', 'cron')")
+            ->execute([':details' => '[agent:account_executive] ' . $details]);
+    } catch (Throwable $e) { /* best-effort */ }
+}
+
 const MAI_MORNING_CHECKLIST = [
     'checked_platforms'   => 'Checked social platforms for all assigned clients',
     'checked_ad_accounts' => 'Checked ad accounts for all assigned clients',
@@ -80,7 +92,28 @@ function maiBuildClientContext(PDO $pdo, $accountManagerId) {
             $postingLine = "  No posts scheduled for today on file for this client.";
         }
 
-        $blocks[] = "Client \"{$c['name']}\":\n{$memLines}\n{$postingLine}" . ($actionLine ? "\n{$actionLine}" : '');
+        // EVERY task currently running for this client, not just today's —
+        // so Mai actually knows the full pipeline (what's in Brief, Content,
+        // Design, Review, Client Approval, and what's scheduled ahead) and
+        // can speak to any of it, not just what happens to land today.
+        $openStmt = $pdo->prepare(
+            "SELECT title, stage, assigned_to, due_date, scheduled_date FROM posts
+             WHERE client_id = :cid AND stage NOT IN ('published','rejected','on_hold')
+             ORDER BY FIELD(stage,'client_request','planning','content_creation','internal_review','design','design_review','client_approval','approved','scheduled'), due_date IS NULL, due_date ASC
+             LIMIT 30"
+        );
+        $openStmt->execute([':cid' => $c['id']]);
+        $openTasks = $openStmt->fetchAll(PDO::FETCH_ASSOC);
+        if ($openTasks) {
+            $taskLines = implode('; ', array_map(fn($p) =>
+                "\"{$p['title']}\" [{$p['stage']}" . ($p['assigned_to'] ? ", {$p['assigned_to']}" : '') . ($p['due_date'] ? ", due {$p['due_date']}" : '') . ($p['scheduled_date'] ? ", posts {$p['scheduled_date']}" : '') . "]"
+            , $openTasks));
+            $runningLine = "  All running tasks (" . count($openTasks) . "): {$taskLines}.";
+        } else {
+            $runningLine = "  No tasks currently in the pipeline for this client.";
+        }
+
+        $blocks[] = "Client \"{$c['name']}\":\n{$memLines}\n{$postingLine}\n{$runningLine}" . ($actionLine ? "\n{$actionLine}" : '');
     }
     return ['names' => $names, 'context' => implode("\n\n", $blocks)];
 }
@@ -215,6 +248,13 @@ function maiStartReportSession(PDO $pdo, array $am, $reportType) {
             ? "Hi {$firstName}! Quick check-in — have you had a chance to look at your clients' platforms and ad accounts today?"
             : "Hi {$firstName}, end-of-day check-in — how did today go with your clients?";
     }
+    // The AM otherwise has no way to tell "still more coming" from "that's
+    // it, done" across a free-flowing multi-turn conversation of unknown
+    // length — a real checklist-progress marker (not a fake message count,
+    // since one checklist item can take several back-and-forth messages)
+    // on every reply. maiContinueReportSession appends the matching marker
+    // on each follow-up; this is just the opener's, always 0 done.
+    $opener .= "\n\n[0/" . count($checklist) . " covered]";
 
     $sessionId = generateProUuid();
     $ins = $pdo->prepare("INSERT INTO mai_report_sessions (id, account_manager_id, account_manager_name, account_manager_email, report_type, report_date, status, checklist, transcript) VALUES (:id, :amid, :amname, :amemail, :type, :date, 'in_progress', :checklist, :transcript)");
@@ -275,9 +315,16 @@ function maiContinueReportSession(PDO $pdo, array $session, $incomingText) {
     $raw = '';
     if ($status >= 200 && $status < 300) {
         foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $raw .= $block['text']; }
+    } else {
+        maiLogReportError($pdo, "Claude call failed for {$session['account_manager_name']} — HTTP {$status}: " . mb_substr(json_encode($data), 0, 500));
     }
     $parsed = null;
     if (preg_match('/\{[\s\S]*\}/', $raw, $m)) $parsed = json_decode($m[0], true);
+    if ($parsed === null && $status >= 200 && $status < 300) {
+        maiLogReportError($pdo, "Couldn't parse Claude's reply as JSON for {$session['account_manager_name']} — raw: " . mb_substr($raw, 0, 500));
+    } elseif ($parsed !== null && trim($parsed['reply'] ?? '') === '') {
+        maiLogReportError($pdo, "Claude's JSON parsed fine but had no/empty \"reply\" field for {$session['account_manager_name']} — raw: " . mb_substr($raw, 0, 500));
+    }
 
     $reply = trim($parsed['reply'] ?? '') ?: "Got it, thanks! Let me know if there's anything else.";
     $complete = !empty($parsed['complete']);
@@ -285,6 +332,16 @@ function maiContinueReportSession(PDO $pdo, array $session, $incomingText) {
     foreach (($parsed['checklist_done'] ?? []) as $key) {
         if (isset($checklist[$key])) $checklist[$key]['done'] = true;
     }
+
+    // Same progress marker as the opener — lets the AM tell at a glance
+    // whether there's more coming or the report is actually finished,
+    // instead of the conversation just trailing off with no signal either
+    // way. A clear distinct marker on the true final message so "done" is
+    // never ambiguous with "still 6/7, more questions coming".
+    $doneCount = count(array_filter($checklist, fn($v) => !empty($v['done'])));
+    $totalCount = count($checklist);
+    $reply .= $complete ? "\n\n✅ Report complete ({$doneCount}/{$totalCount})" : "\n\n[{$doneCount}/{$totalCount} covered]";
+
     foreach (($parsed['client_memory'] ?? []) as $fact) {
         $cname = trim($fact['client_name'] ?? '');
         $key = trim($fact['key'] ?? '');

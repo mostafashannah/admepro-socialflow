@@ -61,14 +61,19 @@ function logMaiActivity(PDO $pdo, string $action, string $details, string $statu
 
 // The recipient set every one of Mai's per-client findings shares: that
 // client's own account manager (only, not every AM) plus every admin,
-// deduped by email.
+// deduped by email. `$admins` here MUST already be filtered to role='admin'
+// only — passing a list that also contains account managers would silently
+// fan every client's findings out to every AM instead of just the one
+// actually assigned to that client (this was a real bug: the caller used
+// to fetch role IN ('admin','account_manager') into a variable it then
+// blindly merged into every client's recipient list).
 function clientAlertRecipients(PDO $pdo, array $client, array $admins): array {
     $recipients = [];
     if (!empty($client['account_manager_id'])) {
         $amIds = json_decode($client['account_manager_id'], true);
         if (!is_array($amIds)) $amIds = [$client['account_manager_id']];
         foreach ($amIds as $amId) {
-            $am = $pdo->prepare("SELECT email, whatsapp_number FROM team_members WHERE id = :id");
+            $am = $pdo->prepare("SELECT email, whatsapp_number, name FROM team_members WHERE id = :id");
             $am->execute([':id' => $amId]);
             if ($row = $am->fetch(PDO::FETCH_ASSOC)) $recipients[] = $row;
         }
@@ -99,7 +104,11 @@ function workingDaysBetween(DateTime $from, DateTime $to): int {
 }
 
 $clients = $pdo->query("SELECT id, name, account_manager_id FROM clients WHERE status = 'active'")->fetchAll(PDO::FETCH_ASSOC);
-$admins = $pdo->query("SELECT email, whatsapp_number FROM team_members WHERE role IN ('admin','account_manager') AND whatsapp_number IS NOT NULL AND whatsapp_number != ''")->fetchAll(PDO::FETCH_ASSOC);
+// Real admins ONLY — every account manager already gets their own clients'
+// findings via clientAlertRecipients() reading client.account_manager_id;
+// including AMs here too used to fan every client's alerts out to every
+// AM regardless of assignment (see the comment on clientAlertRecipients).
+$admins = $pdo->query("SELECT email, whatsapp_number, name FROM team_members WHERE role = 'admin' AND whatsapp_number IS NOT NULL AND whatsapp_number != ''")->fetchAll(PDO::FETCH_ASSOC);
 $summary = ['clients_checked' => count($clients), 'cadence_alerts' => 0, 'pipeline_alerts' => 0, 'reports_written' => 0, 'memory_curated' => 0, 'errors' => []];
 
 // Raw structured findings per recipient — no pre-written prose. One Claude
@@ -110,7 +119,7 @@ $recipientFindings = []; // email => ['whatsapp_number'=>string, 'clients'=>[cli
 function addFinding(array &$recipientFindings, PDO $pdo, array $client, array $admins, string $clientName, string $field, $value) {
     foreach (clientAlertRecipients($pdo, $client, $admins) as $r) {
         if (empty($r['whatsapp_number'])) continue;
-        if (!isset($recipientFindings[$r['email']])) $recipientFindings[$r['email']] = ['whatsapp_number' => $r['whatsapp_number'], 'clients' => []];
+        if (!isset($recipientFindings[$r['email']])) $recipientFindings[$r['email']] = ['whatsapp_number' => $r['whatsapp_number'], 'name' => $r['name'] ?? '', 'clients' => []];
         if (!isset($recipientFindings[$r['email']]['clients'][$clientName])) $recipientFindings[$r['email']]['clients'][$clientName] = [];
         $recipientFindings[$r['email']]['clients'][$clientName][$field] = $value;
     }
@@ -125,17 +134,38 @@ foreach ($clients as $client) {
         $intel->execute([':cid' => $clientId]);
         $expectedPerWeek = (float) ($intel->fetchColumn() ?: 3);
 
-        $recent = $pdo->prepare("SELECT COUNT(*) FROM posts WHERE client_id = :cid AND stage = 'published' AND published_at >= (NOW() - INTERVAL 7 DAY)");
+        // published_at is only stamped by the app's own publish flow
+        // (auto-publish cron, the manual Publish button, or a stage change
+        // that lands on Published) — a post marked published_at some other
+        // way (direct DB edit, an older code path, demo/import data) can
+        // sit at stage='published' with published_at still NULL. Filtering
+        // on published_at alone then makes a client with real, recent
+        // published content look like "0 published, nothing posted" —
+        // exactly the false "behind schedule" flag this cron exists to
+        // avoid. COALESCE to scheduled_date (when it's already passed) or
+        // created_at as the best available stand-in for when it actually
+        // went out.
+        $recent = $pdo->prepare("SELECT COUNT(*) FROM posts WHERE client_id = :cid AND stage = 'published' AND COALESCE(published_at, scheduled_date, created_at) >= (NOW() - INTERVAL 7 DAY)");
         $recent->execute([':cid' => $clientId]);
         $actualLast7 = (int) $recent->fetchColumn();
 
-        $lastPub = $pdo->prepare("SELECT MAX(published_at) FROM posts WHERE client_id = :cid AND stage = 'published'");
+        $lastPub = $pdo->prepare("SELECT MAX(COALESCE(published_at, scheduled_date, created_at)) FROM posts WHERE client_id = :cid AND stage = 'published'");
         $lastPub->execute([':cid' => $clientId]);
         $lastPublishedAt = $lastPub->fetchColumn();
 
         $cadenceBehind = $expectedPerWeek > 0 && $actualLast7 < $expectedPerWeek;
+        $daysSince = $lastPublishedAt ? floor((time() - strtotime($lastPublishedAt)) / 86400) : null;
+        // Always record the raw numbers, even for a healthy account — the
+        // WhatsApp writer used to only ever see concrete figures (X/Y this
+        // week, last post Nd ago) for accounts that were flagged as
+        // behind, so a fine account got reduced to a bare "on track" with
+        // nothing to actually check it against. Real numbers on every
+        // account daily also make it far easier to catch a stale
+        // published_at bug (an account genuinely posted yesterday but the
+        // report still calling it stale) at a glance instead of it hiding
+        // behind a vague "no issues" line.
+        addFinding($recipientFindings, $pdo, $client, $admins, $clientName, 'stats', "{$actualLast7}/{$expectedPerWeek} per week posted, last post " . ($daysSince !== null ? "{$daysSince}d ago" : "never"));
         if ($cadenceBehind) {
-            $daysSince = $lastPublishedAt ? floor((time() - strtotime($lastPublishedAt)) / 86400) : null;
             $msg = "{$clientName} is behind its posting schedule — {$actualLast7} published in the last 7 days vs a target of {$expectedPerWeek}/week."
                 . ($daysSince !== null ? " Last post was {$daysSince} day(s) ago." : " No posts published yet.");
             foreach (clientAlertRecipients($pdo, $client, $admins) as $r) {
@@ -158,6 +188,25 @@ foreach ($clients as $client) {
         $today = new DateTime('today');
         $runwayDays = $lastScheduledDate ? workingDaysBetween($today, new DateTime($lastScheduledDate)) : 0;
 
+        $scheduledCountStmt = $pdo->prepare("SELECT COUNT(*) FROM posts WHERE client_id = :cid AND stage = 'scheduled'");
+        $scheduledCountStmt->execute([':cid' => $clientId]);
+        $scheduledCount = (int) $scheduledCountStmt->fetchColumn();
+        // Recorded for every client, healthy or not — same reasoning as
+        // 'stats' above: the WhatsApp writer needs the raw scheduled count
+        // on hand for every account to build the two-line Published/
+        // Scheduled format, not just the ones flagged as low.
+        addFinding($recipientFindings, $pdo, $client, $admins, $clientName, 'scheduled_count', "{$scheduledCount} scheduled");
+
+        // How many tasks are currently sitting stuck waiting on a human
+        // (internal review, design review, or client approval) rather than
+        // actually moving through the pipeline — a real bottleneck signal
+        // distinct from cadence/pipeline-runway, and one the report never
+        // surfaced before.
+        $pendingReviewStmt = $pdo->prepare("SELECT COUNT(*) FROM posts WHERE client_id = :cid AND stage IN ('internal_review','design_review','client_approval')");
+        $pendingReviewStmt->execute([':cid' => $clientId]);
+        $pendingReviewCount = (int) $pendingReviewStmt->fetchColumn();
+        addFinding($recipientFindings, $pdo, $client, $admins, $clientName, 'pending_review_count', $pendingReviewCount > 0 ? "{$pendingReviewCount} pending review/approval" : '');
+
         $pipelineLow = $runwayDays < 10;
         if ($pipelineLow) {
             $msg = $lastScheduledDate
@@ -174,21 +223,36 @@ foreach ($clients as $client) {
         // ── 2. Daily performance analysis ─────────────────────────
         $posts = $pdo->prepare(
             "SELECT title, platform, post_type, published_at, insight_likes, insight_comments, insight_shares, insight_reach
-             FROM posts WHERE client_id = :cid AND stage = 'published' AND published_at >= (NOW() - INTERVAL 14 DAY)
-             ORDER BY published_at DESC LIMIT 30"
+             FROM posts WHERE client_id = :cid AND stage = 'published' AND COALESCE(published_at, scheduled_date, created_at) >= (NOW() - INTERVAL 14 DAY)
+             ORDER BY COALESCE(published_at, scheduled_date, created_at) DESC LIMIT 30"
         );
         $posts->execute([':cid' => $clientId]);
         $postRows = $posts->fetchAll(PDO::FETCH_ASSOC);
 
-        if ($postRows) {
-            $postLines = array_map(function($p) {
+        // Brand/strategy context (uploaded ChatGPT chats, brand docs, AM
+        // check-in facts, manual notes) — this used to be completely
+        // invisible to the daily analysis, which only ever looked at raw
+        // post insight numbers. Without it Mai can't actually reason about
+        // WHY something is or isn't working, just report the numbers back.
+        $memStmt = $pdo->prepare("SELECT `key`, value FROM client_memory WHERE client_id = :cid AND type != 'mai_daily_report' ORDER BY priority DESC, updated_at DESC LIMIT 10");
+        $memStmt->execute([':cid' => $clientId]);
+        $memRows = $memStmt->fetchAll(PDO::FETCH_ASSOC);
+        $memBlock = $memRows ? "\n\nKNOWN BRAND/STRATEGY CONTEXT (from uploaded docs, check-ins, notes):\n" . implode("\n", array_map(fn($m) => "- {$m['key']}: {$m['value']}", $memRows)) : '';
+
+        // Runs even with zero recent posts — a quiet account is itself
+        // something Mai should be able to speak to (using cadence/pipeline
+        // state + memory context), not just silently skipped, since
+        // "analyze what's happening on every account daily" means every
+        // account, not only the ones that happened to post recently.
+        if ($postRows || $memRows || $cadenceBehind || $pipelineLow) {
+            $postLines = $postRows ? array_map(function($p) {
                 return "- [{$p['platform']}/{$p['post_type']}] \"{$p['title']}\" on " . substr((string)$p['published_at'], 0, 10)
                     . " — likes:" . ($p['insight_likes'] ?? '?') . " comments:" . ($p['insight_comments'] ?? '?')
                     . " shares:" . ($p['insight_shares'] ?? '?') . " reach:" . ($p['insight_reach'] ?? '?');
-            }, $postRows);
+            }, $postRows) : ["(nothing published in the last 14 days)"];
             $prompt = "You are Mai, the agency's internal AI Account Executive, analyzing the client \"{$clientName}\"'s last 14 days "
                 . "of published posts below. This is NEVER shown to the client — be direct and specific, not diplomatic filler.\n\n"
-                . implode("\n", $postLines)
+                . implode("\n", $postLines) . $memBlock
                 . "\n\nReturn ONLY valid JSON (no markdown): {\"analysis\":\"120-180 word internal analysis covering what's working, "
                 . "what's underperforming, and one concrete recommendation\",\"takeaway\":\"ONE short punchy sentence, under 15 words, "
                 . "no jargon — this exact sentence gets texted to a teammate on WhatsApp, so it must stand alone and make sense with zero "
@@ -263,6 +327,92 @@ foreach ($clients as $client) {
                 }
             }
         }
+
+        // ── 4. Auto-refresh the Knowledge Profile ─────────────────
+        // Same synthesis the in-app "Generate from existing posts &
+        // memory" button does (summary/tone/content_preferences/keywords/
+        // priorities/dos/donts/target_audience from EVERY data source
+        // combined), but run automatically once a day per client instead
+        // of requiring a manual click — so the profile actually stays
+        // current with whatever's new (a fresh contact report, a newly
+        // published post, a new memory fact, an uploaded doc) without
+        // anyone remembering to regenerate it. Skipped entirely if there's
+        // genuinely nothing to synthesize from (same guard the in-app
+        // button now has) — an empty client shouldn't get a hallucinated
+        // profile just because the cron ran.
+        $memAll = $pdo->prepare("SELECT `key`, value FROM client_memory WHERE client_id = :cid ORDER BY priority DESC, updated_at DESC LIMIT 40");
+        $memAll->execute([':cid' => $clientId]);
+        $memAllLines = array_map(fn($m) => "- {$m['key']}: {$m['value']}", $memAll->fetchAll(PDO::FETCH_ASSOC));
+
+        $crAll = $pdo->prepare("SELECT summary, key_points, action_items, created_by_name, created_at FROM contact_reports WHERE client_id = :cid ORDER BY created_at DESC LIMIT 10");
+        $crAll->execute([':cid' => $clientId]);
+        $crAllLines = array_map(function($r) {
+            $parts = ["Meeting/Call with " . ($r['created_by_name'] ?: 'team') . " on " . substr((string)($r['created_at'] ?? ''), 0, 10)];
+            if ($r['summary']) $parts[] = "Summary: {$r['summary']}";
+            if ($r['key_points']) $parts[] = "Key points: {$r['key_points']}";
+            if ($r['action_items']) $parts[] = "Action items: {$r['action_items']}";
+            return implode("\n", $parts);
+        }, $crAll->fetchAll(PDO::FETCH_ASSOC));
+
+        $capStmt = $pdo->prepare("SELECT platform, caption FROM posts WHERE client_id = :cid AND stage = 'published' AND caption IS NOT NULL AND caption != '' ORDER BY published_at DESC LIMIT 20");
+        $capStmt->execute([':cid' => $clientId]);
+        $capLines = array_map(fn($p) => "[{$p['platform']}] " . mb_substr($p['caption'], 0, 300), $capStmt->fetchAll(PDO::FETCH_ASSOC));
+
+        $docStmt = $pdo->prepare("SELECT content FROM client_documents WHERE client_id = :cid ORDER BY created_at DESC LIMIT 3");
+        $docStmt->execute([':cid' => $clientId]);
+        // Was capped at 2000 chars — harmless while uploads themselves were
+        // capped at 8000, but documents are now stored in full (500K+
+        // chars for a real ChatGPT export), so this fed the AI almost
+        // nothing from the real upload.
+        $docText = mb_substr(implode("\n\n", array_filter(array_map(fn($d) => $d['content'] ?? '', $docStmt->fetchAll(PDO::FETCH_ASSOC)))), 0, 700000);
+
+        if ($memAllLines || $crAllLines || $capLines || $docText) {
+            $kbPrompt = "You are a senior brand strategist. Analyze ALL available data for the client \"{$clientName}\" and produce a comprehensive, "
+                . "accurate brand knowledge profile.\n\n=== MEMORY / SAVED BRAND FACTS ===\n" . ($memAllLines ? implode("\n", $memAllLines) : "None saved yet")
+                . "\n\n=== CONTACT REPORTS (recent client meetings & calls) ===\n" . ($crAllLines ? implode("\n\n---\n\n", $crAllLines) : "None yet")
+                . "\n\n=== PUBLISHED CAPTIONS (sample of real content) ===\n" . ($capLines ? implode("\n\n", $capLines) : "None available")
+                . "\n\n=== UPLOADED DOCUMENTS ===\n" . ($docText ?: "None uploaded")
+                . "\n\nBased on ALL of the above, return ONLY valid JSON with these exact keys:\n"
+                . '{"summary":"3-4 sentence brand overview covering who they are, what they sell/offer, and their positioning","tone":"comma-separated tone descriptors","content_preferences":"what content formats/themes work for them","keywords":["5-10 brand keywords"],"priorities":["3-5 strategic content priorities"],"dos":["do this","and this"],"donts":["avoid this","never this"],"target_audience":"who they are targeting","general_info":"any contacts, locations/branches, addresses, phone numbers, hours, or other general company facts mentioned above — plain text, one fact per line. Empty string if none found."}';
+            // 1000 was too tight for a full summary+tone+content_preferences+
+            // keywords+priorities+dos+donts+target_audience response — it
+            // regularly cut off mid-object, which the regex below correctly
+            // refuses as invalid JSON (silently skipping the whole refresh).
+            [$status, $data] = callClaude(['model' => 'claude-sonnet-4-6', 'max_tokens' => 1800, 'messages' => [['role' => 'user', 'content' => $kbPrompt]]]);
+            $kbRaw = '';
+            if ($status >= 200 && $status < 300) {
+                foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $kbRaw .= $block['text']; }
+            }
+            if (preg_match('/\{[\s\S]*\}/', $kbRaw, $m)) {
+                $kb = json_decode($m[0], true);
+                if (is_array($kb)) {
+                    $ckExisting = $pdo->prepare("SELECT id, version FROM client_knowledge WHERE client_id = :cid");
+                    $ckExisting->execute([':cid' => $clientId]);
+                    $ckRow = $ckExisting->fetch(PDO::FETCH_ASSOC);
+                    $kbFields = [
+                        'summary' => $kb['summary'] ?? '', 'tone' => $kb['tone'] ?? '',
+                        'content_preferences' => $kb['content_preferences'] ?? '',
+                        'keywords' => json_encode($kb['keywords'] ?? []), 'priorities' => json_encode($kb['priorities'] ?? []),
+                        'dos' => implode("\n", $kb['dos'] ?? []), 'donts' => implode("\n", $kb['donts'] ?? []),
+                        'target_audience' => $kb['target_audience'] ?? '',
+                        'general_info' => $kb['general_info'] ?? '',
+                        'last_analyzed' => date('Y-m-d H:i:s'), 'analyzed_by' => 'mai-daily-cron',
+                    ];
+                    if ($ckRow) {
+                        $sets = implode(', ', array_map(fn($k) => "`$k` = :$k", array_keys($kbFields)));
+                        $pdo->prepare("UPDATE client_knowledge SET {$sets}, version = version + 1 WHERE id = :id")
+                            ->execute([...$kbFields, 'id' => $ckRow['id']]);
+                    } else {
+                        $kbFields['id'] = bin2hex(random_bytes(16));
+                        $kbFields['client_id'] = $clientId; $kbFields['client_name'] = $clientName; $kbFields['version'] = 1;
+                        $cols = implode(', ', array_map(fn($k) => "`$k`", array_keys($kbFields)));
+                        $ph = implode(', ', array_map(fn($k) => ":$k", array_keys($kbFields)));
+                        $pdo->prepare("INSERT INTO client_knowledge ({$cols}) VALUES ({$ph})")->execute($kbFields);
+                    }
+                    logMaiActivity($pdo, "Knowledge profile auto-refreshed — {$clientName}", "Regenerated from " . count($memAllLines) . " memory fact(s), " . count($crAllLines) . " contact report(s), " . count($capLines) . " caption(s).");
+                }
+            }
+        }
     } catch (Throwable $e) {
         $summary['errors'][] = "{$clientName}: " . $e->getMessage();
         error_log("[mai-daily-report-cron] {$clientName}: " . $e->getMessage());
@@ -275,17 +425,36 @@ foreach ($clients as $client) {
 // writeup. Always short, always closes by pointing to SocialFlow
 // notifications for the full detail and offering to elaborate if asked —
 // never a fixed template, so the wording genuinely varies run to run.
+// Friday/Saturday, same weekend convention as workingDaysBetween() above —
+// a report that opens with "Good morning" on a day nobody's actually
+// working reads oddly. Computed once, used both in the greeting rule below
+// and in the belt-and-suspenders fallback further down.
+$todayDow = (int) date('w'); // 0=Sun .. 6=Sat
+$isWeekend = $todayDow === 5 || $todayDow === 6;
+
 $maiWaSystem = "You are Mai, the agency's AI Account Executive, sending a WhatsApp update to a teammate. Your character: "
-    . "analytical and decisive, warm but not chatty, no corporate filler. You never open with the exact same line twice — "
-    . "vary your phrasing/greeting naturally like a real person texting, not a template.\n\n"
+    . "analytical and decisive, warm but not chatty, no corporate filler.\n\n"
     . "HARD RULES — these are not suggestions, a long message defeats the entire point:\n"
-    . "- STRICT LENGTH LIMIT: the ENTIRE message must be under 500 characters total, no exceptions. If you have many clients, that means "
-    . "one short clause each, not a paragraph — group the fine ones into a single line rather than listing each individually.\n"
+    . ($isWeekend
+        ? "- Today is a WEEKEND day (Friday/Saturday) — do NOT say \"good morning\". Open with a brief weekend-appropriate line addressed to them by "
+          . "first name instead, e.g. \"Happy Friday {NAME},\" or \"Hope you're having a good weekend, {NAME} —\", naturally varied, every single time.\n"
+        : "- ALWAYS start the message with a morning greeting addressed to them by first name, e.g. \"Good morning {NAME},\" on its own — "
+          . "vary the exact phrasing naturally (Good morning / Morning / Morning!) so it doesn't read as a fixed template, but it must always "
+          . "include \"good morning\" (or a clear variant of it) plus their first name, every single time.\n")
+    . "- STRICT LENGTH LIMIT: the ENTIRE message (including the greeting) must be under 900 characters total, no exceptions — the two-line-per-client "
+    . "format below already takes more room than a one-liner, so keep every individual line itself short and punchy rather than dropping the format.\n"
     . "- ONE message only. This is a WhatsApp ping, not an email or a report — nobody will read a wall of text, so being readable matters "
     . "more than being complete.\n"
-    . "- Use ⚠️ ONLY for a client with a REAL problem below (cadence behind schedule, or pipeline low/empty). Never use it for a client that's fine.\n"
-    . "- For clients with no problems, mention them briefly or in a single grouped line (e.g. \"X and Y are on track\") — never a paragraph per healthy client.\n"
-    . "- NEVER repeat/paste full report text, numbers, or multiple sentences per client — one short clause per client, max.\n"
+    . "- Use ⚠️ ONLY for a client with a REAL problem below (cadence behind schedule, or pipeline low/empty). Use ✅ for a client that's fine.\n"
+    . "- FORMAT: exactly TWO lines per client, every client, no exceptions and no grouping several clients onto one shared line:\n"
+    . "  Line 1: \"{ClientName} {emoji}\" — just the name and status emoji, nothing else.\n"
+    . "  Line 2: \"Published: X/Y this week · Scheduled: N in pipeline\" using that client's real numbers below — if that client also has a "
+    . "\"pending review/approval\" figure below, add \" · Pending review: N\" to this same line too (a task sitting in internal review, design "
+    . "review, or client approval is a real bottleneck worth surfacing, not something to bury). Append a short clause after all that ONLY if "
+    . "there's an actual cadence or pipeline problem to flag (e.g. \" — last post 6d ago\" or \" — runway low\"), otherwise leave Line 2 at just "
+    . "the numbers that apply.\n"
+    . "  A blank line between each client's two-line block. Never merge a client's two lines into one, never blend two clients together.\n"
+    . "- NEVER repeat/paste full report text or add extra sentences per client beyond the two lines above.\n"
     . "- End with ONE short line pointing to SocialFlow notifications for full details and inviting them to ask you for more — not a full sentence per client repeating this.\n"
     . "- Never use markdown headers, '#', or bullet-point '-' lists — write like a real WhatsApp text (short lines/emoji are fine, formal lists/headers are not).";
 
@@ -294,36 +463,81 @@ foreach ($recipientFindings as $email => $entry) {
     $lines = [];
     foreach ($entry['clients'] as $name => $facts) {
         $parts = [];
+        // Always lead with the raw numbers — present for every account,
+        // flagged or not, so the message never reduces a fine account to a
+        // content-free "on track" and gives the AM something concrete to
+        // spot-check against reality.
+        if (!empty($facts['stats'])) $parts[] = $facts['stats'];
+        if (!empty($facts['scheduled_count'])) $parts[] = $facts['scheduled_count'];
+        if (!empty($facts['pending_review_count'])) $parts[] = $facts['pending_review_count'];
         if (!empty($facts['cadence'])) $parts[] = "cadence: " . $facts['cadence'];
         if (!empty($facts['pipeline'])) $parts[] = "pipeline: " . $facts['pipeline'];
         if (!empty($facts['report'])) $parts[] = "today's read: " . $facts['report'];
         if (!$parts) $parts[] = "no issues, nothing new to flag";
         $lines[] = "{$name} — " . implode(" | ", $parts);
     }
-    $userMsg = "Today's findings across your accounts:\n" . implode("\n", $lines) . "\n\nWrite the one WhatsApp message now.";
-    [$status, $data] = callClaude(['model' => 'claude-sonnet-4-6', 'max_tokens' => 400, 'system' => $maiWaSystem, 'messages' => [['role' => 'user', 'content' => $userMsg]]]);
+    $nameParts = explode(' ', trim($entry['name'] ?? ''));
+    $firstName = trim($nameParts[0] ?? '');
+    $nameHint = $firstName !== '' ? $firstName : '(unknown — just say Good morning, with no name)';
+    $userMsg = "Recipient's first name: {$nameHint}\n\nToday's findings across your accounts:\n" . implode("\n", $lines) . "\n\nWrite the one WhatsApp message now, starting with the greeting, two lines per client as instructed.";
+    // A transient failure here (rate limit, timeout, brief API hiccup) used
+    // to silently fall back to the generic "quick account check: X ⚠️; Y
+    // ⚠️" one-liner with zero record of WHY it happened — one retry gives a
+    // real API blip a second chance before giving up, and logging the
+    // actual status/error means a persistent failure is diagnosable instead
+    // of just "the report looked ugly today" with no trail.
+    $claudeArgs = ['model' => 'claude-sonnet-4-6', 'max_tokens' => 700, 'system' => $maiWaSystem, 'messages' => [['role' => 'user', 'content' => $userMsg]]];
+    [$status, $data, $raw] = callClaude($claudeArgs);
+    if ($status < 200 || $status >= 300) {
+        logMaiActivity($pdo, "WhatsApp report generation failed (attempt 1) — {$email}", "HTTP {$status}: " . mb_substr((string) $raw, 0, 500), 'error');
+        [$status, $data, $raw] = callClaude($claudeArgs);
+    }
     $msg = '';
     if ($status >= 200 && $status < 300) {
         foreach (($data['content'] ?? []) as $block) { if (($block['type'] ?? '') === 'text') $msg .= $block['text']; }
+    } else {
+        logMaiActivity($pdo, "WhatsApp report generation failed (attempt 2) — {$email}", "HTTP {$status}: " . mb_substr((string) $raw, 0, 500), 'error');
     }
     $msg = trim($msg);
-    // Belt-and-suspenders: the system prompt asks for under 500 characters,
-    // but never trust a model's length compliance completely — a message
-    // nobody will actually read defeats the entire point of this rewrite.
-    // Cut at the last whole word before the limit rather than mid-word.
-    if (mb_strlen($msg) > 550) {
-        $cut = mb_substr($msg, 0, 500);
+    $greeting = $isWeekend
+        ? "Happy weekend" . ($firstName !== '' ? " {$firstName}" : '') . ","
+        : "Good morning" . ($firstName !== '' ? " {$firstName}" : '') . ",";
+    // Belt-and-suspenders: never trust the model's compliance with either
+    // the greeting or the length limit completely. The system prompt
+    // explicitly allows "Good morning" / "Morning" / "Morning!" as natural
+    // variants on a weekday — this check only ever looked for "good
+    // morning", so a message that opened with the equally-valid bare
+    // "Morning {name}," wasn't recognized as already having a greeting,
+    // and got a SECOND "Good morning {name}," prepended on top of it. On a
+    // weekend day, "morning" is never expected at all — check for weekend-
+    // style phrasing instead so a message that already opened with
+    // "Happy Friday" etc. doesn't get a redundant greeting stapled on too.
+    $hasGreeting = $isWeekend
+        ? preg_match('/\b(happy|weekend|friday|saturday)\b|صباح\s*الخير|عطل/iu', mb_substr($msg, 0, 60))
+        : preg_match('/\bmorning\b|صباح\s*الخير/iu', mb_substr($msg, 0, 60));
+    if ($msg !== '' && !$hasGreeting) {
+        $msg = $greeting . "\n" . $msg;
+    }
+    // The system prompt asks for under 900 characters (greeting included) —
+    // raised from 550 now that the format is two lines per client instead
+    // of one, but a message nobody will actually read still defeats the
+    // point, so still hard-capped. Cut at the last whole word before the
+    // limit rather than mid-word.
+    if (mb_strlen($msg) > 950) {
+        $cut = mb_substr($msg, 0, 900);
         $lastSpace = mb_strrpos($cut, ' ');
         if ($lastSpace !== false) $cut = mb_substr($cut, 0, $lastSpace);
         $msg = $cut . "… full details in SocialFlow notifications.";
     }
     if ($msg === '') {
-        // Fallback if the AI call itself fails — still one message, still
-        // short, just without her usual phrasing variety.
-        $msg = "Mai here — quick account check: " . implode("; ", array_map(
+        // Fallback if the AI call itself fails even after a retry — still
+        // one message, still short, just without her usual phrasing
+        // variety. Real line breaks instead of a semicolon-separated wall,
+        // so it's at least readable even in this degraded path.
+        $msg = "{$greeting} quick account check (AI writer unavailable right now):\n\n" . implode("\n", array_map(
             fn($n, $f) => $n . (!empty($f['cadence']) || !empty($f['pipeline']) ? " ⚠️" : " ✅"),
             array_keys($entry['clients']), array_values($entry['clients'])
-        )) . ". Full details in SocialFlow notifications — ask me for more on any account.";
+        )) . "\n\nFull details in SocialFlow notifications — ask me for more on any account.";
     }
     $prefStmt = $pdo->prepare("SELECT all_disabled, wa_daily_finance_report FROM notification_prefs WHERE user_email = :email LIMIT 1");
     $prefStmt->execute([':email' => $email]);

@@ -1,6 +1,7 @@
 <?php
 // Shared "Pro" assistant logic used by wa-webhook.php and CLI test scripts.
 require_once __DIR__ . '/recruitment-mail-lib.php';
+require_once __DIR__ . '/ai-outage-notify.php';
 
 // Lightweight HTML email wrapper for recruitment action emails triggered
 // from WhatsApp — deliberately simple (not the full branded template used
@@ -49,17 +50,17 @@ function downloadWhatsAppMedia(string $mediaId) {
     return $bytes ? [$bytes, $mime] : [null, null];
 }
 
-// Saves a WhatsApp photo straight to disk (same storage the app's own
+// Saves a WhatsApp photo or PDF straight to disk (same storage the app's own
 // uploadToStorage() writes to via storage.php) and returns its public URL —
-// used so a receipt/invoice photo sent to Pro can end up attached to the
-// expense record it gets logged against, the same "attachments" JSON field
-// the Finance page's own upload UI already writes to.
+// used so a receipt/invoice photo or PDF sent to Pro can end up attached to
+// the expense record it gets logged against, the same "attachments" JSON
+// field the Finance page's own upload UI already writes to.
 function saveReceiptImage(string $bytes, string $mimeType): ?string {
     if (!defined('STORAGE_ROOT') || !defined('STORAGE_PUBLIC_URL')) {
         error_log('[saveReceiptImage] STORAGE_ROOT/STORAGE_PUBLIC_URL not defined in config.php — receipt photo cannot be saved.');
         return null;
     }
-    $ext = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'][$mimeType] ?? 'jpg';
+    $ext = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif', 'application/pdf' => 'pdf'][$mimeType] ?? 'jpg';
     $path = 'wa-receipts/' . date('Y/m') . '/' . bin2hex(random_bytes(8)) . '.' . $ext;
     $dest = STORAGE_ROOT . '/finance-docs/' . $path;
     $dir = dirname($dest);
@@ -294,6 +295,18 @@ function proTools() {
             ],
         ],
         [
+            'name' => 'search_client_document',
+            'description' => 'Search the FULL text of a client\'s uploaded documents (ChatGPT chats, briefs, meeting notes, etc.) for a specific term or topic. Use this whenever asked something specific about a client that the summarized knowledge profile might not cover in detail (e.g. "what branches does TSC have", "what did the brief say about pricing") — uploaded chats can be huge, and only the first ~6000 characters ever get summarized into the profile, so real detail buried later in a long chat is invisible unless you search for it directly. Returns matching excerpts with surrounding context, not the whole document.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'client_name' => ['type' => 'string', 'description' => 'The client whose documents to search'],
+                    'query'       => ['type' => 'string', 'description' => 'The word or phrase to search for, e.g. "branch", "pricing", "logo"'],
+                ],
+                'required' => ['client_name', 'query'],
+            ],
+        ],
+        [
             'name' => 'search_tasks',
             'description' => 'Search posts/tasks. All filters are optional and combinable: query matches the task title, stage filters by exact pipeline stage, client_name matches the client (partial match ok), assigned_to matches the exact team member name. Returns up to 15 results.',
             'input_schema' => [
@@ -305,6 +318,18 @@ function proTools() {
                     'assigned_to' => ['type' => 'string', 'description' => 'Exact name of the team member the task is assigned to'],
                 ],
                 'required' => [],
+            ],
+        ],
+        [
+            'name' => 'get_member_timeline',
+            'description' => 'Get a team member\'s schedule/timeline — what tasks they have open and when, around a given date (defaults to today). Use this whenever asked "what does X have on their plate", "what is X working on today/this week", "is X free/busy", or anything about a specific person\'s workload or schedule. Only shows tasks currently sitting in the stage that person actually owns (e.g. a designer only sees Design-stage tasks, not ones already handed off to review/approval) — same rule the in-app My Timeline page uses.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'member_name' => ['type' => 'string', 'description' => 'The team member\'s name (partial match ok), e.g. "Sherif" or "Eyad"'],
+                    'date'        => ['type' => 'string', 'description' => 'YYYY-MM-DD. Omit to default to today.'],
+                ],
+                'required' => ['member_name'],
             ],
         ],
     ];
@@ -360,7 +385,7 @@ function financeTools() {
             'description' => 'Record a new income or expense transaction. Before calling this, make sure you have all required fields from the user — if anything is missing or ambiguous (especially amount or whether it is money in or out), ASK the user instead of guessing. Once saved, confirm back to the user exactly what was recorded (type, amount, category, description, date). '
                 . 'Payment method is OPTIONAL — never ask for it as a separate follow-up question after you have already saved the transaction. If the user did not mention it, just save; it defaults to "Bank transfer" automatically, so do not hold the save hostage waiting for it. If, despite this, you already asked and the user\'s next message is just a bare method answer ("cash", "bank transfer", "card") with no new amount/description, that is updating the transaction you just saved, NOT a new transaction — call edit_transaction with the short_id this tool returned and the method, never call add_transaction again for it. '
                 . 'For an "outstanding" expense (money owed but not yet paid — e.g. "X is outstanding", "put this on Fawry installments", "so-and-so paid this for us, we owe them back"): set method to "Outstanding" and fill outstanding_kind. For outstanding_kind="team_member", set outstanding_team_member (their name) — no interest applies, amount is simply what\'s owed. For outstanding_kind="installment" (Fawry), set outstanding_months and, if not given, use Fawry\'s known flat monthly rates: 1mo=3.33%, 3mo=3.21%, 6/9/12/18/24mo=3.04% — ALWAYS tell the user the calculated total (principal + interest) and monthly installment before saving so they can confirm, since interest changes the real amount owed. For installment, treat the "amount" you were given as the PRINCIPAL — the tool computes and stores the true total automatically. '
-                . 'If this call is rejected with an error saying it looks like a repeat of an already-logged transaction, ASK the user whether it\'s a genuine separate transaction or an actual duplicate — never claim it saved successfully when this tool returned an error, that would be lying to the user. If they confirm it\'s genuinely separate, call add_transaction again with the exact same details plus force=true to actually save it this time.',
+                . 'If this call is rejected with an error saying it looks like a repeat of an already-logged transaction, DO NOT retry it in this same turn, and do not assume it is a duplicate OR that it is separate — tell the user in your reply that this looks like a repeat of the transaction already logged (name the ref) and ask them directly whether it is genuinely a separate transaction, then STOP and wait for their actual next message. A "Confirm" or "yes" the user sent about something else (a different transaction, or before you ever asked this question) is NOT an answer to this question and must never be treated as one — never set force=true just because the conversation contains an affirmative-sounding word somewhere. Only call add_transaction again with force=true after a later user message that is a direct, unambiguous answer to the specific duplicate question you asked (e.g. "yes it\'s a separate one", "different purchase").',
             'input_schema' => [
                 'type' => 'object',
                 'properties' => [
@@ -375,8 +400,8 @@ function financeTools() {
                     'outstanding_team_member' => ['type' => 'string', 'description' => 'Name of the team member this is owed to — required when outstanding_kind=team_member.'],
                     'outstanding_months' => ['type' => 'integer', 'description' => 'Installment plan length in months — required when outstanding_kind=installment.'],
                     'outstanding_monthly_interest_rate' => ['type' => 'number', 'description' => 'Flat monthly interest %. If the user does not give one, use Fawry\'s known rate for that month count (see tool description).'],
-                    'photo_url' => ['type' => 'string', 'description' => 'The URL from a "[photo_url: ...]" marker in this conversation, if this transaction came from a receipt/invoice photo the user sent — attaches it to the record. Omit if there was no photo.'],
-                    'force' => ['type' => 'boolean', 'description' => 'Set true ONLY on a retry after the user explicitly confirmed a same-amount transaction flagged as a possible duplicate is genuinely separate. Never set true on a first attempt.'],
+                    'photo_url' => ['type' => 'string', 'description' => 'The URL from a "[photo_url: ...]" marker in this conversation, if this transaction came from a receipt/invoice photo or PDF the user sent — attaches it to the record. Omit if there was no photo/PDF.'],
+                    'force' => ['type' => 'boolean', 'description' => 'Set true ONLY on a later turn, after you asked the user directly whether a duplicate-flagged transaction is genuinely separate AND their next message directly answered that specific question with yes/separate/different. Never set true in the same turn as the rejection, and never set true based on a generic "confirm"/"yes" that was not a direct answer to that question.'],
                 ],
                 'required' => ['type', 'category', 'description', 'amount'],
             ],
@@ -542,11 +567,16 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
         // the model often rewords it slightly ("Fawry office supplies" vs
         // "Office supplies - Fawry installment"), which let three
         // differently-worded duplicates of the same transaction slip past
-        // an exact-description match. Same sender/type/amount within 30
-        // minutes is treated as a repeat and rejected outright rather than
-        // trusting the prompt instructions alone to prevent it — widened
-        // from 10 to 30 after seeing the same stale transaction re-fire
-        // several exchanges into an unrelated conversation.
+        // an exact-description match. Same sender/type/amount within the
+        // window below is treated as a repeat and rejected outright rather
+        // than trusting the prompt instructions alone to prevent it —
+        // widened from 10 to 30, then to 240 minutes after the model told a
+        // user "I didn't actually save that — please resend your
+        // confirmation" for a transaction it HAD already saved ~50 minutes
+        // earlier, and the resend landed outside the 30-minute window and
+        // created a real duplicate. A same amount/type/sender genuinely
+        // recurring within a few hours is rare enough that force=true
+        // covers it.
         // force=true (only ever set after the user has explicitly confirmed
         // this is a genuinely separate transaction, not a repeat) bypasses
         // this check — without it, there was no way to actually save a
@@ -554,11 +584,30 @@ function runFinanceTool(PDO $pdo, string $name, array $input, ?string $senderNam
         // was papering over that dead end by just claiming success in its
         // reply without the tool having done anything.
         $force = !empty($input['force']);
-        $dupCheck = $pdo->prepare("SELECT ref FROM expenses WHERE type = :type AND amount = :amt AND created_by = :by AND created_at >= (NOW() - INTERVAL 30 MINUTE) LIMIT 1");
+        $dupCheck = $pdo->prepare("SELECT ref FROM expenses WHERE type = :type AND amount = :amt AND created_by = :by AND created_at >= (NOW() - INTERVAL 240 MINUTE) LIMIT 1");
         $dupCheck->execute([':type' => $type, ':amt' => $amount, ':by' => $senderName]);
         $dup = $dupCheck->fetchColumn();
+        // A single "Confirm" from the user can trigger several tool-use
+        // rounds back-to-back within the SAME webhook request (the loop in
+        // askPro() allows up to 4), with no real message from the user in
+        // between them. That let the model hit this exact dedup rejection,
+        // then — on its own, without ever actually asking the user anything
+        // — immediately retry the identical call with force=true a moment
+        // later in the same request, creating a real duplicate (seen in
+        // production: two "750 EGP Freepik" rows 32 seconds apart). The
+        // system prompt now tells it not to do this, but that's not
+        // trustworthy on its own — a static per-request set of every ref
+        // this SAME execution has already rejected makes force=true unable
+        // to override a rejection that happened in this same request,
+        // forcing an actual round-trip to the user before a retry can
+        // succeed, regardless of what the model decides to send.
+        static $rejectedThisRequest = [];
         if ($dup && !$force) {
+            $rejectedThisRequest[$dup] = true;
             return ['error' => "This looks like a repeat of a transaction already logged moments ago (ref {$dup}) — did not create a duplicate. If this is genuinely a separate transaction, ask the user to confirm explicitly."];
+        }
+        if ($dup && $force && !empty($rejectedThisRequest[$dup])) {
+            return ['error' => "Not saved — you just flagged ref {$dup} as a possible duplicate in this same exchange and cannot force-save it without the user actually replying to confirm it's separate. Ask them directly and wait for their next message before retrying."];
         }
 
         $id = generateProUuid();
@@ -1310,23 +1359,39 @@ function runHrTool(PDO $pdo, string $name, array $input, ?string $senderId, ?str
         // permission role) or 'client' (matches the client's own contact
         // name), so the UI can visually tell them apart — same distinction
         // the app's own attendee picker makes when a human fills this in.
+        // Match loosely on first+last word (voice notes often drop a middle
+        // name, e.g. "Ahmed Selim" vs the stored "Ahmed Maged Selim") and
+        // always trust the real DB title over whatever the model guessed —
+        // the model has no visibility into actual job titles, so a
+        // non-empty $att['title'] here is a guess, not a source of truth.
+        $namesLooselyMatch = function($a, $b) {
+            $a = trim(mb_strtolower($a)); $b = trim(mb_strtolower($b));
+            if ($a === '' || $b === '') return false;
+            if ($a === $b) return true;
+            $wa = preg_split('/\s+/', $a); $wb = preg_split('/\s+/', $b);
+            return $wa[0] === $wb[0] && end($wa) === end($wb);
+        };
         $attendees = json_decode($input['attendees'] ?? '[]', true) ?: [];
         foreach ($attendees as &$att) {
             $aName = trim($att['name'] ?? '');
             if ($aName === '') continue;
-            if ($clientUsername && strcasecmp($aName, $clientUsername) === 0) {
+            if ($clientUsername && $namesLooselyMatch($aName, $clientUsername)) {
                 $att['kind'] = 'client';
-                if (empty($att['title']) && $clientContactTitle) $att['title'] = $clientContactTitle;
+                if ($clientContactTitle) $att['title'] = $clientContactTitle;
                 continue;
             }
-            $tm = $pdo->prepare("SELECT title, role FROM team_members WHERE name = :n LIMIT 1");
-            $tm->execute([':n' => $aName]);
-            if ($row = $tm->fetch(PDO::FETCH_ASSOC)) {
+            $tm = $pdo->prepare("SELECT name, title, role FROM team_members WHERE status = 'active'");
+            $tm->execute();
+            $matched = null;
+            foreach ($tm->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                if ($namesLooselyMatch($aName, $row['name'])) { $matched = $row; break; }
+            }
+            if ($matched) {
                 $att['kind'] = 'team';
-                if (empty($att['title'])) $att['title'] = $row['title'] ?: str_replace('_', ' ', ucwords($row['role'] ?? '', '_'));
+                $att['title'] = $matched['title'] ?: str_replace('_', ' ', ucwords($matched['role'] ?? '', '_'));
             } else {
                 $att['kind'] = 'client';
-                if (empty($att['title']) && $clientContactTitle) $att['title'] = $clientContactTitle;
+                if ($clientContactTitle) $att['title'] = $clientContactTitle;
             }
         }
         unset($att);
@@ -1517,6 +1582,19 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
         $stmt->execute($params);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
+    if ($name === 'search_client_document') {
+        $clientName = trim($input['client_name'] ?? '');
+        $query = trim($input['query'] ?? '');
+        if ($clientName === '' || $query === '') return ['error' => 'client_name and query are both required.'];
+        $c = $pdo->prepare("SELECT id, name FROM clients WHERE name LIKE :n LIMIT 1");
+        $c->execute([':n' => '%' . $clientName . '%']);
+        $client = $c->fetch(PDO::FETCH_ASSOC);
+        if (!$client) return ['error' => "Client \"{$clientName}\" not found."];
+        $matches = searchClientDocumentText($pdo, $client['id'], $query);
+        if ($matches === null) return ['error' => "{$client['name']} has no uploaded documents to search."];
+        if (!$matches) return ['ok' => true, 'found' => false, 'message' => "No mention of \"{$query}\" found in {$client['name']}'s uploaded documents."];
+        return ['ok' => true, 'found' => true, 'excerpts' => $matches];
+    }
     if ($name === 'search_tasks') {
         // Resolve the sender's email — assigned_to stores email, not name/id.
         $senderEmail = null;
@@ -1556,7 +1634,94 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
         $stmt->execute($params);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
+    if ($name === 'get_member_timeline') {
+        $memberName = trim($input['member_name'] ?? '');
+        if ($memberName === '') return ['error' => 'member_name is required.'];
+        $date = trim($input['date'] ?? '') ?: date('Y-m-d');
+
+        $tm = $pdo->prepare("SELECT id, name, email, role FROM team_members WHERE status = 'active' AND name LIKE :n LIMIT 1");
+        $tm->execute([':n' => '%' . $memberName . '%']);
+        $member = $tm->fetch(PDO::FETCH_ASSOC);
+        if (!$member) return ['error' => "No active team member found matching \"{$memberName}\"."];
+        $email = $member['email'];
+
+        // Same stage-ownership rule as the app's My Timeline page (JS
+        // ROLE_OWNED_STAGE): a designer's timeline should only show tasks
+        // still actually IN the design stage, not ones they finished and
+        // handed off that are just sitting in review/approval waiting on
+        // someone else — otherwise it looks like they're still busy with
+        // work that isn't theirs anymore.
+        $ownedStage = ['content_creator' => 'content_creation', 'graphic_designer' => 'design'][$member['role']] ?? null;
+
+        $sql = "SELECT id, title, stage, post_type, priority, client_name,
+                       due_date, due_time, scheduled_date, scheduled_time
+                FROM posts
+                WHERE (assigned_to = :e1 OR content_assigned_to = :e2 OR design_assigned_to = :e3
+                       OR JSON_CONTAINS(COALESCE(assigned_to_extra, '[]'), JSON_QUOTE(:e4)))
+                  AND stage NOT IN ('published', 'approved', 'rejected', 'cancelled')";
+        $params = [':e1' => $email, ':e2' => $email, ':e3' => $email, ':e4' => $email];
+        if ($ownedStage) { $sql .= " AND stage = :st"; $params[':st'] = $ownedStage; }
+        $sql .= " AND (due_date = :d OR due_date IS NULL OR due_date = '')";
+        $params[':d'] = $date;
+        $sql .= " ORDER BY (due_date IS NULL OR due_date = '') ASC, due_time ASC, priority = 'urgent' DESC, priority = 'high' DESC LIMIT 30";
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $tasks = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        return [
+            'member' => $member['name'],
+            'role' => $member['role'],
+            'date' => $date,
+            'task_count' => count($tasks),
+            'tasks' => $tasks,
+        ];
+    }
     return ['error' => 'Unknown tool: ' . $name];
+}
+
+// Full-text search over every document a client has uploaded (ChatGPT
+// chats can be 500K+ characters — the AI-generated summary only ever
+// covers a slice of that, so anything specific buried further in is
+// invisible unless actually searched for). Returns up to 10 excerpts with
+// surrounding context, or null if the client has no documents at all
+// (distinct from an empty array, which means documents exist but nothing
+// matched).
+function searchClientDocumentText(PDO $pdo, string $clientId, string $query): ?array {
+    $docs = $pdo->prepare("SELECT name, content FROM client_documents WHERE client_id = :cid ORDER BY created_at DESC");
+    $docs->execute([':cid' => $clientId]);
+    $rows = $docs->fetchAll(PDO::FETCH_ASSOC);
+    if (!$rows) return null;
+
+    $matches = [];
+    foreach ($rows as $doc) {
+        $content = $doc['content'] ?? '';
+        if ($content === '') continue;
+        $pos = mb_stripos($content, $query, 0);
+        $found = 0;
+        while ($pos !== false && $found < 5) {
+            $start = max(0, $pos - 300);
+            $excerpt = mb_substr($content, $start, 700);
+            $matches[] = "From \"{$doc['name']}\": ..." . trim($excerpt) . "...";
+            $found++;
+            $pos = mb_stripos($content, $query, $pos + mb_strlen($query));
+        }
+        if (count($matches) >= 10) break;
+    }
+    return array_slice($matches, 0, 10);
+}
+
+// Pulls a handful of significant words out of a free-form question (drops
+// short/common words) to use as document-search terms — lets Sara/Mai/
+// Yahia's answers automatically pull in relevant excerpts from a client's
+// full uploaded documents without the caller needing to call a separate
+// tool explicitly. Best-effort, not NLP — just enough to catch "what
+// branches does TSC have" -> search for "branches".
+function extractSearchTerms(string $question): array {
+    $stopwords = ['what','which','who','when','where','why','how','does','did','the','and','for','with','about','have','has','are','is','was','were','this','that','their','they','can','you','tell','me','please','know','client','about'];
+    preg_match_all('/[A-Za-z\x{0600}-\x{06FF}]{4,}/u', $question, $m);
+    $words = array_unique(array_filter($m[0] ?? [], fn($w) => !in_array(strtolower($w), $stopwords, true)));
+    return array_slice(array_values($words), 0, 3);
 }
 
 // Lets WhatsApp Pro relay a question to one of the other AI teammates (Sara,
@@ -1585,14 +1750,51 @@ function askAiTeammate(PDO $pdo, string $agent, string $question, ?string $clien
         $c->execute([':n' => '%' . $clientName . '%']);
         if ($client = $c->fetch(PDO::FETCH_ASSOC)) {
             $clientBlock = "\n\nCLIENT: {$client['name']}\n";
-            $mem = $pdo->prepare("SELECT `key`, value FROM client_memory WHERE client_id = :cid ORDER BY priority DESC, updated_at DESC LIMIT 15");
+            // Every fact here — including her own daily-report analysis
+            // (type='mai_daily_report', excluded elsewhere but wanted HERE
+            // so Pro can literally relay what Mai already concluded) and
+            // whatever an uploaded ChatGPT chat/brand doc extracted
+            // (type='document_extract') — key included, not just the bare
+            // value, so a heading like "doc_priorities" isn't lost context.
+            $mem = $pdo->prepare("SELECT `key`, value, type FROM client_memory WHERE client_id = :cid ORDER BY priority DESC, updated_at DESC LIMIT 20");
             $mem->execute([':cid' => $client['id']]);
             $memRows = $mem->fetchAll(PDO::FETCH_ASSOC);
-            if ($memRows) $clientBlock .= "Known facts:\n" . implode("\n", array_map(fn($m) => "- {$m['value']}", $memRows)) . "\n";
+            if ($memRows) $clientBlock .= "Known facts (from check-ins, uploaded docs, her own daily analysis, manual notes):\n" . implode("\n", array_map(fn($m) => "- [{$m['type']}] {$m['key']}: {$m['value']}", $memRows)) . "\n";
             $posts = $pdo->prepare("SELECT title, platform, post_type, published_at, insight_likes, insight_comments FROM posts WHERE client_id = :cid AND stage = 'published' ORDER BY published_at DESC LIMIT 8");
             $posts->execute([':cid' => $client['id']]);
             $postRows = $posts->fetchAll(PDO::FETCH_ASSOC);
             if ($postRows) $clientBlock .= "Recent published posts:\n" . implode("\n", array_map(fn($r) => "- [{$r['platform']}/{$r['post_type']}] \"{$r['title']}\" — likes:" . ($r['insight_likes'] ?? '?') . " comments:" . ($r['insight_comments'] ?? '?'), $postRows)) . "\n";
+
+            // Every task currently running for this client (not just
+            // published history) — so a teammate can be asked "what's
+            // still open for X" and get the real pipeline, not just what
+            // already went out.
+            $open = $pdo->prepare(
+                "SELECT title, stage, assigned_to, due_date FROM posts
+                 WHERE client_id = :cid AND stage NOT IN ('published','rejected','on_hold')
+                 ORDER BY FIELD(stage,'client_request','planning','content_creation','internal_review','design','design_review','client_approval','approved','scheduled'), due_date IS NULL, due_date ASC
+                 LIMIT 30"
+            );
+            $open->execute([':cid' => $client['id']]);
+            $openRows = $open->fetchAll(PDO::FETCH_ASSOC);
+            if ($openRows) $clientBlock .= "All running tasks (" . count($openRows) . "):\n" . implode("\n", array_map(fn($r) => "- \"{$r['title']}\" [{$r['stage']}" . ($r['assigned_to'] ? ", {$r['assigned_to']}" : '') . ($r['due_date'] ? ", due {$r['due_date']}" : '') . "]", $openRows)) . "\n";
+
+            // Automatic full-document search — the "Known facts" summary
+            // above only ever covers a slice of a long uploaded document
+            // (e.g. a 500K-char ChatGPT export). Pull real search terms out
+            // of the question itself and search the FULL stored text for
+            // them, so something specific buried deep in a huge chat (a
+            // named branch, an exact spec, a pricing detail) actually
+            // reaches Sara/Mai/Yahia instead of only whatever a generic
+            // AI-written summary happened to keep.
+            $terms = extractSearchTerms($question);
+            $docExcerpts = [];
+            foreach ($terms as $term) {
+                $found = searchClientDocumentText($pdo, $client['id'], $term);
+                if ($found) $docExcerpts = array_merge($docExcerpts, $found);
+                if (count($docExcerpts) >= 6) break;
+            }
+            if ($docExcerpts) $clientBlock .= "\nRelevant excerpts from uploaded documents (found by searching the FULL document for terms from the question):\n" . implode("\n", array_slice($docExcerpts, 0, 6)) . "\n";
         } else {
             $clientBlock = "\n\n(Client \"{$clientName}\" mentioned but not found in the system — answer generally if possible, or say you can't find that client.)";
         }
@@ -1625,6 +1827,7 @@ function callClaude(array $payload) {
     $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $err = curl_error($ch);
     curl_close($ch);
+    recordAiCallResult('Anthropic', $status, (string)$res);
     return [$status, json_decode($res, true), $res];
 }
 
@@ -1686,7 +1889,7 @@ function saveProMessage(PDO $pdo, string $phone, string $role, string $content) 
     }
 }
 
-function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $senderId = null, $voiceTranscript = null, $fromPhone = null, $imageBase64 = null, $imageMime = null, $voiceRecordingUrl = null) {
+function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $senderId = null, $voiceTranscript = null, $fromPhone = null, $imageBase64 = null, $imageMime = null, $voiceRecordingUrl = null, $documentBase64 = null, $documentMime = null) {
     // Persist the voice recording URL across turns so it can be attached to
     // the contact report even if Pro asks a follow-up question first.
     if ($voiceRecordingUrl && $fromPhone) savePendingVoiceUrl($pdo, $fromPhone, $voiceRecordingUrl);
@@ -1777,6 +1980,10 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                       . "meeting (mentions a client and what was discussed), extract and save it with "
                       . "save_contact_report, then confirm briefly what you saved. If it's just a normal question "
                       . "instead, answer it normally like any other message.\n\n"
+                      . "The summary, key_points, and action_items you save must be written in the SAME language "
+                      . "the meeting/call actually happened in (i.e. the language of this voice note) — if it was "
+                      . "in Arabic, write them in Arabic, not translated to English. Only attendee names/titles, "
+                      . "the client name, and dates stay as-is regardless of language, same as normal.\n\n"
                       . "CRITICAL for attendee names: voice transcription frequently mishears similar-sounding "
                       . "names (e.g. Arabic \"علاء\"/Alaa vs \"علي\"/Ali are commonly confused). Our real team "
                       . "members are:\n" . (function() use ($pdo) {
@@ -1818,11 +2025,21 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
                       . "ask what they'd like done with it. Never invent numbers or text you can't actually read "
                       . "clearly in the image — say so and ask them to confirm instead."
                     : '')
+                . ($documentBase64
+                    ? "\n\nThey just sent you a PDF (attached). Read it and help with whatever it's for: if it's a "
+                      . "receipt, invoice, or bank transfer confirmation, read the exact amount/vendor-or-recipient/"
+                      . "date and, if the context makes clear it should be logged, use add_transaction — pass the "
+                      . "[photo_url: ...] value from this message as the tool's photo_url so the PDF ends up "
+                      . "attached to the record (the field is named photo_url but works the same for a PDF URL); "
+                      . "if it's a contract, report, or other document, summarize the relevant part or read out the "
+                      . "text they likely want instead. Never invent numbers or text you can't actually read "
+                      . "clearly in the PDF — say so and ask them to confirm instead."
+                    : '')
                 . "\n\nA message may end with a hidden marker like \"[photo_url: https://...]\" — this is the "
-                  . "already-uploaded URL of a photo they sent (possibly several turns back, e.g. before you asked "
-                  . "a clarifying question and they confirmed). Never read this marker aloud or mention its literal "
-                  . "text to the user; when calling add_transaction for a transaction that photo represents, pass "
-                  . "that URL as photo_url so the receipt stays attached to the record.";
+                  . "already-uploaded URL of a photo or PDF they sent (possibly several turns back, e.g. before you "
+                  . "asked a clarifying question and they confirmed). Never read this marker aloud or mention its "
+                  . "literal text to the user; when calling add_transaction for a transaction that file represents, "
+                  . "pass that URL as photo_url so the receipt stays attached to the record.";
 
         // Recruitment tools follow the app's own Roles & Permissions
         // (hr.manage_recruitment) rather than a hardcoded role list — same
@@ -1955,12 +2172,15 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
     if ($hasArabic && !$hasLatinLetters) $langNote = "\n\n[Reply in Arabic — the current message above is in Arabic, regardless of what language earlier messages in this conversation used.]";
     elseif ($hasLatinLetters && !$hasArabic) $langNote = "\n\n[Reply in English — the current message above is in English, regardless of what language earlier messages in this conversation used.]";
     $taggedText = "[CURRENT MESSAGE — this is the ONLY thing to answer. Everything above is history for context only, never something to re-answer, recap, or continue]:\n" . $userText . $anchor . $langNote;
-    // A photo message goes in as a real image content block (not just an
-    // OCR'd string beforehand) so Pro can actually look at it directly —
-    // history stays plain text since past images aren't re-sent each turn.
+    // A photo/PDF message goes in as a real image/document content block
+    // (not just an OCR'd string beforehand) so Pro can actually read it
+    // directly — history stays plain text since past attachments aren't
+    // re-sent each turn.
     $currentContent = $imageBase64
         ? [['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $imageMime ?: 'image/jpeg', 'data' => $imageBase64]], ['type' => 'text', 'text' => $taggedText]]
-        : $taggedText;
+        : ($documentBase64
+            ? [['type' => 'document', 'source' => ['type' => 'base64', 'media_type' => $documentMime ?: 'application/pdf', 'data' => $documentBase64]], ['type' => 'text', 'text' => $taggedText]]
+            : $taggedText);
     $messages = array_merge($history, [['role' => 'user', 'content' => $currentContent]]);
 
     $reply = null;
@@ -2074,9 +2294,22 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
     // confirmation (has a currency marker), since a plain "✅ done" success
     // reply for some other unrelated tool is completely legitimate and
     // must not be touched.
+    // A reply that also asks the user something (ends in a question) is
+    // never a bare "it's done" claim in isolation — it's Pro recapping
+    // transactions ALREADY saved in an earlier turn as context for a new
+    // question ("here's what I've logged so far — is X a separate
+    // transaction?"). That recap legitimately uses words like "saved"
+    // alongside an amount, which used to trip this guard even though
+    // nothing false was claimed and no tool call was needed this turn —
+    // the override then replaced the ENTIRE reply, including the real
+    // question, with a false "I didn't save that, please resend", which
+    // led a user to re-confirm an already-saved transaction and create a
+    // genuine duplicate. Only fire when the reply reads as a closing
+    // confirmation with nothing left to ask.
     $claimsSuccess = preg_match('/(✅|تم\b|done\b|saved\b|logged\b|recorded\b)/iu', $reply);
     $mentionsMoney = preg_match('/(جنيه|EGP|USD|\$)/iu', $reply);
-    if ($claimsSuccess && $mentionsMoney) {
+    $asksQuestion = strpos($reply, '?') !== false || strpos($reply, '؟') !== false;
+    if ($claimsSuccess && $mentionsMoney && !$asksQuestion) {
         if (!$mutationAttempted) {
             $reply = "Actually, I didn't save that — something went wrong before I could log it. Please resend your confirmation and I'll try again.";
         } elseif (is_array($lastMutationResult) && !empty($lastMutationResult['error'])) {
@@ -2167,4 +2400,5 @@ function sendWhatsAppReply($to, $body) {
         $logPdo->prepare("INSERT INTO whatsapp_send_log (to_number, body_preview, status, http_status, error_message) VALUES (:to, :body, :status, :http, :err)")
             ->execute([':to' => $to, ':body' => mb_substr($body, 0, 300), ':status' => $ok ? 'sent' : 'failed', ':http' => $status, ':err' => $ok ? null : mb_substr((string)($err ?: $res), 0, 500)]);
     } catch (Throwable $e) { /* logging is best-effort only */ }
+    return $ok;
 }
