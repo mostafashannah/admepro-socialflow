@@ -43255,7 +43255,7 @@ RULES:
     // (capped) instead of silently dropping them, otherwise switching between the
     // widget and the full page mid-conversation makes Pro "forget" an uploaded file.
     const toBlock = (a) => a.kind==="image"
-      ? {type:"image", source:{type:"base64", media_type:a.mediaType, data:a.base64}}
+      ? {type:"image", source:{type:"base64", media_type:a.mediaType||"image/jpeg", data:a.base64}}
       : {type:"document", source:{type:"base64", media_type:"application/pdf", data:a.base64}};
     const RESEND_DOC_CAP = 6;
     let resent = 0;
@@ -45036,7 +45036,7 @@ RULES:
         if(isImage){
           if(file.size > ATTACH_MAX_MB.image*1024*1024){ addBotMsg(` "${file.name}" is over ${ATTACH_MAX_MB.image}MB — use a smaller image.`,"error"); continue; }
           const dataUrl = await readFileAsDataURL(file);
-          next.push({id:uid(), name:file.name, kind:"image", mediaType:file.type, base64:dataUrl.split(",")[1], previewUrl:dataUrl});
+          next.push({id:uid(), name:file.name, kind:"image", mediaType:file.type||"image/jpeg", base64:dataUrl.split(",")[1], previewUrl:dataUrl});
         } else if(isPdf){
           if(file.size > ATTACH_MAX_MB.pdf*1024*1024){ addBotMsg(` "${file.name}" is over ${ATTACH_MAX_MB.pdf}MB — use a smaller PDF.`,"error"); continue; }
           const dataUrl = await readFileAsDataURL(file);
@@ -45138,7 +45138,7 @@ RULES:
       return s.slice(0,7000) + "\n\n…[truncated for length]…\n\n" + s.slice(-4000);
     };
     const toBlock = (a) => a.kind==="image"
-      ? {type:"image", source:{type:"base64", media_type:a.mediaType, data:a.base64}}
+      ? {type:"image", source:{type:"base64", media_type:a.mediaType||"image/jpeg", data:a.base64}}
       : {type:"document", source:{type:"base64", media_type:"application/pdf", data:a.base64}};
     const visionBlocks = pendingAttachments.filter(a=>a.kind==="image"||a.kind==="pdf").map(toBlock);
     const textAttachmentsInline = pendingAttachments
