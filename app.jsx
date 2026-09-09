@@ -19413,6 +19413,15 @@ function workedHoursFor(checkIn, checkOut) {
   if(mins < 0) mins += 24*60;
   return mins/60;
 }
+// Shortfall against the 9h workday, but with a 1h grace window — checking
+// out anywhere from 8h to 9h is NOT deducted. Only once someone worked
+// LESS than 8h does the shortfall (still measured against the full 9h)
+// count as a deduction.
+function shortfallHoursFor(worked) {
+  if(worked==null) return 0;
+  if(worked >= 8) return 0;
+  return Math.max(0, 9 - worked);
+}
 // Extra hours beyond a daily threshold (default 9h/day), from imported
 // attendance rows — total plus a per-month breakdown for the monthly sheet.
 function calcExtraHours(records, threshold=9) {
@@ -20489,8 +20498,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
   const deductionHours = allMyAttendance.reduce((sum, a) => {
     if (a.status !== "present") return sum;
     const worked = workedHoursFor(a.check_in, a.check_out);
-    if (worked == null) return sum;
-    return sum + Math.max(0, 9 - worked);
+    return sum + shortfallHoursFor(worked);
   }, 0);
   // The import never stores a row for a weekend/holiday day (see
   // attendance-import.php) — imported days off never count as an absence,
@@ -21062,7 +21070,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                   const worked = workedHoursFor(a.check_in, a.check_out);
                   if(worked!=null) {
                     extraH += Math.max(0, worked-9);
-                    if(a.status==="present") deductH += Math.max(0, 9-worked);
+                    if(a.status==="present") deductH += shortfallHoursFor(worked);
                   }
                 });
                 const isCurrentMonth = g.key===currentMonthKey;
@@ -21099,7 +21107,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
                   {g.rows.map((a,i)=>{
                     const worked = workedHoursFor(a.check_in, a.check_out);
                     const extra = worked!=null ? Math.max(0, worked-9) : 0;
-                    const shortfall = (a.status==="present" && worked!=null) ? Math.max(0, 9-worked) : 0;
+                    const shortfall = (a.status==="present" && worked!=null) ? shortfallHoursFor(worked) : 0;
                     const isDayOff = a.status==="weekend" || a.status==="holiday";
                     const isEditingThis = editingAttendanceId===a.id;
                     if(isEditingThis) return (
