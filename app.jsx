@@ -169,6 +169,7 @@ const ROLES = {
   admin: { label: "Admin", color: "#d90b2c" },
   hr: { label: "HR", color: "#059669" },
   account_manager: { label: "Account Manager", color: "#3b82f6" },
+  account_director: { label: "Account Director", color: "#1d4ed8" },
   business_development: { label: "Business Development", color: "#06b6d4" },
   content_creator: { label: "Content Creator", color: "#8b5cf6" },
   graphic_designer:{ label: "Graphic Designer",color: "#f59e0b" },
@@ -241,7 +242,7 @@ function egyptIslamicHolidaysForYear(year) {
 }
 
 const CLIENT_ROLES = ["client_admin","client_member"];
-const INTERNAL_ROLES = ["admin","hr","account_manager","business_development","content_creator","graphic_designer","accountant","office_boy"];
+const INTERNAL_ROLES = ["admin","hr","account_manager","account_director","business_development","content_creator","graphic_designer","accountant","office_boy"];
 
 // Granular permissions the Roles & Permissions settings page can toggle per
 // role. "admin" always implicitly has every permission regardless of what's
@@ -280,6 +281,7 @@ const HR_PERMISSIONS = PERMISSION_GROUPS.flatMap(g=>g.perms);
 const DEFAULT_ROLE_PERMISSIONS = {
   hr: ["hr.view_team","hr.edit_team","hr.manage_roles","hr.view_salary","hr.edit_salary","hr.view_performance","hr.approve_leave","hr.upload_attendance","hr.manage_recruitment"],
   account_manager: ["hr.view_performance","clients.manage","assets.manage","crm.leads","finance.quotes"],
+  account_director: ["hr.view_performance","clients.manage","assets.manage","crm.leads","finance.quotes","hr.manage_recruitment"],
   content_creator: ["assets.manage"],
   graphic_designer: ["assets.manage"],
   accountant: ["finance.quotes","finance.full"],
@@ -6149,7 +6151,7 @@ function PostDetail({post,project,projects=[],team,comments,onClose,onStageChang
   const {isMobile} = useResponsive();
   const [comment,setComment] = useState("");
   const [sending,setSending] = useState(false);
-  const isManager = ["admin","account_manager"].includes(currentUser?.role);
+  const isManager = ["admin","account_manager","account_director"].includes(currentUser?.role);
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -7220,7 +7222,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
         {(post.stage==="content_creation" || isManager || (post.design_assets||[]).length>0)&&(
           <div style={{display:"flex",flexDirection:"column",gap:12,padding:14,background:"var(--surface2)",borderRadius:"var(--rs)",border:"1px solid var(--border)"}}>
             <h4 style={{fontFamily:"'Montserrat',sans-serif",fontWeight:700,fontSize:14}}>Attachments</h4>
-            <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage} onRemove={handleRemoveDesignAsset} onForward={forwardDesignAssetToClient} canForward={currentUser?.role==="admin"||currentUser?.role==="account_manager"}/>
+            <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage} onRemove={handleRemoveDesignAsset} onForward={forwardDesignAssetToClient} canForward={currentUser?.role==="admin"||["account_manager","account_director"].includes(currentUser?.role)}/>
             {(post.stage==="content_creation"||isManager)&&(
               <>
                 <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>
@@ -7337,7 +7339,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
             </div>
 
             {/* Display existing assets */}
-            <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage} onRemove={handleRemoveDesignAsset} onForward={forwardDesignAssetToClient} canForward={currentUser?.role==="admin"||currentUser?.role==="account_manager"}/>
+            <DesignAssetGrid post={post} onStageChange={onStageChange} onView={setLightboxImage} onRemove={handleRemoveDesignAsset} onForward={forwardDesignAssetToClient} canForward={currentUser?.role==="admin"||["account_manager","account_director"].includes(currentUser?.role)}/>
 
             {/* File picker — choose from assets or upload new */}
             <DesignFilePicker post={post} assets={assets} onAddAsset={onAddAsset} project={project} onStageChange={onStageChange}/>
@@ -7759,12 +7761,12 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                             Posts a fresh comment in the Client tab rather
                             than mutating this one, so the internal record
                             (who attached it, when) stays intact. */}
-                        {c.file_url && onAddComment && (currentUser?.role==="admin" || currentUser?.role==="account_manager") && (
+                        {c.file_url && onAddComment && (currentUser?.role==="admin" || ["account_manager","account_director"].includes(currentUser?.role)) && (
                           <button onClick={()=>{ if(confirm(`Forward "${c.file_name||"this attachment"}" to the client-facing comments?`)) forwardAttachmentToClient(c); }} title="Forward attachment to client" style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",padding:2,display:"flex"}}>
                             <Ico d={Icons.forward||Icons.share||Icons.arrow} size={12} stroke="var(--text3)"/>
                           </button>
                         )}
-                        {onDeleteComment && (currentUser?.email===c.author_email || currentUser?.role==="admin" || currentUser?.role==="account_manager") && (
+                        {onDeleteComment && (currentUser?.email===c.author_email || currentUser?.role==="admin" || ["account_manager","account_director"].includes(currentUser?.role)) && (
                           <button onClick={()=>{ if(confirm(c.file_url?"Delete this comment? Its attachment will be deleted too.":"Delete this comment?")) onDeleteComment(c); }} title="Delete comment" style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",padding:2,display:"flex"}}>
                             <Ico d={Icons.trash||Icons.x} size={12} stroke="var(--text3)"/>
                           </button>
@@ -7857,7 +7859,7 @@ Write 2-4 sentences, plain text (no markdown/JSON): what should the team keep in
                       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
                         <span style={{fontSize:12,fontWeight:600}}>{c.author_name||"System"}</span>
                         <span style={{fontSize:10,color:"var(--text3)",marginLeft:"auto"}}>{fmtDateTime(c.created_date||c.created_at)}</span>
-                        {onDeleteComment && (currentUser?.email===c.author_email || currentUser?.role==="admin" || currentUser?.role==="account_manager") && (
+                        {onDeleteComment && (currentUser?.email===c.author_email || currentUser?.role==="admin" || ["account_manager","account_director"].includes(currentUser?.role)) && (
                           <button onClick={()=>{ if(confirm(c.file_url?"Delete this comment? Its attachment will be deleted too.":"Delete this comment?")) onDeleteComment(c); }} title="Delete comment" style={{background:"none",border:"none",color:"var(--text3)",cursor:"pointer",padding:2,display:"flex"}}>
                             <Ico d={Icons.trash||Icons.x} size={12} stroke="var(--text3)"/>
                           </button>
@@ -8761,7 +8763,7 @@ function AddClientModal({open,onClose,onAdd,team=[]}) {
   const sSocial = (k,v) => setF(p=>({...p,social:{...p.social,[k]:v}}));
   const togglePlt = p => s("platforms",f.platforms.includes(p)?f.platforms.filter(x=>x!==p):[...f.platforms,p]);
   const toggleAM = id => s("account_manager_ids",f.account_manager_ids.includes(id)?f.account_manager_ids.filter(v=>v!==id):[...f.account_manager_ids,id]);
-  const accountManagers = team.filter(t=>t.role==="account_manager");
+  const accountManagers = team.filter(t=>["account_manager","account_director"].includes(t.role));
   const reset = () => { setF(blankForm); setDone(false); };
   const handleLogoUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -8989,7 +8991,7 @@ function Toast({message,onDone,type="success"}) {
 // ════════════════════════════════════════════════════════════════
 function FAB({currentUser,onAddClient,onAddCalendar,onAddTask,onCreateInvoice,onAddProject}) {
   const [open,setOpen] = useState(false);
-  const canManage = ["admin","account_manager"].includes(currentUser?.role);
+  const canManage = ["admin","account_manager","account_director"].includes(currentUser?.role);
   const canFinance = ["admin","accountant"].includes(currentUser?.role);
   const ref = useRef(null);
 
@@ -10446,7 +10448,7 @@ function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAdd
   // Individual contributors (content creators, designers, etc.) get a
   // dashboard scoped to their own work instead of whole-agency aggregates —
   // admin and account managers still see everything.
-  const isManager = ["admin","account_manager"].includes(currentUser?.role);
+  const isManager = ["admin","account_manager","account_director"].includes(currentUser?.role);
   const visibleTeam = (team||[]).filter(m=>!["hr","accountant","office_boy"].includes(m.role) && m.status==="active");
   const myPosts = filteredPosts.filter(p=>wasOwnerOf(p, currentUser?.email, currentUser?.role));
   const myPerf = perf.find(p=>p.email===currentUser?.email) || {};
@@ -11264,13 +11266,13 @@ function ClientsPage({clients,projects,posts,onAdd,onSelect,currentUser,onToggle
   const isAdmin = currentUser?.role==="admin";
   // Graphic designers now reach this page too (to get to a client's Brand
   // Guidelines), but creating/hiding clients stays admin/AM-only.
-  const canManageClients = isAdmin || currentUser?.role==="account_manager";
+  const canManageClients = isAdmin || ["account_manager","account_director"].includes(currentUser?.role);
   // An account manager only ever sees the clients she's actually assigned
   // to as AM — not the whole agency roster. Everyone else (admin, and any
   // other role that reaches this page, e.g. graphic_designer for Brand
   // Guidelines) still sees everything.
   const myTeamMemberId = team.find(t=>t.email===currentUser?.email)?.id;
-  const scopedClients = currentUser?.role==="account_manager" && myTeamMemberId
+  const scopedClients = ["account_manager","account_director"].includes(currentUser?.role) && myTeamMemberId
     ? clients.filter(c=>getAccountManagerIds(c).includes(myTeamMemberId))
     : clients;
   const visible = scopedClients.filter(c=>isAdmin ? (showHidden || c.status!=="hidden") : c.status!=="hidden");
@@ -11777,7 +11779,7 @@ function IntelligenceTab({client,knowledge,documents,currentUser,onUploadDoc,onS
   const [ePriorities,setEPriorities] = useState("");
   const [eGeneralInfo,setEGeneralInfo] = useState("");
   const fileRef = useRef(null);
-  const isPriv = ["admin","account_manager"].includes(currentUser?.role);
+  const isPriv = ["admin","account_manager","account_director"].includes(currentUser?.role);
 
   const skills = parseJ(knowledge?.skills);
   const keywords = parseJ(knowledge?.keywords);
@@ -12301,7 +12303,7 @@ function EditClientPage({client,onBack,onSave,canDelete,onRequestDelete,team=[]}
   const [uploadingLogo,setUploadingLogo] = useState(false);
   const PLATFORMS = ["instagram","facebook","tiktok","twitter","linkedin","youtube"];
   const togglePlat = p => setF(x=>({...x,platforms:x.platforms.includes(p)?x.platforms.filter(v=>v!==p):[...x.platforms,p]}));
-  const accountManagers = team.filter(t=>t.role==="account_manager");
+  const accountManagers = team.filter(t=>["account_manager","account_director"].includes(t.role));
   const toggleAM = id => setF(x=>({...x,account_manager_ids:x.account_manager_ids.includes(id)?x.account_manager_ids.filter(v=>v!==id):[...x.account_manager_ids,id]}));
   const handleLogoUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -13099,7 +13101,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
   const cLeads = (leads||[]).filter(l=>l.client_id===client.id||(l.company&&l.company===client.name));
   const knowledge = (clientKnowledge||[]).find(k=>k.client_id===client.id||k.client_name===client.name);
   const documents = (clientDocuments||[]).filter(d=>d.client_id===client.id);
-  const isPriv = ["admin","account_manager"].includes(currentUser?.role);
+  const isPriv = ["admin","account_manager","account_director"].includes(currentUser?.role);
   const isAdmin = currentUser?.role==="admin";
   // Designers need the client's Brand Guidelines to actually design on-brand
   // — they otherwise have no access to the Settings/brain tab at all.
@@ -14092,7 +14094,7 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
   // responsible for that particular client — everyone else on the team
   // shouldn't see a request before it's been turned into a real Brief.
   const isAdminUser = currentUser?.role==="admin";
-  const myClientNames = currentUser?.role==="account_manager" ? new Set((clients||[]).filter(c=>getAccountManagerIds(c).includes(currentUser?.id)).map(c=>c.name)) : null;
+  const myClientNames = ["account_manager","account_director"].includes(currentUser?.role) ? new Set((clients||[]).filter(c=>getAccountManagerIds(c).includes(currentUser?.id)).map(c=>c.name)) : null;
   const canSeeClientRequest = (post) => {
     if(post.stage!=="client_request") return true;
     if(isAdminUser) return true;
@@ -17689,7 +17691,7 @@ function ClientIntegrationsSubTab({client, integrations, integrationLogs, curren
   const [showTrello, setShowTrello] = useState(false);
   const [editTrello, setEditTrello] = useState(null);
   const isAdmin = currentUser?.role==="admin";
-  const canAdd = isAdmin || currentUser?.role==="account_manager";
+  const canAdd = isAdmin || ["account_manager","account_director"].includes(currentUser?.role);
   const canEdit = canAdd; // AMs manage their own clients' integrations day-to-day; Delete/Retry stay admin-only below.
   const clientIntegrations = (integrations||[]).filter(i=>i.client_id===client.id);
 
@@ -17947,7 +17949,7 @@ function ProjectDetailPage({project, posts, comments, assets, team, clients, cli
   const [editingProject, setEditingProject] = useState(false);
   const [confirmDeleteProject, setConfirmDeleteProject] = useState(false);
   const isAdmin = currentUser?.role==="admin";
-  const canEditProject = isAdmin || currentUser?.role==="account_manager";
+  const canEditProject = isAdmin || ["account_manager","account_director"].includes(currentUser?.role);
   // Plain state, not persisted — opening any project should always start on
   // Overview, not silently reopen to whatever tab was last viewed for it.
   const [tab, setTab] = useState("overview");
@@ -19022,7 +19024,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
   // scoped to clients they're assigned to as account_manager_id — everything
   // else (Team Members, Invitations, Client Users, Leave, Roles, Attendance)
   // stays admin/HR-only.
-  const isScopedAccountManager = currentUser?.role==="account_manager" && !hasPerm(currentUser,rolePerms,"hr.view_team");
+  const isScopedAccountManager = ["account_manager","account_director"].includes(currentUser?.role) && !hasPerm(currentUser,rolePerms,"hr.view_team");
   // Office Boy has no team-directory access at all — pinned permanently to
   // their own profile, no back button to a directory they can't see, no
   // clicking into anyone else's (their own direct-reports list, if any,
@@ -19303,6 +19305,7 @@ function UsersPage({currentUser, team, invitations, accessRequests, clientUsers,
                         <>
                           <option value="admin">Admin</option>
                           <option value="account_manager">Account Manager</option>
+                          <option value="account_director">Account Director</option>
                           <option value="content_creator">Content Creator</option>
                           <option value="graphic_designer">Graphic Designer</option>
                           <option value="accountant">Accountant</option>
@@ -20789,7 +20792,7 @@ function TeamMemberDetailPage({member, team, posts, clients, leaveRequests, atte
       </div>
 
       <div style={{display:"flex",gap:3,background:"var(--surface2)",padding:4,borderRadius:"var(--rs)",border:"1px solid var(--border2)",alignSelf:"flex-start"}}>
-        {[["overview","Overview"],["tasks","Tasks & Scheduled"],["attendance","Attendance"],["payroll","Payroll"],["history","Career History"],["scoring","Scoring"],...(member.role==="account_manager"?[["mai_reports","Mai Reports"]]:[]),...(member.source_application_id?[["hiring","Hiring"]]:[])].map(([k,l])=>(
+        {[["overview","Overview"],["tasks","Tasks & Scheduled"],["attendance","Attendance"],["payroll","Payroll"],["history","Career History"],["scoring","Scoring"],...(["account_manager","account_director"].includes(member.role)?[["mai_reports","Mai Reports"]]:[]),...(member.source_application_id?[["hiring","Hiring"]]:[])].map(([k,l])=>(
           <button key={k} onClick={()=>setTab(k)} style={{padding:"7px 16px",borderRadius:"var(--rxs)",fontSize:12,fontWeight:700,background:tab===k?"var(--accent)":"none",color:tab===k?"#fff":"var(--text2)"}}>{l}</button>
         ))}
       </div>
@@ -22134,6 +22137,7 @@ function InviteUserModal({onClose, onSubmit, clients, team, initial}) {
                   <option value="admin">Admin</option>
                   <option value="hr">HR</option>
                   <option value="account_manager">Account Manager</option>
+                          <option value="account_director">Account Director</option>
                   <option value="content_creator">Content Creator</option>
                   <option value="graphic_designer">Graphic Designer</option>
                   <option value="accountant">Accountant</option>
@@ -26799,7 +26803,7 @@ function LeadDetail({lead, activities, team, onClose, onUpdateLead, onAddActivit
                   }
                 }} style={{...inputSt,flex:1,minHeight:"auto",padding:"5px 8px",fontSize:13}}>
                   <option value="">Unassigned</option>
-                  {(team||[]).filter(t=>t.role==="account_manager"&&t.status==="active").map(t=>(
+                  {(team||[]).filter(t=>["account_manager","account_director"].includes(t.role)&&t.status==="active").map(t=>(
                     <option key={t.id} value={t.email}>{t.name}</option>
                   ))}
                 </select>
@@ -27056,7 +27060,7 @@ const LEAD_ROTATION_DEFAULTS = {enabled:false, timeout_hours:24, missed_threshol
 function LeadRotationSettingsModal({appSettings, onSave, team, onClose}) {
   const [cfg, setCfg] = useState({...LEAD_ROTATION_DEFAULTS, ...(appSettings?.lead_rotation_settings||{})});
   const [saving, setSaving] = useState(false);
-  const activeAMs = (team||[]).filter(t=>t.role==="account_manager"&&t.status==="active");
+  const activeAMs = (team||[]).filter(t=>["account_manager","account_director"].includes(t.role)&&t.status==="active");
   const orderedIds = cfg.rotation_order.filter(id=>activeAMs.some(a=>a.id===id));
   const unorderedAMs = activeAMs.filter(a=>!orderedIds.includes(a.id));
 
@@ -27145,7 +27149,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   // team's pipeline. Admins (and everyone else with page access, e.g.
   // business_development who works the shared rotation) still see all of
   // it, since only AMs individually own a book of leads this way.
-  const myLeadsOnly = currentUser?.role==="account_manager";
+  const myLeadsOnly = ["account_manager","account_director"].includes(currentUser?.role);
   const leadsScope = myLeadsOnly ? leads.filter(l=>l.assigned_to===currentUser.email) : leads;
   // Leads with nobody assigned yet sit in the "Bank" — imported in bulk
   // (e.g. from a Drive sheet) and held there until an admin hands each one
@@ -27196,7 +27200,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
   // pipeline. Ordered by the configured lead-rotation turn (see
   // LeadRotationSettingsModal) so whoever's turn it is shows first.
   const assignableAMs = (()=>{
-    const eligible = (team||[]).filter(t=>["account_manager","business_development"].includes(t.role)&&t.status!=="inactive");
+    const eligible = (team||[]).filter(t=>["account_manager","account_director","business_development"].includes(t.role)&&t.status!=="inactive");
     const rotCfg = {...LEAD_ROTATION_DEFAULTS, ...(appSettings?.lead_rotation_settings||{})};
     const orderedIds = rotCfg.rotation_order.filter(id=>eligible.some(t=>t.id===id));
     if(!orderedIds.length) return eligible;
@@ -27342,7 +27346,7 @@ function LeadsPage({leads, leadActivities, team, clients, currentUser, onAddLead
         </button>
         <select value={assigneeF} onChange={e=>setAssigneeF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12,borderRadius:99}}>
           <option value="all">All Assignees</option>
-          {(team||[]).filter(t=>["account_manager","business_development"].includes(t.role)).map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
+          {(team||[]).filter(t=>["account_manager","account_director","business_development"].includes(t.role)).map(t=><option key={t.id} value={t.email}>{t.name}</option>)}
         </select>
         <select value={countryF} onChange={e=>setCountryF(e.target.value)} style={{...inputSt,width:"auto",padding:"9px 10px",fontSize:12,borderRadius:99}}>
           <option value="all">All Countries</option>
@@ -27713,7 +27717,7 @@ Return ONLY valid JSON, no markdown, no commentary — an array of exactly 10 ob
       // every active account manager if rotation isn't set up).
       const rotCfg = {...LEAD_ROTATION_DEFAULTS, ...(appSettings?.lead_rotation_settings||{})};
       const rotationAMs = rotCfg.rotation_order.map(id=>(team||[]).find(t=>t.id===id)).filter(t=>t&&t.status!=="inactive");
-      const fallbackAMs = (team||[]).filter(t=>["account_manager","business_development"].includes(t.role)&&t.status!=="inactive");
+      const fallbackAMs = (team||[]).filter(t=>["account_manager","account_director","business_development"].includes(t.role)&&t.status!=="inactive");
       const pool = rotationAMs.length ? rotationAMs : fallbackAMs;
       if(!pool.length){ setError("No active Account Manager found to assign leads to — add one in Team Management or configure lead rotation first."); setPhase("error"); return; }
 
@@ -31979,7 +31983,7 @@ function NotificationPrefsTab({notifPrefs, onSaveNotifPrefs, currentUser, rolePe
             </div>
 
             {/* Client notifications — admin/account_manager only */}
-            {["admin","account_manager"].includes(currentUser?.role)&&(
+            {["admin","account_manager","account_director"].includes(currentUser?.role)&&(
               <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:0}}>
                 <SectionHead title="Client & Approval Notifications" color="#f59e0b"/>
                 {[
@@ -31991,7 +31995,7 @@ function NotificationPrefsTab({notifPrefs, onSaveNotifPrefs, currentUser, rolePe
 
             {/* Finance notifications — only relevant to roles that actually
                 touch invoices/payments/subscriptions */}
-            {["admin","accountant","account_manager"].includes(currentUser?.role)&&(
+            {["admin","accountant","account_manager","account_director"].includes(currentUser?.role)&&(
               <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:20,display:"flex",flexDirection:"column",gap:0}}>
                 <SectionHead title="Finance Notifications" color="#10b981"/>
                 {[
@@ -32026,7 +32030,7 @@ function NotificationPrefsTab({notifPrefs, onSaveNotifPrefs, currentUser, rolePe
                 {k:"wa_daily_finance_report", label:"Daily client finance digest", desc:"Daily WhatsApp summary of client pipeline/finance status (admin/account managers)"},
                 {k:"wa_leave_requests", label:"Leave & WFH requests", desc:"Alert your manager when you request time off, and alert you when it's decided"},
                 {k:"wa_mention_messages", label:"Messages from Pro", desc:"When a teammate sends you a message or @mention through Pro"},
-                ...(currentUser?.role==="account_manager" ? [
+                ...(["account_manager","account_director"].includes(currentUser?.role) ? [
                   {k:"wa_am_reports", label:"Mai's daily check-ins", desc:"Mai's morning (12pm) and end-of-day (7pm) WhatsApp check-in conversations about your clients"},
                 ] : []),
                 ...((currentUser?.role==="admin"||hasPerm(currentUser,rolePermsMap,"hr.manage_recruitment")) ? [
@@ -33639,7 +33643,7 @@ function CategoryDetail({categoryKey,ledger,onBack,onOpenTransaction}) {
 // client's payments, paid out on a monthly or quarterly cycle. A client can
 // have more than one account manager, each with their own commission terms.
 function AccountManagerModal({client, team, onSave, onClose}) {
-  const accountManagers = (team||[]).filter(t=>["account_manager","admin"].includes(t.role));
+  const accountManagers = (team||[]).filter(t=>["account_manager","account_director","admin"].includes(t.role));
   const [selectedIds, setSelectedIds] = useState(getAccountManagerIds(client));
   const [commissions, setCommissions] = useState(getAccountManagerCommissions(client));
   const [saving, setSaving] = useState(false);
@@ -36665,7 +36669,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
   // gate PostDetail's stage buttons already enforce; this quick "Move to
   // X" button on My Tasks was missing it entirely, letting anyone push
   // straight to the client.
-  const isManager = ["admin","account_manager"].includes(currentUser?.role);
+  const isManager = ["admin","account_manager","account_director"].includes(currentUser?.role);
 
   // Post IDs where the current user was @mentioned in a comment — same
   // @Name-matching convention used when firing mention notifications
@@ -36944,7 +36948,7 @@ function MyTasksPage({posts,team,projects,currentUser,comments=[],onStageChange,
 function MyCalendarPage({posts,currentUser,team,onDayClick}) {
   const {isMobile} = useResponsive();
   const [currentDate, setCurrentDate] = useState(new Date());
-  const isAM = currentUser?.role==="account_manager" || currentUser?.role==="admin";
+  const isAM = ["account_manager","account_director"].includes(currentUser?.role) || currentUser?.role==="admin";
   const [viewUser, setViewUser] = useState(null); // null = self
   const [combinedView, setCombinedView] = useState(false);
   const effectiveUser = (isAM && viewUser) ? viewUser : currentUser;
@@ -37238,7 +37242,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   // once on mount (not re-derived from initialJump, which gets cleared right
   // after mount) so the Back button sticks around for the whole visit here.
   const [cameFromCalendar] = useState(()=>!!initialJump);
-  const isAM = currentUser?.role==="account_manager" || currentUser?.role==="admin";
+  const isAM = ["account_manager","account_director"].includes(currentUser?.role) || currentUser?.role==="admin";
   const [viewUser, setViewUser] = useState(()=>initialJump?.viewUser||null); // null = self
   const [combinedView, setCombinedView] = useState(()=>initialJump ? !!initialJump.combined : true);
   const [zoom, setZoom] = useState(1); // 1x–4x horizontal stretch on the combined timeline
@@ -37361,7 +37365,7 @@ function MyTimelinePage({posts, team, currentUser, timeEntries, onPostClick, onS
   // order the team list happens to be in.
   const isAdminViewer = currentUser?.role==="admin";
   const TIMELINE_EXCLUDED_NAMES = ["mohamed", "shady", "somaia"];
-  const ROLE_SORT_ORDER = ["content_creator","graphic_designer","account_manager","business_development"];
+  const ROLE_SORT_ORDER = ["content_creator","graphic_designer","account_manager","account_director","business_development"];
   const timelineMembers = (team||[])
     .filter(m=>m.status!=="inactive")
     .filter(m=>isAdminViewer || !["hr","accountant","office_boy","admin"].includes(m.role))
@@ -37898,7 +37902,7 @@ function MyPerformancePage({currentUser, posts, timeEntries, perfLogs, aiInsight
   // including content creators reading recommendations about themselves in
   // the third person. Only a manager should see the team-wide ones; anyone
   // else only ever sees an insight specifically about them.
-  const isPerfManager = ["admin","account_manager"].includes(currentUser?.role);
+  const isPerfManager = ["admin","account_manager","account_director"].includes(currentUser?.role);
   const myInsights = (aiInsights||[]).filter(i=>i.related_user ? i.related_user===currentUser?.email : isPerfManager);
   const [aiRec, setAiRec] = React.useState(null);
   const [aiLoading, setAiLoading] = React.useState(false);
@@ -40846,7 +40850,7 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
       // Account managers get a scoped entry into User Management just for
       // access requests from their own clients — not the full Team nav
       // (Team Members/Invitations/Roles), which stays behind canViewTeamNav.
-      ...(!canViewTeamNav&&currentUser?.role==="account_manager"?[{key:"users", label:"Client Requests", ico:Icons.users}]:[]),
+      ...(!canViewTeamNav&&["account_manager","account_director"].includes(currentUser?.role)?[{key:"users", label:"Client Requests", ico:Icons.users}]:[]),
     ]}] : []),
     // Office Boy: no team-directory access — just a scoped entry into
     // their own profile (UsersPage detects this role and auto-opens it,
@@ -41718,6 +41722,13 @@ const QUICK_REPLIES = {
     "Show pending approvals",
     "Take me to Projects",
   ],
+  account_director: [
+    "Create a calendar plan",
+    "Assign a task to the team",
+    "Create a new client",
+    "Show pending approvals",
+    "Take me to Projects",
+  ],
   content_creator: [
     "Show me my assigned tasks",
     "What's due this week?",
@@ -41744,6 +41755,7 @@ const QUICK_REPLIES = {
 const WELCOME_MESSAGES = {
   admin: "Hi I'm Pro — your AI assistant inside SocialFlow. I can create tasks, projects, clients, calendar plans, and more. Just tell me what to do.",
   account_manager: "Hi I'm Pro. I can help you manage clients, generate calendar plans, assign tasks, and run your campaigns. What do you need?",
+  account_director: "Hi I'm Pro. I can help you manage clients, generate calendar plans, assign tasks, and run your campaigns. What do you need?",
   content_creator: "Hey I'm Pro. I can find your tasks, help draft captions, and guide you through the workflow. What's on your mind?",
   graphic_designer: "Hi I'm Pro. I can help you track design tasks, upload files, and move posts through the workflow. What do you need?",
   client: "Welcome I'm Pro — here to help you review content, navigate your calendar, and send feedback to the team. What would you like to know?",
@@ -41751,26 +41763,26 @@ const WELCOME_MESSAGES = {
 
 // ── Pro — permission check for actions ──
 const CHATBOT_ACTION_ROLES = {
-  create_task: ["admin","account_manager","content_creator","graphic_designer"],
-  create_project: ["admin","account_manager"],
-  create_client: ["admin","account_manager"],
-  update_client: ["admin","account_manager"],
-  create_lead: ["admin","account_manager"],
+  create_task: ["admin","account_manager","account_director","content_creator","graphic_designer"],
+  create_project: ["admin","account_manager","account_director"],
+  create_client: ["admin","account_manager","account_director"],
+  update_client: ["admin","account_manager","account_director"],
+  create_lead: ["admin","account_manager","account_director"],
   create_invoice: ["admin","accountant"],
-  update_task_stage: ["admin","account_manager","content_creator","graphic_designer"],
-  update_task_caption: ["admin","account_manager","content_creator"],
-  assign_task: ["admin","account_manager"],
-  add_comment: ["admin","account_manager","content_creator","graphic_designer"],
-  send_approval: ["admin","account_manager"],
-  create_calendar: ["admin","account_manager"],
-  delete_task: ["admin","account_manager"],
-  delete_project: ["admin","account_manager"],
+  update_task_stage: ["admin","account_manager","account_director","content_creator","graphic_designer"],
+  update_task_caption: ["admin","account_manager","account_director","content_creator"],
+  assign_task: ["admin","account_manager","account_director"],
+  add_comment: ["admin","account_manager","account_director","content_creator","graphic_designer"],
+  send_approval: ["admin","account_manager","account_director"],
+  create_calendar: ["admin","account_manager","account_director"],
+  delete_task: ["admin","account_manager","account_director"],
+  delete_project: ["admin","account_manager","account_director"],
   delete_client: ["admin"],
-  delete_lead: ["admin","account_manager"],
+  delete_lead: ["admin","account_manager","account_director"],
   delete_all_leads: ["admin"],
-  save_exemplar: ["admin","account_manager","content_creator"],
-  save_voice_card: ["admin","account_manager"],
-  save_client_facts: ["admin","account_manager"],
+  save_exemplar: ["admin","account_manager","account_director","content_creator"],
+  save_voice_card: ["admin","account_manager","account_director"],
+  save_client_facts: ["admin","account_manager","account_director"],
   update_reply_bot_settings: ["admin"],
 };
 
@@ -45308,7 +45320,7 @@ RULES:
     {label:"What's overdue?", ico:Icons.clock, action:()=>sendMessage("What tasks are overdue?")},
   ].filter(t=>{
     if(t.label==="Create an invoice"&&!["admin","accountant"].includes(role)) return false;
-    if(t.label==="Add a new client"&&!["admin","account_manager"].includes(role)) return false;
+    if(t.label==="Add a new client"&&!["admin","account_manager","account_director"].includes(role)) return false;
     return true;
   });
 
@@ -45483,7 +45495,7 @@ RULES:
         )}
         {isMobile && <div style={{flex:1}}/>}
         {/* Client selector */}
-        {["admin","account_manager"].includes(role)&&(
+        {["admin","account_manager","account_director"].includes(role)&&(
           isMobile ? (
             <div style={{position:"relative",borderRadius:99,background:"var(--surface2)",display:"flex",alignItems:"center"}}>
               <select value={selectedClient?.id||""} onChange={e=>{
@@ -50627,7 +50639,7 @@ Return ONLY valid JSON (no markdown): {"reply":"your reply text (markdown format
             onDecidePayrollRun={decidePayrollRun}
           />
         )}
-        {page==="users"&&(currentUser?.role==="admin"||currentUser?.role==="account_manager"||currentUser?.role==="office_boy"||hasPerm(currentUser,rolePermsMap,"hr.view_team"))&&(
+        {page==="users"&&(currentUser?.role==="admin"||["account_manager","account_director"].includes(currentUser?.role)||currentUser?.role==="office_boy"||hasPerm(currentUser,rolePermsMap,"hr.view_team"))&&(
           <UsersPage
             currentUser={currentUser}
             team={data.team}

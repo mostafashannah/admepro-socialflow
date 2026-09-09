@@ -154,7 +154,7 @@ if ($mode === 'reminders') {
     $subs = $pdo->prepare("SELECT * FROM subscriptions WHERE status = 'active' AND next_payment_date = :d AND (reminder_7_sent IS NULL OR reminder_7_sent = 0)");
     $subs->execute([':d' => $in7]);
     $markSubSent = $pdo->prepare("UPDATE subscriptions SET reminder_7_sent = 1 WHERE id = :id");
-    $recipients = $pdo->query("SELECT * FROM team_members WHERE status = 'active' AND role IN ('admin','accountant','account_manager')")->fetchAll(PDO::FETCH_ASSOC);
+    $recipients = $pdo->query("SELECT * FROM team_members WHERE status = 'active' AND role IN ('admin','accountant','account_manager','account_director')")->fetchAll(PDO::FETCH_ASSOC);
     foreach ($subs->fetchAll(PDO::FETCH_ASSOC) as $sub) {
         foreach ($recipients as $m) {
             $prefs = get_prefs($pdo, $m['email']);
