@@ -40870,7 +40870,9 @@ function Sidebar({page,setPage,dark,setDark,currentUser,notifications,userProfil
       {key:"users", label:"User Management", ico:Icons.users},
       ...(canViewPerformance?[{key:"performance", label:"Team Performance", ico:Icons.award}]:[]),
       ...(canManageRecruitment?[{key:"recruitment", label:"Recruitment", ico:Icons.briefcase}]:[]),
-    ]}] : []),
+    ]}] : (canManageRecruitment ? [{ group: "TEAM", icon: Icons.users, items: [
+      {key:"recruitment", label:"Recruitment", ico:Icons.briefcase},
+    ]}] : [])),
     ...((canAgency||isAdmin) ? [{ group: "TOOLS", icon: Icons.wand, items: [
       ...(canAgency?[
         {key:"assets", label:"Assets", ico:Icons.assets},
