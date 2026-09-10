@@ -16264,29 +16264,36 @@ function CommunityTab({inbox, leads, cMessagesNeedReplyCount, clientLeadsCount})
   );
 }
 
-// Real-text PDF (same jsPDF technique as downloadQuotePDF — no
-// html2canvas, which this codebase already found unreliable for text) —
-// one report covering every connected platform's totals for the chosen
-// range, a month-by-month breakdown (each month vs the one before it, so
-// a campaign's trend across months is visible at a glance), and the
-// top posts by engagement in that same range.
+function platformLabelCap(p) { return p ? p.charAt(0).toUpperCase()+p.slice(1) : ""; }
+
+// Real-text/vector PDF (same jsPDF technique as downloadQuotePDF — no
+// html2canvas, which this codebase already found unreliable) — a
+// multi-page report covering every connected platform's totals for the
+// chosen range with bar charts, a 6-month engagement trend line chart,
+// a content-mix breakdown, engagement-rate analysis, and the top posts
+// by engagement, closing with a plain-language takeaways page.
 async function downloadInsightsReportPDF(client, posts, connectedPlatforms, rangeKey) {
   const jsPDFCtor = window.jspdf?.jsPDF;
   if (!jsPDFCtor) { alert("PDF library failed to load — please refresh and try again."); return; }
   try {
     const now = new Date();
-    let since, rangeLabel;
+    let since, until, rangeLabel;
     if (rangeKey === "last_month") {
-      const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, -1);
-      since = new Date(lastMonthEnd.getFullYear(), lastMonthEnd.getMonth(), 1);
+      // Strictly last calendar month, not "last month through today" — an
+      // upper bound is required here, otherwise a filter that only checks
+      // ">= since" would keep pulling in every post from the CURRENT
+      // month too, since there's nothing stopping it at month's end.
+      until = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, -1);
+      since = new Date(until.getFullYear(), until.getMonth(), 1);
       rangeLabel = "Last Month";
     } else {
       since = new Date(now.getTime() - 90*86400000);
+      until = now;
       rangeLabel = "Last 90 Days";
     }
     const postDate = p => p.published_at || p.scheduled_date;
     const publishedPosts = (posts||[]).filter(p=>p.stage==="published" && postDate(p));
-    const inRange = publishedPosts.filter(p=>new Date(postDate(p)) >= since);
+    const inRange = publishedPosts.filter(p=>{ const d=new Date(postDate(p)); return d>=since && d<=until; });
 
     const platformRows = computePlatformInsightRows(inRange, connectedPlatforms);
 
@@ -16301,39 +16308,69 @@ async function downloadInsightsReportPDF(client, posts, connectedPlatforms, rang
       const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
       months.push({key: monthKey(d), label: d.toLocaleDateString(undefined,{month:"short",year:"numeric"})});
     }
-    const monthRows = months.map((m,i)=>{
+    const monthTotals = m => {
       const mPosts = publishedPosts.filter(p=>monthKey(new Date(postDate(p)))===m.key);
       const likes = mPosts.reduce((a,p)=>a+(p.insight_likes||0),0);
       const comments = mPosts.reduce((a,p)=>a+(p.insight_comments||0),0);
       const shares = mPosts.reduce((a,p)=>a+(p.insight_shares||0),0);
       const reach = mPosts.reduce((a,p)=>a+(p.insight_reach||0),0);
-      const engagement = likes + comments*2 + shares*3;
-      const prevEngagement = i>0 ? (()=>{
-        const pPosts = publishedPosts.filter(p=>monthKey(new Date(postDate(p)))===months[i-1].key);
-        const pl=pPosts.reduce((a,p)=>a+(p.insight_likes||0),0), pc=pPosts.reduce((a,p)=>a+(p.insight_comments||0),0), ps=pPosts.reduce((a,p)=>a+(p.insight_shares||0),0);
-        return pl+pc*2+ps*3;
-      })() : null;
-      const vsLastMonth = (prevEngagement!=null) ? (prevEngagement===0 ? (engagement>0?100:0) : Math.round(((engagement-prevEngagement)/prevEngagement)*1000)/10) : null;
-      return {...m, posts:mPosts.length, likes, comments, shares, reach, engagement, vsLastMonth};
+      return {posts:mPosts.length, likes, comments, shares, reach, engagement: likes+comments*2+shares*3};
+    };
+    const monthRows = months.map((m,i)=>{
+      const t = monthTotals(m);
+      const prevEngagement = i>0 ? monthTotals(months[i-1]).engagement : null;
+      const vsLastMonth = (prevEngagement!=null) ? (prevEngagement===0 ? (t.engagement>0?100:0) : Math.round(((t.engagement-prevEngagement)/prevEngagement)*1000)/10) : null;
+      return {...m, ...t, vsLastMonth};
     });
 
     const scored = inRange
       .map(p=>({...p, score:(p.insight_likes||0)+(p.insight_comments||0)*2+(p.insight_shares||0)*3}))
       .sort((a,b)=>b.score-a.score)
       .filter(p=>p.score>0)
-      .slice(0,10);
+      .slice(0,12);
+
+    // Content-mix — what got posted, broken down by post type (static/
+    // reel/carousel/story/video), so the report isn't only "how did it
+    // perform" but also "what did we actually publish".
+    const typeCounts = {};
+    inRange.forEach(p=>{ const t=p.post_type||p.type||"post"; typeCounts[t]=(typeCounts[t]||0)+1; });
+    const typeRows = Object.entries(typeCounts).sort((a,b)=>b[1]-a[1]);
+
+    // Engagement rate per platform (engagement / reach) — a normalized view
+    // that a raw totals table can't show, since a bigger platform will
+    // always win on raw totals regardless of how well each post actually did.
+    const engagementRateRows = platformRows
+      .filter(r=>r.reach)
+      .map(r=>({platform:r.platform, rate: Math.round((r.engagement/r.reach)*1000)/10}));
 
     const doc = new jsPDFCtor({unit:"pt", format:"a4"});
     const marginX = 54, pageWidth = doc.internal.pageSize.getWidth(), pageHeight = doc.internal.pageSize.getHeight();
     const maxW = pageWidth - marginX*2;
     let y = 64;
-    const ensureRoom = (needed) => { if (y + needed > pageHeight - 56) { doc.addPage(); y = 64; } };
+    let pageNum = 1;
+    const footer = () => {
+      doc.setFont("Helvetica","normal"); doc.setFontSize(8.5); doc.setTextColor(150,150,150);
+      doc.text(`${client.name} — Insights Report`, marginX, pageHeight-32);
+      doc.text(`Page ${pageNum}`, pageWidth-marginX, pageHeight-32, {align:"right"});
+    };
+    const newPage = () => { footer(); doc.addPage(); pageNum++; y = 64; };
+    const ensureRoom = (needed) => { if (y + needed > pageHeight - 56) newPage(); };
     const mark = (x, yPos, size) => {
       doc.setFont("Helvetica","bold"); doc.setFontSize(size); doc.setTextColor(20,20,20);
       doc.text("p", x, yPos);
       const pw = doc.getTextWidth("p");
       doc.setTextColor(217,11,44);
       doc.text(".", x+pw+1, yPos);
+    };
+    const pageTitle = (title, subtitle) => {
+      mark(marginX, y, 18);
+      doc.setFont("Helvetica","bold"); doc.setFontSize(15); doc.setTextColor(20,20,20);
+      doc.text(title, marginX+26, y);
+      if (subtitle) { doc.setFont("Helvetica","normal"); doc.setFontSize(9.5); doc.setTextColor(120,120,120); doc.text(subtitle, pageWidth-marginX, y-2, {align:"right"}); }
+      y += 14;
+      doc.setDrawColor(30,30,30); doc.setLineWidth(1);
+      doc.line(marginX, y, pageWidth-marginX, y);
+      y += 26;
     };
     const sectionTitle = (title) => {
       ensureRoom(40);
@@ -16343,6 +16380,12 @@ async function downloadInsightsReportPDF(client, posts, connectedPlatforms, rang
       doc.setDrawColor(217,11,44); doc.setLineWidth(1.4);
       doc.line(marginX, y, marginX+34, y);
       y += 22;
+    };
+    const bodyText = (text, opts={}) => {
+      doc.setFont("Helvetica", opts.bold?"bold":"normal"); doc.setFontSize(opts.size||10); doc.setTextColor(...(opts.color||[70,70,70]));
+      const lines = doc.splitTextToSize(text, maxW);
+      lines.forEach(l=>{ ensureRoom(16); doc.text(l, marginX, y); y += (opts.lh||14); });
+      y += 4;
     };
     const drawTable = (headers, colWidths, rows) => {
       const rowH = 20;
@@ -16365,25 +16408,129 @@ async function downloadInsightsReportPDF(client, posts, connectedPlatforms, rang
       doc.line(marginX, y, marginX+maxW, y);
       y += 22;
     };
+    // KPI stat cards, 3-4 across, for an executive-summary-style row.
+    const drawKpiRow = (kpis) => {
+      const h = 62, gap = 12;
+      ensureRoom(h+16);
+      const w = (maxW - gap*(kpis.length-1))/kpis.length;
+      kpis.forEach((k,i)=>{
+        const x = marginX + i*(w+gap);
+        doc.setDrawColor(225,225,225); doc.setLineWidth(0.75);
+        doc.roundedRect(x, y, w, h, 4, 4);
+        doc.setFont("Helvetica","bold"); doc.setFontSize(18); doc.setTextColor(...(k.color||[20,20,20]));
+        doc.text(String(k.value), x+12, y+30);
+        doc.setFont("Helvetica","normal"); doc.setFontSize(8.5); doc.setTextColor(120,120,120);
+        doc.text(k.label.toUpperCase(), x+12, y+46);
+      });
+      y += h + 24;
+    };
+    // Simple vertical bar chart with value/label under each bar.
+    const drawBarChart = (bars, h=140) => {
+      if (!bars.length) return;
+      ensureRoom(h+40);
+      const max = Math.max(1, ...bars.map(b=>b.value));
+      const gap = 14, barW = Math.min(70, (maxW - gap*(bars.length-1))/bars.length);
+      const chartW = bars.length*barW + (bars.length-1)*gap;
+      const startX = marginX + (maxW-chartW)/2;
+      const baseY = y + h;
+      doc.setDrawColor(225,225,225); doc.setLineWidth(0.5);
+      [0.25,0.5,0.75,1].forEach(t=>{ const gy = baseY - h*t; doc.line(marginX, gy, marginX+maxW, gy); });
+      bars.forEach((b,i)=>{
+        const x = startX + i*(barW+gap);
+        const bh = Math.max(2, (b.value/max)*h);
+        const [r,g,bl] = b.rgb || [217,11,44];
+        doc.setFillColor(r,g,bl);
+        doc.rect(x, baseY-bh, barW, bh, "F");
+        doc.setFont("Helvetica","bold"); doc.setFontSize(9); doc.setTextColor(30,30,30);
+        doc.text(String(b.value), x+barW/2, baseY-bh-6, {align:"center"});
+        doc.setFont("Helvetica","normal"); doc.setFontSize(8.5); doc.setTextColor(90,90,90);
+        doc.text(b.label, x+barW/2, baseY+14, {align:"center"});
+      });
+      doc.setDrawColor(180,180,180); doc.setLineWidth(0.75);
+      doc.line(marginX, baseY, marginX+maxW, baseY);
+      y = baseY + 34;
+    };
+    // Simple line chart across N points, with gridlines and point labels —
+    // used for the 6-month engagement trend.
+    const drawLineChart = (points, h=150, color=[217,11,44]) => {
+      if (points.length<2) return;
+      ensureRoom(h+40);
+      const max = Math.max(1, ...points.map(p=>p.value));
+      const baseY = y + h;
+      const stepX = maxW/(points.length-1);
+      doc.setDrawColor(225,225,225); doc.setLineWidth(0.5);
+      [0.25,0.5,0.75,1].forEach(t=>{ const gy = baseY - h*t; doc.line(marginX, gy, marginX+maxW, gy); });
+      const coords = points.map((p,i)=>[marginX+i*stepX, baseY-(p.value/max)*h]);
+      doc.setDrawColor(...color); doc.setLineWidth(2);
+      for (let i=0;i<coords.length-1;i++) doc.line(coords[i][0],coords[i][1],coords[i+1][0],coords[i+1][1]);
+      coords.forEach(([cx,cy],i)=>{
+        doc.setFillColor(...color);
+        doc.circle(cx, cy, 3, "F");
+        doc.setFont("Helvetica","bold"); doc.setFontSize(9); doc.setTextColor(30,30,30);
+        doc.text(String(points[i].value), cx, cy-10, {align:"center"});
+        doc.setFont("Helvetica","normal"); doc.setFontSize(8.5); doc.setTextColor(90,90,90);
+        doc.text(points[i].label, cx, baseY+16, {align:"center"});
+      });
+      doc.setDrawColor(180,180,180); doc.setLineWidth(0.75);
+      doc.line(marginX, baseY, marginX+maxW, baseY);
+      y = baseY + 34;
+    };
 
-    // ── Header ──
-    mark(marginX, y, 26);
-    doc.setFont("Helvetica","bold"); doc.setFontSize(17); doc.setTextColor(20,20,20);
-    doc.text("Insights Report", pageWidth-marginX, y-2, {align:"right"});
-    y += 26;
-    doc.setFont("Helvetica","normal"); doc.setFontSize(10.5); doc.setTextColor(90,90,90);
-    doc.text(`${client.name} — ${rangeLabel} (generated ${now.toLocaleDateString()})`, pageWidth-marginX, y, {align:"right"});
+    // ════════════════════════════════════════════════════════════
+    // PAGE 1 — Cover
+    // ════════════════════════════════════════════════════════════
+    y = pageHeight/2 - 90;
+    mark(pageWidth/2-16, y, 34);
+    y += 50;
+    doc.setFont("Helvetica","bold"); doc.setFontSize(24); doc.setTextColor(20,20,20);
+    doc.text("Social Media Insights Report", pageWidth/2, y, {align:"center"});
+    y += 34;
+    doc.setFont("Helvetica","bold"); doc.setFontSize(16); doc.setTextColor(217,11,44);
+    doc.text(client.name||"", pageWidth/2, y, {align:"center"});
     y += 24;
-    doc.setDrawColor(30,30,30); doc.setLineWidth(1.2);
-    doc.line(marginX, y, pageWidth-marginX, y);
-    y += 26;
+    doc.setFont("Helvetica","normal"); doc.setFontSize(11); doc.setTextColor(110,110,110);
+    doc.text(`${rangeLabel} · Generated ${now.toLocaleDateString(undefined,{year:"numeric",month:"long",day:"numeric"})}`, pageWidth/2, y, {align:"center"});
+    y += 40;
+    doc.setDrawColor(220,220,220); doc.setLineWidth(0.75);
+    doc.line(pageWidth/2-90, y, pageWidth/2+90, y);
+    newPage();
 
-    // ── All-platform analysis ──
-    sectionTitle("Platform Analysis");
+    // ════════════════════════════════════════════════════════════
+    // PAGE — Executive Summary
+    // ════════════════════════════════════════════════════════════
+    pageTitle("Executive Summary", `${client.name} — ${rangeLabel}`);
+    const grandLikes = platformRows.reduce((a,r)=>a+r.likes,0);
+    const grandComments = platformRows.reduce((a,r)=>a+r.comments,0);
+    const grandReach = platformRows.some(r=>r.reach!=null) ? platformRows.reduce((a,r)=>a+(r.reach||0),0) : null;
+    const grandEngagement = platformRows.reduce((a,r)=>a+r.engagement,0);
+    const topPlatformRow = [...platformRows].sort((a,b)=>b.engagement-a.engagement)[0];
+    drawKpiRow([
+      {label:"Published Posts", value: inRange.length, color:[20,20,20]},
+      {label:"Total Likes", value: grandLikes, color:[225,48,108]},
+      {label:"Total Comments", value: grandComments, color:[59,130,246]},
+      {label:"Total Reach", value: grandReach??"—", color:[16,185,129]},
+    ]);
+    bodyText(
+      inRange.length
+        ? `Over the ${rangeLabel.toLowerCase()}, ${client.name} published ${inRange.length} post${inRange.length!==1?"s":""} across ${platformRows.length} connected platform${platformRows.length!==1?"s":""}, generating a combined engagement score of ${grandEngagement} (likes + weighted comments and shares).${topPlatformRow?` ${platformLabelCap(topPlatformRow.platform)} was the strongest platform this period, driving ${topPlatformRow.engagement} of that engagement.`:""}`
+        : `No published posts with tracked engagement were found for ${rangeLabel.toLowerCase()}.`
+    );
+    if (monthRows.length>=2) {
+      const last = monthRows[monthRows.length-1], prev = monthRows[monthRows.length-2];
+      if (last.vsLastMonth!=null) {
+        bodyText(`${last.label} engagement is ${last.vsLastMonth>=0?"up":"down"} ${Math.abs(last.vsLastMonth)}% versus ${prev.label} (${prev.engagement} → ${last.engagement}).`);
+      }
+    }
+    sectionTitle("Engagement by Platform");
+    drawBarChart(platformRows.map(r=>({label:platformLabelCap(r.platform), value:r.engagement, rgb:hexToRgb(PLT_COLOR[r.platform]||"#d90b2c")})));
+
+    // ════════════════════════════════════════════════════════════
+    // PAGE — Platform Analysis (detail table + per-metric charts)
+    // ════════════════════════════════════════════════════════════
+    newPage();
+    pageTitle("Platform Analysis", rangeLabel);
     if (!platformRows.length) {
-      doc.setFont("Helvetica","normal"); doc.setFontSize(10); doc.setTextColor(140,140,140);
-      doc.text("No connected platforms with published posts in this range.", marginX, y);
-      y += 24;
+      bodyText("No connected platforms with published posts in this range.");
     } else {
       const colW = [110, 60, 70, 90, 70, 80];
       drawTable(
@@ -16391,28 +16538,60 @@ async function downloadInsightsReportPDF(client, posts, connectedPlatforms, rang
         colW,
         platformRows.map(r=>[platformLabelCap(r.platform), r.total, r.likes, r.comments, r.reach??"—", r.engagement])
       );
-      const grandLikes = platformRows.reduce((a,r)=>a+r.likes,0);
-      const grandComments = platformRows.reduce((a,r)=>a+r.comments,0);
-      const grandEngagement = platformRows.reduce((a,r)=>a+r.engagement,0);
       doc.setFont("Helvetica","bold"); doc.setFontSize(10); doc.setTextColor(20,20,20);
       doc.text(`Totals — Likes: ${grandLikes}   Comments: ${grandComments}   Engagement: ${grandEngagement}`, marginX, y);
-      y += 26;
+      y += 30;
+
+      sectionTitle("Likes by Platform");
+      drawBarChart(platformRows.map(r=>({label:platformLabelCap(r.platform), value:r.likes, rgb:hexToRgb(PLT_COLOR[r.platform]||"#d90b2c")})), 120);
+      sectionTitle("Comments by Platform");
+      drawBarChart(platformRows.map(r=>({label:platformLabelCap(r.platform), value:r.comments, rgb:hexToRgb(PLT_COLOR[r.platform]||"#d90b2c")})), 120);
+
+      if (engagementRateRows.length) {
+        sectionTitle("Engagement Rate (engagement ÷ reach)");
+        bodyText("A normalized view of how well content performed relative to how many people saw it — useful for comparing platforms of very different sizes.");
+        drawBarChart(engagementRateRows.map(r=>({label:`${platformLabelCap(r.platform)} (${r.rate}%)`, value:r.rate, rgb:hexToRgb(PLT_COLOR[r.platform]||"#d90b2c")})), 110);
+      }
     }
 
-    // ── Month-over-month campaign trend ──
-    sectionTitle("Monthly Trend (this campaign, each month vs the last)");
+    // ════════════════════════════════════════════════════════════
+    // PAGE — Monthly Campaign Trend
+    // ════════════════════════════════════════════════════════════
+    newPage();
+    pageTitle("Monthly Campaign Trend", "Each month vs the one before it");
+    sectionTitle("Engagement Over Time (last 6 months)");
+    drawLineChart(monthRows.map(m=>({label:m.label, value:m.engagement})));
+    sectionTitle("Posting Volume by Month");
+    drawBarChart(monthRows.map(m=>({label:m.label, value:m.posts, rgb:[59,130,246]})), 110);
+    sectionTitle("Month-by-Month Breakdown");
     drawTable(
       ["Month","Posts","Likes","Comments","Engagement","vs Prev. Month"],
       [90, 55, 60, 75, 80, 100],
       monthRows.map(m=>[m.label, m.posts, m.likes, m.comments, m.engagement, m.vsLastMonth==null?"—":`${m.vsLastMonth>0?"+":""}${m.vsLastMonth}%`])
     );
 
-    // ── Posts insights ──
-    sectionTitle(`Top Posts by Engagement (${rangeLabel})`);
+    // ════════════════════════════════════════════════════════════
+    // PAGE — Content Mix
+    // ════════════════════════════════════════════════════════════
+    newPage();
+    pageTitle("Content Mix", rangeLabel);
+    if (!typeRows.length) {
+      bodyText("No published posts in this range to break down by content type.");
+    } else {
+      bodyText("What got published this period, by content format — a quick read on whether the content mix matches the strategy.");
+      sectionTitle("Posts by Content Type");
+      drawBarChart(typeRows.map(([t,c])=>({label:t.replace(/_/g," "), value:c, rgb:[139,92,246]})), 130);
+      drawTable(["Content Type","Posts","% of Total"], [200, 90, 110],
+        typeRows.map(([t,c])=>[t.replace(/_/g," "), c, `${Math.round((c/inRange.length)*1000)/10}%`]));
+    }
+
+    // ════════════════════════════════════════════════════════════
+    // PAGE(S) — Top Posts by Engagement
+    // ════════════════════════════════════════════════════════════
+    newPage();
+    pageTitle("Top Posts by Engagement", rangeLabel);
     if (!scored.length) {
-      doc.setFont("Helvetica","normal"); doc.setFontSize(10); doc.setTextColor(140,140,140);
-      doc.text("No published posts with tracked engagement in this range.", marginX, y);
-      y += 24;
+      bodyText("No published posts with tracked engagement in this range.");
     } else {
       scored.forEach((p,i)=>{
         ensureRoom(34);
@@ -16429,13 +16608,33 @@ async function downloadInsightsReportPDF(client, posts, connectedPlatforms, rang
       });
     }
 
+    // ════════════════════════════════════════════════════════════
+    // PAGE — Key Takeaways
+    // ════════════════════════════════════════════════════════════
+    newPage();
+    pageTitle("Key Takeaways", "Data-driven, computed from this report");
+    const takeaways = [];
+    if (topPlatformRow) takeaways.push(`${platformLabelCap(topPlatformRow.platform)} led engagement this period with a score of ${topPlatformRow.engagement} — worth prioritizing content investment here.`);
+    if (monthRows.length>=2) {
+      const last = monthRows[monthRows.length-1], prev = monthRows[monthRows.length-2];
+      if (last.vsLastMonth!=null) takeaways.push(`Engagement trend is ${last.vsLastMonth>=0?"positive":"negative"} month-over-month (${last.vsLastMonth>=0?"+":""}${last.vsLastMonth}% in ${last.label}).`);
+    }
+    if (scored.length) takeaways.push(`Best-performing post: "${scored[0].title||"(Untitled post)"}" on ${platformLabelCap(scored[0].platform)} with a score of ${scored[0].score}.`);
+    if (typeRows.length) takeaways.push(`Most-used content type this period was "${typeRows[0][0].replace(/_/g," ")}" (${typeRows[0][1]} post${typeRows[0][1]!==1?"s":""}).`);
+    if (engagementRateRows.length) {
+      const bestRate = [...engagementRateRows].sort((a,b)=>b.rate-a.rate)[0];
+      takeaways.push(`${platformLabelCap(bestRate.platform)} had the highest engagement rate relative to reach (${bestRate.rate}%) — its audience is the most responsive right now.`);
+    }
+    if (!takeaways.length) takeaways.push("Not enough tracked engagement data yet to draw conclusions for this range — check back once more posts have published metrics.");
+    takeaways.forEach((t,i)=>{ bodyText(`${i+1}. ${t}`, {bold:false, size:10.5, color:[50,50,50], lh:15}); });
+
+    footer();
     doc.save(`${(client.name||"client").replace(/[^a-z0-9]+/gi,"-")}-insights-${rangeKey}-${now.toISOString().slice(0,10)}.pdf`);
   } catch(e) {
     console.error("downloadInsightsReportPDF failed:", e);
     alert("Could not generate the PDF report. Please try again.");
   }
 }
-function platformLabelCap(p) { return p ? p.charAt(0).toUpperCase()+p.slice(1) : ""; }
 
 function InsightsTab({client, integrations, posts}) {
   const [sub, setSub] = usePersistentState("sf_tab_insights_sub","all");
