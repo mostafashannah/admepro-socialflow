@@ -16110,23 +16110,20 @@ function PlatformCompareBar({label, rows, valueKey}) {
   );
 }
 
-// Rolls every connected platform's post-level engagement (already collected
-// via insight_likes/comments/shares/reach, no live API calls needed — this
-// is a summary, not a fresh fetch) into one glance-able card per platform,
-// for the "All Platforms" sub-tab. Clicking a card jumps straight to that
-// platform's own full-detail sub-tab.
-function AllPlatformsSummaryTab({posts, connectedPlatforms, onSelectPlatform}) {
-  const {isMobile} = useResponsive();
-  // A post going out to more than one platform at once (Instagram + Facebook,
-  // say) used to only ever count under whichever platform happened to sit in
-  // the legacy singular `platform` column — so a Facebook card could show
-  // "1 published post" while 20+ posts actually went out to Facebook too,
-  // just with `platform` recorded as "instagram". Attribute the post to
-  // EVERY platform in its `platforms` array instead, and prefer that
-  // platform's own numbers from insights_by_platform (populated by the
-  // fixed post-insights-fetch.php/cron.php) over the legacy single-set
-  // columns, which only ever reflected one platform's numbers anyway.
-  const rows = connectedPlatforms.map(pf=>{
+// A post going out to more than one platform at once (Instagram + Facebook,
+// say) used to only ever count under whichever platform happened to sit in
+// the legacy singular `platform` column — so a Facebook card could show
+// "1 published post" while 20+ posts actually went out to Facebook too,
+// just with `platform` recorded as "instagram". Attribute the post to
+// EVERY platform in its `platforms` array instead, and prefer that
+// platform's own numbers from insights_by_platform (populated by the
+// fixed post-insights-fetch.php/cron.php) over the legacy single-set
+// columns, which only ever reflected one platform's numbers anyway.
+// Extracted out of AllPlatformsSummaryTab so the PDF export can compute the
+// exact same per-platform totals shown on screen, for any subset of posts
+// (e.g. already date-filtered for a report range).
+function computePlatformInsightRows(posts, connectedPlatforms) {
+  return (connectedPlatforms||[]).map(pf=>{
     const pPosts = (posts||[]).filter(p=>{
       if(p.stage!=="published") return false;
       const plts = Array.isArray(p.platforms) ? p.platforms : parseJ(p.platforms||"[]");
@@ -16156,6 +16153,16 @@ function AllPlatformsSummaryTab({posts, connectedPlatforms, onSelectPlatform}) {
       avgLikes: withData.length ? Math.round(likes/withData.length*10)/10 : 0,
     };
   });
+}
+
+// Rolls every connected platform's post-level engagement (already collected
+// via insight_likes/comments/shares/reach, no live API calls needed — this
+// is a summary, not a fresh fetch) into one glance-able card per platform,
+// for the "All Platforms" sub-tab. Clicking a card jumps straight to that
+// platform's own full-detail sub-tab.
+function AllPlatformsSummaryTab({posts, connectedPlatforms, onSelectPlatform}) {
+  const {isMobile} = useResponsive();
+  const rows = computePlatformInsightRows(posts, connectedPlatforms);
   if(rows.length===0) return <EmptyState icon={Icons.chart} title="No platforms connected" sub="Connect a Facebook, Instagram, or TikTok integration to see insights here."/>;
 
   const grand = {
@@ -16257,8 +16264,183 @@ function CommunityTab({inbox, leads, cMessagesNeedReplyCount, clientLeadsCount})
   );
 }
 
+// Real-text PDF (same jsPDF technique as downloadQuotePDF — no
+// html2canvas, which this codebase already found unreliable for text) —
+// one report covering every connected platform's totals for the chosen
+// range, a month-by-month breakdown (each month vs the one before it, so
+// a campaign's trend across months is visible at a glance), and the
+// top posts by engagement in that same range.
+async function downloadInsightsReportPDF(client, posts, connectedPlatforms, rangeKey) {
+  const jsPDFCtor = window.jspdf?.jsPDF;
+  if (!jsPDFCtor) { alert("PDF library failed to load — please refresh and try again."); return; }
+  try {
+    const now = new Date();
+    let since, rangeLabel;
+    if (rangeKey === "last_month") {
+      const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, -1);
+      since = new Date(lastMonthEnd.getFullYear(), lastMonthEnd.getMonth(), 1);
+      rangeLabel = "Last Month";
+    } else {
+      since = new Date(now.getTime() - 90*86400000);
+      rangeLabel = "Last 90 Days";
+    }
+    const postDate = p => p.published_at || p.scheduled_date;
+    const publishedPosts = (posts||[]).filter(p=>p.stage==="published" && postDate(p));
+    const inRange = publishedPosts.filter(p=>new Date(postDate(p)) >= since);
+
+    const platformRows = computePlatformInsightRows(inRange, connectedPlatforms);
+
+    // Month-by-month trend — always the trailing 6 calendar months of ALL
+    // published posts (not clipped to the range above), so "this month vs
+    // the last one" stays meaningful even when the report range itself is
+    // just "Last Month" (a single month has nothing to compare against on
+    // its own).
+    const monthKey = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+    const months = [];
+    for (let i=5; i>=0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+      months.push({key: monthKey(d), label: d.toLocaleDateString(undefined,{month:"short",year:"numeric"})});
+    }
+    const monthRows = months.map((m,i)=>{
+      const mPosts = publishedPosts.filter(p=>monthKey(new Date(postDate(p)))===m.key);
+      const likes = mPosts.reduce((a,p)=>a+(p.insight_likes||0),0);
+      const comments = mPosts.reduce((a,p)=>a+(p.insight_comments||0),0);
+      const shares = mPosts.reduce((a,p)=>a+(p.insight_shares||0),0);
+      const reach = mPosts.reduce((a,p)=>a+(p.insight_reach||0),0);
+      const engagement = likes + comments*2 + shares*3;
+      const prevEngagement = i>0 ? (()=>{
+        const pPosts = publishedPosts.filter(p=>monthKey(new Date(postDate(p)))===months[i-1].key);
+        const pl=pPosts.reduce((a,p)=>a+(p.insight_likes||0),0), pc=pPosts.reduce((a,p)=>a+(p.insight_comments||0),0), ps=pPosts.reduce((a,p)=>a+(p.insight_shares||0),0);
+        return pl+pc*2+ps*3;
+      })() : null;
+      const vsLastMonth = (prevEngagement!=null) ? (prevEngagement===0 ? (engagement>0?100:0) : Math.round(((engagement-prevEngagement)/prevEngagement)*1000)/10) : null;
+      return {...m, posts:mPosts.length, likes, comments, shares, reach, engagement, vsLastMonth};
+    });
+
+    const scored = inRange
+      .map(p=>({...p, score:(p.insight_likes||0)+(p.insight_comments||0)*2+(p.insight_shares||0)*3}))
+      .sort((a,b)=>b.score-a.score)
+      .filter(p=>p.score>0)
+      .slice(0,10);
+
+    const doc = new jsPDFCtor({unit:"pt", format:"a4"});
+    const marginX = 54, pageWidth = doc.internal.pageSize.getWidth(), pageHeight = doc.internal.pageSize.getHeight();
+    const maxW = pageWidth - marginX*2;
+    let y = 64;
+    const ensureRoom = (needed) => { if (y + needed > pageHeight - 56) { doc.addPage(); y = 64; } };
+    const mark = (x, yPos, size) => {
+      doc.setFont("Helvetica","bold"); doc.setFontSize(size); doc.setTextColor(20,20,20);
+      doc.text("p", x, yPos);
+      const pw = doc.getTextWidth("p");
+      doc.setTextColor(217,11,44);
+      doc.text(".", x+pw+1, yPos);
+    };
+    const sectionTitle = (title) => {
+      ensureRoom(40);
+      doc.setFont("Helvetica","bold"); doc.setFontSize(13); doc.setTextColor(20,20,20);
+      doc.text(title, marginX, y);
+      y += 10;
+      doc.setDrawColor(217,11,44); doc.setLineWidth(1.4);
+      doc.line(marginX, y, marginX+34, y);
+      y += 22;
+    };
+    const drawTable = (headers, colWidths, rows) => {
+      const rowH = 20;
+      ensureRoom(rowH*2);
+      let x = marginX;
+      doc.setFont("Helvetica","bold"); doc.setFontSize(9); doc.setTextColor(255,255,255);
+      doc.setFillColor(30,30,30);
+      doc.rect(marginX, y, maxW, rowH, "F");
+      headers.forEach((h,i)=>{ doc.text(h, x+8, y+rowH-6); x += colWidths[i]; });
+      y += rowH;
+      rows.forEach((r,ri)=>{
+        ensureRoom(rowH);
+        if (ri%2===1) { doc.setFillColor(245,245,245); doc.rect(marginX, y, maxW, rowH, "F"); }
+        x = marginX;
+        doc.setFont("Helvetica","normal"); doc.setFontSize(9.5); doc.setTextColor(40,40,40);
+        r.forEach((cell,i)=>{ doc.text(String(cell), x+8, y+rowH-6); x += colWidths[i]; });
+        y += rowH;
+      });
+      doc.setDrawColor(210,210,210); doc.setLineWidth(0.75);
+      doc.line(marginX, y, marginX+maxW, y);
+      y += 22;
+    };
+
+    // ── Header ──
+    mark(marginX, y, 26);
+    doc.setFont("Helvetica","bold"); doc.setFontSize(17); doc.setTextColor(20,20,20);
+    doc.text("Insights Report", pageWidth-marginX, y-2, {align:"right"});
+    y += 26;
+    doc.setFont("Helvetica","normal"); doc.setFontSize(10.5); doc.setTextColor(90,90,90);
+    doc.text(`${client.name} — ${rangeLabel} (generated ${now.toLocaleDateString()})`, pageWidth-marginX, y, {align:"right"});
+    y += 24;
+    doc.setDrawColor(30,30,30); doc.setLineWidth(1.2);
+    doc.line(marginX, y, pageWidth-marginX, y);
+    y += 26;
+
+    // ── All-platform analysis ──
+    sectionTitle("Platform Analysis");
+    if (!platformRows.length) {
+      doc.setFont("Helvetica","normal"); doc.setFontSize(10); doc.setTextColor(140,140,140);
+      doc.text("No connected platforms with published posts in this range.", marginX, y);
+      y += 24;
+    } else {
+      const colW = [110, 60, 70, 90, 70, 80];
+      drawTable(
+        ["Platform","Posts","Likes","Comments","Reach","Engagement"],
+        colW,
+        platformRows.map(r=>[platformLabelCap(r.platform), r.total, r.likes, r.comments, r.reach??"—", r.engagement])
+      );
+      const grandLikes = platformRows.reduce((a,r)=>a+r.likes,0);
+      const grandComments = platformRows.reduce((a,r)=>a+r.comments,0);
+      const grandEngagement = platformRows.reduce((a,r)=>a+r.engagement,0);
+      doc.setFont("Helvetica","bold"); doc.setFontSize(10); doc.setTextColor(20,20,20);
+      doc.text(`Totals — Likes: ${grandLikes}   Comments: ${grandComments}   Engagement: ${grandEngagement}`, marginX, y);
+      y += 26;
+    }
+
+    // ── Month-over-month campaign trend ──
+    sectionTitle("Monthly Trend (this campaign, each month vs the last)");
+    drawTable(
+      ["Month","Posts","Likes","Comments","Engagement","vs Prev. Month"],
+      [90, 55, 60, 75, 80, 100],
+      monthRows.map(m=>[m.label, m.posts, m.likes, m.comments, m.engagement, m.vsLastMonth==null?"—":`${m.vsLastMonth>0?"+":""}${m.vsLastMonth}%`])
+    );
+
+    // ── Posts insights ──
+    sectionTitle(`Top Posts by Engagement (${rangeLabel})`);
+    if (!scored.length) {
+      doc.setFont("Helvetica","normal"); doc.setFontSize(10); doc.setTextColor(140,140,140);
+      doc.text("No published posts with tracked engagement in this range.", marginX, y);
+      y += 24;
+    } else {
+      scored.forEach((p,i)=>{
+        ensureRoom(34);
+        doc.setFont("Helvetica","bold"); doc.setFontSize(10); doc.setTextColor(20,20,20);
+        const titleLine = doc.splitTextToSize(`${i+1}. ${p.title||"(Untitled post)"}`, maxW-140)[0] || "";
+        doc.text(titleLine, marginX, y);
+        doc.setFont("Helvetica","normal"); doc.setFontSize(9); doc.setTextColor(100,100,100);
+        doc.text(platformLabelCap(p.platform) + (postDate(p)?` · ${new Date(postDate(p)).toLocaleDateString()}`:""), marginX, y+13);
+        doc.setFont("Helvetica","normal"); doc.setFontSize(9.5); doc.setTextColor(40,40,40);
+        doc.text(`${p.insight_likes??0} likes · ${p.insight_comments??0} comments${p.insight_shares!=null?` · ${p.insight_shares} shares`:""}${p.insight_reach!=null?` · ${p.insight_reach} reach`:""}`, pageWidth-marginX, y+3, {align:"right"});
+        y += 24;
+        doc.setDrawColor(230,230,230); doc.setLineWidth(0.5);
+        doc.line(marginX, y-4, pageWidth-marginX, y-4);
+      });
+    }
+
+    doc.save(`${(client.name||"client").replace(/[^a-z0-9]+/gi,"-")}-insights-${rangeKey}-${now.toISOString().slice(0,10)}.pdf`);
+  } catch(e) {
+    console.error("downloadInsightsReportPDF failed:", e);
+    alert("Could not generate the PDF report. Please try again.");
+  }
+}
+function platformLabelCap(p) { return p ? p.charAt(0).toUpperCase()+p.slice(1) : ""; }
+
 function InsightsTab({client, integrations, posts}) {
   const [sub, setSub] = usePersistentState("sf_tab_insights_sub","all");
+  const [reportRange, setReportRange] = useState("last_month"); // last_month|90d
+  const [downloadingReport, setDownloadingReport] = useState(false);
   const activeIntegrations = (integrations||[]).filter(i=>i.status==="active" && (!i.client_id||i.client_id===client.id));
   const connectedPlatforms = [...new Set(activeIntegrations.map(i=>i.app_key))].filter(p=>["facebook","instagram","tiktok","linkedin","twitter"].includes(p));
   const isMetaPlatform = p => ["facebook","instagram"].includes(p);
@@ -16271,14 +16453,32 @@ function InsightsTab({client, integrations, posts}) {
   ];
   useEffect(()=>{ if(!subTabs.some(([k])=>k===sub)) setSub("all"); },[connectedPlatforms.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const handleDownloadReport = async () => {
+    setDownloadingReport(true);
+    try { await downloadInsightsReportPDF(client, posts, connectedPlatforms, reportRange); }
+    finally { setDownloadingReport(false); }
+  };
+
   return (
     <div style={{display:"flex",flexDirection:"column",gap:16}} className="fade-in">
-      <div style={{display:"flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",width:"fit-content",flexWrap:"wrap"}}>
-        {subTabs.map(([k,label])=>(
-          <button key={k} onClick={()=>setSub(k)} style={{padding:"7px 16px",borderRadius:99,background:sub===k?"var(--accent)":"none",color:sub===k?"#fff":"var(--text2)",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
-            {label}
-          </button>
-        ))}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+        <div style={{display:"flex",gap:2,background:"var(--surface2)",padding:3,borderRadius:99,border:"1px solid var(--border2)",width:"fit-content",flexWrap:"wrap"}}>
+          {subTabs.map(([k,label])=>(
+            <button key={k} onClick={()=>setSub(k)} style={{padding:"7px 16px",borderRadius:99,background:sub===k?"var(--accent)":"none",color:sub===k?"#fff":"var(--text2)",border:"none",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <select value={reportRange} onChange={e=>setReportRange(e.target.value)}
+            style={{height:36,padding:"0 10px",borderRadius:"var(--rs)",border:"1px solid var(--border)",background:"var(--surface)",color:"var(--text1)",fontSize:13,fontWeight:600}}>
+            <option value="last_month">Last Month</option>
+            <option value="90d">Last 90 Days</option>
+          </select>
+          <Btn onClick={handleDownloadReport} disabled={downloadingReport}>
+            {downloadingReport ? <><Spinner size={14}/> Generating…</> : <><Ico d={Icons.download||Icons.receipt} size={15}/> Download PDF Report</>}
+          </Btn>
+        </div>
       </div>
       {sub==="all" && <AllPlatformsSummaryTab posts={posts} connectedPlatforms={connectedPlatforms} onSelectPlatform={setSub}/>}
       {connectedPlatforms.includes(sub) && isMetaPlatform(sub) && <MetaInsightsTab key={sub} client={client} integrations={integrations} platformFilter={sub}/>}
