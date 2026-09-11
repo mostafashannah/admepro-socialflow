@@ -71,7 +71,10 @@ function notifyAdminOfAiOutage(string $provider, string $rawErrorBody) {
     try {
         $pdo = new PDO('mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4', DB_USER, DB_PASS, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
         $admins = $pdo->query("SELECT whatsapp_number FROM team_members WHERE role = 'admin' AND status = 'active' AND whatsapp_number IS NOT NULL AND whatsapp_number != ''")->fetchAll(PDO::FETCH_COLUMN);
-        $msg = "⚠️ {$provider} API is failing — likely out of credits/quota:\n\n{$snippet}\n\nPro, chat, captions, and other AI features across SocialFlow are affected until this is fixed. A warning banner is now showing on the Dashboard too.";
+        $billingUrl = stripos($provider, 'openai') !== false
+            ? 'https://platform.openai.com/settings/organization/billing/overview'
+            : 'https://console.anthropic.com/settings/billing';
+        $msg = "⚠️ {$provider} API is failing — likely out of credits/quota:\n\n{$snippet}\n\nPro, chat, captions, and other AI features across SocialFlow are affected until this is fixed. A warning banner is now showing on the Dashboard too.\n\nAdd credit: {$billingUrl}";
         if (!defined('WA_PHONE_ID') || !defined('WA_ACCESS_TOKEN') || !WA_PHONE_ID || !WA_ACCESS_TOKEN) return;
         foreach ($admins as $waNumber) {
             $to = preg_replace('/[\s\-\(\)]+/', '', $waNumber);
