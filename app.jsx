@@ -40279,12 +40279,25 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
     window.addEventListener("popstate", onPop);
     return ()=>window.removeEventListener("popstate", onPop);
   },[]);
+  // Remember how far down the applications list was scrolled before opening
+  // a detail view, and restore it once we're back — otherwise every visit
+  // to an application snaps the list back to the top, which is a pain when
+  // reviewing candidates one after another further down a long list.
+  const listScrollRef = React.useRef(0);
+  useEffect(()=>{
+    if(!selectedApp && !selectedGroup){
+      requestAnimationFrame(()=>{
+        try{ const el=document.getElementById("main-content"); if(el) el.scrollTop = listScrollRef.current; }catch(e){}
+      });
+    }
+  },[selectedApp, selectedGroup]);
+  const saveListScroll = () => { try{ const el=document.getElementById("main-content"); if(el) listScrollRef.current = el.scrollTop; }catch(e){} };
   // Which application is open survives a hard refresh too, not just
   // in-app navigation — the id is all that's stored (the actual record
   // is looked up once applications finish loading, right below).
-  const openApp = (a) => { try{ window.history.pushState({recruitmentApp:a.id}, ""); localStorage.setItem("sf_recruitment_open_app",a.id); }catch(e){} setSelectedApp(a); };
+  const openApp = (a) => { saveListScroll(); try{ window.history.pushState({recruitmentApp:a.id}, ""); localStorage.setItem("sf_recruitment_open_app",a.id); }catch(e){} setSelectedApp(a); };
   const closeApp = () => { try{ localStorage.removeItem("sf_recruitment_open_app"); }catch(e){} window.history.back(); };
-  const openGroup = (group) => { try{ window.history.pushState({recruitmentGroup:true}, ""); }catch(e){} setSelectedGroup(group); };
+  const openGroup = (group) => { saveListScroll(); try{ window.history.pushState({recruitmentGroup:true}, ""); }catch(e){} setSelectedGroup(group); };
   const closeGroup = () => { window.history.back(); };
 
   const [activityLogs, setActivityLogs] = useState([]);
