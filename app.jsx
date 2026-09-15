@@ -39214,11 +39214,24 @@ Return ONLY the rewritten brief text — no markdown headers, no explanation, no
     setUploading(false);
   };
 
+  const taskSubmitUrl = application.task_token ? window.location.origin + "/careers/task?token=" + application.task_token : null;
+  const taskQr = application.task_sent_at && application.candidate_phone && taskSubmitUrl && waQrUrl(application.candidate_phone,
+    `Hi ${application.candidate_name||"there"}, this is Admepro — we've just sent you a task for the ${application.job_title||"role"} role. You can view and submit it here: ${taskSubmitUrl}`
+  );
+
   return (
     <div style={{marginBottom:14,padding:14,background:"var(--surface2)",borderRadius:10,border:"1px solid var(--border)"}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-        <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Task / Test Assignment</p>
-        {application.task_sent_at && <span style={{fontSize:11,fontWeight:700,color:"#10b981"}}>Sent {fmtDateTime(application.task_sent_at)}</span>}
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12,marginBottom:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+          <p style={{fontSize:11,fontWeight:800,color:"var(--text3)",letterSpacing:"0.06em",textTransform:"uppercase"}}>Task / Test Assignment</p>
+          {application.task_sent_at && <span style={{fontSize:11,fontWeight:700,color:"#10b981"}}>Sent {fmtDateTime(application.task_sent_at)}</span>}
+        </div>
+        {taskQr&&(
+          <div style={{textAlign:"center",padding:8,background:"var(--surface)",borderRadius:10,border:"1px solid var(--border2)",flexShrink:0}}>
+            <img src={taskQr} alt="Task WhatsApp notification QR" width={90} height={90} style={{display:"block",borderRadius:6}}/>
+            <p style={{fontSize:9,fontWeight:700,color:"var(--text3)",marginTop:4,maxWidth:90}}>Scan to notify by WhatsApp</p>
+          </div>
+        )}
       </div>
       {application.task_sent_at && application.task_due_date && (
         <p style={{fontSize:12,color:"var(--text2)",marginBottom:10}}>Due {fmtDate(application.task_due_date)}</p>
