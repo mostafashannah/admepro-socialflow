@@ -24484,6 +24484,8 @@ function offerSentEmail(candidateName, form, offerUrl) {
       ${offerRow("Probation period", `${form.probation_months||0} month(s)`)}
       ${offerRow("Salary after probation", form.post_probation_salary||"—")}
       ${offerRow("Start date", form.start_date?fmtDate(form.start_date):"—")}
+      ${offerRow("Employment type", form.employment_type==="part_time"?"Part-time":"Full-time")}
+      ${offerRow("Work arrangement", form.work_arrangement==="hybrid"?"Hybrid":"On-site")}
       ${offerRow("Annual vacation", `${form.vacation_days_annual||0} days/year`)}
       ${offerRow("Work from home", `${form.wfh_days_monthly||0} days/month`)}
     </table>
@@ -24912,6 +24914,8 @@ function OfferResponsePage({token}) {
           <div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Probation period</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_probation_months||0} month(s)</strong></div>
           <div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Salary after probation</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_post_probation_salary||"—"}</strong></div>
           <div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Start date</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_start_date?fmtDate(application.offer_start_date):"—"}</strong></div>
+          {application.offer_employment_type&&<div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Employment type</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_employment_type==="part_time"?"Part-time":"Full-time"}</strong></div>}
+          {application.offer_work_arrangement&&<div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Work arrangement</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_work_arrangement==="hybrid"?"Hybrid":"On-site"}</strong></div>}
           <div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Annual vacation</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_vacation_days_annual||0} days/year</strong></div>
           <div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Work from home</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_wfh_days_monthly||0} days/month</strong></div>
           {application.offer_laptop_provided&&<div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Laptop</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_laptop_provided==="company"?"Company-provided":"Personal laptop"}</strong></div>}
@@ -29428,7 +29432,7 @@ const SYSTEM_EMAIL_SAMPLES = [
   { group:"Recruitment", key:"interviewProposed", label:"Interview Times Proposed", build:()=>interviewProposedEmail("Nourhan Adel","Content Creator",["2026-07-27T13:00:00","2026-07-28T15:30:00"],"https://socialflow.admepro.com/careers/interview?token=sample",false,"") },
   { group:"Recruitment", key:"interviewRescheduled", label:"Interview Rescheduled", build:()=>interviewProposedEmail("Nourhan Adel","Content Creator",["2026-08-02T13:00:00","2026-08-03T15:30:00"],"https://socialflow.admepro.com/careers/interview?token=sample",true,"Jul 27 at 1:00 PM") },
   { group:"Recruitment", key:"interviewConfirmed", label:"Interview Confirmed", build:()=>interviewConfirmedEmail("Nourhan Adel","Content Creator","Jul 27 at 1:00 PM") },
-  { group:"Recruitment", key:"offerSent", label:"Job Offer", build:()=>offerSentEmail("Nourhan Adel",{title:"Content Creator",salary:"12,000 EGP",probation_months:"3",post_probation_salary:"15,000 EGP",start_date:"2026-08-15",vacation_days_annual:"21",wfh_days_monthly:"4",laptop_provided:"company",notes:""},"https://socialflow.admepro.com/careers/offer?token=sample") },
+  { group:"Recruitment", key:"offerSent", label:"Job Offer", build:()=>offerSentEmail("Nourhan Adel",{title:"Content Creator",salary:"12,000 EGP",probation_months:"3",post_probation_salary:"15,000 EGP",start_date:"2026-08-15",employment_type:"full_time",work_arrangement:"hybrid",vacation_days_annual:"21",wfh_days_monthly:"4",laptop_provided:"company",notes:""},"https://socialflow.admepro.com/careers/offer?token=sample") },
   { group:"Recruitment", key:"taskAssignment", label:"Task Assignment", build:()=>taskAssignmentEmail("Nourhan Adel","Content Creator","Write a 100-word Instagram caption for a fictional skincare brand launch, in a warm and inspirational tone.","Jul 30",[{url:"#",name:"brand-brief.pdf"}],"https://socialflow.admepro.com/careers/task?token=sample") },
   { group:"Recruitment", key:"hiredWelcome", label:"Hired Welcome & Policy", build:()=>hiredWelcomeEmail("Nourhan Adel","Content Creator","company","https://socialflow.admepro.com/careers/onboarding?token=sample") },
 ];
@@ -39030,6 +39034,8 @@ function OfferSection({application, opening, onSave, saving, onSend, sending, on
     laptop_provided: application.offer_laptop_provided || "",
     vacation_days_annual: application.offer_vacation_days_annual ?? 15,
     wfh_days_monthly: application.offer_wfh_days_monthly ?? 2,
+    employment_type: application.offer_employment_type || "full_time",
+    work_arrangement: application.offer_work_arrangement || "on_site",
     notes: application.offer_notes || "",
   });
   const sf = (k,v) => setForm(p=>({...p,[k]:v}));
@@ -39089,6 +39095,20 @@ function OfferSection({application, opening, onSave, saving, onSend, sending, on
         </div>
         <Field label="Salary After Probation"><input value={form.post_probation_salary} onChange={e=>sf("post_probation_salary",e.target.value)} placeholder="e.g. 10,000 EGP" style={inputSt}/></Field>
         <Field label="Start Date"><input type="date" value={form.start_date} onChange={e=>sf("start_date",e.target.value)} style={inputSt}/></Field>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <Field label="Employment Type">
+            <select value={form.employment_type} onChange={e=>sf("employment_type",e.target.value)} style={inputSt}>
+              <option value="full_time">Full-time</option>
+              <option value="part_time">Part-time</option>
+            </select>
+          </Field>
+          <Field label="Work Arrangement">
+            <select value={form.work_arrangement} onChange={e=>sf("work_arrangement",e.target.value)} style={inputSt}>
+              <option value="on_site">On-site</option>
+              <option value="hybrid">Hybrid</option>
+            </select>
+          </Field>
+        </div>
         <Field label="Laptop">
           <select value={form.laptop_provided} onChange={e=>sf("laptop_provided",e.target.value)} style={inputSt}>
             <option value="">— Not set —</option>
@@ -40529,6 +40549,8 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
     offer_laptop_provided: form.laptop_provided||null,
     offer_vacation_days_annual: form.vacation_days_annual===""?null:Number(form.vacation_days_annual),
     offer_wfh_days_monthly: form.wfh_days_monthly===""?null:Number(form.wfh_days_monthly),
+    offer_employment_type: form.employment_type||null,
+    offer_work_arrangement: form.work_arrangement||null,
     offer_notes: form.notes||null,
   });
   const handleSaveOffer = async (app, form) => {
