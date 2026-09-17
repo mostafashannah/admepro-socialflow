@@ -928,10 +928,18 @@ function recruitmentTools() {
 }
 
 function findJobApplication(PDO $pdo, string $query) {
+    // Arabic names transliterated into English are spaced inconsistently
+    // by whoever typed them ("Salma Abuheiba" vs "Salma Abu Heiba") — a
+    // literal substring match on the name exactly as asked would miss a
+    // real record over nothing but a missing/extra space, reporting
+    // "no candidate by that name at all" when the candidate is right
+    // there under a slightly different spacing. Stripping all spaces
+    // from both the stored name and the query before comparing makes
+    // the match robust to that without needing an exact phrase.
     // Native (non-emulated) prepares don't allow reusing the same named
     // placeholder twice in one query — needs a distinct one per occurrence.
-    $stmt = $pdo->prepare("SELECT * FROM job_applications WHERE candidate_name LIKE :q1 OR candidate_email LIKE :q2 ORDER BY created_at DESC LIMIT 5");
-    $stmt->execute([':q1' => '%' . $query . '%', ':q2' => '%' . $query . '%']);
+    $stmt = $pdo->prepare("SELECT * FROM job_applications WHERE REPLACE(candidate_name, ' ', '') LIKE :q1 OR candidate_email LIKE :q2 ORDER BY created_at DESC LIMIT 5");
+    $stmt->execute([':q1' => '%' . str_replace(' ', '', $query) . '%', ':q2' => '%' . $query . '%']);
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
@@ -945,7 +953,7 @@ function runRecruitmentTool(PDO $pdo, string $name, array $input, string $sender
         $params = [];
         if (!empty($input['status']))    { $sql .= " AND status = :s";     $params[':s'] = $input['status']; }
         if (!empty($input['job_title'])) { $sql .= " AND job_title LIKE :j"; $params[':j'] = '%' . $input['job_title'] . '%'; }
-        if (!empty($input['name']))      { $sql .= " AND candidate_name LIKE :n"; $params[':n'] = '%' . $input['name'] . '%'; }
+        if (!empty($input['name']))      { $sql .= " AND REPLACE(candidate_name, ' ', '') LIKE :n"; $params[':n'] = '%' . str_replace(' ', '', $input['name']) . '%'; }
         if (!empty($input['has_confirmed_interview'])) { $sql .= " AND interview_confirmed_slot IS NOT NULL AND interview_confirmed_slot <> ''"; }
         $sql .= " ORDER BY created_at DESC LIMIT 25";
         $stmt = $pdo->prepare($sql);
