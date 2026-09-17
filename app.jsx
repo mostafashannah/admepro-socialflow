@@ -38897,11 +38897,29 @@ function slotAt(workingDaysAhead, hh, mm=0) {
   d.setHours(hh, mm, 0, 0);
   return fmtDateTime(d.toISOString());
 }
-function slotRange(workingDaysAhead, startHh, endHh) {
+// A whole-day/window slot ("1pm-6pm, any time works") used to be stored
+// as ONE vague text string — the candidate had no actual fixed time to
+// commit to, and that free-text label (65+ chars) turned out to be longer
+// than the DB column could even hold, so confirming it silently failed to
+// save (see migration-widen-interview-slot-columns.sql). Instead, spread
+// the window into `count` concrete times the candidate can pick a REAL
+// fixed slot from, same as any other proposed time.
+function slotRange(workingDaysAhead, startHh, endHh, count=5) {
   const d = addWorkingDays(new Date(), workingDaysAhead);
-  const dateLabel = d.toLocaleDateString("en-US", {weekday:"long", month:"short", day:"numeric"});
-  const fmtHh = (h) => `${h>12?h-12:h}:00 ${h>=12?"PM":"AM"}`;
-  return `${dateLabel}, ${fmtHh(startHh)}–${fmtHh(endHh)} (any time in this window works)`;
+  const totalMin = (endHh - startHh) * 60;
+  const segMin = totalMin / count;
+  const slots = [];
+  for (let i=0; i<count; i++) {
+    // Midpoint of each equal segment of the window, rounded to the
+    // nearest 5 minutes so times read naturally (1:30, 2:25, ...)
+    // instead of landing on an oddly precise minute.
+    const offsetMin = Math.round((segMin*i + segMin/2) / 5) * 5;
+    const dt = new Date(d);
+    dt.setHours(startHh, 0, 0, 0);
+    dt.setMinutes(dt.getMinutes() + offsetMin);
+    slots.push(fmtDateTime(dt.toISOString()));
+  }
+  return slots;
 }
 // Quick-pick patterns covering the most common ways this agency proposes
 // interview times — saves retyping the same handful of slot combinations
@@ -38909,8 +38927,8 @@ function slotRange(workingDaysAhead, startHh, endHh) {
 const INTERVIEW_SLOT_TEMPLATES = [
   {label:"Next working day (1pm & 5:30pm) or day after (2pm)", build:()=>[slotAt(1,13,0), slotAt(1,17,30), slotAt(2,14,0)]},
   {label:"Next 3 working days at 1pm", build:()=>[slotAt(1,13,0), slotAt(2,13,0), slotAt(3,13,0)]},
-  {label:"Next working day, 1pm–6pm (any time)", build:()=>[slotRange(1,13,18)]},
-  {label:"Working day after next, 1pm–6pm (any time)", build:()=>[slotRange(2,13,18)]},
+  {label:"Next working day, 1pm–6pm (5 times across the window)", build:()=>slotRange(1,13,18)},
+  {label:"Working day after next, 1pm–6pm (5 times across the window)", build:()=>slotRange(2,13,18)},
 ];
 
 function InterviewSchedulingSection({application, onSendTimes, sending, onConfirm, confirming, onUpdateStatus}) {
