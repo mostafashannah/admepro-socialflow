@@ -24748,7 +24748,8 @@ function InterviewSchedulingPage({token}) {
       const patch = suggesting
         ? {interview_candidate_note: suggestion.trim(), interview_selected_slot: null}
         : {interview_selected_slot: selectedSlot, interview_candidate_note: null, interview_confirmed_slot: selectedSlot, status: "interview"};
-      await ue("JobApplication", application.id, patch);
+      const saved = await ue("JobApplication", application.id, patch);
+      if (!saved) { alert("Something went wrong saving your response. Please try again."); setSubmitting(false); return; }
       logApplicationActivity(application.id, suggesting ? "Candidate suggested a different interview time" : `Interview confirmed — candidate picked: ${fmtDateOrText(selectedSlot)}`, application.candidate_name||"Candidate");
       notifyRecruitmentUpdate(
         suggesting
@@ -40520,9 +40521,14 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
   const handleConfirmInterview = async (app, slot) => {
     setConfirmingInterviewId(app.id);
     const patch = {interview_confirmed_slot: slot, status: "interview"};
+    const saved = await ue("JobApplication", app.id, patch);
+    if (!saved) {
+      alert("Couldn't save the confirmed interview time — please try again.");
+      setConfirmingInterviewId(null);
+      return;
+    }
     setApplications(prev=>prev.map(a=>a.id===app.id?{...a,...patch}:a));
     setSelectedApp(prev=>prev&&prev.id===app.id?{...prev,...patch}:prev);
-    await ue("JobApplication", app.id, patch).catch(()=>{});
     const slotLabel = fmtDateOrText(slot);
     logActivity(app.id, `Interview confirmed — ${slotLabel}`);
     // The public candidate-facing scheduling page notifies staff on
