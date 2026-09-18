@@ -25600,6 +25600,12 @@ function CareersPage({appSettings}) {
   };
 
   const EMPLOYMENT_LABELS = {full_time:"Full-time", part_time:"Part-time", contract:"Contract", internship:"Internship"};
+  const [deptFilter, setDeptFilter] = useState("all");
+  // Real departments only, in first-seen order — so the filter row always
+  // matches whatever's actually posted instead of a hardcoded list going
+  // stale the moment a new department starts hiring.
+  const departments = [...new Set(openings.map(o=>o.department).filter(Boolean))];
+  const filteredOpenings = deptFilter==="all" ? openings : openings.filter(o=>o.department===deptFilter);
 
   if(loading) return <CareersChrome isDark={isDark} setIsDark={setIsDark}><div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",color:"var(--text2)"}}>Loading openings…</div></CareersChrome>;
 
@@ -25626,8 +25632,21 @@ function CareersPage({appSettings}) {
         {openings.length===0 ? (
           <div style={{textAlign:"center",padding:60,color:"var(--text3)"}}>No open positions right now — check back soon!</div>
         ) : (
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:20,marginTop:50,marginBottom:50}}>
-            {openings.map(o=>(
+          <>
+          {departments.length>1&&(
+            <div style={{display:"flex",justifyContent:"center",flexWrap:"wrap",gap:8,marginTop:40}}>
+              {["all",...departments].map(d=>(
+                <button key={d} onClick={()=>setDeptFilter(d)} style={{padding:"9px 18px",borderRadius:99,border:`1px solid ${deptFilter===d?"var(--accent)":"var(--border)"}`,background:deptFilter===d?"var(--accent)":"var(--surface2)",color:deptFilter===d?"#fff":"var(--text2)",fontSize:13,fontWeight:700,cursor:"pointer",transition:"background 0.15s,color 0.15s"}}>
+                  {d==="all"?`All (${openings.length})`:`${d} (${openings.filter(o=>o.department===d).length})`}
+                </button>
+              ))}
+            </div>
+          )}
+          {filteredOpenings.length===0 ? (
+            <div style={{textAlign:"center",padding:60,color:"var(--text3)"}}>No open positions in this department right now.</div>
+          ) : (
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:20,marginTop:30,marginBottom:50}}>
+            {filteredOpenings.map(o=>(
               <div key={o.id} onClick={()=>openJob(o)}
                 onMouseEnter={e=>{e.currentTarget.style.filter = isDark?"brightness(0.82)":"brightness(1.06)";}}
                 onMouseLeave={e=>{e.currentTarget.style.filter = "none";}}
@@ -25644,6 +25663,8 @@ function CareersPage({appSettings}) {
               </div>
             ))}
           </div>
+          )}
+          </>
         )}
       </div>
     </div>
