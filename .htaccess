@@ -6,6 +6,15 @@ RewriteEngine On
 # through to the app.
 RewriteRule ^features/?$ features.html [L]
 
+# Public careers/job-openings page — server-rendered (real HTML + per-job
+# JobPosting structured data) instead of falling through to the SPA's
+# index.html, so job search engines and AI agents/crawlers that don't run
+# JavaScript can actually read the open positions. Anchored so it only
+# matches the bare /careers list — /careers/complete, /careers/interview,
+# /careers/task, /careers/offer, /careers/onboarding (the token-based SPA
+# flows) fall through to the catch-all below exactly as before.
+RewriteRule ^careers/?$ careers.php [QSA,L]
+
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ index.html [QSA,L]

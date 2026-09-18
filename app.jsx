@@ -25491,8 +25491,18 @@ function CareersPage({appSettings}) {
 
   useEffect(()=>{
     qe("JobOpening",{status:"open"},"-created_date",100).then(res=>{
-      setOpenings(res.entities||[]);
+      const list = res.entities||[];
+      setOpenings(list);
       setLoading(false);
+      // Deep link from the server-rendered careers.php ("Apply for this
+      // role" -> /careers?opening=<id>) — jump straight to that job's
+      // application form once the list loads, instead of landing on the
+      // plain openings list and making the visitor find it again.
+      try {
+        const openingId = new URLSearchParams(window.location.search).get("opening");
+        const match = openingId && list.find(o=>o.id===openingId);
+        if(match) setSelected(match);
+      } catch(e) {}
     }).catch(()=>setLoading(false));
   },[]);
 
