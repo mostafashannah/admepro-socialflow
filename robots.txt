@@ -1,6 +1,7 @@
 User-agent: *
 Allow: /features
 Allow: /careers
+Allow: /sitemap.xml
 Disallow: /
 
 Sitemap: https://socialflow.admepro.com/sitemap.xml
