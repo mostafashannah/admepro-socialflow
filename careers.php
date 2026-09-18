@@ -54,7 +54,7 @@ function careersPlainText(?string $html): string {
 $count = count($openings);
 $titles = array_map(fn($o) => $o['title'], $openings);
 $pageTitle = $count > 0
-    ? 'Careers at Admepro — ' . $count . ' Open Position' . ($count === 1 ? '' : 's') . ' | ' . htmlspecialchars(implode(', ', array_slice($titles, 0, 3)))
+    ? 'Careers at Admepro — ' . $count . ' Open Position' . ($count === 1 ? '' : 's') . ' | ' . implode(', ', array_slice($titles, 0, 3))
     : 'Careers at Admepro — Job Openings';
 $pageDescription = $count > 0
     ? 'Admepro is hiring: ' . implode(', ', array_slice($titles, 0, 6)) . ($count > 6 ? ', and more' : '') . '. Apply directly online — see full role descriptions, requirements, and how to apply.'
