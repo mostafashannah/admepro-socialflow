@@ -1563,7 +1563,7 @@ function runProTool(PDO $pdo, string $name, array $input, string $senderRole = '
         return runRecruitmentTool($pdo, $name, $input, $senderRole, $senderName);
     }
     $isAdmin = $senderRole === 'team:admin';
-    $isAM    = in_array($senderRole, ['team:account_manager','team:account_director'], true);
+    $isAM    = in_array($senderRole, ['team:account_manager','team:account_director','team:account_executive'], true);
 
     if ($name === 'ask_ai_teammate') {
         return askAiTeammate($pdo, $input['agent'] ?? '', $input['question'] ?? '', $input['client_name'] ?? null);
@@ -1904,7 +1904,7 @@ function askPro(PDO $pdo, $senderName, $senderRole, $contextBlock, $userText, $s
 
     $isTeam       = $senderName && str_starts_with((string)$senderRole, 'team:');
     $isAdmin      = $senderRole === 'team:admin';
-    $isAM         = in_array($senderRole, ['team:account_manager','team:account_director'], true);
+    $isAM         = in_array($senderRole, ['team:account_manager','team:account_director','team:account_executive'], true);
     $isAccountant = $senderRole === 'team:accountant';
 
     if (!$senderName) {

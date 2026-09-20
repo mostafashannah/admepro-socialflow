@@ -138,19 +138,29 @@ if ($actionType === 'createCard') {
     // submitting a request through the Client Portal (see addPost() in
     // app.jsx) — lands straight on their plate instead of sitting unowned,
     // and gives someone real to WhatsApp below.
+    // A client can have any mix of the three account-management levels
+    // tagged (Account Director, Account Manager, Account Executive) — all
+    // of them get WhatsApp-notified below, but the actual task owner
+    // (assigned_to) should default to whichever one holds the plain
+    // "account_manager" role specifically, since that's the day-to-day
+    // owner of the account; a Director/Executive only becomes the
+    // fallback owner when no plain Account Manager is tagged at all.
     $assignedTo = null;
+    $fallbackAssignedTo = null;
     $amRecipients = [];
     $clientRow = $pdo->prepare("SELECT account_manager_id FROM clients WHERE id = :cid LIMIT 1");
     $clientRow->execute([':cid' => $integ['client_id']]);
     $amIds = json_decode($clientRow->fetchColumn() ?: '[]', true) ?: [];
     foreach ($amIds as $amId) {
-        $am = $pdo->prepare("SELECT email, name, whatsapp_number FROM team_members WHERE id = :id AND status = 'active' LIMIT 1");
+        $am = $pdo->prepare("SELECT email, name, role, whatsapp_number FROM team_members WHERE id = :id AND status = 'active' LIMIT 1");
         $am->execute([':id' => $amId]);
         if ($row = $am->fetch(PDO::FETCH_ASSOC)) {
-            if (!$assignedTo) $assignedTo = $row['email'];
+            if ($row['role'] === 'account_manager' && !$assignedTo) $assignedTo = $row['email'];
+            if (!$fallbackAssignedTo) $fallbackAssignedTo = $row['email'];
             $amRecipients[] = $row;
         }
     }
+    if (!$assignedTo) $assignedTo = $fallbackAssignedTo;
 
     // post_type left as a generic, non-social value on purpose — the app
     // treats any post with no platform AND a post_type outside
