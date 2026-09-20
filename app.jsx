@@ -8902,7 +8902,7 @@ function AddClientModal({open,onClose,onAdd,team=[]}) {
             {accountManagers.length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>No account managers on the team yet.</p>}
             {accountManagers.map(m=>(
               <button key={m.id} onClick={()=>toggleAM(m.id)} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",border:"none",background:f.account_manager_ids.includes(m.id)?"var(--accent)":"var(--surface2)",color:f.account_manager_ids.includes(m.id)?"#fff":"var(--text2)",outline:f.account_manager_ids.includes(m.id)?"none":"1px solid var(--border2)"}}>
-                {m.name}
+                {m.name}{m.role&&ROLES[m.role]?` (${ROLES[m.role].label})`:""}
               </button>
             ))}
           </div>
@@ -12399,7 +12399,7 @@ function EditClientPage({client,onBack,onSave,canDelete,onRequestDelete,team=[]}
             {accountManagers.length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>No account managers on the team yet.</p>}
             {accountManagers.map(m=>(
               <button key={m.id} onClick={()=>toggleAM(m.id)} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",border:"none",background:f.account_manager_ids.includes(m.id)?"var(--accent)":"var(--surface2)",color:f.account_manager_ids.includes(m.id)?"#fff":"var(--text2)",outline:f.account_manager_ids.includes(m.id)?"none":"1px solid var(--border2)"}}>
-                {m.name}
+                {m.name}{m.role&&ROLES[m.role]?` (${ROLES[m.role].label})`:""}
               </button>
             ))}
           </div>
@@ -34108,7 +34108,7 @@ function AccountManagerModal({client, team, onSave, onClose}) {
             {accountManagers.length===0&&<p style={{fontSize:12,color:"var(--text3)"}}>No account managers on the team yet.</p>}
             {accountManagers.map(m=>(
               <button key={m.id} onClick={()=>toggleAM(m.id)} style={{padding:"4px 12px",borderRadius:20,fontSize:12,fontWeight:600,cursor:"pointer",border:"none",background:selectedIds.includes(m.id)?"var(--accent)":"var(--surface2)",color:selectedIds.includes(m.id)?"#fff":"var(--text2)",outline:selectedIds.includes(m.id)?"none":"1px solid var(--border2)"}}>
-                {m.name}
+                {m.name}{m.role&&ROLES[m.role]?` (${ROLES[m.role].label})`:""}
               </button>
             ))}
           </div>
