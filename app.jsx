@@ -8765,7 +8765,7 @@ function AddClientModal({open,onClose,onAdd,team=[]}) {
   const sSocial = (k,v) => setF(p=>({...p,social:{...p.social,[k]:v}}));
   const togglePlt = p => s("platforms",f.platforms.includes(p)?f.platforms.filter(x=>x!==p):[...f.platforms,p]);
   const toggleAM = id => s("account_manager_ids",f.account_manager_ids.includes(id)?f.account_manager_ids.filter(v=>v!==id):[...f.account_manager_ids,id]);
-  const accountManagers = team.filter(t=>["account_manager","account_director","account_executive"].includes(t.role));
+  const accountManagers = team.filter(t=>["account_manager","account_director","account_executive"].includes(t.role) && t.status!=="inactive");
   const reset = () => { setF(blankForm); setDone(false); };
   const handleLogoUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -12305,7 +12305,7 @@ function EditClientPage({client,onBack,onSave,canDelete,onRequestDelete,team=[]}
   const [uploadingLogo,setUploadingLogo] = useState(false);
   const PLATFORMS = ["instagram","facebook","tiktok","twitter","linkedin","youtube"];
   const togglePlat = p => setF(x=>({...x,platforms:x.platforms.includes(p)?x.platforms.filter(v=>v!==p):[...x.platforms,p]}));
-  const accountManagers = team.filter(t=>["account_manager","account_director","account_executive"].includes(t.role));
+  const accountManagers = team.filter(t=>["account_manager","account_director","account_executive"].includes(t.role) && t.status!=="inactive");
   const toggleAM = id => setF(x=>({...x,account_manager_ids:x.account_manager_ids.includes(id)?x.account_manager_ids.filter(v=>v!==id):[...x.account_manager_ids,id]}));
   const handleLogoUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -34082,7 +34082,7 @@ function CategoryDetail({categoryKey,ledger,onBack,onOpenTransaction}) {
 // client's payments, paid out on a monthly or quarterly cycle. A client can
 // have more than one account manager, each with their own commission terms.
 function AccountManagerModal({client, team, onSave, onClose}) {
-  const accountManagers = (team||[]).filter(t=>["account_manager","account_director","account_executive","admin"].includes(t.role));
+  const accountManagers = (team||[]).filter(t=>["account_manager","account_director","account_executive","admin"].includes(t.role) && t.status!=="inactive");
   const [selectedIds, setSelectedIds] = useState(getAccountManagerIds(client));
   const [commissions, setCommissions] = useState(getAccountManagerCommissions(client));
   const [saving, setSaving] = useState(false);
