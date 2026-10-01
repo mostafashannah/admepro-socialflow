@@ -41056,6 +41056,12 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
         salary: makeTeamMemberApp.offer_post_probation_salary||"",
         probation_salary: makeTeamMemberApp.offer_salary||"",
         probation_months: makeTeamMemberApp.offer_probation_months??"",
+        whatsapp_number: makeTeamMemberApp.candidate_phone||"",
+        vacation_days_total: makeTeamMemberApp.offer_vacation_days_annual??21,
+        wfh_days_total: makeTeamMemberApp.offer_wfh_days_monthly??2,
+        id_photo_front_url: makeTeamMemberApp.onboarding_id_front_url||"",
+        id_photo_back_url: makeTeamMemberApp.onboarding_id_back_url||"",
+        avatar_url: makeTeamMemberApp.onboarding_photo_url||"",
         source_application_id: makeTeamMemberApp.id,
       }}
     />
@@ -48202,7 +48208,24 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
       if(dupe) {
         await updateTeamMember(dupe.id, {status:"active", password:tempPass});
       } else {
-        const res = await ce("TeamMember",[{name:inv.name||inv.email.split("@")[0], email:inv.email, role:inv.role, status:"active", password:tempPass}]).catch(()=>null);
+        // Every other field the invite form collected (title, phone,
+        // manager, salary/probation terms, vacation/WFH/personal-leave
+        // allowances, ID photos pulled from the application) used to be
+        // silently dropped here — only name/email/role/status/password
+        // ever made it into the real team_members row, so activating a
+        // hire immediately instead of waiting for them to accept their
+        // own invite lost everything the admin had just filled in.
+        const res = await ce("TeamMember",[{
+          name:inv.name||inv.email.split("@")[0], email:inv.email, role:inv.role, status:"active", password:tempPass,
+          title:inv.title||"", whatsapp_number:inv.whatsapp_number||"", manager_id:inv.manager_id||"",
+          salary:inv.salary===""||inv.salary==null?null:inv.salary,
+          probation_salary:inv.probation_salary===""||inv.probation_salary==null?null:inv.probation_salary,
+          probation_months:inv.probation_months===""||inv.probation_months==null?null:inv.probation_months,
+          vacation_days_total:inv.vacation_days_total??21, wfh_days_total:inv.wfh_days_total??2,
+          personal_leave_hours_total:inv.personal_leave_hours_total??4,
+          id_photo_front_url:inv.id_photo_front_url||"", id_photo_back_url:inv.id_photo_back_url||"",
+          avatar_url:inv.avatar_url||"", source_application_id:inv.source_application_id||"",
+        }]).catch(()=>null);
         const real = res?.entities?.[0];
         if(real?.id) setData(d=>({...d, team:[real,...(d.team||[])]}));
       }
