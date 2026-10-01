@@ -21922,7 +21922,7 @@ function EditMemberModal({member, team, canEditSalary, onSave, onClose}) {
   const [showPass, setShowPass] = useState(false);
   const s = (k,v) => setF(p=>({...p,[k]:v}));
   const toggleWorkDay = (day) => setF(p=>({...p,work_days: p.work_days.includes(day) ? p.work_days.filter(d=>d!==day) : [...p.work_days,day].sort()}));
-  const managers = (team||[]).filter(t=>t.id!==member.id && t.role!=="client");
+  const managers = (team||[]).filter(t=>t.id!==member.id && t.role!=="client" && t.role!=="office_boy" && t.status!=="inactive");
 
   // Reads the ID number straight off the already-attached ID photo instead
   // of retyping all 14 digits by hand — birth date/age are then derived
@@ -22587,7 +22587,7 @@ function InviteUserModal({onClose, onSubmit, clients, team, initial}) {
                 <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Manager</label>
                 <select value={form.manager_id} onChange={e=>sf("manager_id",e.target.value)} style={inputSt}>
                   <option value="">No manager set</option>
-                  {(team||[]).filter(t=>t.role!=="client").map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
+                  {(team||[]).filter(t=>t.role!=="client" && t.role!=="office_boy" && t.status!=="inactive").map(m=><option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
               </div>
               <div style={{display:"flex",gap:10}}>
