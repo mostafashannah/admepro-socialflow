@@ -20018,7 +20018,7 @@ function TeamMemberHistoryTab({member, team=[], canEdit, currentUser, onUpdateTe
   const [emailingId, setEmailingId] = useState(null);
   const [emailedIds, setEmailedIds] = useState(new Set());
   const [showFormPreview, setShowFormPreview] = useState(false);
-  const blankForm = () => ({event_type:"salary_raise", title:"", previous_value:member.salary?String(member.salary):"", new_value:"", amount:"", deduction_mode:"fixed", deduction_days:"", effective_date:new Date().toISOString().slice(0,10), notes:""});
+  const blankForm = () => ({event_type:"salary_raise", title:"", previous_value:member.salary?String(member.salary):"", new_value:"", amount:"", deduction_mode:"fixed", deduction_days:"", promo_salary:"", effective_date:new Date().toISOString().slice(0,10), notes:""});
   const [form, setForm] = useState(blankForm);
   const [saving, setSaving] = useState(false);
 
@@ -20062,6 +20062,26 @@ function TeamMemberHistoryTab({member, team=[], canEdit, currentUser, onUpdateTe
         const cleanSalary = Number(String(form.new_value).replace(/[^0-9.]/g,""));
         if(cleanSalary>0) await onUpdateTeamMember(member.id, {salary: cleanSalary});
         else alert(`Event saved, but "${form.new_value}" isn't a valid salary number — the team member's salary was NOT updated. Edit their profile directly if needed.`);
+      }
+      // A promotion that comes with a pay bump has to hit payroll too, but
+      // payroll (monthly-payroll-cron.php / recompute-pending-payroll.php)
+      // only ever reads event_type='salary_raise' — a promotion event on
+      // its own, even with salary-looking numbers typed into its title
+      // fields, never changed what anyone was paid. So when a new salary
+      // is entered on a promotion, record the matching salary_raise event
+      // (same effective date) and update the member's salary as well.
+      if(form.event_type==="promotion" && form.promo_salary && onUpdateTeamMember) {
+        const promoSalary = Number(String(form.promo_salary).replace(/[^0-9.]/g,""));
+        if(promoSalary>0) {
+          await ce("TeamMemberEvent",[{
+            team_member_id: member.id, team_member_name: member.name,
+            event_type: "salary_raise", title: `Salary raise with promotion — ${form.title.trim()}`,
+            previous_value: member.salary?String(member.salary):"", new_value: String(promoSalary),
+            amount: null, effective_date: form.effective_date||"", notes: "Recorded together with a promotion",
+            recorded_by: currentUser?.name||currentUser?.email||"",
+          }]);
+          await onUpdateTeamMember(member.id, {salary: promoSalary});
+        } else alert(`Promotion saved, but "${form.promo_salary}" isn't a valid salary number — no salary change was recorded.`);
       }
       // Termination doesn't flip them to inactive right away — they're
       // still meant to be working (and have system access) through their
@@ -20209,6 +20229,13 @@ function TeamMemberHistoryTab({member, team=[], canEdit, currentUser, onUpdateTe
                 <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>{cfg.newLabel}</label>
                 <input type={form.event_type==="salary_raise"?"number":"text"} value={form.new_value} onChange={e=>setForm(f=>({...f,new_value:e.target.value}))} style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)"}}/>
               </div>
+            </div>
+          )}
+          {form.event_type==="promotion"&&(
+            <div>
+              <label style={{fontSize:11,fontWeight:600,color:"var(--text3)",display:"block",marginBottom:4}}>New Salary (optional)</label>
+              <input type="number" value={form.promo_salary} onChange={e=>setForm(f=>({...f,promo_salary:e.target.value}))} placeholder="Leave empty if this promotion has no pay change" style={{width:"100%",padding:"8px 10px",borderRadius:7,border:"1px solid var(--border2)",background:"var(--surface2)",fontSize:13,color:"var(--text)"}}/>
+              <p style={{fontSize:11,color:"var(--text3)",marginTop:5,lineHeight:1.5}}>Applies from the Effective Date below and flows into payroll — the Previous/New Title fields above are text only and never change pay.</p>
             </div>
           )}
           {form.event_type==="terminate"&&(
