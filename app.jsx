@@ -22181,7 +22181,7 @@ function PermSwitch({checked, onChange}) {
 
 function RolesPermissionsTab({rolePerms, onToggle}) {
   const editableRoles = INTERNAL_ROLES.filter(r=>r!=="admin"); // admin always has everything, nothing to toggle
-  const isChecked = (role,key) => (rolePerms?.[role]||[]).includes(key);
+  const isChecked = (role,key) => (rolePerms?.[role] || DEFAULT_ROLE_PERMISSIONS[role] || []).includes(key);
   return (
     <div style={{overflowX:"auto"}}>
       <p style={{color:"var(--text2)",fontSize:13,marginBottom:16}}>Admin always has every permission. Toggle what each other role can access.</p>
@@ -47930,6 +47930,23 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
   // a checkbox either creates the row (checked) or patches an existing one —
   // there's no bulk upsert-by-composite-key in the generic REST layer.
   const toggleRolePermission = async (role, key, allowed) => {
+    // A role with NO rows yet is running on DEFAULT_ROLE_PERMISSIONS (see
+    // hasPerm) — but the moment it gets even one allowed row, hasPerm
+    // switches to using ONLY the rows and every default silently vanishes
+    // (e.g. toggling one thing on for Account Director would have dropped
+    // its default Recruitment access). Seed the role's defaults first so the
+    // first toggle only changes what was actually clicked.
+    if(!(data.rolePermissions||[]).some(r=>r.role===role)) {
+      for(const dk of (DEFAULT_ROLE_PERMISSIONS[role]||[])) {
+        if(dk===key) continue;
+        const seeded = {id:uid(), role, permission_key:dk, allowed:true};
+        setData(d=>({...d, rolePermissions:[...(d.rolePermissions||[]), seeded]}));
+        ce("RolePermission",[{role, permission_key:dk, allowed:true}]).then(r=>{
+          const real = r.entities?.[0];
+          if(real?.id) setData(d=>({...d, rolePermissions:d.rolePermissions.map(x=>x.id===seeded.id?real:x)}));
+        }).catch(()=>{});
+      }
+    }
     const existing = (data.rolePermissions||[]).find(r=>r.role===role && r.permission_key===key);
     if(existing) {
       setData(d=>({...d, rolePermissions:d.rolePermissions.map(r=>r.id===existing.id?{...r,allowed}:r)}));
