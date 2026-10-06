@@ -242,6 +242,10 @@ function egyptIslamicHolidaysForYear(year) {
   return EGYPT_ISLAMIC_HOLIDAYS_BY_YEAR[year] || [];
 }
 
+// A hire whose start date is still in the future is created inactive (login
+// blocked, off the Timeline) and flagged pending_start — activate-members-cron.php
+// flips them to active on the start date itself.
+const isFutureStart = (d) => !!d && String(d).slice(0,10) > new Date().toISOString().slice(0,10);
 const CLIENT_ROLES = ["client_admin","client_member"];
 const INTERNAL_ROLES = ["admin","hr","account_manager","account_director","account_executive","business_development","content_creator","graphic_designer","accountant","office_boy"];
 
@@ -22515,7 +22519,7 @@ function AttendanceRulesPanel({appSettings, onSaveSettings, onDeclareCompanyDayO
 }
 
 function InviteUserModal({onClose, onSubmit, clients, team, initial}) {
-  const [form, setForm] = useState({name:"",email:"",role:"content_creator",title:"",user_type:"internal",client_id:"",permissions:"",whatsapp_number:"",manager_id:"",salary:"",probation_salary:"",probation_months:"",vacation_days_total:21,wfh_days_total:2,personal_leave_hours_total:4,id_photo_front_url:"",id_photo_back_url:"",source_application_id:"",...initial});
+  const [form, setForm] = useState({name:"",email:"",role:"content_creator",title:"",user_type:"internal",client_id:"",permissions:"",whatsapp_number:"",manager_id:"",salary:"",probation_salary:"",probation_months:"",vacation_days_total:21,wfh_days_total:2,personal_leave_hours_total:4,id_photo_front_url:"",id_photo_back_url:"",source_application_id:"",start_date:"",...initial});
   const [loading, setLoading] = useState(false);
   const [uploadingIdFront, setUploadingIdFront] = useState(false);
   const [uploadingIdBack, setUploadingIdBack] = useState(false);
@@ -22633,6 +22637,10 @@ function InviteUserModal({onClose, onSubmit, clients, team, initial}) {
                   <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Probation Period (months)</label>
                   <input type="number" min="0" value={form.probation_months} onChange={e=>sf("probation_months",e.target.value)} placeholder="e.g. 3" style={inputSt}/>
                 </div>
+              </div>
+              <div>
+                <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Start Date <span style={{fontWeight:400,color:"var(--text3)"}}>(a future date keeps them inactive until that day)</span></label>
+                <input type="date" value={form.start_date||""} onChange={e=>sf("start_date",e.target.value)} style={inputSt}/>
               </div>
               <div style={{display:"flex",gap:10}}>
                 <div style={{flex:1}}>
@@ -24035,6 +24043,9 @@ function AcceptInvitationPage({token, onAccepted}) {
         // carry those through instead of the old (broken) self-entered mobile field.
         const tmRes = await ce("TeamMember",[{
           ...memberPayload,
+          start_date: invitation.start_date || null,
+          status: isFutureStart(invitation.start_date) ? "inactive" : "active",
+          pending_start: isFutureStart(invitation.start_date) ? 1 : 0,
           avatar_url: onboardingApp?.onboarding_photo_url || form.photo_url,
           title: invitation.title || null,
           whatsapp_number: invitation.whatsapp_number || form.mobile || null,
@@ -41106,6 +41117,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
         id_photo_front_url: makeTeamMemberApp.onboarding_id_front_url||"",
         id_photo_back_url: makeTeamMemberApp.onboarding_id_back_url||"",
         avatar_url: makeTeamMemberApp.onboarding_photo_url||"",
+        start_date: makeTeamMemberApp.offer_start_date ? String(makeTeamMemberApp.offer_start_date).slice(0,10) : "",
         source_application_id: makeTeamMemberApp.id,
       }}
     />
@@ -48219,6 +48231,7 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
       salary: formData.salary===""||formData.salary==null?null:formData.salary,
       probation_salary: formData.probation_salary===""||formData.probation_salary==null?null:formData.probation_salary,
       probation_months: formData.probation_months===""||formData.probation_months==null?null:formData.probation_months,
+      start_date: formData.start_date||null,
       token, expires_at:expiresAt, status:"pending", invited_by:currentUser?.email};
     setData(d=>({...d, invitations:[local,...(d.invitations||[])]}));
     ce("UserInvitation",[payload]).then(res=>{
@@ -48286,6 +48299,8 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
           personal_leave_hours_total:inv.personal_leave_hours_total??4,
           id_photo_front_url:inv.id_photo_front_url||"", id_photo_back_url:inv.id_photo_back_url||"",
           avatar_url:inv.avatar_url||"", source_application_id:inv.source_application_id||"",
+          start_date:inv.start_date||null,
+          ...(isFutureStart(inv.start_date) ? {status:"inactive", pending_start:1} : {}),
         }]).catch(()=>null);
         const real = res?.entities?.[0];
         if(real?.id) setData(d=>({...d, team:[real,...(d.team||[])]}));
