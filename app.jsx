@@ -22522,6 +22522,7 @@ function InviteUserModal({onClose, onSubmit, clients, team, initial}) {
   const idPhotoFrontRef = useRef(null);
   const idPhotoBackRef = useRef(null);
   const sf = (k,v)=>setForm(p=>({...p,[k]:v}));
+  const noProbation = form.probation_months!=="" && form.probation_months!=null && Number(form.probation_months)===0;
   const titleOptions = Array.from(new Set([...TEAM_TITLES, ...(team||[]).map(t=>t.title).filter(Boolean)])).sort();
 
   const handleIdPhoto = async (file, side) => {
@@ -22536,7 +22537,7 @@ function InviteUserModal({onClose, onSubmit, clients, team, initial}) {
   const handleSubmit = async () => {
     if(!form.email||!form.role) return;
     setLoading(true);
-    await onSubmit(form);
+    await onSubmit(noProbation ? {...form, probation_salary:""} : form);
     setLoading(false);
     onClose();
   };
@@ -22619,15 +22620,15 @@ function InviteUserModal({onClose, onSubmit, clients, team, initial}) {
               </div>
               <div style={{display:"flex",gap:10}}>
                 <div style={{flex:1}}>
-                  <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Salary <span style={{fontWeight:400,color:"var(--text3)"}}>(after probation)</span></label>
+                  <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Salary{!noProbation&&<span style={{fontWeight:400,color:"var(--text3)"}}> (after probation)</span>}</label>
                   <input type="number" value={form.salary} onChange={e=>sf("salary",e.target.value)} placeholder="Monthly salary" style={inputSt}/>
                 </div>
               </div>
               <div style={{display:"flex",gap:10}}>
-                <div style={{flex:1}}>
+                {!noProbation&&<div style={{flex:1}}>
                   <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Probation Salary</label>
                   <input type="number" value={form.probation_salary} onChange={e=>sf("probation_salary",e.target.value)} placeholder="Salary during probation" style={inputSt}/>
-                </div>
+                </div>}
                 <div style={{flex:1}}>
                   <label style={{fontSize:12,fontWeight:600,color:"var(--text2)",display:"block",marginBottom:5}}>Probation Period (months)</label>
                   <input type="number" min="0" value={form.probation_months} onChange={e=>sf("probation_months",e.target.value)} placeholder="e.g. 3" style={inputSt}/>
@@ -41091,8 +41092,13 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
         name: makeTeamMemberApp.candidate_name||"",
         email: makeTeamMemberApp.candidate_email||"",
         title: makeTeamMemberApp.offer_title||makeTeamMemberApp.job_title||"",
-        salary: makeTeamMemberApp.offer_post_probation_salary||"",
-        probation_salary: Number(makeTeamMemberApp.offer_probation_months)===0 ? "" : (makeTeamMemberApp.offer_salary||""),
+        // Offer salaries are free text ("18,000 EGP") but this modal's salary
+        // inputs are type=number, which silently shows nothing for anything
+        // that isn't a bare number — strip to digits first. With 0 probation
+        // months there's only one salary, so fall back to whichever of the
+        // offer's two salary fields was actually filled in.
+        salary: String((makeTeamMemberApp.offer_post_probation_salary || (Number(makeTeamMemberApp.offer_probation_months)===0 ? makeTeamMemberApp.offer_salary : "") || "")).replace(/[^0-9.]/g,""),
+        probation_salary: Number(makeTeamMemberApp.offer_probation_months)===0 ? "" : String(makeTeamMemberApp.offer_salary||"").replace(/[^0-9.]/g,""),
         probation_months: makeTeamMemberApp.offer_probation_months??"",
         whatsapp_number: makeTeamMemberApp.candidate_phone||"",
         vacation_days_total: makeTeamMemberApp.offer_vacation_days_annual??21,
