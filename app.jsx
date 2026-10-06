@@ -24511,9 +24511,9 @@ function offerSentEmail(candidateName, form, offerUrl) {
     </div>
     <p style="margin:0 0 20px;font-size:14px;line-height:1.6;color:#4b5563">We loved getting to know you through the process, and we're excited to bring you on board. Here's what we're offering:</p>
     <table width="100%" style="border-collapse:collapse;margin:0 0 20px;border:1px solid #f1f1f3;border-radius:12px;overflow:hidden">
-      ${offerRow("Salary (probation period)", form.salary||"—")}
-      ${offerRow("Probation period", `${form.probation_months||0} month(s)`)}
-      ${offerRow("Salary after probation", form.post_probation_salary||"—")}
+      ${(form.probation_months!==""&&form.probation_months!=null&&Number(form.probation_months)===0)
+        ? offerRow("Salary", form.post_probation_salary||"—")
+        : offerRow("Salary (probation period)", form.salary||"—") + offerRow("Probation period", `${form.probation_months||0} month(s)`) + offerRow("Salary after probation", form.post_probation_salary||"—")}
       ${offerRow("Start date", form.start_date?fmtDate(form.start_date):"—")}
       ${offerRow("Employment type", form.employment_type==="part_time"?"Part-time":"Full-time")}
       ${offerRow("Work arrangement", form.work_arrangement==="hybrid"?"Hybrid":"On-site")}
@@ -24942,9 +24942,13 @@ function OfferResponsePage({token}) {
         <p style={{fontSize:13,color:isDark?"#9099ab":"#666",marginBottom:16}}>Hi {application.candidate_name||"there"}, here's a summary of the offer:</p>
 
         <div style={{marginBottom:20}}>
-          <div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Salary (probation)</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_salary||"—"}</strong></div>
-          <div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Probation period</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_probation_months||0} month(s)</strong></div>
-          <div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Salary after probation</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_post_probation_salary||"—"}</strong></div>
+          {application.offer_probation_months!=null && Number(application.offer_probation_months)===0 ? (
+            <div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Salary</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_post_probation_salary||"—"}</strong></div>
+          ) : (<>
+            <div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Salary (probation)</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_salary||"—"}</strong></div>
+            <div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Probation period</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_probation_months||0} month(s)</strong></div>
+            <div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Salary after probation</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_post_probation_salary||"—"}</strong></div>
+          </>)}
           <div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Start date</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_start_date?fmtDate(application.offer_start_date):"—"}</strong></div>
           {application.offer_employment_type&&<div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Employment type</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_employment_type==="part_time"?"Part-time":"Full-time"}</strong></div>}
           {application.offer_work_arrangement&&<div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Work arrangement</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_work_arrangement==="hybrid"?"Hybrid":"On-site"}</strong></div>}
@@ -39120,6 +39124,9 @@ function OfferSection({application, opening, onSave, saving, onSend, sending, on
     notes: application.offer_notes || "",
   });
   const sf = (k,v) => setForm(p=>({...p,[k]:v}));
+  // A probation of exactly 0 months means there is no probation salary at
+  // all — the "after probation" salary is simply the salary.
+  const noProbation = form.probation_months!=="" && Number(form.probation_months)===0;
 
   const offerQr = application.candidate_phone && waQrUrl(application.candidate_phone,
     `Hi ${application.candidate_name||"there"}, this is a message from Admepro to confirm that you've received our job offer. Please reply to this message to confirm receipt, and don't hesitate to reach out if you have any questions. We look forward to hearing from you.`
@@ -39170,11 +39177,11 @@ function OfferSection({application, opening, onSave, saving, onSend, sending, on
 
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         <Field label="Job Title"><input value={form.title} onChange={e=>sf("title",e.target.value)} style={inputSt}/></Field>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-          <Field label="Probation Salary"><input value={form.salary} onChange={e=>sf("salary",e.target.value)} placeholder="e.g. 8,000 EGP" style={inputSt}/></Field>
-          <Field label="Probation Period (months)"><input type="number" min="0" value={form.probation_months} onChange={e=>sf("probation_months",e.target.value)} style={inputSt}/></Field>
+        <div style={{display:"grid",gridTemplateColumns:noProbation?"1fr":"1fr 1fr",gap:10}}>
+          {!noProbation&&<Field label="Probation Salary"><input value={form.salary} onChange={e=>sf("salary",e.target.value)} placeholder="e.g. 8,000 EGP" style={inputSt}/></Field>}
+          <Field label="Probation Period (months)" hint={noProbation?"No probation — the salary below is the main salary from day one":undefined}><input type="number" min="0" value={form.probation_months} onChange={e=>sf("probation_months",e.target.value)} style={inputSt}/></Field>
         </div>
-        <Field label="Salary After Probation"><input value={form.post_probation_salary} onChange={e=>sf("post_probation_salary",e.target.value)} placeholder="e.g. 10,000 EGP" style={inputSt}/></Field>
+        <Field label={noProbation?"Salary":"Salary After Probation"}><input value={form.post_probation_salary} onChange={e=>sf("post_probation_salary",e.target.value)} placeholder="e.g. 10,000 EGP" style={inputSt}/></Field>
         <Field label="Start Date"><input type="date" value={form.start_date} onChange={e=>sf("start_date",e.target.value)} style={inputSt}/></Field>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
           <Field label="Employment Type">
@@ -39207,7 +39214,7 @@ function OfferSection({application, opening, onSave, saving, onSend, sending, on
         <button onClick={()=>onSave(application, form)} disabled={saving} style={{padding:"7px 14px",borderRadius:8,background:"var(--surface)",border:"1px solid var(--border2)",fontSize:12,fontWeight:700,color:"var(--text2)",cursor:saving?"not-allowed":"pointer"}}>
           {saving?"Saving…":"Save Offer Details"}
         </button>
-        <button onClick={()=>onSend(application, form)} disabled={sending||!form.salary||!form.start_date} style={{padding:"7px 14px",borderRadius:8,background:"#a855f7",border:"none",fontSize:12,fontWeight:700,color:"#fff",cursor:sending?"not-allowed":"pointer"}}>
+        <button onClick={()=>onSend(application, form)} disabled={sending||!(noProbation?form.post_probation_salary:form.salary)||!form.start_date} style={{padding:"7px 14px",borderRadius:8,background:"#a855f7",border:"none",fontSize:12,fontWeight:700,color:"#fff",cursor:sending?"not-allowed":"pointer"}}>
           {sending?"Sending…":"Send Offer Email"}
         </button>
       </div>
@@ -41081,7 +41088,7 @@ function RecruitmentPage({currentUser, appSettings, onSaveSettings, team, client
         email: makeTeamMemberApp.candidate_email||"",
         title: makeTeamMemberApp.offer_title||makeTeamMemberApp.job_title||"",
         salary: makeTeamMemberApp.offer_post_probation_salary||"",
-        probation_salary: makeTeamMemberApp.offer_salary||"",
+        probation_salary: Number(makeTeamMemberApp.offer_probation_months)===0 ? "" : (makeTeamMemberApp.offer_salary||""),
         probation_months: makeTeamMemberApp.offer_probation_months??"",
         whatsapp_number: makeTeamMemberApp.candidate_phone||"",
         vacation_days_total: makeTeamMemberApp.offer_vacation_days_annual??21,
