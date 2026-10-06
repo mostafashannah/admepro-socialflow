@@ -24398,6 +24398,8 @@ const HIRING_POLICY_SECTIONS = [
 function hiredWelcomeEmail(candidateName, jobTitle, laptopProvided, onboardingUrl) {
   const laptopLine = laptopProvided==="company"
     ? "We'll be providing you with a company laptop to work on."
+    : laptopProvided==="imac"
+    ? "We'll be providing you with an iMac to work on."
     : laptopProvided==="personal"
     ? "As agreed, you'll be working on your own personal laptop."
     : "We'll confirm with you separately whether you'll be working on a company laptop or your own.";
@@ -24497,6 +24499,7 @@ function completeApplicationEmail(candidateName, intro, missingList, completeUrl
 
 function offerSentEmail(candidateName, form, offerUrl) {
   const laptopLine = form.laptop_provided==="company" ? "We'll set you up with a company laptop, ready to go from day one."
+    : form.laptop_provided==="imac" ? "We'll set you up with an iMac, ready to go from day one."
     : form.laptop_provided==="personal" ? "This role works with your own personal laptop."
     : "";
   const offerRow = (label,value) => `
@@ -24954,7 +24957,7 @@ function OfferResponsePage({token}) {
           {application.offer_work_arrangement&&<div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Work arrangement</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_work_arrangement==="hybrid"?"Hybrid":"On-site"}</strong></div>}
           <div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Annual vacation</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_vacation_days_annual||0} days/year</strong></div>
           <div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Work from home</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_wfh_days_monthly||0} days/month</strong></div>
-          {application.offer_laptop_provided&&<div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Laptop</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_laptop_provided==="company"?"Company-provided":"Personal laptop"}</strong></div>}
+          {application.offer_laptop_provided&&<div style={rowSt}><span style={{color:isDark?"#9099ab":"#666"}}>Laptop</span><strong style={{color:isDark?"#fff":"#111"}}>{application.offer_laptop_provided==="company"?"Company-provided":application.offer_laptop_provided==="imac"?"iMac provided":"Personal laptop"}</strong></div>}
         </div>
 
         {!negotiating ? (
@@ -39201,6 +39204,7 @@ function OfferSection({application, opening, onSave, saving, onSend, sending, on
           <select value={form.laptop_provided} onChange={e=>sf("laptop_provided",e.target.value)} style={inputSt}>
             <option value="">— Not set —</option>
             <option value="company">We provide a laptop</option>
+            <option value="imac">We will provide an iMac</option>
             <option value="personal">Works with personal laptop</option>
           </select>
         </Field>
