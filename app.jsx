@@ -33671,6 +33671,14 @@ function AddTransactionPage({onBack,onAdd,clientNames=[],team=[]}) {
 function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,onDelete,onAddComment,clientNames=[],team=[],activityLogs=[]}) {
   const {isMobile} = useResponsive();
   const [showEdit,setShowEdit] = useState(false);
+  // The edit form must start from the WHOLE stored record, not a hand-picked
+  // subset: it used to pass only a few fields, so everything else the form
+  // depends on (outstanding kind/months/rate/principal, salary month, ...)
+  // came up as defaults — editing one field on, say, a Fawry installment
+  // expense silently rewrote its kind, plan and totals on save. It's also
+  // memoized: a fresh object every render made the form's reset-on-initial-
+  // change effect fire on any parent re-render, wiping what you were typing.
+  const editInitial = useMemo(()=>txn.raw ? {...txn.raw, id:txn.raw.id, type:txn.type, category:txn.category, description:txn.sub, amount:txn.amount, currency:txn.currency, date:txn.date, method:txn.method} : null, [txn.raw]);
   const [comment,setComment] = useState("");
   const [posting,setPosting] = useState(false);
   const [checkNo,setCheckNo] = useState(txn.checkNo||"");
@@ -33885,7 +33893,7 @@ function TransactionDetailPage({txn,currentUser,canManage,isAdmin,onBack,onEdit,
         open={showEdit}
         onClose={()=>setShowEdit(false)}
         onSave={onEdit}
-        initial={txn.raw ? {id:txn.raw.id,type:txn.type,category:txn.category,description:txn.sub,amount:txn.amount,currency:txn.currency,date:txn.date,method:txn.method,team_member_id:txn.raw.team_member_id} : null}
+        initial={editInitial}
         clientNames={clientNames}
         team={team}
       />
