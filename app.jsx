@@ -249,6 +249,26 @@ const isFutureStart = (d) => !!d && String(d).slice(0,10) > new Date().toISOStri
 // The one folder per client whose contents are shared with the client portal
 // (the portal's Assets tab shows its inner folders as the root).
 const CLIENT_ASSETS_FOLDER = "Client Assets";
+// Bytes already used inside a client's Client Assets folder. `assets` must
+// already be scoped to that client (or pass clientId to filter by tag).
+const clientAssetsUsedBytes = (assets, clientId) => (assets||[])
+  .filter(a=>(a.category===CLIENT_ASSETS_FOLDER||(a.category||"").startsWith(CLIENT_ASSETS_FOLDER+"/")) && (!clientId || (a.tags||[]).includes(`client_${clientId}`)))
+  .reduce((sum,a)=>sum+(Number(a.file_size)||0),0);
+// null/empty limit = unlimited
+const storageLimitBytes = (client) => { const mb = Number(client?.storage_limit_mb); return mb>0 ? mb*1024*1024 : null; };
+function StorageUsageBar({usedBytes, limitBytes}) {
+  const pct = limitBytes ? Math.min(100, Math.round(usedBytes/limitBytes*100)) : 0;
+  const color = pct>=90 ? "#ef4444" : pct>=70 ? "#f59e0b" : "var(--accent)";
+  return (
+    <div style={{padding:"12px 14px",border:"1px solid var(--border)",borderRadius:"var(--rs)",background:"var(--surface)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:6}}>
+        <span style={{fontWeight:700}}>Storage</span>
+        <span style={{color:"var(--text3)"}}>{fmtFileSize(usedBytes)}{limitBytes?` of ${fmtFileSize(limitBytes)} used`:" used"}</span>
+      </div>
+      {limitBytes&&<div style={{height:6,borderRadius:99,background:"var(--surface2)",overflow:"hidden"}}><div style={{width:`${pct}%`,height:"100%",background:color,transition:"width 0.3s"}}/></div>}
+    </div>
+  );
+}
 const CLIENT_ROLES = ["client_admin","client_member"];
 const INTERNAL_ROLES = ["admin","hr","account_manager","account_director","account_executive","business_development","content_creator","graphic_designer","accountant","office_boy"];
 
@@ -1143,7 +1163,7 @@ const SB_SCHEMA = {
   // and username both exist but were missing from this list, so they always
   // got stripped before the request went out (see
   // migration-client-username.sql for the added username column).
-  clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","account_manager_commissions","username","contact_title","notes","logo_url","allowed_task_types","platform_credentials","portal_features","website","social_links","whatsapp_group_link","has_sectors","sectors"],
+  clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","account_manager_commissions","username","contact_title","notes","logo_url","allowed_task_types","platform_credentials","portal_features","website","social_links","whatsapp_group_link","has_sectors","sectors","storage_limit_mb"],
   client_approval_links: ["post_id","client_id","token","expires_at","status","created_by"],
   client_tasks: ["client_id","client_name","title","description","task_type","priority","stage","assigned_to","created_by","deliverable_note"],
   team_member_events: ["team_member_id","team_member_name","event_type","title","previous_value","new_value","amount","effective_date","notes","recorded_by"],
@@ -13321,7 +13341,7 @@ function ClientDetailPage({client,projects,posts,assets,onBack,onPostClick,onAdd
         </div>
       )}
       {tab==="assets"&&(
-        <FolderBrowser assets={cAssets} projects={cProjects} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset} onDeleteAsset={onDeleteAsset} storagePrefix={`assets/client-${client.id}`} storageKey={`sf_extra_folders_${client.id}`} extraTags={[`client_${client.id}`]} currentUser={currentUser} fixedFolders={[CLIENT_ASSETS_FOLDER]}/>
+        <FolderBrowser assets={cAssets} projects={cProjects} onAddAsset={onAddAsset} onUpdateAsset={onUpdateAsset} onDeleteAsset={onDeleteAsset} storagePrefix={`assets/client-${client.id}`} storageKey={`sf_extra_folders_${client.id}`} extraTags={[`client_${client.id}`]} currentUser={currentUser} fixedFolders={[CLIENT_ASSETS_FOLDER]} storageLimitMb={client.storage_limit_mb}/>
       )}
       {tab==="calendar"&&<CalendarView posts={cPosts} onPostClick={onPostClick}/>}
       {tab==="brain"&&(
@@ -14228,7 +14248,7 @@ function TasksPage({posts,projects,team,onPostClick,onAdd,clientTasks=[],onUpdat
 // cards) offer "Add to Client Assets" without threading assets/addAsset
 // through every component in between — App refreshes this each render and
 // the modal reads it when opened.
-const clientAssetsBridge = {assets:[], addAsset:null};
+const clientAssetsBridge = {assets:[], addAsset:null, clients:[]};
 
 function AddToClientAssetsModal({open, onClose, clientId, clientName, file}) {
   const [path, setPath] = useState([]);
@@ -14260,6 +14280,11 @@ function AddToClientAssetsModal({open, onClose, clientId, clientName, file}) {
   };
   const save = async () => {
     if(!clientAssetsBridge.addAsset || !file?.url) return;
+    const limit = storageLimitBytes((clientAssetsBridge.clients||[]).find(c=>c.id===clientId));
+    if(limit && file.size) {
+      const used = clientAssetsUsedBytes(clientAssetsBridge.assets, clientId);
+      if(used+Number(file.size) > limit) { alert(`Not enough storage: adding this file would use ${fmtFileSize(used+Number(file.size))} of the ${fmtFileSize(limit)} Client Assets limit. Raise the limit in the client's Settings → Features.`); return; }
+    }
     setSaving(true);
     try {
       // Keep the original extension if the new name dropped it, so the
@@ -14447,7 +14472,7 @@ function AssetCard({asset:a, proj, allFolders=[], onUpdate, onDelete, selected, 
 // new (empty) folders, drag-and-drop to move files between folders, and
 // drag-and-drop of OS files onto the panel to upload into the open folder.
 // ════════════════════════════════════════════════════════════════
-function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAsset, storagePrefix="assets", storageKey="sf_extra_folders", extraTags=[], currentUser, categoryPrefix="", fixedFolders=[]}) {
+function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAsset, storagePrefix="assets", storageKey="sf_extra_folders", extraTags=[], currentUser, categoryPrefix="", fixedFolders=[], storageLimitMb=null}) {
   const isAdmin = currentUser?.role==="admin";
   const fileInputRef = useRef(null);
   const [path, setPath] = useState([]);
@@ -14582,6 +14607,13 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
   const handleDropFiles = async (fileList) => {
     const files = Array.from(fileList||[]);
     if(!files.length || !onAddAsset) return;
+    const destCategory = withPrefix(currentPath);
+    if(storageLimitMb && (destCategory===CLIENT_ASSETS_FOLDER || destCategory.startsWith(CLIENT_ASSETS_FOLDER+"/"))) {
+      const limit = Number(storageLimitMb)*1024*1024;
+      const used = clientAssetsUsedBytes(assets);
+      const incoming = files.reduce((n,f)=>n+f.size,0);
+      if(used+incoming > limit) { alert(`Not enough storage: this would use ${fmtFileSize(used+incoming)} of the ${fmtFileSize(limit)} Client Assets limit. Remove some files or ask the team to raise the limit.`); return; }
+    }
     setUploading(true);
     try {
       const resolvedProjectId = path.length>=2 ? (projects.find(p=>p.title===path[1])?.id ?? null) : null;
@@ -14647,6 +14679,7 @@ function FolderBrowser({assets, projects, onAddAsset, onUpdateAsset, onDeleteAss
         </div>
       </div>
 
+      {storageLimitMb&&(categoryPrefix===CLIENT_ASSETS_FOLDER||fixedFolders.includes(CLIENT_ASSETS_FOLDER))&&<StorageUsageBar usedBytes={clientAssetsUsedBytes(assets)} limitBytes={Number(storageLimitMb)*1024*1024}/>}
       {uploading&&<div style={{fontSize:12,color:"var(--text3)"}}><Spinner size={12}/> Uploading dropped file(s)…</div>}
 
       {/* Bulk selection bar — appears once any file is selected */}
@@ -18347,6 +18380,17 @@ function ClientFeaturesSubTab({client, onUpdateClient}) {
             </button>
           </div>
         ))}
+      </div>
+      <div style={{background:"var(--surface)",border:"1px solid var(--border)",borderRadius:"var(--r)",padding:"14px 18px"}}>
+        <span style={{fontSize:13,fontWeight:600}}>Client Assets storage limit</span>
+        <p style={{fontSize:12,color:"var(--text3)",margin:"2px 0 10px"}}>Maximum total size of the shared "Client Assets" folder. Shown on {client.name}'s portal Assets tab; leave empty for unlimited.</p>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <input key={client.id+"_"+(client.storage_limit_mb??"")} type="number" min="0" defaultValue={client.storage_limit_mb??""} placeholder="Unlimited"
+            onBlur={e=>{ const v=e.target.value.trim(); onUpdateClient(client.id, {storage_limit_mb: v===""?null:Number(v)}); }}
+            style={{width:140,fontSize:13,padding:"8px 10px",borderRadius:6,border:"1px solid var(--border)",background:"var(--surface2)",color:"var(--text)"}}/>
+          <span style={{fontSize:12,color:"var(--text3)"}}>MB</span>
+        </div>
+        <div style={{marginTop:12}}><StorageUsageBar usedBytes={clientAssetsUsedBytes(clientAssetsBridge.assets, client.id)} limitBytes={storageLimitBytes(client)}/></div>
       </div>
     </div>
   );
@@ -23694,7 +23738,7 @@ function ClientPortal({client,posts,projects,subscriptions,onAction,onLogout,tas
                 are derived from projects, so pass none (they'd otherwise
                 appear as empty root folders). */}
             <FolderBrowser assets={(cAssets||[]).filter(a=>a.category===CLIENT_ASSETS_FOLDER||(a.category||"").startsWith(CLIENT_ASSETS_FOLDER+"/"))} projects={[]} onUpdateAsset={onUpdateAsset} onDeleteAsset={onDeleteAsset}
-              storagePrefix={`assets/client-${client.id}`} storageKey={`sf_extra_folders_${client.id}`} extraTags={[`client_${client.id}`]} currentUser={client} categoryPrefix={CLIENT_ASSETS_FOLDER}/>
+              storagePrefix={`assets/client-${client.id}`} storageKey={`sf_extra_folders_${client.id}`} extraTags={[`client_${client.id}`]} currentUser={client} categoryPrefix={CLIENT_ASSETS_FOLDER} storageLimitMb={client.storage_limit_mb}/>
           </div>
         )}
 
@@ -48755,7 +48799,7 @@ Return ONLY valid JSON (no markdown): {"tone":"...","content_preferences":"...",
     return a;
   };
 
-  clientAssetsBridge.assets = data.assets; clientAssetsBridge.addAsset = addAsset;
+  clientAssetsBridge.assets = data.assets; clientAssetsBridge.addAsset = addAsset; clientAssetsBridge.clients = data.clients||[];
 
   const updateAsset = async (id, patch) => {
     setData(d=>({...d, assets:d.assets.map(a=>a.id===id?{...a,...patch}:a)}));
