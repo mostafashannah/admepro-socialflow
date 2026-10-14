@@ -1163,7 +1163,7 @@ const SB_SCHEMA = {
   // and username both exist but were missing from this list, so they always
   // got stripped before the request went out (see
   // migration-client-username.sql for the added username column).
-  clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","account_manager_commissions","username","contact_title","notes","logo_url","allowed_task_types","platform_credentials","portal_features","website","social_links","whatsapp_group_link","has_sectors","sectors","storage_limit_mb"],
+  clients: ["name","email","phone","industry","status","platforms","portal_password","account_manager_id","account_manager_commissions","username","contact_title","notes","logo_url","allowed_task_types","platform_credentials","portal_features","website","social_links","whatsapp_group_link","has_sectors","sectors","storage_limit_mb","last_seen"],
   client_approval_links: ["post_id","client_id","token","expires_at","status","created_by"],
   client_tasks: ["client_id","client_name","title","description","task_type","priority","stage","assigned_to","created_by","deliverable_note"],
   team_member_events: ["team_member_id","team_member_name","event_type","title","previous_value","new_value","amount","effective_date","notes","recorded_by"],
@@ -10401,6 +10401,7 @@ function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAdd
   // team rows here instead, same pattern used on System Log's Live Now.
   const [liveTeam,setLiveTeam] = useState(team);
   const [liveClock,setLiveClock] = useState(Date.now());
+  const [liveClients,setLiveClients] = useState([]); // [{key,name,org}] — people on the client portal right now
   // Same paid-so-far convention as Finance > Overview's ledger — an
   // unsettled outstanding expense (Fawry installment, pending payroll, etc.)
   // should still count whatever's actually been paid against it toward the
@@ -10445,6 +10446,13 @@ function DashboardPage({data,currentUser,setPage,onAddClient,onAddCalendar,onAdd
       if(document.visibilityState!=="visible") return; // skip while this tab is backgrounded
       const res = await qe("TeamMember",{},null,500).catch(()=>null);
       if(!cancelled && res?.entities) setLiveTeam(res.entities);
+      const [cuRes, cRes] = await Promise.all([qe("ClientUser",{},null,500).catch(()=>null), qe("Client",{},null,500).catch(()=>null)]);
+      if(cancelled) return;
+      const fresh = r => r.last_seen && (Date.now()-parseSqlUtc(r.last_seen).getTime())<3*60000;
+      setLiveClients([
+        ...((cuRes?.entities||[]).filter(fresh).map(u=>({key:"u_"+u.id, name:u.name||u.email, org:u.client_name||""}))),
+        ...((cRes?.entities||[]).filter(fresh).map(c=>({key:"c_"+c.id, name:c.name, org:c.name}))),
+      ]);
     };
     poll();
     const t = setInterval(poll, 20000);
@@ -10817,6 +10825,10 @@ No markdown, no explanation.`;
                         <span style={{width:6,height:6,borderRadius:"50%",background:"#10b981"}}/>
                         {liveMemberEmails.size} live now
                       </span>
+                      {liveClients.length>0&&<span title="People on a client portal right now" style={{display:"flex",alignItems:"center",gap:5,fontSize:10,background:"#8b5cf622",color:"#8b5cf6",padding:"2px 8px",borderRadius:99,fontWeight:700,border:"1px solid #8b5cf644"}}>
+                        <span style={{width:6,height:6,borderRadius:"50%",background:"#8b5cf6"}}/>
+                        {liveClients.length} on portal
+                      </span>}
                       <span style={{fontSize:10,background:"var(--surface2)",color:"var(--text3)",padding:"2px 8px",borderRadius:99,fontWeight:700,border:"1px solid var(--border2)"}}>{visibleTeam.length} members</span>
                     </div>
                   </div>
@@ -10849,6 +10861,18 @@ No markdown, no explanation.`;
                         </div>
                       );
                     })}
+                    {liveClients.length>0&&(
+                      <div style={{borderTop:"1px solid var(--border)",background:"var(--surface2)"}}>
+                        <p style={{padding:"8px 18px 4px",fontSize:10,fontWeight:800,letterSpacing:"0.06em",textTransform:"uppercase",color:"#8b5cf6"}}>On client portal now</p>
+                        {liveClients.map(c=>(
+                          <div key={c.key} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 18px"}}>
+                            <span style={{width:7,height:7,borderRadius:"50%",background:"#8b5cf6",flexShrink:0}}/>
+                            <span style={{fontSize:12,fontWeight:600}}>{c.name}</span>
+                            {c.org&&c.org!==c.name&&<span style={{fontSize:11,color:"var(--text3)"}}>· {c.org}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </>
               ) : (
@@ -47005,17 +47029,23 @@ function App() {
   // Pings team_members.last_seen every 60s while a (non-client) team member
   // is signed in and the tab is visible, so admin views can show who's
   // actually online right now instead of a fake proxy.
+  // Client portal sessions ping too (client_users.last_seen for a named
+  // client login, clients.last_seen for the legacy whole-client login), so
+  // the dashboard can show which clients are on their portal right now.
   React.useEffect(()=>{
-    if(!currentUser?.id || currentUser?.isClient) return;
+    if(!currentUser?.id) return;
     const ping = () => {
       if(document.visibilityState !== "visible") return;
-      ue("TeamMember", currentUser.id, {last_seen:new Date().toISOString()}).catch(()=>{});
+      const now = new Date().toISOString();
+      if(!currentUser.isClient) ue("TeamMember", currentUser.id, {last_seen:now}).catch(()=>{});
+      else if(currentUser.client_id) ue("ClientUser", currentUser.id, {last_seen:now}).catch(()=>{});
+      else ue("Client", currentUser.id, {last_seen:now}).catch(()=>{});
     };
     ping();
     const t = setInterval(ping, 60000);
     document.addEventListener("visibilitychange", ping);
     return ()=>{ clearInterval(t); document.removeEventListener("visibilitychange", ping); };
-  },[currentUser?.id, currentUser?.isClient]);
+  },[currentUser?.id, currentUser?.isClient, currentUser?.client_id]);
 
   // Unlock notification sound on the very first tap/click/keydown anywhere in
   // the app — required so the later poll-triggered playNotificationSound()
